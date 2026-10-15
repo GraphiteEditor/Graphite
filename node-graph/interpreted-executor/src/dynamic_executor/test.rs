@@ -947,3 +947,29 @@ fn chained_fallbacks_both_reach_the_root() {
 	};
 	assert_eq!(executor.find_origin(NodeId(3), upstream), Some(NodeId(2)));
 }
+
+#[test]
+fn an_error_after_a_fallback_keeps_both() {
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(1.).into()), vec![NodeId(0)]);
+	let fail_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(1)]);
+	let mut fallback = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1)]), vec![NodeId(2)]);
+	fallback.identifier = graphene_std::poll_debug::fallback::IDENTIFIER;
+	let mut error = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2), NodeId(1)]), vec![NodeId(3)]);
+	error.identifier = graphene_std::poll_debug::error::IDENTIFIER;
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(3),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), fail_node), (NodeId(2), fallback), (NodeId(3), error)],
+	})
+	.unwrap();
+
+	let context: Context = None;
+	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
+		panic!("The failing node should stop the frame")
+	};
+	assert_eq!(executor.find_origin(executor.output(), &error), Some(NodeId(3)));
+	let [upstream] = error.upstream() else {
+		panic!("The failing node's error should carry the fallback before it")
+	};
+	assert_eq!(executor.find_origin(NodeId(3), upstream), Some(NodeId(2)));
+}

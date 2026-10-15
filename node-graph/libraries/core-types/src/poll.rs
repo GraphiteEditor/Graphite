@@ -230,7 +230,13 @@ impl Status {
 		match (self.interrupt.take(), interrupt) {
 			(Some(Interrupt::Error(error)), _) => Poll::Error(error),
 			(_, Interrupt::Error(_)) if self.finality.get() == Finality::Partial => Poll::Pending,
-			(_, interrupt) => interrupt.into(),
+			(_, Interrupt::Error(mut error)) => {
+				if error.trace.is_empty() {
+					error.upstream.extend(self.error.take());
+				}
+				Poll::Error(error)
+			}
+			(_, Interrupt::Pending) => Poll::Pending,
 		}
 	}
 
@@ -378,6 +384,25 @@ mod tests {
 		let [upstream] = error.upstream() else { unreachable!() };
 		assert_eq!(upstream.to_string(), "input");
 		assert_eq!(upstream.trace(), [0]);
+	}
+
+	#[test]
+	fn a_failing_node_carries_the_input_error_upstream() {
+		let Poll::Error(error) = Status::new().run(|cell| -> Result<u32, Interrupt> {
+			cell.record(0, Poll::fallback(1, "input"))?;
+			Err(NodeError::new("own").into())
+		}) else {
+			unreachable!()
+		};
+		assert_eq!(error.to_string(), "own");
+		let [upstream] = error.upstream() else { unreachable!() };
+		assert_eq!(upstream.to_string(), "input");
+		assert_eq!(upstream.trace(), [0]);
+
+		let Poll::Error(error) = add(Poll::fallback(1, "first"), Poll::error("second")) else {
+			unreachable!()
+		};
+		assert!(error.upstream().is_empty(), "an input's error is passed on, not raised");
 	}
 
 	#[test]
