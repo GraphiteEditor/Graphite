@@ -1609,8 +1609,8 @@ impl Fsm for PathToolFsmState {
 
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
-				// Set the newly targeted layers to visible
-				let target_layers = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();
+				// Target the newly selected layers that can be edited, leaving out hidden and locked ones as G/R/S do
+				let target_layers = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 
 				shape_editor.set_selected_layers(target_layers);
 
@@ -4595,5 +4595,30 @@ mod test_path_tool {
 			})
 			.await;
 		assert_eq!(selected_points(&editor), swapped, "a repeat of the held Tab shouldn't swap the handles again");
+	}
+
+	#[tokio::test]
+	async fn a_locked_paths_points_cant_be_dragged() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		// Locked with Ctrl+L while the Pen tool that drew it is still active, then the Path tool chosen with its hotkey
+		editor.press(Key::KeyL, ModifierKeys::CONTROL).await;
+		editor.press(Key::KeyA, ModifierKeys::empty()).await;
+		editor.move_mouse(B.x, B.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.handle_message(PathToolMessage::Overlays { context: OverlayContext::default() }).await;
+		drag(&mut editor, B, B + DVec2::new(40., 60.)).await;
+		assert_anchors(&editor, layer, &[A, B, C]);
+
+		// Once unlocked, its points can be dragged again
+		editor
+			.handle_message(NodeGraphMessage::ToggleLocked {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+			})
+			.await;
+		drag(&mut editor, B, B + DVec2::new(40., 60.)).await;
+		assert_anchors(&editor, layer, &[A, B + DVec2::new(40., 60.), C]);
 	}
 }

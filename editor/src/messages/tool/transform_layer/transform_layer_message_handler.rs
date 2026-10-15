@@ -630,7 +630,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
-				let target_layers = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();
+				let target_layers = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => {

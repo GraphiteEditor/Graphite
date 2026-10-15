@@ -196,7 +196,8 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	let display_anchors = overlay_context.visibility_settings.anchors();
 	let document_zoom = document_zoom(document);
 
-	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+	// Locked layers can't be edited, so they get no points to grab
+	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		if display_path {

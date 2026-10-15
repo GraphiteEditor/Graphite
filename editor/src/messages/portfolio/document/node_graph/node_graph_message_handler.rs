@@ -2424,6 +2424,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(InspectorMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
+
+				// Retarget the points the Path tool can edit, which leave out hidden and locked layers
+				responses.add(TransformLayerMessage::SelectionChanged);
+				responses.add(OverlaysMessage::Draw);
 			}
 			NodeGraphMessage::UpdateHoveredConnector => {
 				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
