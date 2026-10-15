@@ -2670,9 +2670,8 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.sliding_point_info = None;
 
-				if drag_occurred || extend_selection {
-					responses.add(DocumentMessage::EndTransaction);
-				}
+				// Close the transaction the press opened, which adds no undo step when nothing changed, as for a plain click
+				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				responses.add(OverlaysMessage::Draw);
 				tool_data.opposite_handle_position = None;
@@ -4378,5 +4377,21 @@ mod test_path_tool {
 		editor.handle_message(PathToolMessage::NudgeSelectedPoints { delta_x: 0., delta_y: -10. }).await;
 		let [_, partner] = handle_and_partner(&editor, layer, handle);
 		assert!((partner.length() - 40.).abs() < 1e-6, "the nudge left the partner {} px long rather than 40 px", partner.length());
+	}
+
+	#[tokio::test]
+	async fn undo_works_after_a_plain_click_on_a_point() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		drag(&mut editor, C, D).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, A, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, A, ModifierKeys::empty()).await;
+		assert_anchors(&editor, layer, &[A, B, D]);
+
+		// The clicks add no undo steps of their own, so one undo takes back the drag
+		editor.handle_message(DocumentMessage::Undo).await;
+		assert_anchors(&editor, layer, &[A, B, C]);
 	}
 }
