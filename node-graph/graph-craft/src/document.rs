@@ -916,19 +916,28 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != passthrough_node {
 			node.implementation = passthrough_node;
 
-			// Connect layer node to the group below
+			// A node without inputs has nothing to pass through, so it passes through the unit value instead
+			if node.inputs.is_empty() {
+				node.inputs.push(NodeInput::value(TaggedValue::None, false));
+			}
+
+			// Keep only the primary input, which the passthrough forwards
 			let removed_inputs = node.inputs.split_off(1);
 
 			// Remove the dependants on the ignored inputs
 			for removed_input in removed_inputs {
 				if let NodeInput::Node { node_id, output_index } = removed_input
 					&& let Some(former_dependency) = self.nodes.get_mut(&node_id)
-					// Ensure that the other node inputs do not also reference the dependancy
+					// Ensure that the other node inputs do not also reference the dependency
 					&& !node.inputs.iter().any(|input| matches!(input, NodeInput::Node { node_id: other, .. } if *other == node_id))
 				{
 					former_dependency.original_location.dependants[output_index].retain(|&dependant| dependant != id);
 				}
 			}
+
+			// Removing the passthrough later splices its input into its consumers, which accept only node wires, so an unwired input becomes a value node
+			let path = node.original_location.path.clone().unwrap_or_default();
+			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
 
 			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
@@ -1770,6 +1779,81 @@ mod test {
 		assert_eq!(&network.exports, &vec![NodeInput::node(NodeId(1), 2), NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(1), 2)]);
 
 		network.validate_dependants();
+	}
+
+	/// A hidden node with nothing wired into it (a layer chain's first node, or a generator) feeding a node with several inputs.
+	fn hidden_source_network(source_inputs: Vec<NodeInput>) -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(2), 0)],
+			nodes: [
+				(
+					NodeId(1),
+					DocumentNode {
+						inputs: source_inputs,
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::Source")),
+						visible: false,
+						..Default::default()
+					},
+				),
+				(
+					NodeId(2),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::Number(2.), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::Consumer")),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	// Flattens and strips passthroughs as the compiler does, then resolves the proto nodes, where an unwired input would panic
+	fn compile_hidden_source(mut network: NodeNetwork) -> ProtoNetwork {
+		network.generate_node_paths(&[]);
+		network.populate_dependants();
+		let ids: Vec<_> = network.nodes.keys().copied().collect();
+		ids.into_iter()
+			.for_each(|id| network.flatten_with_fns(id, |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id));
+		network.remove_all_passthrough_nodes();
+		network.into_proto_networks().next().expect("The network should give a proto network")
+	}
+
+	#[test]
+	fn hidden_node_with_an_unwired_input_passes_its_value() {
+		let proto_network = compile_hidden_source(hidden_source_network(vec![NodeInput::value(TaggedValue::Number(1.), true)]));
+
+		// The consumer's first input is now a value node holding the hidden node's unwired value
+		let consumer = proto_network.nodes.iter().find(|(id, _)| *id == NodeId(2)).map(|(_, node)| node).expect("The consumer should remain");
+		let ConstructionArgs::Nodes(inputs) = &consumer.construction_args else {
+			panic!("The consumer should take node inputs")
+		};
+		let value_node = proto_network
+			.nodes
+			.iter()
+			.find(|(id, _)| *id == inputs[0])
+			.map(|(_, node)| node)
+			.expect("The consumer's first input should be a node");
+		assert!(matches!(&value_node.construction_args, ConstructionArgs::Value(value) if **value == TaggedValue::Number(1.)));
+	}
+
+	#[test]
+	fn hidden_node_without_inputs_passes_the_unit_value() {
+		let proto_network = compile_hidden_source(hidden_source_network(vec![]));
+
+		let consumer = proto_network.nodes.iter().find(|(id, _)| *id == NodeId(2)).map(|(_, node)| node).expect("The consumer should remain");
+		let ConstructionArgs::Nodes(inputs) = &consumer.construction_args else {
+			panic!("The consumer should take node inputs")
+		};
+		let value_node = proto_network
+			.nodes
+			.iter()
+			.find(|(id, _)| *id == inputs[0])
+			.map(|(_, node)| node)
+			.expect("The consumer's first input should be a node");
+		assert!(matches!(&value_node.construction_args, ConstructionArgs::Value(value) if **value == TaggedValue::None));
 	}
 
 	// TODO: Write more tests
