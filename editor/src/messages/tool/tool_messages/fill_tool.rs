@@ -190,7 +190,8 @@ impl Fsm for FillToolFsmState {
 					_ => return self,
 				};
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Left open until the release, so Esc or right-click while the button is held can still roll the fill back
+				responses.add(DocumentMessage::StartTransaction);
 				if route_to_color_chain {
 					responses.add(GraphOperationMessage::ColorValueSet { layer: layer_identifier, color });
 				} else {
@@ -202,7 +203,11 @@ impl Fsm for FillToolFsmState {
 
 				FillToolFsmState::Filling
 			}
-			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
+			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => {
+				responses.add(DocumentMessage::EndTransaction);
+
+				FillToolFsmState::Ready
+			}
 			(FillToolFsmState::Filling, FillToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
@@ -326,6 +331,30 @@ mod test_fill {
 		assert_eq!(fills.len(), 1);
 		let color = fills.first().unwrap().element();
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
+	}
+
+	#[tokio::test]
+	async fn esc_while_held_cancels_the_fill() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let original = *get_fills(&mut editor).await.first().expect("the rectangle should have a fill").element();
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_tool(ToolType::Fill).await;
+		editor.left_mousedown(50., 50., ModifierKeys::empty()).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(50., 50., ModifierKeys::empty()).await;
+
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(SRGBA8::from(*fills[0].element()), SRGBA8::from(original), "Esc while the button is held should undo the fill");
+
+		// Without the Esc, the fill sticks and is one undo step
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		assert_eq!(SRGBA8::from(*get_fills(&mut editor).await[0].element()), SRGBA8::from(Color::GREEN));
+		editor.handle_message(DocumentMessage::Undo).await;
+		assert_eq!(SRGBA8::from(*get_fills(&mut editor).await[0].element()), SRGBA8::from(original), "one undo should take the fill back");
 	}
 
 	#[tokio::test]
