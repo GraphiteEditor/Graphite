@@ -58,7 +58,7 @@
 		editingName = undefined;
 		if (!target || editingNameText === target.initialText) return;
 
-		if (target.kind === "Layer") editor.setLayerName(target.nodeId, editingNameText);
+		if (target.kind === "Layer") editor.setLayerNameInGraph(target.nodeId, editingNameText);
 		else if (target.kind === "Import") editor.setImportName(target.index, editingNameText);
 		else editor.setExportName(target.index, editingNameText);
 	}

@@ -107,7 +107,7 @@
 				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 				size={24}
 				action={(e) => {
-					editor.toggleNodeVisibilityLayerPanel(widgetData.id);
+					editor.toggleNodeVisibilityInspector(widgetData.id);
 					e?.stopPropagation();
 				}}
 				class={widgetData.visible ? "show-only-on-hover" : ""}
