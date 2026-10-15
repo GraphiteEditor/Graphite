@@ -23,7 +23,6 @@ graphic-types = { workspace = true }
 graphene-hash = { workspace = true }
 node-macro = { workspace = true }
 vtrace = { workspace = true }
-diffrast = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }

@@ -1,38 +1,39 @@
 use core_types::Color;
 use core_types::list::{ATTR_CLIPPING_MASK, ATTR_GRADIENT_FORM, ATTR_GRADIENT_SPACE, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_POSITION, ATTR_TRANSFORM, Item, List};
-use diffrast::FillRule;
 use glam::{DAffine2, DMat2, DVec2, DVec3};
 use graphene_hash::CacheHash;
 use graphic_types::{CoverPlacement, Coverage, Graphic, Vector, stamp_coverage};
 use kurbo::BezPath;
 use vector_types::gradient::{Gradient, GradientForm, GradientSpace};
 use vector_types::vector::style::{Stroke, StrokeCap, StrokeJoin};
-use vtrace::model::{Curve, Geometry, Instance, Model, Object, Paint, StrokeGeometry};
+use vtrace::model::{Curve, FillRule, Geometry, GradientShape, Instance, Model, Object, Paint, StrokeGeometry, Structure};
 
-/// Object's Gaussian blur standard deviation in pixels (`f64`), which Graphite cannot draw on vector content.
-pub const ATTR_VTRACE_BLUR: &str = "vtrace:blur";
-/// Radial gradient's focal point offset from its center in the unit circle's plane (`DVec2`), which Graphite's radial gradients lack.
-pub const ATTR_VTRACE_RADIAL_FOCUS: &str = "vtrace:radial_focus";
-/// The [`PathGradient`] an object is painted with, drawn by approximating bands since Graphite has no such paint.
-pub const ATTR_VTRACE_PATH_GRADIENT: &str = "vtrace:path_gradient";
 /// The [`RepeatStructure`] a group of instances was recognized as.
 pub const ATTR_VTRACE_REPEAT: &str = "vtrace:repeat";
 
-/// A paint whose color follows the signed distance from a curve, from the gradient's first stop at `near` to its last at `far`.
+/// How a group of instances repeats its definition, instance `k` counted from 0 and moved from the first, in the traced image's pixels.
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
-pub struct PathGradient {
-	pub contour: Vector,
-	pub closed: bool,
-	pub near: f64,
-	pub far: f64,
-	pub stops: Gradient,
+pub enum RepeatStructure {
+	/// Each instance placed by its own transform.
+	#[default]
+	List,
+	/// Instance `k` moved by `k * step`.
+	Linear { step: DVec2 },
+	/// Instance `k` moved by `(k % columns) * a + (k / columns) * b`.
+	Grid { a: DVec2, b: DVec2, columns: usize },
+	/// Instance `k` turned about `center` by `k * step` radians.
+	Circular { center: DVec2, step: f64 },
 }
 
-/// How a group of instances repeats its definition: the structure's name ("list", "linear", "grid", or "circular") and its parameters.
-#[derive(Clone, Debug, Default, PartialEq, CacheHash)]
-pub struct RepeatStructure {
-	pub name: String,
-	pub parameters: Vec<f64>,
+impl From<&Structure> for RepeatStructure {
+	fn from(structure: &Structure) -> Self {
+		match *structure {
+			Structure::List => Self::List,
+			Structure::Linear { step } => Self::Linear { step },
+			Structure::Grid { a, b, columns } => Self::Grid { a, b, columns },
+			Structure::Circular { center, step } => Self::Circular { center, step },
+		}
+	}
 }
 
 /// Converts a traced model in pixel coordinates into Graphite content placed in the document by `pixels_to_document`.
@@ -65,10 +66,8 @@ impl Converter<'_> {
 				vtrace::model::Item::Group { items, .. } => (None, group(self.items(items))),
 				vtrace::model::Item::Instance(instance) => (None, self.instance(instance)),
 				vtrace::model::Item::Repeat { structure, instances } => {
-					let (name, parameters) = structure.parameters();
-					let structure = RepeatStructure { name: name.to_string(), parameters };
 					let instances = instances.iter().map(|instance| self.instance(instance)).collect();
-					(None, group(instances).with_attribute(ATTR_VTRACE_REPEAT, structure))
+					(None, group(instances).with_attribute(ATTR_VTRACE_REPEAT, RepeatStructure::from(structure)))
 				}
 			};
 
@@ -119,15 +118,8 @@ impl Converter<'_> {
 		group(self.items(definition)).with_attribute(ATTR_TRANSFORM, transform)
 	}
 
+	/// An object of the lowered model: no even-odd fill, path gradient, blur or radial focus is left (see [`crate::CAPABILITIES`]).
 	fn object(&self, object: &Object) -> Item<Graphic> {
-		if let Paint::Gradient {
-			from,
-			gradient: gradient @ diffrast::Gradient::Path { .. },
-		} = &object.paint
-		{
-			return crate::bands::path_gradient(object, *from, gradient);
-		}
-
 		let paint = paint(&object.paint);
 		let mut vector = match &object.geometry {
 			Geometry::Fill { loops, rule } => vector_item(loops_to_bezpath(loops, *rule)).into_fill(paint),
@@ -137,15 +129,12 @@ impl Converter<'_> {
 		if object.opacity < 1. {
 			vector.set_attribute(ATTR_OPACITY, object.opacity);
 		}
-		if object.blur > 0. {
-			vector.set_attribute(ATTR_VTRACE_BLUR, object.blur);
-		}
 		Item::new_from_element(Graphic::from(vector))
 	}
 }
 
 /// Styling helpers for a freshly built vector item.
-pub(crate) trait VectorItemExt {
+trait VectorItemExt {
 	fn into_fill(self, paint: Graphic) -> Self;
 	fn into_stroke(self, stroke: &Stroke, paint: Graphic) -> Self;
 }
@@ -181,24 +170,24 @@ fn stroke_style(stroke: &StrokeGeometry) -> Stroke {
 	}
 }
 
-pub(crate) fn vector_item(path: BezPath) -> Item<Vector> {
+fn vector_item(path: BezPath) -> Item<Vector> {
 	Item::new_from_element(Vector::from_bezpath(path))
 }
 
-pub(crate) fn group(items: Vec<Item<Graphic>>) -> Item<Graphic> {
+fn group(items: Vec<Item<Graphic>>) -> Item<Graphic> {
 	let mut list = List::new();
 	items.into_iter().for_each(|item| list.push(item));
 	Item::new_from_element(Graphic::Graphic(Box::new(Item::new_from_element(Graphic::GraphicList(list)))))
 }
 
 /// An invisible shape whose coverage masks the clipped items that follow it.
-pub(crate) fn mask_base(path: BezPath) -> Item<Graphic> {
+fn mask_base(path: BezPath) -> Item<Graphic> {
 	let base = vector_item(path).with_attribute(ATTR_OPACITY_FILL, 0.).into_fill(Graphic::from(Color::BLACK));
 	Item::new_from_element(Graphic::from(base))
 }
 
 /// Flags the content inside `item` as masked by its preceding sibling, where the renderer reads the flag.
-pub(crate) fn with_clipping_mask(item: Item<Graphic>) -> Item<Graphic> {
+fn with_clipping_mask(item: Item<Graphic>) -> Item<Graphic> {
 	let (mut graphic, attributes) = item.into_parts();
 	match &mut graphic {
 		Graphic::Vector(inner) => inner.set_attribute(ATTR_CLIPPING_MASK, true),
@@ -209,7 +198,7 @@ pub(crate) fn with_clipping_mask(item: Item<Graphic>) -> Item<Graphic> {
 }
 
 /// The sRGB gamma-encoded color vtrace works in, as Graphite's linear color.
-pub(crate) fn color(color: DVec3, alpha: f64) -> Color {
+fn color(color: DVec3, alpha: f64) -> Color {
 	let [red, green, blue] = color.as_vec3().to_array();
 	Color::from_gamma_srgb_channels(red, green, blue, alpha as f32)
 }
@@ -217,50 +206,38 @@ pub(crate) fn color(color: DVec3, alpha: f64) -> Color {
 fn paint(paint: &Paint) -> Graphic {
 	match paint {
 		Paint::Solid(solid) => Graphic::from(color(*solid, 1.)),
-		Paint::Gradient { from, gradient } => Graphic::Gradient(gradient_item(*from, gradient)),
+		Paint::Gradient(gradient) => Graphic::Gradient(gradient_item(gradient)),
 	}
 }
 
 /// A linear or radial gradient in Graphite's form: its stops along the unit line or circle, placed by its transform.
-fn gradient_item(from: DVec3, gradient: &diffrast::Gradient) -> Item<Gradient> {
-	let stops = gradient_stops(from, gradient);
+fn gradient_item(gradient: &vtrace::model::Gradient) -> Item<Gradient> {
+	let mut stops = List::new();
+	for stop in gradient.stops() {
+		let [red, green, blue, alpha] = stop.color;
+		let stop_color = color(DVec3::new(red, green, blue), alpha);
+		stops.push(Item::new_from_element(stop_color).with_attribute(ATTR_POSITION, stop.offset));
+	}
 
-	let (form, transform) = match *gradient {
-		diffrast::Gradient::Linear { start, end, .. } => {
-			let (start, axis) = (start.as_dvec2(), (end - start).as_dvec2());
+	let (form, transform) = match gradient.shape() {
+		GradientShape::Linear { start, end } => {
+			let axis = end - start;
 			(GradientForm::Linear, DAffine2::from_mat2_translation(DMat2::from_cols(axis, axis.perp()), start))
 		}
-		diffrast::Gradient::Radial { center, radius, transform, .. } => {
-			let plane = DMat2::from_cols_array(&transform.to_cols_array().map(f64::from)) * radius as f64;
-			(GradientForm::Radial, DAffine2::from_mat2_translation(plane, center.as_dvec2()))
+		GradientShape::Radial { transform, .. } => (GradientForm::Radial, DAffine2::from_cols_array(&transform)),
+		GradientShape::Path { .. } => {
+			log::error!("Vectorize got a path gradient its lowering should have drawn as bands");
+			(GradientForm::Linear, DAffine2::IDENTITY)
 		}
-		diffrast::Gradient::Path { .. } => (GradientForm::Linear, DAffine2::IDENTITY),
 	};
 
-	let mut item = Item::new_from_element(stops)
+	Item::new_from_element(Gradient(stops))
 		.with_attribute(ATTR_GRADIENT_FORM, form)
 		.with_attribute(ATTR_GRADIENT_SPACE, GradientSpace::RgbGamma)
-		.with_attribute(ATTR_TRANSFORM, transform);
-
-	if let diffrast::Gradient::Radial { focus, radius, .. } = *gradient
-		&& focus != glam::Vec2::ZERO
-	{
-		item.set_attribute(ATTR_VTRACE_RADIAL_FOCUS, focus.as_dvec2() / radius as f64);
-	}
-	item
+		.with_attribute(ATTR_TRANSFORM, transform)
 }
 
-/// The ramp as straight-alpha stops, which Graphite interpolates like SVG.
-pub(crate) fn gradient_stops(from: DVec3, gradient: &diffrast::Gradient) -> Gradient {
-	let mut stops = List::new();
-	for (offset, stop_color, alpha) in gradient.svg_stops(from.as_vec3()) {
-		let stop = Item::new_from_element(color(stop_color.as_dvec3(), alpha as f64)).with_attribute(ATTR_POSITION, offset as f64);
-		stops.push(stop);
-	}
-	Gradient(stops)
-}
-
-pub(crate) fn cubics_to_bezpath(cubics: &[Curve], closed: bool) -> BezPath {
+fn cubics_to_bezpath(cubics: &[Curve], closed: bool) -> BezPath {
 	let point = |p: DVec2| kurbo::Point::new(p.x, p.y);
 
 	let mut path = BezPath::new();
@@ -275,53 +252,14 @@ pub(crate) fn cubics_to_bezpath(cubics: &[Curve], closed: bool) -> BezPath {
 	path
 }
 
-pub(crate) fn loops_to_bezpath(loops: &[Vec<Curve>], rule: FillRule) -> BezPath {
-	let mut subpaths: Vec<BezPath> = loops.iter().filter(|cubics| !cubics.is_empty()).map(|cubics| cubics_to_bezpath(cubics, true)).collect();
+/// The loops as one path; the lowering has wound them for Graphite's nonzero fill rule.
+fn loops_to_bezpath(loops: &[Vec<Curve>], rule: FillRule) -> BezPath {
 	if rule == FillRule::EvenOdd {
-		orient_for_nonzero(&mut subpaths);
+		log::error!("Vectorize got an even-odd fill its lowering should have wound for nonzero");
 	}
-
 	let mut path = BezPath::new();
-	subpaths.iter().flat_map(|subpath| subpath.elements()).for_each(|&element| path.push(element));
+	for cubics in loops.iter().filter(|cubics| !cubics.is_empty()) {
+		cubics_to_bezpath(cubics, true).elements().iter().for_each(|&element| path.push(element));
+	}
 	path
-}
-
-/// Orients the loops so Graphite's nonzero fill rule covers what the even-odd rule would: each loop winds
-/// in the direction of its nesting depth's parity, so a hole always cancels the loop around it. O(n²) in the loop count.
-fn orient_for_nonzero(subpaths: &mut [BezPath]) {
-	use kurbo::{ParamCurve, Shape};
-
-	// A segment's midpoint rather than its start, since loops may touch at their corners
-	let depths: Vec<usize> = subpaths
-		.iter()
-		.enumerate()
-		.map(|(index, subpath)| {
-			let Some(sample) = subpath.segments().next().map(|segment| segment.eval(0.5)) else { return 0 };
-			subpaths.iter().enumerate().filter(|&(other, path)| other != index && path.winding(sample) != 0).count()
-		})
-		.collect();
-
-	for (subpath, depth) in subpaths.iter_mut().zip(depths) {
-		let counterclockwise = subpath.area() > 0.;
-		if counterclockwise != (depth % 2 == 0) {
-			*subpath = subpath.reverse_subpaths();
-		}
-	}
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-	use kurbo::Shape;
-
-	#[test]
-	fn nested_loops_alternate_winding() {
-		let circle = |radius: f64| kurbo::Circle::new((0., 0.), radius).to_path(0.1);
-		let mut subpaths = [circle(10.), circle(6.), circle(3.)];
-
-		orient_for_nonzero(&mut subpaths);
-
-		let counterclockwise = subpaths.map(|subpath| subpath.area() > 0.);
-		assert_eq!(counterclockwise, [true, false, true]);
-	}
 }

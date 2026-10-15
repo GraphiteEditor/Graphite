@@ -6666,7 +6666,6 @@ name = "vectorize-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "diffrast",
  "dyn-any",
  "futures",
  "glam 0.33.12",

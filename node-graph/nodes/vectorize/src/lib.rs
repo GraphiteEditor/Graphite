@@ -1,7 +1,6 @@
-mod bands;
 mod convert;
 
-pub use convert::{ATTR_VTRACE_BLUR, ATTR_VTRACE_PATH_GRADIENT, ATTR_VTRACE_RADIAL_FOCUS, ATTR_VTRACE_REPEAT, PathGradient, RepeatStructure};
+pub use convert::{ATTR_VTRACE_REPEAT, RepeatStructure};
 
 use core_types::ATTR_TRANSFORM;
 use core_types::context::Ctx;
@@ -9,6 +8,17 @@ use core_types::list::{Item, List};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use raster_types::{CPU, Raster};
+
+/// What Graphite's renderer draws of vtrace's model; the rest is lowered into it by vtrace.
+pub const CAPABILITIES: vtrace::lower::Capabilities = vtrace::lower::Capabilities {
+	even_odd: false,
+	path_gradients: false,
+	blur: false,
+	radial_focus: false,
+	clips: true,
+	dashes: true,
+	transparent_stops: true,
+};
 
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 #[node_macro::node(category("Raster"))]
@@ -32,27 +42,38 @@ async fn vectorize(
 		return List::new();
 	}
 
-	// vtrace reads opaque gamma-encoded RGB, so transparent areas are composited over white
-	let rgb: Vec<u8> = image
-		.data
-		.iter()
-		.flat_map(|pixel| {
-			let [red, green, blue, alpha] = pixel.to_gamma_srgb_channels();
-			let alpha = alpha.clamp(0., 1.);
-			[red, green, blue].map(|channel| ((channel * alpha + 1. - alpha).clamp(0., 1.) * 255.).round() as u8)
-		})
-		.collect();
-
-	let detail = vtrace::auto_detail(&rgb, width, height) * *detail.element();
-	let options = vtrace::variants::plan::Options {
-		tolerance: Some(*tolerance.element()),
-		..Default::default()
+	// Graphite's colors are linear light with straight alpha; vtrace composites transparency over white
+	let pixels: Vec<f32> = image.data.iter().flat_map(|color| [color.r(), color.g(), color.b(), color.a()]).collect();
+	let source = vtrace::Image {
+		pixels: vtrace::Pixels::RgbaF32 {
+			data: &pixels,
+			linear: true,
+			premultiplied: false,
+		},
+		width,
+		height,
 	};
-	let scene = vtrace::variants::plan::trace(&rgb, width, height, detail, options, |_| {});
+	let options = vtrace::TraceOptions::default();
+	let Ok(rgb) = vtrace::input::rgb8(&source, options.matte) else {
+		return List::new();
+	};
+	let options = vtrace::TraceOptions {
+		tolerance: *tolerance.element(),
+		detail: Some(vtrace::auto_detail(&rgb, width, height) * *detail.element()),
+		..options
+	};
+	let model = match vtrace::trace(&source, &options) {
+		Ok(model) => model,
+		Err(error) => {
+			log::error!("Vectorize could not trace the image: {error}");
+			return List::new();
+		}
+	};
+	let (model, _) = vtrace::lower::lower(&model, &CAPABILITIES);
 
 	// The traced coordinates are in pixels, while the image's transform maps the unit square onto the document
 	let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
-	convert::model_to_graphic(&scene.model(), pixels_to_document)
+	convert::model_to_graphic(&model, pixels_to_document)
 }
 
 #[cfg(test)]

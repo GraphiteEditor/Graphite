@@ -99,7 +99,6 @@ vector-nodes = { path = "node-graph/nodes/vector" }
 repeat-nodes = { path = "node-graph/nodes/repeat" }
 vectorize-nodes = { path = "node-graph/nodes/vectorize" }
 vtrace = { path = "../vtrace/vtrace" }
-diffrast = { path = "../vtrace/diffrast" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
