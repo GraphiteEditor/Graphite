@@ -3674,7 +3674,11 @@ fn update_dynamic_hints(
 			let drag_anchor = HintInfo::keys([Key::Space], "Drag Anchor");
 			let toggle_group = match dragging_state.point_select_state {
 				PointSelectState::HandleNoPair | PointSelectState::HandleWithPair => {
-					let mut hints = vec![HintInfo::keys([Key::Tab], "Swap Dragged Handle")];
+					// Only a handle with a partner across its anchor has one to swap to
+					let mut hints = Vec::new();
+					if dragging_state.point_select_state == PointSelectState::HandleWithPair {
+						hints.push(HintInfo::keys([Key::Tab], "Swap Dragged Handle"));
+					}
 					hints.push(HintInfo::keys(
 						[Key::KeyC],
 						if colinear == ManipulatorAngle::Colinear {
