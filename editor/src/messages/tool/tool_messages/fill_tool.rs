@@ -56,6 +56,7 @@ impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![
 			ColorInput::new(FillChoice::<SRGBA8>::from(&solid(self.primary_color)))
+				.allow_none(false)
 				.narrow(true)
 				.on_update(|color: &ColorInput| {
 					FillToolMessage::SetColor {
