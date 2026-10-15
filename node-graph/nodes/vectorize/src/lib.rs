@@ -26,7 +26,7 @@ pub const CAPABILITIES: vtrace::Capabilities = vtrace::Capabilities {
 static TRACES: AtomicU64 = AtomicU64::new(0);
 
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category("Raster"), memoize)]
 async fn vectorize(
 	_: impl Ctx,
 	/// The image to trace.
