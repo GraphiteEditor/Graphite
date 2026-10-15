@@ -237,6 +237,14 @@ impl ArtboardToolData {
 		}
 	}
 
+	/// The selected artboard, unless it's locked or hidden, which puts it out of reach of the tool as on the canvas.
+	fn editable_artboard(&self, document: &DocumentMessageHandler) -> Option<LayerNodeIdentifier> {
+		let artboard = self.selected_artboard?;
+		let selected_nodes = document.network_interface.selected_nodes();
+		let editable = selected_nodes.layer_visible(artboard, &document.network_interface) && !selected_nodes.layer_locked(artboard, &document.network_interface);
+		editable.then_some(artboard)
+	}
+
 	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<LayerNodeIdentifier> {
 		document.click_xray(input, viewport).find(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
@@ -329,14 +337,14 @@ impl Fsm for ArtboardToolFsmState {
 			(state, ArtboardToolMessage::Overlays { context: mut overlay_context }) => {
 				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
 				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
-					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
+					if let Some(bounds) = tool_data.editable_artboard(document).and_then(|layer| document.metadata().bounding_box_document(layer)) {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 						bounding_box_manager.bounds = bounds;
 						bounding_box_manager.transform = document.metadata().document_to_viewport;
 
 						bounding_box_manager.render_overlays(&mut overlay_context, true);
 					} else {
-						// If the bounding box is not resolved (e.g. if the artboard is deleted), then discard the bounding box.
+						// Without an editable artboard (one deleted, locked, or hidden), discard the bounding box
 						tool_data.bounding_box_manager.take();
 					}
 				} else {
@@ -387,7 +395,8 @@ impl Fsm for ArtboardToolFsmState {
 				self
 			}
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
-				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
+				let resize_edges = tool_data.editable_artboard(document).and_then(|_| tool_data.check_dragging_bounds(input.mouse.position));
+				let state = if let Some(selected_edges) = resize_edges {
 					tool_data.start_resizing(selected_edges, document, input);
 
 					// The artboard's own box follows the resize, while what is inside it stays put and can be snapped to
@@ -580,7 +589,7 @@ impl Fsm for ArtboardToolFsmState {
 				let Some(bounds) = &tool_data.bounding_box_manager else {
 					return ArtboardToolFsmState::Ready { hovered };
 				};
-				let Some(selected_artboard) = tool_data.selected_artboard else {
+				let Some(selected_artboard) = tool_data.editable_artboard(document) else {
 					return ArtboardToolFsmState::Ready { hovered };
 				};
 				if selected_artboard == LayerNodeIdentifier::ROOT_PARENT {
@@ -1126,5 +1135,54 @@ mod test_artboard {
 			.await;
 
 		assert_bounds(&editor, artboard, [DVec2::new(104., 32.), DVec2::new(164., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn a_locked_artboard_selected_in_the_layers_panel_cant_be_nudged_or_resized() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 160.)).await;
+		editor
+			.handle_message(NodeGraphMessage::SetLocked {
+				node_id: artboard.to_node(),
+				network_path: Vec::new(),
+				locked: true,
+			})
+			.await;
+
+		// Selected in the Layers panel, as the canvas leaves locked artboards out of reach
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard.to_node()] }).await;
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.press(Key::ArrowRight, ModifierKeys::SHIFT).await;
+		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
+
+		// Where its bottom edge's handle would be
+		drag(&mut editor, DVec2::new(150., 160.), DVec2::new(150., 220.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
+	}
+
+	#[tokio::test]
+	async fn an_artboard_locked_while_its_cage_is_shown_cant_be_nudged_or_resized_before_the_overlays_redraw() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let artboard = draw_artboard(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 160.)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![artboard.to_node()] }).await;
+		editor.handle_message(ArtboardToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		// No overlay pass follows the lock, so the cage drawn before it is still there to grab
+		editor
+			.handle_message(NodeGraphMessage::SetLocked {
+				node_id: artboard.to_node(),
+				network_path: Vec::new(),
+				locked: true,
+			})
+			.await;
+
+		editor.press(Key::ArrowRight, ModifierKeys::SHIFT).await;
+		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
+
+		drag(&mut editor, DVec2::new(150., 160.), DVec2::new(150., 220.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, artboard, [DVec2::new(100., 100.), DVec2::new(200., 160.)]);
 	}
 }

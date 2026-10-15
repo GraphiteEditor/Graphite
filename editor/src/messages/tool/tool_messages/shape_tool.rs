@@ -919,6 +919,9 @@ impl Fsm for ShapeToolFsmState {
 					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
 
 					if all_selected_layers_line_or_arrow {
+						// Lines, arrows, and an empty selection have no cage, so an earlier selection's cage mustn't stay behind to catch presses
+						tool_data.bounding_box_manager = None;
+
 						let cursor = if hovering_over_endpoint { MouseCursorIcon::Default } else { MouseCursorIcon::Crosshair };
 						tool_data.cursor = cursor;
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
@@ -1052,7 +1055,8 @@ impl Fsm for ShapeToolFsmState {
 
 				tool_data.line_data.drag_current = mouse_pos;
 
-				if tool_data.gizmo_manager.handle_click() && !input.keyboard.key(Key::Accel) {
+				// The modifiers are checked first in these, as the gizmo and line end checks mark what they find as being dragged
+				if !input.keyboard.key(Key::Accel) && tool_data.gizmo_manager.handle_click() {
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
 					responses.add(DocumentMessage::StartTransaction);
@@ -1071,14 +1075,14 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				// If clicked on endpoints of a selected line or arrow, drag its endpoints
-				if let Some((layer, _, _)) = closest_point(
-					document,
-					mouse_pos,
-					SNAP_POINT_TOLERANCE,
-					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
-					|_| false,
-				) && clicked_on_shape_endpoints(layer, document, input, tool_data)
-					&& !input.keyboard.key(Key::Control)
+				if !input.keyboard.key(Key::Control)
+					&& let Some((layer, _, _)) = closest_point(
+						document,
+						mouse_pos,
+						SNAP_POINT_TOLERANCE,
+						document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
+						|_| false,
+					) && clicked_on_shape_endpoints(layer, document, input, tool_data)
 				{
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -1089,6 +1093,11 @@ impl Fsm for ShapeToolFsmState {
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 
 					return ShapeToolFsmState::DraggingLineEndpoints;
+				}
+
+				// The overlay pass that clears it may not have run since the selection changed
+				if all_selected_layers_line_or_arrow {
+					tool_data.bounding_box_manager = None;
 				}
 
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
@@ -1595,10 +1604,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 #[cfg(test)]
 mod test_shape_tool {
 	use super::ShapeOptionsUpdate;
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-	use crate::messages::tool::common_functionality::graph_modification_utils::get_arc_id;
+	use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id};
 	use crate::messages::tool::common_functionality::shapes::shape_utility::{
 		ShapeType, arc_end_points, extract_arc_parameters, extract_circle_radius, extract_spiral_parameters, extract_star_parameters, regular_polygon_points, star_vertex_position,
 	};
@@ -2186,6 +2196,59 @@ mod test_shape_tool {
 		editor.left_mouseup(last.x, last.y, ModifierKeys::empty()).await;
 	}
 
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_once_the_selection_has_no_cage() {
+		for leave_cage in [DocumentMessage::Undo, DocumentMessage::DeselectAllLayers] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.draw_rect(300., 300., 400., 380.).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			editor.handle_message(leave_cage).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			editor.draw_rect(400., 380., 480., 440.).await;
+			let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+			assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_before_the_overlays_next_update() {
+		for leave_cage in [DocumentMessage::Undo, DocumentMessage::DeselectAllLayers, DocumentMessage::DeleteSelectedLayers] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.draw_rect(300., 300., 400., 380.).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			// The press comes within the same frame, or with overlays hidden, so no overlay pass clears the cage first
+			editor.handle_message(leave_cage).await;
+
+			editor.draw_rect(400., 380., 480., 440.).await;
+			let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+			assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_once_only_a_line_is_selected() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(300., 300., 400., 380.).await;
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::empty()).await;
+		let line = editor.get_selected_layer().await.expect("the line drawn should be selected");
+		let line_bounds = editor.active_document().metadata().bounding_box_viewport(line);
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.draw_rect(400., 380., 480., 440.).await;
+		let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+		assert_ne!(layer, line, "the drag should draw a new layer rather than change the line");
+		assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		assert_eq!(editor.active_document().metadata().bounding_box_viewport(line), line_bounds, "the line should be left as it was");
+	}
+
 	/// Presses at one viewport position, drags halfway to another, sends a tool key's message, then finishes the drag.
 	async fn drag_pressing_mid_way(editor: &mut EditorTestUtils, from: DVec2, to: DVec2, key_message: ToolMessage) {
 		let halfway = from.midpoint(to);
@@ -2228,5 +2291,33 @@ mod test_shape_tool {
 		drag_pressing_mid_way(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.), ToolMessage::ActivateToolShape).await;
 
 		assert_eq!(layer_count(&editor), count, "switching tools mid-drag should cancel the rectangle");
+	}
+
+	#[tokio::test]
+	async fn a_line_ctrl_dragged_from_a_selected_lines_start_runs_from_the_press_to_the_release() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 300., 100., ModifierKeys::empty()).await;
+
+		// Ctrl is let go once the press starts a new line, so its angle isn't locked
+		editor.move_mouse(100., 100., ModifierKeys::CONTROL, MouseKeys::empty()).await;
+		editor.left_mousedown(100., 100., ModifierKeys::CONTROL).await;
+		editor.move_mouse(100., 300., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(100., 300., ModifierKeys::empty()).await;
+
+		let layer = editor.get_selected_layer().await.expect("the new line should be selected");
+		let document = editor.active_document();
+		let Some(&TaggedValue::DVec2(line_to)) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
+			.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))
+			.and_then(|inputs| inputs[1].as_value())
+		else {
+			panic!("the new layer should be a line")
+		};
+		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let (start, end) = (to_viewport.transform_point2(DVec2::ZERO), to_viewport.transform_point2(line_to));
+		assert!(
+			start.distance(DVec2::new(100., 100.)) < 1e-6 && end.distance(DVec2::new(100., 300.)) < 1e-6,
+			"the line runs from {start} to {end}"
+		);
 	}
 }
