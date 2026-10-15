@@ -388,6 +388,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+				Some(x) if id_is::<Graphic>(x) => color_widget(default_info, ColorInput::default()),
 				// ============
 				// STRUCT TYPES
 				// ============
