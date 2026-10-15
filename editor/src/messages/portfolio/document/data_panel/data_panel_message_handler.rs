@@ -33,7 +33,7 @@ use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel, SegmentId, Vector};
-use graphene_std::{Appearance, Artboard, Color, ContextFeatures, ContextOverrides, Cover, Coverage, Effect, EffectKind, Effects, Graphic};
+use graphene_std::{Appearance, Artboard, Color, ContextFeatures, ContextOverrides, Cover, Coverage, Effect, EffectKind, Effects, GlowSource, Graphic};
 use kurbo::BezPath;
 use std::any::Any;
 use std::sync::Arc;
@@ -1245,6 +1245,7 @@ impl_table_item_layout_for_choice_enum!(
 	Cover,
 	EffectKind,
 	Generator,
+	GlowSource,
 	GradientForm,
 	GradientSpread,
 	GradientSpace,
@@ -1420,6 +1421,7 @@ macro_rules! known_item_types {
 			Effects,
 			Effect,
 			EffectKind,
+			GlowSource,
 			DashPattern,
 			BoxCorners,
 			TransferCurve,
