@@ -18,6 +18,32 @@ pub const MAX_KERNEL_REACH: usize = 24;
 /// The most times an image is halved for a blur, by which point it is one pixel across.
 const MAX_LEVELS: u32 = 16;
 
+/// How many passes after jump flooding to `reach` look for nearer seeds through the neighbors one chamfer step away, which settles the near misses within about 20 pixels.
+/// Since a chamfer length is the shortest path of such steps, a pixel whose neighbor along that path found the nearest seed finds it too.
+pub fn chamfer_passes(reach: f64) -> usize {
+	if reach > 16. { 4 } else { 2 }
+}
+
+/// The steps of a chamfer path (one pixel straight or diagonally, or a knight's move) by rows from the top, the order the GPU visits them in too.
+const CHAMFER_STEPS: [[i32; 2]; 16] = [
+	[-1, -2],
+	[1, -2],
+	[-2, -1],
+	[-1, -1],
+	[0, -1],
+	[1, -1],
+	[2, -1],
+	[-1, 0],
+	[1, 0],
+	[-2, 1],
+	[-1, 1],
+	[0, 1],
+	[1, 1],
+	[2, 1],
+	[-1, 2],
+	[1, 2],
+];
+
 /// A blur's kernel along one axis, sized in pixels.
 #[derive(Clone, Copy, Debug)]
 pub enum BlurKernel {
@@ -226,7 +252,8 @@ impl Plane<f32> {
 	}
 
 	/// Each pixel's least `distance` to a seed, given its offset from the seed and the seed's value, or infinity past `reach`.
-	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, so farther pixels may find none. O(width × height × log(reach)).
+	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, so farther pixels may find none.
+	/// Seeds of differing values leave near misses, mostly settled by two more halving passes and then those of [`chamfer_passes`] along the chamfer steps. O(width × height × log(reach)).
 	fn jump_flood(&self, reach: f64, is_seed: impl Fn(f32) -> bool, distance: impl Fn([i32; 2], f32) -> f32 + Sync) -> Self {
 		let mut nearest: Vec<Option<[i32; 2]>> = self.data.iter().map(|&value| is_seed(value).then_some([0, 0])).collect();
 
@@ -234,38 +261,39 @@ impl Plane<f32> {
 		// The offset runs from the seed to the pixel
 		let distance = |x: i32, y: i32, offset: [i32; 2]| distance(offset, self.data[((y - offset[1]) * columns + x - offset[0]) as usize]);
 
-		let mut step = (reach.clamp(0., (columns.max(rows)) as f64).ceil() as u32 + 1).next_power_of_two();
-		while step >= 1 {
-			let previous = nearest.clone();
-			let step_length = step as i32;
+		// The neighbors each pass looks at in the GPU's order: the eight a step away, then those one chamfer step away
+		let first_step = (reach.clamp(0., (columns.max(rows)) as f64).ceil() as u32 + 1).next_power_of_two() as i32;
+		let halvings = std::iter::successors(Some(first_step), |&step| (step > 1).then_some(step / 2)).chain([2, 1]);
+		let adjacent = CHAMFER_STEPS.iter().filter(|[x, y]| x.abs().max(y.abs()) == 1);
+		let around = |step: i32| adjacent.clone().map(|&[x, y]| [x * step, y * step]).collect::<Vec<_>>();
+		let passes = halvings.map(around).chain(std::iter::repeat_n(CHAMFER_STEPS.to_vec(), chamfer_passes(reach)));
 
-			// Each pixel keeps the nearest of the seeds that it and its eight neighbors a step away have found so far
+		for neighbors in passes {
+			let previous = nearest.clone();
+
+			// Each pixel keeps the nearest of the seeds that it and its neighbors have found so far
 			fill_rows(&mut nearest, self.width, |y, row| {
 				let y = y as i32;
 				for (x, best) in row.iter_mut().enumerate() {
 					let x = x as i32;
 					let mut best_distance = best.map_or(f32::INFINITY, |offset| distance(x, y, offset));
 
-					for neighbor_y in -1..=1 {
-						for neighbor_x in -1..=1 {
-							let (neighbor_x, neighbor_y) = (neighbor_x * step_length, neighbor_y * step_length);
-							let (from_x, from_y) = (x + neighbor_x, y + neighbor_y);
-							if from_x < 0 || from_y < 0 || from_x >= columns || from_y >= rows {
-								continue;
-							}
-							let Some([offset_x, offset_y]) = previous[(from_y * columns + from_x) as usize] else { continue };
+					for &[neighbor_x, neighbor_y] in &neighbors {
+						let (from_x, from_y) = (x + neighbor_x, y + neighbor_y);
+						if from_x < 0 || from_y < 0 || from_x >= columns || from_y >= rows {
+							continue;
+						}
+						let Some([offset_x, offset_y]) = previous[(from_y * columns + from_x) as usize] else { continue };
 
-							let candidate = [offset_x - neighbor_x, offset_y - neighbor_y];
-							let candidate_distance = distance(x, y, candidate);
-							if candidate_distance < best_distance {
-								*best = Some(candidate);
-								best_distance = candidate_distance;
-							}
+						let candidate = [offset_x - neighbor_x, offset_y - neighbor_y];
+						let candidate_distance = distance(x, y, candidate);
+						if candidate_distance < best_distance {
+							*best = Some(candidate);
+							best_distance = candidate_distance;
 						}
 					}
 				}
 			});
-			step /= 2;
 		}
 
 		let data = nearest
@@ -451,6 +479,62 @@ mod tests {
 			distances.data[63].is_infinite() || distances.data[63] == 63.,
 			"a pixel far past the reach finds no seed or the true one"
 		);
+	}
+
+	#[test]
+	fn distances_from_seeds_of_differing_values_are_exact_within_their_reach() {
+		// An antialiased disk whose edge pixels seed with head starts set by their coverage away from half, as a Soft Chisel bevel's do
+		let side = 40;
+		let disk = Plane {
+			width: side,
+			height: side,
+			data: (0..side * side)
+				.map(|index| {
+					let (x, y) = ((index % side) as f64 + 0.5 - 20.3, (index / side) as f64 + 0.5 - 19.6);
+					(12.5 - (x * x + y * y).sqrt()).clamp(0., 1.) as f32
+				})
+				.collect(),
+		};
+		let head_starts = disk.map(|alpha| ((alpha - 0.5) * 22.).max(0.));
+		let reach = 11.;
+
+		// O(n²) over the pixel pairs, small enough here
+		let exactly = |values: &Plane<f32>, distance: &dyn Fn([i32; 2], f32) -> Option<f32>| {
+			(0..side * side)
+				.map(|index| {
+					let (x, y) = ((index % side) as i32, (index / side) as i32);
+					let candidates = (0..side * side).filter_map(|from| {
+						let offset = [x - (from % side) as i32, y - (from / side) as i32];
+						distance(offset, values.data[from])
+					});
+					candidates.fold(f32::INFINITY, f32::min)
+				})
+				.collect::<Vec<_>>()
+		};
+
+		let found = head_starts.distances_through_seeds(reach);
+		let exact = exactly(&head_starts, &|offset, value| Some(chamfer_length(offset) + value));
+		let found_edges = disk.distances_to_silhouette(reach);
+		let exact_edges = exactly(&disk, &|offset, coverage| (coverage > 0.).then(|| chamfer_length(offset) + 1. - coverage));
+
+		for index in 0..side * side {
+			if exact[index] <= reach as f32 {
+				assert!(
+					(found.data[index] - exact[index]).abs() < 1e-4,
+					"pixel {index} lies {} from the seeds, not {}",
+					found.data[index],
+					exact[index]
+				);
+			}
+			if exact_edges[index] <= reach as f32 {
+				assert!(
+					(found_edges.data[index] - exact_edges[index]).abs() < 1e-4,
+					"pixel {index} lies {} from the edge, not {}",
+					found_edges.data[index],
+					exact_edges[index]
+				);
+			}
+		}
 	}
 
 	#[test]

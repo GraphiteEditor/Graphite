@@ -792,6 +792,36 @@ mod tests {
 		);
 	}
 
+	/// A default that fails to parse falls back to the type's default value, so the node silently starts with the wrong value.
+	#[test]
+	fn every_declared_parameter_default_parses() {
+		let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+		let metadata_registry = core_types::registry::NODE_METADATA.lock().unwrap();
+		assert!(!metadata_registry.is_empty(), "the linker dropped the nodes' registrations");
+
+		let mut unparsed = Vec::new();
+		for (identifier, metadata) in metadata_registry.iter() {
+			let first_node_io = node_registry.get(identifier).and_then(|implementations| implementations.first()).map(|(_, node_io)| node_io);
+
+			for (index, field) in metadata.fields.iter().enumerate() {
+				let RegistryValueSource::Default(data) = field.value_source else { continue };
+
+				// The same type `node_inputs` parses the default against
+				let Some(ty) = field.default_type.as_ref().or_else(|| first_node_io?.inputs.get(index)) else {
+					continue;
+				};
+				let ty = ty.clone().normalize_rank();
+
+				if TaggedValue::from_primitive_string(data, &ty).is_none() {
+					unparsed.push(format!("{identifier:?} parameter '{}': `{data}` as `{ty:?}`", field.name));
+				}
+			}
+		}
+
+		unparsed.sort();
+		assert!(unparsed.is_empty(), "These parameter defaults fail to parse:\n{}", unparsed.join("\n"));
+	}
+
 	#[test]
 	fn substitution_moves_compile_metadata_onto_the_wrapped_node() {
 		let identifier = graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER;

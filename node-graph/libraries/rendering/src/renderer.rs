@@ -34,7 +34,7 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Adjustment, Appearance, Artboard, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector, fitted_paint};
+use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector, fitted_paint};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use raster_kernels::raster_effects::adjusted_raster;
@@ -825,6 +825,21 @@ impl SvgFilterPrimitives {
 			Normal | Erase | Restore | MultiplyAlpha => return None,
 			_ => "linearRGB",
 		};
+		let (backdrop, blended) = self.opaque_blend(image, paint, blend_mode, space)?;
+
+		let in_linear_light = |primitives: &mut Self, first: &str, second: &str, operation: &str| {
+			primitives.push("feComposite", &format!(r#"in="{first}" in2="{second}" {operation} color-interpolation-filters="linearRGB""#), "")
+		};
+		let painted = in_linear_light(self, &blended, paint, r#"operator="in""#);
+		let kept = in_linear_light(self, &backdrop, paint, r#"operator="out""#);
+		let mixed = in_linear_light(self, &painted, &kept, r#"operator="arithmetic" k2="1" k3="1""#);
+		Some(in_linear_light(self, &mixed, image, r#"operator="in""#))
+	}
+
+	/// Opaque copies of the `image` and `paint` blended by the mode in the color `space` ("sRGB" or "linearRGB"), along with the image's opaque copy, or `None` for a mode that mixes no color.
+	/// The modes SVG lacks are built from other primitives.
+	fn opaque_blend(&mut self, image: &str, paint: &str, blend_mode: BlendMode, space: &str) -> Option<(String, String)> {
+		use BlendMode::*;
 
 		let space = format!(r#"color-interpolation-filters="{space}""#);
 		let arithmetic = |primitives: &mut Self, first: &str, second: &str, [k1, k2, k3, k4]: [f64; 4]| {
@@ -911,14 +926,7 @@ impl SvgFilterPrimitives {
 			}
 			_ => blend(self, &source, &backdrop, blend_mode.to_svg_style_name()?),
 		};
-
-		let in_linear_light = |primitives: &mut Self, first: &str, second: &str, operation: &str| {
-			primitives.push("feComposite", &format!(r#"in="{first}" in2="{second}" {operation} color-interpolation-filters="linearRGB""#), "")
-		};
-		let painted = in_linear_light(self, &blended, paint, r#"operator="in""#);
-		let kept = in_linear_light(self, &backdrop, paint, r#"operator="out""#);
-		let mixed = in_linear_light(self, &painted, &kept, r#"operator="arithmetic" k2="1" k3="1""#);
-		Some(in_linear_light(self, &mixed, image, r#"operator="in""#))
+		Some((backdrop, blended))
 	}
 
 	/// The image with the shadows and glows `beneath` it.
@@ -964,9 +972,26 @@ impl SvgFilterPrimitives {
 		}
 	}
 
-	/// Places the coverage, tinted `color` (or with no color, already tinted), over both the full-strength content and the faded fill, within the content so it stays visible over a faded fill.
-	fn shade_within(&mut self, full_content: &mut String, filled: &mut Option<String>, coverage: &str, color: Option<Color>) {
-		let tinted = self.tinted(coverage, color);
+	/// Places the coverage, tinted `color` mixed with the content's colors by the blend mode in gamma (or with no color, already tinted), over both the full-strength content and the faded fill.
+	/// It lies within the content so it stays visible over a faded fill.
+	fn shade_within(&mut self, full_content: &mut String, filled: &mut Option<String>, coverage: &str, color: Option<Color>, blend_mode: BlendMode) {
+		let blended = color.filter(|_| blend_mode != BlendMode::Normal).map(|color| {
+			let paint = self.push("feFlood", &format!(r##"flood-color="#{}" flood-opacity="1""##, SRGBA8::from(color.with_alpha(1.)).to_rgb_hex()), "");
+			self.opaque_blend(full_content, &paint, blend_mode, "sRGB")
+		});
+		let tinted = blended.flatten();
+		let tinted = match tinted {
+			// The opaque mix given the color's opacity within the coverage
+			Some((_, blended)) => {
+				let covered = self.push("feComposite", &format!(r#"in="{blended}" in2="{coverage}" operator="in""#), "");
+				self.push(
+					"feComponentTransfer",
+					&format!(r#"in="{covered}""#),
+					&format!(r#"<feFuncA type="linear" slope="{}" />"#, color.map_or(1., |color| color.a())),
+				)
+			}
+			None => self.tinted(coverage, color),
+		};
 		let within = self.push("feComposite", &format!(r#"in="{tinted}" in2="{full_content}" operator="in""#), "");
 
 		let mut over = |image: &str| {
@@ -1115,12 +1140,13 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 		fill => (!fill.is_invisible()).then_some(None),
 	};
 
-	// The coverage planes that the GPU works out for an effect, each shading beneath the content or within it
+	// The coverage planes that the GPU works out for an effect, each shading within the content or beneath it, in a color (or none, for a map already tinted) mixed normally
+	let shade = |planes: &[(usize, bool)], color: Option<Color>| planes.iter().map(|&(plane, within)| (plane, within, color, BlendMode::Normal)).collect::<Vec<_>>();
 	const BENEATH: &[(usize, bool)] = &[(0, false)];
 	const WITHIN: &[(usize, bool)] = &[(0, true)];
 
 	for (index, effect) in (capture_offset..).zip(effects.operations()) {
-		let (color, planes) = match effect {
+		let planes = match effect {
 			EffectOperation::Blur { radius, box_blur, gamma } => {
 				let radius = DVec2::splat(radius);
 				if radius.max_element() < 0.01 {
@@ -1138,23 +1164,40 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 				full = primitives.push("feGaussianBlur", &attributes(&full), "");
 				continue;
 			}
-			EffectOperation::DropShadow { color, .. } => (Some(color), BENEATH),
-			EffectOperation::InnerShadow { color, .. } | EffectOperation::Satin { color, .. } => (Some(color), WITHIN),
+			EffectOperation::DropShadow { color, .. } => shade(BENEATH, Some(color)),
+			EffectOperation::InnerShadow { color, .. } | EffectOperation::Satin { color, .. } => shade(WITHIN, Some(color)),
 			EffectOperation::OuterGlow { color, .. } => match glow_color(&color) {
-				Some(color) => (color, BENEATH),
+				Some(color) => shade(BENEATH, color),
 				None => continue,
 			},
 			EffectOperation::InnerGlow { color, .. } => match glow_color(&color) {
-				Some(color) => (color, WITHIN),
+				Some(color) => shade(WITHIN, color),
 				None => continue,
 			},
 			// The band outside lies beneath the content, and the band inside within it
 			EffectOperation::Outline { color, weight, align } => match outline_extents(weight, align) {
-				(outside, inside) if outside > 0. && inside > 0. => (Some(color), &[(0, false), (1, true)][..]),
-				(outside, _) if outside > 0. => (Some(color), BENEATH),
-				(_, inside) if inside > 0. => (Some(color), &[(1, true)][..]),
+				(outside, inside) if outside > 0. && inside > 0. => shade(&[(0, false), (1, true)], Some(color)),
+				(outside, _) if outside > 0. => shade(BENEATH, Some(color)),
+				(_, inside) if inside > 0. => shade(&[(1, true)], Some(color)),
 				_ => continue,
 			},
+			// Planes 0 and 1 light the slopes inside the content with the highlight and shadow, and 2 and 3 those outside it, beneath it
+			EffectOperation::BevelAndEmboss {
+				style,
+				size,
+				highlight_color,
+				highlight_blend_mode,
+				shadow_color,
+				shadow_blend_mode,
+				..
+			} => {
+				if size <= 0. {
+					continue;
+				}
+				let inside = (style != BevelStyle::OuterBevel).then_some([(0, true, Some(highlight_color), highlight_blend_mode), (1, true, Some(shadow_color), shadow_blend_mode)]);
+				let outside = (style != BevelStyle::InnerBevel).then_some([(2, false, Some(highlight_color), BlendMode::Normal), (3, false, Some(shadow_color), BlendMode::Normal)]);
+				inside.into_iter().chain(outside).flatten().collect()
+			}
 			EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
 				let Some(markup) = paints.next() else { continue };
 
@@ -1175,14 +1218,14 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 				continue;
 			}
 		};
-		if color.is_some_and(|color| color.a() <= 0.) {
-			continue;
-		}
 
-		for &(plane, within) in planes {
+		for (plane, within, color, blend_mode) in planes {
+			if color.is_some_and(|color| color.a() <= 0.) {
+				continue;
+			}
 			let coverage = primitives.map(EffectCapture { index, plane });
 			match within {
-				true => primitives.shade_within(&mut full, &mut filled, &coverage, color),
+				true => primitives.shade_within(&mut full, &mut filled, &coverage, color, blend_mode),
 				false => beneath = Some(primitives.shade_beneath(beneath.take(), &coverage, color)),
 			}
 		}
@@ -5288,9 +5331,9 @@ mod tests {
 	}
 
 	#[test]
-	fn svg_effects_filters_map_inner_glows_satins_and_outlines_and_embed_paint_overlays() {
+	fn svg_effects_filters_map_glows_satins_outlines_and_bevels_and_embed_paint_overlays() {
 		use graphic_types::vector_types::vector::style::StrokeAlign;
-		use graphic_types::{EffectKind, EffectOperation};
+		use graphic_types::{BevelStyle, EffectKind, EffectOperation};
 
 		// The planes of the maps the GPU renders for an effect
 		let planes = |operation| {
@@ -5309,6 +5352,18 @@ mod tests {
 		assert_eq!(planes(outline(StrokeAlign::Center)), [0, 1]);
 		assert_eq!(planes(outline(StrokeAlign::Outside)), [0]);
 		assert_eq!(planes(outline(StrokeAlign::Inside)), [1]);
+
+		// A bevel lights the slopes inside the content from the first two maps and those outside, beneath it, from the last two
+		let bevel = |style| {
+			let mut bevel = EffectOperation::default_for(EffectKind::BevelAndEmboss);
+			if let EffectOperation::BevelAndEmboss { style: bevel_style, .. } = &mut bevel {
+				*bevel_style = style;
+			}
+			bevel
+		};
+		assert_eq!(planes(bevel(BevelStyle::InnerBevel)), [0, 1]);
+		assert_eq!(planes(bevel(BevelStyle::OuterBevel)), [2, 3]);
+		assert_eq!(planes(bevel(BevelStyle::PillowEmboss)), [0, 1, 2, 3]);
 
 		// A paint overlay embeds its paint's markup as an image of the filter region, then blends it over the content within the content's alpha
 		let overlay = EffectOperation::PaintOverlay {

@@ -28,7 +28,7 @@ use graphene_std::vector::misc::{
 use graphene_std::vector::style::{DashPattern, GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type};
-use graphene_std::{GlowSource, GlowTechnique};
+use graphene_std::{BevelDirection, BevelStyle, BevelTechnique, GlowSource, GlowTechnique};
 use node_registry_macros::async_node;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -291,6 +291,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				HueSaturationRange,
 				GlowTechnique,
 				GlowSource,
+				BevelStyle,
+				BevelDirection,
+				BevelTechnique,
 				Stroke,
 				ScaleType,
 				ReferencePoint,

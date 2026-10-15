@@ -3,11 +3,12 @@
 use crate::vello_adjustments::{AdjustmentShaders, AdjustmentUploads, PassEncodings, PreparedPass};
 use bytemuck::{Pod, Zeroable};
 use core_types::Color;
+use core_types::blending::BlendMode;
 use core_types::transfer_curve::TransferCurve;
-use glam::{DMat2, DVec2, UVec2};
-use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GlowFill, grow_and_tent, outline_extents, shadow_offset};
-use graphic_types::{Adjustment, EffectOperation, Effects, GlowSource, GlowTechnique};
-use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH};
+use glam::{DMat2, DVec2, DVec3, UVec2};
+use graphic_types::effects::{EffectCapture, GRADIENT_GLOW_FADE, GlowFill, bevel_light, grow_and_tent, outline_extents, shadow_offset};
+use graphic_types::{Adjustment, BevelDirection, BevelStyle, BevelTechnique, EffectOperation, Effects, GlowSource, GlowTechnique};
+use raster_kernels::effect_kernels::{BlurKernel, MAX_KERNEL_REACH, NEGLIGIBLE_LENGTH, chamfer_passes};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
@@ -406,6 +407,67 @@ impl EffectPasses {
 						recorder.shade_within(content, &mut full, &mut filled, band, Some(color));
 					}
 				}
+				EffectOperation::BevelAndEmboss {
+					style,
+					technique,
+					depth,
+					direction,
+					size,
+					soften,
+					angle,
+					altitude,
+					highlight_color,
+					highlight_blend_mode,
+					shadow_color,
+					shadow_blend_mode,
+				} => {
+					let size = size * length_scale;
+					if size < NEGLIGIBLE_LENGTH {
+						continue;
+					}
+
+					// The surface's height, lit from the light's direction into its highlights and shadows
+					let silhouette = recorder.silhouette(full.as_ref().unwrap_or(content), DVec2::ZERO, false);
+					let (height, rise) = recorder.bevel_height(silhouette, style, technique, size);
+					let rise = rise * depth / 100. * if direction == BevelDirection::Down { -1. } else { 1. };
+					let light = bevel_light(angle, altitude, lengths_to_pixels);
+					let (_, soften) = grow_and_tent(soften * length_scale, 0.);
+					let lit = |recorder: &mut PassRecorder, rise: f64| {
+						[false, true].map(|shadow| {
+							let amount = recorder.bevel_shading(&height, rise, light, shadow);
+							match soften >= NEGLIGIBLE_LENGTH {
+								true => recorder.blur(amount, BlurKernel::Tent { radius: soften }, false),
+								false => amount,
+							}
+						})
+					};
+
+					// The slopes inside the content are lit over it, and those outside lie beneath it, mirrored for a pillow so they rise away from the edge
+					let inside = (style != BevelStyle::OuterBevel).then(|| lit(&mut recorder, rise));
+					let colors = [(highlight_color, highlight_blend_mode), (shadow_color, shadow_blend_mode)];
+					if let Some(inside) = &inside {
+						for (plane, (amount, (color, blend_mode))) in inside.iter().zip(colors).enumerate() {
+							capture_plane(&mut recorder, plane, amount, false);
+							recorder.shade_within_by_mode(content, &mut full, &mut filled, amount, Some(color), blend_mode);
+						}
+					}
+					let outside = match style {
+						BevelStyle::InnerBevel => None,
+						BevelStyle::OuterBevel => Some(lit(&mut recorder, rise)),
+						BevelStyle::Emboss => inside,
+						BevelStyle::PillowEmboss => {
+							inside.into_iter().flatten().for_each(|amount| recorder.textures.release(amount));
+							Some(lit(&mut recorder, -rise))
+						}
+					};
+					for (plane, (amount, (color, _))) in outside.into_iter().flatten().zip(colors).enumerate() {
+						let amount = recorder.knock_out(amount, full.as_ref().unwrap_or(content), fill);
+						capture_plane(&mut recorder, plane + 2, &amount, false);
+						beneath = Some(recorder.accumulate(beneath, &amount, color));
+						recorder.textures.release(amount);
+					}
+					recorder.textures.release(height);
+				}
 				EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
 					let Some(paint) = paints.next() else { continue };
 					let parameters = Parameters {
@@ -655,10 +717,10 @@ fn draw_covering(encoder: &mut wgpu::CommandEncoder, label: &str, pipeline: &wgp
 	pass.draw(0..3, 0..1);
 }
 
-/// Whether an operation leaves the content as it is: a blur or outline too slight to see, or a glow with nothing to paint.
+/// Whether an operation leaves the content as it is: a blur, bevel, or outline too slight to see, or a glow with nothing to paint.
 fn changes_nothing(operation: &EffectOperation, length_scale: f64) -> bool {
 	match operation {
-		EffectOperation::Blur { radius, .. } => radius * length_scale < NEGLIGIBLE_LENGTH,
+		EffectOperation::Blur { radius: length, .. } | EffectOperation::BevelAndEmboss { size: length, .. } => length * length_scale < NEGLIGIBLE_LENGTH,
 		EffectOperation::OuterGlow { color, .. } | EffectOperation::InnerGlow { color, .. } => GlowFill::of(color).is_none_or(|fill| fill.is_invisible()),
 		EffectOperation::Outline { color, weight, align } => {
 			let (outside, inside) = outline_extents(weight * length_scale, *align);
@@ -675,6 +737,8 @@ enum Seeds {
 	Covered,
 	/// The pixels of a distance texture lying up to 3 past a grow of so many pixels, matching `distances_through_seeds` of how far short of the grown edge they lie.
 	PastGrow { grow: f64 },
+	/// Every pixel, with its value as a head start, matching `distances_through_seeds` of values that are all finite.
+	Weighted,
 }
 
 /// A color as the premultiplied, gamma-encoded channels the passes work with.
@@ -863,11 +927,12 @@ impl PassRecorder<'_> {
 	}
 
 	/// Each pixel's distance from the `seeds` in `seed_values`, matching the CPU's distance passes, or far past `reach` pixels.
-	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`. O(width × height × log(reach)).
+	/// Jump flooding finds them in a pass for each halving of a step that starts past `reach`, then two more halvings and those of [`chamfer_passes`] along the chamfer steps. O(width × height × log(reach)).
 	fn distances(&mut self, seed_values: &wgpu::Texture, reach: f64, seeds: Seeds) -> wgpu::Texture {
 		let (mode, grow) = match seeds {
 			Seeds::Covered => (0., 0.),
 			Seeds::PastGrow { grow } => (1., grow as f32),
+			Seeds::Weighted => (2., 0.),
 		};
 		let parameters = |step: u32| Parameters {
 			values: [step as f32, mode, grow, 0.],
@@ -875,11 +940,19 @@ impl PassRecorder<'_> {
 		};
 
 		let mut nearest = self.run("jump_flood_seed", WORKING_FORMAT, self.size, seed_values, None, Some(seed_values), parameters(0));
-		let mut step = (reach.clamp(0., self.size.max_element() as f64).ceil() as u32 + 1).next_power_of_two();
-		while step >= 1 {
+		let first_step = (reach.clamp(0., self.size.max_element() as f64).ceil() as u32 + 1).next_power_of_two();
+		let halvings = std::iter::successors(Some(first_step), |&step| (step > 1).then_some(step / 2));
+		for step in halvings.chain([2, 1]) {
 			let flooded = self.run("jump_flood_step", WORKING_FORMAT, self.size, &nearest, None, Some(seed_values), parameters(step));
 			self.replace(&mut nearest, flooded);
-			step /= 2;
+		}
+		let chamfer_parameters = Parameters {
+			values: [1., mode, grow, 1.],
+			..Default::default()
+		};
+		for _ in 0..chamfer_passes(reach) {
+			let flooded = self.run("jump_flood_step", WORKING_FORMAT, self.size, &nearest, None, Some(seed_values), chamfer_parameters);
+			self.replace(&mut nearest, flooded);
 		}
 
 		let distances = self.run("jump_flood_distance", COVERAGE_FORMAT, self.size, &nearest, None, Some(seed_values), parameters(0));
@@ -964,16 +1037,6 @@ impl PassRecorder<'_> {
 		accumulated
 	}
 
-	/// The image with a silhouette's coverage, tinted `color` (or with no color, already tinted), placed over it within the full-strength content.
-	fn composite_within(&mut self, image: &wgpu::Texture, coverage: &wgpu::Texture, full_content: &wgpu::Texture, color: Option<Color>) -> wgpu::Texture {
-		let parameters = Parameters {
-			color: color.map_or([0.; 4], premultiplied_gamma_channels),
-			values: [0., if color.is_none() { 1. } else { 0. }, 0., 0.],
-			..Default::default()
-		};
-		self.run("composite_within", WORKING_FORMAT, self.size, image, Some(coverage), Some(full_content), parameters)
-	}
-
 	/// Places what lies `beneath` under the full-strength content (`content` itself until a pass replaces it) and the faded fill,
 	/// so a pixel filter after it (a blur or an adjustment) processes them together.
 	fn merge_beneath(&mut self, content: &wgpu::Texture, full: &mut Option<wgpu::Texture>, filled: &mut Option<wgpu::Texture>, beneath: Option<wgpu::Texture>) {
@@ -996,14 +1059,97 @@ impl PassRecorder<'_> {
 	/// Places a silhouette's coverage, tinted `color` (or with no color, already tinted), over both the full-strength content (`content` itself
 	/// until a pass replaces it) and the faded fill, within the content, then frees the coverage.
 	fn shade_within(&mut self, content: &wgpu::Texture, full: &mut Option<wgpu::Texture>, filled: &mut Option<wgpu::Texture>, coverage: wgpu::Texture, color: Option<Color>) {
+		self.shade_within_by_mode(content, full, filled, &coverage, color, BlendMode::Normal);
+		self.textures.release(coverage);
+	}
+
+	/// Places a coverage over both the full-strength content (`content` itself until a pass replaces it) and the faded fill, within the content,
+	/// tinted by `color` mixed with the content's colors by the blend mode in gamma (or with no color, already tinted).
+	fn shade_within_by_mode(
+		&mut self,
+		content: &wgpu::Texture,
+		full: &mut Option<wgpu::Texture>,
+		filled: &mut Option<wgpu::Texture>,
+		coverage: &wgpu::Texture,
+		color: Option<Color>,
+		blend_mode: BlendMode,
+	) {
+		let parameters = Parameters {
+			color: color.map_or([0.; 4], premultiplied_gamma_channels),
+			values: [blend_mode as u32 as f32, if color.is_none() { 1. } else { 0. }, 0., 0.],
+			..Default::default()
+		};
 		let full_content = full.as_ref().unwrap_or(content);
 		if let Some(filled) = filled {
-			let composited = self.composite_within(filled, &coverage, full_content, color);
+			let composited = self.run("composite_within", WORKING_FORMAT, self.size, filled, Some(coverage), Some(full_content), parameters);
 			self.replace(filled, composited);
 		}
-		let composited = self.composite_within(full_content, &coverage, full_content, color);
+		let composited = self.run("composite_within", WORKING_FORMAT, self.size, full_content, Some(coverage), Some(full_content), parameters);
 		self.replace_or_fill(full, composited);
-		self.textures.release(coverage);
+	}
+
+	/// A bevel's height from 0 to 1 over the `style`'s slopes `size` pixels wide, shaped by the `technique`, with how many pixels a height of 1 rises, matching the CPU's `bevel_height`.
+	fn bevel_height(&mut self, silhouette: wgpu::Texture, style: BevelStyle, technique: BevelTechnique, size: f64) -> (wgpu::Texture, f64) {
+		let span = match style {
+			BevelStyle::InnerBevel | BevelStyle::OuterBevel => size,
+			BevelStyle::Emboss | BevelStyle::PillowEmboss => size / 2.,
+		};
+
+		if technique == BevelTechnique::Smooth {
+			let (_, tent) = grow_and_tent(span, 0.);
+			return (self.blur(silhouette, BlurKernel::Tent { radius: tent }, false), span);
+		}
+
+		// The height spans only the part across the edge the style lights
+		let near = if technique == BevelTechnique::ChiselSoft { 3. } else { 2. };
+		let (low, high) = match style {
+			BevelStyle::InnerBevel => (-near, span + 1.),
+			BevelStyle::OuterBevel => (-span - 1., near),
+			BevelStyle::Emboss | BevelStyle::PillowEmboss => (-span - 1., span + 1.),
+		};
+
+		let (inward, outward) = match technique {
+			// A soft chisel measures from a slope-limited matte, each pixel's coverage away from half giving its distance across the edge a head start
+			BevelTechnique::ChiselSoft => {
+				let reach = span + 1.;
+				let distances = |recorder: &mut Self, sign: f64, distance_reach: f64| {
+					let parameters = Parameters {
+						amount: (sign * 2. * reach) as f32,
+						..Default::default()
+					};
+					let head_starts = recorder.run("slope_limited_matte", COVERAGE_FORMAT, recorder.size, &silhouette, None, None, parameters);
+					let distances = recorder.distances(&head_starts, distance_reach, Seeds::Weighted);
+					recorder.textures.release(head_starts);
+					distances
+				};
+				(distances(self, 1., high + 1.), distances(self, -1., -low + 1.))
+			}
+			_ => {
+				let outside = self.run("invert_coverage", COVERAGE_FORMAT, self.size, &silhouette, None, None, Parameters::default());
+				let inward = self.distances(&outside, high + 1., Seeds::Covered);
+				self.textures.release(outside);
+				(inward, self.distances(&silhouette, -low + 1., Seeds::Covered))
+			}
+		};
+
+		let parameters = Parameters {
+			values: [low as f32, high as f32, if technique == BevelTechnique::ChiselSoft { 1. } else { 0. }, 0.],
+			..Default::default()
+		};
+		let height = self.run("chisel_height", COVERAGE_FORMAT, self.size, &inward, Some(&outward), None, parameters);
+		[inward, outward, silhouette].into_iter().for_each(|texture| self.textures.release(texture));
+		(height, span / (2. * (span + 1.)) * (high - low))
+	}
+
+	/// How much each pixel of a bevel's surface is lit by the `light` past a flat surface's brightness, or if `shadow`, how much it falls short, matching the CPU's `bevel_shading`.
+	fn bevel_shading(&mut self, height: &wgpu::Texture, rise: f64, light: DVec3, shadow: bool) -> wgpu::Texture {
+		let light = light.as_vec3();
+		let parameters = Parameters {
+			amount: if shadow { 1. } else { 0. },
+			values: [light.x, light.y, light.z, rise as f32],
+			..Default::default()
+		};
+		self.run("bevel_shading", COVERAGE_FORMAT, self.size, height, None, None, parameters)
 	}
 
 	/// The image (of any format a shader can load from) with a pass of adjustments carried out on it into a texture of `format`, reading what was `prepared` for the pass,

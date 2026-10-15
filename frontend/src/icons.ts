@@ -124,6 +124,7 @@ import NodeAsVector from "/../branding/assets/16x16-nodes/node-as-vector.svg";
 import NodeAverage from "/../branding/assets/16x16-nodes/node-average.svg";
 import NodeBakeTransform from "/../branding/assets/16x16-nodes/node-bake-transform.svg";
 import NodeBasicBrush from "/../branding/assets/16x16-nodes/node-basic-brush.svg";
+import NodeBevelAndEmboss from "/../branding/assets/16x16-nodes/node-bevel-and-emboss.svg";
 import NodeBevel from "/../branding/assets/16x16-nodes/node-bevel.svg";
 import NodeBlackAndWhite from "/../branding/assets/16x16-nodes/node-black-and-white.svg";
 import NodeBlendMode from "/../branding/assets/16x16-nodes/node-blend-mode.svg";
@@ -418,6 +419,7 @@ export const ICON_16X16_NODES = {
 	NodeBakeTransform: { svg: NodeBakeTransform, size: 16 },
 	NodeBasicBrush: { svg: NodeBasicBrush, size: 16 },
 	NodeBevel: { svg: NodeBevel, size: 16 },
+	NodeBevelAndEmboss: { svg: NodeBevelAndEmboss, size: 16 },
 	NodeBlackAndWhite: { svg: NodeBlackAndWhite, size: 16 },
 	NodeBlend: { svg: NodeBlend, size: 16 },
 	NodeBlendMode: { svg: NodeBlendMode, size: 16 },
