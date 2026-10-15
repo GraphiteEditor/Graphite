@@ -220,6 +220,7 @@ impl NodeRuntime {
 
 					let mut result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.execute_network(render_config))) {
 						Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
+						Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
 						Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
 						Ok(Ok(Poll::Fallback(boxed))) => {
 							let (value, error) = *boxed;
