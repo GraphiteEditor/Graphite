@@ -645,6 +645,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				container,
 				gdd,
 				declarations,
+				legacy_only,
 			} => {
 				let Some(document) = self.documents.get_mut(&document_id) else {
 					// Closed while its storage was opening.
@@ -655,7 +656,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Self::storage_error("The document's storage could not be opened, so it will not be autosaved.".to_string(), responses);
 					return;
 				};
-				document.container = Some(container);
+				document.container = Some(container.clone());
+				// Storage was turned on while the container was opening, after `StorageUpdated` found no container to open it from.
+				if legacy_only && preferences.save_as_gdd && document.storage().is_none() {
+					responses.add(open_storage(container, document_id, resource_storage.resources_mut()));
+					return;
+				}
 				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				self.save_if_needed(document_id, responses);
 			}
