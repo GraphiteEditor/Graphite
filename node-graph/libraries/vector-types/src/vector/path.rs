@@ -1,6 +1,7 @@
 use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use super::misc::{dvec2_to_point, point_to_dvec2};
-use core_types::list::{ATTR_CURVE_TYPE, ATTR_PATHS, Item, List};
+use super::vector_attributes::SegmentId;
+use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_PATHS, Item, List};
 use glam::DVec2;
 use graphene_hash::CacheHash;
 use kurbo::{BezPath, CubicBez, Line, PathEl, PathSeg, Point, QuadBez};
@@ -41,10 +42,27 @@ impl std::fmt::Display for CurveType {
 /// One connected stroke of geometry: an ordered list of references (indices into the owning `Vector`'s point pool)
 /// woven in its curve type's stride order. Welding is two paths, or two ends of one path, referencing the same anchor.
 /// Per-reference data such as `ATTR_SMOOTH` rides this list's attributes.
+///
+/// References are stored as `i64`, the integer type the data model standardizes on, and read back as `u32` pool indices.
 #[derive(Clone, Debug, Default, PartialEq, CacheHash)]
-pub struct Path(pub List<u32>);
+pub struct Path(pub List<i64>);
 
 impl Path {
+	/// Builds a path from pool indices, with no per-reference attributes.
+	pub fn from_references(references: impl IntoIterator<Item = u32>) -> Self {
+		Self(references.into_iter().map(|reference| Item::new_from_element(i64::from(reference))).collect())
+	}
+
+	/// The pool index named by the reference at `index`, or `None` if out of bounds.
+	pub fn reference(&self, index: usize) -> Option<u32> {
+		self.0.element(index).map(|&reference| reference as u32)
+	}
+
+	/// The pool indices named by each reference, in weave order.
+	pub fn references(&self) -> impl ExactSizeIterator<Item = u32> + '_ {
+		self.0.iter_element_values().map(|&reference| reference as u32)
+	}
+
 	/// Whether this path is closed, indicated by its first and last references naming the same pool point.
 	pub fn is_closed(&self) -> bool {
 		let len = self.0.len();
@@ -63,7 +81,7 @@ impl Path {
 
 	/// The pool position named by the reference at `index`, or `None` if either lookup falls out of bounds.
 	pub fn position(&self, pool: &List<DVec2>, index: usize) -> Option<DVec2> {
-		pool.element(*self.0.element(index)? as usize).copied()
+		pool.element(self.reference(index)? as usize).copied()
 	}
 
 	/// The segment at `index`, resolved against the point pool.
@@ -77,6 +95,55 @@ impl Path {
 			CurveType::Cubic => PathSeg::Cubic(CubicBez::new(point(0)?, point(1)?, point(2)?, point(3)?)),
 		})
 	}
+
+	/// A copy of the spans in `start_span..end_span`, keeping both boundary anchors so the pieces stay welded.
+	pub fn clone_span_range(&self, curve_type: CurveType, start_span: usize, end_span: usize) -> Path {
+		let stride = curve_type.stride();
+		let first_reference = start_span * stride;
+		let last_reference = (end_span * stride).min(self.0.len().saturating_sub(1));
+
+		let mut piece = Path((first_reference..=last_reference).filter_map(|index| self.0.clone_item(index)).collect());
+
+		// The final anchor's cell may hold the ID of a span outside the piece, which its own piece keeps
+		let last_index = piece.0.len().saturating_sub(1);
+		if piece.0.attribute::<SegmentId>(ATTR_ID, last_index).is_some() {
+			piece.0.set_attribute(ATTR_ID, last_index, SegmentId::default());
+		}
+
+		piece
+	}
+
+	/// Reverses the path in place, so the weave walks its references in the opposite direction.
+	/// Per-reference attributes travel with their references, and each span's ID moves to the anchor it now departs from.
+	pub fn reverse(&mut self, curve_type: CurveType) {
+		let stride = curve_type.stride();
+		let count = self.segment_count(curve_type);
+		let ids: Vec<Option<SegmentId>> = (0..count).map(|span| self.0.attribute::<SegmentId>(ATTR_ID, span * stride).copied()).collect();
+
+		self.0 = (0..self.0.len()).rev().filter_map(|index| self.0.clone_item(index)).collect();
+
+		// Span k of the reversed path walks old span (count - 1 - k) backwards, so it takes over that span's ID
+		for span in 0..count {
+			if let Some(id) = ids[count - 1 - span] {
+				self.0.set_attribute(ATTR_ID, span * stride, id);
+			}
+		}
+		if count > 0 && self.0.attribute::<SegmentId>(ATTR_ID, count * stride).is_some() {
+			self.0.set_attribute(ATTR_ID, count * stride, SegmentId::default());
+		}
+	}
+}
+
+/// Appends one path weaving the given references in the curve type's stride, naming its spans with the given IDs in order.
+pub fn push_path(paths: &mut List<Path>, curve_type: CurveType, references: impl IntoIterator<Item = u32>, ids: impl IntoIterator<Item = SegmentId>) {
+	let mut path = Path::from_references(references);
+
+	let span_count = path.segment_count(curve_type);
+	for (span, id) in ids.into_iter().enumerate().take(span_count) {
+		path.0.set_attribute(ATTR_ID, span * curve_type.stride(), id);
+	}
+
+	paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
 }
 
 /// Appends a segment to a bezpath already positioned at that segment's start point.
@@ -96,6 +163,12 @@ pub fn paths_from_item_attributes<T>(item: &Item<T>) -> Option<&List<Path>> {
 /// The paths a list carries at `index` beside a vector element, absent when the pool is a bare point cloud.
 pub fn paths_from_list_row_attributes<T>(list: &List<T>, index: usize) -> Option<&List<Path>> {
 	list.attribute(ATTR_PATHS, index)
+}
+
+/// The empty weave, standing in for a pool with a holder that carries no paths.
+pub fn no_paths() -> &'static List<Path> {
+	static EMPTY: std::sync::LazyLock<List<Path>> = std::sync::LazyLock::new(List::new);
+	&EMPTY
 }
 
 /// The curve type the path at `index` weaves in.
@@ -229,7 +302,7 @@ impl PathWeaver {
 		}
 
 		for (curve_type, references) in self.woven {
-			let path = Path(references.into_iter().map(Item::new_from_element).collect());
+			let path = Path::from_references(references);
 			paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
 		}
 	}
@@ -264,7 +337,7 @@ mod tests {
 	}
 
 	fn path(references: &[u32]) -> Path {
-		Path(references.iter().map(|&reference| Item::new_from_element(reference)).collect())
+		Path::from_references(references.iter().copied())
 	}
 
 	#[test]

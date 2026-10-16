@@ -15,7 +15,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::{PointId, SegmentId, Vector};
+use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
 use kurbo::{self, Affine, BezPath, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
@@ -854,7 +854,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();

@@ -24,7 +24,7 @@ impl Connectivity {
 	pub fn build(point_count: usize, paths: &List<Path>) -> Self {
 		let mut starts = vec![0_u32; point_count + 1];
 		for path in paths.iter_element_values() {
-			for &point in path.0.iter_element_values() {
+			for point in path.references() {
 				if let Some(count) = (point as usize).checked_add(1).and_then(|slot| starts.get_mut(slot)) {
 					*count += 1;
 				}
@@ -39,7 +39,7 @@ impl Connectivity {
 		let mut cursors = starts[..point_count].to_vec();
 		let mut references = vec![Reference::default(); starts[point_count] as usize];
 		for (path_index, path) in paths.iter_element_values().enumerate() {
-			for (reference_index, &point) in path.0.iter_element_values().enumerate() {
+			for (reference_index, point) in path.references().enumerate() {
 				let Some(cursor) = cursors.get_mut(point as usize) else { continue };
 				references[*cursor as usize] = Reference {
 					path: path_index as u32,
@@ -94,7 +94,7 @@ mod tests {
 		let mut paths = List::new();
 
 		for &(curve_type, references) in specs {
-			let path = Path(references.iter().map(|&reference| Item::new_from_element(reference)).collect());
+			let path = Path::from_references(references.iter().copied());
 			paths.push(Item::new_from_element(path).with_attribute(ATTR_CURVE_TYPE, curve_type));
 		}
 

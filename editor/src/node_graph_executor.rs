@@ -14,7 +14,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{Vector, graphic_types};
+use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, paths_from_list_row_attributes};
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
@@ -36,7 +36,7 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: Result<TaggedValue, String>,
 	responses: VecDeque<FrontendMessage>,
-	vector_modify: HashMap<NodeId, Vector>,
+	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
 }
@@ -838,7 +838,8 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 	if let Some(list) = introspected_output::<List<Vector>>(data) {
 		let vector = list.element(0)?;
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let bounds = vector.nonzero_bounding_box();
+		let paths = paths_from_list_row_attributes(&list, 0).unwrap_or_else(|| no_paths());
+		let bounds = vector.nonzero_bounding_box(paths);
 		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		return Some((bounding_box_affine, item_transform));
 	}

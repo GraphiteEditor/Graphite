@@ -14,7 +14,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
+use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -49,7 +49,7 @@ fn closest_candidate_point(
 	goal: DVec2,
 	max_distance: f64,
 	layers: impl Iterator<Item = LayerNodeIdentifier>,
-	candidates: impl Fn(&Vector) -> Vec<PointId>,
+	candidates: impl Fn(&VectorGeometry) -> Vec<PointId>,
 ) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = max_distance * max_distance;
@@ -63,7 +63,7 @@ fn closest_candidate_point(
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 		for id in candidates(&vector) {
-			let Some(point) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(point) = vector.position_from_id(id) else { continue };
 
 			let distance_squared = viewspace.transform_point2(point).distance_squared(goal);
 			if distance_squared < best_distance_squared {
@@ -92,16 +92,16 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	Quad::from_box([DVec2::ZERO, far])
 }
 
-pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vector, prefer_handle_direction: bool) -> Option<f64> {
+pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &VectorGeometry, prefer_handle_direction: bool) -> Option<f64> {
 	let is_start = |point: PointId, segment: SegmentId| vector.segment_start_from_id(segment) == Some(point);
-	let anchor_position = vector.point_domain.position_from_id(anchor)?;
-	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector);
-	let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector);
+	let anchor_position = vector.position_from_id(anchor)?;
+	let end_handle = vector.position_of(ManipulatorPointId::EndHandle(segment));
+	let start_handle = vector.position_of(ManipulatorPointId::PrimaryHandle(segment));
 
 	let start_point = if is_start(anchor, segment) {
-		vector.segment_end_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
+		vector.segment_end_from_id(segment).and_then(|id| vector.position_from_id(id))
 	} else {
-		vector.segment_start_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
+		vector.segment_start_from_id(segment).and_then(|id| vector.position_from_id(id))
 	};
 
 	let required_handle = if is_start(anchor, segment) {
@@ -119,9 +119,9 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vec
 	required_handle.map(|handle| handle - anchor_position).and_then(|vector| DVec2::X.try_angle_to(vector))
 }
 
-pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &VectorGeometry, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	let Some(other_handle) = vector.other_colinear_handle(handle) else { return };
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
+	let Some(handle_position) = vector.position_of(other_handle.to_manipulator_point()) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - target_control_point).try_normalize() else { return };
@@ -136,12 +136,12 @@ pub fn restore_previous_handle_position(
 	handle: HandleId,
 	original_c: DVec2,
 	anchor_position: DVec2,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	layer: LayerNodeIdentifier,
 	responses: &mut VecDeque<Message>,
 ) -> Option<HandleId> {
 	let other_handle = vector.other_colinear_handle(handle)?;
-	let handle_position = other_handle.to_manipulator_point().get_position(vector)?;
+	let handle_position = vector.position_of(other_handle.to_manipulator_point())?;
 	let direction = (anchor_position - original_c).try_normalize()?;
 
 	let old_relative_position = (handle_position - anchor_position).length() * direction;
@@ -155,8 +155,16 @@ pub fn restore_previous_handle_position(
 	Some(other_handle)
 }
 
-pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_point: DVec2, anchor_position: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
+pub fn restore_g1_continuity(
+	handle: HandleId,
+	other_handle: HandleId,
+	control_point: DVec2,
+	anchor_position: DVec2,
+	vector: &VectorGeometry,
+	layer: LayerNodeIdentifier,
+	responses: &mut VecDeque<Message>,
+) {
+	let Some(handle_position) = vector.position_of(other_handle.to_manipulator_point()) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - control_point).try_normalize() else { return };
@@ -173,7 +181,7 @@ pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_p
 /// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	path_overlay_mode: PathOverlayMode,
 	frontier_handles_for_layer: Option<&HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: &[SegmentId],
@@ -190,14 +198,14 @@ pub fn is_visible_point(
 					}
 
 					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
-					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector) else { return false };
+					let Some(handle_pair) = vector.handle_pair_of(manipulator_point_id) else { return false };
 					let other_handle = handle_pair[1].to_manipulator_point();
 
 					// Return whether the list of selected points contain the other handle
 					selected_points.contains(&other_handle)
 				}
 				(PathOverlayMode::FrontierHandles, false) => {
-					let Some(anchor) = manipulator_point_id.get_anchor(vector) else {
+					let Some(anchor) = vector.anchor_of(manipulator_point_id) else {
 						warn!("No anchor for selected handle");
 						return false;
 					};

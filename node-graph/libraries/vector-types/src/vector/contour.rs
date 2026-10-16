@@ -106,7 +106,7 @@ pub fn subpaths(point_count: usize, paths: &List<Path>) -> Vec<Subpath> {
 		let stride = curve_type.stride();
 
 		for span in 0..path.segment_count(curve_type) {
-			let references = (span * stride..=(span + 1) * stride).map(|index| path.0.element(index).copied());
+			let references = (span * stride..=(span + 1) * stride).map(|index| path.reference(index));
 			let Some(references) = references.collect::<Option<Vec<u32>>>() else { continue };
 
 			// A span naming a point outside the pool cannot be drawn, so it takes no part in the walk
@@ -213,10 +213,7 @@ mod tests {
 	/// Linear paths over a pool of the given size, one path per list of references.
 	fn linear(point_count: usize, paths: &[&[u32]]) -> (List<DVec2>, List<Path>) {
 		let pool = (0..point_count).map(|index| Item::new_from_element(DVec2::new(index as f64, (index * index) as f64))).collect();
-		let paths = paths
-			.iter()
-			.map(|references| Item::new_from_element(Path(references.iter().copied().map(Item::new_from_element).collect())))
-			.collect();
+		let paths = paths.iter().map(|references| Item::new_from_element(Path::from_references(references.iter().copied()))).collect();
 
 		(pool, paths)
 	}
@@ -229,8 +226,8 @@ mod tests {
 				let mut anchors = vec![subpath.entry];
 				for step in &subpath.steps {
 					let path = paths.element(step.path as usize).expect("the step names a path");
-					let (start, end) = (path.0.element(step.span as usize), path.0.element(step.span as usize + 1));
-					anchors.push(*if step.reversed { start } else { end }.expect("the span has both ends"));
+					let (start, end) = (path.reference(step.span as usize), path.reference(step.span as usize + 1));
+					anchors.push(if step.reversed { start } else { end }.expect("the span has both ends"));
 				}
 				if subpath.closed {
 					anchors.pop();

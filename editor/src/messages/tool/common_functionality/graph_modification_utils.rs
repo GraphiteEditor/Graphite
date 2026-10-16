@@ -175,15 +175,15 @@ pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifie
 	};
 
 	let mut handles = [None; 2];
-	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector).unwrap();
+	if let Some(handle_position) = vector.position_of(ManipulatorPointId::PrimaryHandle(segment)) {
+		let anchor_position = vector.position_of(ManipulatorPointId::Anchor(segment_start_point)).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[0] = Some(anchor_to_handle);
 	}
-	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector).unwrap();
+	if let Some(handle_position) = vector.position_of(ManipulatorPointId::EndHandle(segment)) {
+		let anchor_position = vector.position_of(ManipulatorPointId::Anchor(segment_end_point)).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
