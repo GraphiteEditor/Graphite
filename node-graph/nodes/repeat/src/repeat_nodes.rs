@@ -6,6 +6,7 @@ use glam::{DAffine2, DVec2};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
+use vector_types::vector::{no_paths, paths_from_list_row_attributes};
 
 #[node_macro::node(category("Repeat"), icon("NodeRepeat"))]
 async fn repeat<T: Send + Clone + 'static>(
@@ -212,7 +213,9 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 			}
 		};
 
-		let range = points_element.point_domain.positions().iter().enumerate();
+		let paths = paths_from_list_row_attributes(&points, points_index).unwrap_or_else(|| no_paths());
+		let positions = points_element.anchor_positions(paths);
+		let range = positions.iter().enumerate();
 		if reverse {
 			for (index, &point) in range.rev() {
 				iteration(index, point).await;
@@ -242,10 +245,16 @@ mod test {
 	use std::future::Future;
 	use std::pin::Pin;
 	use vector_nodes::generator_nodes::RectangleNode;
+	use vector_types::vector::Path;
 	use vector_types::vector::misc::BoxCorners;
 
 	fn vector_node_from_bezpath(bezpath: BezPath) -> List<Vector> {
-		List::new_from_element(Vector::from_bezpath(bezpath))
+		List::new_from_item(Vector::item_from_bezpath(&bezpath))
+	}
+
+	/// The paths riding the row, so geometry queries can resolve against them.
+	fn row_paths(list: &List<Vector>, index: usize) -> &List<Path> {
+		paths_from_list_row_attributes(list, index).unwrap_or_else(|| no_paths())
 	}
 
 	#[derive(Clone)]
@@ -314,7 +323,7 @@ mod test {
 			let bounds = generated
 				.element(index)
 				.unwrap()
-				.bounding_box_with_transform(generated.attribute_cloned_or_default(ATTR_TRANSFORM, index))
+				.bounding_box_with_transform(row_paths(&generated, index), generated.attribute_cloned_or_default(ATTR_TRANSFORM, index))
 				.unwrap();
 			assert!(position.abs_diff_eq((bounds[0] + bounds[1]) / 2., 1e-10));
 			assert_eq!((bounds[1] - bounds[0]).x, position.y);
@@ -336,8 +345,9 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.stroke_manipulator_groups().count(), 3);
-		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups().enumerate() {
+		let paths = row_paths(&vector_list, 0);
+		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 3);
+		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups(paths).enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -355,9 +365,10 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.stroke_manipulator_groups().count(), 1);
+		let paths = row_paths(&vector_list, 0);
+		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 1);
 
-		let (manipulator_groups, _) = vector.stroke_manipulator_groups().next().unwrap();
+		let (manipulator_groups, _) = vector.stroke_manipulator_groups(paths).next().unwrap();
 		let anchor = manipulator_groups[0].anchor;
 		assert!(anchor.length() < 1e-5, "Expected the single copy to be untransformed, found anchor {anchor}");
 	}
@@ -377,8 +388,9 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.stroke_manipulator_groups().count(), 8);
-		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups().enumerate() {
+		let paths = row_paths(&vector_list, 0);
+		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 8);
+		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups(paths).enumerate() {
 			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
 		}
 	}
@@ -396,9 +408,10 @@ mod test {
 		.await;
 		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
 		let vector = vector_list.element(0).unwrap();
-		assert_eq!(vector.stroke_manipulator_groups().count(), 8);
+		let paths = row_paths(&vector_list, 0);
+		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 8);
 
-		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups().enumerate() {
+		for (index, (manipulator_groups, _)) in vector.stroke_manipulator_groups(paths).enumerate() {
 			let expected_angle = (index as f64 + 1.) * 45.;
 
 			let center = (manipulator_groups[0].anchor + manipulator_groups[2].anchor) / 2.;

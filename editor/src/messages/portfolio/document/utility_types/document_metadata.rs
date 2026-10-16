@@ -7,10 +7,11 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Appearance;
+use graphene_std::list::Item;
 use graphene_std::math::quad::Quad;
 use graphene_std::transform::Footprint;
-use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::{Vector, VectorGeometry, no_paths, paths_from_item_attributes};
 use kurbo::BezPath;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
@@ -37,10 +38,10 @@ pub struct DocumentMetadata {
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
 	pub clip_targets: HashSet<NodeId>,
-	pub vector_modify: HashMap<NodeId, Vector>,
+	pub vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
-	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
+	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Item<Vector>>>,
 	/// Per-layer `ATTR_APPEARANCE` attribute, exposed so message handlers can read paint information that lives on the list.
 	pub layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>,
 	/// Transform from document space to viewport space.
@@ -243,13 +244,14 @@ impl DocumentMetadata {
 	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
 	/// bounds for non-vector layers (groups, raster, text, color, gradient).
 	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		if let Some(vector) = self.layer_vector_data.get(&layer) {
+		if let Some(item) = self.layer_vector_data.get(&layer) {
 			let stroke = self
 				.layer_appearance_attributes
 				.get(&layer)
 				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
 				.map(graphene_std::Coverage::stroke_params);
-			if let Some(bounds) = vector.stroke_inclusive_bounding_box_with_transform(self.transform_to_document(layer), stroke.as_ref()) {
+			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
+			if let Some(bounds) = item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref()) {
 				return Some(bounds);
 			}
 		}

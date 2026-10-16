@@ -30,7 +30,7 @@ pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
-/// Optional `Vector` that overrides the item's own geometry for click-target generation.
+/// Optional `BezPath` that overrides the item's own geometry for click-target generation.
 /// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
 /// by clicking anywhere within their bounds, not just the filled letterform.
 pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
@@ -112,11 +112,11 @@ pub const ATTR_PATHS: &str = "paths";
 /// holding the path (implicit default `Linear`).
 pub const ATTR_CURVE_TYPE: &str = "curve_type";
 /// Point reference's `bool` tool state marking the tangent pair at this anchor occurrence as smooth,
-/// on the `List<u32>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
+/// on the `List<i64>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
 /// colinear. Rendering derives continuity from actual tangent geometry and does not read this.
 pub const ATTR_SMOOTH: &str = "smooth";
 /// Item's stable ID for external addressing (modifications, tools, animation), opt-in because indices are
-/// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<u32>`
+/// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<i64>`
 /// inside a `Path` at the anchor reference the segment departs from.
 pub const ATTR_ID: &str = "id";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
@@ -1214,8 +1214,8 @@ impl<T: BoundingBox> BoundingBox for List<T> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.bounding_box(transform * item_transform, include_stroke) {
+		for (index, item_transform) in self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate() {
+			match T::bounding_box_in_list(self, index, transform * item_transform, include_stroke, false) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -1236,8 +1236,8 @@ impl<T: BoundingBox> BoundingBox for List<T> {
 		let mut combined_bounds = None;
 		let mut any_infinite = false;
 
-		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.thumbnail_bounding_box(transform * item_transform, include_stroke) {
+		for (index, item_transform) in self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate() {
+			match T::bounding_box_in_list(self, index, transform * item_transform, include_stroke, true) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => any_infinite = true,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -1357,12 +1357,12 @@ impl<T: BoundingBox> BoundingBox for Item<T> {
 	/// Computes the element's bounding box, composing the item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
-		self.element().bounding_box(transform * item_transform, include_stroke)
+		T::bounding_box_in_item(self, transform * item_transform, include_stroke, false)
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
-		self.element().thumbnail_bounding_box(transform * item_transform, include_stroke)
+		T::bounding_box_in_item(self, transform * item_transform, include_stroke, true)
 	}
 }
 

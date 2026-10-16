@@ -698,15 +698,13 @@ mod test_spline_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use graphene_std::vector::Vector;
+	use graphene_std::vector::VectorGeometry;
 
-	fn assert_point_positions(vector: &Vector, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
+	fn assert_point_positions(vector: &VectorGeometry, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
 		let points_in_viewport: Vec<DVec2> = vector
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector.point_domain.position_from_id(point_id)?;
+			.anchor_points()
+			.filter_map(|point_id| {
+				let position = vector.position_from_id(point_id)?;
 				Some(layer_to_viewport.transform_point2(position))
 			})
 			.collect();
@@ -734,7 +732,7 @@ mod test_spline_tool {
 		let document = editor.active_document();
 		let vector = document.network_interface.compute_modified_vector(layer).expect("The spline should have a path");
 
-		assert_eq!(vector.point_domain.ids().len(), expected.len(), "Unexpected point count");
+		assert_eq!(vector.anchor_points().count(), expected.len(), "Unexpected point count");
 		assert_point_positions(&vector, document.metadata().transform_to_viewport(layer), expected, 1e-6);
 	}
 
@@ -771,8 +769,8 @@ mod test_spline_tool {
 		let first_vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify initial spline has correct number of points and segments
-		let initial_point_count = first_vector.point_domain.ids().len();
-		let initial_segment_count = first_vector.segment_domain.ids().len();
+		let initial_point_count = first_vector.anchor_points().count();
+		let initial_segment_count = first_vector.segment_ids().len();
 		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {initial_point_count}");
 		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {initial_segment_count}");
 
@@ -780,7 +778,7 @@ mod test_spline_tool {
 
 		let endpoints: Vec<(PointId, DVec2)> = first_vector
 			.anchor_endpoints()
-			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
+			.filter_map(|point_id| first_vector.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 
 		assert_eq!(endpoints.len(), 2, "Expected 2 endpoints in the initial spline");
@@ -805,8 +803,8 @@ mod test_spline_tool {
 			.expect("Vector not found for the extended spline layer");
 
 		// Verify extended spline has correct number of points and segments
-		let extended_point_count = extended_vector.point_domain.ids().len();
-		let extended_segment_count = extended_vector.segment_domain.ids().len();
+		let extended_point_count = extended_vector.anchor_points().count();
+		let extended_segment_count = extended_vector.segment_ids().len();
 
 		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {extended_point_count}");
 		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {extended_segment_count}");
@@ -997,8 +995,8 @@ mod test_spline_tool {
 		let vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify we have the correct number of points and segments
-		let point_count = vector.point_domain.ids().len();
-		let segment_count = vector.segment_domain.ids().len();
+		let point_count = vector.anchor_points().count();
+		let segment_count = vector.segment_ids().len();
 
 		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {point_count}");
 		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {segment_count}");

@@ -4,20 +4,24 @@ use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
-use vector_types::vector::VectorModification;
+use vector_types::kurbo::BezPath;
+use vector_types::vector::{VectorModification, edit_item_geometry};
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<NodeIdPath>) -> Item<Vector> {
 	let mut vector = vector;
-	modification.into_element().apply(vector.element_mut());
+	let modification = modification.into_element();
+	edit_item_geometry(&mut vector, |element, paths| {
+		modification.apply(element, paths);
 
-	// Users draw subpaths in arbitrary winding directions, so normalize them here rather than
-	// letting the drawn direction decide fill insideness downstream
-	vector.element_mut().normalize_winding_directions();
+		// Users draw subpaths in arbitrary winding directions, so normalize them here rather than
+		// letting the drawn direction decide fill insideness downstream
+		element.normalize_winding_directions(paths);
+	});
 
 	// Drop the stale click-target override so hit testing uses the geometry the user is now editing
-	vector.remove_attribute::<Vector>(ATTR_EDITOR_CLICK_TARGET);
+	vector.remove_attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET);
 
 	// Set the path to the encapsulating subgraph (drop our own trailing entry from `node_path`),
 	// matching the `path_of_subgraph` proto so editor tools can route data back to the parent layer.

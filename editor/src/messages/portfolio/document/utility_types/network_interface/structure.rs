@@ -1,30 +1,32 @@
 use super::*;
+use graphene_std::list::Item;
+use graphene_std::vector::VectorGeometry;
 
 impl NodeNetworkInterface {
-	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorGeometry> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))
-			&& let Some(vector) = self.document_metadata.vector_modify.get(&path_node)
+			&& let Some(geometry) = self.document_metadata.vector_modify.get(&path_node)
 		{
-			let mut modified = vector.clone();
+			let mut modified = geometry.clone();
 
 			let path_node = self.document_network().nodes.get(&path_node);
 			let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
 			if let Some(TaggedValue::VectorModification(modification)) = modification_input {
-				modification.apply(&mut modified);
+				modification.apply(&mut modified.vector, &mut modified.paths);
 			}
 			return Some(modified);
 		}
 
-		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+		self.document_metadata.layer_vector_data.get(&layer).map(|item| VectorGeometry::from_item(item))
 	}
 
 	/// The vector geometry an upstream Path node would surface for editing.
 	/// This is the result of `compute_modified_vector`, but only if a visible 'Path' node is actually upstream.
 	/// Useful for tool overlays and snap target collection usages that want to match the Path tool's view
 	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer) and otherwise do nothing.
-	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorGeometry> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
 		self.compute_modified_vector(layer)
@@ -46,11 +48,8 @@ impl NodeNetworkInterface {
 			targets.push(ClickTargetType::Path(combined));
 		}
 
-		for &point_id in vector.point_domain.ids() {
-			if !vector.any_connected(point_id) {
-				let position = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-				targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
-			}
+		for (point_id, position) in vector.free_points() {
+			targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
 		}
 
 		Some(targets)
@@ -183,13 +182,13 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the vector modify of the layers
-	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, Vector>) {
+	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorGeometry>) {
 		self.document_metadata.mark_changed();
 		self.document_metadata.vector_modify = new_vector_modify;
 	}
 
 	/// Update the layer vector data (for layers without Path nodes)
-	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
+	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Item<Vector>>>) {
 		self.document_metadata.mark_changed();
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}

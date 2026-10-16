@@ -147,8 +147,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_vector(&mut self, bezpath: BezPath, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
 		// Build a VectorModification that reproduces the geometry (same format the Pen tool uses)
-		let vector = Vector::from_bezpath(bezpath);
-		let modification = Box::new(VectorModification::create_from_vector(&vector));
+		let (vector, paths) = Vector::from_bezpath(&bezpath);
+		let modification = Box::new(VectorModification::create_from_vector(&vector, &paths));
 
 		let shape = resolve_network_node_type("Path")
 			.expect("Path node does not exist")

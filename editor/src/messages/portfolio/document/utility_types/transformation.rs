@@ -102,7 +102,7 @@ impl OriginalTransforms {
 
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
-					let anchors = anchor_ids.filter_map(|id| vector.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
+					let anchors = anchor_ids.filter_map(|id| vector.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
 					let anchors = anchors.collect();
 
 					let selected_handles = selected_points.iter().filter_map(|point| point.as_handle());
@@ -112,13 +112,13 @@ impl OriginalTransforms {
 
 					let handles = all_handles
 						.filter_map(|id| {
-							let anchor = id.to_manipulator_point().get_anchor(&vector)?;
-							let initial = id.to_manipulator_point().get_position(&vector)?;
-							let relative = vector.point_domain.position_from_id(anchor)?;
+							let anchor = vector.anchor_of(id.to_manipulator_point())?;
+							let initial = vector.position_of(id.to_manipulator_point())?;
+							let relative = vector.position_from_id(anchor)?;
 							let other_handle = vector
 								.other_colinear_handle(id)
 								.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
-							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector)?)));
+							let mirror = other_handle.and_then(|id| Some((id, vector.position_of(id.to_manipulator_point())?)));
 
 							Some((id, HandlePoint { initial, relative, anchor, mirror }))
 						})
