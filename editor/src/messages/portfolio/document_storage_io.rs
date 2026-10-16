@@ -98,6 +98,7 @@ pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: Do
 				container: None,
 				gdd: None,
 				declarations: Declarations::new(),
+				legacy_only,
 			}
 			.into();
 		}
@@ -113,6 +114,7 @@ pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: Do
 		container: Some(container),
 		gdd: gdd.map(Box::new),
 		declarations,
+		legacy_only,
 	}
 	.into()
 }
@@ -126,6 +128,7 @@ pub(super) async fn open_storage(container: AnyContainer, document_id: DocumentI
 		container: Some(container),
 		gdd: gdd.map(Box::new),
 		declarations,
+		legacy_only: false,
 	}
 	.into()
 }
