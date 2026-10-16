@@ -114,7 +114,6 @@ pub enum PortfolioMessage {
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		declarations: document_graph_storage::Declarations,
 	},
-	StorageUpdated,
 	StorageAttached {
 		document_id: DocumentId,
 		#[serde(skip, default)]
@@ -126,8 +125,6 @@ pub enum PortfolioMessage {
 		#[serde(skip, default)]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		declarations: document_graph_storage::Declarations,
-		/// The working copy was not opened because storage was off when the container was requested.
-		legacy_only: bool,
 	},
 	NextDocument,
 	PrevDocument,
