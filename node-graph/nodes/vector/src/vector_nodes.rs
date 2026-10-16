@@ -33,7 +33,10 @@ use vector_types::vector::misc::{
 	bezpath_from_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, no_paths, paths_from_item_attributes, paths_from_list_row_attributes};
+use vector_types::vector::{
+	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path,
+	span_endpoints, spans,
+};
 
 /// Appends one point to the working form, returning the index that names it.
 pub(crate) fn push_working_point(working: &mut WorkingVector, id: PointId, position: DVec2) -> usize {
@@ -1415,27 +1418,23 @@ async fn points_to_polyline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implem
 		let mut points = points;
 
 		edit_item_geometry(&mut points, |vector, paths| {
-			let flattened = WorkingVector::flatten(vector, paths);
-			let mut working = WorkingVector {
-				point_ids: flattened.point_ids,
-				point_positions: flattened.point_positions,
-				..Default::default()
-			};
-			let mut next_id = SegmentId::ZERO;
+			vector.keep_only_anchors(paths);
 
-			let points_count = working.point_ids.len();
-
-			if points_count >= 2 {
-				(0..points_count - 1).for_each(|i| {
-					push_working_segment(&mut working, next_id.next_id(), i, i + 1, BezierHandles::Linear);
-				});
-
-				if closed && points_count != 2 {
-					push_working_segment(&mut working, next_id.next_id(), points_count - 1, 0, BezierHandles::Linear);
-				}
+			let points_count = vector.point_count();
+			if points_count < 2 {
+				return;
 			}
 
-			working.reweave(vector, paths);
+			// A pair has nowhere to close back to, so its two anchors draw one segment either way
+			let closing = closed && points_count != 2;
+			let mut next_id = SegmentId::ZERO;
+
+			push_path(
+				paths,
+				CurveType::Linear,
+				(0..points_count as u32).chain(closing.then_some(0)),
+				std::iter::repeat_with(|| next_id.next_id()),
+			);
 		});
 
 		points
@@ -2400,7 +2399,7 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 
 		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 
-		let mut result = WorkingVector::default();
+		let mut cloud = List::new();
 
 		let content_paths = paths_from_item_attributes(&content).cloned().unwrap_or_default();
 		let path_with_bounding_boxes: Vec<_> = content
@@ -2420,11 +2419,16 @@ async fn scatter_points<V: MapVectorItems + 'n + Send>(
 			}
 
 			for point in bezpath_algorithms::poisson_disk_points(i, &path_with_bounding_boxes, separation, || rng.random::<f64>()) {
-				push_working_point(&mut result, PointId::generate(), point);
+				cloud.push(Item::new_from_element(point).with_attribute(ATTR_ID, PointId::generate()));
 			}
 		}
 
-		edit_item_geometry(&mut content, |vector, paths| result.reweave(vector, paths));
+		// The scattered points replace the source shape entirely, leaving no paths
+		edit_item_geometry(&mut content, |vector, paths| {
+			*vector = Vector(cloud);
+			*paths = List::new();
+		});
+
 		content
 	})
 }
@@ -2440,19 +2444,29 @@ async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Gr
 
 		edit_item_geometry(&mut content, |vector, paths| {
 			let manipulator_runs = vector.stroke_manipulator_groups(paths).collect::<Vec<_>>();
+			vector.keep_only_anchors(paths);
 
-			let flattened = WorkingVector::flatten(vector, paths);
-			let mut working = WorkingVector {
-				point_ids: flattened.point_ids,
-				point_positions: flattened.point_positions,
-				..Default::default()
-			};
+			// An ID shared by several points resolves to the first of them
+			let mut anchor_index: HashMap<PointId, u32> = HashMap::new();
+			for index in 0..vector.point_count() as u32 {
+				if let Some(id) = vector.point_id_at(index) {
+					anchor_index.entry(id).or_insert(index);
+				}
+			}
 
 			let mut next_id = SegmentId::ZERO;
 			let mut smooth_anchors = Vec::new();
 			for (manipulator_groups, closed) in manipulator_runs {
 				let positions = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<_>>();
+				if positions.len() < 2 {
+					continue;
+				}
 				let closed = closed && positions.len() > 2;
+
+				let Some(anchors) = manipulator_groups.iter().map(|group| anchor_index.get(&group.id).copied()).collect::<Option<Vec<_>>>() else {
+					log::error!("Spline skipped a run with anchor IDs that name no point");
+					continue;
+				};
 
 				// The spline runs smoothly through every anchor with a segment on each side
 				let interior = if closed {
@@ -2469,22 +2483,27 @@ async fn spline<V: MapVectorItems + 'n + Send>(_: impl Ctx, #[implementations(Gr
 					solve_spline_first_handle_open(&positions)
 				};
 
-				// Create segments with computed Bezier handles and add them to the output vector element's segments.
-				for i in 0..(positions.len() - if closed { 0 } else { 1 }) {
+				// Weave the run as one cubic path, each span's two handles appended to the pool and referenced between its anchors
+				let span_count = positions.len() - if closed { 0 } else { 1 };
+				let (mut references, mut ids) = (Vec::with_capacity(span_count * 3 + 1), Vec::with_capacity(span_count));
+
+				for i in 0..span_count {
 					let next_index = (i + 1) % positions.len();
-
-					let start_index = working.resolve_id(manipulator_groups[i].id).unwrap();
-					let end_index = working.resolve_id(manipulator_groups[next_index].id).unwrap();
-
 					let handle_start = first_handles[i];
 					let handle_end = positions[next_index] * 2. - first_handles[next_index];
-					let handles = BezierHandles::Cubic { handle_start, handle_end };
 
-					push_working_segment(&mut working, next_id.next_id(), start_index, end_index, handles);
+					references.push(anchors[i]);
+					for handle in [handle_start, handle_end] {
+						references.push(vector.point_count() as u32);
+						vector.0.push(Item::new_from_element(handle).with_attribute(ATTR_ID, PointId::UNNAMED));
+					}
+					ids.push(next_id.next_id());
 				}
+				references.push(anchors[span_count % positions.len()]);
+
+				push_path(paths, CurveType::Cubic, references, ids);
 			}
 
-			working.reweave(vector, paths);
 			vector.set_smooth_points(paths, smooth_anchors, true);
 		});
 
@@ -2513,38 +2532,40 @@ fn inverse_linear_or_repair(linear: DMat2) -> DMat2 {
 	repaired.inverse()
 }
 
-/// Applies per-anchor displacement deltas to the anchor and handle positions of a vector element.
-fn apply_point_deltas(vector: &mut Vector, paths: &mut List<Path>, deltas: &[DVec2], transform: DAffine2) {
-	let mut working = WorkingVector::flatten(vector, paths);
-	let mut already_applied = vec![false; working.point_positions.len()];
+/// Applies displacement deltas to the anchors at the given pool indices, moving the handles of their segments along with them.
+fn apply_point_deltas(vector: &mut Vector, paths: &List<Path>, anchors: &[usize], deltas: &[DVec2]) {
+	let mut anchor_delta = vec![None; vector.point_count()];
+	for (&anchor, &delta) in anchors.iter().zip(deltas) {
+		anchor_delta[anchor] = Some(delta);
+	}
+	let mut delta_at: Vec<DVec2> = anchor_delta.iter().map(|delta| delta.unwrap_or_default()).collect();
+	let delta_of = |anchor: u32| anchor_delta.get(anchor as usize).copied().flatten().unwrap_or_default();
 
-	for index in 0..working.segment_ids.len() {
-		let (start, end) = (working.segment_start[index], working.segment_end[index]);
-		let start_delta = deltas[start];
-		let end_delta = deltas[end];
+	// A handle travels with the anchor on its own side of the segment, unless it is also an anchor with a delta of its own
+	for span in spans(paths) {
+		let Some((start, end)) = span_endpoints(paths, span) else { continue };
+		let (start_delta, end_delta) = (delta_of(start), delta_of(end));
 
-		if !already_applied[start] {
-			working.point_positions[start] += start_delta;
-			already_applied[start] = true;
-		}
-		if !already_applied[end] {
-			working.point_positions[end] += end_delta;
-			already_applied[end] = true;
-		}
+		let carried = match curve_type_at(paths, span.path as usize) {
+			CurveType::Linear => [(None, DVec2::ZERO); 2],
+			// A quadratic's lone handle answers to both anchors, so it splits the difference between them
+			CurveType::Quadratic => [(handle_point(paths, span, true), (start_delta + end_delta) / 2.), (None, DVec2::ZERO)],
+			CurveType::Cubic => [(handle_point(paths, span, true), start_delta), (handle_point(paths, span, false), end_delta)],
+		};
 
-		match &mut working.segment_handles[index] {
-			BezierHandles::Cubic { handle_start, handle_end } => {
-				*handle_start += start_delta;
-				*handle_end += end_delta;
+		for (handle, delta) in carried {
+			if let Some(handle) = handle
+				&& anchor_delta.get(handle as usize).is_some_and(Option::is_none)
+				&& let Some(slot) = delta_at.get_mut(handle as usize)
+			{
+				*slot = delta;
 			}
-			BezierHandles::Quadratic { handle } => {
-				*handle = transform.transform_point2(*handle) + (start_delta + end_delta) / 2.;
-			}
-			BezierHandles::Linear => {}
 		}
 	}
 
-	working.reweave(vector, paths);
+	for (position, delta) in vector.0.iter_element_values_mut().zip(delta_at) {
+		*position += delta;
+	}
 }
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
@@ -2573,12 +2594,11 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
-		let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		edit_item_geometry(&mut content, |vector, paths| {
-			let deltas: Vec<_> = vector
-				.anchor_indices(paths)
-				.into_iter()
-				.map(|point_index| {
+			let anchors = vector.anchor_indices(paths);
+			let deltas: Vec<_> = anchors
+				.iter()
+				.map(|&point_index| {
 					let normal = if along_normals { vector.point_tangent(paths, point_index).map(|t| -t.perp()) } else { None };
 
 					let offset = if let Some(normal) = normal {
@@ -2591,7 +2611,7 @@ async fn jitter_points<V: MapVectorItems + 'n + Send>(
 				})
 				.collect();
 
-			apply_point_deltas(vector, paths, &deltas, transform);
+			apply_point_deltas(vector, paths, &anchors, &deltas);
 		});
 
 		content
@@ -2617,12 +2637,11 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
-		let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		edit_item_geometry(&mut content, |vector, paths| {
-			let deltas: Vec<_> = vector
-				.anchor_indices(paths)
-				.into_iter()
-				.map(|point_index| {
+			let anchors = vector.anchor_indices(paths);
+			let deltas: Vec<_> = anchors
+				.iter()
+				.map(|&point_index| {
 					let Some(normal) = vector.point_tangent(paths, point_index).map(|t| -t.perp()) else {
 						return DVec2::ZERO;
 					};
@@ -2631,7 +2650,7 @@ async fn offset_points<V: MapVectorItems + 'n + Send>(
 				})
 				.collect();
 
-			apply_point_deltas(vector, paths, &deltas, transform);
+			apply_point_deltas(vector, paths, &anchors, &deltas);
 		});
 
 		content
@@ -3818,6 +3837,57 @@ mod test {
 		assert_eq!(result.element().segment_iter(&paths).count(), 0);
 	}
 
+	// The lone handle of a quadratic answers to both anchors, so it moves by the average of their deltas
+	#[test]
+	fn point_deltas_carry_a_quadratic_handle_with_both_anchors() {
+		let mut quadratic = BezPath::new();
+		quadratic.move_to((0., 0.));
+		quadratic.quad_to((5., 10.), (10., 0.));
+
+		let (mut vector, paths) = Vector::from_bezpath(&quadratic);
+		let anchors = vector.anchor_indices(&paths);
+		super::apply_point_deltas(&mut vector, &paths, &anchors, &[DVec2::X, DVec2::X * 3.]);
+
+		assert_eq!(vector.position(0), Some(DVec2::new(1., 0.)));
+		assert_eq!(vector.position(1), Some(DVec2::new(7., 10.)));
+		assert_eq!(vector.position(2), Some(DVec2::new(13., 0.)));
+	}
+
+	// A point no segment touches still takes its delta, so jitter can shift a bare point cloud
+	#[test]
+	fn point_deltas_move_free_floating_points() {
+		let cloud = vector_item_from_points(&[DVec2::ZERO, DVec2::new(10., 0.)]);
+		let paths = item_paths(&cloud).clone();
+		let mut vector = cloud.element().clone();
+
+		let anchors = vector.anchor_indices(&paths);
+		super::apply_point_deltas(&mut vector, &paths, &anchors, &[DVec2::Y, DVec2::Y * 2.]);
+
+		assert_eq!(vector.position(0), Some(DVec2::new(0., 1.)));
+		assert_eq!(vector.position(1), Some(DVec2::new(10., 2.)));
+	}
+
+	// Point 1 is a handle of the first path and an anchor of the second, so it keeps its own delta rather than its neighbor's
+	#[test]
+	fn point_deltas_keep_an_anchor_that_is_also_a_handle_on_its_own_delta() {
+		let mut vector = Vector::default();
+		for x in 0..7 {
+			vector.0.push(Item::new_from_element(DVec2::new(x as f64 * 10., 0.)));
+		}
+		let mut paths = List::new();
+		vector_types::vector::push_path(&mut paths, CurveType::Cubic, [0, 1, 2, 3], []);
+		vector_types::vector::push_path(&mut paths, CurveType::Cubic, [1, 4, 5, 6], []);
+
+		let anchors = vector.anchor_indices(&paths);
+		assert_eq!(anchors, [0, 1, 3, 6]);
+		super::apply_point_deltas(&mut vector, &paths, &anchors, &[DVec2::X, DVec2::Y, DVec2::X * 2., DVec2::X * 3.]);
+
+		assert_eq!(vector.position(1), Some(DVec2::new(10., 1.)));
+		assert_eq!(vector.position(2), Some(DVec2::new(22., 0.)));
+		assert_eq!(vector.position(4), Some(DVec2::new(40., 1.)));
+		assert_eq!(vector.position(5), Some(DVec2::new(53., 0.)));
+	}
+
 	#[tokio::test]
 	async fn offset_path_does_not_duplicate_closing_anchors() {
 		// Offsetting closed triangles must not leave each subpath with a redundant start/end anchor (a Kurbo offset
@@ -4119,6 +4189,45 @@ mod test {
 		open.line_to((30., 10.));
 		let spline = super::spline(Footprint::default(), vector_item_from_bezpath(open)).await;
 		assert_eq!(smooth_anchors_by_contour(&spline), [[false, true, true, false]]);
+	}
+
+	// A curved source's handles are replaced by the spline's own rather than kept alongside them
+	#[tokio::test]
+	async fn spline_replaces_the_handles_of_a_curved_source() {
+		let ellipse = vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.)));
+		let anchors = ellipse.element().anchor_positions(item_paths(&ellipse));
+		assert_eq!(anchors.len(), 4);
+
+		let spline = super::spline(Footprint::default(), ellipse).await;
+		let paths = item_paths(&spline);
+		let spline = spline.element();
+
+		assert_eq!(spline.anchor_positions(paths), anchors);
+		assert_eq!(spline.segment_iter(paths).count(), 4);
+		assert_eq!(spline.point_count(), 4 + 4 * 2, "each of the four spans should hold two new handles and no old ones");
+	}
+
+	// Only the source's anchors become corners, joined by lines in their stored order
+	#[tokio::test]
+	async fn points_to_polyline_joins_the_anchors_with_lines() {
+		let ellipse = vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.)));
+		let anchors = ellipse.element().anchor_positions(item_paths(&ellipse));
+
+		let closed = super::points_to_polyline(Footprint::default(), ellipse.clone(), item(true)).await;
+		let paths = item_paths(&closed);
+		let segments: Vec<PathSeg> = closed.element().segment_iter(paths).map(|(_, segment, ..)| segment).collect();
+		assert_eq!(closed.element().point_count(), anchors.len(), "the source's handles should be dropped");
+		assert_eq!(closed.element().anchor_positions(paths), anchors);
+		assert_eq!(segments.len(), 4);
+		assert!(segments.iter().all(|segment| matches!(segment, PathSeg::Line(_))));
+		assert!(closed.element().stroke_bezpath_iter(paths).all(|bezpath| bezpath.elements().last() == Some(&PathEl::ClosePath)));
+
+		let open = super::points_to_polyline(Footprint::default(), ellipse, item(false)).await;
+		assert_eq!(open.element().segment_iter(item_paths(&open)).count(), 3);
+
+		// Two points have nowhere to close back to, so they draw one segment either way
+		let pair = super::points_to_polyline(Footprint::default(), vector_item_from_points(&[DVec2::ZERO, DVec2::X]), item(true)).await;
+		assert_eq!(pair.element().segment_iter(item_paths(&pair)).count(), 1);
 	}
 
 	/// Whether each anchor keeps a smooth tangent pair, contour by contour.

@@ -4113,4 +4113,36 @@ mod test_path_tool {
 
 		assert_eq!(pasted.colinear_pairs().len(), 2, "the pasted copy of the smooth anchor should be smooth too");
 	}
+
+	// The ellipse's handles come from its generator, so the first typed position is the Path node's first edit to the handle
+	#[tokio::test]
+	async fn a_typed_handle_position_moves_the_handle_there() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_ellipse(100., 100., 300., 200.).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn ellipse should be selected");
+
+		let handle_in_document = |editor: &EditorTestUtils, handle: ManipulatorPointId| {
+			let document = editor.active_document();
+			let vector = document.network_interface.compute_modified_vector(layer).expect("the ellipse should have a vector");
+			let to_document = document.metadata().transform_to_document_if_feeds(layer, &document.network_interface);
+			to_document.transform_point2(vector.position_of(handle).expect("the handle should exist"))
+		};
+
+		let segment = {
+			let document = editor.active_document();
+			let vector = document.network_interface.compute_modified_vector(layer).expect("the ellipse should have a vector");
+			vector.segment_ids()[0]
+		};
+		let handle = ManipulatorPointId::PrimaryHandle(segment);
+		let before = handle_in_document(&editor, handle);
+
+		editor.select_tool(ToolType::Path).await;
+		editor.editor.dispatcher.message_handlers.tool_message_handler.shape_editor.select_point_by_layer_and_id(handle, layer);
+		editor.handle_message(PathToolMessage::SelectedPointUpdated).await;
+		editor.handle_message(PathToolMessage::SelectedPointXChanged { new_x: before.x + 5. }).await;
+
+		let after = handle_in_document(&editor, handle);
+		assert!(after.distance(before + DVec2::new(5., 0.)) < 1e-6, "the handle moved from {before} to {after}");
+	}
 }

@@ -124,10 +124,6 @@ impl WorkingVector {
 
 		vector.set_smooth_at_indices(paths, smooth_anchors, true);
 	}
-
-	pub fn resolve_id(&self, id: PointId) -> Option<usize> {
-		self.point_ids.iter().position(|&check_id| check_id == id)
-	}
 }
 
 // TODO: Eventually remove this document upgrade code

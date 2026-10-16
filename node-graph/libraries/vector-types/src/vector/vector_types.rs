@@ -384,6 +384,16 @@ impl Vector {
 			.collect()
 	}
 
+	/// Drops the paths and every point used only as a handle, leaving the anchors and free points as a bare cloud.
+	/// A point serving as an anchor in any path is kept even where another path uses it as a handle.
+	pub fn keep_only_anchors(&mut self, paths: &mut List<Path>) {
+		let anchors = self.anchor_indices(paths);
+		let pool = anchors.into_iter().filter_map(|index| self.0.clone_item(index)).collect();
+
+		self.0 = pool;
+		*paths = List::new();
+	}
+
 	/// The positions of all anchor points and free points in pool order, skipping handles.
 	pub fn anchor_positions(&self, paths: &List<Path>) -> Vec<DVec2> {
 		self.anchor_indices(paths).into_iter().filter_map(|index| self.position(index)).collect()
