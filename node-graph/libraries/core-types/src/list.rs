@@ -105,6 +105,20 @@ pub const ATTR_DIAMETER: &str = "diameter";
 pub const ATTR_HARDNESS: &str = "hardness";
 /// Brush stroke item's per-pass paint coverage from `0.` to `1.` (`f64`).
 pub const ATTR_FLOW: &str = "flow";
+/// `List<Path>` of connected strokes woven through the point pool, on the item holding a `Vector`.
+/// Absent means the pool is a point cloud.
+pub const ATTR_PATHS: &str = "paths";
+/// Path's `CurveType` naming the stride its point references weave in, on the `List<Path>` item
+/// holding the path (implicit default `Linear`).
+pub const ATTR_CURVE_TYPE: &str = "curve_type";
+/// Point reference's `bool` tool state marking the tangent pair at this anchor occurrence as smooth,
+/// on the `List<u32>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
+/// colinear. Rendering derives continuity from actual tangent geometry and does not read this.
+pub const ATTR_SMOOTH: &str = "smooth";
+/// Item's stable ID for external addressing (modifications, tools, animation), opt-in because indices are
+/// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<u32>`
+/// inside a `Path` at the anchor reference the segment departs from.
+pub const ATTR_ID: &str = "id";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.

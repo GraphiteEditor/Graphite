@@ -12,9 +12,9 @@ use std::iter::zip;
 macro_rules! create_ids {
 	($($id:ident),*) => {
 		$(
-			#[derive(Clone, Copy, Debug, PartialEq, PartialOrd, Ord, Eq, Hash, graphene_hash::CacheHash, DynAny)]
+			#[derive(Clone, Copy, Debug, Default, PartialEq, PartialOrd, Ord, Eq, Hash, graphene_hash::CacheHash, DynAny)]
 			#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-			/// A strongly typed ID
+			/// A strongly typed ID, defaulting to [`Self::ZERO`].
 			pub struct $id(u64);
 
 			impl $id {
