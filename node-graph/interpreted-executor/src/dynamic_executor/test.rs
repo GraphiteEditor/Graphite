@@ -973,3 +973,34 @@ fn an_error_after_a_fallback_keeps_both() {
 	};
 	assert_eq!(executor.find_origin(NodeId(3), upstream), Some(NodeId(2)));
 }
+
+#[test]
+fn a_node_error_names_the_node_that_raised_it() {
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(1.).into()), vec![NodeId(0)]);
+	let fail_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Bool(true).into()), vec![NodeId(1)]);
+	let mut error_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(1)]), vec![NodeId(2)]);
+	error_node.identifier = graphene_std::poll_debug::error::IDENTIFIER;
+	let mut count_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(2)]), vec![NodeId(3)]);
+	count_node.identifier = graphene_std::poll_debug::evaluation_count::IDENTIFIER;
+	let executor = DynamicExecutor::new(ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(3),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), fail_node), (NodeId(2), error_node), (NodeId(3), count_node)],
+	})
+	.expect("The debug nodes should resolve");
+
+	let context: Context = None;
+	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
+		panic!("The failing node should stop the frame")
+	};
+	let origin = executor.find_origin(executor.output(), &error);
+	assert_eq!(origin, Some(NodeId(2)), "The error should name the failing node, not the root that forwarded it");
+	let paths: Vec<_> = executor
+		.tree()
+		.source_map()
+		.iter()
+		.filter(|(_, (node, _))| Some(*node) == origin)
+		.map(|(path, _)| path.to_vec())
+		.collect();
+	assert_eq!(paths, [vec![NodeId(2)]]);
+}
