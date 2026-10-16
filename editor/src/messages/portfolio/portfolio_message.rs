@@ -31,6 +31,10 @@ pub enum PortfolioMessage {
 
 	// Messages
 	Init,
+	/// Whether this tab took the document store, or another tab has it and this one keeps its documents in memory.
+	DocumentStoreClaimed {
+		owned: bool,
+	},
 	DocumentPassMessage {
 		document_id: DocumentId,
 		message: DocumentMessage,

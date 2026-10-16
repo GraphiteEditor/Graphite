@@ -67,6 +67,8 @@ pub struct PortfolioMessageHandler {
 	pending_opens: usize,
 	restore_select: Option<DocumentId>,
 	store_unavailable: bool,
+	/// Another tab owns the document store, so this one keeps its documents in memory; see [`PortfolioMessage::DocumentStoreClaimed`].
+	memory_only: bool,
 }
 
 #[message_handler_data]
@@ -165,7 +167,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
 
-				responses.add(PersistentStateMessage::ReadState);
+				#[cfg(target_family = "wasm")]
+				responses.add(async {
+					PortfolioMessage::DocumentStoreClaimed {
+						owned: super::document_store_owner::claim().await,
+					}
+					.into()
+				});
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(PortfolioMessage::DocumentStoreClaimed { owned: true });
 
 				// Initialize the frontend with environment information
 				responses.add(FrontendMessage::UpdatePlatform {
@@ -365,10 +375,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
+			PortfolioMessage::DocumentStoreClaimed { owned } => {
+				if owned {
+					responses.add(PersistentStateMessage::ReadState);
+					return;
+				}
+				// Nothing is restored, written to the store, or remembered for the next visit, and resources stay
+				// uncollected, since the owning tab's documents use them too.
+				log::warn!("Another tab has the stored documents open, so this tab keeps its documents in memory only");
+				self.document_store = DocumentStoreHandle::default();
+				self.memory_only = true;
+				self.persistent_state.set_read_only();
+			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::GarbageCollectResources => {
 				// The resources of documents that are not loaded yet are unknown, so GC waits for every load and for a successful store listing.
-				if !self.persistent_state.loaded() || self.pending_opens > 0 || !self.loading_documents.is_empty() || self.store_unavailable {
+				if !self.persistent_state.loaded() || self.pending_opens > 0 || !self.loading_documents.is_empty() || self.store_unavailable || self.memory_only {
 					return;
 				}
 

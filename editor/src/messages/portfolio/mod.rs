@@ -4,6 +4,8 @@ mod portfolio_message_handler;
 pub mod document;
 pub mod document_migration;
 pub mod document_storage_io;
+#[cfg(target_family = "wasm")]
+mod document_store_owner;
 pub mod failed_documents;
 pub mod fonts;
 pub mod history;
