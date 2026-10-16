@@ -20,9 +20,7 @@ use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
-
-mod runtime_io;
-pub use runtime_io::NodeRuntimeIO;
+use std::sync::mpsc::{Receiver, Sender};
 
 mod runtime;
 pub use runtime::*;
@@ -66,9 +64,10 @@ pub enum NodeGraphUpdate {
 	EyedropperPreview(Raster<CPU>),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NodeGraphExecutor {
-	runtime_io: NodeRuntimeIO,
+	sender: Sender<GraphRuntimeRequest>,
+	receiver: Receiver<NodeGraphUpdate>,
 	current_execution_id: u64,
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
@@ -110,23 +109,22 @@ struct GradientMigration {
 }
 
 impl NodeGraphExecutor {
-	/// A local runtime is useful on threads since having global state causes flakes
-	#[cfg(test)]
-	pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
+	pub(crate) fn new() -> (Self, NodeRuntime) {
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
 		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
 
 		let node_executor = Self {
 			futures: Default::default(),
-			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
+			sender: request_sender,
+			receiver: response_receiver,
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
 		};
-		(node_runtime, node_executor)
+		(node_executor, node_runtime)
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack.
@@ -134,13 +132,13 @@ impl NodeGraphExecutor {
 		let execution_id = self.current_execution_id;
 		self.current_execution_id += 1;
 		let request = ExecutionRequest { execution_id, render_config };
-		self.runtime_io.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
+		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
 	}
 
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
-		self.runtime_io
+		self.sender
 			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
 			.expect("Failed to send editor preferences");
 	}
@@ -155,7 +153,7 @@ impl NodeGraphExecutor {
 
 		let resources = document.resources.registry.clone();
 
-		self.runtime_io
+		self.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
@@ -176,7 +174,7 @@ impl NodeGraphExecutor {
 
 			let resources = document.resources.registry.clone();
 
-			self.runtime_io
+			self.sender
 				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
@@ -340,7 +338,7 @@ impl NodeGraphExecutor {
 		export_config.size = resolution;
 
 		// Execute the node graph
-		self.runtime_io
+		self.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
@@ -367,7 +365,7 @@ impl NodeGraphExecutor {
 			self.cancel_gradient_migration();
 		}
 
-		let results = self.runtime_io.receive().collect::<Vec<_>>();
+		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
@@ -579,7 +577,7 @@ impl NodeGraphExecutor {
 
 		let resources = document.resources.registry.clone();
 		if self
-			.runtime_io
+			.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,

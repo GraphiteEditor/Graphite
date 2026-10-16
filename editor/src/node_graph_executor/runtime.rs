@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::task::{Spawn, Task, TaskExecutorHandle};
+use crate::task::{Spawn, Spawner, Task};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -23,9 +23,8 @@ use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
-use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
@@ -95,9 +94,6 @@ pub struct ExportConfig {
 	pub artboard_name: Option<String>,
 	pub artboard_count: usize,
 }
-
-// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
-pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -386,7 +382,7 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
+	fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
 
@@ -566,39 +562,6 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 	[center - half, center + half]
 }
 
-pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-	let runtime = NODE_RUNTIME.lock();
-	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path);
-	}
-	Err(IntrospectError::RuntimeNotReady)
-}
-
-pub async fn run_node_graph() -> (bool, Option<Texture>) {
-	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
-	if let Some(ref mut runtime) = runtime.as_mut() {
-		return (true, runtime.run().await);
-	}
-	(false, None)
-}
-
-pub fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
-	let mut node_runtime = NODE_RUNTIME.lock();
-	node_runtime.replace(runtime)
-}
-pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
-	let mut node_runtime = NODE_RUNTIME.lock();
-	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.replace_application_io(application_io);
-	}
-}
-pub(crate) fn replace_task_executor(handle: TaskExecutorHandle, wake: Wake) {
-	let mut node_runtime = NODE_RUNTIME.lock();
-	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.replace_task_executor(handle, wake);
-	}
-}
-
 impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
 		self.editor_api = PlatformEditorApi {
@@ -608,9 +571,9 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, handle: TaskExecutorHandle, wake: Wake) {
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
 		let spawn = NodeTaskExecutor {
-			handle,
+			spawner,
 			sender: self.sender.clone(),
 			wake,
 		};
@@ -623,7 +586,7 @@ impl NodeRuntime {
 }
 
 struct NodeTaskExecutor {
-	handle: TaskExecutorHandle,
+	spawner: Spawner,
 	sender: Sender<NodeGraphUpdate>,
 	wake: Wake,
 }
@@ -632,7 +595,7 @@ impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
 		let sender = self.sender.clone();
 		let wake = self.wake.clone();
-		self.handle.spawn(Box::pin(async move {
+		self.spawner.spawn(Box::pin(async move {
 			task.await;
 			let _ = sender.send(NodeGraphUpdate::TaskCompleted);
 			wake();

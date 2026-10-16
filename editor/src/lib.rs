@@ -11,6 +11,7 @@ mod macros;
 extern crate log;
 
 pub mod application;
+pub mod builder;
 pub mod consts;
 pub mod dispatcher;
 pub mod messages;

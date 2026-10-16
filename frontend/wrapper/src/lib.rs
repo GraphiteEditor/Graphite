@@ -27,6 +27,8 @@ pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static FRONTEND_READY: AtomicBool = AtomicBool::new(false);
 pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
+#[cfg(not(feature = "native"))]
+pub static NODE_RUNTIME: spin::Mutex<Option<editor::node_graph_executor::NodeRuntime>> = spin::Mutex::new(None);
 
 thread_local! {
 	#[cfg(not(feature = "native"))]
@@ -60,8 +62,9 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 			log::error!("Node graph evaluation panicked {info}");
 
 			// When the graph panics, the node runtime lock may not be released properly
-			if editor::node_graph_executor::NODE_RUNTIME.try_lock().is_none() {
-				unsafe { editor::node_graph_executor::NODE_RUNTIME.force_unlock() };
+			#[cfg(not(feature = "native"))]
+			if NODE_RUNTIME.try_lock().is_none() {
+				unsafe { NODE_RUNTIME.force_unlock() };
 			}
 
 			if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {

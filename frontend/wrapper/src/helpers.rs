@@ -11,6 +11,8 @@ use editor::application::Editor;
 use editor::messages::input_mapper::utility_types::keyboard::Key;
 #[cfg(not(feature = "native"))]
 use editor::messages::prelude::*;
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use editor::task::{Spawn, Task};
 use js_sys::{Object, Reflect};
 #[cfg(not(feature = "native"))]
 use std::sync::atomic::Ordering;
@@ -81,8 +83,10 @@ pub(crate) async fn poll_node_graph_evaluation() {
 		return;
 	}
 
-	if !editor::node_graph_executor::run_node_graph().await.0 {
-		return;
+	{
+		let Some(mut runtime) = crate::NODE_RUNTIME.try_lock() else { return };
+		let Some(runtime) = runtime.as_mut() else { return };
+		runtime.run().await;
 	}
 
 	editor_and_wrapper(|editor, wrapper| {
@@ -112,15 +116,27 @@ pub(crate) async fn poll_node_graph_evaluation() {
 	});
 }
 
-/// Web wake callback: queues a microtask that dispatches [`FutureMessage::Wake`].
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
-pub(crate) fn async_wake_callback() -> Wake {
-	use std::sync::Arc;
-	Arc::new(|| {
-		wasm_bindgen_futures::spawn_local(async {
-			wrapper(|wrapper| wrapper.dispatch(FutureMessage::Wake));
-		});
-	})
+pub(crate) struct WasmSpawner;
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+impl Spawn for WasmSpawner {
+	fn spawn(&self, task: Task) {
+		wasm_bindgen_futures::spawn_local(task);
+	}
+}
+
+/// Web editor wake: queues a microtask that dispatches [`FutureMessage::Wake`].
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+pub(crate) fn wake_editor() {
+	wasm_bindgen_futures::spawn_local(async {
+		wrapper(|wrapper| wrapper.dispatch(FutureMessage::Wake));
+	});
+}
+
+/// Web runtime wake: queues a run of the node runtime. Used to wake the runtime on async task completion.
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+pub(crate) fn wake_runtime() {
+	wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 }
 
 /// Blits each rasterized image to a canvas registered on `window.imageCanvases`

@@ -1,8 +1,9 @@
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
+use graphite_editor::builder::{Builder, EditorBuilder, RuntimeBuilder};
 use graphite_editor::messages::frontend::FrontendMessage;
-use graphite_editor::messages::prelude::Wake;
+use graphite_editor::node_graph_executor::NodeRuntime;
 
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
@@ -11,6 +12,7 @@ use std::sync::Arc;
 pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use graphite_editor::document_store::{DocumentStore, FolderStore};
+pub use graphite_editor::task::{Spawn, Task};
 pub use wgpu_executor::Texture;
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
@@ -33,7 +35,15 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64, resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn DocumentStore>, wgpu_context: WgpuContext, schedule_wake: Wake) -> Self {
+	pub fn new(
+		random_seed: u64,
+		resource_storage: Arc<dyn ResourceStorage>,
+		document_store: Arc<dyn DocumentStore>,
+		wgpu_context: WgpuContext,
+		spawner: impl Spawn + Send + Sync + 'static,
+		editor_wake: impl Fn() + Send + Sync + 'static,
+		runtime_wake: impl Fn() + Send + Sync + 'static,
+	) -> (Self, NodeRuntime) {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -43,9 +53,20 @@ impl DesktopWrapper {
 		let env = Environment { platform: Platform::Desktop, host };
 		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
 
-		Self {
-			editor: Editor::new(env, uuid_random_seed, resource_storage, document_store, application_io, schedule_wake),
-		}
+		let (editor, runtime) = Builder::new()
+			.with_editor(
+				EditorBuilder::new()
+					.with_wake(editor_wake)
+					.with_environment(env)
+					.with_resource_storage(resource_storage)
+					.with_document_store(document_store),
+			)
+			.with_runtime(RuntimeBuilder::new().with_wake(runtime_wake).with_application_io(application_io))
+			.with_spawner(spawner)
+			.with_random_seed(random_seed)
+			.build();
+
+		(Self { editor }, runtime)
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
@@ -53,19 +74,6 @@ impl DesktopWrapper {
 		executor.queue_desktop_wrapper_message(message);
 		executor.execute()
 	}
-
-	pub async fn execute_node_graph() -> NodeGraphExecutionResult {
-		let result = graphite_editor::node_graph_executor::run_node_graph().await;
-		match result {
-			(true, texture) => NodeGraphExecutionResult::HasRun(texture),
-			(false, _) => NodeGraphExecutionResult::NotRun,
-		}
-	}
-}
-
-pub enum NodeGraphExecutionResult {
-	HasRun(Option<Texture>),
-	NotRun,
 }
 
 pub fn deserialize_editor_message(data: &[u8]) -> Option<DesktopWrapperMessage> {

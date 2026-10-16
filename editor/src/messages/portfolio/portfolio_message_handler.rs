@@ -45,7 +45,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
-#[derive(Debug, Default, ExtractField)]
+#[derive(Debug, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	loading_documents: HashMap<DocumentId, DocumentInfo>,
@@ -1033,12 +1033,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 }
 
 impl PortfolioMessageHandler {
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self { executor, ..Default::default() }
-	}
-
-	pub fn set_document_store(&mut self, store: Arc<dyn document_container::store::DocumentStore>) {
-		self.document_store = DocumentStoreHandle::new(store);
+	pub fn new(executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
+		Self {
+			documents: Default::default(),
+			loading_documents: Default::default(),
+			document_ids: Default::default(),
+			active_document_id: Default::default(),
+			failed_documents: Default::default(),
+			persistent_state: Default::default(),
+			fonts: Default::default(),
+			ingest: Default::default(),
+			executor,
+			selection_mode: Default::default(),
+			reset_node_definitions_on_open: Default::default(),
+			workspace: Default::default(),
+			document_store: DocumentStoreHandle::new(document_store),
+			pending_opens: Default::default(),
+			restore_select: Default::default(),
+			store_unavailable: Default::default(),
+		}
 	}
 
 	#[cfg(test)]

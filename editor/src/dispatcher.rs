@@ -7,6 +7,7 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
+use crate::node_graph_executor::NodeGraphExecutor;
 use graph_craft::application_io::resource::ResourceStorage;
 use std::sync::Arc;
 
@@ -43,11 +44,11 @@ pub struct DispatcherMessageHandlers {
 }
 
 impl DispatcherMessageHandlers {
-	fn new(environment: Environment) -> Self {
+	fn new(environment: Environment, executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>, future_message_handler: FutureMessageHandler) -> Self {
 		Self {
 			animation_message_handler: Default::default(),
 			app_window_message_handler: Default::default(),
-			future_message_handler: Default::default(),
+			future_message_handler,
 			broadcast_message_handler: Default::default(),
 			clipboard_message_handler: Default::default(),
 			color_picker_message_handler: Default::default(),
@@ -59,7 +60,7 @@ impl DispatcherMessageHandlers {
 			layout_message_handler: Default::default(),
 			menu_bar_message_handler: Default::default(),
 			network_message_handler: Default::default(),
-			portfolio_message_handler: Default::default(),
+			portfolio_message_handler: PortfolioMessageHandler::new(executor, document_store),
 			preferences_message_handler: Default::default(),
 			resource_storage_message_handler: Default::default(),
 			tool_message_handler: Default::default(),
@@ -101,27 +102,21 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(environment: Environment, resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
+	pub fn new(
+		environment: Environment,
+		resource_storage: Arc<dyn ResourceStorage>,
+		document_store: Arc<dyn document_container::store::DocumentStore>,
+		executor: NodeGraphExecutor,
+		future_message_handler: FutureMessageHandler,
+	) -> Self {
 		let mut s = Self {
 			environment,
 			message_queues: Vec::new(),
 			responses: Vec::new(),
 			frontend_update_messages: Vec::new(),
-			message_handlers: DispatcherMessageHandlers::new(environment),
+			message_handlers: DispatcherMessageHandlers::new(environment, executor, document_store, future_message_handler),
 		};
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
-		s.message_handlers.portfolio_message_handler.set_document_store(document_store);
-		s
-	}
-
-	#[cfg(test)]
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		let mut s = Self::new(
-			crate::application::DEFAULT_ENVIRONMENT,
-			Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()),
-			Arc::new(document_container::store::MemoryStore::default()),
-		);
-		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
 		s
 	}
 

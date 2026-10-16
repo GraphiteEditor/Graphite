@@ -1,4 +1,5 @@
-use crate::application::Editor;
+use crate::application::{DEFAULT_ENVIRONMENT, Editor};
+use crate::builder::{Builder, EditorBuilder, RuntimeBuilder};
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -8,10 +9,15 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
+use crate::task::{Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
+use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
+use graph_craft::application_io::PlatformApplicationIo;
+use graph_craft::application_io::resource::HashMapResourceStorage;
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
+use std::sync::Arc;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -23,7 +29,18 @@ impl EditorTestUtils {
 	pub fn create() -> Self {
 		let _ = env_logger::builder().is_test(true).try_init();
 
-		let (mut editor, runtime) = Editor::new_local_executor();
+		let (mut editor, runtime) = Builder::new()
+			.with_editor(
+				EditorBuilder::new()
+					.with_wake(|| {})
+					.with_environment(DEFAULT_ENVIRONMENT)
+					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
+					.with_document_store(Arc::new(MemoryStore::default())),
+			)
+			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(PlatformApplicationIo::default()))
+			.with_spawner(BlockingSpawner)
+			.with_random_seed(0)
+			.build();
 
 		editor.handle_message(PortfolioMessage::Init);
 
@@ -344,6 +361,13 @@ impl FrontendMessageTestUtils for FrontendMessage {
 		if !errors.is_empty() {
 			panic!("errors: {errors:?}");
 		}
+	}
+}
+
+struct BlockingSpawner;
+impl Spawn for BlockingSpawner {
+	fn spawn(&self, task: Task) {
+		futures::executor::block_on(task);
 	}
 }
 

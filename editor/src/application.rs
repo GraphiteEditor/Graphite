@@ -1,54 +1,12 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
-use crate::task::TaskExecutor;
-use graph_craft::application_io::PlatformApplicationIo;
-use graph_craft::application_io::resource::ResourceStorage;
 pub use graphene_std::uuid::*;
-use std::sync::Arc;
 
 pub struct Editor {
 	pub dispatcher: Dispatcher,
 }
 
 impl Editor {
-	pub fn new(
-		environment: Environment,
-		uuid_random_seed: u64,
-		resource_storage: Arc<dyn ResourceStorage>,
-		document_store: Arc<dyn document_container::store::DocumentStore>,
-		mut application_io: PlatformApplicationIo,
-		wake: Wake,
-	) -> Self {
-		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
-
-		let task_executor = TaskExecutor::new();
-		let mut dispatcher = Dispatcher::new(environment, resource_storage, document_store);
-		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), wake.clone());
-		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
-		crate::node_graph_executor::replace_application_io(application_io);
-		crate::node_graph_executor::replace_task_executor(task_executor.handle(), wake);
-
-		Self { dispatcher }
-	}
-
-	#[cfg(test)]
-	pub(crate) fn new_local_executor() -> (Self, crate::node_graph_executor::NodeRuntime) {
-		graphene_std::uuid::set_uuid_seed(0);
-
-		let (mut runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
-		let task_executor = TaskExecutor::blocking();
-		let mut dispatcher = Dispatcher::with_executor(executor);
-		dispatcher.message_handlers.future_message_handler = FutureMessageHandler::new(task_executor.handle(), Arc::new(|| {}));
-		let editor = Self { dispatcher };
-
-		let mut application_io = PlatformApplicationIo::default();
-		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_storage_message_handler.resources());
-		runtime.replace_application_io(application_io);
-		runtime.replace_task_executor(task_executor.handle(), Arc::new(|| {}));
-
-		(editor, runtime)
-	}
-
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
 		self.dispatcher.handle_message(message, true);
 

@@ -52,7 +52,6 @@ once_cell = { workspace = true }
 web-sys = { workspace = true }
 vello = { workspace = true }
 base64 = { workspace = true }
-spin = { workspace = true }
 image = { workspace = true }
 color = { workspace = true }
 zip = { workspace = true }
@@ -67,9 +66,6 @@ wasm-bindgen = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true }
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies

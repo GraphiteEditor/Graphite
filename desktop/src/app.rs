@@ -22,10 +22,11 @@ use crate::input::InputState;
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
+use crate::spawner::TokioSpawner;
 use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
-use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -77,35 +78,46 @@ impl App {
 
 		let exiting = Arc::new(AtomicBool::new(false));
 
-		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+
+		let async_runtime = tokio::runtime::Builder::new_multi_thread()
+			.thread_name("graphite-async")
+			.enable_all()
+			.build()
+			.expect("failed to construct tokio runtime");
+
+		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
+
+		let wake_scheduler = app_event_scheduler.clone();
+		let editor_wake = move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
+		};
+		let runtime_wake_sender = start_render_sender.clone();
+		let runtime_wake = move || {
+			let _ = runtime_wake_sender.try_send(());
+		};
+		let (desktop_wrapper, mut node_runtime) = DesktopWrapper::new(
+			rand::rng().random(),
+			Arc::new(resource_storage),
+			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
+			wgpu_context.clone(),
+			TokioSpawner::new(async_runtime.handle().clone()),
+			editor_wake,
+			runtime_wake,
+		);
+
+		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
-			let runtime = tokio::runtime::Runtime::new().unwrap();
 			loop {
-				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
-				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
+				let texture = async_runtime.block_on(node_runtime.run());
+				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
 				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
 				if exiting_clone.load(Ordering::Relaxed) {
 					break;
 				}
 			}
 		});
-
-		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
-
-		// Wake the winit event loop when an editor future completes.
-		let wake_scheduler = app_event_scheduler.clone();
-		let wake = Arc::new(move || {
-			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
-		});
-		let desktop_wrapper = DesktopWrapper::new(
-			rand::rng().random(),
-			Arc::new(resource_storage),
-			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
-			wgpu_context.clone(),
-			wake,
-		);
 
 		Self {
 			render_state: None,
@@ -436,19 +448,16 @@ impl App {
 				}
 			}
 			AppEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
-			AppEvent::NodeGraphExecutionResult(result) => match result {
-				NodeGraphExecutionResult::HasRun(texture) => {
-					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
-					if let Some(texture) = texture
-						&& let Some(render_state) = self.render_state.as_mut()
-						&& let Some(window) = self.window.as_ref()
-					{
-						render_state.bind_viewport_texture(texture);
-						window.request_redraw();
-					}
+			AppEvent::ViewportTexture(texture) => {
+				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
+				if let Some(texture) = texture
+					&& let Some(render_state) = self.render_state.as_mut()
+					&& let Some(window) = self.window.as_ref()
+				{
+					render_state.bind_viewport_texture(texture);
+					window.request_redraw();
 				}
-				NodeGraphExecutionResult::NotRun => {}
-			},
+			}
 			AppEvent::UiUpdate(texture) => {
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);

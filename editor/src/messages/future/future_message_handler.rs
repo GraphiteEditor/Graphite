@@ -6,7 +6,7 @@ use dyn_any::WasmNotSend;
 use futures::channel::mpsc::{UnboundedReceiver, UnboundedSender, unbounded};
 
 use crate::messages::prelude::*;
-use crate::task::{Spawn, TaskExecutor, TaskExecutorHandle};
+use crate::task::Spawner;
 
 #[cfg(not(target_family = "wasm"))]
 type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + Send + 'static>>;
@@ -15,10 +15,6 @@ type InnerMessageFuture = Pin<Box<dyn Future<Output = Message> + 'static>>;
 
 /// Invoked after a result is sent, to wake the platform event loop.
 pub type Wake = Arc<dyn Fn() + Send + Sync>;
-
-fn noop_wake() -> Wake {
-	Arc::new(|| {})
-}
 
 /// One-shot async work whose result re-enters the dispatcher as a [`Message`].
 /// Resolves to [`Message::NoOp`] if polled after the inner future has already been taken.
@@ -68,17 +64,17 @@ pub struct FutureMessageContext {}
 
 #[derive(ExtractField)]
 pub struct FutureMessageHandler {
-	handle: TaskExecutorHandle,
+	spawner: Spawner,
 	wake: Wake,
 	results_sender: UnboundedSender<Message>,
 	results_receiver: UnboundedReceiver<Message>,
 }
 
 impl FutureMessageHandler {
-	pub fn new(handle: TaskExecutorHandle, wake: Wake) -> Self {
+	pub fn new(spawner: Spawner, wake: Wake) -> Self {
 		let (results_sender, results_receiver) = unbounded();
 		Self {
-			handle,
+			spawner,
 			wake,
 			results_sender,
 			results_receiver,
@@ -90,12 +86,6 @@ impl FutureMessageHandler {
 		while let Ok(Some(message)) = self.results_receiver.try_next() {
 			out.push_back(message);
 		}
-	}
-}
-
-impl Default for FutureMessageHandler {
-	fn default() -> Self {
-		Self::new(TaskExecutor::blocking().handle(), noop_wake())
 	}
 }
 
@@ -112,7 +102,7 @@ impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandle
 			FutureMessage::Await { future } => {
 				let results = self.results_sender.clone();
 				let wake = self.wake.clone();
-				self.handle.spawn(Box::pin(async move {
+				self.spawner.spawn(Box::pin(async move {
 					let message = future.await;
 					let _ = results.unbounded_send(message);
 					wake();
