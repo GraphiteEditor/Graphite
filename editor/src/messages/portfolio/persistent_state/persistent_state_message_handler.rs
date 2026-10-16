@@ -5,6 +5,8 @@ use crate::messages::prelude::*;
 #[derive(Default, Debug, Clone, ExtractField)]
 pub struct PersistentStateMessageHandler {
 	loaded: bool,
+	/// Another tab owns the stored state, so this one writes none.
+	read_only: bool,
 }
 
 #[derive(ExtractField)]
@@ -22,6 +24,9 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 				responses.add(FrontendMessage::TriggerPersistenceReadState);
 			}
 			PersistentStateMessage::WriteState => {
+				if self.read_only {
+					return;
+				}
 				if !self.loaded && (state.documents.is_empty() && (state.workspace_layout == Some(WorkspacePanelLayout::default()) || state.workspace_layout.is_none())) {
 					return;
 				}
@@ -41,5 +46,9 @@ impl MessageHandler<PersistentStateMessage, PersistentStateMessageContext> for P
 impl PersistentStateMessageHandler {
 	pub fn loaded(&self) -> bool {
 		self.loaded
+	}
+
+	pub fn set_read_only(&mut self) {
+		self.read_only = true;
 	}
 }

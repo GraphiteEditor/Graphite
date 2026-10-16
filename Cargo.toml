@@ -177,6 +177,9 @@ web-sys = { version = "=0.3.98", features = [
 	"Gpu",
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
+	"Lock",
+	"LockManager",
+	"LockOptions",
 ] }
 winit = "0.31.0-beta.2"
 keyboard-types = "0.8"
