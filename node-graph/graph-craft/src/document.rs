@@ -1339,6 +1339,7 @@ mod test {
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 	use std::sync::atomic::AtomicU64;
 
+	/// Generates IDs from a counter all tests share, so the IDs a test gets depend on what else runs in parallel.
 	fn gen_node_id() -> NodeId {
 		static NODE_ID: AtomicU64 = AtomicU64::new(4);
 		NodeId(NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
@@ -1450,7 +1451,12 @@ mod test {
 			..Default::default()
 		};
 		network.populate_dependants();
-		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
+
+		// A counter of its own, since the expected network names the nodes by the IDs it generates
+		let next_id = AtomicU64::new(4);
+		let gen_id = || NodeId(next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_id);
+
 		let expected = flatten_add_expected();
 		println!("{expected:#?}");
 		println!("{network:#?}");
