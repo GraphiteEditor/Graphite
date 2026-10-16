@@ -596,12 +596,18 @@ impl PenToolData {
 			}
 			TargetHandle::PriorInHandle(segment) => {
 				let relative_position = delta - anchor_pos;
-				let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::end(segment),
+					relative_position,
+				};
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 			TargetHandle::PriorOutHandle(segment) => {
 				let relative_position = delta - anchor_pos;
-				let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::primary(segment),
+					relative_position,
+				};
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 			TargetHandle::None => {}

@@ -52,6 +52,8 @@ impl PointModification {
 		working.point_positions.retain(|_| keep.next().unwrap_or_default());
 		working.point_ids.retain(|id| !self.remove.contains(id));
 
+		// Gathering the moves first keeps the segment pass below off the common path where nothing moves
+		let mut moved: HashMap<usize, DVec2> = HashMap::new();
 		for (index, id) in working.point_ids.iter().enumerate() {
 			let Some(&delta) = self.delta.get(id) else { continue };
 			if !delta.is_finite() {
@@ -60,17 +62,22 @@ impl PointModification {
 			}
 
 			working.point_positions[index] += delta;
+			moved.insert(index, delta);
+		}
 
-			for segment_index in 0..working.segment_ids.len() {
-				if working.segment_start[segment_index] == index {
-					working.segment_handles[segment_index].move_start(delta);
+		// Handles travel with their anchor, carried in one pass over the segment ends
+		if !moved.is_empty() {
+			for index in 0..working.segment_ids.len() {
+				if let Some(&delta) = moved.get(&working.segment_start[index]) {
+					working.segment_handles[index].move_start(delta);
 				}
-				if working.segment_end[segment_index] == index {
-					working.segment_handles[segment_index].move_end(delta);
+				if let Some(&delta) = moved.get(&working.segment_end[index]) {
+					working.segment_handles[index].move_end(delta);
 				}
 			}
 		}
 
+		let mut named: HashSet<PointId> = if self.add.is_empty() { HashSet::new() } else { working.point_ids.iter().copied().collect() };
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
 			if !position.is_finite() {
@@ -78,8 +85,7 @@ impl PointModification {
 				continue;
 			}
 
-			#[cfg(debug_assertions)]
-			if working.point_ids.contains(&add_id) {
+			if !named.insert(add_id) {
 				warn!("Tried to push a duplicate point to the working form");
 				continue;
 			}
@@ -144,16 +150,26 @@ impl SegmentModification {
 		let mut keep_iter = keep.iter();
 		working.segment_ids.retain(|_| *keep_iter.next().unwrap_or(&false));
 
+		// The points no longer change here, so one index serves every endpoint lookup below.
+		// Nothing looks an endpoint up in the common pure-handle case, so it skips the build.
+		let mut point_index: HashMap<PointId, usize> = HashMap::new();
+		if !self.start_point.is_empty() || !self.end_point.is_empty() || !self.add.is_empty() {
+			point_index.reserve(working.point_ids.len());
+			for (index, &id) in working.point_ids.iter().enumerate() {
+				point_index.entry(id).or_insert(index);
+			}
+		}
+
 		for (index, id) in working.segment_ids.iter().enumerate() {
-			if let Some(&new) = self.start_point.get(id) {
-				match working.resolve_id(new) {
-					Some(point) => working.segment_start[index] = point,
+			if let Some(new) = self.start_point.get(id) {
+				match point_index.get(new) {
+					Some(&point) => working.segment_start[index] = point,
 					None => warn!("Invalid start ID when applying a segment modification"),
 				}
 			}
-			if let Some(&new) = self.end_point.get(id) {
-				match working.resolve_id(new) {
-					Some(point) => working.segment_end[index] = point,
+			if let Some(new) = self.end_point.get(id) {
+				match point_index.get(new) {
+					Some(&point) => working.segment_end[index] = point,
 					None => warn!("Invalid end ID when applying a segment modification"),
 				}
 			}
@@ -203,18 +219,24 @@ impl SegmentModification {
 			};
 		}
 
+		let mut named: HashSet<SegmentId> = if self.add.is_empty() { HashSet::new() } else { working.segment_ids.iter().copied().collect() };
 		for &add_id in &self.add {
 			let Some(&start) = self.start_point.get(&add_id) else { continue };
 			let Some(&end) = self.end_point.get(&add_id) else { continue };
 			let Some(&handle_start) = self.handle_primary.get(&add_id) else { continue };
 			let Some(&handle_end) = self.handle_end.get(&add_id) else { continue };
 
-			let Some(start_index) = working.resolve_id(start) else {
-				warn!("invalid start id: {start:#?}");
+			if !named.insert(add_id) {
+				warn!("Tried to push a duplicate segment to the working form");
+				continue;
+			}
+
+			let Some(&start_index) = point_index.get(&start) else {
+				warn!("Invalid start ID: {start:#?}");
 				continue;
 			};
-			let Some(end_index) = working.resolve_id(end) else {
-				warn!("invalid end id: {end:#?}");
+			let Some(&end_index) = point_index.get(&end) else {
+				warn!("Invalid end ID: {end:#?}");
 				continue;
 			};
 
@@ -230,7 +252,7 @@ impl SegmentModification {
 			};
 
 			if !handles.is_finite() {
-				warn!("invalid handles");
+				warn!("Invalid handles");
 				continue;
 			}
 
@@ -264,6 +286,22 @@ impl SegmentModification {
 				.enumerate()
 				.map(|(index, &id)| (id, working.segment_handles[index].end().map(|handle| handle - working.point_positions[working.segment_end[index]])))
 				.collect(),
+		}
+	}
+
+	/// The handle map for the side of its segment that the given handle sits on.
+	fn handle_side_of(&mut self, handle: HandleId) -> &mut HashMap<SegmentId, Option<DVec2>> {
+		match handle.ty {
+			HandleType::Primary => &mut self.handle_primary,
+			HandleType::End => &mut self.handle_end,
+		}
+	}
+
+	/// The endpoint map for the side of its segment that the given handle sits on.
+	fn endpoint_side_of(&mut self, handle: HandleId) -> &mut HashMap<SegmentId, PointId> {
+		match handle.ty {
+			HandleType::Primary => &mut self.start_point,
+			HandleType::End => &mut self.end_point,
 		}
 	}
 
@@ -302,22 +340,45 @@ pub struct VectorModification {
 #[derive(PartialEq, Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum VectorModificationType {
-	InsertSegment { id: SegmentId, points: [PointId; 2], handles: [Option<DVec2>; 2] },
-	InsertPoint { id: PointId, position: DVec2 },
+	InsertSegment {
+		id: SegmentId,
+		points: [PointId; 2],
+		handles: [Option<DVec2>; 2],
+	},
+	InsertPoint {
+		id: PointId,
+		position: DVec2,
+	},
 
-	RemoveSegment { id: SegmentId },
-	RemovePoint { id: PointId },
+	RemoveSegment {
+		id: SegmentId,
+	},
+	RemovePoint {
+		id: PointId,
+	},
 
-	SetG1Continuous { handles: [HandleId; 2], enabled: bool },
-	SetHandles { segment: SegmentId, handles: [Option<DVec2>; 2] },
-	SetPrimaryHandle { segment: SegmentId, relative_position: DVec2 },
-	SetEndHandle { segment: SegmentId, relative_position: DVec2 },
-	SetStartPoint { segment: SegmentId, id: PointId },
-	SetEndPoint { segment: SegmentId, id: PointId },
+	SetG1Continuous {
+		handles: [HandleId; 2],
+		enabled: bool,
+	},
+	SetHandles {
+		segment: SegmentId,
+		handles: [Option<DVec2>; 2],
+	},
+	SetHandlePosition {
+		handle: HandleId,
+		relative_position: DVec2,
+	},
+	/// Reconnects one end of the handle's segment to another point: the start for a primary handle, the end for an end handle.
+	SetEndpoint {
+		handle: HandleId,
+		id: PointId,
+	},
 
-	ApplyPointDelta { point: PointId, delta: DVec2 },
-	ApplyPrimaryDelta { segment: SegmentId, delta: DVec2 },
-	ApplyEndDelta { segment: SegmentId, delta: DVec2 },
+	ApplyPointDelta {
+		point: PointId,
+		delta: DVec2,
+	},
 }
 
 impl VectorModificationType {
@@ -325,13 +386,8 @@ impl VectorModificationType {
 	fn is_finite(&self) -> bool {
 		match self {
 			Self::InsertSegment { handles, .. } | Self::SetHandles { handles, .. } => handles.iter().flatten().all(|handle| handle.is_finite()),
-			Self::InsertPoint { position: value, .. }
-			| Self::SetPrimaryHandle { relative_position: value, .. }
-			| Self::SetEndHandle { relative_position: value, .. }
-			| Self::ApplyPointDelta { delta: value, .. }
-			| Self::ApplyPrimaryDelta { delta: value, .. }
-			| Self::ApplyEndDelta { delta: value, .. } => value.is_finite(),
-			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetStartPoint { .. } | Self::SetEndPoint { .. } => true,
+			Self::InsertPoint { position: value, .. } | Self::SetHandlePosition { relative_position: value, .. } | Self::ApplyPointDelta { delta: value, .. } => value.is_finite(),
+			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetEndpoint { .. } => true,
 		}
 	}
 }
@@ -444,14 +500,18 @@ impl VectorModification {
 		self.points.apply(&mut working);
 		self.segments.apply(&mut working);
 
-		let valid = |val: &[HandleId; 2]| working.segment_ids.contains(&val[0].segment) && working.segment_ids.contains(&val[1].segment);
+		let surviving_segments: HashSet<SegmentId> = working.segment_ids.iter().copied().collect();
+		let valid = |val: &[HandleId; 2]| surviving_segments.contains(&val[0].segment) && surviving_segments.contains(&val[1].segment);
 		working
 			.colinear
 			.retain(|val| !self.remove_g1_continuous.contains(val) && !self.remove_g1_continuous.contains(&[val[1], val[0]]) && valid(val));
 
+		// Both orientations go in, since a pair and its reverse name the same tangent
+		let mut present: HashSet<[HandleId; 2]> = working.colinear.iter().flat_map(|&[first, second]| [[first, second], [second, first]]).collect();
 		for handles in &self.add_g1_continuous {
-			if !working.colinear.iter().any(|test| test == handles || test == &[handles[1], handles[0]]) && valid(handles) {
+			if !present.contains(handles) && valid(handles) {
 				working.colinear.push(*handles);
+				present.extend([*handles, [handles[1], handles[0]]]);
 			}
 		}
 
@@ -492,29 +552,15 @@ impl VectorModification {
 				self.segments.handle_primary.insert(*segment, handles[0]);
 				self.segments.handle_end.insert(*segment, handles[1]);
 			}
-			VectorModificationType::SetPrimaryHandle { segment, relative_position } => {
-				self.segments.handle_primary.insert(*segment, Some(*relative_position));
+			VectorModificationType::SetHandlePosition { handle, relative_position } => {
+				self.segments.handle_side_of(*handle).insert(handle.segment, Some(*relative_position));
 			}
-			VectorModificationType::SetEndHandle { segment, relative_position } => {
-				self.segments.handle_end.insert(*segment, Some(*relative_position));
-			}
-			VectorModificationType::SetStartPoint { segment, id } => {
-				self.segments.start_point.insert(*segment, *id);
-			}
-			VectorModificationType::SetEndPoint { segment, id } => {
-				self.segments.end_point.insert(*segment, *id);
+			VectorModificationType::SetEndpoint { handle, id } => {
+				self.segments.endpoint_side_of(*handle).insert(handle.segment, *id);
 			}
 
 			VectorModificationType::ApplyPointDelta { point, delta } => {
 				*self.points.delta.entry(*point).or_default() += *delta;
-			}
-			VectorModificationType::ApplyPrimaryDelta { segment, delta } => {
-				let position = self.segments.handle_primary.entry(*segment).or_default();
-				*position = Some(position.unwrap_or_default() + *delta);
-			}
-			VectorModificationType::ApplyEndDelta { segment, delta } => {
-				let position = self.segments.handle_end.entry(*segment).or_default();
-				*position = Some(position.unwrap_or_default() + *delta);
 			}
 		}
 	}
@@ -648,11 +694,7 @@ pub trait HandleExt {
 
 impl HandleExt for HandleId {
 	fn set_relative_position(self, relative_position: DVec2) -> VectorModificationType {
-		let Self { ty, segment } = self;
-		match ty {
-			HandleType::Primary => VectorModificationType::SetPrimaryHandle { segment, relative_position },
-			HandleType::End => VectorModificationType::SetEndHandle { segment, relative_position },
-		}
+		VectorModificationType::SetHandlePosition { handle: self, relative_position }
 	}
 }
 
@@ -670,6 +712,88 @@ mod tests {
 	fn anchor_position(vector: &Vector, paths: &List<Path>, anchor_index: usize) -> DVec2 {
 		let id = anchor_id(vector, paths, anchor_index);
 		vector.position(vector.index_of_point_id(id).unwrap() as usize).unwrap()
+	}
+
+	// Re-adding a segment or point under an ID the geometry already holds adds no second copy under that ID
+	#[test]
+	fn duplicate_adds_are_skipped() {
+		use kurbo::{Rect, Shape};
+
+		let (mut vector, mut paths) = Vector::from_bezpath(&Rect::new(0., 0., 10., 10.).to_path(0.));
+		let segment = vector.segment_iter(&paths).next().map(|(id, ..)| id).unwrap();
+		let [start, end] = [anchor_id(&vector, &paths, 0), anchor_id(&vector, &paths, 2)];
+
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::InsertSegment {
+			id: segment,
+			points: [start, end],
+			handles: [None, None],
+		});
+		modification.modify(&VectorModificationType::InsertPoint {
+			id: start,
+			position: DVec2::new(99., 99.),
+		});
+		modification.apply(&mut vector, &mut paths);
+
+		assert_eq!(vector.segment_iter(&paths).count(), 4);
+		assert_eq!(vector.anchor_points(&paths).count(), 4);
+		let ids: HashSet<_> = vector.segment_iter(&paths).map(|(id, ..)| id).collect();
+		assert_eq!(ids.len(), 4);
+	}
+
+	// An end handle addresses the end of its segment, both where its handle sits and which point that end connects to
+	#[test]
+	fn end_handles_address_the_end_of_their_segment() {
+		let mut open = BezPath::new();
+		open.move_to(Point::new(0., 0.));
+		open.curve_to(Point::new(1., 1.), Point::new(2., 1.), Point::new(3., 0.));
+
+		let (vector, paths) = Vector::from_bezpath(&open);
+		let segment = vector.segment_iter(&paths).next().map(|(id, ..)| id).unwrap();
+		let new_end = PointId::generate();
+
+		let mut modification = VectorModification::create_from_vector(&vector, &paths);
+		modification.modify(&VectorModificationType::InsertPoint {
+			id: new_end,
+			position: DVec2::new(10., 5.),
+		});
+		modification.modify(&VectorModificationType::SetEndpoint {
+			handle: HandleId::end(segment),
+			id: new_end,
+		});
+		modification.modify(&HandleId::end(segment).set_relative_position(DVec2::new(1., 2.)));
+
+		let (mut applied, mut applied_paths) = (Vector::default(), List::new());
+		modification.apply(&mut applied, &mut applied_paths);
+
+		let (_, curve, start, end) = applied.segment_iter(&applied_paths).find(|&(id, ..)| id == segment).unwrap();
+		assert_eq!(curve, PathSeg::Cubic(kurbo::CubicBez::new((0., 0.), (1., 1.), (11., 7.), (10., 5.))));
+		assert_eq!(start, anchor_id(&vector, &paths, 0));
+		assert_eq!(end, new_end);
+	}
+
+	// A pair and its reverse name the same tangent, so removing either order clears a pair the incoming geometry holds
+	#[test]
+	fn g1_pair_removal_ignores_the_order_of_its_handles() {
+		let mut open = BezPath::new();
+		open.move_to(Point::new(0., 0.));
+		open.curve_to(Point::new(1., 1.), Point::new(2., 1.), Point::new(3., 0.));
+		open.curve_to(Point::new(4., -1.), Point::new(5., -1.), Point::new(6., 0.));
+
+		let (mut smooth, mut smooth_paths) = Vector::from_bezpath(&open);
+		let middle = anchor_id(&smooth, &smooth_paths, 1);
+		smooth.set_smooth(&mut smooth_paths, middle, true);
+		let pairs = smooth.colinear_pairs(&smooth_paths);
+		let [pair] = pairs[..] else { panic!("the middle anchor should be smooth, not {pairs:?}") };
+
+		for removed in [pair, [pair[1], pair[0]]] {
+			let (mut vector, mut paths) = (smooth.clone(), smooth_paths.clone());
+			let mut modification = VectorModification::default();
+			modification.remove_g1_continuous.insert(removed);
+			modification.apply(&mut vector, &mut paths);
+
+			assert!(vector.colinear_pairs(&paths).is_empty(), "removing {removed:?} should clear the tangent");
+		}
 	}
 
 	#[test]
@@ -732,8 +856,8 @@ mod tests {
 	#[test]
 	fn non_finite_modifications_are_ignored() {
 		let mut modification = VectorModification::default();
-		modification.modify(&VectorModificationType::SetPrimaryHandle {
-			segment: SegmentId::generate(),
+		modification.modify(&VectorModificationType::SetHandlePosition {
+			handle: HandleId::primary(SegmentId::generate()),
 			relative_position: DVec2::NAN,
 		});
 		modification.modify(&VectorModificationType::ApplyPointDelta {

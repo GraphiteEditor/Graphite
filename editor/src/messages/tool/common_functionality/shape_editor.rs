@@ -863,20 +863,6 @@ impl ShapeState {
 		self.selected_shape_state.get(&layer).map(|state| &state.selected_segments)
 	}
 
-	pub fn move_primary(&self, segment: SegmentId, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: VectorModificationType::ApplyPrimaryDelta { segment, delta },
-		});
-	}
-
-	pub fn move_end(&self, segment: SegmentId, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: VectorModificationType::ApplyEndDelta { segment, delta },
-		});
-	}
-
 	pub fn move_anchor(&self, point: PointId, vector: &VectorGeometry, delta: DVec2, layer: LayerNodeIdentifier, selected: Option<&SelectedLayerState>, responses: &mut VecDeque<Message>) {
 		// Move anchor
 		responses.add(GraphOperationMessage::Vector {
@@ -894,7 +880,10 @@ impl ShapeState {
 				}
 
 				let relative_position = handle - point_to_dvec2(path_segment.start()) + delta;
-				let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::primary(segment),
+					relative_position,
+				};
 
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
@@ -919,24 +908,20 @@ impl ShapeState {
 		let transform = network_interface.document_metadata().transform_to_document_if_feeds(layer, network_interface).inverse();
 		let position = transform.transform_point2(new_position);
 		let current_position = vector.position_of(*point)?;
-		let delta = position - current_position;
 
 		match *point {
-			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector, delta, layer, None, responses),
-			ManipulatorPointId::PrimaryHandle(segment) => {
-				self.move_primary(segment, delta, layer, responses);
-				if let Some(handle) = point.as_handle()
-					&& let Some(handles) = vector.colinear_pair_containing(handle)
-				{
-					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
-				}
-			}
-			ManipulatorPointId::EndHandle(segment) => {
-				self.move_end(segment, delta, layer, responses);
-				if let Some(handle) = point.as_handle()
-					&& let Some(handles) = vector.colinear_pair_containing(handle)
-				{
+			ManipulatorPointId::Anchor(anchor) => self.move_anchor(anchor, &vector, position - current_position, layer, None, responses),
+			ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+				let handle = point.as_handle()?;
+
+				// Set by its offset from the anchor, since a delta has no stored offset to add onto until the Path node edits this handle
+				let relative_position = position - vector.anchor_position_of(*point)?;
+				responses.add(GraphOperationMessage::Vector {
+					layer,
+					modification_type: handle.set_relative_position(relative_position),
+				});
+
+				if let Some(handles) = vector.colinear_pair_containing(handle) {
 					let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
@@ -1587,11 +1572,7 @@ impl ShapeState {
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
 					// Update segment
-					let HandleId { ty, segment } = handle;
-					let modification_type = match ty {
-						graphene_std::vector::misc::HandleType::Primary => VectorModificationType::SetStartPoint { segment, id },
-						graphene_std::vector::misc::HandleType::End => VectorModificationType::SetEndPoint { segment, id },
-					};
+					let modification_type = VectorModificationType::SetEndpoint { handle, id };
 
 					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
