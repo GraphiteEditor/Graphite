@@ -255,6 +255,21 @@ mod tests {
 	}
 
 	#[test]
+	fn retaining_sources_keeps_live_generations() {
+		let spawner = Arc::new(CollectSpawner::default());
+		let runtime = AsyncRuntime::new(spawner.clone());
+		runtime.retain_sources(&[SOURCE]);
+		runtime.spawn(SOURCE, Box::pin(YieldOnce(false)));
+		spawner.drain();
+
+		runtime.retain_sources(&[SOURCE, SourceId(9)]);
+		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 1), (SourceId(9), 0)]);
+
+		runtime.retain_sources(&[SourceId(9)]);
+		assert_eq!(&*runtime.snapshot(), &[(SourceId(9), 0)]);
+	}
+
+	#[test]
 	fn an_inline_completion_and_a_dropped_source_bump_nothing() {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
