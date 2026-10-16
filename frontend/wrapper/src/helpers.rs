@@ -125,11 +125,11 @@ impl Spawn for WasmSpawner {
 	}
 }
 
-/// Web editor wake: queues a microtask that dispatches [`FutureMessage::Wake`].
+/// Web editor wake: queues a microtask that dispatches [`Message::Wake`].
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 pub(crate) fn wake_editor() {
 	wasm_bindgen_futures::spawn_local(async {
-		wrapper(|wrapper| wrapper.dispatch(FutureMessage::Wake));
+		wrapper(|wrapper| wrapper.dispatch(Message::Wake));
 	});
 }
 

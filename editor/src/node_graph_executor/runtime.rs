@@ -26,6 +26,7 @@ use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
@@ -38,6 +39,10 @@ pub struct NodeRuntime {
 	executor: DynamicExecutor,
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
+	editor_wake: Wake,
+	dirty: Arc<AtomicBool>,
+	pending: Option<ExecutionRequest>,
+	pending_export: Option<ExecutionRequest>,
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
@@ -96,11 +101,15 @@ pub struct ExportConfig {
 }
 
 impl NodeRuntime {
-	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
+	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>, editor_wake: Wake) -> Self {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
 			sender,
+			editor_wake,
+			dirty: Default::default(),
+			pending: None,
+			pending_export: None,
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
 			resources: ResourceRegistry::default(),
@@ -134,17 +143,23 @@ impl NodeRuntime {
 	}
 
 	pub async fn run(&mut self) -> Option<Texture> {
+		let texture = self.handle_requests().await;
+		(self.editor_wake)();
+		texture
+	}
+
+	async fn handle_requests(&mut self) -> Option<Texture> {
 		let mut preferences = None;
 		let mut graph = None;
 		let mut eyedropper = None;
 		let mut execution = None;
-		for request in self.receiver.try_iter() {
+
+		for request in self.pending_export.is_none().then_some(&self.receiver).into_iter().flat_map(Receiver::try_iter) {
 			match request {
 				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
 				GraphRuntimeRequest::ExecutionRequest(ref execution_request) => {
 					if execution_request.render_config.for_eyedropper {
 						eyedropper = Some(request);
-
 						continue;
 					}
 
@@ -159,6 +174,10 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}
+		}
+
+		if self.dirty.swap(false, Ordering::Acquire) && execution.is_none() {
+			execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
 		}
 
 		// Eydropper should use the same time and pointer to not invalidate the cache
@@ -206,7 +225,14 @@ impl NodeRuntime {
 						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse { result, node_graph_errors }))
 						.expect("Failed to send response");
 				}
-				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
+				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
+					if !render_config.for_export && !render_config.for_eyedropper {
+						self.pending = Some(request);
+					}
+					if render_config.for_export {
+						self.pending_export = None;
+					}
+
 					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
 					if render_config.export_format == ExportFormat::Raster
 						&& (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none())
@@ -236,6 +262,16 @@ impl NodeRuntime {
 							return None;
 						}
 					};
+
+					match (render_config.for_export, &result) {
+						(true, ExecutionResult::Pending) => {
+							self.pending_export = Some(request);
+							return None;
+						}
+						(true, _) => self.dirty.store(true, Ordering::Release),
+						_ => {}
+					}
+
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
 					if !render_config.for_eyedropper {
@@ -574,7 +610,7 @@ impl NodeRuntime {
 	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
 		let spawn = NodeTaskExecutor {
 			spawner,
-			sender: self.sender.clone(),
+			dirty: self.dirty.clone(),
 			wake,
 		};
 		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
@@ -587,17 +623,17 @@ impl NodeRuntime {
 
 struct NodeTaskExecutor {
 	spawner: Spawner,
-	sender: Sender<NodeGraphUpdate>,
+	dirty: Arc<AtomicBool>,
 	wake: Wake,
 }
 
 impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
-		let sender = self.sender.clone();
+		let dirty = self.dirty.clone();
 		let wake = self.wake.clone();
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
-			let _ = sender.send(NodeGraphUpdate::TaskCompleted);
+			dirty.store(true, Ordering::Release);
 			wake();
 		}));
 	}

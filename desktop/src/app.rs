@@ -449,7 +449,6 @@ impl App {
 			}
 			AppEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
 			AppEvent::ViewportTexture(texture) => {
-				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
 				if let Some(texture) = texture
 					&& let Some(render_state) = self.render_state.as_mut()
 					&& let Some(window) = self.window.as_ref()

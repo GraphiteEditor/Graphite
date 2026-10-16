@@ -145,13 +145,6 @@ impl Dispatcher {
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
 
-		// Drain async results into the queue before processing the new message.
-		let mut async_results = VecDeque::new();
-		self.message_handlers.future_message_handler.drain_results(&mut async_results);
-		if !async_results.is_empty() {
-			Self::schedule_execution(&mut self.message_queues, true, async_results);
-		}
-
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
 
@@ -202,7 +195,7 @@ impl Dispatcher {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Future(message) => {
-					self.message_handlers.future_message_handler.process_message(message, &mut queue, FutureMessageContext {});
+					self.message_handlers.future_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => {
@@ -367,10 +360,17 @@ impl Dispatcher {
 				Message::Viewport(message) => {
 					self.message_handlers.viewport_message_handler.process_message(message, &mut queue, ());
 				}
-				Message::NoOp => {}
+				// Messages
+				Message::Wake => {
+					if let Err(error) = self.poll_node_graph_evaluation(&mut queue) {
+						log::error!("Error polling node graph: {error}");
+					}
+					queue.add(FutureMessage::Drain);
+				}
 				Message::Batched { messages } => {
 					messages.into_iter().for_each(|message| self.handle_message(message, false));
 				}
+				Message::NoOp => {}
 			}
 
 			// If there are child messages, append the queue to the list of queues

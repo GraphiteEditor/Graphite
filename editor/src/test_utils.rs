@@ -18,21 +18,25 @@ use graph_craft::application_io::resource::HashMapResourceStorage;
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
 	pub editor: Editor,
 	pub runtime: NodeRuntime,
+	woken: Arc<AtomicBool>,
 }
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
 		let _ = env_logger::builder().is_test(true).try_init();
 
-		let (mut editor, runtime) = Builder::new()
+		let woken = Arc::new(AtomicBool::new(false));
+		let wake = woken.clone();
+		let (editor, runtime) = Builder::new()
 			.with_editor(
 				EditorBuilder::new()
-					.with_wake(|| {})
+					.with_wake(move || wake.store(true, Ordering::Relaxed))
 					.with_environment(DEFAULT_ENVIRONMENT)
 					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
 					.with_document_store(Arc::new(MemoryStore::default())),
@@ -41,14 +45,23 @@ impl EditorTestUtils {
 			.with_spawner(BlockingSpawner)
 			.with_random_seed(0)
 			.build();
+		let mut editor = Self { editor, runtime, woken };
 
-		editor.handle_message(PortfolioMessage::Init);
+		editor.dispatch(PortfolioMessage::Init);
 
 		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
-		editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: true });
-		editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
+		editor.dispatch(PreferencesMessage::SaveAsGdd { enabled: true });
+		editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
 
-		Self { editor, runtime }
+		editor
+	}
+
+	pub fn dispatch(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
+		let mut responses = self.editor.handle_message(message);
+		while self.woken.swap(false, Ordering::Relaxed) {
+			responses.extend(self.editor.handle_message(Message::Wake));
+		}
+		responses
 	}
 
 	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
@@ -86,7 +99,7 @@ impl EditorTestUtils {
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
-		let frontend_messages_from_msg = self.editor.handle_message(message);
+		let frontend_messages_from_msg = self.dispatch(message);
 
 		// Required to process any buffered messages
 		if let Err(e) = self.eval_graph().await {

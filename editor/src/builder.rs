@@ -100,7 +100,7 @@ impl Builder<ReadyEditorBuilder, ReadyRuntimeBuilder, Spawner, u64> {
 
 		graphene_std::uuid::set_uuid_seed(random_seed);
 
-		let (executor, mut node_runtime) = NodeGraphExecutor::new();
+		let (executor, mut node_runtime) = NodeGraphExecutor::new(editor_wake.clone());
 
 		let future_message_handler = FutureMessageHandler::new(spawner.clone(), editor_wake);
 		let dispatcher = Dispatcher::new(environment, resource_storage, document_store, executor, future_message_handler);

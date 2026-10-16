@@ -60,9 +60,6 @@ where
 }
 
 #[derive(ExtractField)]
-pub struct FutureMessageContext {}
-
-#[derive(ExtractField)]
 pub struct FutureMessageHandler {
 	spawner: Spawner,
 	wake: Wake,
@@ -80,13 +77,6 @@ impl FutureMessageHandler {
 			results_receiver,
 		}
 	}
-
-	/// Pull every resolved async result into `out`.
-	pub fn drain_results(&mut self, out: &mut VecDeque<Message>) {
-		while let Ok(Some(message)) = self.results_receiver.try_next() {
-			out.push_back(message);
-		}
-	}
 }
 
 impl std::fmt::Debug for FutureMessageHandler {
@@ -96,8 +86,8 @@ impl std::fmt::Debug for FutureMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandler {
-	fn process_message(&mut self, message: FutureMessage, responses: &mut VecDeque<Message>, _context: FutureMessageContext) {
+impl MessageHandler<FutureMessage, ()> for FutureMessageHandler {
+	fn process_message(&mut self, message: FutureMessage, responses: &mut VecDeque<Message>, _context: ()) {
 		match message {
 			FutureMessage::Await { future } => {
 				let results = self.results_sender.clone();
@@ -107,10 +97,11 @@ impl MessageHandler<FutureMessage, FutureMessageContext> for FutureMessageHandle
 					let _ = results.unbounded_send(message);
 					wake();
 				}));
-				self.drain_results(responses);
 			}
-			FutureMessage::Wake => {
-				// Tick-only message: the dispatcher's top-of-tick drain handles the real work.
+			FutureMessage::Drain => {
+				while let Ok(Some(message)) = self.results_receiver.try_next() {
+					responses.push_back(message);
+				}
 			}
 		}
 	}

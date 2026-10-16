@@ -25,7 +25,7 @@ use std::sync::mpsc::{Receiver, Sender};
 mod runtime;
 pub use runtime::*;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
@@ -60,7 +60,6 @@ pub struct CompilationResponse {
 pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
-	TaskCompleted,
 	EyedropperPreview(Raster<CPU>),
 }
 
@@ -70,6 +69,7 @@ pub struct NodeGraphExecutor {
 	receiver: Receiver<NodeGraphUpdate>,
 	current_execution_id: u64,
 	futures: VecDeque<(u64, ExecutionContext)>,
+	pending: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
@@ -109,10 +109,10 @@ struct GradientMigration {
 }
 
 impl NodeGraphExecutor {
-	pub(crate) fn new() -> (Self, NodeRuntime) {
+	pub(crate) fn new(editor_wake: Wake) -> (Self, NodeRuntime) {
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
-		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
+		let node_runtime = NodeRuntime::new(request_receiver, response_sender, editor_wake);
 
 		let node_executor = Self {
 			futures: Default::default(),
@@ -123,6 +123,7 @@ impl NodeGraphExecutor {
 			previous_node_to_inspect: Vec::new(),
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
+			pending: None,
 		};
 		(node_executor, node_runtime)
 	}
@@ -385,10 +386,19 @@ impl NodeGraphExecutor {
 						}
 					}
 
-					let Some((queued_execution_id, execution_context)) = self.futures.pop_front() else {
-						panic!("InvalidGenerationId")
+					let execution_context = if self.futures.front().is_some_and(|&(queued_execution_id, _)| queued_execution_id == execution_id) {
+						let (_, execution_context) = self.futures.pop_front().expect("the front was just checked");
+						if execution_context.export_config.is_none() && execution_context.measure_fill.is_none() {
+							self.pending = Some((execution_id, execution_context.clone()));
+						}
+						execution_context
+					} else if let Some((rendered_execution_id, execution_context)) = &self.pending
+						&& *rendered_execution_id == execution_id
+					{
+						execution_context.clone()
+					} else {
+						continue;
 					};
-					assert_eq!(queued_execution_id, execution_id, "Missmatch in execution id");
 
 					// TODO: Eventually remove this document upgrade code
 					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
@@ -442,15 +452,9 @@ impl NodeGraphExecutor {
 					document.network_interface.update_vector_modify(vector_modify);
 
 					match (node_graph_output, execution_context.export_config) {
-						// Special handling for exporting the artwork
 						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses)?,
 						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, responses)?,
-						(None, Some(_)) => responses.add(DialogMessage::DisplayDialogError {
-							title: "Unable to export document".to_string(),
-							description: "Part of the document is still loading. Export again once it has finished.".to_string(),
-						}),
-						// The last frame stays until the async source completes and the graph renders again
-						(None, None) => {}
+						(None, _) => {}
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
 						execution_id,
@@ -501,7 +505,6 @@ impl NodeGraphExecutor {
 						node_graph_errors,
 					});
 				}
-				NodeGraphUpdate::TaskCompleted => responses.add(PortfolioMessage::SubmitActiveGraphRender),
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
