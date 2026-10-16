@@ -1,4 +1,5 @@
 use super::*;
+use crate::vector::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use crate::vector::misc::BezierHandles;
 use crate::vector::misc::{HandleId, HandleType, point_to_dvec2, segment_to_handles};
 use core_types::uuid::generate_uuid;
@@ -586,10 +587,6 @@ where
 	let visitor = HashMapVisitor { marker: std::marker::PhantomData };
 	deserializer.deserialize_seq(visitor)
 }
-
-/// Distance below which a path's closing point is treated as coincident with its start point.
-/// Matches Kurbo's default path accuracy, so points within an offset operation's own precision are not split into separate anchors.
-const CLOSE_POINT_TOLERANCE: f64 = 1e-6;
 
 pub(crate) struct AppendBezpath<'a> {
 	first_point: Option<Point>,
