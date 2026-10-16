@@ -5,7 +5,7 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use super::{CursorMoveError, DocumentHistory};
-use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
+use crate::application::{Environment, GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 	VIEWPORT_ROTATE_SNAP_INTERVAL,
@@ -58,6 +58,7 @@ use std::time::Duration;
 #[derive(ExtractField)]
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
+	pub environment: Environment,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
@@ -219,6 +220,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, context: DocumentMessageContext) {
 		let DocumentMessageContext {
 			document_id,
+			environment,
 			ipp,
 			executor,
 			viewport,
@@ -235,6 +237,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
 				let context = NavigationMessageContext {
+					environment,
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,
 					ipp,

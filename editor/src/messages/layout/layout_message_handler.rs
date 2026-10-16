@@ -1,3 +1,4 @@
+use crate::application::Environment;
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -9,6 +10,7 @@ use std::collections::HashMap;
 
 #[derive(ExtractField)]
 pub struct LayoutMessageContext<'a> {
+	pub environment: Environment,
 	pub action_input_mapping: &'a dyn Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 }
 
@@ -20,6 +22,7 @@ pub struct LayoutMessageHandler {
 #[message_handler_data]
 impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, context: LayoutMessageContext) {
+		let environment = context.environment;
 		let action_input_mapping = &context.action_input_mapping;
 
 		match message {
@@ -33,7 +36,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 					return;
 				};
 				// Resend that diff
-				self.send_diff(vec![diff], layout_target, responses, action_input_mapping);
+				self.send_diff(vec![diff], layout_target, responses, action_input_mapping, environment);
 			}
 			LayoutMessage::ResendAllLayouts => {
 				// Collect non-empty layouts and their indices, then clear the stored copies so diffs compute as full re-sends
@@ -46,11 +49,11 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 					.collect();
 
 				for (layout_target, layout) in layouts_to_resend {
-					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping, environment);
 				}
 			}
 			LayoutMessage::SendLayout { layout, layout_target } => {
-				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping, environment);
 			}
 			LayoutMessage::DestroyLayout { layout_target } => {
 				if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
@@ -506,6 +509,7 @@ impl LayoutMessageHandler {
 		mut new_layout: Layout,
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
+		environment: Environment,
 	) {
 		// Collect CheckboxId mappings from new layout
 		let mut checkbox_map = HashMap::new();
@@ -536,12 +540,19 @@ impl LayoutMessageHandler {
 			}];
 		}
 
-		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
+		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping, environment);
 	}
 
 	/// Send a diff to the frontend based on the layout target.
-	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
+	fn send_diff(
+		&self,
+		mut diff: Vec<WidgetDiff>,
+		layout_target: LayoutTarget,
+		responses: &mut VecDeque<Message>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
+		environment: Environment,
+	) {
+		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping, environment));
 
 		if matches!(layout_target, LayoutTarget::_LayoutTargetLength) {
 			panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing");

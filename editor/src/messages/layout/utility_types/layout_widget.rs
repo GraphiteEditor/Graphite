@@ -1,7 +1,7 @@
 use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
-use crate::application::generate_uuid;
+use crate::application::{Environment, generate_uuid};
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
 use crate::messages::prelude::*;
 use std::collections::HashMap;
@@ -860,7 +860,7 @@ pub enum DiffUpdate {
 
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
-	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
 		// Go through each widget to convert `ActionShortcut::Action` to `ActionShortcut::Shortcut` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_instance: &mut WidgetInstance| {
 			// Handle all the widgets that have tooltips
@@ -895,7 +895,7 @@ impl DiffUpdate {
 
 			// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 			if let Some(tooltip_shortcut) = tooltip_shortcut {
-				tooltip_shortcut.realize_shortcut(action_input_mapping);
+				tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
@@ -903,23 +903,23 @@ impl DiffUpdate {
 				for radio_entry_data in &mut radio_input.entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = radio_entry_data.tooltip_shortcut.as_mut() {
-						tooltip_shortcut.realize_shortcut(action_input_mapping);
+						tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 					}
 				}
 			}
 		};
 
 		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
 			for entries in entry_sections {
 				for entry in entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-						tooltip_shortcut.realize_shortcut(action_input_mapping);
+						tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 					}
 
 					// Recursively call this function on the menu's children
-					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
+					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping, environment);
 				}
 			}
 		}
@@ -949,29 +949,39 @@ impl DiffUpdate {
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut *widget_instance.widget {
 			Widget::DropdownInput(dropdown_input) => {
-				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping);
+				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping, environment);
 				dropdown_input.entries_hash = hash_menu_list_entry_sections(&dropdown_input.entries);
 			}
 			Widget::TextButton(text_button) => {
-				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping);
+				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping, environment);
 				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
 			}
 			_ => {}
 		};
 
-		match self {
-			Self::Layout(layout) => layout.0.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
-			}),
-			Self::LayoutGroup(layout_group) => layout_group.iter_mut().for_each(|widget_instance| {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
-			}),
-			Self::Widget(widget_instance) => {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
+		let convert = |widget_instance: &mut WidgetInstance| {
+			convert_tooltip(widget_instance);
+			convert_menu_lists(widget_instance);
+		};
+
+		fn convert_layout_group(layout_group: &mut LayoutGroup, convert: &impl Fn(&mut WidgetInstance)) {
+			match layout_group {
+				LayoutGroup::Column(WidgetColumn { widgets }) | LayoutGroup::Row(WidgetRow { widgets }) => widgets.iter_mut().for_each(|widget_instance| convert_widget(widget_instance, convert)),
+				LayoutGroup::Table(WidgetTable { rows, .. }) => rows.iter_mut().flatten().flatten().for_each(|widget_instance| convert_widget(widget_instance, convert)),
+				LayoutGroup::Section(WidgetSection { layout, .. }) => layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, convert)),
 			}
+		}
+		fn convert_widget(widget_instance: &mut WidgetInstance, convert: &impl Fn(&mut WidgetInstance)) {
+			convert(widget_instance);
+			if let Widget::PopoverButton(popover_button) = &mut *widget_instance.widget {
+				popover_button.popover_layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, convert));
+			}
+		}
+
+		match self {
+			Self::Layout(layout) => layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, &convert)),
+			Self::LayoutGroup(layout_group) => convert_layout_group(layout_group, &convert),
+			Self::Widget(widget_instance) => convert_widget(widget_instance, &convert),
 		}
 	}
 }

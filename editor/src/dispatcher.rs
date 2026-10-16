@@ -1,3 +1,4 @@
+use crate::application::Environment;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
@@ -9,15 +10,16 @@ use crate::messages::tool::common_functionality::utility_functions::make_path_ed
 use graph_craft::application_io::resource::ResourceStorage;
 use std::sync::Arc;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Dispatcher {
+	environment: Environment,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub frontend_update_messages: Vec<Message>,
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
@@ -41,17 +43,27 @@ pub struct DispatcherMessageHandlers {
 }
 
 impl DispatcherMessageHandlers {
-	pub fn with_resource_storage(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+	fn new(environment: Environment) -> Self {
 		Self {
-			resource_storage_message_handler: ResourceStorageMessageHandler::new(resource_storage),
-			..Self::default()
-		}
-	}
-
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self {
-			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
-			..Self::default()
+			animation_message_handler: Default::default(),
+			app_window_message_handler: Default::default(),
+			future_message_handler: Default::default(),
+			broadcast_message_handler: Default::default(),
+			clipboard_message_handler: Default::default(),
+			color_picker_message_handler: Default::default(),
+			debug_message_handler: Default::default(),
+			defer_message_handler: Default::default(),
+			dialog_message_handler: Default::default(),
+			input_preprocessor_message_handler: Default::default(),
+			key_mapping_message_handler: KeyMappingMessageHandler::new(environment),
+			layout_message_handler: Default::default(),
+			menu_bar_message_handler: Default::default(),
+			network_message_handler: Default::default(),
+			portfolio_message_handler: Default::default(),
+			preferences_message_handler: Default::default(),
+			resource_storage_message_handler: Default::default(),
+			tool_message_handler: Default::default(),
+			viewport_message_handler: Default::default(),
 		}
 	}
 }
@@ -89,8 +101,14 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
-		let mut s = Self::default();
+	pub fn new(environment: Environment, resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
+		let mut s = Self {
+			environment,
+			message_queues: Vec::new(),
+			responses: Vec::new(),
+			frontend_update_messages: Vec::new(),
+			message_handlers: DispatcherMessageHandlers::new(environment),
+		};
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
 		s.message_handlers.portfolio_message_handler.set_document_store(document_store);
 		s
@@ -99,6 +117,7 @@ impl Dispatcher {
 	#[cfg(test)]
 	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
 		let mut s = Self::new(
+			crate::application::DEFAULT_ENVIRONMENT,
 			Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()),
 			Arc::new(document_container::store::MemoryStore::default()),
 		);
@@ -224,6 +243,7 @@ impl Dispatcher {
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
+							environment: self.environment,
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
@@ -232,13 +252,22 @@ impl Dispatcher {
 					let input = &self.message_handlers.input_preprocessor_message_handler;
 					let actions = self.collect_actions();
 
-					self.message_handlers
-						.key_mapping_message_handler
-						.process_message(message, &mut queue, KeyMappingMessageContext { input, actions });
+					self.message_handlers.key_mapping_message_handler.process_message(
+						message,
+						&mut queue,
+						KeyMappingMessageContext {
+							environment: self.environment,
+							input,
+							actions,
+						},
+					);
 				}
 				Message::Layout(message) => {
-					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
-					let context = LayoutMessageContext { action_input_mapping };
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find, self.environment);
+					let context = LayoutMessageContext {
+						environment: self.environment,
+						action_input_mapping,
+					};
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
@@ -255,6 +284,7 @@ impl Dispatcher {
 						message,
 						&mut queue,
 						PortfolioMessageContext {
+							environment: self.environment,
 							ipp: &self.message_handlers.input_preprocessor_message_handler,
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,

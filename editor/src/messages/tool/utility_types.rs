@@ -547,7 +547,7 @@ impl HintData {
 				}
 
 				for shortcut in &hint.key_groups {
-					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Shortcut(shortcut.clone()))).widget_instance());
+					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Keys(shortcut.clone()))).widget_instance());
 				}
 				if let Some(mouse_movement) = hint.mouse {
 					let mouse_movement = LabeledShortcut(vec![LabeledKeyOrMouseMotion::MouseMotion(mouse_movement)]);
@@ -589,10 +589,10 @@ pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
 	#[serde(rename = "keyGroups")]
-	pub key_groups: Vec<LabeledShortcut>,
+	pub key_groups: Vec<KeysGroup>,
 	/// `None` means that the regular `key_groups` should be used for all platforms, `Some` is an override for a Mac-only input hint.
 	#[serde(rename = "keyGroupsMac")]
-	pub key_groups_mac: Option<Vec<LabeledShortcut>>,
+	pub key_groups_mac: Option<Vec<KeysGroup>>,
 	/// An optional `MouseMotion` that can indicate the mouse action, like which mouse button is used and whether a drag occurs.
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,
@@ -612,7 +612,7 @@ impl HintInfo {
 	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<Cow<'static, str>>) -> Self {
 		let keys = keys.into_iter().collect();
 		Self {
-			key_groups: vec![KeysGroup(keys).into()],
+			key_groups: vec![KeysGroup(keys)],
 			key_groups_mac: None,
 			mouse: None,
 			label: label.into(),
@@ -626,7 +626,7 @@ impl HintInfo {
 	/// - The four arrow keys can be used to nudge a layer in different directions
 	/// - The G, R, and S keys can be used to enter GRS transformation mode
 	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<Cow<'static, str>>) -> Self {
-		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
+		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect())).collect();
 		Self {
 			key_groups,
 			key_groups_mac: None,
@@ -662,7 +662,7 @@ impl HintInfo {
 	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		let keys = keys.into_iter().collect();
 		Self {
-			key_groups: vec![KeysGroup(keys).into()],
+			key_groups: vec![KeysGroup(keys)],
 			key_groups_mac: None,
 			mouse: Some(mouse_motion),
 			label: label.into(),
@@ -672,7 +672,7 @@ impl HintInfo {
 	}
 
 	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
-		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
+		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect())).collect();
 		Self {
 			key_groups,
 			key_groups_mac: None,
@@ -700,7 +700,7 @@ impl HintInfo {
 
 	pub fn add_mac_keys(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
 		let mac_keys = keys.into_iter().collect();
-		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
+		self.key_groups_mac = Some(vec![KeysGroup(mac_keys)]);
 		self
 	}
 }

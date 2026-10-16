@@ -1,13 +1,14 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::PanelType;
-use crate::application::{Editor, generate_uuid};
+use crate::application::{Environment, generate_uuid};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
-use crate::messages::input_mapper::utility_types::keyboard::Key;
-use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
+use crate::messages::input_mapper::utility_types::keyboard::{Key, KeysGroup, LabeledShortcut};
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -33,6 +34,7 @@ use std::vec;
 
 #[derive(ExtractField)]
 pub struct PortfolioMessageContext<'a> {
+	pub environment: Environment,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
@@ -67,6 +69,7 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, context: PortfolioMessageContext) {
 		let PortfolioMessageContext {
+			environment,
 			ipp,
 			preferences,
 			animation,
@@ -85,6 +88,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				{
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
@@ -135,9 +139,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PersistentStateMessage::ReadState);
 
 				// Initialize the frontend with environment information
-				responses.add(FrontendMessage::UpdatePlatform {
-					platform: Editor::environment().into(),
-				});
+				responses.add(FrontendMessage::UpdatePlatform { platform: environment.into() });
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -154,16 +156,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Request status bar info layout
 				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
-				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
+				// Send shortcuts for widgets created in the frontend which need shortcut tooltips, labeled here since they bypass the layout system
+				let shortcut = |keys: &[Key]| Some(ActionShortcut::Shortcut(LabeledShortcut::new(KeysGroup(keys.to_vec()), environment)));
 				responses.add(FrontendMessage::SendShortcutFullscreen {
-					shortcut: action_shortcut_manual!(Key::F11),
-					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
+					shortcut: shortcut(&[Key::F11]),
+					shortcut_mac: shortcut(&[Key::Control, Key::Command, Key::KeyF]),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
-					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Alt, Key::MouseLeft]),
 				});
 				responses.add(FrontendMessage::SendShortcutShiftClick {
-					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Shift, Key::MouseLeft]),
 				});
 
 				// Send the information for tooltips and categories for each node/input.
@@ -176,6 +179,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
