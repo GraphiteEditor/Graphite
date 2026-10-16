@@ -13,7 +13,7 @@ use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document_storage_io::{
-	DocumentStoreHandle, attach_container, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, open_storage, remove_stored_document,
+	DocumentStoreHandle, attach_container, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, remove_stored_document,
 };
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -493,7 +493,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						document_id,
 						resource_storage.resources_mut(),
 						reset_node_definitions_on_open,
-						!preferences.save_as_gdd,
 					));
 				}
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -521,7 +520,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						};
 						document.path = info.path;
 						document.set_save_state(info.is_saved);
-						self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+						self.load_document(document, document_id, resource_storage.resources_mut(), responses);
 						self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 					}
 					None => {
@@ -558,7 +557,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+				self.load_document(new_document, document_id, resource_storage.resources_mut(), responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::OpenLegacyDocumentFile {
@@ -580,7 +579,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.name = self.resolve_document_name(opened_document_name(document_name, document_path.as_deref()), None);
 				document.path = document_path;
 
-				self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+				self.load_document(document, document_id, resource_storage.resources_mut(), responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 				responses.add(AppWindowMessage::Focus);
 			}
@@ -604,7 +603,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					fresh_identity,
 					resource_storage.resources_mut(),
 					reset_node_definitions_on_open,
-					!preferences.save_as_gdd,
 				));
 			}
 			PortfolioMessage::DocumentFileLoaded {
@@ -627,25 +625,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.name = self.resolve_document_name(opened_document_name(document_name, document_path.as_deref()), None);
 				document.path = document_path;
 
-				self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+				self.load_document(document, document_id, resource_storage.resources_mut(), responses);
 				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
-			}
-			PortfolioMessage::StorageUpdated => {
-				for (&document_id, document) in &mut self.documents {
-					match (preferences.save_as_gdd, document.storage().is_some(), document.container.clone()) {
-						(true, false, Some(container)) => responses.add(open_storage(container, document_id, resource_storage.resources_mut())),
-						(false, true, _) => document.clear_storage(),
-						_ => {}
-					}
-				}
 			}
 			PortfolioMessage::StorageAttached {
 				document_id,
 				container,
 				gdd,
 				declarations,
-				legacy_only,
 			} => {
 				let Some(document) = self.documents.get_mut(&document_id) else {
 					// Closed while its storage was opening.
@@ -656,12 +644,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Self::storage_error("The document's storage could not be opened, so it will not be autosaved.".to_string(), responses);
 					return;
 				};
-				document.container = Some(container.clone());
-				// Storage was turned on while the container was opening, after `StorageUpdated` found no container to open it from.
-				if legacy_only && preferences.save_as_gdd && document.storage().is_none() {
-					responses.add(open_storage(container, document_id, resource_storage.resources_mut()));
-					return;
-				}
+				document.container = Some(container);
 				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				self.save_if_needed(document_id, responses);
 			}
@@ -1205,7 +1188,7 @@ impl PortfolioMessageHandler {
 		if new_number == 1 { untitled.to_string() } else { format!("{untitled} {new_number}") }
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, resources: ResourcesHandle, legacy_only: bool, responses: &mut VecDeque<Message>) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, resources: ResourcesHandle, responses: &mut VecDeque<Message>) {
 		let is_new_document = !self.document_ids.contains(&document_id);
 		if is_new_document {
 			self.document_ids.push_back(document_id);
@@ -1234,7 +1217,7 @@ impl PortfolioMessageHandler {
 		}
 
 		if self.documents[&document_id].container.is_none() {
-			responses.add(attach_container(self.document_store.clone(), document_id, resources, legacy_only));
+			responses.add(attach_container(self.document_store.clone(), document_id, resources));
 		} else {
 			self.save_if_needed(document_id, responses);
 		}
