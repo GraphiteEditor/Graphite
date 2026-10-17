@@ -182,6 +182,18 @@ pub fn curve_type_at(paths: &List<Path>, index: usize) -> CurveType {
 	paths.attribute_cloned_or_default(ATTR_CURVE_TYPE, index)
 }
 
+/// Whether the path at `index` only carries on the one stored before it in another curve type, setting out from
+/// that path's last anchor. Such a path begins nothing of its own.
+pub fn continues_previous_path(paths: &List<Path>, index: usize) -> bool {
+	let Some(previous_index) = index.checked_sub(1) else { return false };
+	let (Some(path), Some(previous)) = (paths.element(index), paths.element(previous_index)) else {
+		return false;
+	};
+	let previous_last = previous.0.len().saturating_sub(1);
+
+	previous_last > 0 && path.0.element(0) == previous.0.element(previous_last) && curve_type_at(paths, index) != curve_type_at(paths, previous_index)
+}
+
 /// Weaves bezpath contours into pool points and paths, starting a new path at each verb change so every
 /// path keeps one stride. The runs of a split subpath share the anchor they meet at, welding them.
 struct PathWeaver {

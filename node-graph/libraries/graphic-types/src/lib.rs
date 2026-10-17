@@ -135,7 +135,7 @@ pub mod migrations {
 		}
 
 		impl LegacyVector {
-			pub(super) fn into_parts(self) -> (Vector, List<Path>) {
+			pub(super) fn into_parts(self) -> (Vector, List<Path>, std::collections::HashSet<SegmentId>) {
 				vector_from_legacy_parts(
 					self.point_domain.id,
 					self.point_domain.position,
@@ -168,7 +168,10 @@ pub mod migrations {
 
 	// TODO: Eventually remove this document upgrade code
 	/// Returns the first vector recovered from any of the legacy on-disk shapes (the legacy `VectorData` flat struct, a legacy `Vector` struct, or any of the historical list variants).
-	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<(Vector, core_types::list::List<vector_types::vector::Path>)>, D::Error> {
+	#[allow(clippy::type_complexity)]
+	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(
+		deserializer: D,
+	) -> Result<Option<(Vector, core_types::list::List<vector_types::vector::Path>, std::collections::HashSet<vector_types::vector::SegmentId>)>, D::Error> {
 		use serde::Deserialize;
 
 		#[derive(serde::Deserialize)]
@@ -257,7 +260,7 @@ pub mod migrations {
 				.unwrap()
 				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
 
-			let (migrated, _paths) = migrate_to_optional_vector(value).unwrap().expect("the legacy shape should parse into a vector");
+			let (migrated, _paths, _) = migrate_to_optional_vector(value).unwrap().expect("the legacy shape should parse into a vector");
 
 			assert_eq!(
 				migrated.positions().collect::<Vec<_>>(),
@@ -277,7 +280,7 @@ pub mod migrations {
 			};
 
 			let value = serde_json::to_value(&vector).unwrap();
-			let (migrated, _paths) = migrate_to_optional_vector(value).unwrap().unwrap();
+			let (migrated, _paths, _) = migrate_to_optional_vector(value).unwrap().unwrap();
 
 			assert_eq!(migrated.positions().collect::<Vec<_>>(), [glam::DVec2::new(3., 4.)]);
 		}
@@ -291,7 +294,7 @@ pub mod migrations {
 				"segment_domain": { "ids": [7], "start_point": [0], "end_point": [1], "handles": ["Linear"] },
 			});
 
-			let (migrated, paths) = migrate_to_optional_vector(value).unwrap().expect("the plural field names should parse");
+			let (migrated, paths, _) = migrate_to_optional_vector(value).unwrap().expect("the plural field names should parse");
 
 			assert_eq!(migrated.positions().collect::<Vec<_>>(), [glam::DVec2::new(3., 4.), glam::DVec2::new(5., 6.)]);
 			assert_eq!(paths.len(), 1);
@@ -316,7 +319,7 @@ pub mod migrations {
 				},
 			});
 
-			let (vector, paths) = migrate_to_optional_vector(value).unwrap().expect("the legacy vector should parse");
+			let (vector, paths, _) = migrate_to_optional_vector(value).unwrap().expect("the legacy vector should parse");
 
 			// Looked up by ID, since storage order is free to differ from the legacy order
 			let mut anchors: Vec<(u64, DVec2)> = vector

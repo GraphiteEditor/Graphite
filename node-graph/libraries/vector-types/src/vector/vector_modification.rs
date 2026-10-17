@@ -202,14 +202,43 @@ pub(crate) struct SegmentModification {
 }
 
 impl SegmentModification {
-	/// Apply this modification to the working form's segments.
-	fn apply(&self, working: &mut WorkingVector) {
+	/// The kept segment after removed ones begins a path when it carried on from the last of them or one of them began a path,
+	/// unless an added segment arrives where it sets out and so carries the path on into it. Runs in O(segments + adds).
+	fn mark_path_beginnings_after_removals(&self, working: &mut WorkingVector, keep: &[bool]) {
+		if !keep.contains(&false) {
+			return;
+		}
+
+		let arrivals: FxHashSet<PointId> = self.add.iter().filter_map(|id| self.end_point.get(id).copied()).collect();
+		let segment_count = keep.len();
+		working.segment_begins_path.resize(segment_count, false);
+
+		let (mut removed_began_path, mut removed_end) = (false, None);
+		for index in 0..segment_count {
+			if !keep[index] {
+				removed_began_path |= std::mem::take(&mut working.segment_begins_path[index]);
+				removed_end = Some(working.segment_end[index]);
+				continue;
+			}
+			let Some(end) = removed_end.take() else { continue };
+
+			let start = working.segment_start[index];
+			let carried_on = start == end;
+			let arrived_at = working.point_ids.get(start).is_some_and(|point| arrivals.contains(point));
+			if (std::mem::take(&mut removed_began_path) || carried_on) && !arrived_at {
+				working.segment_begins_path[index] = true;
+			}
+		}
+	}
+
+	/// Apply this modification to the working form's segments, where the added ones named by `path_breaks` each begin a path.
+	fn apply(&self, working: &mut WorkingVector, path_breaks: &HashSet<SegmentId>) {
 		// Remove the deleted segments, plus any segment left referencing a removed point
 		let point_count = working.point_ids.len();
 		let keep: Vec<bool> = (0..working.segment_ids.len())
 			.map(|index| !self.remove.contains(&working.segment_ids[index]) && working.segment_start[index] < point_count && working.segment_end[index] < point_count)
 			.collect();
-		working.carry_path_beginnings(&keep);
+		self.mark_path_beginnings_after_removals(working, &keep);
 		let mut keep_iter = keep.iter();
 		working.segment_start.retain(|_| *keep_iter.next().unwrap_or(&false));
 		let mut keep_iter = keep.iter();
@@ -290,6 +319,8 @@ impl SegmentModification {
 			};
 		}
 
+		working.segment_begins_path.resize(working.segment_ids.len(), false);
+
 		let mut named: FxHashSet<SegmentId> = if self.add.is_empty() {
 			FxHashSet::default()
 		} else {
@@ -335,6 +366,7 @@ impl SegmentModification {
 			working.segment_start.push(start_index);
 			working.segment_end.push(end_index);
 			working.segment_handles.push(handles);
+			working.segment_begins_path.push(path_breaks.contains(&add_id));
 		}
 
 		assert!(working.segment_start.iter().all(|&index| index < working.point_ids.len()), "index should be in range");
@@ -493,7 +525,7 @@ impl SegmentModification {
 
 /// Represents a procedural change to the [`Vector`].
 #[derive(Clone, Debug, Default, PartialEq, DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
 pub struct VectorModification {
 	points: PointModification,
 	segments: SegmentModification,
@@ -501,6 +533,47 @@ pub struct VectorModification {
 	add_g1_continuous: HashSet<[HandleId; 2]>,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset"))]
 	remove_g1_continuous: HashSet<[HandleId; 2]>,
+	/// The added segments that each begin a path of their own, even where one sets out from the end of another segment.
+	// TODO: Stop always writing this as a marker when switching to the new document format and Ctrl-C node serialization format
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_hashset_as_some"))]
+	path_breaks: HashSet<SegmentId>,
+	/// The added segments turned around when this modification was loaded as a soup, which other modifications naming them by side follow.
+	// TODO: Eventually remove this document upgrade code
+	#[cfg_attr(feature = "serde", serde(skip))]
+	turned_on_load: HashSet<SegmentId>,
+}
+
+// TODO: Eventually remove this document upgrade code
+#[cfg(feature = "serde")]
+impl<'de> serde::Deserialize<'de> for VectorModification {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		// Modifications stored before paths recorded where they begin lack `path_breaks` and hold their segments as an unordered soup, which is chained into paths on load
+		#[derive(serde::Deserialize)]
+		struct StoredVectorModification {
+			points: PointModification,
+			segments: SegmentModification,
+			add_g1_continuous: HashSet<[HandleId; 2]>,
+			remove_g1_continuous: HashSet<[HandleId; 2]>,
+			#[serde(default)]
+			path_breaks: Option<HashSet<SegmentId>>,
+		}
+
+		let stored = StoredVectorModification::deserialize(deserializer)?;
+		let legacy = stored.path_breaks.is_none();
+		let mut modification = Self {
+			points: stored.points,
+			segments: stored.segments,
+			add_g1_continuous: stored.add_g1_continuous,
+			remove_g1_continuous: stored.remove_g1_continuous,
+			path_breaks: stored.path_breaks.unwrap_or_default(),
+			turned_on_load: HashSet::new(),
+		};
+		if legacy {
+			modification.chain_legacy_segments();
+		}
+
+		Ok(modification)
+	}
 }
 
 /// A modification type that can be added to a [`VectorModification`].
@@ -541,6 +614,11 @@ pub enum VectorModificationType {
 		handle: HandleId,
 		id: PointId,
 	},
+	/// Marks or unmarks a segment this modification adds as beginning a path of its own. Segments from upstream are unaffected.
+	SetPathBreak {
+		segment: SegmentId,
+		breaks: bool,
+	},
 
 	ApplyPointDelta {
 		point: PointId,
@@ -554,7 +632,7 @@ impl VectorModificationType {
 		match self {
 			Self::InsertSegment { handles, .. } | Self::SetHandles { handles, .. } => handles.iter().flatten().all(|handle| handle.is_finite()),
 			Self::InsertPoint { position: value, .. } | Self::SetHandlePosition { relative_position: value, .. } | Self::ApplyPointDelta { delta: value, .. } => value.is_finite(),
-			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetEndpoint { .. } => true,
+			Self::RemoveSegment { .. } | Self::RemovePoint { .. } | Self::SetG1Continuous { .. } | Self::SetEndpoint { .. } | Self::SetPathBreak { .. } => true,
 		}
 	}
 }
@@ -668,6 +746,9 @@ impl VectorModification {
 			segments,
 			add_g1_continuous,
 			remove_g1_continuous,
+			// Path beginnings only concern added segments, and any of those already rules this out
+			path_breaks: _,
+			turned_on_load: _,
 		} = self;
 		let SegmentModification {
 			add: added_segments,
@@ -713,7 +794,7 @@ impl VectorModification {
 	fn apply_through_working_form(&self, vector: &mut Vector, paths: &mut List<Path>) {
 		let mut working = WorkingVector::flatten(vector, paths);
 		self.points.apply(&mut working);
-		self.segments.apply(&mut working);
+		self.segments.apply(&mut working, &self.path_breaks);
 
 		let surviving_segments: FxHashSet<SegmentId> = working.segment_ids.iter().copied().collect();
 		let valid = |val: &[HandleId; 2]| surviving_segments.contains(&val[0].segment) && surviving_segments.contains(&val[1].segment);
@@ -745,7 +826,10 @@ impl VectorModification {
 			VectorModificationType::InsertSegment { id, points, handles } => self.segments.push(*id, *points, *handles),
 			VectorModificationType::InsertPoint { id, position } => self.points.push(*id, *position),
 
-			VectorModificationType::RemoveSegment { id } => self.segments.remove(*id),
+			VectorModificationType::RemoveSegment { id } => {
+				self.segments.remove(*id);
+				self.path_breaks.remove(id);
+			}
 			VectorModificationType::RemovePoint { id } => self.points.remove(*id),
 
 			VectorModificationType::SetG1Continuous { handles, enabled } => {
@@ -773,6 +857,14 @@ impl VectorModification {
 			VectorModificationType::SetEndpoint { handle, id } => {
 				self.segments.endpoint_side_of(*handle).insert(handle.segment, *id);
 			}
+			VectorModificationType::SetPathBreak { segment, breaks } => {
+				// Only a segment this modification adds can begin a path of its own
+				if *breaks && self.segments.add.contains(segment) {
+					self.path_breaks.insert(*segment);
+				} else {
+					self.path_breaks.remove(segment);
+				}
+			}
 
 			VectorModificationType::ApplyPointDelta { point, delta } => {
 				*self.points.delta.entry(*point).or_default() += *delta;
@@ -783,12 +875,208 @@ impl VectorModification {
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
 	pub fn create_from_vector(vector: &Vector, paths: &List<Path>) -> Self {
 		let working = WorkingVector::flatten(vector, paths);
+		let begins_path = working.segment_ids.iter().zip(&working.segment_begins_path).filter(|&(_, &begins)| begins).map(|(&id, _)| id);
 		Self {
 			points: PointModification::create_from_working(&working),
 			segments: SegmentModification::create_from_working(&working),
 			add_g1_continuous: working.colinear.iter().copied().collect(),
 			remove_g1_continuous: HashSet::new(),
+			path_breaks: begins_path.collect(),
+			turned_on_load: HashSet::new(),
 		}
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Chains the added segments of a modification stored as an unordered soup into paths: reorders them, turns around
+	/// the ones running against their chain along with their handles and G1 pairs, and records where each chain begins.
+	fn chain_legacy_segments(&mut self) {
+		// Segments missing any of their parts are never applied, so they sit out of the chaining and follow the chained ones
+		let segments = &self.segments;
+		let mut seen = FxHashSet::default();
+		let (mut complete, mut unchainable) = (Vec::new(), Vec::new());
+		for &id in &segments.add {
+			if !seen.insert(id) {
+				continue;
+			}
+			let parts = (
+				segments.start_point.get(&id),
+				segments.end_point.get(&id),
+				segments.handle_primary.get(&id),
+				segments.handle_end.get(&id),
+			);
+			match parts {
+				(Some(&start), Some(&end), Some(&primary), Some(&end_handle)) => complete.push((id, start, end, primary, end_handle)),
+				_ => unchainable.push(id),
+			}
+		}
+
+		// Points are numbered the way they used to be stored, upstream ones first and then the added ones in the order they
+		// were added. Only the added ones have positions here. What else meets an upstream point is unknown, so each
+		// segment end there is numbered apart and pairs with nothing, leaving it to be joined once upstream is known.
+		let added: FxHashMap<PointId, (usize, DVec2)> = self.points.add.iter().enumerate().filter_map(|(place, id)| Some((*id, (place, *self.points.delta.get(id)?)))).collect();
+		let upstream_ends = complete.iter().flat_map(|&(_, start, end, ..)| [start, end]).filter(|point| !added.contains_key(point)).count();
+		let mut next_upstream_end = 0;
+		let mut index_of = |point: PointId| match added.get(&point) {
+			Some(&(place, _)) => upstream_ends + place,
+			None => {
+				next_upstream_end += 1;
+				next_upstream_end - 1
+			}
+		};
+
+		let mut positions = vec![None; upstream_ends + self.points.add.len()];
+		for &(place, position) in added.values() {
+			positions[upstream_ends + place] = Some(position);
+		}
+		let chainable: Vec<_> = complete
+			.iter()
+			.map(|&(id, start, end, primary, end_handle)| (id, index_of(start), index_of(end), primary, end_handle))
+			.collect();
+		let endpoints: Vec<(usize, usize)> = chainable.iter().map(|&(_, start, end, ..)| (start, end)).collect();
+
+		// A cubic's handles are stored relative to their own anchors, and a quadratic's one handle relative to its start. A segment
+		// leaves an anchor toward its nearest control point not sitting on that anchor, as legacy vectors are chained too.
+		let nonzero = |along: DVec2| (along.length_squared() > 1e-12).then_some(along);
+		let direction = |segment: usize, arriving: bool| {
+			let (_, start, end, primary, end_handle) = chainable[segment];
+			let (start, end) = (positions[start], positions[end]);
+			let across = |from: Option<DVec2>, offset: DVec2, to: Option<DVec2>| from.zip(to).map(|(from, to)| from + offset - to);
+
+			// Each handle as an offset from this end's anchor, nearest first, then the other anchor
+			let toward = match (primary, end_handle) {
+				(Some(primary), Some(end_handle)) if arriving => [Some(end_handle), across(start, primary, end)],
+				(Some(primary), Some(end_handle)) => [Some(primary), across(end, end_handle, start)],
+				(Some(handle), None) | (None, Some(handle)) if arriving => [across(start, handle, end), None],
+				(Some(handle), None) | (None, Some(handle)) => [Some(handle), None],
+				(None, None) => [None, None],
+			};
+			let chord = if arriving { across(start, DVec2::ZERO, end) } else { across(end, DVec2::ZERO, start) };
+
+			toward.into_iter().chain([chord]).flatten().find_map(nonzero)
+		};
+
+		// A segment touching an upstream point keeps its direction, since what upstream carries on into it is unknown, and so
+		// does a quadratic, since another modification's offset for its lone handle could not be re-based onto the other end
+		let reversible = |segment: usize| {
+			let (_, start, end, primary, end_handle) = chainable[segment];
+			positions[start].is_some() && positions[end].is_some() && primary.is_some() == end_handle.is_some()
+		};
+		let chained = crate::vector::flatten::chain_order(positions.len(), &endpoints, direction, reversible);
+
+		let mut reversed_ids = FxHashSet::default();
+		let mut path_breaks = HashSet::new();
+		let mut add = Vec::with_capacity(segments.add.len());
+		let mut turned = Vec::new();
+		for (&(segment, reversed), &begins) in chained.order.iter().zip(&chained.begins_path) {
+			let (id, start, end, primary, end_handle) = chainable[segment];
+			add.push(id);
+
+			// A chain setting out from an upstream point may be carrying on a path that ends there, so only the rest begin paths
+			let sets_out_from = if reversed { end } else { start };
+			if begins && positions[sets_out_from].is_some() {
+				path_breaks.insert(id);
+			}
+
+			if reversed {
+				reversed_ids.insert(id);
+				turned.push((id, (end_handle, primary)));
+			}
+		}
+		add.extend(unchainable);
+
+		self.segments.add = add;
+		for (id, (primary, end_handle)) in turned {
+			let (start, end) = (self.segments.start_point.remove(&id), self.segments.end_point.remove(&id));
+			if let (Some(start), Some(end)) = (start, end) {
+				self.segments.start_point.insert(id, end);
+				self.segments.end_point.insert(id, start);
+			}
+			self.segments.handle_primary.insert(id, primary);
+			self.segments.handle_end.insert(id, end_handle);
+		}
+		self.path_breaks = path_breaks;
+
+		// A turned segment's handles swap sides, so the G1 pairs naming them follow
+		let follow = |pairs: &mut HashSet<[HandleId; 2]>| {
+			*pairs = pairs
+				.drain()
+				.map(|pair| pair.map(|handle| if reversed_ids.contains(&handle.segment) { handle.opposite() } else { handle }))
+				.collect();
+		};
+		follow(&mut self.add_g1_continuous);
+		follow(&mut self.remove_g1_continuous);
+
+		self.turned_on_load = reversed_ids.into_iter().collect();
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Records the segments a legacy conversion turned around before this modification was captured from its result.
+	pub fn with_segments_turned_on_load(mut self, turned: HashSet<SegmentId>) -> Self {
+		self.turned_on_load = turned;
+		self
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Takes the record of the segments this modification turned around when it was loaded.
+	pub fn take_segments_turned_on_load(&mut self) -> HashSet<SegmentId> {
+		std::mem::take(&mut self.turned_on_load)
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// The segments this modification turned around when it was loaded.
+	pub fn segments_turned_on_load(&self) -> &HashSet<SegmentId> {
+		&self.turned_on_load
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Turns this modification's edits around to match segments another modification turned when it was loaded, so each edit
+	/// stays on the side of its segment it was made on. Returns whether anything changed.
+	pub fn follow_segments_turned_elsewhere(&mut self, turned: &HashSet<SegmentId>) -> bool {
+		let own: HashSet<SegmentId> = self.segments.add.iter().copied().collect();
+		let named_elsewhere = |segment: &SegmentId| turned.contains(segment) && !own.contains(segment);
+		let mut changed = false;
+
+		// Only the segments this modification names by side can need turning, so this is linear in its own edits
+		let segments = &self.segments;
+		let named: HashSet<SegmentId> = [&segments.handle_primary, &segments.handle_end]
+			.into_iter()
+			.flat_map(|handles| handles.keys())
+			.chain([&segments.start_point, &segments.end_point].into_iter().flat_map(|points| points.keys()))
+			.copied()
+			.filter(named_elsewhere)
+			.collect();
+
+		for segment in named {
+			let (primary, end_handle) = (self.segments.handle_primary.remove(&segment), self.segments.handle_end.remove(&segment));
+			changed |= primary.is_some() || end_handle.is_some();
+			if let Some(primary) = primary {
+				self.segments.handle_end.insert(segment, primary);
+			}
+			if let Some(end_handle) = end_handle {
+				self.segments.handle_primary.insert(segment, end_handle);
+			}
+
+			let (start, end) = (self.segments.start_point.remove(&segment), self.segments.end_point.remove(&segment));
+			changed |= start.is_some() || end.is_some();
+			if let Some(start) = start {
+				self.segments.end_point.insert(segment, start);
+			}
+			if let Some(end) = end {
+				self.segments.start_point.insert(segment, end);
+			}
+		}
+
+		for pairs in [&mut self.add_g1_continuous, &mut self.remove_g1_continuous] {
+			if pairs.iter().flatten().any(|handle| named_elsewhere(&handle.segment)) {
+				changed = true;
+				*pairs = pairs
+					.drain()
+					.map(|pair| pair.map(|handle| if named_elsewhere(&handle.segment) { handle.opposite() } else { handle }))
+					.collect();
+			}
+		}
+
+		changed
 	}
 }
 
@@ -859,6 +1147,19 @@ where
 		seq.serialize_element(value)?;
 	}
 	seq.end()
+}
+
+/// Serializes sorted `[value, ...]` as a present optional, matching the field being read back as an `Option` in formats that tag one.
+pub(crate) fn serialize_hashset_as_some<T, S, H>(set: &HashSet<T, H>, serializer: S) -> Result<S::Ok, S::Error>
+where
+	T: Serialize + Eq + Hash + Ord,
+	S: Serializer,
+	H: BuildHasher,
+{
+	let mut entries: Vec<_> = set.iter().collect();
+	entries.sort();
+
+	serializer.serialize_some(&entries)
 }
 
 pub fn deserialize_hashmap<'de, K, V, D, H>(deserializer: D) -> Result<HashMap<K, V, H>, D::Error>
@@ -1346,5 +1647,252 @@ mod tests {
 		});
 
 		assert_eq!(modification, VectorModification::default());
+	}
+
+	/// A modification placing the points in a row and drawing a straight segment between each pair of them given.
+	fn drawn(points: &[PointId], segments: &[(SegmentId, usize, usize)]) -> VectorModification {
+		let mut modification = VectorModification::default();
+		for (index, &id) in points.iter().enumerate() {
+			let position = DVec2::new(index as f64 * 10., 0.);
+			modification.modify(&VectorModificationType::InsertPoint { id, position });
+		}
+		for &(id, start, end) in segments {
+			let points = [points[start], points[end]];
+			modification.modify(&VectorModificationType::InsertSegment { id, points, handles: [None, None] });
+		}
+
+		modification
+	}
+
+	/// The anchors each path visits once the modification is applied to nothing, as places in the given points.
+	fn woven_paths(modification: &VectorModification, points: &[PointId]) -> Vec<Vec<usize>> {
+		let (mut vector, mut paths) = (Vector::default(), List::new());
+		modification.apply(&mut vector, &mut paths);
+
+		let place = |point: u32| vector.point_id_at(point).and_then(|id| points.iter().position(|&candidate| candidate == id)).expect("a known anchor");
+		paths.iter_element_values().map(|path| path.references().map(place).collect()).collect()
+	}
+
+	fn generated<T>(count: usize, generate: fn() -> T) -> Vec<T> {
+		(0..count).map(|_| generate()).collect()
+	}
+
+	// A modification stored before paths recorded where they begin is a soup, which loading chains into one path and turns around where needed
+	#[test]
+	fn a_stored_soup_is_chained_into_paths_on_load() {
+		let (points, ids) = (generated(5, PointId::generate), generated(4, SegmentId::generate));
+		let soup = drawn(&points, &[(ids[0], 1, 2), (ids[1], 1, 0), (ids[2], 3, 2), (ids[3], 3, 4)]);
+		assert_eq!(woven_paths(&soup, &points).len(), 4);
+
+		let mut stored = serde_json::to_value(&soup).unwrap();
+		stored.as_object_mut().unwrap().remove("path_breaks");
+		let loaded: VectorModification = serde_json::from_value(stored).unwrap();
+
+		assert_eq!(woven_paths(&loaded, &points), [[0, 1, 2, 3, 4]]);
+		assert_eq!(loaded.path_breaks, HashSet::from([ids[1]]));
+	}
+
+	// A modification stored with its record of path beginnings loads exactly as it was saved, without being chained again
+	#[test]
+	fn the_path_record_survives_a_round_trip() {
+		let (points, ids) = (generated(3, PointId::generate), generated(2, SegmentId::generate));
+		let mut modification = drawn(&points, &[(ids[0], 1, 2), (ids[1], 1, 0)]);
+		modification.modify(&VectorModificationType::SetPathBreak { segment: ids[1], breaks: true });
+
+		let stored = serde_json::to_string(&modification).unwrap();
+		let loaded: VectorModification = serde_json::from_str(&stored).unwrap();
+
+		assert_eq!(loaded, modification);
+		assert_eq!(woven_paths(&loaded, &points), [vec![1, 2], vec![1, 0]]);
+	}
+
+	// Splitting the first side of an upstream closed path, as the Path tool inserts a point, keeps one closed path beginning where it did
+	#[test]
+	fn splitting_an_upstream_path_beginning_keeps_the_path_whole() {
+		use kurbo::{Rect, Shape};
+
+		let (mut vector, mut paths) = Vector::from_bezpath(&Rect::new(0., 0., 10., 10.).to_path(0.));
+		let (first, _, start, end) = vector.segment_iter(&paths).next().unwrap();
+		let middle = PointId::generate();
+		let halves = [SegmentId::generate(), SegmentId::generate()];
+
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::RemoveSegment { id: first });
+		modification.modify(&VectorModificationType::InsertPoint {
+			id: middle,
+			position: DVec2::new(5., 0.),
+		});
+		for (id, points) in [(halves[0], [start, middle]), (halves[1], [middle, end])] {
+			modification.modify(&VectorModificationType::InsertSegment { id, points, handles: [None, None] });
+		}
+		modification.modify(&VectorModificationType::SetPathBreak { segment: halves[0], breaks: true });
+		modification.apply(&mut vector, &mut paths);
+
+		assert_eq!(paths.len(), 1);
+		assert!(paths.element(0).unwrap().is_closed());
+		assert_eq!(vector.segment_iter(&paths).count(), 5);
+		assert_eq!(vector.segment_iter(&paths).next().map(|(id, ..)| id), Some(halves[0]));
+	}
+
+	// Deleting a segment cuts its path, so what is left past it stays apart from another path ending at the same junction
+	#[test]
+	fn deleting_a_segment_beside_a_junction_keeps_the_paths_apart() {
+		use crate::vector::path::push_path;
+		use core_types::list::Item;
+
+		let mut vector = Vector::default();
+		for index in 0..8 {
+			vector.0.push(Item::new_from_element(DVec2::new(index as f64, 0.)).with_attribute(ATTR_ID, PointId::generate()));
+		}
+		let mut paths = List::new();
+		for references in [vec![0, 1, 2, 3], vec![5, 2], vec![6, 2, 7]] {
+			let ids: Vec<SegmentId> = (1..references.len()).map(|_| SegmentId::generate()).collect();
+			push_path(&mut paths, CurveType::Linear, references, ids);
+		}
+		let removed = vector.segment_iter(&paths).nth(1).map(|(id, ..)| id).unwrap();
+
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::RemoveSegment { id: removed });
+		modification.apply(&mut vector, &mut paths);
+
+		// Anchors are named by their x positions, which were their original pool indices
+		let drawn: Vec<Vec<i32>> = paths
+			.iter_element_values()
+			.map(|path| path.references().map(|point| vector.position(point as usize).unwrap().x as i32).collect())
+			.collect();
+		assert!(drawn.contains(&vec![2, 3]), "{drawn:?}");
+		assert!(drawn.contains(&vec![5, 2]), "{drawn:?}");
+	}
+
+	// A segment marked as beginning a path stays apart from the one it sets out from the end of
+	#[test]
+	fn a_path_break_keeps_a_stroke_apart() {
+		let (points, ids) = (generated(3, PointId::generate), generated(2, SegmentId::generate));
+		let mut modification = drawn(&points, &[(ids[0], 0, 1), (ids[1], 1, 2)]);
+		assert_eq!(woven_paths(&modification, &points), [[0, 1, 2]]);
+
+		modification.modify(&VectorModificationType::SetPathBreak { segment: ids[1], breaks: true });
+		assert_eq!(woven_paths(&modification, &points), [vec![0, 1], vec![1, 2]]);
+	}
+
+	// A stroke drawn out of an upstream point and one drawn into it are not paired there, and each keeps its direction
+	#[test]
+	fn a_stored_soup_pairs_nothing_at_an_upstream_point() {
+		let (points, ids) = (generated(4, PointId::generate), generated(3, SegmentId::generate));
+		let mut soup = drawn(&points[1..], &[]);
+		for (id, start, end) in [(ids[0], 0, 1), (ids[1], 1, 2), (ids[2], 3, 0)] {
+			let points = [points[start], points[end]];
+			soup.modify(&VectorModificationType::InsertSegment { id, points, handles: [None, None] });
+		}
+
+		let mut stored = serde_json::to_value(&soup).unwrap();
+		stored.as_object_mut().unwrap().remove("path_breaks");
+		let loaded: VectorModification = serde_json::from_value(stored).unwrap();
+
+		// Paired at the upstream point, the stroke arriving there would have led the one leaving it
+		assert_eq!(loaded.segments.add, vec![ids[0], ids[1], ids[2]]);
+		assert_eq!(loaded.segments.start_point[&ids[0]], points[0]);
+		assert_eq!(loaded.segments.start_point[&ids[2]], points[3]);
+		assert_eq!(loaded.path_breaks, HashSet::from([ids[2]]));
+	}
+
+	// Loading turns a stored cubic around along with its handles and G1 pair, and an edit elsewhere naming it by side follows
+	#[test]
+	fn a_segment_turned_on_load_keeps_its_handles_and_edits_on_their_anchors() {
+		let (points, ids) = (generated(3, PointId::generate), generated(2, SegmentId::generate));
+		let (toward, away) = (DVec2::new(1., 2.), DVec2::new(3., 4.));
+		let mut soup = drawn(&points, &[]);
+		soup.modify(&VectorModificationType::InsertSegment {
+			id: ids[0],
+			points: [points[1], points[0]],
+			handles: [Some(toward), Some(away)],
+		});
+		soup.modify(&VectorModificationType::InsertSegment {
+			id: ids[1],
+			points: [points[1], points[2]],
+			handles: [None, None],
+		});
+		let pair = [HandleId::primary(ids[0]), HandleId::primary(ids[1])];
+		soup.modify(&VectorModificationType::SetG1Continuous { handles: pair, enabled: true });
+
+		let mut stored = serde_json::to_value(&soup).unwrap();
+		stored.as_object_mut().unwrap().remove("path_breaks");
+		let mut loaded: VectorModification = serde_json::from_value(stored).unwrap();
+
+		// The first segment now runs from point 0 into point 1, each handle still on the anchor it was drawn from
+		assert_eq!(loaded.segments.start_point[&ids[0]], points[0]);
+		assert_eq!(loaded.segments.handle_primary[&ids[0]], Some(away));
+		assert_eq!(loaded.segments.handle_end[&ids[0]], Some(toward));
+		assert!(loaded.add_g1_continuous.contains(&[HandleId::end(ids[0]), HandleId::primary(ids[1])]));
+
+		let turned = loaded.take_segments_turned_on_load();
+		assert_eq!(turned, HashSet::from([ids[0]]));
+
+		let mut downstream = VectorModification::default();
+		downstream.modify(&VectorModificationType::SetHandlePosition {
+			handle: HandleId::primary(ids[0]),
+			relative_position: DVec2::X,
+		});
+		assert!(downstream.follow_segments_turned_elsewhere(&turned));
+		assert_eq!(downstream.segments.handle_end.get(&ids[0]), Some(&Some(DVec2::X)));
+		assert!(!downstream.segments.handle_primary.contains_key(&ids[0]));
+	}
+
+	// Capturing a vector records where its paths begin, so two paths welded head to tail come back as two
+	#[test]
+	fn a_captured_vector_keeps_its_paths() {
+		use crate::vector::path::push_path;
+		use core_types::list::Item;
+
+		let points = generated(3, PointId::generate);
+		let mut vector = Vector::default();
+		for (index, &id) in points.iter().enumerate() {
+			vector.0.push(Item::new_from_element(DVec2::new(index as f64 * 10., 0.)).with_attribute(ATTR_ID, id));
+		}
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1], [SegmentId::generate()]);
+		push_path(&mut paths, CurveType::Linear, [1, 2], [SegmentId::generate()]);
+
+		let captured = VectorModification::create_from_vector(&vector, &paths);
+		assert_eq!(woven_paths(&captured, &points), [vec![0, 1], vec![1, 2]]);
+	}
+
+	// Splitting the segment a closed path begins with hands that beginning to its first half, so the path keeps its start
+	#[test]
+	fn a_point_inserted_on_a_paths_first_segment_keeps_its_start() {
+		let (points, ids) = (generated(5, PointId::generate), generated(6, SegmentId::generate));
+		let mut modification = drawn(&points[..4], &[(ids[0], 0, 1), (ids[1], 1, 2), (ids[2], 2, 3), (ids[3], 3, 0)]);
+		modification.modify(&VectorModificationType::SetPathBreak { segment: ids[0], breaks: true });
+
+		modification.modify(&VectorModificationType::InsertPoint {
+			id: points[4],
+			position: DVec2::new(5., 5.),
+		});
+		for (id, points) in [(ids[4], [points[0], points[4]]), (ids[5], [points[4], points[1]])] {
+			modification.modify(&VectorModificationType::InsertSegment { id, points, handles: [None, None] });
+		}
+		modification.modify(&VectorModificationType::SetPathBreak { segment: ids[4], breaks: true });
+		modification.modify(&VectorModificationType::RemoveSegment { id: ids[0] });
+
+		assert_eq!(woven_paths(&modification, &points), [[0, 4, 1, 2, 3, 0]]);
+	}
+
+	// Splitting a segment removes it and stores its two halves last, and the path they sit in stays one path from the same start
+	#[test]
+	fn a_point_inserted_into_a_path_leaves_it_one_path() {
+		let (points, ids) = (generated(5, PointId::generate), generated(6, SegmentId::generate));
+		let mut modification = drawn(&points[..4], &[(ids[0], 0, 1), (ids[1], 1, 2), (ids[2], 2, 3), (ids[3], 3, 0)]);
+		assert_eq!(woven_paths(&modification, &points), [[0, 1, 2, 3, 0]]);
+
+		modification.modify(&VectorModificationType::RemoveSegment { id: ids[1] });
+		modification.modify(&VectorModificationType::InsertPoint {
+			id: points[4],
+			position: DVec2::new(15., 5.),
+		});
+		for (id, points) in [(ids[4], [points[1], points[4]]), (ids[5], [points[4], points[2]])] {
+			modification.modify(&VectorModificationType::InsertSegment { id, points, handles: [None, None] });
+		}
+
+		assert_eq!(woven_paths(&modification, &points), [[0, 1, 4, 2, 3, 0]]);
 	}
 }

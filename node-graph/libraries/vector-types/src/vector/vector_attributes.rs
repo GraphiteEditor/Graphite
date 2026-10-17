@@ -1,13 +1,14 @@
 use crate::vector::addressing::{self, Span};
 use crate::vector::contour::contours;
 use crate::vector::misc::{ManipulatorGroup, Tangent, point_to_dvec2, segment_to_handles};
-use crate::vector::path::{CurveType, Path, append_segment, curve_type_at};
+use crate::vector::path::{CurveType, Path, append_segment, continues_previous_path, curve_type_at};
 use crate::vector::vector_types::Vector;
 use core_types::list::{ATTR_ID, Item, List};
 use dyn_any::DynAny;
 use fixedbitset::FixedBitSet;
 use glam::DVec2;
 use kurbo::{ParamCurve, PathSeg};
+use rustc_hash::FxHashSet;
 use std::collections::HashSet;
 use std::hash::{Hash, Hasher};
 
@@ -627,6 +628,14 @@ impl Vector {
 	/// Every segment's stable ID, in span order.
 	pub fn segment_ids(&self, paths: &List<Path>) -> Vec<SegmentId> {
 		addressing::spans(paths).map(|span| addressing::segment_id_of(paths, span).unwrap_or_default()).collect()
+	}
+
+	/// The ID of the first segment of every path that begins one, leaving out the paths that only carry on the one before them in another curve type.
+	pub fn path_beginnings(&self, paths: &List<Path>) -> FxHashSet<SegmentId> {
+		addressing::spans(paths)
+			.filter(|span| span.index == 0 && !continues_previous_path(paths, span.path as usize))
+			.filter_map(|span| addressing::segment_id_of(paths, span))
+			.collect()
 	}
 
 	pub fn auto_join_paths(&self, paths: &List<Path>) -> Vec<FoundSubpath> {
