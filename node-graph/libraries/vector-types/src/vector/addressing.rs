@@ -1,6 +1,6 @@
 use super::connectivity::Connectivity;
 use super::misc::HandleId;
-use super::path::{CurveType, Path, curve_type_at};
+use super::path::{CurveType, Path, curve_type_at, curve_types_of};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::list::{ATTR_ID, List};
 use glam::DVec2;
@@ -27,9 +27,46 @@ impl Span {
 
 /// Every span of every path, in path order.
 pub fn spans(paths: &List<Path>) -> impl Iterator<Item = Span> + '_ {
-	paths.iter_element_values().enumerate().flat_map(|(path_index, path)| {
-		let curve_type = curve_type_at(paths, path_index);
-		(0..path.segment_count(curve_type) as u32).map(move |index| Span { path: path_index as u32, index })
+	let paths_with_curve_types = paths.iter_element_values().zip(curve_types_of(paths)).enumerate();
+
+	paths_with_curve_types.flat_map(|(path_index, (path, curve_type))| (0..path.segment_count(curve_type) as u32).map(move |index| Span { path: path_index as u32, index }))
+}
+
+/// A span together with what its path holds for it.
+pub(crate) struct ResolvedSpan<'a> {
+	pub span: Span,
+	pub path: &'a Path,
+	pub curve_type: CurveType,
+	/// The span's stable ID, absent when its path names no spans.
+	pub id: Option<SegmentId>,
+	/// The pool points the span runs between.
+	pub endpoints: (u32, u32),
+}
+
+/// Every span of every path in path order, resolved in O(references) by reading each path's curve type, references, and IDs once.
+pub(crate) fn resolved_spans(paths: &List<Path>) -> impl Iterator<Item = ResolvedSpan<'_>> + '_ {
+	paths.iter_element_values().zip(curve_types_of(paths)).enumerate().flat_map(move |(path_index, (path, curve_type))| {
+		let stride = curve_type.stride();
+		let references = path.0.iter_element_values().as_slice();
+		let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice());
+
+		(0..path.segment_count(curve_type)).filter_map(move |index| {
+			let reference = index * stride;
+			let endpoints = (*references.get(reference)? as u32, *references.get(reference + stride)? as u32);
+			let span = Span {
+				path: path_index as u32,
+				index: index as u32,
+			};
+			let id = ids.and_then(|ids| ids.get(reference).copied());
+
+			Some(ResolvedSpan {
+				span,
+				path,
+				curve_type,
+				id,
+				endpoints,
+			})
+		})
 	})
 }
 
@@ -44,7 +81,7 @@ pub fn segment_id_of(paths: &List<Path>, span: Span) -> Option<SegmentId> {
 
 /// The span a segment ID names, found by scanning every span in O(references).
 pub fn span_of_segment_id(paths: &List<Path>, segment: SegmentId) -> Option<Span> {
-	spans(paths).find(|&span| segment_id_of(paths, span) == Some(segment))
+	resolved_spans(paths).find(|resolved| resolved.id == Some(segment)).map(|resolved| resolved.span)
 }
 
 /// The pool points a span runs between.

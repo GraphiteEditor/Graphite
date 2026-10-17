@@ -1,5 +1,5 @@
 use super::misc::{BezierHandles, HandleId, HandleType, segment_to_handles};
-use super::path::{CurveType, Path, continues_previous_path, curve_type_at, push_path};
+use super::path::{CurveType, Path, continues_previous_path, curve_types_of, push_paths};
 use super::vector_attributes::{PointId, SegmentId};
 use super::vector_types::Vector;
 use core_types::list::{ATTR_ID, List};
@@ -44,8 +44,7 @@ impl WorkingVector {
 		let working_point = |pool_index: u32| pool_to_working.get(pool_index as usize).copied().flatten();
 
 		// One pass so a span that fails to resolve leaves every array at the same length
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let curve_type = curve_type_at(paths, path_index);
+		for ((path_index, path), curve_type) in paths.iter_element_values().enumerate().zip(curve_types_of(paths)) {
 			let stride = curve_type.stride();
 			let span_ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 
@@ -223,9 +222,7 @@ impl WorkingVector {
 			vector.0.set_attribute_values(ATTR_ID, point_ids);
 		}
 
-		for (curve_type, references, ids) in runs {
-			push_path(paths, curve_type, references, ids);
-		}
+		push_paths(paths, runs);
 
 		// G1 pairs narrow to the smooth flag on the anchor both handles face, and other pairings are dropped
 		let anchor = |handle: HandleId| {
@@ -331,9 +328,9 @@ pub(crate) fn chain_order(point_count: usize, endpoints: &[(usize, usize)], dire
 	let mut partner = vec![usize::MAX; segment_count * 2];
 	for ends in ends_at.iter().filter(|ends| ends.len() >= 2) {
 		if ends.len() > MOST_ENDS_PAIRED_BY_STRAIGHTNESS {
-			for pair in ends.chunks_exact(2) {
-				partner[pair[0]] = pair[1];
-				partner[pair[1]] = pair[0];
+			for &[first, second] in ends.as_chunks::<2>().0 {
+				partner[first] = second;
+				partner[second] = first;
 			}
 			continue;
 		}
@@ -509,6 +506,7 @@ pub fn vector_from_legacy_parts(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::vector::path::{curve_type_at, push_path};
 	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_SMOOTH, Item};
 
 	fn working(points: usize, segments: &[(usize, usize, BezierHandles)]) -> WorkingVector {

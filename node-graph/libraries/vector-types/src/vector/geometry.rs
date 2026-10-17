@@ -222,10 +222,6 @@ impl VectorGeometry {
 		self.vector.bezpath_from_segments_ignore_discontinuities(segments)
 	}
 
-	pub fn point_tangent(&self, point_index: usize) -> Option<DVec2> {
-		self.vector.point_tangent(&self.paths, point_index)
-	}
-
 	/// The manipulator's position in layer space. See [`ManipulatorPointId::get_position`].
 	pub fn position_of(&self, point: ManipulatorPointId) -> Option<DVec2> {
 		point.get_position(&self.vector, &self.paths)

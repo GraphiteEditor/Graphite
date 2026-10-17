@@ -2,7 +2,9 @@ use super::addressing;
 use super::connectivity::Connectivity;
 use super::contour::{contour_bezpaths, contours};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use super::path::{CurveType, Path, curve_type_at, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, weave_bezpath};
+use super::path::{
+	CurveType, Path, append_named_bezpaths, curve_type_at, curve_types_of, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes,
+};
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -84,58 +86,38 @@ impl Vector {
 	}
 }
 
-/// The ID continuing the pool's point ID sequence.
-fn next_point_id(pool: &List<DVec2>) -> PointId {
-	let ids = pool.iter_attribute_values::<PointId>(ATTR_ID);
-	ids.and_then(|ids| ids.copied().filter(|id| *id != PointId::UNNAMED).max())
-		.map(|mut id| id.next_id())
-		.unwrap_or(PointId::ZERO)
+/// The largest ID in the pool's point ID sequence, which a pool has once it holds point IDs at all.
+fn largest_point_id(pool: &List<DVec2>) -> Option<PointId> {
+	let ids = pool.iter_attribute_values::<PointId>(ATTR_ID)?;
+
+	// An ID attribute that names nothing yet counts as a sequence at zero, which documents saved with edits to such geometry rely on
+	Some(ids.copied().filter(|id| *id != PointId::UNNAMED).max().unwrap_or_default())
 }
 
-/// The ID continuing the paths' segment ID sequence.
-fn next_segment_id(paths: &List<Path>) -> SegmentId {
-	let ids = paths
-		.iter_element_values()
-		.filter_map(|path| path.0.iter_attribute_values::<SegmentId>(ATTR_ID))
-		.flatten()
-		.copied()
-		.max();
+/// The largest ID in the paths' segment ID sequence.
+fn largest_segment_id(paths: &List<Path>) -> Option<SegmentId> {
+	let ids = paths.iter_element_values().filter_map(|path| path.0.iter_attribute_values::<SegmentId>(ATTR_ID));
 
-	ids.map(|mut id| id.next_id()).unwrap_or(SegmentId::ZERO)
+	ids.flatten().copied().max()
 }
 
 impl Vector {
 	/// Weaves a bezpath's contours onto this pool and the given paths, naming the new anchors and spans
 	/// by continuing the ID sequences. Handles take `PointId::UNNAMED`.
 	pub fn append_bezpath(&mut self, paths: &mut List<Path>, bezpath: &BezPath) {
-		let (first_new_point, first_new_path) = (self.0.len(), paths.len());
-		let anchors = weave_bezpath(&mut self.0, paths, bezpath);
+		self.append_bezpaths(paths, [bezpath]);
+	}
 
-		// Pool order is traversal order, so anchors and free points take IDs in the order they were drawn
-		if !anchors.is_empty() {
-			let mut point_id = next_point_id(&self.0);
-			let ids = self.0.iter_attribute_values_mut_or_default::<PointId>(ATTR_ID).skip(first_new_point);
-			for (id, anchor) in ids.zip(anchors) {
-				*id = if anchor { point_id.next_id() } else { PointId::UNNAMED };
-			}
-		}
+	/// Weaves each bezpath in turn as [`Self::append_bezpath`] would, in O(existing + appended) however many there are
+	/// since the IDs to continue from are found once.
+	pub fn append_bezpaths(&mut self, paths: &mut List<Path>, bezpaths: impl IntoIterator<Item = impl std::borrow::Borrow<BezPath>>) {
+		self.append_bezpaths_counting_spans(paths, bezpaths);
+	}
 
-		let mut segment_id = next_segment_id(paths);
-		for path_index in first_new_path..paths.len() {
-			let curve_type = curve_type_at(paths, path_index);
-			let Some(path) = paths.element_mut(path_index) else { continue };
-
-			let span_count = path.segment_count(curve_type);
-			if span_count == 0 {
-				continue;
-			}
-
-			let mut span_ids = vec![SegmentId::default(); path.0.len()];
-			for span in 0..span_count {
-				span_ids[span * curve_type.stride()] = segment_id.next_id();
-			}
-			path.0.set_attribute_values(ATTR_ID, span_ids);
-		}
+	/// Weaves bezpaths as [`Self::append_bezpaths`] does, returning how many spans each of them added.
+	pub fn append_bezpaths_counting_spans(&mut self, paths: &mut List<Path>, bezpaths: impl IntoIterator<Item = impl std::borrow::Borrow<BezPath>>) -> Vec<usize> {
+		let (last_point, last_segment) = (largest_point_id(&self.0), largest_segment_id(paths));
+		append_named_bezpaths(&mut self.0, paths, bezpaths, last_point, last_segment)
 	}
 
 	/// Builds a fresh pool and paths from a single bezpath.
@@ -157,13 +139,14 @@ impl Vector {
 impl Vector {
 	/// Every segment in span order as `(id, segment, start point ID, end point ID)`.
 	pub fn segment_iter<'a>(&'a self, paths: &'a List<Path>) -> impl Iterator<Item = (SegmentId, PathSeg, PointId, PointId)> + 'a {
-		addressing::spans(paths).filter_map(|span| {
-			let path = paths.element(span.path as usize)?;
-			let segment = path.segment(&self.0, curve_type_at(paths, span.path as usize), span.index as usize)?;
-			let id = addressing::segment_id_of(paths, span).unwrap_or_default();
-			let (start, end) = addressing::span_endpoints(paths, span)?;
+		let point_ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+		let point_id = move |point: u32| point_ids.get(point as usize).copied().unwrap_or_default();
 
-			Some((id, segment, self.point_id_at(start).unwrap_or_default(), self.point_id_at(end).unwrap_or_default()))
+		addressing::resolved_spans(paths).filter_map(move |resolved| {
+			let segment = resolved.path.segment(&self.0, resolved.curve_type, resolved.span.index as usize)?;
+			let (start, end) = resolved.endpoints;
+
+			Some((resolved.id.unwrap_or_default(), segment, point_id(start), point_id(end)))
 		})
 	}
 
@@ -379,8 +362,8 @@ impl Vector {
 
 		let mut roles = vec![UNREFERENCED; self.0.len()];
 		let mut handles_unshared = true;
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let stride = curve_type_at(paths, path_index).stride();
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
+			let stride = curve_type.stride();
 			for (reference_index, point) in path.references().enumerate() {
 				let Some(role) = roles.get_mut(point as usize) else { continue };
 				if reference_index.is_multiple_of(stride) {
@@ -697,12 +680,12 @@ impl Vector {
 			return;
 		}
 
-		// Each closing segment's ID skips one after the previous, as the IDs of a newly appended bezpath do
-		let mut base = next_segment_id(paths);
+		// Each closing segment's ID skips one after the latest, as the IDs of a newly appended bezpath do
+		let mut latest = largest_segment_id(paths);
 		let mut closing_paths = Vec::with_capacity(closings.len());
 		for (before, backward, references) in closings {
-			let id = base.next_id();
-			base.next_id();
+			let id = latest.map_or(SegmentId::ZERO, |mut latest| latest.next_id()).next_id();
+			latest = Some(id);
 
 			let mut single = List::new();
 			push_path(&mut single, CurveType::Linear, references, [id]);
@@ -795,13 +778,30 @@ impl Vector {
 	}
 }
 
-/// Edits a holder item's pool and paths together, taking the paths attribute out and restoring it.
+/// Edits a holder item's pool and paths together, taking the paths attribute out and putting it back where it was, or last if absent.
 pub fn edit_item_geometry<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vector, &mut List<Path>) -> R) -> R {
-	let mut paths = item.remove_attribute::<List<Path>>(ATTR_PATHS).unwrap_or_default();
+	let mut paths = item.attribute_mut::<List<Path>>(ATTR_PATHS).map(std::mem::take).unwrap_or_default();
 	let result = edit(item.element_mut(), &mut paths);
-	item.set_attribute(ATTR_PATHS, paths);
+	*item.attribute_mut_or_insert_default::<List<Path>>(ATTR_PATHS) = paths;
 
 	result
+}
+
+/// Edits an item's pool while only reading its paths, which stay shared with the item's clones instead of being copied.
+pub fn edit_item_points<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vector, &List<Path>) -> R) -> R {
+	let paths = shared_paths_from_item_attributes(item);
+	let result = edit(item.element_mut(), &paths);
+	ensure_paths_attribute(item);
+
+	result
+}
+
+/// Gives an item without paths an empty paths attribute, placed last, as [`edit_item_geometry`] gives a point cloud.
+pub fn ensure_paths_attribute(item: &mut Item<Vector>) {
+	if item.attribute::<List<Path>>(ATTR_PATHS).is_none() {
+		item.remove_attribute::<List<Path>>(ATTR_PATHS);
+		item.set_attribute(ATTR_PATHS, List::<Path>::new());
+	}
 }
 
 /// Edits one list row's pool and paths together, writing the paths attribute back afterwards.
@@ -863,7 +863,7 @@ impl RenderComplexity for Vector {
 fn segment_count(paths: Option<&List<Path>>) -> usize {
 	let Some(paths) = paths else { return 0 };
 
-	paths.iter_element_values().enumerate().map(|(index, path)| path.segment_count(curve_type_at(paths, index))).sum()
+	paths.iter_element_values().zip(curve_types_of(paths)).map(|(path, curve_type)| path.segment_count(curve_type)).sum()
 }
 
 // Note: BoundingBox for List<Vector> is handled by blanket impl in core-types
@@ -896,6 +896,54 @@ mod tests {
 		assert_eq!(List::new_from_item(item).render_complexity(), 4);
 	}
 
+	// Bezpaths appended together come out as they do appended one at a time, IDs included, with the spans each one added counted
+	#[test]
+	fn bezpaths_appended_together_match_one_at_a_time() {
+		let mut mixed = BezPath::new();
+		mixed.move_to((0., 0.));
+		mixed.line_to((4., 0.));
+		mixed.quad_to((6., 2.), (4., 4.));
+		mixed.close_path();
+		let bezpaths = [ellipse_bezpath(DVec2::NEG_ONE, DVec2::ONE), BezPath::new(), mixed, open_curve_bezpath()];
+
+		let (mut together, mut together_paths) = (lone_anchor(DVec2::splat(9.)), List::new());
+		let span_counts = together.append_bezpaths_counting_spans(&mut together_paths, &bezpaths);
+		assert_eq!(span_counts, [4, 0, 3, 1]);
+
+		let (mut in_turn, mut in_turn_paths) = (lone_anchor(DVec2::splat(9.)), List::new());
+		for bezpath in &bezpaths {
+			in_turn.append_bezpath(&mut in_turn_paths, bezpath);
+		}
+
+		assert_eq!((together, together_paths), (in_turn, in_turn_paths));
+	}
+
+	// Each appended bezpath's IDs skip one after the largest before it, which documents saved with edits to such geometry rely on
+	#[test]
+	fn appended_bezpaths_continue_the_id_sequences_with_a_gap() {
+		let mut triangle = BezPath::new();
+		triangle.move_to((0., 0.));
+		triangle.line_to((4., 0.));
+		triangle.line_to((0., 4.));
+		triangle.close_path();
+		let named = |vector: &Vector, paths: &List<Path>| {
+			let point_ids: Vec<u64> = vector.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().map(|id| id.inner()).collect();
+			let segment_ids: Vec<u64> = vector.segment_iter(paths).map(|(id, ..)| id.inner()).collect();
+			(point_ids, segment_ids)
+		};
+
+		let (mut vector, mut paths) = (Vector::default(), List::new());
+		vector.append_bezpaths(&mut paths, [&triangle, &triangle]);
+		assert_eq!(named(&vector, &paths), (vec![1, 2, 3, 5, 6, 7], vec![1, 2, 3, 5, 6, 7]));
+
+		// A pool holding IDs that name nothing yet starts its sequence one further on
+		let mut unnamed = Vector::default();
+		unnamed.0.set_attribute_values(ATTR_ID, Vec::<PointId>::new());
+		let mut unnamed_paths = List::new();
+		unnamed.append_bezpath(&mut unnamed_paths, &triangle);
+		assert_eq!(named(&unnamed, &unnamed_paths).0, [2, 3, 4]);
+	}
+
 	// A lone anchor is named zero and only the later collisions are renamed, so stored edits keyed on zero still land
 	#[test]
 	fn lone_anchor_is_named_zero_and_collisions_rename_from_it() {
@@ -923,7 +971,7 @@ mod tests {
 		let index = vector.index_of_point_id(PointId::ZERO).unwrap();
 		assert_eq!(vector.position(index as usize), Some(DVec2::new(5., 5.)));
 		assert!(vector.anchor_indices(&paths).contains(&(index as usize)));
-		assert_eq!(next_point_id(&vector.0).inner(), 3);
+		assert_eq!(largest_point_id(&vector.0).map(PointId::inner), Some(2));
 	}
 
 	#[test]

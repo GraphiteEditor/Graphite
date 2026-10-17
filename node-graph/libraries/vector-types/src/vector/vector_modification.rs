@@ -1,7 +1,7 @@
 use super::*;
 use crate::vector::flatten::WorkingVector;
 use crate::vector::misc::{BezierHandles, HandleId, HandleType};
-use crate::vector::path::{CurveType, Path, curve_type_at};
+use crate::vector::path::{CurveType, Path, curve_types_of};
 use core_types::list::{ATTR_ID, List};
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
@@ -136,8 +136,7 @@ impl PointModification {
 		}
 
 		// A segment's first handle follows its start anchor, and a cubic's second handle follows its end anchor
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let curve_type = curve_type_at(paths, path_index);
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
 			if curve_type == CurveType::Linear {
 				continue;
 			}
@@ -214,8 +213,8 @@ impl SegmentModification {
 		working.segment_begins_path.resize(segment_count, false);
 
 		let (mut removed_began_path, mut removed_end) = (false, None);
-		for index in 0..segment_count {
-			if !keep[index] {
+		for (index, &kept) in keep.iter().enumerate() {
+			if !kept {
 				removed_began_path |= std::mem::take(&mut working.segment_begins_path[index]);
 				removed_end = Some(working.segment_end[index]);
 				continue;
@@ -389,8 +388,7 @@ impl SegmentModification {
 
 	/// Calls the visitor with each span a handle edit names, along with its curve type, references, starting reference, and edits.
 	fn for_each_edited_span(&self, paths: &List<Path>, mut visit: impl FnMut(CurveType, &Path, usize, Option<Option<DVec2>>, Option<Option<DVec2>>)) {
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let curve_type = curve_type_at(paths, path_index);
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
 			let stride = curve_type.stride();
 			let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 
@@ -771,9 +769,17 @@ impl VectorModification {
 
 	/// Apply this modification to the specified [`Vector`] and its paths.
 	pub fn apply(&self, vector: &mut Vector, paths: &mut List<Path>) {
+		if !self.apply_in_place(vector, paths) {
+			self.apply_through_working_form(vector, paths);
+		}
+	}
+
+	/// Applies this modification if it leaves the paths as they are, returning whether it did. Otherwise nothing
+	/// changes and [`Self::apply`] has to rewrite the paths.
+	pub fn apply_in_place(&self, vector: &mut Vector, paths: &List<Path>) -> bool {
 		// An untouched vector keeps its incoming path structure instead of being flattened and rewoven
 		if self.is_empty() {
-			return;
+			return true;
 		}
 
 		// Moving points and handles leaves the weave intact, so the pool is edited where it lies in O(points + references), keeping
@@ -783,11 +789,11 @@ impl VectorModification {
 			if handles_unshared {
 				self.points.move_in_place(vector, paths, &handles);
 				self.segments.set_handles_in_place(vector, paths);
-				return;
+				return true;
 			}
 		}
 
-		self.apply_through_working_form(vector, paths);
+		false
 	}
 
 	/// Applies this modification by flattening to the legacy working form, editing that, and weaving the result back.
