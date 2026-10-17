@@ -909,6 +909,23 @@ impl Attributes {
 		attribute.0[index] = value;
 	}
 
+	/// Replaces the attribute for the given key with one value per item, keeping its place unless its type changes.
+	fn set_attribute_values<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: String, values: Vec<T>) {
+		// An attribute changing type moves to the end, as it does when set one value at a time
+		let existing = self.attributes.iter().position(|(k, _)| k == &key);
+		let same_type = existing.is_some_and(|position| (*self.attributes[position].1).as_any().downcast_ref::<Attribute<T>>().is_some());
+
+		let attribute: Box<dyn AnyAttribute> = Box::new(Attribute(values));
+		match existing {
+			Some(position) if same_type => self.attributes[position].1 = attribute,
+			Some(position) => {
+				self.attributes.remove(position);
+				self.attributes.push((key, attribute));
+			}
+			None => self.attributes.push((key, attribute)),
+		}
+	}
+
 	/// Returns a debug-formatted string for the value at the given index in the attribute for the given key.
 	fn display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
 		self.attributes.iter().find_map(|(k, attribute)| {
@@ -1029,6 +1046,15 @@ impl<T> List<T> {
 		}
 	}
 
+	/// Creates a list holding the given elements in order, with no attributes.
+	pub fn new_from_elements(elements: Vec<T>) -> Self {
+		let len = elements.len();
+		Self {
+			element: elements,
+			attributes: Attributes::with_len(len),
+		}
+	}
+
 	/// Creates a list containing a single item from the given [`Item`], preserving its attributes.
 	pub fn new_from_item(item: Item<T>) -> Self {
 		let mut attributes = Attributes::new();
@@ -1138,6 +1164,18 @@ impl<T> List<T> {
 	/// Sets the attribute value at the given item index and key, creating the attribute with defaults if it doesn't exist.
 	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
 		self.attributes.set_value(key, index, value);
+	}
+
+	/// Sets the attribute's value for every item at once from one value per item, replacing any values the key held (an empty list still gains the key).
+	/// Logs an error and leaves the list unchanged if the number of values differs from the number of items.
+	pub fn set_attribute_values<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, values: Vec<U>) {
+		let key = key.into();
+		if values.len() != self.element.len() {
+			log::error!("Attribute '{key}' was given {} values for a list of {} items", values.len(), self.element.len());
+			return;
+		}
+
+		self.attributes.set_attribute_values(key, values);
 	}
 
 	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).
@@ -1576,5 +1614,30 @@ mod tests {
 		other.push(Item::new_from_element(()));
 		other.push(Item::new_from_element(()).with_attribute(ATTR_START, 5_u64));
 		assert_eq!(other.attribute_cloned_or_default::<u64>(ATTR_START, 0), 0);
+	}
+
+	// Whole-attribute writes replace an existing attribute in place and refuse a value count that doesn't match
+	#[test]
+	fn set_attribute_values_writes_every_item_at_once() {
+		let mut list = List::new_from_elements(vec![10_u32, 20, 30]);
+		list.set_attribute(ATTR_START, 0, 7_u64);
+		list.set_attribute_values(ATTR_END, vec![1_u64, 2, 3]);
+		list.set_attribute_values(ATTR_START, vec![4_u64, 5, 6]);
+
+		assert_eq!(list.len(), 3);
+		assert_eq!(list.attribute_keys().collect::<Vec<_>>(), [ATTR_START, ATTR_END]);
+		assert_eq!(list.iter_attribute_values::<u64>(ATTR_START).unwrap().copied().collect::<Vec<_>>(), [4, 5, 6]);
+
+		list.set_attribute_values(ATTR_END, vec![9_u64]);
+		assert_eq!(list.iter_attribute_values::<u64>(ATTR_END).unwrap().copied().collect::<Vec<_>>(), [1, 2, 3]);
+
+		// Changing an attribute's type moves it last, whichever way it is written
+		let mut one_at_a_time = list.clone();
+		for index in 0..3 {
+			one_at_a_time.set_attribute(ATTR_START, index, index as f64);
+		}
+		list.set_attribute_values(ATTR_START, vec![0., 1., 2.]);
+		assert_eq!(list.attribute_keys().collect::<Vec<_>>(), [ATTR_END, ATTR_START]);
+		assert_eq!(list, one_at_a_time);
 	}
 }

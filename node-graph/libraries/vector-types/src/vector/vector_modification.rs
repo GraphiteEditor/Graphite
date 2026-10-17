@@ -1,11 +1,12 @@
 use super::*;
 use crate::vector::flatten::WorkingVector;
 use crate::vector::misc::{BezierHandles, HandleId, HandleType};
-use crate::vector::path::Path;
-use core_types::list::List;
+use crate::vector::path::{CurveType, Path, curve_type_at};
+use core_types::list::{ATTR_ID, List};
 use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
 use glam::DVec2;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::de::{SeqAccess, Visitor};
 use serde::ser::SerializeSeq;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -53,31 +54,37 @@ impl PointModification {
 		working.point_ids.retain(|id| !self.remove.contains(id));
 
 		// Gathering the moves first keeps the segment pass below off the common path where nothing moves
-		let mut moved: HashMap<usize, DVec2> = HashMap::new();
-		for (index, id) in working.point_ids.iter().enumerate() {
-			let Some(&delta) = self.delta.get(id) else { continue };
-			if !delta.is_finite() {
-				warn!("Invalid delta when applying a point modification");
-				continue;
-			}
+		let mut moved = Vec::new();
+		let mut any_moved = false;
+		if !self.delta.is_empty() {
+			moved.resize(working.point_ids.len(), None);
+			for (index, id) in working.point_ids.iter().enumerate() {
+				let Some(&delta) = self.delta.get(id) else { continue };
+				if !delta.is_finite() {
+					warn!("Invalid delta when applying a point modification");
+					continue;
+				}
 
-			working.point_positions[index] += delta;
-			moved.insert(index, delta);
+				working.point_positions[index] += delta;
+				moved[index] = Some(delta);
+				any_moved = true;
+			}
 		}
 
 		// Handles travel with their anchor, carried in one pass over the segment ends
-		if !moved.is_empty() {
+		if any_moved {
+			let moved_by = |index: usize| moved.get(index).copied().flatten();
 			for index in 0..working.segment_ids.len() {
-				if let Some(&delta) = moved.get(&working.segment_start[index]) {
+				if let Some(delta) = moved_by(working.segment_start[index]) {
 					working.segment_handles[index].move_start(delta);
 				}
-				if let Some(&delta) = moved.get(&working.segment_end[index]) {
+				if let Some(delta) = moved_by(working.segment_end[index]) {
 					working.segment_handles[index].move_end(delta);
 				}
 			}
 		}
 
-		let mut named: HashSet<PointId> = if self.add.is_empty() { HashSet::new() } else { working.point_ids.iter().copied().collect() };
+		let mut named: FxHashSet<PointId> = if self.add.is_empty() { FxHashSet::default() } else { working.point_ids.iter().copied().collect() };
 		for &add_id in &self.add {
 			let Some(&position) = self.delta.get(&add_id) else { continue };
 			if !position.is_finite() {
@@ -92,6 +99,67 @@ impl PointModification {
 
 			working.point_ids.push(add_id);
 			working.point_positions.push(position);
+		}
+	}
+
+	/// Moves each point named by a delta directly in the pool, carrying the handles that follow it. `handles` marks the pool's handles,
+	/// none of which may be shared between segments, or a shared one would move once for each.
+	fn move_in_place(&self, vector: &mut Vector, paths: &List<Path>, handles: &[bool]) {
+		if self.delta.is_empty() {
+			return;
+		}
+
+		let ids = vector.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+
+		// Deltas move only anchors and free points, as the working form leaves handles out of its points
+		let mut moved = vec![None; vector.point_count()];
+		let mut any_moved = false;
+		for (index, _) in handles.iter().enumerate().filter(|&(_, &handle)| !handle) {
+			let Some(&delta) = self.delta.get(&ids.get(index).copied().unwrap_or_default()) else { continue };
+			if !delta.is_finite() {
+				warn!("Invalid delta when applying a point modification");
+				continue;
+			}
+
+			moved[index] = Some(delta);
+			any_moved = true;
+		}
+
+		if !any_moved {
+			return;
+		}
+
+		for (position, delta) in vector.0.iter_element_values_mut().zip(&moved) {
+			if let Some(delta) = delta {
+				*position += *delta;
+			}
+		}
+
+		// A segment's first handle follows its start anchor, and a cubic's second handle follows its end anchor
+		for (path_index, path) in paths.iter_element_values().enumerate() {
+			let curve_type = curve_type_at(paths, path_index);
+			if curve_type == CurveType::Linear {
+				continue;
+			}
+
+			let stride = curve_type.stride();
+			let moved_by = |reference: usize| path.reference(reference).and_then(|point| moved.get(point as usize).copied().flatten());
+
+			for span in 0..path.segment_count(curve_type) {
+				let start = span * stride;
+				let mut carry = |handle_reference: usize, delta: Option<DVec2>| {
+					if let (Some(delta), Some(handle)) = (delta, path.reference(handle_reference))
+						&& let Some(position) = vector.0.element_mut(handle as usize)
+					{
+						*position += delta;
+					}
+				};
+
+				carry(start + 1, moved_by(start));
+				if curve_type == CurveType::Cubic {
+					carry(start + 2, moved_by(start + stride));
+				}
+			}
 		}
 	}
 
@@ -152,7 +220,7 @@ impl SegmentModification {
 
 		// The points no longer change here, so one index serves every endpoint lookup below.
 		// Nothing looks an endpoint up in the common pure-handle case, so it skips the build.
-		let mut point_index: HashMap<PointId, usize> = HashMap::new();
+		let mut point_index: FxHashMap<PointId, usize> = FxHashMap::default();
 		if !self.start_point.is_empty() || !self.end_point.is_empty() || !self.add.is_empty() {
 			point_index.reserve(working.point_ids.len());
 			for (index, &id) in working.point_ids.iter().enumerate() {
@@ -219,7 +287,11 @@ impl SegmentModification {
 			};
 		}
 
-		let mut named: HashSet<SegmentId> = if self.add.is_empty() { HashSet::new() } else { working.segment_ids.iter().copied().collect() };
+		let mut named: FxHashSet<SegmentId> = if self.add.is_empty() {
+			FxHashSet::default()
+		} else {
+			working.segment_ids.iter().copied().collect()
+		};
 		for &add_id in &self.add {
 			let Some(&start) = self.start_point.get(&add_id) else { continue };
 			let Some(&end) = self.end_point.get(&add_id) else { continue };
@@ -264,6 +336,98 @@ impl SegmentModification {
 
 		assert!(working.segment_start.iter().all(|&index| index < working.point_ids.len()), "index should be in range");
 		assert!(working.segment_end.iter().all(|&index| index < working.point_ids.len()), "index should be in range");
+	}
+
+	/// The curve type a segment ends up with once its handle edits apply, following the same rules as [`Self::apply`].
+	fn edited_curve_type(current: CurveType, primary: Option<Option<DVec2>>, end: Option<Option<DVec2>>) -> CurveType {
+		match (primary.map(|handle| handle.is_some()), end.map(|handle| handle.is_some())) {
+			(Some(true), Some(true)) => CurveType::Cubic,
+			(Some(true), Some(false)) | (Some(false), Some(true)) => CurveType::Quadratic,
+			(Some(false), Some(false)) | (Some(false), None) => CurveType::Linear,
+			(None, Some(false)) if current == CurveType::Cubic => CurveType::Quadratic,
+			(None, Some(true)) if current == CurveType::Linear => CurveType::Quadratic,
+			(None, Some(true)) => CurveType::Cubic,
+			(Some(true), None) if current == CurveType::Linear => CurveType::Quadratic,
+			_ => current,
+		}
+	}
+
+	/// Calls the visitor with each span a handle edit names, along with its curve type, references, starting reference, and edits.
+	fn for_each_edited_span(&self, paths: &List<Path>, mut visit: impl FnMut(CurveType, &Path, usize, Option<Option<DVec2>>, Option<Option<DVec2>>)) {
+		for (path_index, path) in paths.iter_element_values().enumerate() {
+			let curve_type = curve_type_at(paths, path_index);
+			let stride = curve_type.stride();
+			let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+
+			for span in 0..path.segment_count(curve_type) {
+				let id = ids.get(span * stride).copied().unwrap_or_default();
+				let (primary, end) = (self.handle_primary.get(&id).copied(), self.handle_end.get(&id).copied());
+				if primary.is_some() || end.is_some() {
+					visit(curve_type, path, span * stride, primary, end);
+				}
+			}
+		}
+	}
+
+	/// Whether every handle edit leaves its segment's curve type as it is, so the edits can land in the pool without reweaving.
+	fn handle_edits_keep_curve_types(&self, paths: &List<Path>) -> bool {
+		if self.handle_primary.is_empty() && self.handle_end.is_empty() {
+			return true;
+		}
+
+		let mut keeps = true;
+		self.for_each_edited_span(paths, |curve_type, _, _, primary, end| {
+			keeps &= Self::edited_curve_type(curve_type, primary, end) == curve_type;
+		});
+		keeps
+	}
+
+	/// Sets each edited handle directly in the pool, relative to its anchor's current position. Only valid once
+	/// [`Self::handle_edits_keep_curve_types`] has confirmed no curve type changes and [`Vector::point_roles`] that no handle is shared.
+	fn set_handles_in_place(&self, vector: &mut Vector, paths: &List<Path>) {
+		if self.handle_primary.is_empty() && self.handle_end.is_empty() {
+			return;
+		}
+
+		let mut writes = Vec::new();
+		self.for_each_edited_span(paths, |curve_type, path, start, primary, end| {
+			let position_at = |reference: usize| path.reference(reference).and_then(|point| vector.position(point as usize));
+			let (Some(start_position), Some(end_position)) = (position_at(start), position_at(start + curve_type.stride())) else {
+				return;
+			};
+
+			let new_start = primary.map(|handle| handle.map(|handle| handle + start_position));
+			let new_end = end.map(|handle| handle.map(|handle| handle + end_position));
+			if !new_start.unwrap_or_default().is_none_or(|start| start.is_finite()) || !new_end.unwrap_or_default().is_none_or(|end| end.is_finite()) {
+				warn!("Invalid handles when applying a segment modification");
+				return;
+			}
+
+			let mut write = |reference: usize, position: DVec2| {
+				if let Some(point) = path.reference(reference) {
+					writes.push((point, position));
+				}
+			};
+			match (curve_type, new_start.flatten(), new_end.flatten()) {
+				// A quadratic's lone handle takes whichever side's position the edit sets
+				(CurveType::Quadratic, Some(handle), _) | (CurveType::Quadratic, None, Some(handle)) => write(start + 1, handle),
+				(CurveType::Cubic, handle_start, handle_end) => {
+					if let Some(handle_start) = handle_start {
+						write(start + 1, handle_start);
+					}
+					if let Some(handle_end) = handle_end {
+						write(start + 2, handle_end);
+					}
+				}
+				_ => {}
+			}
+		});
+
+		for (point, position) in writes {
+			if let Some(slot) = vector.0.element_mut(point as usize) {
+				*slot = position;
+			}
+		}
 	}
 
 	/// Create a new modification that will convert an empty [`Vector`] into the target working form.
@@ -489,6 +653,38 @@ impl VectorModification {
 		self.points == PointModification::default() && self.segments == SegmentModification::default() && self.add_g1_continuous.is_empty() && self.remove_g1_continuous.is_empty()
 	}
 
+	/// Whether this modification only moves existing points and handles, adding, removing, and reconnecting nothing.
+	fn only_moves_points(&self) -> bool {
+		// Every field is named so that adding one forces a decision here
+		let Self {
+			points: PointModification {
+				add: added_points,
+				remove: removed_points,
+				delta: _,
+			},
+			segments,
+			add_g1_continuous,
+			remove_g1_continuous,
+		} = self;
+		let SegmentModification {
+			add: added_segments,
+			remove: removed_segments,
+			start_point,
+			end_point,
+			handle_primary: _,
+			handle_end: _,
+		} = segments;
+
+		added_points.is_empty()
+			&& removed_points.is_empty()
+			&& added_segments.is_empty()
+			&& removed_segments.is_empty()
+			&& start_point.is_empty()
+			&& end_point.is_empty()
+			&& add_g1_continuous.is_empty()
+			&& remove_g1_continuous.is_empty()
+	}
+
 	/// Apply this modification to the specified [`Vector`] and its paths.
 	pub fn apply(&self, vector: &mut Vector, paths: &mut List<Path>) {
 		// An untouched vector keeps its incoming path structure instead of being flattened and rewoven
@@ -496,18 +692,34 @@ impl VectorModification {
 			return;
 		}
 
+		// Moving points and handles leaves the weave intact, so the pool is edited where it lies in O(points + references), keeping
+		// upstream storage as it is. A handle shared between segments would move once for each there, so that weave is rewoven instead.
+		if self.only_moves_points() && self.segments.handle_edits_keep_curve_types(paths) {
+			let (handles, handles_unshared) = vector.point_roles(paths);
+			if handles_unshared {
+				self.points.move_in_place(vector, paths, &handles);
+				self.segments.set_handles_in_place(vector, paths);
+				return;
+			}
+		}
+
+		self.apply_through_working_form(vector, paths);
+	}
+
+	/// Applies this modification by flattening to the legacy working form, editing that, and weaving the result back.
+	fn apply_through_working_form(&self, vector: &mut Vector, paths: &mut List<Path>) {
 		let mut working = WorkingVector::flatten(vector, paths);
 		self.points.apply(&mut working);
 		self.segments.apply(&mut working);
 
-		let surviving_segments: HashSet<SegmentId> = working.segment_ids.iter().copied().collect();
+		let surviving_segments: FxHashSet<SegmentId> = working.segment_ids.iter().copied().collect();
 		let valid = |val: &[HandleId; 2]| surviving_segments.contains(&val[0].segment) && surviving_segments.contains(&val[1].segment);
 		working
 			.colinear
 			.retain(|val| !self.remove_g1_continuous.contains(val) && !self.remove_g1_continuous.contains(&[val[1], val[0]]) && valid(val));
 
 		// Both orientations go in, since a pair and its reverse name the same tangent
-		let mut present: HashSet<[HandleId; 2]> = working.colinear.iter().flat_map(|&[first, second]| [[first, second], [second, first]]).collect();
+		let mut present: FxHashSet<[HandleId; 2]> = working.colinear.iter().flat_map(|&[first, second]| [[first, second], [second, first]]).collect();
 		for handles in &self.add_g1_continuous {
 			if !present.contains(handles) && valid(handles) {
 				working.colinear.push(*handles);
@@ -712,6 +924,249 @@ mod tests {
 	fn anchor_position(vector: &Vector, paths: &List<Path>, anchor_index: usize) -> DVec2 {
 		let id = anchor_id(vector, paths, anchor_index);
 		vector.position(vector.index_of_point_id(id).unwrap() as usize).unwrap()
+	}
+
+	/// What the tests compare of a modification's result: anchors by ID, segments by ID, the stroke walk, and G1 pairs.
+	fn describe(vector: &Vector, paths: &List<Path>) -> String {
+		let mut anchors: Vec<String> = vector
+			.anchor_points(paths)
+			.map(|id| format!("{id:?}@{:?}", vector.index_of_point_id(id).and_then(|index| vector.position(index as usize))))
+			.collect();
+		anchors.sort();
+
+		let mut segments: Vec<String> = vector.segment_iter(paths).map(|(id, segment, start, end)| format!("{id:?}:{start:?}>{end:?}:{segment:?}")).collect();
+		segments.sort();
+
+		let strokes: Vec<String> = vector.stroke_bezpath_iter(paths).map(|bezpath| bezpath.to_svg()).collect();
+
+		let mut pairs: Vec<String> = vector
+			.colinear_pairs(paths)
+			.into_iter()
+			.map(|pair| {
+				let mut handles = pair.map(|handle| format!("{handle:?}"));
+				handles.sort();
+				handles.join("~")
+			})
+			.collect();
+		pairs.sort();
+
+		format!("{anchors:?}\n{segments:?}\n{strokes:?}\n{pairs:?}")
+	}
+
+	/// Every curve type, a weld where they change, a smooth anchor, and a second subpath.
+	fn mixed_geometry() -> (Vector, List<Path>) {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.curve_to((10., -10.), (20., -10.), (30., 0.));
+		bezpath.line_to((30., 30.));
+		bezpath.quad_to((15., 45.), (0., 30.));
+		bezpath.close_path();
+		bezpath.move_to((100., 100.));
+		bezpath.curve_to((110., 90.), (120., 90.), (130., 100.));
+
+		let (mut vector, mut paths) = Vector::from_bezpath(&bezpath);
+		let smooth_anchor = anchor_id(&vector, &paths, 1);
+		vector.set_smooth(&mut paths, smooth_anchor, true);
+
+		(vector, paths)
+	}
+
+	// Moving points and handles where they lie gives the same result as flattening and reweaving
+	#[test]
+	fn moving_in_place_matches_the_working_form() {
+		let (vector, paths) = mixed_geometry();
+		let anchors: Vec<PointId> = vector.anchor_points(&paths).collect();
+		let segments: Vec<SegmentId> = vector.segment_iter(&paths).map(|(id, ..)| id).collect();
+
+		let mut modification = VectorModification::default();
+		for (index, &anchor) in anchors.iter().enumerate() {
+			let delta = DVec2::new(index as f64, -(index as f64) * 2.);
+			modification.modify(&VectorModificationType::ApplyPointDelta { point: anchor, delta });
+		}
+		let handle_edits = [
+			(HandleId::primary(segments[0]), DVec2::new(3., 4.)),
+			(HandleId::primary(segments[2]), DVec2::new(-5., 6.)),
+			(HandleId::end(segments[4]), DVec2::new(7., -8.)),
+		];
+		for (handle, relative_position) in handle_edits {
+			modification.modify(&VectorModificationType::SetHandlePosition { handle, relative_position });
+		}
+
+		let (mut in_place, mut in_place_paths) = (vector.clone(), paths.clone());
+		modification.apply(&mut in_place, &mut in_place_paths);
+		let (mut rewoven, mut rewoven_paths) = (vector.clone(), paths.clone());
+		modification.apply_through_working_form(&mut rewoven, &mut rewoven_paths);
+
+		assert_eq!(describe(&in_place, &in_place_paths), describe(&rewoven, &rewoven_paths));
+		assert_ne!(describe(&in_place, &in_place_paths), describe(&vector, &paths));
+		assert_eq!(in_place_paths, paths, "moving points leaves the weave untouched");
+	}
+
+	// An edit that turns a line into a curve changes the weave, so it still goes through the working form
+	#[test]
+	fn curve_type_changes_still_apply() {
+		let (mut vector, mut paths) = mixed_geometry();
+		let line = vector.segment_iter(&paths).nth(1).map(|(id, ..)| id).unwrap();
+
+		let mut modification = VectorModification::default();
+		let handles = [Some(DVec2::new(1., 1.)), Some(DVec2::new(-1., -1.))];
+		modification.modify(&VectorModificationType::SetHandles { segment: line, handles });
+		modification.apply(&mut vector, &mut paths);
+
+		let curved = vector.segment_iter(&paths).find(|&(id, ..)| id == line).map(|(_, segment, ..)| segment);
+		assert!(matches!(curved, Some(PathSeg::Cubic(_))));
+	}
+
+	// Every way of editing a segment's two handles gives the same result in place as through the working form
+	#[test]
+	fn every_handle_edit_matches_the_working_form() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.move_to((0., 20.));
+		bezpath.quad_to((5., 30.), (10., 20.));
+		bezpath.move_to((0., 40.));
+		bezpath.curve_to((3., 50.), (7., 50.), (10., 40.));
+		let (vector, paths) = Vector::from_bezpath(&bezpath);
+
+		let edits = [None, Some(None), Some(Some(DVec2::new(2., 3.)))];
+		for (segment, ..) in vector.segment_iter(&paths) {
+			for (primary, end) in edits.into_iter().flat_map(|primary| edits.map(|end| (primary, end))) {
+				let mut modification = VectorModification::default();
+				if let Some(primary) = primary {
+					modification.segments.handle_primary.insert(segment, primary);
+				}
+				if let Some(end) = end {
+					modification.segments.handle_end.insert(segment, end);
+				}
+
+				let (mut in_place, mut in_place_paths) = (vector.clone(), paths.clone());
+				modification.apply(&mut in_place, &mut in_place_paths);
+				let (mut rewoven, mut rewoven_paths) = (vector.clone(), paths.clone());
+				modification.apply_through_working_form(&mut rewoven, &mut rewoven_paths);
+
+				assert_eq!(
+					describe(&in_place, &in_place_paths),
+					describe(&rewoven, &rewoven_paths),
+					"{segment:?} edited by {primary:?} and {end:?}"
+				);
+			}
+		}
+	}
+
+	// A handle shared by two segments is unwelded by a move, as the working form does, instead of moving for both
+	#[test]
+	fn a_shared_handle_is_rewoven_instead_of_moved_twice() {
+		use crate::vector::path::push_path;
+		use core_types::list::Item;
+
+		let ids = [PointId::generate(), PointId::generate(), PointId::generate(), PointId::generate()];
+		let anchors = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(0., 10.), DVec2::new(10., 10.)];
+		let mut vector = Vector::default();
+		for (&position, id) in anchors.iter().zip(ids) {
+			vector.0.push(Item::new_from_element(position).with_attribute(ATTR_ID, id));
+		}
+		for position in [DVec2::new(5., 5.), DVec2::new(8., -2.), DVec2::new(8., 12.)] {
+			vector.0.push(Item::new_from_element(position).with_attribute(ATTR_ID, PointId::UNNAMED));
+		}
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Cubic, [0, 4, 5, 1], [SegmentId::generate()]);
+		push_path(&mut paths, CurveType::Cubic, [2, 4, 6, 3], [SegmentId::generate()]);
+
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::ApplyPointDelta { point: ids[0], delta: DVec2::X });
+		modification.modify(&VectorModificationType::ApplyPointDelta { point: ids[2], delta: DVec2::Y });
+
+		let (mut applied, mut applied_paths) = (vector.clone(), paths.clone());
+		modification.apply(&mut applied, &mut applied_paths);
+		let (mut rewoven, mut rewoven_paths) = (vector.clone(), paths.clone());
+		modification.apply_through_working_form(&mut rewoven, &mut rewoven_paths);
+
+		assert_eq!(describe(&applied, &applied_paths), describe(&rewoven, &rewoven_paths));
+	}
+
+	// A delta that isn't finite moves nothing, and neither do the handles beside it, while a finite one beside it still applies
+	#[test]
+	fn non_finite_deltas_are_ignored_in_place() {
+		let (vector, paths) = mixed_geometry();
+		let [skipped, moved] = [anchor_id(&vector, &paths, 0), anchor_id(&vector, &paths, 1)];
+
+		// Stored directly, since recording an edit already discards a non-finite value
+		let mut modification = VectorModification::default();
+		modification.points.delta.insert(skipped, DVec2::new(f64::NAN, 0.));
+		modification.points.delta.insert(moved, DVec2::new(3., 4.));
+
+		let (mut in_place, mut in_place_paths) = (vector.clone(), paths.clone());
+		modification.apply(&mut in_place, &mut in_place_paths);
+		let (mut rewoven, mut rewoven_paths) = (vector.clone(), paths.clone());
+		modification.apply_through_working_form(&mut rewoven, &mut rewoven_paths);
+
+		assert_eq!(describe(&in_place, &in_place_paths), describe(&rewoven, &rewoven_paths));
+		assert_eq!(anchor_position(&in_place, &in_place_paths, 0), anchor_position(&vector, &paths, 0));
+		assert_eq!(anchor_position(&in_place, &in_place_paths, 1), anchor_position(&vector, &paths, 1) + DVec2::new(3., 4.));
+	}
+
+	// A point that is a handle in one path and an anchor in another has two ways to move, so it goes through the working form
+	#[test]
+	fn a_point_both_handle_and_anchor_is_rewoven_instead_of_moved_in_place() {
+		use crate::vector::path::push_path;
+		use core_types::list::Item;
+
+		let ids: [PointId; 4] = std::array::from_fn(|_| PointId::generate());
+		let anchors = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(5., 5.), DVec2::new(5., 20.)];
+		let mut vector = Vector::default();
+		for (position, id) in anchors.into_iter().zip(ids) {
+			vector.0.push(Item::new_from_element(position).with_attribute(ATTR_ID, id));
+		}
+		vector.0.push(Item::new_from_element(DVec2::new(8., -2.)).with_attribute(ATTR_ID, PointId::UNNAMED));
+
+		// Point 2 is the cubic's first handle and the line's start
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Cubic, [0, 2, 4, 1], [SegmentId::generate()]);
+		push_path(&mut paths, CurveType::Linear, [2, 3], [SegmentId::generate()]);
+		assert!(!vector.point_roles(&paths).1, "a point with both roles should rule out moving in place");
+
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::ApplyPointDelta { point: ids[0], delta: DVec2::X });
+		modification.modify(&VectorModificationType::ApplyPointDelta { point: ids[2], delta: DVec2::Y });
+
+		let (mut applied, mut applied_paths) = (vector.clone(), paths.clone());
+		modification.apply(&mut applied, &mut applied_paths);
+		let (mut rewoven, mut rewoven_paths) = (vector.clone(), paths.clone());
+		modification.apply_through_working_form(&mut rewoven, &mut rewoven_paths);
+
+		assert_eq!(describe(&applied, &applied_paths), describe(&rewoven, &rewoven_paths));
+	}
+
+	// A free point and an anchor where three segments meet move in place just as the working form moves them
+	#[test]
+	fn free_points_and_junctions_move_in_place_like_the_working_form() {
+		use crate::vector::path::push_path;
+
+		let (mut vector, mut paths) = mixed_geometry();
+		for position in [(200., 200.), (-20., -20.)] {
+			let mut lone_point = BezPath::new();
+			lone_point.move_to(position);
+			vector.append_bezpath(&mut paths, &lone_point);
+		}
+
+		// The closed loop starts at pool point 0, so a line from there to the second lone point makes it a junction
+		let spur_end = vector.point_count() as u32 - 1;
+		push_path(&mut paths, CurveType::Linear, [0, spur_end], [SegmentId::generate()]);
+
+		let mut modification = VectorModification::default();
+		for (index, anchor) in vector.anchor_points(&paths).enumerate() {
+			let delta = DVec2::new(index as f64 + 1., 2.);
+			modification.modify(&VectorModificationType::ApplyPointDelta { point: anchor, delta });
+		}
+
+		let (mut in_place, mut in_place_paths) = (vector.clone(), paths.clone());
+		modification.apply(&mut in_place, &mut in_place_paths);
+		let (mut rewoven, mut rewoven_paths) = (vector.clone(), paths.clone());
+		modification.apply_through_working_form(&mut rewoven, &mut rewoven_paths);
+
+		assert_eq!(describe(&in_place, &in_place_paths), describe(&rewoven, &rewoven_paths));
+		assert_eq!(in_place_paths, paths, "moving points leaves the weave untouched");
 	}
 
 	// Re-adding a segment or point under an ID the geometry already holds adds no second copy under that ID
