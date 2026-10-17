@@ -362,9 +362,7 @@ impl Dispatcher {
 				}
 				// Messages
 				Message::Wake => {
-					if let Err(error) = self.poll_node_graph_evaluation(&mut queue) {
-						log::error!("Error polling node graph: {error}");
-					}
+					queue.add(PortfolioMessage::PollNodeGraphEvaluation);
 					queue.add(FutureMessage::Drain);
 				}
 				Message::Batched { messages } => {
@@ -399,10 +397,6 @@ impl Dispatcher {
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
-	}
-
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
 	}
 
 	/// Create the tree structure for logging the messages as a tree

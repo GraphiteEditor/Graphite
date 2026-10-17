@@ -8,7 +8,7 @@ use crate::MESSAGE_BUFFER;
 #[cfg(all(feature = "native", target_family = "wasm"))]
 use crate::editor_commands::EditorCommand;
 #[cfg(not(feature = "native"))]
-use crate::helpers::poll_node_graph_evaluation;
+use crate::helpers::run_node_runtime;
 #[cfg(any(not(feature = "native"), target_family = "wasm"))]
 use crate::helpers::wrapper;
 #[cfg(feature = "editor")]
@@ -189,14 +189,14 @@ impl EditorWrapper {
 		#[cfg(target_family = "wasm")]
 		self.init_portfolio();
 
-		// Poll node graph evaluation on `requestAnimationFrame`
+		// Run the node runtime on `requestAnimationFrame`
 		{
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
-				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+				wasm_bindgen_futures::spawn_local(run_node_runtime());
 
 				#[cfg(any(not(feature = "native"), target_family = "wasm"))]
 				wrapper(|wrapper| {

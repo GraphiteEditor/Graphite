@@ -1,5 +1,6 @@
 use crate::application::{DEFAULT_ENVIRONMENT, Editor};
 use crate::builder::{Builder, EditorBuilder, RuntimeBuilder};
+use crate::messages::frontend::utility_types::RenderStatus;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -82,11 +83,10 @@ impl EditorTestUtils {
 			}
 			runtime.run().await;
 
-			let mut messages = VecDeque::new();
-			if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-				return Err(format!("Graph should render\n\n{e}"));
+			let frontend_messages = editor.handle_message(Message::Wake);
+			if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+				return Err("Graph should render".to_string());
 			}
-			let frontend_messages = messages.into_iter().flat_map(|message| editor.handle_message(message));
 
 			for message in frontend_messages {
 				message.check_node_graph_error();

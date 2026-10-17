@@ -977,6 +977,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
+			PortfolioMessage::PollNodeGraphEvaluation => {
+				let Some(document_id) = self.active_document_id else { return };
+				let Some(active_document) = self.documents.get_mut(&document_id) else { return };
+
+				self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
+			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
@@ -1218,13 +1224,6 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: DocumentId) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
-	}
-
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let Some(document_id) = self.active_document_id else { return Ok(()) };
-		let Some(active_document) = self.documents.get_mut(&document_id) else { return Ok(()) };
-
-		self.executor.poll_node_graph_evaluation(active_document, document_id, responses)
 	}
 
 	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {

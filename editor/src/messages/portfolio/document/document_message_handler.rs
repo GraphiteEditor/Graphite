@@ -4040,6 +4040,7 @@ fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: 
 #[cfg(test)]
 mod document_message_handler_tests {
 	use super::*;
+	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::test_utils::test_prelude::*;
 
 	#[test]
@@ -4232,8 +4233,8 @@ mod document_message_handler_tests {
 			.unwrap();
 		editor.runtime.run().await;
 
-		let mut messages = VecDeque::new();
-		editor.editor.poll_node_graph_evaluation(&mut messages).unwrap();
+		let frontend_messages = editor.editor.handle_message(Message::Wake);
+		assert!(!frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }));
 	}
 
 	#[tokio::test]
