@@ -43,16 +43,22 @@ impl EditorTestUtils {
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 
-		let instrumented = match executor.update_node_graph_instrumented(document) {
-			Ok(instrumented) => instrumented,
-			Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
-		};
+		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+			return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+		}
+		self.runtime.run().await;
 
 		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
 			return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 		}
 		self.runtime.run().await;
 
+			for message in &frontend_messages {
+				message.check_node_graph_error();
+			}
+
+			Ok((instrumented, frontend_messages))
+=======
 		let mut messages = VecDeque::new();
 		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut messages) {
 			return Err(format!("Graph should render\n\n{e}"));
@@ -61,6 +67,7 @@ impl EditorTestUtils {
 
 		for message in frontend_messages {
 			message.check_node_graph_error();
+>>>>>>> master
 		}
 
 		Ok(instrumented)
@@ -81,7 +88,7 @@ impl EditorTestUtils {
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
-		let frontend_messages_from_msg = self.editor.handle_message(message);
+		let mut frontend_messages_from_msg = self.editor.handle_message(message);
 
 		// Required to process any buffered messages
 		if let Err(e) = self.eval_graph_until_finished().await {

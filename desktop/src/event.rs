@@ -10,7 +10,8 @@ pub(crate) enum AppEvent {
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	ClipboardRead,
 	ClipboardWrite {
-		content: String,
+		svg_string: Option<String>,
+		graphite_json: String,
 	},
 	Exit,
 	UiCrashed,
