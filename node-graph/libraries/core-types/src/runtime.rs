@@ -22,6 +22,7 @@ pub trait Spawn {
 pub struct SourceId(pub u64);
 
 impl SourceId {
+	#[must_use]
 	pub fn from_path(path: &[NodeId]) -> Self {
 		let mut hasher = rustc_hash::FxHasher::default();
 		path.hash(&mut hasher);
@@ -57,7 +58,9 @@ impl PartialEq for RuntimeHandle {
 }
 
 impl graphene_hash::CacheHash for RuntimeHandle {
-	fn cache_hash<H: Hasher>(&self, _state: &mut H) {}
+	fn cache_hash<H: Hasher>(&self, state: &mut H) {
+		state.write_usize(Arc::as_ptr(&self.0) as usize);
+	}
 }
 
 pub struct AsyncRuntime(Arc<RuntimeInner>);
@@ -85,6 +88,7 @@ impl AsyncRuntime {
 		snapshot.into()
 	}
 
+	#[must_use]
 	pub fn handle(&self) -> RuntimeHandle {
 		RuntimeHandle(Arc::clone(&self.0))
 	}
