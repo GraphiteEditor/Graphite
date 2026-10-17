@@ -1,3 +1,5 @@
+#![allow(clippy::inline_always)]
+
 use crate::Node;
 use std::cell::Cell;
 use std::error::Error;
@@ -75,6 +77,7 @@ impl NodeError {
 		}
 	}
 
+	#[must_use]
 	pub fn with_upstream(mut self, upstream: Vec<NodeError>) -> Self {
 		self.upstream = upstream;
 		self
@@ -84,14 +87,17 @@ impl NodeError {
 		self.trace.push(input);
 	}
 
+	#[must_use]
 	pub fn trace(&self) -> &[usize] {
 		&self.trace
 	}
 
+	#[must_use]
 	pub fn upstream(&self) -> &[NodeError] {
 		&self.upstream
 	}
 
+	#[must_use]
 	pub fn error(&self) -> &Arc<dyn Error + Send + Sync> {
 		&self.error
 	}
@@ -140,10 +146,12 @@ pub struct Status {
 }
 
 impl Status {
+	#[must_use]
 	pub fn new() -> Self {
 		Self::default()
 	}
 
+	#[must_use]
 	pub fn no_partial() -> Self {
 		Self { no_partial: true, ..Self::default() }
 	}
