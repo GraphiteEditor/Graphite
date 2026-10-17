@@ -202,49 +202,32 @@ pub(crate) struct SegmentModification {
 }
 
 impl SegmentModification {
-	/// A removed segment cuts its path, so the kept segment carrying on from it begins a path unless an added segment arrives
-	/// there to carry the path on. A removed path beginning gives up its mark when an added segment beginning a path shares an
-	/// end with it and so takes its place, rather than the mark also being handed on to the next kept segment.
-	fn mark_cut_and_replaced_path_beginnings(&self, working: &mut WorkingVector, keep: &[bool], path_breaks: &HashSet<SegmentId>) {
+	/// The kept segment after removed ones begins a path when it carried on from the last of them or one of them began a path,
+	/// unless an added segment arrives where it sets out and so carries the path on into it. Runs in O(segments + adds).
+	fn mark_path_beginnings_after_removals(&self, working: &mut WorkingVector, keep: &[bool]) {
 		if !keep.contains(&false) {
 			return;
 		}
 
 		let arrivals: FxHashSet<PointId> = self.add.iter().filter_map(|id| self.end_point.get(id).copied()).collect();
-		let replacement_ends: FxHashSet<PointId> = self
-			.add
-			.iter()
-			.filter(|id| path_breaks.contains(id))
-			.flat_map(|id| [self.start_point.get(id), self.end_point.get(id)])
-			.flatten()
-			.copied()
-			.collect();
-		let point_at = |index: usize| working.point_ids.get(index).copied();
-
 		let segment_count = keep.len();
-		let (mut cut, mut replaced) = (Vec::new(), Vec::new());
-		for index in (0..segment_count).filter(|&index| !keep[index]) {
-			let next = index + 1;
-			let carried_on = next < segment_count && keep[next] && working.segment_start[next] == working.segment_end[index];
-			if carried_on && !point_at(working.segment_start[next]).is_some_and(|point| arrivals.contains(&point)) {
-				cut.push(next);
-			}
-
-			if [working.segment_start[index], working.segment_end[index]]
-				.into_iter()
-				.filter_map(point_at)
-				.any(|point| replacement_ends.contains(&point))
-			{
-				replaced.push(index);
-			}
-		}
-
 		working.segment_begins_path.resize(segment_count, false);
-		for index in cut {
-			working.segment_begins_path[index] = true;
-		}
-		for index in replaced {
-			working.segment_begins_path[index] = false;
+
+		let (mut removed_began_path, mut removed_end) = (false, None);
+		for index in 0..segment_count {
+			if !keep[index] {
+				removed_began_path |= std::mem::take(&mut working.segment_begins_path[index]);
+				removed_end = Some(working.segment_end[index]);
+				continue;
+			}
+			let Some(end) = removed_end.take() else { continue };
+
+			let start = working.segment_start[index];
+			let carried_on = start == end;
+			let arrived_at = working.point_ids.get(start).is_some_and(|point| arrivals.contains(point));
+			if (std::mem::take(&mut removed_began_path) || carried_on) && !arrived_at {
+				working.segment_begins_path[index] = true;
+			}
 		}
 	}
 
@@ -255,8 +238,7 @@ impl SegmentModification {
 		let keep: Vec<bool> = (0..working.segment_ids.len())
 			.map(|index| !self.remove.contains(&working.segment_ids[index]) && working.segment_start[index] < point_count && working.segment_end[index] < point_count)
 			.collect();
-		self.mark_cut_and_replaced_path_beginnings(working, &keep, path_breaks);
-		working.carry_path_beginnings(&keep);
+		self.mark_path_beginnings_after_removals(working, &keep);
 		let mut keep_iter = keep.iter();
 		working.segment_start.retain(|_| *keep_iter.next().unwrap_or(&false));
 		let mut keep_iter = keep.iter();

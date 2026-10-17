@@ -3364,37 +3364,28 @@ fn follow_segments_turned_on_load(document: &mut DocumentMessageHandler) {
 fn modifications_following_turned_segments(network: &graph_craft::document::NodeNetwork) -> Vec<(Vec<NodeId>, NodeId, usize, NodeInput)> {
 	type Location = (Vec<NodeId>, NodeId);
 
-	// The nodes reading each node's output, through the imports and exports of nested networks too
-	let mut downstream: HashMap<Location, Vec<Location>> = HashMap::new();
+	// The nodes reading each node's data, wired straight to the node producing it through nested networks' imports and exports
+	let mut readers: HashMap<Location, Vec<Location>> = HashMap::new();
 	let mut turned_by: Vec<(Location, HashSet<graphene_std::vector::SegmentId>)> = Vec::new();
 	for (node_id, node, network_path) in network.recursive_nodes() {
 		let here = (network_path.clone(), *node_id);
 
 		for input in &node.inputs {
-			match input {
-				NodeInput::Node { node_id: upstream, .. } => downstream.entry((network_path.clone(), *upstream)).or_default().push(here.clone()),
-				NodeInput::Import { .. } => {
-					if let Some((&parent, parent_path)) = network_path.split_last() {
-						downstream.entry((parent_path.to_vec(), parent)).or_default().push(here.clone());
-					}
-				}
-				NodeInput::Value { tagged_value, .. } => {
-					if let TaggedValue::VectorModification(modification) = &**tagged_value
-						&& !modification.segments_turned_on_load().is_empty()
-					{
-						turned_by.push((here.clone(), modification.segments_turned_on_load().clone()));
-					}
-				}
-				_ => {}
+			if let NodeInput::Value { tagged_value, .. } = input
+				&& let TaggedValue::VectorModification(modification) = &**tagged_value
+				&& !modification.segments_turned_on_load().is_empty()
+			{
+				turned_by.push((here.clone(), modification.segments_turned_on_load().clone()));
 			}
 		}
 
-		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-			let nested_path = [network_path.as_slice(), &[*node_id]].concat();
-			for export in &nested.exports {
-				if let NodeInput::Node { node_id: inner, .. } = export {
-					downstream.entry((nested_path.clone(), *inner)).or_default().push(here.clone());
-				}
+		// A network node's inputs only pass through to the nodes inside it, which are wired as readers themselves
+		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+			continue;
+		}
+		for input in &node.inputs {
+			if let Some(producer) = producing_node(network, &network_path, input, 0) {
+				readers.entry(producer).or_default().push(here.clone());
 			}
 		}
 	}
@@ -3402,20 +3393,36 @@ fn modifications_following_turned_segments(network: &graph_craft::document::Node
 		return Vec::new();
 	}
 
-	// Each node's turned segments reach only the nodes its output flows into
+	// Each node's turned segments reach the nodes reading its output, then their readers, and so on
 	let mut following: HashMap<Location, HashSet<graphene_std::vector::SegmentId>> = HashMap::new();
 	for (origin, turned) in &turned_by {
+		let (origin_path, origin_id) = origin;
+		let Some(origin_node) = network.nested_network(origin_path).and_then(|nested| nested.nodes.get(origin_id)) else {
+			continue;
+		};
+
+		// Where the output comes from: the node itself, or the nodes a network node exports
+		let sources: Vec<Location> = match &origin_node.implementation {
+			DocumentNodeImplementation::Network(nested) => (0..nested.exports.len())
+				.filter_map(|output| producing_node(network, origin_path, &NodeInput::node(*origin_id, output), 0))
+				.collect(),
+			_ => vec![origin.clone()],
+		};
+
 		let mut reached = HashSet::new();
-		let mut pending = downstream.get(origin).cloned().unwrap_or_default();
+		let mut pending: Vec<Location> = sources.iter().flat_map(|source| readers.get(source).into_iter().flatten().cloned()).collect();
 		while let Some(location) = pending.pop() {
-			if location == *origin || !reached.insert(location.clone()) {
-				continue;
+			if reached.insert(location.clone()) {
+				pending.extend(readers.get(&location).into_iter().flatten().cloned());
 			}
-			pending.extend(downstream.get(&location).into_iter().flatten().cloned());
 		}
 
-		for location in reached {
-			following.entry(location).or_default().extend(turned.iter().copied());
+		// An edit follows when the node holding it, or a node inside it, reads the turned data
+		for (path, node_id) in reached {
+			let enclosing = (0..path.len()).map(|depth| (path[..depth].to_vec(), path[depth]));
+			for holder in enclosing.chain([(path.clone(), node_id)]).filter(|holder| holder != origin) {
+				following.entry(holder).or_default().extend(turned.iter().copied());
+			}
 		}
 	}
 
@@ -3444,6 +3451,31 @@ fn modifications_following_turned_segments(network: &graph_craft::document::Node
 	}
 
 	rewritten
+}
+
+// TODO: Eventually remove this document upgrade code
+/// The node, not itself a network, producing the data an input reads, looking through the imports and exports of nested networks.
+fn producing_node(network: &graph_craft::document::NodeNetwork, network_path: &[NodeId], input: &NodeInput, depth: usize) -> Option<(Vec<NodeId>, NodeId)> {
+	// Nesting is shallow in practice, so this only guards against a malformed document wiring a network back into itself
+	if depth > 64 {
+		return None;
+	}
+
+	match input {
+		NodeInput::Node { node_id, output_index } => {
+			let node = network.nested_network(network_path)?.nodes.get(node_id)?;
+			match &node.implementation {
+				DocumentNodeImplementation::Network(nested) => producing_node(network, &[network_path, &[*node_id]].concat(), nested.exports.get(*output_index)?, depth + 1),
+				_ => Some((network_path.to_vec(), *node_id)),
+			}
+		}
+		NodeInput::Import { import_index, .. } => {
+			let (parent, parent_path) = network_path.split_last()?;
+			let parent_node = network.nested_network(parent_path)?.nodes.get(parent)?;
+			producing_node(network, parent_path, parent_node.inputs.get(*import_index)?, depth + 1)
+		}
+		_ => None,
+	}
 }
 
 /// Ensure layers are positioned as stacks if they are upstream siblings of another layer
@@ -4237,5 +4269,58 @@ mod tests {
 			assert_eq!(*index, 1);
 			assert_eq!(*input, expected);
 		}
+	}
+
+	// Inside a network fed by a turned node on one input and something else on another, only the edit reading the turned input follows
+	#[test]
+	fn turned_segments_follow_only_the_network_input_they_enter() {
+		use graph_craft::document::NodeNetwork;
+		use graphene_std::vector::misc::HandleId;
+		use graphene_std::vector::{SegmentId, VectorModification, VectorModificationType};
+
+		let segment = SegmentId::generate();
+		let turned = VectorModification::default().with_segments_turned_on_load(HashSet::from([segment]));
+		let mut edited = VectorModification::default();
+		edited.modify(&VectorModificationType::SetHandlePosition {
+			handle: HandleId::primary(segment),
+			relative_position: DVec2::X,
+		});
+		let value = |modification: VectorModification| NodeInput::value(TaggedValue::VectorModification(Box::new(modification)), false);
+		let import = |import_index: usize| NodeInput::Import {
+			import_type: concrete!(()),
+			import_index,
+		};
+		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
+
+		let [turning, other, group, reads_turned, reads_other] = [1, 2, 3, 4, 5].map(NodeId);
+		let nested = NodeNetwork {
+			exports: vec![NodeInput::node(reads_turned, 0)],
+			nodes: [(reads_turned, node(vec![import(0), value(edited.clone())])), (reads_other, node(vec![import(1), value(edited)]))]
+				.into_iter()
+				.collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			nodes: [
+				(turning, node(vec![value(turned)])),
+				(other, node(Vec::new())),
+				(
+					group,
+					DocumentNode {
+						inputs: vec![NodeInput::node(turning, 0), NodeInput::node(other, 0)],
+						implementation: DocumentNodeImplementation::Network(nested),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		let rewritten = modifications_following_turned_segments(&network);
+		let rewritten_at = |node_id: NodeId| rewritten.iter().any(|(path, rewritten_id, ..)| path.as_slice() == [group] && *rewritten_id == node_id);
+		assert!(rewritten_at(reads_turned));
+		assert!(!rewritten_at(reads_other));
 	}
 }
