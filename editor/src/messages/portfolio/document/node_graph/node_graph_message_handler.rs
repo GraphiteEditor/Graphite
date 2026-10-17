@@ -12,7 +12,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
+	self, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -2621,10 +2621,7 @@ impl NodeGraphMessageHandler {
 
 				hidden_value
 					&& !network_interface.is_internal_input(&node_id, input_index, network_path)
-					&& network_interface
-						.potential_valid_input_types(&input_connector, network_path)
-						.iter()
-						.any(|valid_type| output_types.iter().any(|output_type| type_feeds_connector(output_type, valid_type)))
+					&& output_types.iter().any(|output_type| network_interface.input_accepts_type(&input_connector, output_type, network_path))
 			})
 			.collect::<Vec<_>>();
 		if revealed_input_indices.is_empty() {
