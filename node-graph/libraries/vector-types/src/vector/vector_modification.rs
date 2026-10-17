@@ -214,8 +214,8 @@ impl SegmentModification {
 		working.segment_begins_path.resize(segment_count, false);
 
 		let (mut removed_began_path, mut removed_end) = (false, None);
-		for index in 0..segment_count {
-			if !keep[index] {
+		for (index, &kept) in keep.iter().enumerate() {
+			if !kept {
 				removed_began_path |= std::mem::take(&mut working.segment_begins_path[index]);
 				removed_end = Some(working.segment_end[index]);
 				continue;

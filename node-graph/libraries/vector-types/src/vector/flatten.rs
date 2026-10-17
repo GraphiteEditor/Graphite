@@ -331,9 +331,9 @@ pub(crate) fn chain_order(point_count: usize, endpoints: &[(usize, usize)], dire
 	let mut partner = vec![usize::MAX; segment_count * 2];
 	for ends in ends_at.iter().filter(|ends| ends.len() >= 2) {
 		if ends.len() > MOST_ENDS_PAIRED_BY_STRAIGHTNESS {
-			for pair in ends.chunks_exact(2) {
-				partner[pair[0]] = pair[1];
-				partner[pair[1]] = pair[0];
+			for &[first, second] in ends.as_chunks::<2>().0 {
+				partner[first] = second;
+				partner[second] = first;
 			}
 			continue;
 		}
