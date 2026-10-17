@@ -719,6 +719,27 @@
 						{#if isWeb}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
 						{/if}
+						{#if $document.renderStatus === "Error"}
+							<LayoutCol class="render-status-overlay">
+								<TextLabel>
+									<p>
+										<strong>The document cannot render in its current state.</strong><br />
+										Undo to go back, if available, or check for error details<br />
+										by clicking the <em>Node Graph</em> button up at the top right.
+									</p>
+								</TextLabel>
+							</LayoutCol>
+						{:else if $document.renderStatus === "Panic"}
+							<LayoutCol class="render-status-overlay panic">
+								<TextLabel>
+									<p>
+										<strong>The document crashed while being rendered in its current state.</strong><br />
+										The editor is now unstable! Undo your last action to restore the artwork,<br />
+										then save your document and restart the editor before continuing work.
+									</p>
+								</TextLabel>
+							</LayoutCol>
+						{/if}
 					</div>
 
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
@@ -953,6 +974,29 @@
 								to {
 									opacity: 1;
 								}
+							}
+						}
+
+						.render-status-overlay {
+							position: absolute;
+							inset: 0;
+							align-items: center;
+							justify-content: center;
+							background: var(--color-2-mildblack);
+							pointer-events: none;
+
+							.text-label {
+								padding: 14px 20px;
+								border-radius: 4px;
+								background: var(--color-warning-yellow);
+								color: var(--color-2-mildblack);
+								font-size: 18px;
+								line-height: 24px;
+								text-align: center;
+							}
+
+							&.panic .text-label {
+								background: var(--color-error-red);
 							}
 						}
 

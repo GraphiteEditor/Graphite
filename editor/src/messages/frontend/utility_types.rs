@@ -42,6 +42,15 @@ pub enum MouseCursorIcon {
 	Rotate,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum RenderStatus {
+	#[default]
+	Rendering,
+	Error,
+	Panic,
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FileType {
