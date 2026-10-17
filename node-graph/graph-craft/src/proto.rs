@@ -720,7 +720,7 @@ impl TypingContext {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -754,8 +754,6 @@ impl TypingContext {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
 				// Direct comparison of two function types.
 				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.

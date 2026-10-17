@@ -1,7 +1,7 @@
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
 use core_types::registry::{DowncastBothNode, DynAnyNode, NODE_REGISTRY, NodeConstructor, PanicNode, TypeErasedBox};
-use core_types::{Context, Interrupt, NodeIO, NodeIOTypes, Poll, WasmNotSend, concrete, fn_type_fut, future};
+use core_types::{Context, Interrupt, NodeIO, NodeIOTypes, Poll, WasmNotSend, concrete, fn_type};
 use dyn_any::StaticType;
 use std::hash::DefaultHasher;
 use std::hash::Hasher;
@@ -72,13 +72,13 @@ pub fn register_memoize_and_monitor<T: Clone + Send + Sync + StaticType<Static: 
 
 	let memoize_types: NodeIOTypes = {
 		let node = MemoizeNode::new(PanicNode::<Context, T>::new());
-		let mut node_io = NodeIO::<Context>::to_async_node_io(&node, vec![fn_type_fut!(Context, T)]);
+		let mut node_io = NodeIO::<Context>::to_node_io(&node, vec![fn_type!(Context, T)]);
 		node_io.call_argument = concrete!(<Context as StaticType>::Static);
 		node_io
 	};
 	let monitor_types: NodeIOTypes = {
 		let node = MonitorNode::new(PanicNode::<Context, T>::new());
-		let mut node_io = NodeIO::<Context>::to_async_node_io(&node, vec![fn_type_fut!(Context, T)]);
+		let mut node_io = NodeIO::<Context>::to_node_io(&node, vec![fn_type!(Context, T)]);
 		node_io.call_argument = concrete!(<Context as StaticType>::Static);
 		node_io
 	};

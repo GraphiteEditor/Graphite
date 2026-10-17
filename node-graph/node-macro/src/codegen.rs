@@ -1019,7 +1019,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		mod #mod_name {
 			use super::*;
 			use #core_types as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
+			use gcore::{Node, NodeIOTypes, concrete, fn_type,  ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
@@ -1367,7 +1367,7 @@ fn generate_register_node_impl(
 				let field_is_ranked = !regular_fields[j].is_environment() && matches!(&regular_fields[j].ty, ParsedFieldType::Item { .. });
 				let is_lazy_primary = Some(j) == primary_regular_index && matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
 				// The list-content variant lifts its lazy primary connector's `Item<E>` content to `List<E>`; ranked params follow the variant's param wrap.
-				// A ranked signature is spelled with bare `Item<...>`/`List<...>` tokens, which `fn_type_fut!` matches syntactically to construct the structural form.
+				// A ranked signature is spelled with bare `Item<...>`/`List<...>` tokens, which `fn_type!` matches syntactically to construct the structural form.
 				let (output_type, signature_type) = if is_lazy_primary && variant == RegisterVariant::ListContent {
 					let element_ty = peel_item(output_type).unwrap_or_else(|| output_type.clone());
 					(WireWrapper::List.apply(&gcore, &element_ty), Some(quote!(List<#element_ty>)))
@@ -1392,7 +1392,7 @@ fn generate_register_node_impl(
 					let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
 				);
 				temp_constructors.push(downcast_node);
-				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type)));
+				temp_node_io.push(quote!(fn_type!(#input_type, #signature_type)));
 				panic_node_types.push(quote!(#input_type, #output_type));
 			}
 			let input_type = match parsed.input.implementations.is_empty() {
@@ -1414,7 +1414,7 @@ fn generate_register_node_impl(
 					}, {
 						let node = #variant_struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
 						let params = vec![#(#temp_node_io,)*];
-						NodeIO::<#input_type>::to_async_node_io(&node, params)
+						NodeIO::<#input_type>::to_node_io(&node, params)
 					}
 				)
 			));
