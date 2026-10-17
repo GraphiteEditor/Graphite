@@ -26,12 +26,12 @@ use vector_types::gradient::{build_transform_with_y_preservation, initial_gradie
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
-use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
+use vector_types::vector::algorithms::weld::WeldExt;
 use vector_types::vector::misc::{
-	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, Tangent,
-	bezpath_from_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, PointSpacingType, RowsOrColumns, Tangent, WeldMethod, bezpath_from_manipulator_groups,
+	dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
@@ -768,27 +768,36 @@ fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_le
 	Some(rounded)
 }
 
-#[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), icon("NodeMergeByDistance"), path(core_types::vector))]
-fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
+/// Joins points lying within a distance of each other into one, connecting the paths they belong to.
+#[node_macro::node(category("Vector: Modifier"), icon("NodeWeld"), path(core_types::vector))]
+fn weld<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector)] content: Item<V>,
+	/// The vector with points to join.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+	/// How close points must be to join.
 	#[unit(" px")]
 	#[default(0.1)]
 	#[hard(0.0001..)]
 	distance: Item<f64>,
-	algorithm: Item<MergeByDistanceAlgorithm>,
+	/// Which points may join: any within the distance, the two ends of each segment shorter than it, or only the ends of open path flows.
+	method: Item<WeldMethod>,
 ) -> Item<V> {
-	let (distance, algorithm) = (*distance.element(), *algorithm.element());
+	let (distance, method) = (*distance.element(), *method.element());
 
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 
-		match algorithm {
-			MergeByDistanceAlgorithm::Spatial => {
+		match method {
+			WeldMethod::All => {
 				let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-				edit_item_geometry(&mut content, |vector, paths| vector.merge_by_distance_spatial(paths, transform, distance));
+				edit_item_geometry(&mut content, |vector, paths| vector.weld_all(paths, transform, distance));
 			}
-			MergeByDistanceAlgorithm::Topological => edit_item_geometry(&mut content, |vector, paths| vector.merge_by_distance_topological(paths, distance)),
+			WeldMethod::Connected => edit_item_geometry(&mut content, |vector, paths| vector.weld_connected(paths, distance)),
+			WeldMethod::FlowEnds => {
+				let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+				edit_item_geometry(&mut content, |vector, paths| vector.weld_flow_ends(paths, transform, distance));
+			}
 		}
 
 		content

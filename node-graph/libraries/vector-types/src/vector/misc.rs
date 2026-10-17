@@ -132,10 +132,16 @@ pub enum ArcType {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
-pub enum MergeByDistanceAlgorithm {
+pub enum WeldMethod {
+	/// Any points within the distance of each other join.
 	#[default]
-	Spatial,
-	Topological,
+	#[cfg_attr(feature = "serde", serde(alias = "Spatial"))]
+	All,
+	/// Each segment shorter than the distance collapses, joining its two ends.
+	#[cfg_attr(feature = "serde", serde(alias = "Topological"))]
+	Connected,
+	/// Only the ends of open path flows join, leaving every other anchor where it is.
+	FlowEnds,
 }
 
 #[repr(C)]
@@ -618,7 +624,7 @@ graphene_hash::impl_via_hash!(
 	RowsOrColumns,
 	GridType,
 	ArcType,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	SpiralType,

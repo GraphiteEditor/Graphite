@@ -260,7 +260,6 @@ import NodeMax from "/../branding/assets/16x16-nodes/node-max.svg";
 import NodeMaximum from "/../branding/assets/16x16-nodes/node-maximum.svg";
 import NodeMedianFilter from "/../branding/assets/16x16-nodes/node-median-filter.svg";
 import NodeMemoize from "/../branding/assets/16x16-nodes/node-memoize.svg";
-import NodeMergeByDistance from "/../branding/assets/16x16-nodes/node-merge-by-distance.svg";
 import NodeMerge from "/../branding/assets/16x16-nodes/node-merge.svg";
 import NodeMin from "/../branding/assets/16x16-nodes/node-min.svg";
 import NodeMinimum from "/../branding/assets/16x16-nodes/node-minimum.svg";
@@ -382,6 +381,7 @@ import NodeVec2ToNumbers from "/../branding/assets/16x16-nodes/node-vec2-to-numb
 import NodeVec2Value from "/../branding/assets/16x16-nodes/node-vec2-value.svg";
 import NodeVibrance from "/../branding/assets/16x16-nodes/node-vibrance.svg";
 import NodeVoronoiCells from "/../branding/assets/16x16-nodes/node-voronoi-cells.svg";
+import NodeWeld from "/../branding/assets/16x16-nodes/node-weld.svg";
 import NodeWriteAttribute from "/../branding/assets/16x16-nodes/node-write-attribute.svg";
 
 export const ICON_16X16_NODES = {
@@ -542,7 +542,6 @@ export const ICON_16X16_NODES = {
 	NodeMedianFilter: { svg: NodeMedianFilter, size: 16 },
 	NodeMemoize: { svg: NodeMemoize, size: 16 },
 	NodeMerge: { svg: NodeMerge, size: 16 },
-	NodeMergeByDistance: { svg: NodeMergeByDistance, size: 16 },
 	NodeMin: { svg: NodeMin, size: 16 },
 	NodeMinimum: { svg: NodeMinimum, size: 16 },
 	NodeMirror: { svg: NodeMirror, size: 16 },
@@ -663,6 +662,7 @@ export const ICON_16X16_NODES = {
 	NodeVec2Value: { svg: NodeVec2Value, size: 16 },
 	NodeVibrance: { svg: NodeVibrance, size: 16 },
 	NodeVoronoiCells: { svg: NodeVoronoiCells, size: 16 },
+	NodeWeld: { svg: NodeWeld, size: 16 },
 	NodeWriteAttribute: { svg: NodeWriteAttribute, size: 16 },
 } as const;
 

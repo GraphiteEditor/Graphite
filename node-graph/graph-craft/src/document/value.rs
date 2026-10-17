@@ -580,7 +580,8 @@ tagged_value! {
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
-	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
+	#[serde(alias = "MergeByDistanceAlgorithm")]
+	WeldMethod(vector::misc::WeldMethod),
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),
