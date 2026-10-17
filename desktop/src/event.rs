@@ -1,5 +1,5 @@
 use crate::ui::Cursor;
-use crate::wrapper::NodeGraphExecutionResult;
+use crate::wrapper::Texture;
 use crate::wrapper::messages::DesktopWrapperMessage;
 
 pub(crate) enum AppEvent {
@@ -7,7 +7,7 @@ pub(crate) enum AppEvent {
 	CursorChange(Cursor),
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
-	NodeGraphExecutionResult(NodeGraphExecutionResult),
+	ViewportTexture(Option<Texture>),
 	ClipboardRead,
 	ClipboardWrite {
 		content: String,

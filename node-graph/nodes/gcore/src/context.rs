@@ -66,7 +66,7 @@ fn read_number(ctx: impl Ctx + ExtractVarArgs) -> Item<f64> {
 }
 
 #[node_macro::node(category("Context"), icon("NodeReadPosition"), path(core_types::vector))]
-async fn read_position(
+fn read_position(
 	ctx: impl Ctx + ExtractPosition,
 	_primary: (),
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the position from. The most upstream loop is level 0, and downstream loops add levels.
@@ -85,7 +85,7 @@ async fn read_position(
 ///
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
 #[node_macro::node(category("Context"), icon("NodeReadIndex"), path(core_types::vector))]
-async fn read_index(
+fn read_index(
 	ctx: impl Ctx + ExtractIndex,
 	_primary: (),
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the index from. The most upstream loop is level 0, and downstream loops add levels.

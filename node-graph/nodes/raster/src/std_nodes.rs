@@ -31,7 +31,7 @@ impl From<std::io::Error> for Error {
 }
 
 #[node_macro::node(category("Debug"), icon("NodeSampleImage"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
+fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	let image_frame_transform: DAffine2 = image_frame.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 	let footprint = ctx.footprint();
@@ -95,7 +95,7 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 }
 
 #[node_macro::node(category("Raster: Channels"), icon("NodeChannelsToImage"), name("Channels to Image"))]
-pub fn channels_to_image(
+fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
 	#[expose] red: Item<Raster<CPU>>,
@@ -150,7 +150,7 @@ pub fn channels_to_image(
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMask"))]
-pub fn mask(
+fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
 	image: Item<Raster<CPU>>,
@@ -196,7 +196,7 @@ pub fn mask(
 }
 
 #[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
+fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
 	let bounds = *bounds.element();
 
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -240,7 +240,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 }
 
 #[node_macro::node(category("Debug"), icon("NodeEmptyImage"))]
-pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
+fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
 	let transform = transform.into_element();
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
@@ -254,7 +254,7 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 ///
 /// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
 #[node_macro::node(category("Raster"), icon("NodeImage"))]
-pub fn image<'a: 'n>(
+fn image(
 	_: impl Ctx,
 	_primary: (),
 	/// The image file to display.
@@ -270,7 +270,7 @@ pub fn image<'a: 'n>(
 /// Generates customizable procedural noise patterns.
 #[node_macro::node(category("Raster: Pattern"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
-pub fn noise_pattern(
+fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	#[default(true)] clip: Item<bool>,
@@ -435,7 +435,7 @@ pub fn noise_pattern(
 }
 
 #[node_macro::node(category("Raster: Pattern"), icon("NodeMandelbrot"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 

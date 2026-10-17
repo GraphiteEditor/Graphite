@@ -1,4 +1,4 @@
-use crate::parsing::{Implementation, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
+use crate::parsing::{Implementation, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload};
 use proc_macro_error2::emit_error;
 use quote::quote;
 use syn::spanned::Spanned;
@@ -72,9 +72,13 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 }
 
 fn validate_element_wise(parsed: &ParsedNodeFn) {
+	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		emit_error!(parsed.fn_name.span(), "An async node cannot take `impl Node` inputs");
+	}
 	if parsed.attributes.skip_impl {
 		return;
 	}
+	let output = output_payload(&parsed.output_type);
 
 	let Some((_, primary)) = parsed.primary_input_field() else { return };
 	let Some(RegularParsedField { ty, implementations, .. }) = primary.ty.regular() else {
@@ -88,7 +92,7 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 			|| primary.ty.list_element().is_some()
 			|| outer_wrapper_is(ty, "ListDyn")
 			|| implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"));
-		if outer_wrapper_is(&parsed.output_type, "Item") && !primary_reduces_or_generates {
+		if outer_wrapper_is(&output, "Item") && !primary_reduces_or_generates {
 			emit_error!(
 				parsed.output_type.span(),
 				"Returning `Item<T>` requires the primary input to be `Item<T>` (element-wise), `List<T>`/`ListDyn` (aggregation), or `()` (generator)"
@@ -108,7 +112,7 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		);
 	}
 
-	let output_type = &parsed.output_type;
+	let output_type = &output;
 	let ranked = outer_wrapper_is(output_type, "Item") || outer_wrapper_is(output_type, "List");
 	if !ranked && (outer_wrapper_is(output_type, "ListDyn") || is_unit_type(output_type) || contains_generic_param(output_type, &parsed.fn_generics)) {
 		emit_error!(

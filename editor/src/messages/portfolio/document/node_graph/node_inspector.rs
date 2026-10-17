@@ -448,7 +448,6 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return inspector_row_from_type(node_id, index, out, options, context),
-		Type::Future(out) => return inspector_row_from_type(node_id, index, out, options, context),
 	};
 
 	extra_widgets.push(widgets);

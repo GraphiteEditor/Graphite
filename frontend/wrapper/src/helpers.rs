@@ -1,16 +1,14 @@
 #[cfg(not(feature = "native"))]
-use crate::EDITOR;
-#[cfg(not(feature = "native"))]
 use crate::EDITOR_HAS_CRASHED;
 use crate::EDITOR_WRAPPER;
 use crate::editor_wrapper::EditorWrapper;
 use crate::native_communication::RasterizedImage;
-#[cfg(not(feature = "native"))]
-use editor::application::Editor;
 #[cfg(feature = "editor")]
 use editor::messages::input_mapper::utility_types::keyboard::Key;
-#[cfg(not(feature = "native"))]
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::messages::prelude::*;
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use editor::task::{Spawn, Task};
 use js_sys::{Object, Reflect};
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -38,30 +36,6 @@ pub(crate) fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 		.expect("Failed to call `setTimeout`");
 }
 
-/// Provides access to the `Editor` by calling the given closure with it as an argument.
-#[cfg(not(feature = "native"))]
-fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
-	EDITOR.with(|editor| {
-		let mut guard = editor.try_lock();
-		let Ok(Some(editor)) = guard.as_deref_mut() else {
-			log::error!("Failed to borrow editor");
-			return T::default();
-		};
-
-		callback(editor)
-	})
-}
-
-/// Provides access to the `Editor` and its `EditorWrapper` by calling the given closure with them as arguments.
-#[cfg(not(feature = "native"))]
-pub(crate) fn editor_and_wrapper(callback: impl FnOnce(&mut Editor, &mut EditorWrapper)) {
-	wrapper(|wrapper| {
-		editor(|editor| {
-			// Call the closure with the editor and its wrapper
-			callback(editor, wrapper);
-		})
-	});
-}
 /// Provides access to the `EditorWrapper` by calling the given closure with them as arguments.
 pub(crate) fn wrapper(callback: impl FnOnce(&mut EditorWrapper)) {
 	EDITOR_WRAPPER.with(|wrapper| {
@@ -77,52 +51,38 @@ pub(crate) fn wrapper(callback: impl FnOnce(&mut EditorWrapper)) {
 }
 
 #[cfg(not(feature = "native"))]
-pub(crate) async fn poll_node_graph_evaluation() {
+pub(crate) async fn run_node_runtime() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
 
-	if !editor::node_graph_executor::run_node_graph().await.0 {
-		return;
+	let Some(mut runtime) = crate::NODE_RUNTIME.try_lock() else { return };
+	let Some(runtime) = runtime.as_mut() else { return };
+	runtime.run().await;
+}
+
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+pub(crate) struct WasmSpawner;
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+impl Spawn for WasmSpawner {
+	fn spawn(&self, task: Task) {
+		wasm_bindgen_futures::spawn_local(task);
 	}
+}
 
-	editor_and_wrapper(|editor, wrapper| {
-		let mut messages = VecDeque::new();
-		if let Err(e) = editor.poll_node_graph_evaluation(&mut messages) {
-			// TODO: This is a hacky way to suppress the error, but it shouldn't be generated in the first place
-			if e != "No active document" {
-				error!("Error evaluating node graph:\n{e}");
-			}
-		}
-
-		// Clear the error display if there are no more errors
-		if !messages.is_empty() {
-			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
-		}
-
-		// Batch responses to pool frontend updates
-		let batched = Message::Batched {
-			messages: messages.into_iter().collect(),
-		};
-		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in editor.handle_message(batched) {
-			wrapper.send_frontend_message_to_js(response);
-		}
-
-		// If the editor cannot be borrowed then it has encountered a panic - we should just ignore new dispatches
+/// Web editor wake: queues a microtask that dispatches [`Message::Wake`].
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+pub(crate) fn wake_editor() {
+	wasm_bindgen_futures::spawn_local(async {
+		wrapper(|wrapper| wrapper.dispatch(Message::Wake));
 	});
 }
 
-/// Web wake callback: queues a microtask that dispatches [`FutureMessage::Wake`].
+/// Web runtime wake: queues a run of the node runtime. Used to wake the runtime on async task completion.
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
-pub(crate) fn async_wake_callback() -> Wake {
-	use std::sync::Arc;
-	Arc::new(|| {
-		wasm_bindgen_futures::spawn_local(async {
-			wrapper(|wrapper| wrapper.dispatch(FutureMessage::Wake));
-		});
-	})
+pub(crate) fn wake_runtime() {
+	wasm_bindgen_futures::spawn_local(run_node_runtime());
 }
 
 thread_local! {

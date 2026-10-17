@@ -1,9 +1,12 @@
+use crate::TokioSpawner;
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
-use graphene_std::core_types::ops::Convert;
+use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::runtime::AsyncRuntime;
+use graphene_std::{NodeError, Poll};
 use image::ImageFormat;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
@@ -73,7 +76,14 @@ pub struct ExportSettings {
 }
 
 /// Renders the document at the given animation time, as SVG text for an SVG export and as pixels for every other file type.
-async fn render_frame(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor::WgpuExecutor, settings: ExportSettings, animation_time: Duration) -> Result<RenderedFrame, Box<dyn Error>> {
+async fn render_frame(
+	executor: &DynamicExecutor,
+	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	settings: ExportSettings,
+	animation_time: Duration,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+) -> Result<RenderedFrame, Box<dyn Error>> {
 	let ExportSettings {
 		file_type,
 		scale,
@@ -100,13 +110,13 @@ async fn render_frame(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor:
 	}
 
 	// Execute the graph and extract its output
-	match executor.execute(render_config.into_context()).await? {
+	match execute_until_settled(executor, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
-				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
 				Ok(RenderedFrame::Raster { data, width, height })
 			}
@@ -174,8 +184,15 @@ fn encode_raster(file_type: FileType, data: Vec<u8>, width: u32, height: u32, tr
 	Ok(cursor.into_inner())
 }
 
-pub async fn export_document(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor::WgpuExecutor, output_path: PathBuf, settings: ExportSettings) -> Result<(), Box<dyn Error>> {
-	let frame = render_frame(executor, wgpu_executor, settings, Duration::ZERO).await?;
+pub async fn export_document(
+	executor: &DynamicExecutor,
+	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	output_path: PathBuf,
+	settings: ExportSettings,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+) -> Result<(), Box<dyn Error>> {
+	let frame = render_frame(executor, wgpu_executor, settings, Duration::ZERO, runtime, spawner).await?;
 	write_frame(&output_path, settings, frame)?;
 
 	log::info!("Exported to: {}", output_path.display());
@@ -217,6 +234,8 @@ pub async fn export_gif(
 	output_path: PathBuf,
 	settings: ExportSettings,
 	animation: AnimationParams,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
 	use image::codecs::gif::{GifEncoder, Repeat};
 	use image::{Frame, RgbaImage};
@@ -238,7 +257,7 @@ pub async fn export_gif(
 
 		log::debug!("Rendering frame {}/{} at time {:?}", frame_idx + 1, animation.frames, animation_time);
 
-		let RenderedFrame::Raster { data, width, height } = render_frame(executor, wgpu_executor, settings, animation_time).await? else {
+		let RenderedFrame::Raster { data, width, height } = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await? else {
 			return Err("A GIF frame must render as pixels".into());
 		};
 
@@ -265,6 +284,8 @@ pub async fn export_image_sequence(
 	output_path: PathBuf,
 	settings: ExportSettings,
 	animation: AnimationParams,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
 	log::info!("Exporting image sequence: {} frames at {} fps", animation.frames, animation.fps);
 
@@ -280,7 +301,7 @@ pub async fn export_image_sequence(
 		// Print progress to stderr (overwrites previous line)
 		eprint!("\rRendering frame {}/{}...", frame_idx + 1, animation.frames);
 
-		let frame = render_frame(executor, wgpu_executor, settings, animation_time).await?;
+		let frame = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await?;
 		let frame_path = directory.join(format!("{stem}_{frame_idx:0digits$}.{extension}"));
 		write_frame(&frame_path, settings, frame)?;
 	}
@@ -290,6 +311,32 @@ pub async fn export_image_sequence(
 
 	log::info!("Exported {} frames to: {}", animation.frames, directory.display());
 	Ok(())
+}
+
+async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
+	let mut frame = execute()?;
+	while spawner.join().await {
+		frame = execute()?;
+	}
+	match frame {
+		Poll::Fallback(boxed) => {
+			let (value, error) = *boxed;
+			log::warn!("Exported fallback value due to node error: {}", messages(&error));
+			Ok(value)
+		}
+		Poll::Error(error) => Err(format!("Node graph failed: {}", messages(&error)).into()),
+		frame => frame.value().ok_or_else(|| "Node graph produced no frame".into()),
+	}
+}
+
+fn messages(error: &NodeError) -> String {
+	let mut text = error.to_string();
+	for upstream in error.upstream() {
+		text.push('\n');
+		text.push_str(&messages(upstream));
+	}
+	text
 }
 
 #[cfg(test)]
