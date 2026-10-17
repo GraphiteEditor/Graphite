@@ -6,8 +6,7 @@ use vector_types::vector::Path;
 use vector_types::vector::algorithms::shapes;
 
 pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> (Vector, List<Path>) {
-	let mut vector = Vector::default();
-	let mut paths = List::new();
+	let mut outlines = Vec::new();
 
 	let size = qr_code.size() as usize;
 
@@ -109,7 +108,7 @@ pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> (Vector, List<Path>) {
 							}
 
 							if !simplified.is_empty() {
-								vector.append_bezpath(&mut paths, &shapes::polyline_bezpath(simplified, true));
+								outlines.push(shapes::polyline_bezpath(simplified, true));
 							}
 						}
 					}
@@ -122,6 +121,9 @@ pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> (Vector, List<Path>) {
 			}
 		}
 	}
+
+	let (mut vector, mut paths) = (Vector::default(), List::new());
+	vector.append_bezpaths(&mut paths, &outlines);
 
 	(vector, paths)
 }

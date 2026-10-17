@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use super::path::{CurveType, Path, append_segment, curve_type_at};
+use super::path::{CurveType, Path, append_segment, curve_types_of};
 use core_types::list::List;
 use glam::DVec2;
 use kurbo::BezPath;
@@ -94,7 +94,7 @@ pub fn contours(point_count: usize, paths: &List<Path>) -> Vec<Contour> {
 
 /// The curve type of every path, read once so the stitching below never looks one up per path.
 fn curve_types(paths: &List<Path>) -> Vec<CurveType> {
-	(0..paths.len()).map(|index| curve_type_at(paths, index)).collect()
+	curve_types_of(paths).collect()
 }
 
 fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveType]) -> Vec<Contour> {

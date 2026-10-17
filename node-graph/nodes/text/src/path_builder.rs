@@ -17,9 +17,8 @@ pub struct PathBuilder {
 	pub vector_list: List<Vector>,
 	/// Whether each glyph becomes its own list item rather than merging into one vector.
 	per_glyph_items: bool,
-	/// The single accumulated vector and its paths in merged mode, written to item 0 in `finalize()`.
-	merged_vector: Vector,
-	merged_paths: List<Path>,
+	/// Every glyph's outline in merged mode, woven into item 0 together in `finalize()`.
+	merged_glyphs: Vec<BezPath>,
 	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
 	merged_click_target_bboxes: Vec<[DVec2; 2]>,
 	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
@@ -40,8 +39,7 @@ impl PathBuilder {
 			glyph_bezpath: BezPath::new(),
 			vector_list: if per_glyph_items { List::new() } else { List::new_from_element(Vector::default()) },
 			per_glyph_items,
-			merged_vector: Vector::default(),
-			merged_paths: List::new(),
+			merged_glyphs: Vec::new(),
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
@@ -94,7 +92,7 @@ impl PathBuilder {
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
-			self.merged_vector.append_bezpath(&mut self.merged_paths, &core::mem::take(&mut self.glyph_bezpath));
+			self.merged_glyphs.push(core::mem::take(&mut self.glyph_bezpath));
 
 			if let Some(bbox) = glyph_bbox {
 				self.merged_click_target_bboxes.push(bbox);
@@ -164,12 +162,14 @@ impl PathBuilder {
 	}
 
 	pub fn finalize(mut self) -> List<Vector> {
-		// Merged mode accumulated into side fields, which item 0 takes over here
+		// Merged mode gathered every glyph's outline, which item 0 takes on here in one pass
 		if !self.per_glyph_items
 			&& let Some(element) = self.vector_list.element_mut(0)
 		{
-			*element = core::mem::take(&mut self.merged_vector);
-			let paths = core::mem::take(&mut self.merged_paths);
+			let (mut vector, mut paths) = (Vector::default(), List::<Path>::new());
+			vector.append_bezpaths(&mut paths, &self.merged_glyphs);
+
+			*element = vector;
 			self.vector_list.set_attribute(core_types::list::ATTR_PATHS, 0, paths);
 		}
 

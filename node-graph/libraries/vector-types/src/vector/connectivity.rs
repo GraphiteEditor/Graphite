@@ -1,4 +1,4 @@
-use super::path::{CurveType, Path, curve_type_at};
+use super::path::{CurveType, Path, curve_types_of};
 use core_types::list::List;
 
 /// One path's reference to a pool point, naming where in the weave that point is used.
@@ -49,9 +49,8 @@ impl Connectivity {
 
 		let mut cursors = starts[..point_count].to_vec();
 		let mut references = vec![Reference::default(); starts[point_count] as usize];
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			// Each path's curve type is read once here, so queries never look it up again
-			let curve_type = curve_type_at(paths, path_index);
+		// Each path's curve type is read once here, so queries never look it up again
+		for ((path_index, path), curve_type) in paths.iter_element_values().enumerate().zip(curve_types_of(paths)) {
 			let last = path.0.len().saturating_sub(1);
 
 			for (reference_index, point) in path.references().enumerate() {

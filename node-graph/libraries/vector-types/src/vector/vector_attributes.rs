@@ -1,7 +1,7 @@
 use crate::vector::addressing::{self, Span};
 use crate::vector::contour::contours;
 use crate::vector::misc::{ManipulatorGroup, Tangent, point_to_dvec2, segment_to_handles};
-use crate::vector::path::{CurveType, Path, append_segment, continues_previous_path, curve_type_at};
+use crate::vector::path::{CurveType, Path, append_segment, continues_previous_path, curve_type_at, curve_types_of};
 use crate::vector::vector_types::Vector;
 use core_types::list::{ATTR_ID, Item, List};
 use dyn_any::DynAny;
@@ -109,17 +109,15 @@ impl SegmentGraph {
 			point_count: vector.point_count(),
 		};
 
-		for span in addressing::spans(paths) {
-			let Some(path) = paths.element(span.path as usize) else { continue };
-			let Some((start, end)) = addressing::span_endpoints(paths, span) else { continue };
-			let Some(segment) = path.segment(&vector.0, curve_type_at(paths, span.path as usize), span.index as usize) else {
+		for resolved in addressing::resolved_spans(paths) {
+			let Some(segment) = resolved.path.segment(&vector.0, resolved.curve_type, resolved.span.index as usize) else {
 				continue;
 			};
 
-			graph.spans.push(span);
-			graph.ids.push(addressing::segment_id_of(paths, span).unwrap_or_default());
-			graph.start_point.push(start as usize);
-			graph.end_point.push(end as usize);
+			graph.spans.push(resolved.span);
+			graph.ids.push(resolved.id.unwrap_or_default());
+			graph.start_point.push(resolved.endpoints.0 as usize);
+			graph.end_point.push(resolved.endpoints.1 as usize);
 			graph.segments.push(segment);
 		}
 
@@ -300,90 +298,27 @@ impl Faces {
 	}
 }
 
+/// The direction of travel at one end of a segment, found from the nearest control point that sits apart from that anchor,
+/// which looks past zero-length handles to the limit direction. `DVec2::ZERO` if every control point coincides.
+fn tangent_at_endpoint(segment: PathSeg, at_start: bool) -> DVec2 {
+	let (points, count) = match segment {
+		PathSeg::Line(line) => ([point_to_dvec2(line.p0), point_to_dvec2(line.p1), DVec2::ZERO, DVec2::ZERO], 2),
+		PathSeg::Quad(quad) => ([point_to_dvec2(quad.p0), point_to_dvec2(quad.p1), point_to_dvec2(quad.p2), DVec2::ZERO], 3),
+		PathSeg::Cubic(cubic) => ([point_to_dvec2(cubic.p0), point_to_dvec2(cubic.p1), point_to_dvec2(cubic.p2), point_to_dvec2(cubic.p3)], 4),
+	};
+
+	let not_near = |a: DVec2, b: DVec2| a.distance_squared(b) > f64::EPSILON * 1e3;
+
+	if at_start {
+		let anchor = points[0];
+		points[1..count].iter().find(|&&p| not_near(p, anchor)).map_or(DVec2::ZERO, |&point| point - anchor)
+	} else {
+		let anchor = points[count - 1];
+		points[..count - 1].iter().rev().find(|&&p| not_near(p, anchor)).map_or(DVec2::ZERO, |&point| anchor - point)
+	}
+}
+
 impl SegmentGraph {
-	/// Computes the direction-of-travel tangent at one endpoint of a segment.
-	/// Uses the "first distinct control point" pattern: iterates through the Bezier control points
-	/// from the anchor outward, returning the direction to the first one that differs in position.
-	/// This handles zero-length handles by finding the tangent direction in the limit.
-	/// Returns `DVec2::ZERO` if all control points coincide (fully degenerate segment).
-	fn segment_tangent_at_endpoint(&self, segment_index: usize, at_start: bool) -> DVec2 {
-		let (points, count) = match self.segments[segment_index] {
-			PathSeg::Line(line) => ([point_to_dvec2(line.p0), point_to_dvec2(line.p1), DVec2::ZERO, DVec2::ZERO], 2),
-			PathSeg::Quad(quad) => ([point_to_dvec2(quad.p0), point_to_dvec2(quad.p1), point_to_dvec2(quad.p2), DVec2::ZERO], 3),
-			PathSeg::Cubic(cubic) => ([point_to_dvec2(cubic.p0), point_to_dvec2(cubic.p1), point_to_dvec2(cubic.p2), point_to_dvec2(cubic.p3)], 4),
-		};
-
-		let not_near = |a: DVec2, b: DVec2| a.distance_squared(b) > f64::EPSILON * 1e3;
-
-		if at_start {
-			let anchor = points[0];
-			points[1..count].iter().find(|&&p| not_near(p, anchor)).map_or(DVec2::ZERO, |&point| point - anchor)
-		} else {
-			let anchor = points[count - 1];
-			points[..count - 1].iter().rev().find(|&&p| not_near(p, anchor)).map_or(DVec2::ZERO, |&point| anchor - point)
-		}
-	}
-
-	/// Computes the average tangent direction at a point based on its 1 or 2 connected segments.
-	/// Returns `None` for points with 0 or 3+ connections (ambiguous or undefined tangent),
-	/// or if the tangent is degenerate (all control points coincide).
-	pub fn point_tangent(&self, point_index: usize) -> Option<DVec2> {
-		// Collect connected segments with their relationship to this point (at_start flag)
-		let mut connections: [(usize, bool); 2] = [(0, false); 2];
-		let mut connection_count = 0;
-
-		for (segment_index, (&start, &end)) in self.start_point.iter().zip(&self.end_point).enumerate() {
-			// Self-loop segments count as two connections (outgoing and incoming)
-			let is_start = start == point_index;
-			let is_end = end == point_index;
-
-			if !is_start && !is_end {
-				continue;
-			}
-
-			if is_start {
-				if connection_count >= 2 {
-					return None;
-				}
-				connections[connection_count] = (segment_index, true);
-				connection_count += 1;
-			}
-			if is_end {
-				if connection_count >= 2 {
-					return None;
-				}
-				connections[connection_count] = (segment_index, false);
-				connection_count += 1;
-			}
-		}
-
-		if connection_count == 0 {
-			return None;
-		}
-
-		// Compute the direction-of-travel tangent for the first connection
-		let (segment_index, at_start) = connections[0];
-		let tangent1 = self.segment_tangent_at_endpoint(segment_index, at_start).try_normalize();
-
-		if connection_count == 1 {
-			return tangent1;
-		}
-
-		// Compute the direction-of-travel tangent for the second connection
-		let (segment_index, at_start) = connections[1];
-		let tangent2 = self.segment_tangent_at_endpoint(segment_index, at_start).try_normalize();
-
-		// Average the two normalized tangents
-		let average = tangent1? + tangent2?;
-
-		// If the tangents are nearly opposite (straight-through), use t1 directly
-		if average.length_squared() < (f64::EPSILON * 1e3).powi(2) {
-			return tangent1;
-		}
-
-		average.try_normalize()
-	}
-
 	/// Walks every face orbit of the segment graph and traces each one's path and signed area.
 	fn face_orbits(&self) -> FaceOrbits {
 		let mut adjacency: Vec<Vec<FaceSide>> = vec![Vec::new(); self.point_count];
@@ -592,8 +527,8 @@ impl Vector {
 	pub fn is_branching(&self, paths: &List<Path>) -> bool {
 		// Tally the segment ends at each anchor in one pass over the references, stopping at the first junction
 		let mut spokes = vec![0_u8; self.point_count()];
-		for (path_index, path) in paths.iter_element_values().enumerate() {
-			let stride = curve_type_at(paths, path_index).stride();
+		for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
+			let stride = curve_type.stride();
 			let references = path.0.iter_element_values().as_slice();
 			let last = references.len().saturating_sub(1);
 
@@ -620,14 +555,59 @@ impl Vector {
 		SegmentGraph::new(self, paths).construct_faces()
 	}
 
-	/// Computes the average tangent direction at a point based on its 1 or 2 connected segments.
-	pub fn point_tangent(&self, paths: &List<Path>, point_index: usize) -> Option<DVec2> {
-		SegmentGraph::new(self, paths).point_tangent(point_index)
+	/// The direction of travel through every pool point in O(points + references), following the contour that passes
+	/// it and averaging the segments on either side. A point has none when no contour passes it, when three or more
+	/// segments meet at it, or when a segment at it is degenerate.
+	pub fn anchor_tangents(&self, paths: &List<Path>) -> Vec<Option<DVec2>> {
+		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
+
+		// What each point gathers: how many segment ends meet it, their tangents summed, the first of them, and whether any was degenerate
+		let mut gathered = vec![(0_u8, DVec2::ZERO, DVec2::ZERO, false); self.point_count()];
+		for contour in contours(self.point_count(), paths) {
+			for part in &contour.parts {
+				let Some(path) = paths.element(part.path as usize) else { continue };
+				let Some(&curve_type) = curve_types.get(part.path as usize) else { continue };
+				let references = path.0.iter_element_values().as_slice();
+				let (stride, count) = (curve_type.stride(), path.segment_count(curve_type));
+
+				for step in 0..count {
+					let span = if part.reversed { count - 1 - step } else { step };
+					let Some(segment) = path.segment(&self.0, curve_type, span) else { continue };
+					let (Some(&start), Some(&end)) = (references.get(span * stride), references.get(span * stride + stride)) else {
+						continue;
+					};
+
+					// The segment as the contour crosses it, leaving one anchor and arriving at the other
+					let (segment, leaving, arriving) = if part.reversed { (segment.reverse(), end, start) } else { (segment, start, end) };
+					for (point, at_start) in [(leaving, true), (arriving, false)] {
+						let Some((ends, sum, first, degenerate)) = gathered.get_mut(point as usize) else { continue };
+
+						match tangent_at_endpoint(segment, at_start).try_normalize() {
+							Some(tangent) if *ends == 0 => (*sum, *first) = (tangent, tangent),
+							Some(tangent) => *sum += tangent,
+							None => *degenerate = true,
+						}
+						*ends = ends.saturating_add(1);
+					}
+				}
+			}
+		}
+
+		// Tangents that cancel out mark a cusp doubling straight back, which keeps the first of its two directions
+		let cancels_out = |sum: DVec2| sum.length_squared() < (f64::EPSILON * 1e3).powi(2);
+		let resolve = |(ends, sum, first, degenerate): (u8, DVec2, DVec2, bool)| match ends {
+			_ if degenerate => None,
+			1 => Some(first),
+			2 if cancels_out(sum) => Some(first),
+			2 => sum.try_normalize(),
+			_ => None,
+		};
+		gathered.into_iter().map(resolve).collect()
 	}
 
 	/// Every segment's stable ID, in span order.
 	pub fn segment_ids(&self, paths: &List<Path>) -> Vec<SegmentId> {
-		addressing::spans(paths).map(|span| addressing::segment_id_of(paths, span).unwrap_or_default()).collect()
+		addressing::resolved_spans(paths).map(|resolved| resolved.id.unwrap_or_default()).collect()
 	}
 
 	/// The ID of the first segment of every path that begins one, leaving out the paths that only carry on the one before them in another curve type.
@@ -759,7 +739,7 @@ impl Vector {
 	pub fn stroke_manipulator_groups(&self, paths: &List<Path>) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
 		let mut groups = Vec::new();
 
-		let curve_types: Vec<CurveType> = (0..paths.len()).map(|index| curve_type_at(paths, index)).collect();
+		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
 		let ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 		let id_at = |point: u32| ids.get(point as usize).copied().unwrap_or_default();
 
@@ -1092,6 +1072,59 @@ mod tests {
 		assert_eq!(manipulators.iter().map(|group| group.anchor).collect::<Vec<_>>(), points.to_vec());
 
 		assert_eq!(bezpath_from_manipulator_groups(manipulators, *closed).elements(), contours[0].elements());
+	}
+
+	// Where two paths weld tail to tail, the tangent follows the contour through the weld instead of the two stored directions
+	#[test]
+	fn anchor_tangents_follow_the_contour_through_a_weld() {
+		let points = [DVec2::new(0., 0.), DVec2::new(-10., 10.), DVec2::new(0., 20.), DVec2::new(10., 10.)];
+		let (vector, mut paths) = build_vector(&points, &[]);
+		for references in [[0, 1, 2], [0, 3, 2]] {
+			paths.push(Item::new_from_element(Path::from_references(references)).with_attribute(ATTR_CURVE_TYPE, CurveType::Linear));
+		}
+
+		let tangents = vector.anchor_tangents(&paths);
+		let near = |tangent: Option<DVec2>, expected: DVec2| tangent.is_some_and(|tangent| tangent.distance(expected) < 1e-9);
+
+		// The contour runs down the left half and back up the right half
+		assert!(near(tangents[2], DVec2::X), "{:?}", tangents[2]);
+		assert!(near(tangents[0], DVec2::NEG_X), "{:?}", tangents[0]);
+		assert!(near(tangents[1], DVec2::Y), "{:?}", tangents[1]);
+		assert!(near(tangents[3], DVec2::NEG_Y), "{:?}", tangents[3]);
+	}
+
+	// An open end takes its one segment's direction and a closed loop's seam averages the two meeting there. A cusp keeps
+	// the direction arriving at it, and a junction of three ends or a collapsed segment gives no tangent.
+	#[test]
+	fn anchor_tangents_at_ends_seams_cusps_junctions_and_collapsed_segments() {
+		let tangents = |points: &[DVec2], curve_type: CurveType, paths: &[&[u32]]| {
+			let (vector, mut list) = build_vector(points, &[]);
+			for &references in paths {
+				list.push(Item::new_from_element(Path::from_references(references.iter().copied())).with_attribute(ATTR_CURVE_TYPE, curve_type));
+			}
+			vector.anchor_tangents(&list)
+		};
+		let near = |tangent: Option<DVec2>, expected: DVec2| tangent.is_some_and(|tangent| tangent.distance(expected.normalize()) < 1e-9);
+
+		let open = tangents(&[DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 10.)], CurveType::Linear, &[&[0, 1, 2]]);
+		assert_eq!(open[0], Some(DVec2::X));
+		assert!(near(open[1], DVec2::ONE), "{:?}", open[1]);
+		assert_eq!(open[2], Some(DVec2::Y));
+
+		let square = [DVec2::ZERO, DVec2::new(10., 0.), DVec2::new(10., 10.), DVec2::new(0., 10.)];
+		let closed = tangents(&square, CurveType::Linear, &[&[0, 1, 2, 3, 0]]);
+		assert!(near(closed[0], DVec2::new(1., -1.)), "{:?}", closed[0]);
+
+		let cusp = tangents(&[DVec2::ZERO, DVec2::new(10., 0.), DVec2::ZERO], CurveType::Linear, &[&[0, 1, 2]]);
+		assert_eq!(cusp[1], Some(DVec2::X));
+
+		let junction = tangents(&square, CurveType::Linear, &[&[0, 1], &[0, 2], &[0, 3]]);
+		assert_eq!(junction[0], None);
+		assert_eq!(junction[1], Some(DVec2::X));
+
+		let collapsed = tangents(&[DVec2::ONE; 4], CurveType::Cubic, &[&[0, 1, 2, 3]]);
+		assert_eq!(collapsed[0], None);
+		assert_eq!(collapsed[3], None);
 	}
 
 	/// Square wound positively with a reverse-wound triangle welded to its corner:

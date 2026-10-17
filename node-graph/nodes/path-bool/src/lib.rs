@@ -175,9 +175,8 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
 	let mut result_paths = List::new();
-	for contour in contours.contours() {
-		row.element_mut().append_bezpath(&mut result_paths, &closed(contour.path.clone()));
-	}
+	let closed_contours = contours.contours().map(|contour| closed(contour.path.clone()));
+	row.element_mut().append_bezpaths(&mut result_paths, closed_contours);
 	row.set_attribute(ATTR_PATHS, result_paths);
 
 	list.push(row);
