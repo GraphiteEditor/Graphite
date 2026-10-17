@@ -390,7 +390,6 @@ pub(crate) fn property_from_type(node_id: NodeId, index: usize, ty: &Type, optio
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, options, context),
-		Type::Future(out) => return property_from_type(node_id, index, out, options, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -3756,8 +3755,8 @@ mod tests {
 	#[test]
 	fn wire_element_reads_every_spelling_down_to_the_element() {
 		// A stored value's ranked type, a registry row's fn type, and a mapped row's list all carry the same element
-		let row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(item!(f64)))));
-		let mapped_row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(list!(f64)))));
+		let row = Type::Fn(Box::new(concrete!(())), Box::new(item!(f64)));
+		let mapped_row = Type::Fn(Box::new(concrete!(())), Box::new(list!(f64)));
 		for ty in [TaggedValue::Number(0.).ty(), item!(f64), list!(f64), row, mapped_row] {
 			assert_eq!(wire_element(&ty), concrete!(f64), "{ty:?} should read down to its element");
 		}

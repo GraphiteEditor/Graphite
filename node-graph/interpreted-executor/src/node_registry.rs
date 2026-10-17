@@ -27,7 +27,7 @@ use graphene_std::vector::misc::{
 };
 use graphene_std::vector::style::{DashPattern, GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
-use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
+use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type};
 use node_registry_macros::async_node;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -169,8 +169,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				},
 				{
 					let node = graphene_core::ops::PassthroughNode::new(graphene_std::any::PanicNode::<Context, $ty>::new());
-					let params = vec![fn_type_fut!(Context, $ty)];
-					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
+					let params = vec![fn_type!(Context, $ty)];
+					let node_io = NodeIO::<Context>::to_node_io(&node, params);
 					node_io
 				},
 			)
@@ -191,8 +191,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 						graphene_std::any::PanicNode::<Context, $from>::new(),
 						graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>),
 					);
-					let params = vec![fn_type_fut!(Context, $from)];
-					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
+					let params = vec![fn_type!(Context, $from)];
+					let node_io = NodeIO::<Context>::to_node_io(&node, params);
 					node_io
 				},
 			)
@@ -224,8 +224,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 						graphene_std::any::PanicNode::<Context, $from>::new(),
 						graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$element>),
 					);
-					let params = vec![fn_type_fut!(Context, $from)];
-					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
+					let params = vec![fn_type!(Context, $from)];
+					let node_io = NodeIO::<Context>::to_node_io(&node, params);
 					node_io
 				},
 			)
@@ -243,8 +243,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				},
 				{
 					let node = graphene_core::ops::ItemToListNode::new(graphene_std::any::PanicNode::<Context, Item<$element>>::new());
-					let params = vec![fn_type_fut!(Context, Item<$element>)];
-					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
+					let params = vec![fn_type!(Context, Item<$element>)];
+					let node_io = NodeIO::<Context>::to_node_io(&node, params);
 					node_io
 				},
 			)
@@ -262,8 +262,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				},
 				{
 					let node = graphene_core::ops::BundleNode::new(graphene_std::any::PanicNode::<Context, List<$element>>::new());
-					let params = vec![fn_type_fut!(Context, List<$element>)];
-					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
+					let params = vec![fn_type!(Context, List<$element>)];
+					let node_io = NodeIO::<Context>::to_node_io(&node, params);
 					node_io
 				},
 			)
@@ -281,8 +281,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				},
 				{
 					let node = graphene_core::ops::UnbundleNode::new(graphene_std::any::PanicNode::<Context, Item<Bundle<$element>>>::new());
-					let params = vec![fn_type_fut!(Context, Item<Bundle<$element>>)];
-					let node_io = NodeIO::<Context>::to_async_node_io(&node, params);
+					let params = vec![fn_type!(Context, Item<Bundle<$element>>)];
+					let node_io = NodeIO::<Context>::to_node_io(&node, params);
 					node_io
 				},
 			)
@@ -638,8 +638,8 @@ mod node_registry_macros {
 					let node = <$path>::new($(
 						graphene_std::any::PanicNode::<$arg, $type>::new()
 					),*);
-					let params = vec![$(fn_type_fut!($arg, $type)),*];
-					let mut node_io = NodeIO::<$input>::to_async_node_io(&node, params);
+					let params = vec![$(fn_type!($arg, $type)),*];
+					let mut node_io = NodeIO::<$input>::to_node_io(&node, params);
 					node_io.call_argument = concrete!(<$input as StaticType>::Static);
 					node_io
 				},

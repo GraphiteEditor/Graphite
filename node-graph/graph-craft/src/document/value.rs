@@ -437,7 +437,6 @@ macro_rules! tagged_value {
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
-					Type::Future(output) => TaggedValue::from_type(output),
 					// Element types with a dedicated variant use it directly (the variant's value is a rank-0 cell); the rest store the structural type
 					Type::Item(element) => TaggedValue::from_type(element).or_else(|| {
 						macro_rules! check {
@@ -727,7 +726,6 @@ impl TaggedValue {
 				Some(ty)
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
-			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
 			Type::Item(element) => TaggedValue::from_primitive_string(string, element),
 			Type::List(element) => TaggedValue::from_primitive_string(string, element),
 		}

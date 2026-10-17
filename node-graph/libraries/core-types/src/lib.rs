@@ -92,13 +92,6 @@ where
 			inputs,
 		}
 	}
-	fn to_async_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes {
-		NodeIOTypes {
-			call_argument: concrete!(<Input as StaticTypeSized>::Static),
-			return_value: future!(<Self::Output as StaticTypeSized>::Static),
-			inputs,
-		}
-	}
 }
 
 impl<N: Node<I>, I> NodeIO<I> for N
