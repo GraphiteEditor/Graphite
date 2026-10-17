@@ -108,23 +108,29 @@ impl Path {
 		piece
 	}
 
-	/// Reverses the path in place, so the weave walks its references in the opposite direction.
+	/// Reverses the given spans where they sit, so contours cross them in the opposite direction.
 	/// Per-reference attributes travel with their references, and each span's ID moves to the anchor it now departs from.
-	pub fn reverse(&mut self, curve_type: CurveType) {
+	pub fn reverse_spans(&mut self, curve_type: CurveType, spans: std::ops::Range<usize>) {
 		let stride = curve_type.stride();
-		let count = self.segment_count(curve_type);
-		let ids: Vec<Option<SegmentId>> = (0..count).map(|span| self.0.attribute::<SegmentId>(ATTR_ID, span * stride).copied()).collect();
-
-		self.0 = (0..self.0.len()).rev().filter_map(|index| self.0.clone_item(index)).collect();
-
-		// Span k of the reversed path walks old span (count - 1 - k) backwards, so it takes over that span's ID
-		for span in 0..count {
-			if let Some(id) = ids[count - 1 - span] {
-				self.0.set_attribute(ATTR_ID, span * stride, id);
-			}
+		let spans = spans.start..spans.end.min(self.segment_count(curve_type));
+		if spans.is_empty() {
+			return;
 		}
-		if count > 0 && self.0.attribute::<SegmentId>(ATTR_ID, count * stride).is_some() {
-			self.0.set_attribute(ATTR_ID, count * stride, SegmentId::default());
+		let (first, last) = (spans.start * stride, spans.end * stride);
+
+		// The cell on the last anchor belongs to whichever span follows these, so it stays where it is
+		let id_at = |path: &Self, index: usize| path.0.attribute::<SegmentId>(ATTR_ID, index).copied();
+		let ids: Vec<Option<SegmentId>> = spans.clone().map(|span| id_at(self, span * stride)).collect();
+		let following_id = id_at(self, last);
+
+		let mirrored = |index: usize| if (first..=last).contains(&index) { first + last - index } else { index };
+		self.0 = (0..self.0.len()).filter_map(|index| self.0.clone_item(mirrored(index))).collect();
+
+		// Each reversed span walks the old span mirrored across the range backwards, so it takes over that span's ID
+		for (place, id) in ids.into_iter().rev().chain([following_id]).enumerate() {
+			if let Some(id) = id {
+				self.0.set_attribute(ATTR_ID, first + place * stride, id);
+			}
 		}
 	}
 }
@@ -374,6 +380,33 @@ mod tests {
 			path.segment(&pool, CurveType::Cubic, 1),
 			Some(PathSeg::Cubic(CubicBez::new((10., 10.), (10., 15.), (5., 20.), (0., 0.))))
 		);
+	}
+
+	// Turning around the middle of a path keeps every span's ID on the anchor it sets out from
+	#[test]
+	fn reversing_spans_where_they_sit() {
+		let mut lasso = path(&[0, 1, 2, 3, 4, 1, 5]);
+		let mut segment_id = SegmentId::ZERO;
+		let ids: Vec<SegmentId> = (0..6).map(|_| segment_id.next_id()).collect();
+		for (span, &id) in ids.iter().enumerate() {
+			lasso.0.set_attribute(ATTR_ID, span, id);
+		}
+
+		lasso.reverse_spans(CurveType::Linear, 1..5);
+
+		assert_eq!(lasso.0.iter_element_values().copied().collect::<Vec<_>>(), vec![0, 1, 4, 3, 2, 1, 5]);
+		let span_ids: Vec<SegmentId> = (0..6).map(|span| lasso.0.attribute_cloned_or_default(ATTR_ID, span)).collect();
+		assert_eq!(span_ids, [ids[0], ids[4], ids[3], ids[2], ids[1], ids[5]]);
+	}
+
+	// A partial segment trailing a path is left where it is, so anchors and handles keep their roles
+	#[test]
+	fn reversing_leaves_a_partial_tail_in_place() {
+		let mut ragged = path(&[4, 10, 11, 0, 12, 13, 2, 14]);
+
+		ragged.reverse_spans(CurveType::Cubic, 0..2);
+
+		assert_eq!(ragged.0.iter_element_values().copied().collect::<Vec<_>>(), vec![2, 13, 12, 0, 11, 10, 4, 14]);
 	}
 
 	// A reference naming a point the pool does not have drops its segment instead of panicking

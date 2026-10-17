@@ -103,10 +103,12 @@ impl MergeByDistanceExt for Vector {
 
 		// Drop the collapsed segments, then the merged-away points, remapping segment endpoints
 		let keep_segment: Vec<bool> = working.segment_ids.iter().map(|id| !segments_to_delete.contains(id)).collect();
+		working.carry_path_beginnings(&keep_segment);
 		retain_by(&mut working.segment_ids, &keep_segment);
 		retain_by(&mut working.segment_start, &keep_segment);
 		retain_by(&mut working.segment_end, &keep_segment);
 		retain_by(&mut working.segment_handles, &keep_segment);
+		retain_by(&mut working.segment_begins_path, &keep_segment);
 
 		let mut point_map = Vec::with_capacity(working.point_ids.len());
 		let mut new_index = 0;
@@ -130,7 +132,7 @@ impl MergeByDistanceExt for Vector {
 	}
 
 	fn merge_by_distance_spatial(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64) {
-		let working = WorkingVector::flatten(self, paths);
+		let mut working = WorkingVector::flatten(self, paths);
 		let point_count = working.point_positions.len();
 
 		// Find min x and y for grid cell normalization
@@ -212,7 +214,13 @@ impl MergeByDistanceExt for Vector {
 			}
 		}
 
-		// Build the merged working form, skipping segments with endpoints that collapsed together
+		// Segments with endpoints that collapsed together drop out, handing on any path they began
+		let keep_segment: Vec<bool> = (0..working.segment_ids.len())
+			.map(|segment_index| point_index_map[working.segment_start[segment_index]] != point_index_map[working.segment_end[segment_index]])
+			.collect();
+		working.carry_path_beginnings(&keep_segment);
+
+		// Build the merged working form from the kept segments
 		let mut merged = WorkingVector {
 			point_ids: merged_indices,
 			point_positions: merged_positions,
@@ -220,16 +228,15 @@ impl MergeByDistanceExt for Vector {
 			..Default::default()
 		};
 
-		for segment_index in 0..working.segment_ids.len() {
+		for segment_index in (0..working.segment_ids.len()).filter(|&segment_index| keep_segment[segment_index]) {
 			let new_start = point_index_map[working.segment_start[segment_index]].unwrap();
 			let new_end = point_index_map[working.segment_end[segment_index]].unwrap();
 
-			if new_start != new_end {
-				merged.segment_ids.push(working.segment_ids[segment_index]);
-				merged.segment_start.push(new_start);
-				merged.segment_end.push(new_end);
-				merged.segment_handles.push(working.segment_handles[segment_index]);
-			}
+			merged.segment_ids.push(working.segment_ids[segment_index]);
+			merged.segment_start.push(new_start);
+			merged.segment_end.push(new_end);
+			merged.segment_handles.push(working.segment_handles[segment_index]);
+			merged.segment_begins_path.push(working.segment_begins_path.get(segment_index).copied().unwrap_or(false));
 		}
 
 		merged.reweave(self, paths);
