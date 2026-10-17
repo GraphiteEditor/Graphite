@@ -93,6 +93,10 @@ impl VectorGeometry {
 		self.vector.segment_ids(&self.paths)
 	}
 
+	pub fn path_beginnings(&self) -> rustc_hash::FxHashSet<SegmentId> {
+		self.vector.path_beginnings(&self.paths)
+	}
+
 	pub fn segment_from_id(&self, id: SegmentId) -> Option<PathSeg> {
 		self.vector.segment_from_id(&self.paths, id)
 	}

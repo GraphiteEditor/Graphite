@@ -454,6 +454,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 						// Create new segment IDs and add the segments into the existing Vector path
 						let mut segments_map = HashMap::new();
+						let path_beginnings = pasted_vector.path_beginnings(&pasted_paths);
 						for (segment_id, segment, start, end) in pasted_vector.segment_iter(&pasted_paths) {
 							let (Some(&start_point), Some(&end_point)) = (points_map.get(&start), points_map.get(&end)) else {
 								warn!("Skipping pasted vector segment with an unknown endpoint");
@@ -474,6 +475,15 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							let points = [start_point, end_point];
 							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+							// Every pasted path stays a path of its own, even where it sets out from the end of another
+							if path_beginnings.contains(&segment_id) {
+								let modification_type = VectorModificationType::SetPathBreak {
+									segment: new_segment_id,
+									breaks: true,
+								};
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
 						}
 
 						// Set G1 continuity

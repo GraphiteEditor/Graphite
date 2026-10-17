@@ -416,6 +416,11 @@ fn grid<T: GridSpacing>(
 		}
 	}
 
+	// A segment begins a path unless it carries on from the one stored before it, so the weave joins nothing around the grid's junctions
+	working.segment_begins_path = (0..working.segment_ids.len())
+		.map(|index| index == 0 || working.segment_start[index] != working.segment_end[index - 1])
+		.collect();
+
 	let (mut vector, mut paths) = (Vector::default(), List::new());
 	working.reweave(&mut vector, &mut paths);
 
@@ -463,6 +468,18 @@ mod tests {
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
 		}
+	}
+
+	// Only segments stored one after another join into paths, so no outline closes around the cells
+	#[test]
+	fn grid_joins_segments_only_where_they_follow_each_other() {
+		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(true));
+		let paths = paths_from_item_attributes(&grid).cloned().unwrap_or_default();
+		let vector = grid.element();
+
+		assert_eq!(vector.segment_ids(&paths).len(), 2 * 3 + 2 * 3);
+		assert_eq!(paths.len(), 7);
+		assert!(vector.stroke_manipulator_groups(&paths).all(|(_, closed)| !closed));
 	}
 
 	#[test]

@@ -2799,6 +2799,7 @@ impl Fsm for PathToolFsmState {
 					}
 
 					let find_index = |new_vector: &WorkingVector, id: PointId| new_vector.point_ids.iter().position(|&point_id| point_id == id);
+					let path_beginnings = old_vector.path_beginnings();
 
 					// Add segments which have selected ends
 					for (segment_id, segment, start, end) in old_vector.segment_iter() {
@@ -2815,6 +2816,7 @@ impl Fsm for PathToolFsmState {
 							new_vector.segment_start.push(start_index);
 							new_vector.segment_end.push(end_index);
 							new_vector.segment_handles.push(segment_to_handles(&segment));
+							new_vector.segment_begins_path.push(path_beginnings.contains(&segment_id));
 						}
 					}
 
@@ -2899,6 +2901,7 @@ impl Fsm for PathToolFsmState {
 
 					// Create new segment IDs and add the segments into the existing vector content
 					let mut segments_map = HashMap::new();
+					let path_beginnings = pasted.path_beginnings();
 					for (segment_id, bezier, start, end) in pasted.segment_iter() {
 						let new_segment_id = SegmentId::generate();
 
@@ -2911,6 +2914,15 @@ impl Fsm for PathToolFsmState {
 						let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
 
 						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+						// Every pasted path stays a path of its own, even where it sets out from the end of another
+						if path_beginnings.contains(&segment_id) {
+							let modification_type = VectorModificationType::SetPathBreak {
+								segment: new_segment_id,
+								breaks: true,
+							};
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
 					}
 
 					// Set G1 continuity
@@ -2999,6 +3011,7 @@ impl Fsm for PathToolFsmState {
 					}
 
 					let mut segments_map = HashMap::new();
+					let path_beginnings = old_vector.path_beginnings();
 
 					for (segment_id, bezier, start, end) in old_vector.segment_iter() {
 						let both_ends_selected = layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(start)) && layer_selection_state.is_point_selected(ManipulatorPointId::Anchor(end));
@@ -3016,6 +3029,12 @@ impl Fsm for PathToolFsmState {
 							let modification_type = VectorModificationType::InsertSegment { id: new_id, points, handles };
 
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+							// Every duplicated path stays a path of its own, even where it sets out from the end of another
+							if path_beginnings.contains(&segment_id) {
+								let modification_type = VectorModificationType::SetPathBreak { segment: new_id, breaks: true };
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
 						}
 					}
 
