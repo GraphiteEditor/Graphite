@@ -209,6 +209,7 @@ impl SegmentModification {
 		let keep: Vec<bool> = (0..working.segment_ids.len())
 			.map(|index| !self.remove.contains(&working.segment_ids[index]) && working.segment_start[index] < point_count && working.segment_end[index] < point_count)
 			.collect();
+		working.carry_path_beginnings(&keep);
 		let mut keep_iter = keep.iter();
 		working.segment_start.retain(|_| *keep_iter.next().unwrap_or(&false));
 		let mut keep_iter = keep.iter();
@@ -217,6 +218,8 @@ impl SegmentModification {
 		working.segment_handles.retain(|_| *keep_iter.next().unwrap_or(&false));
 		let mut keep_iter = keep.iter();
 		working.segment_ids.retain(|_| *keep_iter.next().unwrap_or(&false));
+		let mut keep_iter = keep.iter();
+		working.segment_begins_path.retain(|_| *keep_iter.next().unwrap_or(&false));
 
 		// The points no longer change here, so one index serves every endpoint lookup below.
 		// Nothing looks an endpoint up in the common pure-handle case, so it skips the build.
@@ -926,7 +929,7 @@ mod tests {
 		vector.position(vector.index_of_point_id(id).unwrap() as usize).unwrap()
 	}
 
-	/// What the tests compare of a modification's result: anchors by ID, segments by ID, the stroke walk, and G1 pairs.
+	/// What the tests compare of a modification's result: anchors by ID, segments by ID, the stroke contours, and G1 pairs.
 	fn describe(vector: &Vector, paths: &List<Path>) -> String {
 		let mut anchors: Vec<String> = vector
 			.anchor_points(paths)
@@ -1167,6 +1170,28 @@ mod tests {
 
 		assert_eq!(describe(&in_place, &in_place_paths), describe(&rewoven, &rewoven_paths));
 		assert_eq!(in_place_paths, paths, "moving points leaves the weave untouched");
+	}
+
+	// Removing the segment a path begins with leaves the rest of that path beginning one of its own, rather than joining the path it touches
+	#[test]
+	fn a_path_keeps_its_start_when_its_first_segment_is_removed() {
+		use crate::vector::path::push_path;
+		use core_types::list::Item;
+
+		let mut vector = Vector::default();
+		for position in [(0., 0.), (10., 0.), (20., 0.), (20., 10.), (30., 0.)] {
+			vector.0.push(Item::new_from_element(DVec2::from(position)).with_attribute(ATTR_ID, PointId::generate()));
+		}
+		let mut paths = List::new();
+		let removed = SegmentId::generate();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], [SegmentId::generate(), SegmentId::generate()]);
+		push_path(&mut paths, CurveType::Linear, [3, 2, 4], [removed, SegmentId::generate()]);
+
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::RemoveSegment { id: removed });
+		modification.apply(&mut vector, &mut paths);
+
+		assert_eq!(paths.len(), 2, "the remainder of the second path stays a path of its own");
 	}
 
 	// Re-adding a segment or point under an ID the geometry already holds adds no second copy under that ID
