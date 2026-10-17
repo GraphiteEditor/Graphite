@@ -11,8 +11,10 @@ pub mod memo;
 pub mod misc;
 pub mod none;
 pub mod ops;
+pub mod poll;
 pub mod registry;
 pub mod render_complexity;
+pub mod runtime;
 pub mod transfer_curve;
 pub mod transform;
 pub mod uuid;
@@ -39,22 +41,19 @@ pub use no_std_types::choice_type;
 pub use no_std_types::color;
 pub use no_std_types::shaders;
 pub use num_traits;
+pub use poll::{Finality, Interrupt, LazyInput, NodeError, Poll, PollInput, Status};
+pub use runtime::{Generations, RuntimeHandle, SourceId};
 use std::any::TypeId;
-use std::future::Future;
-use std::pin::Pin;
 #[cfg(feature = "wasm")]
 pub use tsify;
 pub use types::Cow;
 
-// pub trait Node: for<'n> NodeIO<'n> {
 /// The node trait allows for defining any node. Nodes can only take one call argument input, however they can store references to other nodes inside the struct.
 /// See `node-graph/README.md` for information on how to define a new node.
-pub trait Node<'i, Input> {
-	type Output: 'i;
+pub trait Node<Input: ?Sized> {
+	type Output;
 	/// Evaluates the node with the single specified input.
-	fn eval(&'i self, input: Input) -> Self::Output;
-	/// Resets the node, e.g. the LetNode's cache is set to None.
-	fn reset(&self) {}
+	fn eval(&self, input: &Input) -> Poll<Self::Output>;
 	/// Returns the name of the node for diagnostic purposes.
 	fn node_name(&self) -> &'static str {
 		std::any::type_name::<Self>()
@@ -69,9 +68,9 @@ pub trait Node<'i, Input> {
 mod types;
 pub use types::*;
 
-pub trait NodeIO<'i, Input>: Node<'i, Input>
+pub trait NodeIO<Input>: Node<Input>
 where
-	Self::Output: 'i + StaticTypeSized,
+	Self::Output: StaticTypeSized,
 	Input: StaticTypeSized,
 {
 	fn input_type(&self) -> TypeId {
@@ -93,55 +92,59 @@ where
 			inputs,
 		}
 	}
-	fn to_async_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes
-	where
-		<Self::Output as Future>::Output: StaticTypeSized,
-		Self::Output: Future,
-	{
+	fn to_async_node_io(&self, inputs: Vec<Type>) -> NodeIOTypes {
 		NodeIOTypes {
 			call_argument: concrete!(<Input as StaticTypeSized>::Static),
-			return_value: future!(<<Self::Output as Future>::Output as StaticTypeSized>::Static),
+			return_value: future!(<Self::Output as StaticTypeSized>::Static),
 			inputs,
 		}
 	}
 }
 
-impl<'i, N: Node<'i, I>, I> NodeIO<'i, I> for N
+impl<N: Node<I>, I> NodeIO<I> for N
 where
-	N::Output: 'i + StaticTypeSized,
+	N::Output: StaticTypeSized,
 	I: StaticTypeSized,
 {
 }
 
-impl<'i, I: 'i, N: Node<'i, I> + ?Sized> Node<'i, I> for &'i N {
+impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for &N {
 	type Output = N::Output;
-	fn eval(&'i self, input: I) -> N::Output {
-		(*self).eval(input)
-	}
-}
-impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for Box<N> {
-	type Output = O;
-	fn eval(&'i self, input: I) -> O {
+	#[inline(always)]
+	fn eval(&self, input: &I) -> Poll<N::Output> {
 		(**self).eval(input)
 	}
-}
-impl<'i, I: 'i, O: 'i, N: Node<'i, I, Output = O> + ?Sized> Node<'i, I> for std::sync::Arc<N> {
-	type Output = O;
-	fn eval(&'i self, input: I) -> O {
-		(**self).eval(input)
+	fn node_name(&self) -> &'static str {
+		(**self).node_name()
+	}
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(**self).serialize()
 	}
 }
-
-impl<'i, I, O: 'i> Node<'i, I> for Pin<Box<dyn Node<'i, I, Output = O> + 'i>> {
-	type Output = O;
-	fn eval(&'i self, input: I) -> O {
+impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for Box<N> {
+	type Output = N::Output;
+	#[inline(always)]
+	fn eval(&self, input: &I) -> Poll<N::Output> {
 		(**self).eval(input)
 	}
+	fn node_name(&self) -> &'static str {
+		(**self).node_name()
+	}
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(**self).serialize()
+	}
 }
-impl<'i, I, O: 'i> Node<'i, I> for Pin<&'i (dyn NodeIO<'i, I, Output = O> + 'i)> {
-	type Output = O;
-	fn eval(&'i self, input: I) -> O {
+impl<I: ?Sized, N: Node<I> + ?Sized> Node<I> for std::sync::Arc<N> {
+	type Output = N::Output;
+	#[inline(always)]
+	fn eval(&self, input: &I) -> Poll<N::Output> {
 		(**self).eval(input)
+	}
+	fn node_name(&self) -> &'static str {
+		(**self).node_name()
+	}
+	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
+		(**self).serialize()
 	}
 }
 

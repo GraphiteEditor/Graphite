@@ -149,6 +149,7 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	SubmitEyedropperPreviewRender,
+	PollNodeGraphEvaluation,
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,

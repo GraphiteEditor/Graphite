@@ -1,3 +1,4 @@
+use crate::application::Environment;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
@@ -7,18 +8,20 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
+use crate::node_graph_executor::NodeGraphExecutor;
 use graph_craft::application_io::resource::ResourceStorage;
 use std::sync::Arc;
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct Dispatcher {
+	environment: Environment,
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
 	pub frontend_update_messages: Vec<Message>,
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
@@ -42,17 +45,27 @@ pub struct DispatcherMessageHandlers {
 }
 
 impl DispatcherMessageHandlers {
-	pub fn with_resource_storage(resource_storage: Arc<dyn ResourceStorage>) -> Self {
+	fn new(environment: Environment, executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>, future_message_handler: FutureMessageHandler) -> Self {
 		Self {
-			resource_storage_message_handler: ResourceStorageMessageHandler::new(resource_storage),
-			..Self::default()
-		}
-	}
-
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self {
-			portfolio_message_handler: PortfolioMessageHandler::with_executor(executor),
-			..Self::default()
+			animation_message_handler: Default::default(),
+			app_window_message_handler: Default::default(),
+			future_message_handler,
+			broadcast_message_handler: Default::default(),
+			clipboard_message_handler: Default::default(),
+			color_picker_message_handler: Default::default(),
+			debug_message_handler: Default::default(),
+			defer_message_handler: Default::default(),
+			dialog_message_handler: Default::default(),
+			input_preprocessor_message_handler: Default::default(),
+			key_mapping_message_handler: KeyMappingMessageHandler::new(environment),
+			layout_message_handler: Default::default(),
+			menu_bar_message_handler: Default::default(),
+			network_message_handler: Default::default(),
+			portfolio_message_handler: PortfolioMessageHandler::new(executor, document_store),
+			preferences_message_handler: Default::default(),
+			resource_storage_message_handler: Default::default(),
+			tool_message_handler: Default::default(),
+			viewport_message_handler: Default::default(),
 		}
 	}
 }
@@ -102,20 +115,21 @@ const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
-	pub fn new(resource_storage: Arc<dyn ResourceStorage>, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
-		let mut s = Self::default();
+	pub fn new(
+		environment: Environment,
+		resource_storage: Arc<dyn ResourceStorage>,
+		document_store: Arc<dyn document_container::store::DocumentStore>,
+		executor: NodeGraphExecutor,
+		future_message_handler: FutureMessageHandler,
+	) -> Self {
+		let mut s = Self {
+			environment,
+			message_queues: Vec::new(),
+			responses: Vec::new(),
+			frontend_update_messages: Vec::new(),
+			message_handlers: DispatcherMessageHandlers::new(environment, executor, document_store, future_message_handler),
+		};
 		s.message_handlers.resource_storage_message_handler = ResourceStorageMessageHandler::new(resource_storage);
-		s.message_handlers.portfolio_message_handler.set_document_store(document_store);
-		s
-	}
-
-	#[cfg(test)]
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		let mut s = Self::new(
-			Arc::new(graph_craft::application_io::resource::HashMapResourceStorage::new()),
-			Arc::new(document_container::store::MemoryStore::default()),
-		);
-		s.message_handlers.portfolio_message_handler = PortfolioMessageHandler::with_executor(executor);
 		s
 	}
 
@@ -143,13 +157,6 @@ impl Dispatcher {
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T, process_after_all_current: bool) {
 		let message = message.into();
-
-		// Drain async results into the queue before processing the new message.
-		let mut async_results = VecDeque::new();
-		self.message_handlers.future_message_handler.drain_results(&mut async_results);
-		if !async_results.is_empty() {
-			Self::schedule_execution(&mut self.message_queues, true, async_results);
-		}
 
 		// If we are not maintaining the buffer, simply add to the current queue
 		Self::schedule_execution(&mut self.message_queues, process_after_all_current, [message]);
@@ -201,7 +208,7 @@ impl Dispatcher {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Future(message) => {
-					self.message_handlers.future_message_handler.process_message(message, &mut queue, FutureMessageContext {});
+					self.message_handlers.future_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
 				Message::Clipboard(message) => {
@@ -237,6 +244,7 @@ impl Dispatcher {
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
+							environment: self.environment,
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
@@ -245,13 +253,22 @@ impl Dispatcher {
 					let input = &self.message_handlers.input_preprocessor_message_handler;
 					let actions = self.collect_actions();
 
-					self.message_handlers
-						.key_mapping_message_handler
-						.process_message(message, &mut queue, KeyMappingMessageContext { input, actions });
+					self.message_handlers.key_mapping_message_handler.process_message(
+						message,
+						&mut queue,
+						KeyMappingMessageContext {
+							environment: self.environment,
+							input,
+							actions,
+						},
+					);
 				}
 				Message::Layout(message) => {
-					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find);
-					let context = LayoutMessageContext { action_input_mapping };
+					let action_input_mapping = &|action_to_find: &MessageDiscriminant| self.message_handlers.key_mapping_message_handler.action_input_mapping(action_to_find, self.environment);
+					let context = LayoutMessageContext {
+						environment: self.environment,
+						action_input_mapping,
+					};
 
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
@@ -268,6 +285,7 @@ impl Dispatcher {
 						message,
 						&mut queue,
 						PortfolioMessageContext {
+							environment: self.environment,
 							ipp: &self.message_handlers.input_preprocessor_message_handler,
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
@@ -377,10 +395,15 @@ impl Dispatcher {
 				Message::Viewport(message) => {
 					self.message_handlers.viewport_message_handler.process_message(message, &mut queue, ());
 				}
-				Message::NoOp => {}
+				// Messages
+				Message::Wake => {
+					queue.add(PortfolioMessage::PollNodeGraphEvaluation);
+					queue.add(FutureMessage::Drain);
+				}
 				Message::Batched { messages } => {
 					messages.into_iter().for_each(|message| self.handle_message(message, false));
 				}
+				Message::NoOp => {}
 			}
 
 			// If there are child messages, append the queue to the list of queues
@@ -409,10 +432,6 @@ impl Dispatcher {
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
-	}
-
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
 	}
 
 	/// Create the tree structure for logging the messages as a tree

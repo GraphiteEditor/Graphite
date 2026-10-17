@@ -1,5 +1,5 @@
 use super::IconName;
-use super::utility_types::{MouseCursorIcon, PersistedState};
+use super::utility_types::{MouseCursorIcon, PersistedState, RenderStatus};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, FileType, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
@@ -246,6 +246,9 @@ pub enum FrontendMessage {
 	UpdateDocumentArtwork {
 		svg: String,
 	},
+	UpdateRenderStatus {
+		status: RenderStatus,
+	},
 	UpdateImageData {
 		image_data: Vec<RasterizedImage>,
 	},
@@ -291,8 +294,8 @@ pub enum FrontendMessage {
 	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
 	},
-	UpdateNodeGraphErrorDiagnostic {
-		error: Option<NodeGraphErrorDiagnostic>,
+	UpdateNodeGraphErrorDiagnostics {
+		errors: Vec<NodeGraphErrorDiagnostic>,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,

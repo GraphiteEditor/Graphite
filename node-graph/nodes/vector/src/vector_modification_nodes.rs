@@ -9,7 +9,7 @@ use vector_types::vector::{VectorModification, edit_item_geometry, ensure_paths_
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
-async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<NodeIdPath>) -> Item<Vector> {
+fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<NodeIdPath>) -> Item<Vector> {
 	let mut vector = vector;
 	let modification = modification.into_element();
 
@@ -54,7 +54,7 @@ async fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Bo
 
 /// Bakes the content's transform attribute into its underlying value, removing the attribute.
 #[node_macro::node(category("Vector"), icon("NodeBakeTransform"))]
-async fn bake_transform<T: BakeTransform + 'n + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] content: Item<T>) -> Item<T> {
+fn bake_transform<T: BakeTransform + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] content: Item<T>) -> Item<T> {
 	let mut content = content;
 	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
 		content.element_mut().bake_transform(&transform);
@@ -70,8 +70,8 @@ mod tests {
 	use vector_types::vector::{CurveType, PointId, SegmentId, VectorModificationType, paths_from_item_attributes, push_path};
 
 	// A lone loop fills by its contour alone, so it keeps the direction it was drawn in even when that winds backwards
-	#[tokio::test]
-	async fn a_drawn_loop_keeps_its_direction() {
+	#[test]
+	fn a_drawn_loop_keeps_its_direction() {
 		let mut bezpath = BezPath::new();
 		bezpath.move_to((0., 0.));
 		bezpath.line_to((0., 10.));
@@ -80,14 +80,14 @@ mod tests {
 		bezpath.close_path();
 		let drawn = Vector::item_from_bezpath(&bezpath);
 
-		let modified = path_modify((), drawn.clone(), Item::default(), Item::default()).await;
+		let modified = path_modify((), drawn.clone(), Item::default(), Item::default());
 
 		assert_eq!(paths_from_item_attributes(&modified), paths_from_item_attributes(&drawn));
 	}
 
 	// Moving a point of a mesh leaves its paths in place to begin with, and its loops still get their winding set for the face fill
-	#[tokio::test]
-	async fn a_mesh_moved_in_place_still_has_its_winding_set() {
+	#[test]
+	fn a_mesh_moved_in_place_still_has_its_winding_set() {
 		// A reverse-wound square beside three spokes meeting at a hub, which makes the geometry branch
 		let positions = [(0., 0.), (0., 10.), (10., 10.), (10., 0.), (30., 0.), (40., 0.), (30., 10.), (20., 10.)];
 		let (mut vector, mut paths) = (Vector::default(), List::new());
@@ -105,7 +105,7 @@ mod tests {
 
 		let mut modification = VectorModification::default();
 		modification.modify(&VectorModificationType::ApplyPointDelta { point: hub, delta: DVec2::X });
-		let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default()).await;
+		let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 		let first_path = |item: &Item<Vector>| paths_from_item_attributes(item).unwrap().element(0).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
 		assert_eq!(first_path(&drawn), [0, 1, 2, 3, 0]);
@@ -113,8 +113,8 @@ mod tests {
 	}
 
 	// Moving points leaves the paths shared with the incoming geometry, and where they sat among its attributes
-	#[tokio::test]
-	async fn moving_points_leaves_the_paths_shared_and_in_place() {
+	#[test]
+	fn moving_points_leaves_the_paths_shared_and_in_place() {
 		let mut bezpath = BezPath::new();
 		bezpath.move_to((0., 0.));
 		bezpath.line_to((10., 0.));
@@ -124,7 +124,7 @@ mod tests {
 
 		let mut modification = VectorModification::default();
 		modification.modify(&VectorModificationType::ApplyPointDelta { point: corner, delta: DVec2::X });
-		let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default()).await;
+		let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 		assert_eq!(modified.element().0.element(1), Some(&DVec2::new(11., 0.)));
 		assert!(std::ptr::eq(paths_from_item_attributes(&drawn).unwrap(), paths_from_item_attributes(&modified).unwrap()));
@@ -132,8 +132,8 @@ mod tests {
 	}
 
 	// A point cloud comes out with an empty paths attribute placed last, whether the edit is made in place or by reweaving
-	#[tokio::test]
-	async fn a_point_cloud_gains_an_empty_paths_attribute() {
+	#[test]
+	fn a_point_cloud_gains_an_empty_paths_attribute() {
 		let mut cloud = Vector::default();
 		cloud.0.push(Item::new_from_element(DVec2::ZERO).with_attribute(ATTR_ID, PointId::ZERO));
 		let drawn = Item::new_from_element(cloud).with_attribute(ATTR_TRANSFORM, DAffine2::IDENTITY);
@@ -145,7 +145,7 @@ mod tests {
 		});
 
 		for modification in [VectorModification::default(), adds_a_point] {
-			let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default()).await;
+			let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 			assert_eq!(paths_from_item_attributes(&modified).map(List::len), Some(0));
 			assert_eq!(modified.attributes().keys().collect::<Vec<_>>(), [ATTR_TRANSFORM, ATTR_PATHS, ATTR_EDITOR_LAYER_PATH]);

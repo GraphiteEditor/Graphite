@@ -137,8 +137,8 @@ mod test {
 	use raster_types::Image;
 	use raster_types::Raster;
 
-	#[tokio::test]
-	async fn color_overlay_multiply() {
+	#[test]
+	fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
 		let image = Image::new(1, 1, image_color);
 

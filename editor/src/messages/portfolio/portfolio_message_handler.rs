@@ -1,13 +1,14 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::PanelType;
-use crate::application::{Editor, generate_uuid};
+use crate::application::{Environment, generate_uuid};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
-use crate::messages::input_mapper::utility_types::keyboard::Key;
-use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
+use crate::messages::input_mapper::utility_types::keyboard::{Key, KeysGroup, LabeledShortcut};
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -34,6 +35,7 @@ use std::vec;
 
 #[derive(ExtractField)]
 pub struct PortfolioMessageContext<'a> {
+	pub environment: Environment,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
@@ -45,7 +47,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
-#[derive(Debug, Default, ExtractField)]
+#[derive(Debug, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	loading_documents: HashMap<DocumentId, DocumentInfo>,
@@ -69,6 +71,7 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, context: PortfolioMessageContext) {
 		let PortfolioMessageContext {
+			environment,
 			ipp,
 			preferences,
 			animation,
@@ -88,6 +91,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				{
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
@@ -143,9 +147,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PersistentStateMessage::ReadState);
 
 				// Initialize the frontend with environment information
-				responses.add(FrontendMessage::UpdatePlatform {
-					platform: Editor::environment().into(),
-				});
+				responses.add(FrontendMessage::UpdatePlatform { platform: environment.into() });
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -162,16 +164,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Request status bar info layout
 				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
-				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
+				// Send shortcuts for widgets created in the frontend which need shortcut tooltips, labeled here since they bypass the layout system
+				let shortcut = |keys: &[Key]| Some(ActionShortcut::Shortcut(LabeledShortcut::new(KeysGroup(keys.to_vec()), environment)));
 				responses.add(FrontendMessage::SendShortcutFullscreen {
-					shortcut: action_shortcut_manual!(Key::F11),
-					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
+					shortcut: shortcut(&[Key::F11]),
+					shortcut_mac: shortcut(&[Key::Control, Key::Command, Key::KeyF]),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
-					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Alt, Key::MouseLeft]),
 				});
 				responses.add(FrontendMessage::SendShortcutShiftClick {
-					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Shift, Key::MouseLeft]),
 				});
 
 				// Send the information for tooltips and categories for each node/input.
@@ -185,6 +188,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
@@ -994,6 +998,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
+			PortfolioMessage::PollNodeGraphEvaluation => {
+				let Some(document_id) = self.active_document_id else { return };
+				let Some(active_document) = self.documents.get_mut(&document_id) else { return };
+
+				self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
+			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
@@ -1050,12 +1060,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 }
 
 impl PortfolioMessageHandler {
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self { executor, ..Default::default() }
-	}
-
-	pub fn set_document_store(&mut self, store: Arc<dyn document_container::store::DocumentStore>) {
-		self.document_store = DocumentStoreHandle::new(store);
+	pub fn new(executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
+		Self {
+			documents: Default::default(),
+			loading_documents: Default::default(),
+			document_ids: Default::default(),
+			active_document_id: Default::default(),
+			failed_documents: Default::default(),
+			persistent_state: Default::default(),
+			fonts: Default::default(),
+			ingest: Default::default(),
+			executor,
+			selection_mode: Default::default(),
+			reset_node_definitions_on_open: Default::default(),
+			workspace: Default::default(),
+			document_store: DocumentStoreHandle::new(document_store),
+			pending_opens: Default::default(),
+			restore_select: Default::default(),
+			store_unavailable: Default::default(),
+		}
 	}
 
 	#[cfg(test)]
@@ -1222,30 +1245,6 @@ impl PortfolioMessageHandler {
 
 	fn document_index(&self, document_id: DocumentId) -> usize {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
-	}
-
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let Some(document_id) = self.active_document_id else {
-			return Err("No active document".to_string());
-		};
-		let Some(active_document) = self.documents.get_mut(&document_id) else {
-			return Err("No active document".to_string());
-		};
-
-		let result = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
-		if result.is_err() {
-			let error = r#"
-				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
-				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document cannot render in its current state.</tspan>
-					<tspan x="50%" dy="24">Undo to go back, if available, or check for error details</tspan>
-					<tspan x="50%" dy="24">by clicking the <tspan font-style="italic">Node Graph</tspan> button up at the top right.</tspan>
-				/text>"#
-				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-				.to_string();
-			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
-		}
-		result
 	}
 
 	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {

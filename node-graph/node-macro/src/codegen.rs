@@ -41,8 +41,21 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	};
 	let struct_name = format_ident!("{}Node", struct_name);
 
+	let async_hidden_fields = is_async.then(|| {
+		[
+			ParsedField::hidden(
+				"_runtime",
+				parse_quote!(#core_types::list::Item<#core_types::RuntimeHandle>),
+				ParsedValueSource::Scope(Box::new(parse_quote!("runtime"))),
+			),
+			ParsedField::hidden("_source", parse_quote!(#core_types::list::Item<#core_types::SourceId>), ParsedValueSource::SourceId),
+		]
+	});
+
+	let fields_iter = fields.iter().chain(async_hidden_fields.iter().flatten());
+
 	// Separate data fields from regular fields
-	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields.iter().partition(|f| f.is_data_field);
+	let (data_fields, regular_fields): (Vec<_>, Vec<_>) = fields_iter.partition(|f| f.is_data_field);
 	// The primary's position among the regular fields, which `#[scope]` fields may precede (`#[data]` fields are already partitioned out)
 	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
@@ -59,6 +72,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			data_fields
 				.iter()
 				.any(|field| field.ty.regular().is_some_and(|regular| type_contains_ident(&regular.ty, generic_ident)))
+				|| (parsed.is_async && type_contains_ident(&output_payload(output_type), generic_ident))
 		})
 		.cloned()
 		.collect();
@@ -131,9 +145,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! { pub(super) #name: #r#gen }
 	});
 
-	let struct_fields: Vec<_> = data_field_defs.chain(regular_field_defs).collect();
-
-	let mut future_idents = Vec::new();
+	let tier = output_tier(output_type);
+	let output = output_payload(output_type);
+	let slots_field = parsed.is_async.then(|| quote! { pub(super) slots: #core_types::runtime::Slots<#output> });
+	let struct_fields: Vec<_> = data_field_defs.chain(regular_field_defs).chain(slots_field).collect();
 
 	// Data fields get passed as references to the underlying function
 	let data_field_idents: Vec<_> = data_fields.iter().map(|f| &f.pat_ident).collect();
@@ -152,9 +167,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let field_types: Vec<_> = regular_fields
 		.iter()
 		.map(|field| match &field.ty {
-			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match parsed.is_async {
-				true => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
-				false => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = #output_type>),
+			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match tier {
+				NodeOutputTier::Poll => parse_quote!(&impl #core_types::Node<#input_type, Output = #output_type>),
+				_ => parse_quote!(#core_types::LazyInput<'_, impl #core_types::Node<#input_type, Output = #output_type>>),
 			},
 			value => value.regular().expect("a non-node field is a value field").ty.clone(),
 		})
@@ -200,6 +215,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						quote!(RegistryValueSource::Scope(#data.as_static_str()))
 					}
 				}
+				ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
 				_ => quote!(RegistryValueSource::None),
 			},
 			None => quote!(RegistryValueSource::None),
@@ -229,7 +245,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			};
 			match implementations.first() {
 				// A primary's scalar `#[default]` parses as a bare element (unranked, promoted at resolution); without one it defaults to an empty List
-				Some(implementation_ty) if Some(index) == primary_regular_index && element_wise => match value_source {
+				Some(implementation_ty) if Some(index) == primary_regular_index && element_wise && mapped_variant => match value_source {
 					ParsedValueSource::Default(_) => quote!(Some(concrete!(#implementation_ty))),
 					_ => quote!(Some(#core_types::list!(#implementation_ty))),
 				},
@@ -317,16 +333,19 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.collect();
 
 	// Only eval regular fields (data fields are accessed directly as self.field_name)
-	let eval_args = regular_fields.iter().map(|field| {
+	let eval_args = regular_fields.iter().enumerate().map(|(index, field)| {
 		let name = &field.pat_ident.ident;
 		match &field.ty {
-			ParsedFieldType::Node { .. } => {
-				quote! { let #name = &self.#name; }
-			}
-			_ => {
-				quote! { let #name = self.#name.eval(__input.clone()).await; }
-			}
+			ParsedFieldType::Node { .. } => match tier {
+				NodeOutputTier::Poll => quote! { let #name = &#core_types::PollInput::new(&self.#name, #index); },
+				_ => quote! { let #name = #core_types::LazyInput::new(&self.#name, __cell, #index); },
+			},
+			_ => quote! { let #name = __cell.record(#index, self.#name.eval(__input)); },
 		}
+	});
+	let unwrap_args = regular_fields.iter().filter(|field| !matches!(field.ty, ParsedFieldType::Node { .. })).map(|field| {
+		let name = &field.pat_ident.ident;
+		quote! { let #name = #name?; }
 	});
 
 	// Only regular fields can have min/max constraints
@@ -381,8 +400,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect()
 	};
-	future_idents.extend((0..regular_fields.len()).map(|id| format_ident!("F{}", id)));
-
 	// Builds every field's where-clause bounds, wrapping each ranked connector's wire type for the element-wise variants
 	// while environment fields keep their declared type. `list_content` additionally lifts a lazy primary connector's
 	// `Item<E>` output to `List<E>` for the list-content variant.
@@ -390,28 +407,21 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		regular_fields
 			.iter()
 			.zip(node_generics.iter())
-			.zip(future_idents.iter())
 			.enumerate()
-			.map(|(index, ((field, name), fut_ident))| match &field.ty {
+			.map(|(index, (field, name))| match &field.ty {
 				ParsedFieldType::Node(NodeParsedField {
 					input_type,
 					output_type,
 					output_element,
 					..
 				}) => {
-					if !*is_async {
-						unreachable!("Found node which takes an impl Node<> input but is not async")
-					}
 					let output_type = if list_content && Some(index) == primary_regular_index {
 						let element_ty = output_element.clone().unwrap_or_else(|| output_type.clone());
 						WireWrapper::List.apply(core_types, &element_ty)
 					} else {
 						output_type.clone()
 					};
-					quote!(
-						#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
-						#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
-					)
+					quote!(#name: #core_types::Node<#input_type, Output = #output_type>)
 				}
 				value => {
 					let declared = &value.regular().expect("a non-node field is a value field").ty;
@@ -420,12 +430,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						(ParsedFieldType::Item { element, .. }, Some(wrap)) if !field.is_environment() => wrap.apply(core_types, element),
 						_ => declared.clone(),
 					};
-					let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
-					quote!(
-						#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
-						for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
-						#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
-					)
+					quote!(#name: #core_types::Node<#input_type, Output = #ty>)
 				}
 			})
 			.collect()
@@ -441,13 +446,28 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#field_clauses,)*
 			#(#clampable_clauses,)*
 			#(#extra_clauses,)*
-			#output_type: 'n,
 		);
 		struct_where_clause.predicates.extend(extra_where);
 		struct_where_clause
 	};
+
+	let source_clauses: Vec<TokenStream2> = if parsed.is_async {
+		let data_clones = data_fields.iter().filter_map(|field| field.ty.regular()).map(|regular| {
+			let ty = &regular.ty;
+			quote!(#ty: Clone)
+		});
+		[
+			quote!(#output: Clone + #core_types::WasmNotSend + #core_types::WasmNotSync + 'static),
+			quote!(#input_type: #core_types::ExtractAll + #core_types::CloneVarArgs + 'static),
+		]
+		.into_iter()
+		.chain(data_clones)
+		.collect()
+	} else {
+		Vec::new()
+	};
 	let primary_wire = element_wise.then_some(WireWrapper::Item);
-	let struct_where_clause = make_struct_where_clause(build_field_clauses(primary_wire, false), build_clampable_clauses(primary_wire), Vec::new());
+	let struct_where_clause = make_struct_where_clause(build_field_clauses(primary_wire, false), build_clampable_clauses(primary_wire), source_clauses);
 
 	// The mapped variant clones bare parameters and clones ranked connectors' items per frame slot, so both need Clone
 	let param_clone_clauses: Vec<TokenStream2> = regular_fields
@@ -494,13 +514,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let regular_inits = regular_field_names.iter().map(|name| {
 		quote! { #name }
 	});
-	let all_field_inits: Vec<_> = data_inits.chain(regular_inits).collect();
+	let slots_init = parsed.is_async.then(|| quote! { slots: Default::default() });
+	let all_field_inits: Vec<_> = data_inits.chain(regular_inits).chain(slots_init).collect();
 
 	let async_keyword = is_async.then(|| quote!(async));
-	let await_keyword = is_async.then(|| quote!(.await));
 
 	// Data fields may not implement Copy, PartialEq, etc., so only derive Debug and Clone
-	let struct_derives = if data_fields.is_empty() {
+	let struct_derives = if data_fields.is_empty() && !parsed.is_async {
 		quote!(#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)])
 	} else {
 		quote!(#[derive(Debug, Clone)])
@@ -522,26 +542,119 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		use #core_types::misc::Clampable;
 
 		#(#eval_args)*
+		#(#unwrap_args)*
 		#(#min_max_args)*
 	};
+	let cell_ctor = match attributes.no_partial {
+		true => quote!(#core_types::Status::no_partial()),
+		false => quote!(#core_types::Status::new()),
+	};
 
-	let eval_impl = quote! {
-		type Output = #core_types::registry::DynFuture<'n, #output_type>;
-		#[inline]
-		fn eval(&'n self, __input: #input_type) -> Self::Output {
-			Box::pin(async move {
-				#eval_prelude
-				self::#fn_name(__input #(, &self.#data_field_names)* #(, #regular_field_names)*) #await_keyword
-			})
+	let lift = |call: TokenStream2| match tier {
+		NodeOutputTier::Plain | NodeOutputTier::Poll => quote!(Ok(#call)),
+		NodeOutputTier::Interrupt => call,
+		NodeOutputTier::Fallback => quote! {
+			match #call {
+				Ok(value) => Ok(value),
+				Err((value, error)) => {
+					__cell.raise(error);
+					Ok(value)
+				}
+			}
+		},
+	};
+
+	let lift_slot = |call: TokenStream2| match tier {
+		NodeOutputTier::Plain | NodeOutputTier::Poll => call,
+		NodeOutputTier::Interrupt => quote!(#call?),
+		NodeOutputTier::Fallback => quote! {
+			match #call {
+				Ok(value) => value,
+				Err((value, error)) => {
+					__cell.raise(error);
+					value
+				}
+			}
+		},
+	};
+
+	let fold = match tier {
+		NodeOutputTier::Poll => quote! {
+			match __kernel(&__cell) {
+				Ok(state) => __cell.merge(state),
+				Err(interrupt) => __cell.bail(interrupt),
+			}
+		},
+		_ => quote!(__cell.run(__kernel)),
+	};
+
+	let kernel_call = lift(quote!(self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #regular_field_names)*)));
+
+	let eval_impl = if parsed.is_async {
+		let declared_field_names: Vec<_> = fields.iter().filter(|field| !field.is_data_field).map(|field| &field.pat_ident.ident).collect();
+		let placeholder = match &attributes.placeholder {
+			Some(path) => quote!(Some(#path(#(&#declared_field_names),*))),
+			None => quote!(None),
+		};
+		let data_clones = data_field_names.iter().map(|name| quote!(let #name = self.#name.clone();));
+		quote! {
+			type Output = #output;
+			#[inline]
+			fn eval(&self, __input: &#input_type) -> #core_types::Poll<Self::Output> {
+				let __cell = #core_types::Status::new();
+				let __kernel = |__cell: &#core_types::Status| -> Result<_, #core_types::Interrupt> {
+					#eval_prelude
+					Ok((#(#regular_field_names,)*))
+				};
+				let (#(#regular_field_names,)*) = match __kernel(&__cell) {
+					Ok(inputs) => inputs,
+					Err(interrupt) => return __cell.bail(interrupt),
+				};
+				let __placeholder: Option<Self::Output> = #placeholder;
+				if __cell.finality() == #core_types::Finality::Partial {
+					return match __placeholder {
+						Some(placeholder) => __cell.finish(placeholder),
+						None => #core_types::Poll::Pending,
+					};
+				}
+				let __source = *_source.element();
+				let __key = {
+					let mut __hasher = std::hash::DefaultHasher::new();
+					#core_types::CacheHash::cache_hash(&#core_types::OwnedContextImpl::from(__input.clone()).without_source(__source), &mut __hasher);
+					std::hash::Hasher::finish(&__hasher)
+				};
+				let __runtime = _runtime.element().clone();
+				let __context = __input.clone();
+				#(#data_clones)*
+				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move {
+					#core_types::Poll::Final(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await)
+				});
+				__cell.merge(__state)
+			}
+
+			#serialize_impl
 		}
+	} else {
+		quote! {
+			type Output = #output;
+			#[inline]
+			fn eval(&self, __input: &#input_type) -> #core_types::Poll<Self::Output> {
+				let __cell = #cell_ctor;
+				let __kernel = |__cell: &#core_types::Status| -> Result<_, #core_types::Interrupt> {
+					#eval_prelude
+					#kernel_call
+				};
+				#fold
+			}
 
-		#serialize_impl
+			#serialize_impl
+		}
 	};
 
 	// The output a framed variant collects into. A map kernel pushes one item per frame slot and a `Destructure` struct appends its
 	// fields to its mapped struct. An expander kernel, returning `List<U>`, has its lists concatenated since nested lists aren't supported.
 	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
-		match (parsed.output_element.as_ref(), peel_list(output_type)) {
+		match (parsed.output_element.as_ref(), peel_list(&output)) {
 			(Some(element_ty), _) => (
 				quote!(#core_types::list::List<#element_ty>),
 				quote!(#core_types::list::List::with_capacity(__frame_length)),
@@ -549,13 +662,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				quote!(#core_types::list::List::new()),
 			),
 			(None, Some(_)) => (
-				quote!(#output_type),
+				quote!(#output),
 				quote!(#core_types::list::List::new()),
 				quote!(__output.extend(__result);),
 				quote!(#core_types::list::List::new()),
 			),
 			(None, None) => {
-				let destructure = quote!(<#output_type as #core_types::registry::Destructure>);
+				let destructure = quote!(<#output as #core_types::registry::Destructure>);
 				(
 					quote!(#destructure::Mapped),
 					quote!(#destructure::mapped_with_capacity(__frame_length)),
@@ -598,28 +711,31 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		let (mapped_output_type, initial_output, collect_result, empty_output) = framed_output();
 
+		let slot_call = lift_slot(quote!(self::#fn_name(__slot_context #(, &self.#data_field_names)* #(, #per_slot_args)*)));
 		quote! {
-			type Output = #core_types::registry::DynFuture<'n, #mapped_output_type>;
+			type Output = #mapped_output_type;
 			#[inline]
 			#[allow(clippy::clone_on_copy)]
-			fn eval(&'n self, __input: #input_type) -> Self::Output {
-				Box::pin(async move {
+			fn eval(&self, __input: &#input_type) -> #core_types::Poll<Self::Output> {
+				let __cell = #cell_ctor;
+				let __kernel = |__cell: &#core_types::Status| -> Result<_, #core_types::Interrupt> {
 					#eval_prelude
 
 					let __frame_length = [#(#ranked_names.len()),*].into_iter().max().unwrap_or(0);
 					if [#(#ranked_names.len()),*].into_iter().any(|length| length == 0) {
-						return #empty_output;
+						return Ok(#empty_output);
 					}
 
 					let mut __output = #initial_output;
 					for __slot_index in 0..__frame_length {
 						let __slot_context = #slot_context;
-						let __result = self::#fn_name(__slot_context #(, &self.#data_field_names)* #(, #per_slot_args)*) #await_keyword;
+						let __result = #slot_call;
 						#collect_result
 					}
 
-					__output
-				})
+					Ok(__output)
+				};
+				__cell.run(__kernel)
 			}
 
 			#serialize_impl
@@ -644,7 +760,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			.map(|(index, field)| {
 				let name = &field.pat_ident.ident;
 				if index == primary_index {
-					return quote!(&__stub);
+					return match tier {
+						NodeOutputTier::Poll => quote!(&__stub),
+						_ => quote!(#core_types::LazyInput::new(&__stub, __cell, #primary_index)),
+					};
 				}
 				match &field.ty {
 					ParsedFieldType::Node(_) => quote!(#name),
@@ -661,20 +780,22 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		let empty_param_check = (!ranked_names.is_empty()).then(|| {
 			quote! {
 				if [#(#ranked_names.len()),*].into_iter().any(|__length| __length == 0) {
-					return #empty_output;
+					return Ok(#empty_output);
 				}
 			}
 		});
 
+		let slot_call = lift_slot(quote!(self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #per_slot_args)*)));
 		quote! {
-			type Output = #core_types::registry::DynFuture<'n, #list_content_output_type>;
+			type Output = #list_content_output_type;
 			#[inline]
 			#[allow(clippy::clone_on_copy)]
-			fn eval(&'n self, __input: #input_type) -> Self::Output {
-				Box::pin(async move {
+			fn eval(&self, __input: &#input_type) -> #core_types::Poll<Self::Output> {
+				let __cell = #cell_ctor;
+				let __kernel = |__cell: &#core_types::Status| -> Result<_, #core_types::Interrupt> {
 					#eval_prelude
 
-					let __content = #primary_name.eval(#core_types::OwnedContextImpl::from(__input.clone()).into_context()) #await_keyword;
+					let __content = #primary_name.eval(#core_types::OwnedContextImpl::from(__input.clone()).into_context())?;
 					let __frame_length = __content.len();
 					#empty_param_check
 
@@ -683,12 +804,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						let __stub = #core_types::value::PrecomputedItemNode::new(
 							__content.clone_item(__slot_index).expect("A content slot index is always within bounds")
 						);
-						let __result = self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #per_slot_args)*) #await_keyword;
+						let __result = #slot_call;
 						#collect_result
 					}
 
-					__output
-				})
+					Ok(__output)
+				};
+				__cell.run(__kernel)
 			}
 
 			#serialize_impl
@@ -706,17 +828,18 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let mapped_struct_name = format_ident!("{}Mapped", struct_name);
 	let list_content_struct_name = format_ident!("{}ListContent", struct_name);
-	let register_node_impl = generate_register_node_impl(parsed, &field_names, &struct_name, &mapped_struct_name, &list_content_struct_name, &identifier)?;
+	let register_node_impl = generate_register_node_impl(parsed, &regular_fields, &field_names, &struct_name, &mapped_struct_name, &list_content_struct_name, &identifier)?;
 	let import_name = format_ident!("_IMPORT_STUB_{}", mod_name.to_string().to_case(Case::UpperSnake));
 
 	let inspector = &attributes.inspector_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let icon = &attributes.icon.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
+	let asynchronous_flag = parsed.is_async;
 	let inject_scope_flag = attributes.inject_scope;
 	// A node returning a `Destructure` struct records its fields as output connectors
 	let output_fields = match may_return_destructure_struct(parsed) {
 		true => {
-			let output_type = substitute_lifetimes(output_type.clone(), "static");
+			let output_type = substitute_lifetimes(output_payload(output_type), "static");
 			quote! {{
 				use gcore::registry::{DestructureOutputFields as _, NoOutputFields as _};
 				(&gcore::registry::OutputFields::<#output_type>(core::marker::PhantomData)).output_fields()
@@ -733,7 +856,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(Some(mapped_where_clause), Some(mapped_eval)) => quote! {
 			#cfg
 			#[automatically_derived]
-			impl<'n, #(#fn_generics,)* #(#node_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#mapped_struct_name<#(#struct_type_params,)*>
+			impl<#(#fn_generics,)* #(#node_generics,)*> #core_types::Node<#input_type> for #mod_name::#mapped_struct_name<#(#struct_type_params,)*>
 			#mapped_where_clause
 			{
 				#mapped_eval
@@ -746,7 +869,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		(Some(list_content_where_clause), Some(list_content_eval)) => quote! {
 			#cfg
 			#[automatically_derived]
-			impl<'n, #(#fn_generics,)* #(#node_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#list_content_struct_name<#(#struct_type_params,)*>
+			impl<#(#fn_generics,)* #(#node_generics,)*> #core_types::Node<#input_type> for #mod_name::#list_content_struct_name<#(#struct_type_params,)*>
 			#list_content_where_clause
 			{
 				#list_content_eval
@@ -763,7 +886,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 
 			#[automatically_derived]
-			impl<'n, #(#struct_generic_params,)*> #mapped_struct_name<#(#struct_type_params,)*>
+			impl<#(#struct_generic_params,)*> #mapped_struct_name<#(#struct_type_params,)*>
 			{
 				#[allow(clippy::too_many_arguments)]
 				pub fn new(#(#new_args,)*) -> Self {
@@ -783,7 +906,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 
 			#[automatically_derived]
-			impl<'n, #(#struct_generic_params,)*> #list_content_struct_name<#(#struct_type_params,)*>
+			impl<#(#struct_generic_params,)*> #list_content_struct_name<#(#struct_type_params,)*>
 			{
 				#[allow(clippy::too_many_arguments)]
 				pub fn new(#(#new_args,)*) -> Self {
@@ -840,7 +963,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			#(#description_doc_attrs)*
 			#[inline]
 			#[allow(clippy::too_many_arguments)]
-			#vis #async_keyword fn #fn_name <'n, #(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
+			#vis #async_keyword fn #fn_name <#(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 		}
 	};
 	// A shader node's fn is emitted twice from the one body: as declared, in f64, for the CPU, and with the f32 parameter
@@ -864,7 +987,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		#cfg
 		#[automatically_derived]
-		impl<'n, #(#fn_generics,)* #(#node_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_type_params,)*>
+		impl<#(#fn_generics,)* #(#node_generics,)*> #core_types::Node<#input_type> for #mod_name::#struct_name<#(#struct_type_params,)*>
 		#struct_where_clause
 		{
 			#eval_impl
@@ -899,7 +1022,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
-			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
+			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
 			use gcore::ctor::ctor;
 
 			// Use the types specified in the implementation
@@ -912,7 +1035,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			}
 
 			#[automatically_derived]
-			impl<'n, #(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*>
+			impl<#(#struct_generic_params,)*> #struct_name<#(#struct_type_params,)*>
 			{
 				#[allow(clippy::too_many_arguments)]
 				pub fn new(#(#new_args,)*) -> Self {
@@ -939,6 +1062,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
 					inject_scope: #inject_scope_flag,
+					asynchronous: #asynchronous_flag,
 					output_fields: #output_fields,
 					fields: vec![
 						#(
@@ -1084,6 +1208,14 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 
 /// Whether the element-wise node gets a mapped `List` wire variant: an eager primary is its own frame source, while a lazy primary (or a `()` generator) draws the frame from its ranked eager params, so it needs at least one.
 fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
+	if parsed.is_async {
+		return false;
+	}
+
+	if output_tier(&parsed.output_type) == NodeOutputTier::Poll {
+		return false;
+	}
+
 	// A `()` generator frames over its ranked params exactly like a lazy primary, but generating fresh content per slot instead of transforming an upstream item
 	if is_generator_frame(parsed) {
 		return true;
@@ -1126,7 +1258,7 @@ fn is_unit_type(ty: &syn::Type) -> bool {
 
 /// Whether the node's return type could be a `Destructure` struct, meaning a concrete type other than `()` or a ranked wrapper.
 fn may_return_destructure_struct(parsed: &ParsedNodeFn) -> bool {
-	let output_type = &parsed.output_type;
+	let output_type = &output_payload(&parsed.output_type);
 	let ranked = peel_item(output_type).is_some() || peel_list(output_type).is_some() || matches!(output_type, Type::Path(path) if path.path.is_ident("ListDyn"));
 	let generic = parsed
 		.fn_generics
@@ -1138,11 +1270,14 @@ fn may_return_destructure_struct(parsed: &ParsedNodeFn) -> bool {
 
 /// Whether the element-wise node gets a list-content `List` wire variant: only a lazy primary connector qualifies, since it draws its frame from the whole content `List` (an eager primary already maps over `List` content via the mapped variant).
 fn generates_list_content_variant(parsed: &ParsedNodeFn) -> bool {
-	primary_item_element(parsed).is_some() && matches!(parsed.primary_input_field().map(|(_, field)| &field.ty), Some(ParsedFieldType::Node(_)))
+	!(output_tier(&parsed.output_type) == NodeOutputTier::Poll)
+		&& primary_item_element(parsed).is_some()
+		&& matches!(parsed.primary_input_field().map(|(_, field)| &field.ty), Some(ParsedFieldType::Node(_)))
 }
 
 fn generate_register_node_impl(
 	parsed: &ParsedNodeFn,
+	regular_fields: &[&ParsedField],
 	field_names: &[&Ident],
 	struct_name: &Ident,
 	mapped_struct_name: &Ident,
@@ -1170,7 +1305,6 @@ fn generate_register_node_impl(
 	let mut constructors = Vec::new();
 	let unit = parse_quote!(gcore::Context);
 
-	let regular_fields: Vec<_> = parsed.fields.iter().filter(|f| !f.is_data_field).collect();
 	let primary_regular_index = regular_fields.iter().position(|field| !field.is_environment());
 
 	let parameter_types: Vec<_> = regular_fields
@@ -1206,23 +1340,19 @@ fn generate_register_node_impl(
 
 	let max_implementations = parameter_types.iter().map(|x| x.len()).chain([parsed.input.implementations.len().max(1)]).max();
 
-	// Element-wise nodes register a variant per wire shape per implementations row; all other nodes register one
 	let gcore = quote!(gcore);
-	let variants: Vec<RegisterVariant> = if primary_item_element(parsed).is_some() {
-		let mut variants = vec![RegisterVariant::Item];
-		if generates_mapped_variant(parsed) {
-			variants.push(RegisterVariant::Mapped);
-		}
-		if generates_list_content_variant(parsed) {
-			variants.push(RegisterVariant::ListContent);
-		}
-		variants
-	} else if is_generator_frame(parsed) {
-		// A `()` generator registers an Item form (single generation) plus a mapped form framed over its ranked params
-		vec![RegisterVariant::Item, RegisterVariant::Mapped]
+	let mut variants = Vec::new();
+	if primary_item_element(parsed).is_some() || is_generator_frame(parsed) {
+		variants.push(RegisterVariant::Item);
 	} else {
-		vec![RegisterVariant::Plain]
+		variants.push(RegisterVariant::Plain);
 	};
+	if generates_mapped_variant(parsed) {
+		variants.push(RegisterVariant::Mapped);
+	}
+	if generates_list_content_variant(parsed) {
+		variants.push(RegisterVariant::ListContent);
+	}
 
 	for i in 0..max_implementations.unwrap_or(0) {
 		for &variant in &variants {
@@ -1258,17 +1388,12 @@ fn generate_register_node_impl(
 				};
 				let signature_type = signature_type.unwrap_or_else(|| quote!(#output_type));
 
-				let node = matches!(regular_fields[j].ty, ParsedFieldType::Node { .. });
-
 				let downcast_node = quote!(
 					let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
 				);
-				if node && !parsed.is_async {
-					return Err(Error::new_spanned(&parsed.fn_name, "Node needs to be async if you want to use lambda parameters"));
-				}
 				temp_constructors.push(downcast_node);
 				temp_node_io.push(quote!(fn_type_fut!(#input_type, #signature_type)));
-				panic_node_types.push(quote!(#input_type, DynFuture<'static, #output_type>));
+				panic_node_types.push(quote!(#input_type, #output_type));
 			}
 			let input_type = match parsed.input.implementations.is_empty() {
 				true => parsed.input.ty.clone(),
@@ -1282,19 +1407,14 @@ fn generate_register_node_impl(
 			constructors.push(quote!(
 				(
 					|args| {
-						Box::pin(async move {
-							#(#temp_constructors;)*
-							let node = #variant_struct_name::new(#(#field_names,)*);
-							// try polling futures
-							let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
-							Box::new(any) as TypeErasedBox<'_>
-						})
+						#(#temp_constructors;)*
+						let node = #variant_struct_name::new(#(#field_names,)*);
+						let any: DynAnyNode<#input_type, _, _> = DynAnyNode::new(node);
+						Box::new(any) as TypeErasedBox<'_>
 					}, {
 						let node = #variant_struct_name::new(#(PanicNode::<#panic_node_types>::new(),)*);
 						let params = vec![#(#temp_node_io,)*];
-						let mut node_io = NodeIO::<'_, #input_type>::to_async_node_io(&node, params);
-						node_io
-
+						NodeIO::<#input_type>::to_async_node_io(&node, params)
 					}
 				)
 			));
