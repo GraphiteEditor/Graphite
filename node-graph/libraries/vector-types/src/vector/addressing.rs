@@ -86,13 +86,11 @@ pub fn spans_at(pool_index: u32, paths: &List<Path>, connectivity: &Connectivity
 	let mut found = Vec::new();
 
 	for reference in connectivity.references(pool_index) {
-		let path_index = reference.path as usize;
-		let Some(path) = paths.element(path_index) else { continue };
-
-		let curve_type = curve_type_at(paths, path_index);
-		if !path.is_anchor_reference(reference.index as usize, curve_type) {
+		let Some(path) = paths.element(reference.path as usize) else { continue };
+		if !reference.is_anchor() {
 			continue;
 		}
+		let curve_type = reference.curve_type;
 
 		// An anchor arrives on the span before it and departs the one starting at it
 		let anchor = reference.index as usize / curve_type.stride();

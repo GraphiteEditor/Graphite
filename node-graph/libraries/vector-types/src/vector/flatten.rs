@@ -1,11 +1,10 @@
-use super::addressing;
 use super::misc::{BezierHandles, HandleId, HandleType, segment_to_handles};
 use super::path::{CurveType, Path, curve_type_at, push_path};
 use super::vector_attributes::{PointId, SegmentId};
 use super::vector_types::Vector;
-use core_types::list::{ATTR_ID, Item, List};
+use core_types::list::{ATTR_ID, List};
 use glam::DVec2;
-use std::collections::HashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 /// One path under construction: its curve type, the pool references it weaves, and the IDs of the spans between them.
 type Run = (CurveType, Vec<u32>, Vec<SegmentId>);
@@ -29,50 +28,59 @@ impl WorkingVector {
 	pub fn flatten(vector: &Vector, paths: &List<Path>) -> Self {
 		let mut working = Self::default();
 		let connectivity = vector.connectivity(paths);
+		let pool_ids = vector.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 
 		let mut pool_to_working = vec![None; vector.point_count()];
 		for (index, slot) in pool_to_working.iter_mut().enumerate() {
-			if !vector.is_handle_point(paths, &connectivity, index as u32) {
+			if !connectivity.is_handle(index as u32) {
 				*slot = Some(working.point_ids.len());
-				working.point_ids.push(vector.point_id_at(index as u32).unwrap_or_default());
+				working.point_ids.push(pool_ids.get(index).copied().unwrap_or_default());
 				working.point_positions.push(vector.position(index).unwrap_or_default());
 			}
 		}
+		let working_point = |pool_index: u32| pool_to_working.get(pool_index as usize).copied().flatten();
 
 		// One pass so a span that fails to resolve leaves every array at the same length
-		for span in addressing::spans(paths) {
-			let Some(path) = paths.element(span.path as usize) else { continue };
-			let Some(segment) = path.segment(&vector.0, curve_type_at(paths, span.path as usize), span.index as usize) else {
-				continue;
-			};
-			let Some((start, end)) = addressing::span_endpoints(paths, span) else { continue };
-			let working_point = |pool_index: u32| pool_to_working.get(pool_index as usize).copied().flatten();
-			let (Some(start), Some(end)) = (working_point(start), working_point(end)) else { continue };
+		for (path_index, path) in paths.iter_element_values().enumerate() {
+			let curve_type = curve_type_at(paths, path_index);
+			let stride = curve_type.stride();
+			let span_ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
 
-			working.segment_ids.push(addressing::segment_id_of(paths, span).unwrap_or_default());
-			working.segment_handles.push(segment_to_handles(&segment));
-			working.segment_start.push(start);
-			working.segment_end.push(end);
+			for span in 0..path.segment_count(curve_type) {
+				let Some(segment) = path.segment(&vector.0, curve_type, span) else { continue };
+				let (Some(start), Some(end)) = (path.reference(span * stride), path.reference(span * stride + stride)) else {
+					continue;
+				};
+				let (Some(start), Some(end)) = (working_point(start), working_point(end)) else { continue };
+
+				working.segment_ids.push(span_ids.get(span * stride).copied().unwrap_or_default());
+				working.segment_handles.push(segment_to_handles(&segment));
+				working.segment_start.push(start);
+				working.segment_end.push(end);
+			}
 		}
 
-		working.colinear = vector.colinear_pairs(paths);
+		working.colinear = vector.colinear_pairs_with(paths, &connectivity);
 
 		working
 	}
 
 	/// Weaves the working form back into a pool and paths, gathering consecutive segments that meet head to tail into one path.
 	pub fn reweave(self, vector: &mut Vector, paths: &mut List<Path>) {
-		*vector = Vector::default();
 		*paths = List::new();
 
-		for (index, (&id, &position)) in self.point_ids.iter().zip(&self.point_positions).enumerate() {
-			vector.0.push(Item::new_from_element(position));
-			vector.0.set_attribute(ATTR_ID, index, id);
-		}
-		let anchor_count = vector.0.len();
+		// The pool is built as plain arrays and handed to the list whole, anchors first and each segment's handles after
+		let anchor_count = self.point_ids.len().min(self.point_positions.len());
+		let mut positions = self.point_positions;
+		positions.truncate(anchor_count);
+		let mut point_ids = self.point_ids;
+		point_ids.truncate(anchor_count);
 
 		let mut runs: Vec<Run> = Vec::new();
-		let mut segment_anchors = HashMap::new();
+
+		// Only segments a G1 pair names need their anchors recorded, to narrow the pairs to smooth flags below
+		let paired: FxHashSet<SegmentId> = self.colinear.iter().flat_map(|pair| pair.map(|handle| handle.segment)).collect();
+		let mut segment_anchors = FxHashMap::default();
 
 		let ends = self.segment_start.iter().zip(&self.segment_end);
 		for ((&id, (&start, &end)), handles) in self.segment_ids.iter().zip(ends).zip(&self.segment_handles) {
@@ -97,13 +105,21 @@ impl WorkingVector {
 
 			let Some((_, references, ids)) = runs.last_mut() else { continue };
 			for position in handle_positions {
-				references.push(vector.0.len() as u32);
-				vector.0.push(Item::new_from_element(position).with_attribute(ATTR_ID, PointId::UNNAMED));
+				references.push(positions.len() as u32);
+				positions.push(position);
+				point_ids.push(PointId::UNNAMED);
 			}
 			references.push(end as u32);
 			ids.push(id);
 
-			segment_anchors.insert(id, (start as u32, end as u32));
+			if paired.contains(&id) {
+				segment_anchors.insert(id, (start as u32, end as u32));
+			}
+		}
+
+		vector.0 = List::new_from_elements(positions);
+		if !point_ids.is_empty() {
+			vector.0.set_attribute_values(ATTR_ID, point_ids);
 		}
 
 		for (curve_type, references, ids) in runs {
@@ -157,7 +173,7 @@ pub fn vector_from_legacy_parts(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID};
+	use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, Item};
 
 	fn working(points: usize, segments: &[(usize, usize, BezierHandles)]) -> WorkingVector {
 		WorkingVector {

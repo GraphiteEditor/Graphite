@@ -1,5 +1,5 @@
 use super::misc::dvec2_to_point;
-use super::path::{Path, append_segment, curve_type_at};
+use super::path::{CurveType, Path, append_segment, curve_type_at};
 use core_types::list::List;
 use glam::DVec2;
 use kurbo::BezPath;
@@ -100,17 +100,26 @@ impl SpanEnds {
 /// then the rest from the lowest point with spans left. A walk follows the earliest woven span waiting at each
 /// point, backwards when that span ends there, and closes on arriving back where it began.
 pub fn subpaths(point_count: usize, paths: &List<Path>) -> Vec<Subpath> {
+	subpaths_with(point_count, paths, &curve_types(paths))
+}
+
+/// The curve type of every path, read once so the walkers below never look one up per span.
+fn curve_types(paths: &List<Path>) -> Vec<CurveType> {
+	(0..paths.len()).map(|index| curve_type_at(paths, index)).collect()
+}
+
+fn subpaths_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveType]) -> Vec<Subpath> {
 	let mut edges = Vec::new();
 	for (path_index, path) in paths.iter_element_values().enumerate() {
-		let curve_type = curve_type_at(paths, path_index);
+		let curve_type = curve_types.get(path_index).copied().unwrap_or_default();
 		let stride = curve_type.stride();
+		let references = path.0.iter_element_values().as_slice();
 
 		for span in 0..path.segment_count(curve_type) {
-			let references = (span * stride..=(span + 1) * stride).map(|index| path.reference(index));
-			let Some(references) = references.collect::<Option<Vec<u32>>>() else { continue };
+			let Some(references) = references.get(span * stride..=(span + 1) * stride) else { continue };
 
 			// A span naming a point outside the pool cannot be drawn, so it takes no part in the walk
-			if references.iter().any(|&reference| reference as usize >= point_count) {
+			if references.iter().any(|&reference| !(0..point_count as i64).contains(&reference)) {
 				continue;
 			}
 			let (Some(&start), Some(&end)) = (references.first(), references.last()) else { continue };
@@ -118,8 +127,8 @@ pub fn subpaths(point_count: usize, paths: &List<Path>) -> Vec<Subpath> {
 			edges.push(Edge {
 				path: path_index as u32,
 				span: span as u32,
-				start,
-				end,
+				start: start as u32,
+				end: end as u32,
 			});
 		}
 	}
@@ -174,12 +183,16 @@ pub fn subpaths(point_count: usize, paths: &List<Path>) -> Vec<Subpath> {
 
 /// Emits one subpath as a bezpath, or `None` when it has no drawable geometry.
 pub fn subpath_to_bezpath(pool: &List<DVec2>, paths: &List<Path>, subpath: &Subpath) -> Option<BezPath> {
+	subpath_to_bezpath_with(pool, paths, &curve_types(paths), subpath)
+}
+
+fn subpath_to_bezpath_with(pool: &List<DVec2>, paths: &List<Path>, curve_types: &[CurveType], subpath: &Subpath) -> Option<BezPath> {
 	let mut bezpath = BezPath::new();
 	bezpath.move_to(dvec2_to_point(*pool.element(subpath.entry as usize)?));
 
 	for step in &subpath.steps {
 		let path = paths.element(step.path as usize)?;
-		let segment = path.segment(pool, curve_type_at(paths, step.path as usize), step.span as usize)?;
+		let segment = path.segment(pool, *curve_types.get(step.path as usize)?, step.span as usize)?;
 
 		append_segment(&mut bezpath, if step.reversed { segment.reverse() } else { segment });
 	}
@@ -193,7 +206,11 @@ pub fn subpath_to_bezpath(pool: &List<DVec2>, paths: &List<Path>, subpath: &Subp
 
 /// Assembles the paths into contours for rendering, one bezpath per subpath in the order they are walked.
 pub fn contours(pool: &List<DVec2>, paths: &List<Path>) -> Vec<BezPath> {
-	subpaths(pool.len(), paths).iter().filter_map(|subpath| subpath_to_bezpath(pool, paths, subpath)).collect()
+	let curve_types = curve_types(paths);
+	subpaths_with(pool.len(), paths, &curve_types)
+		.iter()
+		.filter_map(|subpath| subpath_to_bezpath_with(pool, paths, &curve_types, subpath))
+		.collect()
 }
 
 #[cfg(test)]

@@ -2,7 +2,7 @@ use super::addressing;
 use super::connectivity::Connectivity;
 use super::contour::{contours, subpaths};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use super::path::{CurveType, Path, append_bezpath, curve_type_at, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path};
+use super::path::{CurveType, Path, curve_type_at, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, weave_bezpath};
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -105,38 +105,37 @@ fn next_segment_id(paths: &List<Path>) -> SegmentId {
 }
 
 impl Vector {
-	/// Names the anchors and spans appended since the given watermarks, continuing the ID sequences.
-	/// Handles take `PointId::UNNAMED`.
-	fn stamp_appended_ids(&mut self, paths: &mut List<Path>, first_new_point: usize, first_new_path: usize) {
-		let mut point_id = next_point_id(&self.0);
-		let mut segment_id = next_segment_id(paths);
+	/// Weaves a bezpath's contours onto this pool and the given paths, naming the new anchors and spans
+	/// by continuing the ID sequences. Handles take `PointId::UNNAMED`.
+	pub fn append_bezpath(&mut self, paths: &mut List<Path>, bezpath: &BezPath) {
+		let (first_new_point, first_new_path) = (self.0.len(), paths.len());
+		let anchors = weave_bezpath(&mut self.0, paths, bezpath);
 
 		// Pool order is traversal order, so anchors and free points take IDs in the order they were drawn
-		let connectivity = Connectivity::build(self.0.len(), paths);
-		for index in first_new_point..self.0.len() {
-			let id = if self.is_handle_point(paths, &connectivity, index as u32) {
-				PointId::UNNAMED
-			} else {
-				point_id.next_id()
-			};
-			self.0.set_attribute(ATTR_ID, index, id);
+		if !anchors.is_empty() {
+			let mut point_id = next_point_id(&self.0);
+			let ids = self.0.iter_attribute_values_mut_or_default::<PointId>(ATTR_ID).skip(first_new_point);
+			for (id, anchor) in ids.zip(anchors) {
+				*id = if anchor { point_id.next_id() } else { PointId::UNNAMED };
+			}
 		}
 
+		let mut segment_id = next_segment_id(paths);
 		for path_index in first_new_path..paths.len() {
 			let curve_type = curve_type_at(paths, path_index);
 			let Some(path) = paths.element_mut(path_index) else { continue };
 
-			for span in 0..path.segment_count(curve_type) {
-				path.0.set_attribute(ATTR_ID, span * curve_type.stride(), segment_id.next_id());
+			let span_count = path.segment_count(curve_type);
+			if span_count == 0 {
+				continue;
 			}
-		}
-	}
 
-	/// Weaves a bezpath's contours onto this pool and the given paths, naming the new anchors and spans.
-	pub fn append_bezpath(&mut self, paths: &mut List<Path>, bezpath: &BezPath) {
-		let (first_new_point, first_new_path) = (self.0.len(), paths.len());
-		append_bezpath(&mut self.0, paths, bezpath);
-		self.stamp_appended_ids(paths, first_new_point, first_new_path);
+			let mut span_ids = vec![SegmentId::default(); path.0.len()];
+			for span in 0..span_count {
+				span_ids[span * curve_type.stride()] = segment_id.next_id();
+			}
+			path.0.set_attribute_values(ATTR_ID, span_ids);
+		}
 	}
 
 	/// Builds a fresh pool and paths from a single bezpath.
@@ -365,23 +364,41 @@ impl Vector {
 }
 
 impl Vector {
-	/// Whether the pool point at the given index is a handle, referenced only between anchors.
-	pub(crate) fn is_handle_point(&self, paths: &List<Path>, connectivity: &Connectivity, index: u32) -> bool {
-		let references = connectivity.references(index);
+	/// Marks each pool point that paths name only at handle slots, in O(points + references).
+	pub(crate) fn handle_mask(&self, paths: &List<Path>) -> Vec<bool> {
+		self.point_roles(paths).0
+	}
 
-		!references.is_empty()
-			&& references
-				.iter()
-				.all(|reference| !matches!(paths.element(reference.path as usize), Some(path) if path.is_anchor_reference(reference.index as usize, curve_type_at(paths, reference.path as usize))))
+	/// The handle mask, along with whether every handle is one segment's alone: no point fills two handle slots, and none
+	/// is an anchor in one place and a handle in another.
+	pub(crate) fn point_roles(&self, paths: &List<Path>) -> (Vec<bool>, bool) {
+		// Each point is referenced by no path, only at a handle slot, or at an anchor slot somewhere
+		const UNREFERENCED: u8 = 0;
+		const HANDLE: u8 = 1;
+		const ANCHOR: u8 = 2;
+
+		let mut roles = vec![UNREFERENCED; self.0.len()];
+		let mut handles_unshared = true;
+		for (path_index, path) in paths.iter_element_values().enumerate() {
+			let stride = curve_type_at(paths, path_index).stride();
+			for (reference_index, point) in path.references().enumerate() {
+				let Some(role) = roles.get_mut(point as usize) else { continue };
+				if reference_index.is_multiple_of(stride) {
+					handles_unshared &= *role != HANDLE;
+					*role = ANCHOR;
+				} else {
+					handles_unshared &= *role == UNREFERENCED;
+					*role = (*role).max(HANDLE);
+				}
+			}
+		}
+
+		(roles.into_iter().map(|role| role == HANDLE).collect(), handles_unshared)
 	}
 
 	/// The pool indices of all anchor points and free points in pool order, skipping handles.
 	pub fn anchor_indices(&self, paths: &List<Path>) -> Vec<usize> {
-		let connectivity = self.connectivity(paths);
-		(0..self.0.len() as u32)
-			.filter(|&index| !self.is_handle_point(paths, &connectivity, index))
-			.map(|index| index as usize)
-			.collect()
+		self.handle_mask(paths).into_iter().enumerate().filter(|&(_, handle)| !handle).map(|(index, _)| index).collect()
 	}
 
 	/// Drops the paths and every point used only as a handle, leaving the anchors and free points as a bare cloud.
@@ -401,11 +418,8 @@ impl Vector {
 
 	/// Iterator over the IDs of all anchor points and free points, skipping handles.
 	pub fn anchor_points(&self, paths: &List<Path>) -> impl Iterator<Item = PointId> {
-		let connectivity = self.connectivity(paths);
-		let anchors: Vec<_> = (0..self.0.len() as u32)
-			.filter(|&index| !self.is_handle_point(paths, &connectivity, index))
-			.filter_map(|index| self.point_id_at(index))
-			.collect();
+		let ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+		let anchors: Vec<_> = self.handle_mask(paths).into_iter().zip(ids).filter(|&(handle, _)| !handle).map(|(_, &id)| id).collect();
 
 		anchors.into_iter()
 	}
@@ -414,14 +428,14 @@ impl Vector {
 	pub fn anchor_endpoints(&self, paths: &List<Path>) -> impl Iterator<Item = PointId> {
 		let connectivity = self.connectivity(paths);
 		let endpoints: Vec<_> = (0..self.0.len() as u32)
-			.filter(|&index| connectivity.spokes(index, paths) == 1)
+			.filter(|&index| connectivity.spokes(index) == 1)
 			.filter_map(|index| self.point_id_at(index))
 			.collect();
 
 		endpoints.into_iter()
 	}
 
-	// Each per-point query below builds its own connectivity index, O(points + references) with two allocations.
+	// Each per-point query below builds its own connectivity index, O(points + references) with three allocations.
 	// Callers looping over many points should hoist `connectivity()` and use `addressing` directly.
 
 	/// Enumerate all segments that start at the point.
@@ -458,7 +472,7 @@ impl Vector {
 	pub fn connected_count(&self, paths: &List<Path>, point: PointId) -> usize {
 		let Some(index) = self.index_of_point_id(point) else { return 0 };
 
-		self.connectivity(paths).spokes(index, paths)
+		self.connectivity(paths).spokes(index)
 	}
 
 	/// Whether any segment starts or ends at the point.
@@ -497,12 +511,8 @@ impl Vector {
 impl Vector {
 	/// Whether the junction at the given anchor keeps its tangent pair smooth, read from any of its occurrences.
 	fn smooth_at_anchor_index(&self, paths: &List<Path>, connectivity: &Connectivity, index: u32) -> bool {
-		connectivity.references(index).iter().any(|reference| {
+		connectivity.references(index).iter().filter(|reference| reference.is_anchor()).any(|reference| {
 			let Some(path) = paths.element(reference.path as usize) else { return false };
-			if !path.is_anchor_reference(reference.index as usize, curve_type_at(paths, reference.path as usize)) {
-				return false;
-			}
-
 			path.0.attribute::<bool>(ATTR_SMOOTH, reference.index as usize).copied().unwrap_or_default()
 		})
 	}
@@ -510,7 +520,7 @@ impl Vector {
 	/// Whether the anchor at the given pool index forms a smooth tangent pair, which needs exactly two
 	/// segment ends meeting there. A junction has no unambiguous pair to keep smooth.
 	fn pairs_smoothly(&self, paths: &List<Path>, connectivity: &Connectivity, index: u32) -> bool {
-		self.smooth_at_anchor_index(paths, connectivity, index) && connectivity.spokes(index, paths) == 2
+		self.smooth_at_anchor_index(paths, connectivity, index) && connectivity.spokes(index) == 2
 	}
 
 	/// Whether the anchor (or the handle's anchor) keeps a smooth tangent pair, which needs exactly two segment ends meeting there.
@@ -535,15 +545,19 @@ impl Vector {
 
 	/// Every G1 pair: the two facing handles at each smooth anchor where exactly two segment ends meet.
 	pub fn colinear_pairs(&self, paths: &List<Path>) -> Vec<[HandleId; 2]> {
-		let connectivity = self.connectivity(paths);
+		self.colinear_pairs_with(paths, &self.connectivity(paths))
+	}
+
+	/// The G1 pairs, read through a connectivity the caller already built.
+	pub(crate) fn colinear_pairs_with(&self, paths: &List<Path>, connectivity: &Connectivity) -> Vec<[HandleId; 2]> {
 		let mut pairs = Vec::new();
 
 		for index in 0..self.point_count() as u32 {
-			if connectivity.spokes(index, paths) != 2 || !self.smooth_at_anchor_index(paths, &connectivity, index) {
+			if connectivity.spokes(index) != 2 || !self.smooth_at_anchor_index(paths, connectivity, index) {
 				continue;
 			}
 
-			let handles: Vec<HandleId> = addressing::spans_at(index, paths, &connectivity)
+			let handles: Vec<HandleId> = addressing::spans_at(index, paths, connectivity)
 				.into_iter()
 				.filter_map(|(span, arriving)| {
 					let segment = addressing::segment_id_of(paths, span)?;
@@ -607,12 +621,9 @@ impl Vector {
 
 		let connectivity = self.connectivity(paths);
 		for index in indices {
-			for reference in connectivity.references(index) {
-				let curve_type = curve_type_at(paths, reference.path as usize);
+			for reference in connectivity.references(index).iter().filter(|reference| reference.is_anchor()) {
 				let Some(path) = paths.element_mut(reference.path as usize) else { continue };
-				if path.is_anchor_reference(reference.index as usize, curve_type) {
-					path.0.set_attribute(ATTR_SMOOTH, reference.index as usize, smooth);
-				}
+				path.0.set_attribute(ATTR_SMOOTH, reference.index as usize, smooth);
 			}
 		}
 	}
