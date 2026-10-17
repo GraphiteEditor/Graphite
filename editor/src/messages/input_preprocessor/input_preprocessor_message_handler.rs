@@ -662,7 +662,7 @@ mod test {
 		let key = Key::KeyA;
 
 		for i in 0..5 {
-			let key_repeat = i == 0;
+			let key_repeat = i != 0;
 			let modifier_keys = ModifierKeys::empty();
 			let message = InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys };
 
