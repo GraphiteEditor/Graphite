@@ -1224,20 +1224,7 @@ impl PortfolioMessageHandler {
 		let Some(document_id) = self.active_document_id else { return Ok(()) };
 		let Some(active_document) = self.documents.get_mut(&document_id) else { return Ok(()) };
 
-		let result = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
-		if result.is_err() {
-			let error = r#"
-				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
-				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document cannot render in its current state.</tspan>
-					<tspan x="50%" dy="24">Undo to go back, if available, or check for error details</tspan>
-					<tspan x="50%" dy="24">by clicking the <tspan font-style="italic">Node Graph</tspan> button up at the top right.</tspan>
-				/text>"#
-				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-				.to_string();
-			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
-		}
-		result
+		self.executor.poll_node_graph_evaluation(active_document, document_id, responses)
 	}
 
 	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {

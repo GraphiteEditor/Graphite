@@ -98,11 +98,6 @@ pub(crate) async fn poll_node_graph_evaluation() {
 			}
 		}
 
-		// Clear the error display if there are no more errors
-		if !messages.is_empty() {
-			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
-		}
-
 		// Batch responses to pool frontend updates
 		let batched = Message::Batched {
 			messages: messages.into_iter().collect(),

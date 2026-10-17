@@ -716,7 +716,7 @@
 							>
 							</canvas>
 						{/if}
-						{#if isWeb}
+						{#if isWeb && $document.renderStatus === "Rendering"}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
 						{/if}
 						{#if $document.renderStatus === "Error"}

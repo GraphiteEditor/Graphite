@@ -1,4 +1,4 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage, RenderStatus};
 use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
@@ -359,7 +359,7 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		// TODO: Eventually remove this document upgrade code
 		// A gradient migration belongs to one document; if the active document changed away from it, cancel so its stale in-flight response is ignored and revisiting restarts a fresh pass
 		if self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id != document_id) {
@@ -444,7 +444,9 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
-							return Err(format!("Node graph evaluation failed:\n{e}"));
+							log::error!("Node graph evaluation failed:\n{e}");
+							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+							return;
 						}
 					};
 
@@ -452,8 +454,8 @@ impl NodeGraphExecutor {
 					document.network_interface.update_vector_modify(vector_modify);
 
 					match (node_graph_output, execution_context.export_config) {
-						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses)?,
-						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, responses)?,
+						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses),
+						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, responses),
 						(None, _) => {}
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
@@ -495,7 +497,8 @@ impl NodeGraphExecutor {
 								node_graph_errors,
 							});
 
-							return Err(format!("Node graph evaluation failed:\n{e}"));
+							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+							return;
 						}
 						Ok(result) => result,
 					};
@@ -511,8 +514,6 @@ impl NodeGraphExecutor {
 				}
 			}
 		}
-
-		Ok(())
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -698,9 +699,11 @@ impl NodeGraphExecutor {
 		self.node_graph_hash = 0;
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) {
 		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
-			return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
+			log::error!("Invalid node graph output type: {node_graph_output:#?}");
+			responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+			return;
 		};
 
 		match render_output.data {
@@ -728,7 +731,11 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
-			_ => return Err(format!("Invalid node graph output type: {:#?}", render_output.data)),
+			_ => {
+				log::error!("Invalid node graph output type: {:#?}", render_output.data);
+				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+				return;
+			}
 		}
 
 		let RenderMetadata {
@@ -760,10 +767,10 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 
-		Ok(())
+		responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Rendering });
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let ExportConfig {
 			file_type,
 			name,
@@ -803,15 +810,19 @@ impl NodeGraphExecutor {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
 			}) if file_type != FileType::Svg => {
-				let content = file_type.encode(width, height, data)?.into();
+				let content = match file_type.encode(width, height, data) {
+					Ok(content) => content.into(),
+					Err(e) => {
+						log::error!("Failed to encode image: {e}");
+						return;
+					}
+				};
 				responses.add(FrontendMessage::TriggerSaveFile { name, folder, filters, content });
 			}
 			_ => {
-				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
+				log::error!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})");
 			}
-		};
-
-		Ok(())
+		}
 	}
 }
 

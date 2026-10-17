@@ -16,6 +16,8 @@ pub use editor_commands::EditorCommand;
 #[cfg(feature = "editor")]
 use crate::helpers::wrapper;
 #[cfg(feature = "editor")]
+use editor::messages::frontend::utility_types::RenderStatus;
+#[cfg(feature = "editor")]
 use editor::messages::prelude::*;
 use std::panic;
 use std::sync::Mutex;
@@ -25,7 +27,6 @@ use wasm_bindgen::prelude::*;
 // Set up the persistent editor backend state
 pub static EDITOR_HAS_CRASHED: AtomicBool = AtomicBool::new(false);
 pub static FRONTEND_READY: AtomicBool = AtomicBool::new(false);
-pub static NODE_GRAPH_ERROR_DISPLAYED: AtomicBool = AtomicBool::new(false);
 pub static LOGGER: WasmLog = WasmLog;
 #[cfg(not(feature = "native"))]
 pub static NODE_RUNTIME: spin::Mutex<Option<editor::node_graph_executor::NodeRuntime>> = spin::Mutex::new(None);
@@ -67,21 +68,7 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 				unsafe { NODE_RUNTIME.force_unlock() };
 			}
 
-			if !NODE_GRAPH_ERROR_DISPLAYED.load(Ordering::SeqCst) {
-				NODE_GRAPH_ERROR_DISPLAYED.store(true, Ordering::SeqCst);
-				wrapper(|wrapper| {
-					let error = r#"
-					<rect x="50%" y="50%" width="600" height="100" transform="translate(-300 -50)" rx="4" fill="var(--color-error-red)" />
-					<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-						<tspan x="50%" dy="-24" font-weight="bold">The document crashed while being rendered in its current state.</tspan>
-						<tspan x="50%" dy="24">The editor is now unstable! Undo your last action to restore the artwork,</tspan>
-						<tspan x="50%" dy="24">then save your document and restart the editor before continuing work.</tspan>
-					/text>"#
-					// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-					.to_string();
-					wrapper.send_frontend_message_to_js(FrontendMessage::UpdateDocumentArtwork { svg: error });
-				});
-			}
+			wrapper(|wrapper| wrapper.send_frontend_message_to_js(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Panic }));
 
 			return;
 		}
