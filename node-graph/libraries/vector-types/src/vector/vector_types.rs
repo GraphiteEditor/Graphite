@@ -681,15 +681,15 @@ impl Vector {
 	pub fn close_subpaths(&mut self, paths: &mut List<Path>) {
 		// A closing segment sits after the contour's last stored path, or before it when the contour crosses that path
 		// backward, since that is the neighbor the contour reads on into. Either way it is read from the contour's exit.
-		let closings: Vec<(usize, [u32; 2])> = contours(self.point_count(), paths)
+		let closings: Vec<(usize, bool, [u32; 2])> = contours(self.point_count(), paths)
 			.into_iter()
 			.filter(|contour| !contour.closed)
 			.filter_map(|contour| {
 				let last = contour.parts.last()?;
 				Some(if last.reversed {
-					(last.path as usize, [contour.entry, contour.exit])
+					(last.path as usize, true, [contour.entry, contour.exit])
 				} else {
-					(last.path as usize + 1, [contour.exit, contour.entry])
+					(last.path as usize + 1, false, [contour.exit, contour.entry])
 				})
 			})
 			.collect();
@@ -700,26 +700,28 @@ impl Vector {
 		// Each closing segment's ID skips one after the previous, as the IDs of a newly appended bezpath do
 		let mut base = next_segment_id(paths);
 		let mut closing_paths = Vec::with_capacity(closings.len());
-		for (before, references) in closings {
+		for (before, backward, references) in closings {
 			let id = base.next_id();
 			base.next_id();
 
 			let mut single = List::new();
 			push_path(&mut single, CurveType::Linear, references, [id]);
-			closing_paths.extend(single.into_iter().map(|path| (before, path)));
+			closing_paths.extend(single.into_iter().map(|path| (before, backward, path)));
 		}
-		closing_paths.sort_by_key(|&(before, _)| before);
+
+		// Two closing segments can share a place between two stored paths, where the one read on from the path before goes first
+		closing_paths.sort_by_key(|&(before, backward, _)| (before, backward));
 
 		// Rebuild the paths with each closing segment in its place, keeping every other path in its stored order
 		let mut closing_paths = closing_paths.into_iter().peekable();
 		let mut rebuilt = List::new();
 		for (index, path) in std::mem::take(paths).into_iter().enumerate() {
-			while let Some((_, closing)) = closing_paths.next_if(|&(before, _)| before == index) {
+			while let Some((_, _, closing)) = closing_paths.next_if(|&(before, ..)| before == index) {
 				rebuilt.push(closing);
 			}
 			rebuilt.push(path);
 		}
-		for (_, closing) in closing_paths {
+		for (_, _, closing) in closing_paths {
 			rebuilt.push(closing);
 		}
 
@@ -1037,6 +1039,30 @@ mod tests {
 		vector.close_subpaths(&mut paths);
 		let contours: Vec<_> = vector.stroke_bezpath_iter(&paths).collect();
 		assert_eq!(contours.len(), 3);
+		assert!(contours.iter().all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
+
+		vector.close_subpaths(&mut paths);
+		assert_eq!(paths.len(), 6);
+	}
+
+	// Two contours whose closing segments belong in the same place between two stored paths both close in one pass
+	#[test]
+	fn close_subpaths_closes_contours_meeting_between_the_same_paths() {
+		let mut vector = Vector::default();
+		for position in [(0., 0.), (10., 0.), (10., 10.), (20., 0.), (30., 0.), (30., 10.)] {
+			vector.0.push(Item::new_from_element(DVec2::from(position)));
+		}
+
+		// The first contour runs along path 0, then backward along path 3, so its closing segment goes before path 3.
+		// The second runs along paths 1 and 2, so its closing segment goes after path 2, the same place.
+		let mut paths = List::new();
+		for references in [vec![0, 1], vec![3, 4], vec![4, 5], vec![2, 1]] {
+			push_path(&mut paths, CurveType::Linear, references, []);
+		}
+
+		vector.close_subpaths(&mut paths);
+		let contours: Vec<_> = vector.stroke_bezpath_iter(&paths).collect();
+		assert_eq!(contours.len(), 2);
 		assert!(contours.iter().all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);

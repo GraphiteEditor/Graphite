@@ -829,6 +829,8 @@ pub mod extrude_algorithms {
 		let mut next_point = next_working_point_id(working);
 		let mut next_segment = next_working_segment_id(working);
 
+		// Each segment's pieces take its place in order, so the path it belongs to stays whole and still begins where it did
+		let mut pieces = WorkingVector::default();
 		for segment_index in 0..segment_count {
 			let start = working.point_positions[working.segment_start[segment_index]];
 			let end = working.point_positions[working.segment_end[segment_index]];
@@ -836,6 +838,8 @@ pub mod extrude_algorithms {
 			let mut start_index = working.segment_start[segment_index];
 			let pathseg = segment.to_cubic();
 			let mut start_t = 0.;
+			let mut remaining_handles = working.segment_handles[segment_index];
+			let mut begins_path = working.segment_begins_path.get(segment_index).copied().unwrap_or(false);
 
 			for split_t in find_splits(pathseg, direction) {
 				let [first, second] = [pathseg.subsegment(start_t..split_t), pathseg.subsegment(split_t..1.)];
@@ -844,14 +848,24 @@ pub mod extrude_algorithms {
 				let start_segment = next_segment.next_id();
 
 				let middle_point_index = push_working_point(working, middle_point, DVec2::new(first.end().x, first.end().y));
-				push_working_segment(working, start_segment, start_index, middle_point_index, first_handles);
-				working.segment_start[segment_index] = middle_point_index;
-				working.segment_handles[segment_index] = second_handles;
+				push_working_segment(&mut pieces, start_segment, start_index, middle_point_index, first_handles);
+				pieces.segment_begins_path.push(std::mem::take(&mut begins_path));
 
 				start_t = split_t;
 				start_index = middle_point_index;
+				remaining_handles = second_handles;
 			}
+
+			// The last piece keeps the segment's own ID
+			push_working_segment(&mut pieces, working.segment_ids[segment_index], start_index, working.segment_end[segment_index], remaining_handles);
+			pieces.segment_begins_path.push(begins_path);
 		}
+
+		working.segment_ids = pieces.segment_ids;
+		working.segment_start = pieces.segment_start;
+		working.segment_end = pieces.segment_end;
+		working.segment_handles = pieces.segment_handles;
+		working.segment_begins_path = pieces.segment_begins_path;
 	}
 
 	/// Copy all segments with the offset of `direction`.
@@ -982,6 +996,24 @@ pub mod extrude_algorithms {
 			super::split(&mut working, DVec2::X);
 			assert_eq!(working.segment_ids.len(), 3);
 			assert_eq!(working.point_ids.len(), 4);
+		}
+
+		// A split curve's pieces stay in its place, so the path holding it stays one path
+		#[test]
+		fn split_keeps_the_path_whole() {
+			let mut bezpath = kurbo::BezPath::new();
+			bezpath.move_to((0., 0.));
+			bezpath.curve_to((100., -10.), (100., 110.), (0., 100.));
+			bezpath.curve_to((0., 130.), (0., 170.), (0., 200.));
+			let (mut vector, mut paths) = graphic_types::Vector::from_bezpath(&bezpath);
+			assert_eq!(paths.len(), 1);
+
+			let mut working = super::WorkingVector::flatten(&vector, &paths);
+			super::split(&mut working, DVec2::X);
+			assert_eq!(working.segment_ids.len(), 4);
+
+			working.reweave(&mut vector, &mut paths);
+			assert_eq!(paths.len(), 1);
 		}
 	}
 }
