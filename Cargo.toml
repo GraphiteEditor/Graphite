@@ -95,6 +95,8 @@ text-nodes = { path = "node-graph/nodes/text" }
 transform-nodes = { path = "node-graph/nodes/transform" }
 vector-nodes = { path = "node-graph/nodes/vector" }
 repeat-nodes = { path = "node-graph/nodes/repeat" }
+vectorize-nodes = { path = "node-graph/nodes/vectorize" }
+ollev = { path = "../vtrace/ollev" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
