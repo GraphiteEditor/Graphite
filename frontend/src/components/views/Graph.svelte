@@ -50,6 +50,11 @@
 	let wireEndsMarked = "";
 	$: markWireEndConnectors($nodeGraph.wireInProgressDraggedFrom, $nodeGraph.wireInProgressSnappedTo);
 
+	// The connector a press at the pointer would grab, as the backend decides since it knows the click targets
+	let hoveredConnector: Element | undefined;
+	let hoveredConnectorMarked = "";
+	$: markHoveredConnector($nodeGraph.hoveredConnector);
+
 	// The import, export, or layer with its name being edited in place, and the name the field started with
 	type NameTarget = { kind: "Import" | "Export"; index: number } | { kind: "Layer"; nodeId: bigint };
 	let editingName: (NameTarget & { initialText: string }) | undefined = undefined;
@@ -148,6 +153,17 @@
 
 		wireSourceConnector?.classList.add("wire-source");
 		wireTargetConnector?.classList.add("wire-target");
+	}
+
+	// The backend picks the hovered connector, so it lights up anywhere in its click target rather than just over its drawn arrow
+	function markHoveredConnector(center: [number, number] | undefined) {
+		const marked = JSON.stringify(center);
+		if (marked === hoveredConnectorMarked) return;
+		hoveredConnectorMarked = marked;
+
+		hoveredConnector?.classList.remove("hovered");
+		hoveredConnector = connectorAt(center);
+		hoveredConnector?.classList.add("hovered");
 	}
 
 	// The connector drawn at a point in node graph space, which can sit a few pixels from where its wires attach
@@ -1746,7 +1762,7 @@
 			}
 		}
 
-		&:not(.pointer-held) .connector:hover,
+		&:not(.pointer-held) .connector.hovered,
 		.connector.wire-target,
 		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
 			// Undimmed if disconnected, with the stroke painted beneath the fill, so only its outer half shows

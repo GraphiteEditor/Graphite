@@ -2502,10 +2502,16 @@ async fn double_click_in_graph(editor: &mut EditorTestUtils, point: DVec2, secon
 	editor.handle_message(NodeGraphMessage::EnterNestedNetwork).await;
 }
 
-/// The middle of the wire feeding the input, in the graph space of the document network.
+/// The middle of the longest segment of the wire feeding the input, in document network graph space.
 fn wire_middle(network_interface: &NodeNetworkInterface, input: InputConnector) -> DVec2 {
+	use kurbo::ParamCurveArclen;
+
 	let (wire, _, _) = network_interface.vector_wire_from_input(&input, GraphWireStyle::Direct, &[]).expect("the wire should have a path");
-	let middle = wire.segments().next().map(|segment| kurbo::ParamCurve::eval(&segment, 0.5)).expect("the wire should have a segment");
+	let longest_segment = wire
+		.segments()
+		.max_by(|a, b| a.arclen(kurbo::DEFAULT_ACCURACY).total_cmp(&b.arclen(kurbo::DEFAULT_ACCURACY)))
+		.expect("the wire should have a segment");
+	let middle = kurbo::ParamCurve::eval(&longest_segment, 0.5);
 	DVec2::new(middle.x, middle.y)
 }
 

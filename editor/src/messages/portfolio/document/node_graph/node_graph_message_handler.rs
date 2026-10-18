@@ -78,6 +78,8 @@ pub struct NodeGraphMessageHandler {
 	pub drag_start_chain_nodes: Vec<NodeId>,
 	/// The wire a dragged node would be inserted onto if dropped now, which the frontend shows undimmed.
 	wire_insertion_preview: Option<InputConnector>,
+	/// The center of the connector a press at the pointer would grab, in node graph space, which the frontend shows hovered.
+	hovered_connector: Option<DVec2>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
 	pub box_selection_start: Option<(DVec2, bool)>,
@@ -1305,9 +1307,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				// Auto-panning
-				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
-				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+				// Auto-panning, only while dragging since hovering also moves the pointer here
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || self.wire_in_progress_from_connector.is_some() {
+					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
+					self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+				}
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -1458,6 +1462,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					self.update_node_graph_hints(responses);
 				}
+
+				responses.add(NodeGraphMessage::UpdateHoveredConnector);
 			}
 			NodeGraphMessage::PointerUp => {
 				// A press released where it was made is a click, which a second press soon after can make a double-click
@@ -2010,6 +2016,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						has_left_input_wire,
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
+					responses.add(NodeGraphMessage::UpdateHoveredConnector);
 					self.update_node_graph_hints(responses);
 				}
 			}
@@ -2319,6 +2326,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(InspectorMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
 			}
+			NodeGraphMessage::UpdateHoveredConnector => {
+				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+					return;
+				};
+				let viewport_location = ipp.mouse.position;
+				let point = network_metadata
+					.persistent_metadata
+					.navigation_metadata
+					.node_graph_to_viewport
+					.inverse()
+					.transform_point2(viewport_location);
+
+				// Moving nodes or drawing a selection box can't grab a connector, so none is shown hovered meanwhile
+				let can_grab_connector = graph_view_overlay_open && self.drag_start.is_none() && self.box_selection_start.is_none();
+				let in_viewport = viewport.is_in_bounds(viewport.logical(viewport_location) + viewport.offset());
+				let hovered_connector = (can_grab_connector && in_viewport)
+					.then(|| Self::connector_under_pointer(viewport_location, point, network_interface, breadcrumb_network_path))
+					.flatten();
+				self.set_hovered_connector(hovered_connector, responses);
+			}
 			NodeGraphMessage::UpdateWireInsertionPreview => {
 				// Only a drag in progress inserts anything on drop, and one that hasn't started moving yet inserts nothing
 				let target = if self.drag_start.is_some() && !self.begin_dragging {
@@ -2603,6 +2630,39 @@ impl NodeGraphMessageHandler {
 		self.node_has_moved_in_drag = moved != IVec2::ZERO;
 
 		self.update_node_graph_hints(responses);
+	}
+
+	/// The center of the connector a press at the pointer would grab, in node graph space, as `PointerDown` decides what lies under it.
+	fn connector_under_pointer(viewport_location: DVec2, point: DVec2, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<DVec2> {
+		// Names and layer buttons take presses before the connectors beneath them
+		let layer_button_under_pointer = |target_type| network_interface.layer_click_target_from_click(viewport_location, target_type, network_path).is_some();
+		if network_interface.import_export_name_from_point(point, network_path).is_some()
+			|| layer_button_under_pointer(network_interface::LayerClickTargetTypes::Visibility)
+			|| layer_button_under_pointer(network_interface::LayerClickTargetTypes::Lock)
+		{
+			return None;
+		}
+
+		let empty_connector = |is_import| network_interface.empty_import_export_connector_at(point, is_import, network_path).map(|(_, center)| center);
+		let input = || {
+			let input = network_interface.input_port_from_click(viewport_location, network_path)?;
+			network_interface.input_position(&input, network_path)
+		};
+		let output = || {
+			let output = network_interface.output_port_from_click(viewport_location, network_path)?;
+			network_interface.output_position(&output, network_path)
+		};
+		empty_connector(true).or_else(|| empty_connector(false)).or_else(input).or_else(output)
+	}
+
+	/// Tells the frontend which connector to show hovered, given by its center in node graph space.
+	fn set_hovered_connector(&mut self, hovered_connector: Option<DVec2>, responses: &mut VecDeque<Message>) {
+		if self.hovered_connector != hovered_connector {
+			self.hovered_connector = hovered_connector;
+			responses.add(FrontendMessage::UpdateHoveredConnector {
+				center: hovered_connector.map(|center| (center.x, center.y)),
+			});
+		}
 	}
 
 	/// Stops highlighting the wire a dragged node would be inserted onto.
@@ -3689,6 +3749,7 @@ impl Default for NodeGraphMessageHandler {
 			box_selection_start: None,
 			drag_start_chain_nodes: Vec::new(),
 			wire_insertion_preview: None,
+			hovered_connector: None,
 			selection_before_pointer_down: Vec::new(),
 			disconnecting: None,
 			initial_disconnecting: false,

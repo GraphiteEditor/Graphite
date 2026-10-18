@@ -239,6 +239,10 @@ pub enum FrontendMessage {
 	UpdateWireInsertionPreview {
 		wire: Option<(NodeId, usize)>,
 	},
+	/// The connector a press at the pointer would grab, by its center in node graph space.
+	UpdateHoveredConnector {
+		center: Option<(f64, f64)>,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,

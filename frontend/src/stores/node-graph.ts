@@ -21,6 +21,7 @@ type NodeGraphStoreState = {
 	wirePathInProgress: WirePath | undefined;
 	wireInProgressDraggedFrom: [number, number] | undefined;
 	wireInProgressSnappedTo: [number, number] | undefined;
+	hoveredConnector: [number, number] | undefined;
 	nodeDescriptions: Map<string, string>;
 	nodeIcons: Map<string, IconName>;
 	nodeTypes: FrontendNodeType[];
@@ -42,6 +43,7 @@ const initialState: NodeGraphStoreState = {
 	wirePathInProgress: undefined,
 	wireInProgressDraggedFrom: undefined,
 	wireInProgressSnappedTo: undefined,
+	hoveredConnector: undefined,
 	nodeDescriptions: new Map(),
 	nodeIcons: new Map(),
 	nodeTypes: [],
@@ -130,6 +132,13 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 
 	subscriptions.subscribeFrontendMessage("UpdateWireInsertionPreview", (data) => {
 		wireInsertionPreviewStore.set(data.wire);
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateHoveredConnector", (data) => {
+		update((state) => {
+			state.hoveredConnector = data.center;
+			return state;
+		});
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateImportsExports", (data) => {
@@ -255,6 +264,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
 	subscriptions.unsubscribeFrontendMessage("UpdateExportReorderIndex");
 	subscriptions.unsubscribeFrontendMessage("UpdateWireInsertionPreview");
+	subscriptions.unsubscribeFrontendMessage("UpdateHoveredConnector");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
 	subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
