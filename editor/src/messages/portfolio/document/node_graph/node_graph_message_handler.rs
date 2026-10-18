@@ -363,6 +363,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(NodeGraphMessage::RunDocumentGraph);
 					}
 				}
+				// A wire dragged out of a dimmed connector for adding an import adds that import, wired to the new node's first exposed input
+				else if let Some(import_index) = self.wire_in_progress_from_new_import {
+					if let Some((input_index, _)) = node_template.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
+						responses.add(NodeGraphMessage::AddImportAndConnect {
+							import_index,
+							input_connector: InputConnector::node_at_index(node_id, input_index),
+						});
+					}
+				}
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
 				else if let Some(output_connector_position) = self.wire_in_progress_from_connector {
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
@@ -1568,7 +1577,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(NodeGraphMessage::RemoveOrphanedDots);
 					}
 					// With its loose end dropped elsewhere, the node creation menu opens for a node to wire it to, unless a backward wire was only clicked
-					else if !self.initial_disconnecting && (output_connector.is_some() || (backward && wire_in_progress_from_connector != wire_in_progress_to_connector)) {
+					else if !self.initial_disconnecting
+						&& (output_connector.is_some() || new_import_index.is_some() || (backward && wire_in_progress_from_connector != wire_in_progress_to_connector))
+					{
 						// If the add node menu is already open, we don't want to open it again
 						if self.context_menu.is_some() {
 							return;
@@ -1586,9 +1597,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// A forward wire offers the nodes taking its type, with the new node's input where it was dropped.
 						// A backward wire offers every node, with the new node's output (on its right, five grid cells across) where it was dropped.
 						// TODO: Filter both directions to the nodes that fit, decided in the backend with the conversion-aware type checks from https://github.com/GraphiteEditor/Graphite/pull/4688
-						let (compatible_type, node_creation_point) = match output_connector {
-							Some(output_connector) if !backward => (network_interface.output_type(&output_connector, selection_network_path).add_node_string(), point),
-							_ => (None, point - DVec2::new((5 * GRID_SIZE) as f64, 0.)),
+						let (compatible_type, node_creation_point) = match (backward, output_connector) {
+							(false, Some(output_connector)) => (network_interface.output_type(&output_connector, selection_network_path).add_node_string(), point),
+							(false, None) => (None, point),
+							(true, _) => (None, point - DVec2::new((5 * GRID_SIZE) as f64, 0.)),
 						};
 
 						self.context_menu = Some(ContextMenuInformation {
