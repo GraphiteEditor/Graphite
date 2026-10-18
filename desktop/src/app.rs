@@ -336,8 +336,8 @@ impl App {
 			DesktopFrontendMessage::ClipboardRead => {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardRead);
 			}
-			DesktopFrontendMessage::ClipboardWrite { content } => {
-				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { content });
+			DesktopFrontendMessage::ClipboardWrite { svg_string, graphite_json } => {
+				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { svg_string, graphite_json });
 			}
 			DesktopFrontendMessage::PointerLock => {
 				self.input_state.lock_pointer();
@@ -478,10 +478,12 @@ impl App {
 					}
 				}
 			}
-			AppEvent::ClipboardWrite { content } => {
-				let send_data = DataTransferSendBuilder::new(content)
-					.with_type(TypeHint::Plaintext, |content: &String, _| Some(content.clone()))
-					.build();
+			AppEvent::ClipboardWrite { svg_string, graphite_json } => {
+				let mut builder = DataTransferSendBuilder::new((svg_string.clone(), graphite_json)).with_type(TypeHint::Plaintext, |(_, graphite_json), _| Some(graphite_json.clone()));
+				if svg_string.is_some() {
+					builder = builder.with_type(TypeHint::Image { extension_hint: Some("svg") }, |(svg, _), _| svg.as_ref().map(|x| x.as_bytes().to_vec()));
+				}
+				let send_data = builder.build();
 				if let Err(e) = event_loop.set_clipboard(send_data) {
 					tracing::error!("Failed to write to clipboard: {e}");
 				}

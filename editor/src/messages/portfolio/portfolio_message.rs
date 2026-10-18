@@ -153,6 +153,9 @@ pub enum PortfolioMessage {
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
+	RequestSvgTextCopy {
+		graphite_json: String,
+	},
 }
 
 /// Clone helper for non-serializable payloads: a cloned completion message carries none.
