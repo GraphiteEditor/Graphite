@@ -1,175 +1,269 @@
+- RFC PR: [#4556](https://github.com/GraphiteEditor/Graphite/pull/4556)
+- Implementation PR: [#4731](https://github.com/GraphiteEditor/Graphite/pull/4731)
+
 # Summary
 
-Replace the boxed-future execution model with synchronous, poll-based evaluation. Nodes return a `GPoll<T>` state instead of a future. Async work runs to completion on an executor outside the graph. When it finishes, it bumps a per-source generation counter; the counter is injected into the context and hashed by memo nodes, so invalidating the downstream cone is an ordinary cache miss. Asynchrony becomes a context feature, and we reuse the fine-grained context nullification pass to scope the invalidation.
+Replace the boxed-future execution model with synchronous, poll-based evaluation. Nodes return a `Poll<T>` state instead of a future. Async work runs on an executor outside of the graph, and when a task finishes it bumps a per-source generation counter. The counters are part of the `Context`, so the memo nodes downstream of a finished task see a new context and miss, while everything else stays cached. Deciding which part of the graph observes which counter reuses the context nullification pass from the [fine-grained context caching RFC](fine-grained-context-caching.md).
 
 # Motivation
 
-Right now every node's `eval` returns a `DynFuture` (`Pin<Box<dyn Future>>`), even for trivial arithmetic, and a whole graph evaluation is one large future that we drive once per render request. This costs us in several places:
+Currently every node's `eval` returns a `DynFuture` (`Pin<Box<dyn Future>>`), even a node that adds two numbers. A full graph evaluation is one large future which we drive once per render request. This has several costs:
 
 - Every eval boxes a future, so pure nodes pay for async machinery they never use.
-- There is no progressive rendering. One slow async operation stalls the entire evaluation, and there is no placeholder or partial result to show in the meantime.
-- Driving async work through graph re-evaluation costs a full traversal per poll.
-- Errors propagate as panics that we catch with `catch_unwind` at the root.
-- Emitting the graph as Rust source against a minimal runtime cannot be built on a box per edge, so the current model blocks the precompiled future.
+- There is no progressive rendering. One slow async operation stalls the whole evaluation and there is nothing to show in the meantime.
+- Driving async work by re-evaluating the graph costs a full traversal per poll.
+- Errors are propagated as panics which we catch with `catch_unwind` at the root.
+- A precompiled graph (the graph emitted as Rust source and run against a small runtime) can't be built on a box per edge.
+
+Most nodes are not asynchronous at all. Only a handful of them (web requests, resource loading, rasterization on the web) actually wait on something, so the model should make the common case cheap and give the few async nodes a way to report "not done yet".
 
 # Guide-level explanation
 
 ## Evaluation states
 
-Node evaluation is synchronous and always returns immediately:
+Evaluating a node is synchronous and always returns immediately. Instead of a value, a node returns a `Poll<T>`:
 
 ```rs
-enum GPoll<T> {
+enum Poll<T> {
     /// Waiting on at least one future, with no placeholder to compute with.
     Pending,
     Final(T),
     /// Computed from provisional data; recomputed once the source generation bumps.
     Partial(T),
     /// An error occurred; the boxed value is a stand-in, downstream keeps computing.
-    Fallback(Box<(T, GraphError)>),
+    Fallback(Box<(T, NodeError)>),
     /// An error occurred and no stand-in exists; the cone cannot compute this frame.
-    Error(Box<GraphError>),
+    Error(Box<NodeError>),
 }
 ```
 
-The variants split into "has a value" (`Final`, `Partial`, `Fallback`) and "has no value" (`Pending`, `Error`). Value-carrying statuses flow through computation: a node that receives `Partial` computes normally and downgrades its own output, and a node that receives `Fallback` computes on the stand-in and forwards the error. Valueless statuses stop the cone for this frame. Statuses combine with a meet: `Final ∧ Final = Final`, anything else drags the result down, and `Error` dominates `Pending`.
+Three of the variants carry a value (`Final`, `Partial`, `Fallback`) and two don't (`Pending`, `Error`). A value keeps flowing through the graph: a node that receives `Partial` computes as usual and marks its own output as `Partial`, and a node that receives `Fallback` computes on the stand-in value and passes the error along. Without a value there is nothing to compute with, so `Pending` and `Error` stop evaluation of everything that depends on them for this frame.
 
-There is one wrinkle. `meet(Partial, Fallback)` collapses to `Fallback`, which on its own would make an error from a still-incomplete source look the same as a final document error. So finality is tracked separately as a `Finality` (`AllFinal ∧ Partial`) beside the status rather than as a sixth variant. The executor can then hold back provisional errors from the document without widening `GPoll`.
-
-Layout is one tag plus one payload word for pointer-sized values (`GPoll<Arc<T>>` is 16 bytes). The stand-in and its error share a box, and `Error` boxes the error alone, so a value crosses node boundaries without reallocating. Progress percentages are not part of the value: they change at high frequency and must not invalidate the dataflow, so they go over the monitor side channel instead.
-
-`GraphError` records the path from the error source upward as a list of input indices. Names would be ambiguous, since a node can have two inputs of the same type. Its kind is structured: `ErrorKind::Node(&'static str)` for node-declared failures, separate from operational failures that the executor handles itself rather than reporting as document errors.
+When a node has several inputs, their states are combined with a meet: the result is `Final` only if all inputs are `Final`, and `Error` wins over `Pending`.
 
 ## Writing nodes
 
-Node authors write plain Rust functions. The macro generates the node struct, the trait impl, and all the status plumbing. Four return tiers are supported:
+Node authors keep writing plain Rust functions, and the node macro generates the status handling. A function can return one of four things:
 
-- `-> T`: a pure kernel over evaluated inputs. The macro meets the input statuses and the author never sees them.
-- `-> Result<T, Interrupt>`: for kernels that evaluate lazy inputs themselves or that can fail. `Interrupt = Pending | Error(Box<GraphError>)`, with `From<GraphError>`, so semantic errors and input bail-outs share the `?` operator.
-- `-> Result<T, (T, GraphError)>`: an error with an explicit stand-in value.
-- `-> GPoll<T>`: full manual control.
+- `-> T` for a pure kernel. The macro combines the input states and the author never sees them.
+- `-> Result<T, Interrupt>` for kernels that can fail or that evaluate lazy inputs themselves. `Interrupt` is either `Pending` or `Error(Box<NodeError>)` and implements `From<NodeError>`, so input bail-outs and the node's own errors both work with `?`.
+- `-> Result<T, (T, NodeError)>` for an error with a stand-in value.
+- `-> Poll<T>` for full manual control.
 
-Lazy inputs (`content: impl Node<Output = T>`) expose `eval(ctx) -> Result<T, Interrupt>`. The status mapping is the meet written imperatively. `Final(v)` is `Ok(v)`. `Partial(v)` and `Fallback(v, e)` are also `Ok(v)`, but they record partiality or the first error in a status cell owned by the generated eval (a stack-local threaded by reference into the input handles). `Pending` and `Error` are `Err(Interrupt::...)`, and the kernel bails with `?`, which is the only thing it could do without a value anyway. After the kernel returns, the generated eval folds the cell into the result and converts `Err(Interrupt)` back into `GPoll::Pending` or `GPoll::Error`. Trace indices are pushed by the handles, which know their input position, so author code does not touch them.
+A lazy input (`content: impl Node<Output = T>`) is evaluated with `content.eval(ctx)?`. The `?` bails out of the kernel if the input is `Pending` or `Error`, which is the only sensible thing to do without a value. `Partial` and `Fallback` inputs return `Ok(value)`, and the macro remembers that one of the inputs was provisional or had failed.
 
-Because only inputs that were actually evaluated touch the cell, an untaken `switch` branch does not drag the status down. For nodes where placeholder data makes no sense, `#[node(no_partial)]` changes one line in the handle mapping: `Partial` maps to `Interrupt::Pending`. Errors produced while any input was non-`Final` are provisional and must not be reported as document errors.
+```rs
+#[node_macro::node(category("Debug"))]
+fn error<T>(_: impl Ctx, value: Item<T>, fail: Item<bool>) -> Result<Item<T>, Interrupt> {
+	match *fail.element() {
+		true => Err(NodeError::new("debug error").into()),
+		false => Ok(value),
+	}
+}
+```
 
-Migrating an existing non-async node body is mechanical: delete `async`, replace `.eval(ctx).await` with `.eval(ctx)?`, return `Result<T, Interrupt>`.
+Only inputs that were actually evaluated affect the result, so the branch a `switch` did not take does not turn its output `Partial`. Nodes for which placeholder data makes no sense can opt out with `#[node(no_partial)]`, which treats a `Partial` input like a `Pending` one.
+
+Migrating an existing node that is only async because it awaits its inputs is mechanical: remove `async`, replace `.eval(ctx).await` with `.eval(ctx)?`, and return `Result<T, Interrupt>`.
 
 ## Async nodes
 
-An `async fn` node is an external source. It extracts and clones everything it needs, spawns a `'static` future onto the runtime, and immediately returns a placeholder:
+An `async fn` node is a *source*: it starts work that runs outside of the graph. The macro evaluates its inputs, spawns the future onto the runtime, and returns a placeholder right away:
 
 ```rs
-#[node(placeholder = get_placeholder)]
-async fn get(url: String) -> String { ... }
+#[node_macro::node(category("Web Request"), placeholder = pending_text)]
+async fn get_request(_: impl Ctx, url: Item<String>) -> Item<String> { ... }
 
-fn get_placeholder(url: &str) -> String {
-    format!("Waiting for response on GET {url}")
+fn pending_text(_url: &Item<String>) -> Item<String> {
+	Item::default()
 }
 ```
 
-The generated struct holds a slot map keyed by the context hash. On eval: a completed slot returns `Final`; an in-flight slot returns `Partial(placeholder)`; no slot means insert a marker, spawn, and return the placeholder. The graph never suspends, so every evaluation runs to completion and produces a frame. Async bodies cannot touch the context because the future has to be `'static`. The generated code checks the input statuses before spawning, so no request goes out based on provisional data.
+The placeholder function receives references to the node's inputs. While the request is in flight, the node returns `Partial(placeholder)`. Without a placeholder function it returns `Pending`. Once the request has finished, the node returns its result as `Final`.
 
-## Invalidation by generation
+The future has to be `'static`, so the async body cannot borrow the context or evaluate inputs lazily. It gets clones of everything it needs. If any input is still `Partial`, the node returns its placeholder without spawning, so no request is sent based on placeholder data.
 
-Each async node is a source identified by its stable node id. The id is injected like monitor paths are, so identity survives recompiles and deduplicated nodes share a source. The runtime maps source id to a shared generation counter, and the spawn wrapper captures its own counter:
+## How a finished task reaches the graph
 
-```rs
-future.await;                       // write result into the node's slot
-*generations.lock()                 // bump under the table lock; absent means the
-    .get_mut(&source)? += 1;        // source was dropped, so the epilogue is inert
-dirty.store(true, Release);         // request a re-render (coalesced)
-```
+Every async node has a `SourceId`, which is a hash of its document node path. For each source, the runtime keeps a generation counter that is incremented when one of the source's tasks finishes. Before every evaluation, the editor puts a snapshot of all counters into the root `Context`.
 
-The slot map is `Arc<Mutex<HashMap<ContextHash, Option<GPoll<T>>>>>`. It is cloned into the spawned future rather than borrowed from the node, so a task that is still in flight when `BorrowTree` rebuilds the node writes into live storage. The `Option` is the in-flight marker: absent is "never spawned", `None` is "spawned, not landed", `Some` is the landed value. The mutex that guards the map also publishes the write to the next `eval`, so neither the slot nor the generation needs its own release/acquire protocol.
+Memo nodes already hash the context to decide whether they can reuse their cached value. With the generations in the context, a finished task changes the hash for exactly the memo nodes that depend on that source, and the next evaluation recomputes them with the real value. Everything else still hits its cache. Nothing walks the graph at runtime to find the affected nodes.
 
-At the start of each evaluation the runtime injects a snapshot of `(SourceId, generation)` pairs into the root context, sorted by id so hashing is deterministic. Memos hash the context as usual, generations included. After a bump, exactly the memos downstream of that source miss and every other branch hits. We need no cache-tracking logic and no runtime graph walking for this, and the interpreter and a precompiled DAG behave the same way.
+Which sources a part of the graph depends on is known at compile time, using the same analysis that decides which context features a branch needs. Where branches with different sources meet, the compiler inserts a context modification node that drops the generations of the other sources, just like it already drops unused features.
 
-The re-render typically runs with the same context except for the bumped generation, so the async node finds its completed slot. For that to work, a source's own generation must not be part of its slot key; the compiler pass below guarantees this.
+## Partial results in the editor
 
-## Asynchrony as a context feature
+A `Partial` frame is shown in the viewport like a `Final` one, so the rest of the document stays visible while a request is pending. If the whole graph is `Pending`, the viewport keeps showing the last frame. An export waits until the result is `Final`.
 
-Which generations a subgraph observes is determined at compile time by the same branch analysis as context nullification, except the feature domain is the set of upstream `SourceId`s instead of a fixed bitflag. Requirements propagate rootward: a node's set is the union of its children's, minus whatever it injects itself. At branch convergence, a dependency mismatch inserts a context modification node whose payload carries a generation retain set next to the feature bitflags. There is no new node kind and no separate pass. The edge into an async node retains only sources strictly upstream of it, which is what keeps its own generation out of its slot key.
-
-## Caching
-
-Memo nodes hash the retain-filtered context, generations included. `Final` and `Partial` are both cached; caching partials is safe because the finalizing bump changes the key. `Pending` and `Error` are never cached. The memo owns its entries and is a bounded LRU, because contexts that change every evaluation would otherwise grow it without bound.
-
-## Runtime
-
-Two layers, so the runtime stays small and the executor can be swapped:
-
-```rs
-/// Node-facing scope input.
-trait Runtime { fn spawn(&self, source: SourceId, future: BoxFuture); }
-
-/// Host-provided task executor with no graph knowledge.
-trait Spawner { fn spawn(&self, task: BoxFuture); }
-
-struct GraphRuntime<S: Spawner> {
-    generations: Arc<Mutex<HashMap<SourceId, u64>>>,
-    dirty: Arc<AtomicBool>,
-    spawner: S,
-}
-```
-
-`GraphRuntime` wraps each task with the completion epilogue. The `Spawner` is tokio or a thread pool on desktop, `spawn_local` on wasm, or the host polling a task list in the precompiled case. The runtime reaches async nodes as a scope input (fixed at construction time, not part of the context), and a graph with zero async sources compiles to no runtime at all.
-
-The execution path itself is synchronous. Executor construction, update, and `execute` are plain fns, and hosts compile and evaluate without an async runtime of their own. All asynchrony lives in source kernels behind the spawner; `execute` surfaces the poll state (`GPoll`) and each host maps it at its boundary. The one genuine await is the GPU readback, which wasm cannot block on. Sync hosts block on that future, with a dedicated device-poll thread driving completion.
-
-Wakers are not the graph-level notification mechanism. A waker resumes a suspended computation, and this graph never suspends; a re-evaluation is a fresh call. A wake also does not mean completion, and wakers do not survive composition across host executors. To avoid busy-waiting, the host uses one coarse notification (park/unpark or an event-loop message) shared by task wakes and the dirty epilogue.
-
-Scheduling semantics: generations are read once per evaluation, so completions that land mid-frame affect the next one. The dirty flag is drained once per frame, so N completions produce one re-render. On recompile, `retain_sources` drops removed sources from the table; their epilogue still runs, but it finds no entry and bumps nothing, so it neither invalidates nor wakes the host. We don't cancel tasks, we just let them become inert.
+Errors are shown on the node they came from. Errors that are only produced because some input was still a placeholder are never shown, since they would disappear once the real value arrives.
 
 # Reference-level explanation
 
 ## Node trait
 
 ```rs
-pub trait Node<Input> {
+pub trait Node<Input: ?Sized> {
     type Output;
-    fn eval(&self, input: &Input) -> GPoll<Self::Output>;
+    fn eval(&self, input: &Input) -> Poll<Self::Output>;
 }
 ```
 
-Three decisions about the shape of this trait carry most of the design:
+Some decisions about the shape of this trait:
 
-- **Plain `&self` receiver.** An `&'i self` receiver forces the forwarding impl `impl Node for &'i N`, which ties the node borrow to the eval lifetime and makes shared references unable to satisfy higher-ranked bounds. With `&self`, sharing and erasure compose. What we give up is that nodes cannot lend their own storage; values cross edges owned.
-- **No lifetime parameter on the trait.** With `&self`, any lifetime in the output can only come from the input type, so nothing on the trait itself needs one. `GPoll` is fixed in the signature the same way `Poll` is fixed in `Future`.
-- **Input by reference.** `Input` is the owned context type and calls pass `&Context`. A modifying node keeps one mutable local, mutates it between calls, and lends `&local` down. This is sound because inputs are second-class and never stored. It halved the erased-edge cost compared to by-value contexts: 48 bytes of ABI traffic became one pointer.
+- **Plain `&self` receiver.** An `&'i self` receiver requires the forwarding impl `impl Node for &'i N`, which ties the borrow of the node to the eval lifetime, and shared references then can't satisfy higher-ranked bounds. With `&self`, sharing and type erasure compose. In exchange, nodes cannot lend their own storage and values cross edges owned.
+- **No lifetime parameter on the trait.** With a plain `&self`, a lifetime in the output can only come from the input type, so the trait doesn't need one. `Poll` is part of the signature the same way `std::task::Poll` is part of `Future::poll`.
+- **Input by reference.** `Input` is the owned context type and callers pass `&Context`. A node that modifies the context keeps one local copy, changes it between calls, and passes `&local` down. This is sound because nodes never store their input.
 
-## Compiler pass
+`Node::reset` is removed, and so is `Type::Future`, because no node returns a future anymore. The type-erased form is `dyn Node<dyn Any, Output = Box<dyn Any>>`: the input is downcast by reference and only the output value is boxed. Node constructors are plain functions.
 
-This extends `find_context_dependencies`. Per node, alongside the `ContextFeatures` bitflags, we track the set of upstream source ids. The existing convergence rule triggers insertion of a retain filter (a `context_modification` node with a generation-retain payload) the same way nullification nodes are inserted today. Infrastructure nodes (memo, monitor) are inserted as ordinary proto nodes, as main already does for memo and nullification. Their registry rows are generated from a central type census, one macro invocation over the supported-type list (TaggedValue-derived plus a hand-maintained remainder), instead of being written per type by hand. The wire itself carries no behavior: an edge handle is a typed erased node plus its `Type`, and every constructor is an ordinary registry row.
+## Status cell
 
-## Generated code and overhead
+The generated `eval` owns a `Status` cell on the stack. Lazy inputs are passed to the kernel as `LazyInput` handles that hold a reference to the cell and their input index, and value inputs are evaluated through the same cell before the kernel runs. `LazyInput::eval` maps the input state as follows:
 
-The codegen has three requirements: the stand-in and error share a box, the status axis is flattened into `GPoll` (together these bring `GPoll<u32>` from 48 bytes down to 16), and the status plumbing is `#[inline(always)]`, because a plain hint loses to the inliner cost model on the error drop-glue branches. With these in place, a fused pure region compiles to native arithmetic plus a final tag store. A nine-node add/mul graph evaluates behind `#[inline(never)]` as four adds and two stores, with all `Pending` checks and status meets const-folded away. A fixed-output type-erased edge (`dyn Node<Context, Output = u32>`) is one indirect tail-call with values unboxed.
+- `Final(v)` returns `Ok(v)`.
+- `Partial(v)` returns `Ok(v)` and marks the cell as partial.
+- `Fallback(v, e)` returns `Ok(v)` and stores `e` if it is the first input error.
+- `Pending` and `Error(e)` return `Err(Interrupt)`. The cell remembers the strongest interrupt.
 
-Measured on the wired prototype: erased edges cost 1.8ns versus roughly 9ns for the per-eval box-and-downcast model.
+After the kernel returns, the generated code folds the cell into the result. `Poll`-tier kernels get their lazy inputs as plain `&impl Node` handles that only add trace indices, and their returned state is merged with the cell.
+
+Finality is tracked as a separate `Finality` (`Final | Partial`) in the cell instead of a sixth `Poll` variant. The reason is that `meet(Partial, Fallback)` would otherwise be `Fallback`, and an error that only exists because of a placeholder would look like a real document error. With the separate flag, partiality wins:
+
+- A node with any `Partial` input returns `Partial`, and stand-in errors from its inputs are dropped.
+- An error the node raises itself on provisional data is withheld. A stand-in error is dropped, and an `Err` from the kernel becomes `Pending`.
+- An `Error` coming from an input still propagates, because it was computed from final data further upstream.
+
+The layout is one tag and one payload word for pointer-sized values: `Poll<Arc<T>>` and `Poll<u32>` are both 16 bytes. The stand-in and its error share a box, and `Error` boxes the error alone. Progress percentages are deliberately not part of `Poll`. They change often and must not invalidate the dataflow, so they belong in the monitor side channel.
+
+## Errors
+
+`NodeError` wraps an `Arc<dyn Error + Send + Sync>`, so nodes can return any error type. It records a trace of input indices from the node that raised it up to the output. We use indices instead of names because a node can have two inputs of the same type. The handles push the indices, so node code never does.
+
+If a node raises its own error while one of its inputs has already failed, the input's error is kept in the new error's `upstream` list.
+
+The editor resolves a trace by walking the input indices through the executor's node tree, starting at the output node, and then maps the resulting proto node to its document node paths. `upstream` errors are resolved starting from the node that raised the outer error. Rank promotion adapters are inserted between nodes at build time and add their own entry to the trace, so the walk currently skips them by hand.
+
+Panics are not part of this model. The editor runtime still wraps evaluation in `catch_unwind` and reports a panic separately from node errors.
+
+## Async node code generation
+
+For an `async fn` node, the macro adds two hidden inputs: the `RuntimeHandle` from the `runtime` scope and the node's `SourceId`, which is injected as a reflection input like the document node path is. The `SourceId` is a hash of the document node path, so it stays the same across recompiles.
+
+The struct gets a `Slots<T>`, an `Arc<Mutex<HashMap<u64, Slot<T>>>>`:
+
+```rs
+enum Slot<T> {
+	Ready(Poll<T>),
+	Pending(AbortHandle),
+}
+```
+
+The slots are keyed by a hash of the node's context with the node's own source removed from the generations, so the generation bump caused by its own task does not change the key. Evaluation goes like this:
+
+1. Evaluate the inputs through the status cell. Bail on `Pending` or `Error`, and return the placeholder (or `Pending`) if any input is `Partial`.
+2. A `Ready` slot returns its stored state. A `Pending` slot returns the placeholder.
+3. Otherwise build the future and poll it once inline with a no-op waker. A future that is ready immediately is stored as `Ready` without spawning a task or bumping a generation.
+4. Otherwise spawn it onto the runtime, store a `Pending` slot with the task's abort handle, and return the placeholder.
+
+The spawned task holds a weak reference to the slot map. A node that `BorrowTree` keeps across a recompile still gets its result. When the last owner of a slot map is dropped, its `Pending` slots are dropped too, and that aborts their tasks. Since the mutex around the map also publishes the result to the next `eval`, the slot needs no additional synchronization.
+
+Async nodes don't get the element-wise variants over lists that other nodes get.
+
+## Generations and context nullification
+
+The runtime keeps a `HashMap<SourceId, u64>` of generations. The task wrapper bumps the generation after the task has finished:
+
+```rs
+task.await;
+if let Some(generation) = generations.lock().get_mut(&source) {
+	*generation += 1;
+}
+```
+
+A missing entry means the source was removed in a recompile, and then the bump does nothing.
+
+Before every evaluation the editor takes a snapshot of the generations, sorted by `SourceId` so that hashing is deterministic, and puts it into the root context. `OwnedContextImpl` has a new `generations` field which is part of its hash.
+
+`find_context_dependencies` now tracks a `ContextModification` for each node instead of only `ContextFeatures`:
+
+```rs
+pub struct ContextModification {
+	pub features: ContextFeatures,
+	pub sources: BTreeSet<SourceId>,
+}
+```
+
+The `SourceId` value node of an async node contributes that source, and a node's set of sources is the union of its children's. Unlike features, sources are never removed on the way to the root, because only the root injects generations. When the branches of a node have different modifications, the existing rule inserts a `context_modification` node with the branch's `ContextModification` as payload. It nullifies the unused features as before and also drops the generations of all sources outside the set.
+
+Context dependencies are no longer stored on document nodes. The preprocessor fills them in from the node registry metadata.
+
+## Caching
+
+A memo node keeps a single entry. It caches `Final`, `Partial`, and `Fallback` results and never caches `Pending` or `Error`. Caching `Partial` is fine because the generation bump that finalizes the value also changes the key.
+
+The render output cache includes the generation snapshot in its tile key. Tiles store their `Poll` state. Partial tiles are composited into a `Partial` frame, and a `Pending` or `Error` tile stops the whole frame.
+
+## Runtime
+
+The runtime is split into a host-facing and a node-facing trait:
+
+```rs
+/// Host-provided task executor with no graph knowledge.
+pub trait Spawn {
+	fn spawn(&self, task: Task);
+}
+
+/// Node-facing scope input.
+pub trait Runtime {
+	fn spawn(&self, source: SourceId, task: Task);
+}
+```
+
+`Task` is a boxed `'static` future that is `Send` on native targets only. The editor owns an `AsyncRuntime`, which updates the live sources (`retain_sources`) and takes snapshots of the generations (`snapshot`). Nodes get a cloneable `RuntimeHandle` to the same state through the `runtime` scope input, which is always present. Graphs without async nodes never read it.
+
+The host provides the `Spawn` implementation: a tokio runtime on desktop and `spawn_local` on the web. The editor wraps it so that a finished task sets a dirty flag and calls the runtime's wake callback (a channel send on desktop, a queued runtime run on the web).
+
+Executor construction, update, and execution are plain functions, and `execute` returns `Poll<TaggedValue>`. The only await left in the editor runtime is the GPU readback for exports and the eyedropper, which can't block on the web. On desktop, the runtime runs on its own thread under `block_on`, and the readback polls the device until the copy is done.
+
+We don't use wakers to notify the graph. A waker resumes a suspended computation, and graph evaluations never suspend: every evaluation is a fresh call. A wake also doesn't mean that the task has finished, and wakers don't compose across host executors.
+
+## Scheduling
+
+- Generations are read once per evaluation. A task that finishes during an evaluation takes effect in the next one.
+- The dirty flag is checked once per runtime run, so N finished tasks cause one re-render of the last viewport request.
+- On recompile, `retain_sources` removes sources that no longer exist and adds new ones at generation zero. Nodes that were removed drop their slots, which aborts their tasks.
+
+The editor maps the top-level `Poll` to an `ExecutionResult`: `Pending`, `Value`, `Fallback(value, errors)`, `Error(errors)`, or `Panic`. A `Pending` result keeps the last frame and its errors on screen. An export treats `Partial` like `Pending`: it is parked and re-run on every dirty wake until the result is final, and the runtime doesn't process other requests until then.
+
+## Overhead
+
+Three properties keep the status handling cheap: the stand-in and its error share a box, the status is a single enum instead of a value plus a separate state (which brings `Poll<u32>` from 48 down to 16 bytes), and the status functions are `#[inline(always)]`. A plain `#[inline]` hint loses to the inliner's cost model because of the drop glue in the error branches. This lets statically composed nodes fold the `Pending` checks and meets away. In the interpreter, a type-erased edge costs an indirect call, an input downcast, and one boxed output, but there is no boxed future per evaluation anymore.
 
 # Drawbacks
 
-- The cone downstream of an async node computes twice on the provisional path: once on the placeholder and again on the real value. This comes with progressive rendering; `#[node(no_partial)]` is the escape hatch.
-- `'static` futures cannot lazily evaluate their inputs. Everything a future needs is evaluated and cloned before spawning.
-- Migration is a cutover. The macro, registry, and executor flip together; node bodies migrate mechanically, but the landing is one large reviewed unit.
-- Slot maps and LRU caches hold completed values per context hash. The eviction policy will need tuning.
+- Everything downstream of an async node is computed twice: once with the placeholder and once with the real value. That is the price of progressive rendering, and `#[node(no_partial)]` avoids it where it isn't wanted.
+- `'static` futures cannot evaluate their inputs lazily. Everything a future needs is evaluated and cloned before it is spawned.
+- The migration is a single cutover. The macro, the registry, and the executor change together, so even though node bodies migrate mechanically, it lands as one large PR.
+- Slot maps keep every finished result per context hash for as long as the node lives. Nothing evicts them yet.
+- An async node without a placeholder serializes its requests inside nodes that evaluate a lazy input several times, like `repeat`. The first in-flight iteration returns `Pending`, the `?` leaves the loop, and the later iterations are only spawned after the earlier ones have finished, one re-render each. With a placeholder, every iteration returns `Partial` and all futures are spawned in the first frame.
 
 # Rationale and alternatives
 
-- **Inline pinned futures** (store each node's future unboxed, poll once per graph evaluation): rejected. It needs `Pin`-through-`Mutex` soundness arguments, bifurcates the trait, conflicts with `BorrowTree` moving nodes, and turns graph evaluations into polling iterations.
-- **Poll-once compatibility shims** for existing `async fn` bodies: rejected in favor of the mechanical `?` edit. Genuine IO has to move to the source tier anyway (a poll-once body would silently re-issue requests every frame), and the cosmetic sites are few.
-- **Bail on `Partial`/`Fallback`** (all statuses through `Err`): rejected as the default. It kills progressive rendering and stand-in propagation, and a value-carrying error type does not typecheck across inputs. It survives as the `no_partial` mapping.
-- **Waker as completion signal**: a wake does not mean completion, wakers do not compose across host executors, and there is no suspended continuation to resume.
-- **Manual downstream cache clearing on completion**: needs runtime topology introspection and cache-tracking logic. Generation-in-hash gets the same effect through the compiler pass and works unchanged when precompiled.
-- **Per-evaluation scope mutation for memo GC**: scope inputs are construction-time and should not become per-frame channels. A bounded LRU needs no external signal.
+- **Inline pinned futures.** We could store each node's future unboxed and poll it once per graph evaluation. That needs soundness arguments for `Pin` through a `Mutex`, splits the trait in two, conflicts with `BorrowTree` moving nodes around, and still turns every graph evaluation into a polling iteration.
+- **Poll-once compatibility shims** for existing `async fn` bodies. Real IO has to move into source nodes anyway, since a body that is polled once per frame would send its request again every frame. The remaining async bodies only awaited their inputs and are easy to migrate by hand.
+- **Bail on `Partial` and `Fallback` too**, treating every non-final state as `Err`. This would remove progressive rendering and stand-in values, and a single error type carrying a value doesn't work across inputs of different types. It remains available per node as `no_partial`.
+- **Wakers as completion signal.** A wake doesn't mean completion, wakers don't compose across host executors, and there is no suspended computation to resume.
+- **Clearing downstream caches when a task finishes.** This needs the graph topology at runtime and extra logic to track caches. Putting the generation into the hash has the same effect, is set up entirely by the compiler pass, and works the same way for a precompiled graph.
 
 # Unresolved questions
 
-- Partial epochs: futures that publish intermediate data (streams, progressive decode) want a weaker invalidation than completion.
-- LRU capacity policy, and the exact policy for provisional errors.
-- `Send`/wasm: spawned futures need `Send` on native only.
+- Futures that publish intermediate results (streams, progressive image decoding) would want a weaker kind of invalidation than "finished".
+- How slot maps should evict old entries, and whether memo nodes need more than one entry for contexts that alternate between evaluations.
+- Spawned futures need `Send` on native targets but can't be `Send` on the web.
+- Whether async nodes should require a placeholder, or whether looping nodes should evaluate all iterations before bailing on `Pending`, so that requests inside a loop are spawned in parallel.
 
 # Future possibilities
 
-- Borrowed context with a stack-based lifetime instead of the current `Arc<>` allocation.
+- A borrowed context with a stack-based lifetime instead of the current `Arc` allocation.
+- Type-erased edges with unboxed values. In the prototype, these cost 1.8ns per edge compared to roughly 9ns for the box-and-downcast model.
+- Resolving error traces through rank promotion adapters inside the runtime instead of in the editor.
