@@ -57,9 +57,8 @@ pub struct DocumentNode {
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// List of Extract and Inject annotations for the Context.
-	#[serde(default)]
-	pub context_features: ContextDependencies,
+	#[serde(skip)]
+	pub context_dependencies: Option<ContextDependencies>,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
 	pub original_location: OriginalLocation,
@@ -93,7 +92,7 @@ impl Default for DocumentNode {
 			visible: true,
 			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
-			context_features: Default::default(),
+			context_dependencies: Default::default(),
 		}
 	}
 }
@@ -167,7 +166,7 @@ impl DocumentNode {
 			construction_args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
-			context_features: self.context_features,
+			context_dependencies: self.context_dependencies.unwrap_or_default(),
 		}
 	}
 }
@@ -216,12 +215,14 @@ impl InlineRust {
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
+	SourceId,
 }
 
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
 			DocumentNodeMetadata::DocumentNodePath => item!(core_types::list::NodeIdPath),
+			DocumentNodeMetadata::SourceId => item!(core_types::SourceId),
 		}
 	}
 }
@@ -958,6 +959,11 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		};
+		debug_assert!(
+			node.context_dependencies.is_none(),
+			"Network {id} should not have context dependencies: {deps:#?}",
+			deps = node.context_dependencies
+		);
 
 		// Replace value and reflection imports with value nodes, added inside nested network
 		Self::replace_value_inputs_with_nodes(
@@ -1077,6 +1083,7 @@ impl NodeNetwork {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
 					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(core_types::list::NodeIdPath::from(path.to_vec())).into(), false),
+					DocumentNodeMetadata::SourceId => (TaggedValue::SourceId(core_types::SourceId::from_path(path)).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;
@@ -1329,7 +1336,7 @@ impl core_types::graphene_hash::CacheHash for DocumentNode {
 		self.implementation.cache_hash(state);
 		self.visible.cache_hash(state);
 		self.skip_deduplication.cache_hash(state);
-		self.context_features.cache_hash(state);
+		self.context_dependencies.cache_hash(state);
 	}
 }
 

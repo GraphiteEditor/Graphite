@@ -1,4 +1,4 @@
-use crate::application::Editor;
+use crate::application::Environment;
 use crate::consts::{
 	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
 	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
@@ -16,6 +16,7 @@ use graph_craft::document::NodeId;
 
 #[derive(ExtractField)]
 pub struct NavigationMessageContext<'a> {
+	pub environment: Environment,
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub breadcrumb_network_path: &'a [NodeId],
 	pub ipp: &'a InputPreprocessorMessageHandler,
@@ -39,6 +40,7 @@ pub struct NavigationMessageHandler {
 impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for NavigationMessageHandler {
 	fn process_message(&mut self, message: NavigationMessage, responses: &mut VecDeque<Message>, context: NavigationMessageContext) {
 		let NavigationMessageContext {
+			environment,
 			network_interface,
 			breadcrumb_network_path,
 			ipp,
@@ -189,7 +191,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x, .. } => {
 				// On Mac, the OS already converts Shift+scroll into horizontal scrolling
-				let delta = if use_y_as_x && !Editor::environment().is_mac() {
+				let delta = if use_y_as_x && !environment.is_mac() {
 					(ipp.mouse.scroll_delta.y, 0.).into()
 				} else {
 					ipp.mouse.scroll_delta.as_dvec2()

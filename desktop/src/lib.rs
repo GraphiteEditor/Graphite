@@ -22,6 +22,7 @@ mod persist;
 mod preferences;
 mod render;
 mod socket;
+mod spawner;
 mod window;
 
 pub(crate) mod consts;

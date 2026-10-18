@@ -8,7 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{
 	DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
 };
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -118,6 +118,7 @@ pub struct NodeGraphMessageHandler {
 	frontend_nodes: Vec<NodeId>,
 	/// Used to keep track of what wires are sent to the front end so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
+	evaluation_errors: Vec<NodeEvaluationError>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1972,6 +1973,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							nodes.push(*node_id);
 						}
 					}
+					if self.evaluation_errors.iter().any(|error| error.node_path.contains(node_id)) {
+						nodes.push(*node_id);
+					}
 				}
 
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
@@ -1986,8 +1990,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
 					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
 
-					let error = self.node_graph_error(network_interface, breadcrumb_network_path);
-					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostic { error });
+					let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -2451,6 +2455,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				responses.add(NodeGraphMessage::SendGraph);
+			}
+			NodeGraphMessage::UpdateEvaluationErrors { errors } => {
+				if self.evaluation_errors != errors {
+					self.evaluation_errors = errors;
+					if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
+						let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
+						responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
+						responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					}
+				}
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {
@@ -3191,28 +3205,47 @@ impl NodeGraphMessageHandler {
 		Some(subgraph_names)
 	}
 
-	fn node_graph_error(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<NodeGraphErrorDiagnostic> {
-		let graph_error = network_interface
+	fn node_graph_errors(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Vec<NodeGraphErrorDiagnostic> {
+		let depth = breadcrumb_network_path.len();
+		let inside = |path: &[NodeId]| path.starts_with(breadcrumb_network_path) && path.len() > depth;
+		let graph_errors: Vec<_> = network_interface
 			.resolved_types
 			.node_graph_errors
 			.iter()
-			.find(|error| error.node_path.starts_with(breadcrumb_network_path) && error.node_path.len() > breadcrumb_network_path.len())?;
-		let error = if graph_error.node_path.len() == breadcrumb_network_path.len() + 1 {
-			format!("{:?}", graph_error.error)
-		} else {
-			"Node graph type error within this node".to_string()
+			.filter(|error| inside(&error.node_path))
+			.map(|error| match error.node_path.len() == depth + 1 {
+				true => (error.node_path[depth], format!("{:?}", error.error)),
+				false => (error.node_path[depth], "Node graph type error within this node".to_string()),
+			})
+			.collect();
+		// Evaluation errors come from the last graph that compiled, so a type error hides them
+		let errors = match graph_errors.is_empty() {
+			true => self
+				.evaluation_errors
+				.iter()
+				.filter(|error| inside(&error.node_path))
+				.map(|error| match error.node_path.len() == depth + 1 {
+					true => (error.node_path[depth], error.message.clone()),
+					false => (error.node_path[depth], "Node graph error within this node".to_string()),
+				})
+				.collect(),
+			false => graph_errors,
 		};
-		let error_node = graph_error.node_path[breadcrumb_network_path.len()];
 
-		let mut position = network_interface.position(&error_node, breadcrumb_network_path)?;
-		// Convert to graph space
-		position *= 24;
-		if network_interface.is_layer(&error_node, breadcrumb_network_path) {
-			position += IVec2::new(12, -12)
-		}
-		let position = position.into();
-
-		Some(NodeGraphErrorDiagnostic { position, error })
+		let mut shown = HashSet::new();
+		errors
+			.into_iter()
+			.filter(|(node, _)| shown.insert(*node))
+			.filter_map(|(node, error)| {
+				let mut position = network_interface.position(&node, breadcrumb_network_path)?;
+				// Convert to graph space
+				position *= 24;
+				if network_interface.is_layer(&node, breadcrumb_network_path) {
+					position += IVec2::new(12, -12)
+				}
+				Some(NodeGraphErrorDiagnostic { position: position.into(), error })
+			})
+			.collect()
 	}
 
 	fn update_layer_panel(
@@ -3411,6 +3444,7 @@ impl Default for NodeGraphMessageHandler {
 			end_index: None,
 			frontend_nodes: Vec::new(),
 			frontend_wires: HashSet::new(),
+			evaluation_errors: Vec::new(),
 		}
 	}
 }

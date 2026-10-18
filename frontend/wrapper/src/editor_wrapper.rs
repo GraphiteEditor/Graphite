@@ -8,7 +8,7 @@ use crate::MESSAGE_BUFFER;
 #[cfg(all(feature = "native", target_family = "wasm"))]
 use crate::editor_commands::EditorCommand;
 #[cfg(not(feature = "native"))]
-use crate::helpers::poll_node_graph_evaluation;
+use crate::helpers::run_node_runtime;
 #[cfg(any(not(feature = "native"), target_family = "wasm"))]
 use crate::helpers::wrapper;
 #[cfg(feature = "editor")]
@@ -16,7 +16,7 @@ use crate::helpers::{calculate_hash, render_image_data_to_canvases};
 use crate::helpers::{request_animation_frame, set_timeout};
 use crate::{EDITOR_HAS_CRASHED, FRONTEND_READY};
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
-use editor::application::{Editor, Environment, Host, Platform};
+use editor::application::{Environment, Host, Platform};
 #[cfg(feature = "editor")]
 use editor::messages::prelude::*;
 #[cfg(feature = "editor")]
@@ -54,6 +54,7 @@ impl EditorWrapper {
 impl EditorWrapper {
 	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
+		use editor::builder::{Builder, EditorBuilder, RuntimeBuilder};
 		use graph_craft::application_io::PlatformApplicationIo;
 		use graph_craft::application_io::resource::*;
 
@@ -73,13 +74,24 @@ impl EditorWrapper {
 		};
 
 		let application_io = PlatformApplicationIo::new().await;
-		let wake = crate::helpers::async_wake_callback();
 		let document_store = std::sync::Arc::new(editor::document_store::OpfsStore::new("documents"));
-		let editor = Editor::new(Environment { platform: Platform::Web, host }, uuid_random_seed, storage, document_store, application_io, wake);
+		let (editor, runtime) = Builder::new()
+			.with_editor(
+				EditorBuilder::new()
+					.with_wake(crate::helpers::wake_editor)
+					.with_environment(Environment { platform: Platform::Web, host })
+					.with_resource_storage(storage)
+					.with_document_store(document_store),
+			)
+			.with_runtime(RuntimeBuilder::new().with_wake(crate::helpers::wake_runtime).with_application_io(application_io))
+			.with_spawner(crate::helpers::WasmSpawner)
+			.with_random_seed(uuid_random_seed)
+			.build();
 
 		if EDITOR.with(|slot| slot.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
+		*crate::NODE_RUNTIME.lock() = Some(runtime);
 
 		Self::initialize_wrapper(frontend_message_handler_callback)
 	}
@@ -177,14 +189,14 @@ impl EditorWrapper {
 		#[cfg(target_family = "wasm")]
 		self.init_portfolio();
 
-		// Poll node graph evaluation on `requestAnimationFrame`
+		// Run the node runtime on `requestAnimationFrame`
 		{
 			let f = std::rc::Rc::new(RefCell::new(None));
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
-				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
+				wasm_bindgen_futures::spawn_local(run_node_runtime());
 
 				#[cfg(any(not(feature = "native"), target_family = "wasm"))]
 				wrapper(|wrapper| {
