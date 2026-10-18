@@ -119,6 +119,7 @@ macro_rules! mapping {
 		let mut key_up_no_repeat = KeyMappingEntries::key_array();
 		let mut key_down_no_repeat = KeyMappingEntries::key_array();
 		let mut double_click = KeyMappingEntries::mouse_buttons_arrays();
+		let mut double_tap = KeyMappingEntries::key_array();
 		let mut wheel_scroll = KeyMappingEntries::new();
 		let mut pointer_move = KeyMappingEntries::new();
 		let mut pointer_shake = KeyMappingEntries::new();
@@ -138,6 +139,7 @@ macro_rules! mapping {
 					InputMapperMessage::KeyDownNoRepeat(key) => &mut key_down_no_repeat[key as usize],
 					InputMapperMessage::KeyUpNoRepeat(key) => &mut key_up_no_repeat[key as usize],
 					InputMapperMessage::DoubleClick(key) => &mut double_click[key as usize],
+					InputMapperMessage::DoubleTap(key) => &mut double_tap[key as usize],
 					InputMapperMessage::WheelScroll => &mut wheel_scroll,
 					InputMapperMessage::PointerMove => &mut pointer_move,
 					InputMapperMessage::PointerShake => &mut pointer_shake,
@@ -148,7 +150,7 @@ macro_rules! mapping {
 		}
 		)*
 
-		(key_up, key_down, key_up_no_repeat, key_down_no_repeat, double_click, wheel_scroll, pointer_move, pointer_shake)
+		(key_up, key_down, key_up_no_repeat, key_down_no_repeat, double_click, double_tap, wheel_scroll, pointer_move, pointer_shake)
 	}};
 }
 

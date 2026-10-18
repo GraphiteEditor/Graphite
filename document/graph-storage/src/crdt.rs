@@ -1,16 +1,12 @@
 use crate::{
-	AttributeValue, Attributes, AttributesWrite, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value,
-	attr, compute_rev,
+	Attributes, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Prior, ResourceEntry, ResourceId, Rev, SourceKey, TimeStamp, UserId, Value, attr, compute_rev,
 };
 use graphene_resource::ResourceHash;
 use serde::{Deserialize, Serialize};
 
 /// Content-addressed delta: `id` is `blake3_128(parents, author, timestamp, delta_type)`.
 ///
-/// `reverse` is state-dependent undo bookkeeping (it captures pre-state at the moment the forward
-/// op was applied), so it's serialized for storage but excluded from the identity hash — two peers
-/// observing the same forward delta against different local states would otherwise compute
-/// different Revs for the same logical op.
+/// `reverse` is undo bookkeeping that depends on local state, so it is stored but left out of the identity hash.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Delta {
 	pub id: Rev,
@@ -19,16 +15,21 @@ pub struct Delta {
 	pub author: PeerId,
 	pub timestamp: TimeStamp,
 	pub kind: RegistryDelta,
-	pub reverse: RegistryDelta,
+	/// What every slot `kind` wrote held before it, stamps included, in write order. See [`Prior`].
+	pub reverse: Vec<Prior>,
 	/// Local, mutable annotations on this commit (interaction-end marker, future commit messages / labels).
 	/// Deliberately excluded from `compute_rev`: relabeling a commit must not change its content-addressed
 	/// identity, and two peers annotating the same op differently must still dedup to one `Rev`.
 	#[serde(default)]
 	pub attributes: Attributes,
+	/// When the delta entered history, in Unix milliseconds by the retiring peer's clock; display only and outside the rev.
+	/// Zero means unrecorded, saving the tag byte of an `Option`. Last, since the history codec is positional.
+	#[serde(default)]
+	pub(crate) retired_at_ms: u64,
 }
 
 impl Delta {
-	pub fn new(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: RegistryDelta) -> Self {
+	pub fn new(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: Vec<Prior>) -> Self {
 		let id = compute_rev(parent, author, timestamp, &kind);
 		Self {
 			id,
@@ -38,6 +39,7 @@ impl Delta {
 			kind,
 			reverse,
 			attributes: Attributes::default(),
+			retired_at_ms: 0,
 		}
 	}
 
@@ -55,9 +57,10 @@ impl Delta {
 			parent,
 			author,
 			timestamp,
-			reverse: kind.clone(),
+			reverse: Vec::new(),
 			kind,
 			attributes: Attributes::default(),
+			retired_at_ms: 0,
 		}
 	}
 
@@ -77,6 +80,11 @@ impl Delta {
 
 	pub fn is_interaction_end(&self) -> bool {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
+	}
+
+	/// When the delta entered history in wall-clock milliseconds, if the peer that retired it recorded it.
+	pub fn retired_at(&self) -> Option<u64> {
+		(self.retired_at_ms != 0).then_some(self.retired_at_ms)
 	}
 
 	/// The content-addressed `Rev` this delta's identity fields hash to. Equals `id` for a delta built
@@ -101,8 +109,7 @@ pub enum RegistryDelta {
 		id: NodeId,
 		node: Node,
 	},
-	/// `snapshot` lets the reverse `AddNode` rebuild without reading the (already-removed) node from
-	/// the registry, mirroring `RemoveNetwork`.
+	/// `snapshot` is the node as removed, which folds in like any write so a removal of a node never seen still lands.
 	RemoveNode {
 		id: NodeId,
 		snapshot: Node,
@@ -155,13 +162,12 @@ pub enum RegistryDelta {
 		id: NetworkId,
 		network: Network,
 	},
-	/// `snapshot` lets the reverse delta rebuild without re-walking history.
+	/// `snapshot` is the network as removed; see [`RemoveNode`](Self::RemoveNode).
 	RemoveNetwork {
 		id: NetworkId,
 		snapshot: Network,
 	},
-	/// Register a whole resource entry at once. Overwrites any existing entry for `id`; the reverse
-	/// of `RemoveResource`, the way `AddNetwork` pairs with `RemoveNetwork`.
+	/// Register a whole resource entry at once, the way `AddNetwork` pairs with `RemoveNetwork`.
 	AddResource {
 		id: ResourceId,
 		entry: ResourceEntry,
@@ -190,9 +196,7 @@ pub enum RegistryDelta {
 		id: ResourceId,
 		key: SourceKey,
 	},
-	/// Append-only registration of a device's `PeerId` against its owning `UserId`.
-	/// First write wins; conflicting re-registration errors. Duplicate identical registration
-	/// is a no-op. Not LWW — the mapping is forever.
+	/// Registers a device's `PeerId` to the `UserId` behind it; the newest registration wins.
 	RegisterPeer {
 		peer: PeerId,
 		user: UserId,
@@ -218,31 +222,24 @@ pub struct AttributeDelta {
 	pub value: Option<Value>,
 }
 
-pub(crate) fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
-	AttributeDelta {
-		key: delta.key.clone(),
-		value: attributes.get(&delta.key).map(|previous| previous.value.clone()),
-	}
-}
+#[cfg(test)]
+mod tests {
+	use super::*;
 
-pub(crate) fn apply_attribute_delta(delta: AttributeDelta, timestamp: TimeStamp, force: bool, attributes: &mut Attributes) {
-	let AttributeDelta { key, value } = delta;
-	match value {
-		Some(value) => match attributes.entry(key) {
-			std::collections::btree_map::Entry::Occupied(mut entry) => {
-				if force || timestamp > entry.get().timestamp {
-					entry.insert(AttributeValue { value, timestamp });
-				}
-			}
-			std::collections::btree_map::Entry::Vacant(entry) => {
-				entry.insert(AttributeValue { value, timestamp });
-			}
-		},
-		None => {
-			let should_remove = force || attributes.get(&key).is_none_or(|existing| timestamp > existing.timestamp);
-			if should_remove {
-				attributes.remove(&key);
-			}
-		}
+	#[test]
+	fn unrecorded_retired_at_costs_one_byte_and_round_trips() {
+		let base = Delta::new(None, PeerId(1), TimeStamp { counter: 1, peer: PeerId(1) }, RegistryDelta::Other(Value::None), Vec::new());
+		let mut stamped = base.clone();
+		stamped.retired_at_ms = 1_790_000_000_000;
+
+		let bare_base = postcard::to_allocvec(&base).expect("encode");
+		let bare_stamped = postcard::to_allocvec(&stamped).expect("encode");
+		// Only the integer's varint differs: one byte for zero, six for today's milliseconds, no tag byte in either.
+		assert_eq!(bare_stamped.len() - bare_base.len(), postcard::to_allocvec(&1_790_000_000_000u64).unwrap().len() - 1);
+
+		let decoded: Delta = postcard::from_bytes(&bare_stamped).expect("decode");
+		assert_eq!(decoded.retired_at(), Some(1_790_000_000_000));
+		let decoded: Delta = postcard::from_bytes(&bare_base).expect("decode");
+		assert_eq!(decoded.retired_at(), None);
 	}
 }

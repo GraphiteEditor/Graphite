@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -19,17 +20,17 @@ impl Ellipse {
 	}
 
 	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
+		view: SnapView,
+		snap_session: &mut SnapSession,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let document = view.document;
 		let [center, lock_ratio, _] = modifier;
 
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(snap_session, view, center, lock_ratio, &[]) {
 			let Some(node_id) = graph_modification_utils::get_ellipse_id(layer, &document.network_interface) else {
 				return;
 			};
@@ -63,7 +64,7 @@ mod test_ellipse {
 	}
 
 	async fn get_ellipse(editor: &mut EditorTestUtils) -> Vec<ResolvedEllipse> {
-		let instrumented = match editor.eval_graph().await {
+		let instrumented = match editor.eval_graph_until_finished().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};

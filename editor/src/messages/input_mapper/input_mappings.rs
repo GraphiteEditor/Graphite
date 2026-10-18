@@ -89,10 +89,10 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=NodeGraphMessage::SendClickTargets),
 		entry!(KeyDown(KeyM); modifiers=[Accel], action_dispatch=NodeGraphMessage::MergeSelectedNodes),
 		entry!(KeyUp(KeyC); action_dispatch=NodeGraphMessage::EndSendClickTargets),
-		entry!(KeyDown(ArrowUp); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Up, rubber_band: false }),
-		entry!(KeyDown(ArrowRight); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Right, rubber_band: false }),
-		entry!(KeyDown(ArrowDown); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Down, rubber_band: false }),
-		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, rubber_band: false }),
+		entry!(KeyDown(ArrowUp); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Up }),
+		entry!(KeyDown(ArrowRight); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }),
+		entry!(KeyDown(ArrowDown); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Down }),
+		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Left }),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),
@@ -105,10 +105,10 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(Minus); action_dispatch=TransformLayerMessage::TypeNegate),
 		entry!(KeyDown(Comma); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
 		entry!(KeyDown(Period); action_dispatch=TransformLayerMessage::TypeDecimalPoint),
-		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
+		entry!(PointerMove; refresh_keys=[Control, Shift, Alt, KeyQ, KeyW], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyQ, KeyW], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, remove_from_selection: Alt, select_deepest: Accel, lasso_select: Control, skew: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
@@ -118,7 +118,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		//
 		// ArtboardToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ArtboardToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift, Alt], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
+		entry!(PointerMove; refresh_keys=[Shift, Alt, KeyQ, KeyW], action_dispatch=ArtboardToolMessage::PointerMove { constrain_axis_or_aspect: Shift, center: Alt }),
 		entry!(KeyUp(MouseLeft); action_dispatch=ArtboardToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=ArtboardToolMessage::DeleteSelected),
 		entry!(KeyDown(Backspace); action_dispatch=ArtboardToolMessage::DeleteSelected),
@@ -166,7 +166,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(Escape); action_dispatch=EyedropperToolMessage::Abort),
 		//
 		// TextToolMessage
-		entry!(PointerMove; refresh_keys=[Alt, Shift], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, KeyQ, KeyW], action_dispatch=TextToolMessage::PointerMove { center: Alt, lock_ratio: Shift }),
 		entry!(KeyDown(MouseLeft); action_dispatch=TextToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),
@@ -176,7 +176,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		// GradientToolMessage
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
+		entry!(PointerMove; refresh_keys=[Shift, Control, KeyQ, KeyW], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=GradientToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),
@@ -190,7 +190,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
 		entry!(KeyDown(BracketLeft); action_dispatch=ShapeToolMessage::DecreaseSides),
 		entry!(KeyDown(BracketRight); action_dispatch=ShapeToolMessage::IncreaseSides),
-		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove { modifier: [Alt, Shift, Control] }),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control, KeyQ, KeyW], action_dispatch=ShapeToolMessage::PointerMove { modifier: [Alt, Shift, Control] }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite: Control }),
@@ -233,7 +233,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(KeyG); action_dispatch=PathToolMessage::GRS { key: KeyG }),
 		entry!(KeyDown(KeyR); action_dispatch=PathToolMessage::GRS { key: KeyR }),
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
-		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
+		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt, KeyQ, KeyW], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAll),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllSelected),
@@ -269,7 +269,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=ToolMessage::Path(PathToolMessage::ClosePath)),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC, KeyQ, KeyW], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
 		entry!(KeyDownNoRepeat(Tab); action_dispatch=PenToolMessage::SwapHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
@@ -290,7 +290,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(Escape); action_dispatch=FreehandToolMessage::Abort),
 		//
 		// SplineToolMessage
-		entry!(PointerMove; action_dispatch=SplineToolMessage::PointerMove),
+		entry!(PointerMove; refresh_keys=[KeyQ, KeyW], action_dispatch=SplineToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=SplineToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SplineToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=SplineToolMessage::Confirm),
@@ -337,7 +337,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage
-		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
+		entry!(DoubleTap(Space); action_dispatch=DocumentMessage::GraphViewOverlayToggle),
 		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
@@ -354,8 +354,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
 		entry!(KeyDown(KeyS); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::SaveDocumentAs),
-		entry!(KeyDown(KeyD); modifiers=[Accel], canonical, action_dispatch=DocumentMessage::DuplicateSelectedLayers),
-		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
+		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyB); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::BlendSelectedLayers),
 		entry!(KeyDown(KeyM); modifiers=[Accel, Alt], action_dispatch=DocumentMessage::MorphSelectedLayers), // Might get eaten by the GeForce Experience overlay for some Windows users
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
@@ -416,23 +415,32 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
 		entry!(KeyDown(MouseLeft); modifiers=[Alt, Space], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
-		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control, Alt], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: true }),
+		entry!(KeyDown(MouseLeft); modifiers=[Control, Alt, Space], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: true }),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom { artwork_behind_graph: false }),
+		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan { artwork_behind_graph: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan { artwork_behind_graph: false }),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		// `FakeKeyPlus` is a nonfunctional key mapping that must be accompanied by its real `Equal` key counterpart. This is used only to set the canonical key label so it shows "+" instead of "=" in the UI.
 		entry!(KeyDown(FakeKeyPlus); modifiers=[Accel], canonical, action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
-		entry!(WheelScroll; modifiers=[Control], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-		entry!(WheelScroll; modifiers=[Command], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-		entry!(WheelScroll; modifiers=[Shift], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; modifiers=[Control, Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Command, Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Control], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: false }),
+		entry!(WheelScroll; modifiers=[Command], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: false }),
+		entry!(WheelScroll; modifiers=[Shift, Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Alt], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Shift], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true, artwork_behind_graph: false }),
+		entry!(WheelScroll; disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false, artwork_behind_graph: false }),
 		// On Mac, the OS already converts Shift+scroll into horizontal scrolling so we have to reverse the behavior from normal to produce the same outcome
-		entry!(WheelScroll; modifiers=[Control], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac }),
-		entry!(WheelScroll; modifiers=[Shift], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac }),
-		entry!(WheelScroll; disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Control, Alt], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Shift, Alt], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac, artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Alt], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: true }),
+		entry!(WheelScroll; modifiers=[Control], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac, artwork_behind_graph: false }),
+		entry!(WheelScroll; modifiers=[Shift], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac, artwork_behind_graph: false }),
+		entry!(WheelScroll; disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph: false }),
 		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(1., 0.) }),
 		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(-1., 0.) }),
 		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(0., 1.) }),
@@ -463,7 +471,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(Space); modifiers=[Shift], action_dispatch=AnimationMessage::ToggleLivePreview),
 		entry!(KeyDown(Home); modifiers=[Shift], action_dispatch=AnimationMessage::RestartAnimation),
 	];
-	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
+	let (mut key_up, mut key_down, mut key_up_no_repeat, mut key_down_no_repeat, mut double_click, mut double_tap, mut wheel_scroll, mut pointer_move, mut pointer_shake) = mappings;
 
 	let sort = |list: &mut KeyMappingEntries| list.0.sort_by_key(|entry| std::cmp::Reverse(entry.modifiers.count_ones()));
 	// Sort the sublists of `key_up`, `key_down`, `key_up_no_repeat`, and `key_down_no_repeat`
@@ -474,6 +482,10 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 	}
 	// Sort the sublists of `double_click`
 	for sublist in &mut double_click {
+		sort(sublist)
+	}
+	// Sort the sublists of `double_tap`
+	for sublist in &mut double_tap {
 		sort(sublist)
 	}
 	// Sort `wheel_scroll`
@@ -489,6 +501,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		key_up_no_repeat,
 		key_down_no_repeat,
 		double_click,
+		double_tap,
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,

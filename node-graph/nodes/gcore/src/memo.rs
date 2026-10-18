@@ -1,6 +1,8 @@
 use core_types::graphene_hash::CacheHash;
 use core_types::memo::*;
-use core_types::{Interrupt, Poll, WasmNotSend};
+use core_types::registry::{DowncastBothNode, DynAnyNode, NODE_REGISTRY, NodeConstructor, PanicNode, TypeErasedBox};
+use core_types::{Context, Interrupt, NodeIO, NodeIOTypes, Poll, WasmNotSend, concrete, fn_type};
+use dyn_any::StaticType;
 use std::hash::DefaultHasher;
 use std::hash::Hasher;
 use std::sync::Arc;
@@ -9,7 +11,7 @@ use std::sync::Mutex;
 /// Helps speed up repeated renders in a computationally-heavy part of the node graph.
 ///
 /// Stores the last evaluated data that flowed through this node and immediately returns that data on subsequent renders if the context has not changed.
-#[node_macro::node(category("General"), path(graphene_core::memo), skip_impl)]
+#[node_macro::node(category("General"), icon("NodeMemoize"), path(graphene_core::memo), skip_impl)]
 fn memoize<I: CacheHash + Clone + Send, T: Clone + WasmNotSend>(input: I, content: impl Node<I, Output = T>, #[data] cache: Arc<Mutex<Option<(u64, Poll<T>)>>>) -> Poll<T> {
 	// Caches the output of a given node called with a specific input.
 	//
@@ -37,7 +39,7 @@ fn memoize<I: CacheHash + Clone + Send, T: Clone + WasmNotSend>(input: I, conten
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
 
 /// The Monitor node is used by the editor to access the data flowing through it.
-#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), properties("monitor_properties"), skip_impl)]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), inspector("monitor_inspector"), skip_impl)]
 fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 	input: I,
 	content: impl Node<I, Output = T>,
@@ -53,6 +55,37 @@ fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 fn serialize_monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(io: &MonitorValue<I, T>) -> Option<Arc<dyn std::any::Any + Send + Sync>> {
 	let io = io.lock().unwrap();
 	io.as_ref().map(|output| output.clone() as Arc<dyn std::any::Any + Send + Sync>)
+}
+
+/// Registers the Memoize and Monitor implementations for `T`, as `#[derive(node_macro::Destructure)]` does for each multi-output node struct.
+pub fn register_memoize_and_monitor<T: Clone + Send + Sync + StaticType<Static: Sized> + 'static>() {
+	let memoize_constructor: NodeConstructor = |mut arguments| {
+		let node = MemoizeNode::new(DowncastBothNode::<Context, T>::new(arguments.pop().expect("Not enough arguments provided to construct node")));
+		let any: DynAnyNode<Context, _, _> = DynAnyNode::new(node);
+		Box::new(any) as TypeErasedBox
+	};
+	let monitor_constructor: NodeConstructor = |mut arguments| {
+		let node = MonitorNode::new(DowncastBothNode::<Context, T>::new(arguments.pop().expect("Not enough arguments provided to construct node")));
+		let any: DynAnyNode<Context, _, _> = DynAnyNode::new(node);
+		Box::new(any) as TypeErasedBox
+	};
+
+	let memoize_types: NodeIOTypes = {
+		let node = MemoizeNode::new(PanicNode::<Context, T>::new());
+		let mut node_io = NodeIO::<Context>::to_node_io(&node, vec![fn_type!(Context, T)]);
+		node_io.call_argument = concrete!(<Context as StaticType>::Static);
+		node_io
+	};
+	let monitor_types: NodeIOTypes = {
+		let node = MonitorNode::new(PanicNode::<Context, T>::new());
+		let mut node_io = NodeIO::<Context>::to_node_io(&node, vec![fn_type!(Context, T)]);
+		node_io.call_argument = concrete!(<Context as StaticType>::Static);
+		node_io
+	};
+
+	let mut registry = NODE_REGISTRY.lock().unwrap();
+	registry.entry(memoize::IDENTIFIER).or_default().push((memoize_constructor, memoize_types));
+	registry.entry(monitor::IDENTIFIER).or_default().push((monitor_constructor, monitor_types));
 }
 
 #[cfg(test)]

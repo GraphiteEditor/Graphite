@@ -6,7 +6,7 @@ use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
 /// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
-#[node_macro::node(category("Blending"))]
+#[node_macro::node(category("Blending"), icon("NodeBlendMode"))]
 fn blend_mode<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
@@ -25,7 +25,7 @@ fn blend_mode<T>(
 /// Modifies the opacity and/or fill of the input graphics by multiplying the existing values by these percentages.
 /// Opacity affects the transparency of the content (together with anything above which is clipped to it).
 /// Fill affects the transparency of the content itself, independent of any content clipped to it.
-#[node_macro::node(category("Blending"))]
+#[node_macro::node(category("Blending"), icon("NodeOpacity"))]
 fn opacity<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.
@@ -72,7 +72,7 @@ fn opacity<T>(
 }
 
 /// Sets whether the input graphics inherit the alpha of the content beneath them, "clipping" them to that content.
-#[node_macro::node(category("Blending"))]
+#[node_macro::node(category("Blending"), icon("NodeClippingMask"))]
 fn clipping_mask<T>(
 	_: impl Ctx,
 	/// The content that will be composited when rendering.

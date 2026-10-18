@@ -635,7 +635,6 @@ fn node_input_f64_round_trips_bit_exact() {
 /// Conversion must reject this rather than silently collapse them and drop a node.
 #[test]
 fn duplicate_runtime_node_id_is_rejected() {
-	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
@@ -702,7 +701,6 @@ fn scope_injections_round_trip() {
 /// network) must error rather than emit an injection pointing at a nonexistent runtime node.
 #[test]
 fn dangling_scope_injection_is_rejected() {
-	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
@@ -742,6 +740,9 @@ fn cyclic_network_reference_is_rejected() {
 	registry.node_instances.insert(
 		crate::NodeId(0),
 		Node {
+			presence: Default::default(),
+			network_timestamp: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(child_network_id),
 			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
@@ -752,6 +753,9 @@ fn cyclic_network_reference_is_rejected() {
 	registry.node_instances.insert(
 		crate::NodeId(1),
 		Node {
+			presence: Default::default(),
+			network_timestamp: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(crate::ROOT_NETWORK),
 			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),

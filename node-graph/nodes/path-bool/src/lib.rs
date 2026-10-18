@@ -1,10 +1,11 @@
+use core_types::list::ATTR_PATHS;
 use core_types::list::{ATTR_APPEARANCE, Item, List, NodeIdPath};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
 use graphic_types::Appearance;
 use graphic_types::graphic::bake_paint_transforms;
-use graphic_types::vector_types::vector::VectorExt;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use graphic_types::vector_types::vector::{Path, no_paths, paths_from_list_row_attributes};
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -17,7 +18,7 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
-#[node_macro::node(category("Vector: Modifier"), memoize)]
+#[node_macro::node(category("Vector: Modifier"), icon("NodeBooleanOperation"), memoize)]
 fn boolean_operation(
 	_: impl Ctx,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
@@ -59,7 +60,9 @@ fn boolean_operation(
 
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
+		let mut result_paths = result_vector_list.attribute::<List<Path>>(ATTR_PATHS, 0).cloned().unwrap_or_default();
+		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(&mut result_paths, merge_transform, 0.0001);
+		result_vector_list.set_attribute(ATTR_PATHS, 0, result_paths);
 	}
 
 	result_vector_list.into_iter().next().unwrap_or_default()
@@ -145,6 +148,8 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
+		// The result weaves its own paths rather than inheriting the operand's
+		attributes.remove::<List<Path>>(ATTR_PATHS);
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
@@ -155,21 +160,24 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 	for index in 0..vector.len() {
 		let element = vector.element(index).unwrap();
-		paths.push(to_bez_path(element, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
+		let element_paths = paths_from_list_row_attributes(vector, index).unwrap_or_else(|| no_paths());
+		paths.push(to_bez_path(element, element_paths, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
 	}
 
 	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
 		Ok(top) => top,
 		Err(e) => {
 			log::error!("Boolean operation failed while building topology: {e}");
+			row.set_attribute(ATTR_PATHS, List::<Path>::new());
 			list.push(row);
 			return list;
 		}
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-	for contour in contours.contours() {
-		row.element_mut().append_bezpath(closed(contour.path.clone()));
-	}
+	let mut result_paths = List::new();
+	let closed_contours = contours.contours().map(|contour| closed(contour.path.clone()));
+	row.element_mut().append_bezpaths(&mut result_paths, closed_contours);
+	row.set_attribute(ATTR_PATHS, result_paths);
 
 	list.push(row);
 	list
@@ -301,11 +309,11 @@ fn closed(mut path: BezPath) -> BezPath {
 	path
 }
 
-fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
+fn to_bez_path(vector: &Vector, element_paths: &List<Path>, transform: DAffine2) -> BezPath {
 	let transform = Affine::new(transform.to_cols_array());
 	let mut path = BezPath::new();
 
-	for subpath in vector.stroke_bezpath_iter() {
+	for subpath in vector.stroke_bezpath_iter(element_paths) {
 		let mut first = true;
 
 		for segment in closed(subpath).segments() {

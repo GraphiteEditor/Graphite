@@ -26,7 +26,7 @@ cargo run explore bisect
 
 This interactive tool helps you binary search through recent commits, test the build links of each, and pinpoint which change introduced a regression or added a feature.
 
-<div class="bisect-tool">
+<div class="bisect-tool" data-bisect-tool>
 
 <div class="phase active" data-phase="setup">
 	<div class="setup-section">
@@ -34,11 +34,11 @@ This interactive tool helps you binary search through recent commits, test the b
 			<span><strong>What are you looking for?</strong></span>
 		</div>
 		<label>
-			<input type="radio" name="bisect-mode" value="regression" checked />
+			<input type="radio" name="bisect-mode" value="regression" checked data-bisect-mode />
 			<span>Find when a regression or bug started</span>
 		</label>
 		<label>
-			<input type="radio" name="bisect-mode" value="feature" />
+			<input type="radio" name="bisect-mode" value="feature" data-bisect-mode />
 			<span>Find when a feature was added or fixed</span>
 		</label>
 	</div>
@@ -47,11 +47,11 @@ This interactive tool helps you binary search through recent commits, test the b
 			<span><strong>When do you estimate this changed?</strong></span>
 		</div>
 		<label>
-			<input type="radio" name="start-method" value="date" checked />
+			<input type="radio" name="start-method" value="date" checked data-start-method />
 			<span>Date</span>
 		</label>
 		<label>
-			<input type="radio" name="start-method" value="hash" />
+			<input type="radio" name="start-method" value="hash" data-start-method />
 			<span>Commit</span>
 		</label>
 	</div>
@@ -70,13 +70,13 @@ This interactive tool helps you binary search through recent commits, test the b
 	<div class="block feature-box-narrow">
 		<div class="step-header">
 			<span class="step-label" data-step-label><strong>Bisect step 1</strong></span>
-			<span class="go-back hidden" data-go-back-button>(<a>go back</a>)</span>
+			<span class="go-back hidden" data-go-back-button>(<a data-go-back-link>go back</a>)</span>
 		</div>
 		<div class="progress-info" data-progress-info></div>
 		<div class="commit-info" data-commit-info></div>
 		<span class="button arrow" data-test-build-button>Test this build</span>
-		<span class="findings">After testing, what have you found?</span>
-		<div class="bisect-actions">
+		<span class="findings" data-findings>After testing, what have you found?</span>
+		<div class="bisect-actions" data-bisect-actions>
 			<span class="button" data-issue-present-button></span>
 			<span class="button" data-issue-absent-button></span>
 		</div>

@@ -86,6 +86,12 @@ impl ToolMetadata for FreehandTool {
 	}
 }
 
+impl ToolEditTarget for FreehandTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
+	}
+}
+
 impl LayoutHolder for FreehandTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = self.options.drawing.fill.create_widgets(
@@ -435,9 +441,9 @@ mod test_freehand {
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DMat2, DVec2};
-	use graphene_std::vector::Vector;
+	use graphene_std::vector::VectorGeometry;
 
-	async fn get_vector_and_transform_list(editor: &mut EditorTestUtils) -> Vec<(Vector, DAffine2)> {
+	async fn get_vector_and_transform_list(editor: &mut EditorTestUtils) -> Vec<(VectorGeometry, DAffine2)> {
 		let document = editor.active_document();
 		let layers = document.metadata().all_layers();
 
@@ -454,18 +460,18 @@ mod test_freehand {
 			.collect()
 	}
 
-	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
+	fn verify_path_points(vector_and_transform_list: &[(VectorGeometry, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
 		assert_eq!(vector_and_transform_list.len(), 1, "There should be one item of Vector geometry");
 
 		let (vector, transform) = vector_and_transform_list
 			.iter()
-			.find(|(data, _)| !data.point_domain.ids().is_empty())
+			.find(|(data, _)| data.anchor_points().next().is_some())
 			.ok_or("Could not find path data")?;
 
-		let point_count = vector.point_domain.ids().len();
-		let segment_count = vector.segment_domain.ids().len();
+		let point_count = vector.anchor_points().count();
+		let segment_count = vector.segment_ids().len();
 
-		let actual_positions: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
+		let actual_positions: Vec<DVec2> = vector.anchor_positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
 			return Err(format!("Expected segments to be one less than points, got {segment_count} segments for {point_count} points"));
@@ -549,8 +555,8 @@ mod test_freehand {
 		assert!(!initial_vector_and_transform.is_empty(), "No vector geometry found after initial drawing");
 
 		let (initial_vector, _) = &initial_vector_and_transform[0];
-		let initial_point_count = initial_vector.point_domain.ids().len();
-		let initial_segment_count = initial_vector.segment_domain.ids().len();
+		let initial_point_count = initial_vector.anchor_points().count();
+		let initial_segment_count = initial_vector.segment_ids().len();
 
 		let existing_layer_id = {
 			let document = editor.active_document();
@@ -607,8 +613,8 @@ mod test_freehand {
 		assert_eq!(layer_count, 1, "Expected only one layer after drawing with Shift key");
 
 		let (final_vector, _) = &final_vector_and_transform[0];
-		let final_point_count = final_vector.point_domain.ids().len();
-		let final_segment_count = final_vector.segment_domain.ids().len();
+		let final_point_count = final_vector.anchor_points().count();
+		let final_segment_count = final_vector.segment_ids().len();
 
 		assert!(
 			final_point_count > initial_point_count,
@@ -698,7 +704,7 @@ mod test_freehand {
 
 	fn point_and_segment_counts(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> (usize, usize) {
 		let vector = editor.active_document().network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
-		(vector.point_domain.ids().len(), vector.segment_domain.ids().len())
+		(vector.anchor_points().count(), vector.segment_ids().len())
 	}
 
 	/// The viewport positions of the layer's anchors, split into the endpoints of its open paths and every other anchor.
@@ -708,7 +714,7 @@ mod test_freehand {
 		let transform = document.metadata().transform_to_viewport(layer);
 
 		let endpoints: Vec<_> = vector.anchor_endpoints().collect();
-		let viewport_position = |id| vector.point_domain.position_from_id(id).map(|position| transform.transform_point2(position));
+		let viewport_position = |id| vector.position_from_id(id).map(|position| transform.transform_point2(position));
 
 		let endpoint_positions = endpoints.iter().filter_map(|&id| viewport_position(id)).collect();
 		let other_positions = vector.anchor_points().filter(|id| !endpoints.contains(id)).filter_map(viewport_position).collect();
@@ -827,11 +833,7 @@ mod test_freehand {
 		let vector = document.network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
 		let transform = document.metadata().transform_to_viewport(layer);
 		for &pointer_position in &continuation[1..] {
-			let under_pointer = vector
-				.point_domain
-				.positions()
-				.iter()
-				.any(|&position| transform.transform_point2(position).distance(pointer_position) < 1.);
+			let under_pointer = vector.anchor_positions().iter().any(|&position| transform.transform_point2(position).distance(pointer_position) < 1.);
 			assert!(under_pointer, "Expected a point under the pointer at {pointer_position:?}");
 		}
 	}

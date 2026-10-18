@@ -26,6 +26,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// Sort the categories
 	let mut categories = nodes_by_category.keys().cloned().collect::<Vec<_>>();
 	categories.sort();
+	if OMIT_HIDDEN {
+		categories.retain(|category| !graphene_std::registry::is_hidden_category(category));
+	}
 
 	// Create _index.md for the node catalog page
 	page_catalog::write_catalog_index_page(&output_path, &categories);

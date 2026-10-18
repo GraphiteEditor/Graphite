@@ -7,6 +7,7 @@ use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::{NodeError, Poll};
+use image::ImageFormat;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
 use std::io::Cursor;
@@ -18,7 +19,28 @@ pub enum FileType {
 	Svg,
 	Png,
 	Jpg,
+	Webp,
+	Tiff,
+	Bmp,
+	Tga,
+	Ico,
 	Gif,
+}
+
+impl FileType {
+	/// The image format of a file type encoded from a single image, which excludes SVG and GIF.
+	fn raster_format(self) -> Option<ImageFormat> {
+		match self {
+			FileType::Png => Some(ImageFormat::Png),
+			FileType::Jpg => Some(ImageFormat::Jpeg),
+			FileType::Webp => Some(ImageFormat::WebP),
+			FileType::Tiff => Some(ImageFormat::Tiff),
+			FileType::Bmp => Some(ImageFormat::Bmp),
+			FileType::Tga => Some(ImageFormat::Tga),
+			FileType::Ico => Some(ImageFormat::Ico),
+			FileType::Svg | FileType::Gif => None,
+		}
+	}
 }
 
 pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
@@ -26,34 +48,59 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 		Some("svg") => Ok(FileType::Svg),
 		Some("png") => Ok(FileType::Png),
 		Some("jpg" | "jpeg") => Ok(FileType::Jpg),
+		Some("webp") => Ok(FileType::Webp),
+		Some("tif" | "tiff") => Ok(FileType::Tiff),
+		Some("bmp") => Ok(FileType::Bmp),
+		Some("tga") => Ok(FileType::Tga),
+		Some("ico") => Ok(FileType::Ico),
 		Some("gif") => Ok(FileType::Gif),
-		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .gif".to_string()),
+		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg, .webp, .tiff, .bmp, .tga, .ico, .gif".to_string()),
 	}
 }
 
-#[allow(clippy::too_many_arguments)]
-pub async fn export_document(
+/// One rendered frame of the document, as SVG text or as 8-bit RGBA pixels with straight alpha.
+enum RenderedFrame {
+	Svg(String),
+	Raster { data: Vec<u8>, width: u32, height: u32 },
+}
+
+/// The output settings shared by every kind of export.
+#[derive(Debug, Clone, Copy)]
+pub struct ExportSettings {
+	pub file_type: FileType,
+	pub scale: f64,
+	/// Output width and height in pixels, used when both are given
+	pub size: (Option<u32>, Option<u32>),
+	/// Whether raster formats that can keep transparency do so, instead of compositing onto white
+	pub transparent: bool,
+}
+
+/// Renders the document at the given animation time, as SVG text for an SVG export and as pixels for every other file type.
+async fn render_frame(
 	executor: &DynamicExecutor,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
-	output_path: PathBuf,
-	file_type: FileType,
-	scale: f64,
-	(width, height): (Option<u32>, Option<u32>),
-	transparent: bool,
+	settings: ExportSettings,
+	animation_time: Duration,
 	runtime: &AsyncRuntime,
 	spawner: &TokioSpawner,
-) -> Result<(), Box<dyn Error>> {
-	// Determine export format based on file type
-	let export_format = match file_type {
-		FileType::Svg => ExportFormat::Svg,
-		_ => ExportFormat::Raster,
-	};
+) -> Result<RenderedFrame, Box<dyn Error>> {
+	let ExportSettings {
+		file_type,
+		scale,
+		size: (width, height),
+		..
+	} = settings;
+	let export_format = if file_type == FileType::Svg { ExportFormat::Svg } else { ExportFormat::Raster };
 
-	// Create render config with export settings
+	// Create render config with export settings and the animation time
 	let mut render_config = RenderConfig {
 		scale,
 		export_format,
 		for_export: true,
+		time: TimingInformation {
+			time: animation_time.as_secs_f64(),
+			animation_time,
+		},
 		..Default::default()
 	};
 
@@ -62,71 +109,97 @@ pub async fn export_document(
 		render_config.viewport.resolution = UVec2::new(w, h);
 	}
 
-	// Execute the graph
-	let result = execute_until_settled(executor, runtime, spawner, render_config).await?;
-
-	// Handle the result based on output type
-	match result {
+	// Execute the graph and extract its output
+	match execute_until_settled(executor, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
-			RenderOutputType::Svg { svg, .. } => {
-				// Write SVG directly to file
-				std::fs::write(&output_path, svg)?;
-				log::info!("Exported SVG to: {}", output_path.display());
-			}
+			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
 				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
-
-				// Encode and write raster image
-				write_raster_image(output_path, file_type, data, width, height, transparent)?;
+				Ok(RenderedFrame::Raster { data, width, height })
 			}
-			RenderOutputType::Buffer { data, width, height } => {
-				// Encode and write raster image when buffer is already provided
-				write_raster_image(output_path, file_type, data, width, height, transparent)?;
-			}
+			RenderOutputType::Buffer { data, width, height } => Ok(RenderedFrame::Raster { data, width, height }),
 			#[cfg(target_family = "wasm")]
-			other => {
-				return Err(format!("Unexpected render output type: {:?}. Expected Texture, Buffer for raster export or Svg for SVG export.", other).into());
-			}
+			other => Err(format!("Unexpected render output type: {other:?}. Expected Texture, Buffer for raster export or Svg for SVG export.").into()),
 		},
-		other => return Err(format!("Expected RenderOutput, got: {:?}", other).into()),
+		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
 	}
+}
 
+/// Writes a rendered frame to a file of the export's type.
+fn write_frame(path: &Path, settings: ExportSettings, frame: RenderedFrame) -> Result<(), Box<dyn Error>> {
+	let contents = match frame {
+		RenderedFrame::Svg(svg) => svg.into_bytes(),
+		RenderedFrame::Raster { data, width, height } => encode_raster(settings.file_type, data, width, height, settings.transparent)?,
+	};
+	std::fs::write(path, contents)?;
 	Ok(())
 }
 
-fn write_raster_image(output_path: PathBuf, file_type: FileType, data: Vec<u8>, width: u32, height: u32, transparent: bool) -> Result<(), Box<dyn Error>> {
-	use image::{ImageFormat, RgbaImage};
+/// Encodes 8-bit RGBA pixels with straight alpha as a file of the given raster type.
+/// Unless transparency is kept, which JPG can't do, the image is composited onto white.
+fn encode_raster(file_type: FileType, data: Vec<u8>, width: u32, height: u32, transparent: bool) -> Result<Vec<u8>, Box<dyn Error>> {
+	use image::buffer::ConvertBuffer;
+	use image::codecs::tga::TgaEncoder;
+	use image::{DynamicImage, RgbaImage};
 
-	let image = RgbaImage::from_raw(width, height, data).ok_or("Failed to create image from buffer")?;
+	let Some(format) = file_type.raster_format() else {
+		return Err(format!("{file_type:?} can't be encoded from a single image").into());
+	};
+	if file_type == FileType::Ico && (width > 256 || height > 256) {
+		return Err("An ICO image can be at most 256 pixels wide and tall. Lower the scale or the output size.".into());
+	}
+
+	let mut image = RgbaImage::from_raw(width, height, data).ok_or("Failed to create image from buffer")?;
+
+	let image = if transparent && file_type != FileType::Jpg {
+		DynamicImage::ImageRgba8(image)
+	} else {
+		for pixel in image.pixels_mut() {
+			let [r, g, b, a] = pixel.0;
+			let alpha = a as f32 / 255.;
+			let blend = |channel: u8| (channel as f32 * alpha + 255. * (1. - alpha)).round() as u8;
+			*pixel = image::Rgba([blend(r), blend(g), blend(b), 255]);
+		}
+
+		// An ICO only holds images with an alpha channel, so it keeps the now-opaque one
+		if file_type == FileType::Ico {
+			DynamicImage::ImageRgba8(image)
+		} else {
+			DynamicImage::ImageRgb8(image.convert())
+		}
+	};
 
 	let mut cursor = Cursor::new(Vec::new());
 
-	match file_type {
-		FileType::Png => {
-			if transparent {
-				image.write_to(&mut cursor, ImageFormat::Png)?;
-			} else {
-				let image: image::RgbImage = image::DynamicImage::ImageRgba8(image).to_rgb8();
-				image.write_to(&mut cursor, ImageFormat::Png)?;
-			}
-			log::info!("Exported PNG to: {}", output_path.display());
-		}
-		FileType::Jpg => {
-			let image: image::RgbImage = image::DynamicImage::ImageRgba8(image).to_rgb8();
-			image.write_to(&mut cursor, ImageFormat::Jpeg)?;
-			log::info!("Exported JPG to: {}", output_path.display());
-		}
-		FileType::Svg | FileType::Gif => unreachable!("SVG and GIF should have been handled in export_document"),
+	// TGA is left uncompressed because the image crate's compressed runs continue from one row into the next, which many readers reject
+	if file_type == FileType::Tga {
+		image.write_with_encoder(TgaEncoder::new(&mut cursor).disable_rle())?;
+	} else {
+		image.write_to(&mut cursor, format)?;
 	}
 
-	std::fs::write(&output_path, cursor.into_inner())?;
+	Ok(cursor.into_inner())
+}
+
+pub async fn export_document(
+	executor: &DynamicExecutor,
+	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	output_path: PathBuf,
+	settings: ExportSettings,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+) -> Result<(), Box<dyn Error>> {
+	let frame = render_frame(executor, wgpu_executor, settings, Duration::ZERO, runtime, spawner).await?;
+	write_frame(&output_path, settings, frame)?;
+
+	log::info!("Exported to: {}", output_path.display());
 	Ok(())
 }
 
-/// Parameters for GIF animation export
+/// Parameters for exporting an animation as a GIF or an image sequence.
 #[derive(Debug, Clone, Copy)]
 pub struct AnimationParams {
 	/// Frames per second
@@ -155,13 +228,11 @@ impl AnimationParams {
 }
 
 /// Export an animated GIF by rendering multiple frames at different animation times
-#[allow(clippy::too_many_arguments)]
 pub async fn export_gif(
 	executor: &DynamicExecutor,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
 	output_path: PathBuf,
-	scale: f64,
-	(width, height): (Option<u32>, Option<u32>),
+	settings: ExportSettings,
 	animation: AnimationParams,
 	runtime: &AsyncRuntime,
 	spawner: &TokioSpawner,
@@ -186,44 +257,12 @@ pub async fn export_gif(
 
 		log::debug!("Rendering frame {}/{} at time {:?}", frame_idx + 1, animation.frames, animation_time);
 
-		// Create render config with animation time
-		let mut render_config = RenderConfig {
-			scale,
-			export_format: ExportFormat::Raster,
-			for_export: true,
-			time: TimingInformation {
-				time: animation_time.as_secs_f64(),
-				animation_time,
-			},
-			..Default::default()
-		};
-
-		// Set viewport dimensions if specified
-		if let (Some(w), Some(h)) = (width, height) {
-			render_config.viewport.resolution = UVec2::new(w, h);
-		}
-
-		// Execute the graph for this frame
-		let result = execute_until_settled(executor, runtime, spawner, render_config).await?;
-
-		// Extract RGBA data from result
-		let (data, img_width, img_height) = match result {
-			TaggedValue::RenderOutput(output) => match output.data {
-				RenderOutputType::Texture(texture) => {
-					let gpu_raster = Raster::<GPU>::new_gpu(texture);
-					let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
-					cpu_raster.to_flat_u8()
-				}
-				RenderOutputType::Buffer { data, width, height } => (data, width, height),
-				other => {
-					return Err(format!("Unexpected render output type for GIF frame: {:?}. Expected Texture or Buffer.", other).into());
-				}
-			},
-			other => return Err(format!("Expected RenderOutput for GIF frame, got: {:?}", other).into()),
+		let RenderedFrame::Raster { data, width, height } = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await? else {
+			return Err("A GIF frame must render as pixels".into());
 		};
 
 		// Create image frame
-		let image = RgbaImage::from_raw(img_width, img_height, data).ok_or("Failed to create image from buffer")?;
+		let image = RgbaImage::from_raw(width, height, data).ok_or("Failed to create image from buffer")?;
 
 		// Create GIF frame with delay (delay is in 10ms units)
 		let frame = Frame::from_parts(image, 0, 0, image::Delay::from_saturating_duration(std::time::Duration::from_millis(frame_delay as u64 * 10)));
@@ -235,6 +274,42 @@ pub async fn export_gif(
 	eprintln!();
 
 	log::info!("Exported GIF to: {}", output_path.display());
+	Ok(())
+}
+
+/// Export an animation as one numbered file per frame beside the output path (`name_000.png`, `name_001.png`, ..., zero-padded to fit the frame count).
+pub async fn export_image_sequence(
+	executor: &DynamicExecutor,
+	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	output_path: PathBuf,
+	settings: ExportSettings,
+	animation: AnimationParams,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+) -> Result<(), Box<dyn Error>> {
+	log::info!("Exporting image sequence: {} frames at {} fps", animation.frames, animation.fps);
+
+	let stem = output_path.file_stem().and_then(|stem| stem.to_str()).ok_or("The output path needs a file name")?;
+	let extension = output_path.extension().and_then(|extension| extension.to_str()).unwrap_or_default();
+	let directory = output_path.parent().map(Path::to_path_buf).unwrap_or_default();
+	std::fs::create_dir_all(&directory)?;
+	let digits = animation.frames.saturating_sub(1).max(1).ilog10() as usize + 1;
+
+	for frame_idx in 0..animation.frames {
+		let animation_time = Duration::from_secs_f64(frame_idx as f64 / animation.fps);
+
+		// Print progress to stderr (overwrites previous line)
+		eprint!("\rRendering frame {}/{}...", frame_idx + 1, animation.frames);
+
+		let frame = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await?;
+		let frame_path = directory.join(format!("{stem}_{frame_idx:0digits$}.{extension}"));
+		write_frame(&frame_path, settings, frame)?;
+	}
+
+	// Clear the progress line
+	eprintln!();
+
+	log::info!("Exported {} frames to: {}", animation.frames, directory.display());
 	Ok(())
 }
 
@@ -262,4 +337,62 @@ fn messages(error: &NodeError) -> String {
 		text.push_str(&messages(upstream));
 	}
 	text
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const RASTER_FILE_TYPES: [FileType; 7] = [FileType::Png, FileType::Jpg, FileType::Webp, FileType::Tiff, FileType::Bmp, FileType::Tga, FileType::Ico];
+
+	#[test]
+	fn every_raster_file_type_encodes_an_image_that_reads_back() {
+		// Opaque red, then fully transparent
+		let pixels = vec![255, 0, 0, 255, 0, 0, 0, 0];
+
+		for file_type in RASTER_FILE_TYPES {
+			for transparent in [true, false] {
+				let encoded = encode_raster(file_type, pixels.clone(), 2, 1, transparent).unwrap_or_else(|error| panic!("{file_type:?}: {error}"));
+				let format = file_type.raster_format().unwrap();
+				let decoded = image::load_from_memory_with_format(&encoded, format).unwrap_or_else(|error| panic!("{file_type:?} should read back: {error}"));
+				let decoded = decoded.to_rgba8();
+				assert_eq!(decoded.dimensions(), (2, 1), "{file_type:?}");
+
+				// The transparent pixel stays transparent only when asked to and possible, and otherwise lands on white
+				let pixel = decoded.get_pixel(1, 0).0;
+				if transparent && file_type != FileType::Jpg {
+					assert_eq!(pixel[3], 0, "{file_type:?}");
+				} else {
+					assert!(pixel.iter().all(|&channel| channel > 250), "{file_type:?} with transparency {transparent}: {pixel:?}");
+				}
+			}
+		}
+	}
+
+	#[test]
+	fn file_types_that_cannot_hold_the_image_say_so() {
+		assert!(encode_raster(FileType::Svg, vec![0; 4], 1, 1, true).is_err());
+		assert!(encode_raster(FileType::Gif, vec![0; 4], 1, 1, true).is_err());
+		assert!(encode_raster(FileType::Png, vec![0; 4], 2, 2, true).is_err());
+
+		let too_large = encode_raster(FileType::Ico, vec![0; 257 * 4], 257, 1, true).unwrap_err().to_string();
+		assert!(too_large.contains("256 pixels"), "{too_large}");
+		assert!(encode_raster(FileType::Ico, vec![0; 256 * 4], 256, 1, true).is_ok());
+	}
+
+	#[test]
+	fn tga_is_written_uncompressed() {
+		// Byte 2 of a TGA header is its image type, where 2 means uncompressed true color
+		let encoded = encode_raster(FileType::Tga, vec![255, 0, 0, 255, 0, 0, 0, 0], 2, 1, true).unwrap();
+		assert_eq!(encoded[2], 2);
+	}
+
+	#[test]
+	fn file_types_are_detected_from_the_extension() {
+		assert_eq!(detect_file_type(Path::new("frame.tif")), Ok(FileType::Tiff));
+		assert_eq!(detect_file_type(Path::new("frame.jpeg")), Ok(FileType::Jpg));
+		assert_eq!(detect_file_type(Path::new("frame.webp")), Ok(FileType::Webp));
+		assert!(detect_file_type(Path::new("frame.exr")).is_err());
+		assert!(detect_file_type(Path::new("frame")).is_err());
+	}
 }

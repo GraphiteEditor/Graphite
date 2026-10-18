@@ -16,7 +16,9 @@ members = [
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"libraries/ipsum",
+	"libraries/snapping",
 	"libraries/wgpu-sync",
+	"libraries/control-protocol",
 	"node-graph/libraries/graphene-hash",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
@@ -35,6 +37,7 @@ members = [
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
 	"tools/node-docs",
+	"tools/web-editor-driver",
 ]
 default-members = [
 	"editor",
@@ -42,6 +45,7 @@ default-members = [
 	"libraries/dyn-any",
 	"libraries/math-parser",
 	"libraries/ipsum",
+	"libraries/snapping",
 	"node-graph/graph-craft",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
@@ -53,7 +57,7 @@ default-members = [
 resolver = "2"
 
 [workspace.package]
-rust-version = "1.88"
+rust-version = "1.98"
 edition = "2024"
 authors = ["Graphite Authors <contact@graphite.art>"]
 homepage = "https://graphite.art"
@@ -77,6 +81,7 @@ preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 graphene-application-io = { path = "node-graph/libraries/application-io" }
 graphene-resource = { path = "node-graph/libraries/resources" }
+graphene-animation = { path = "node-graph/libraries/animation" }
 core-types = { path = "node-graph/libraries/core-types" }
 no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
@@ -106,8 +111,10 @@ wgpu-executor = { path = "node-graph/libraries/wgpu-executor" }
 wgpu-sync = { path = "libraries/wgpu-sync" }
 graphite-proc-macros = { path = "proc-macros" }
 graphite-editor = { path = "editor" }
+control-protocol = { path = "libraries/control-protocol" }
 graphene-canvas-utils = { path = "node-graph/libraries/canvas-utils" }
 ipsum = { path = "libraries/ipsum" }
+snapping = { path = "libraries/snapping" }
 
 # Workspace dependencies
 rustc-hash = "2.0"
@@ -123,7 +130,7 @@ env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
-convert_case = "0.8"
+convert_case = "0.12"
 titlecase = "3.6"
 fancy-regex = "0.18.0"
 unicode-segmentation = "1.13.2"
@@ -242,9 +249,8 @@ spin = "0.10"
 clap = "4.5"
 
 # Ensure these are kept in sync with .nix/deps/rust-gpu.nix
-# Git commit required for glam=0.33 support (TODO: use release when new version is published. Last publish was Apr 17)
-spirv-std = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "389dfe784b5992b3443b8969fdae2f82c932c552", features = ["bytemuck"] }
-cargo-gpu-install = { git = "https://github.com/Rust-GPU/rust-gpu.git", rev = "389dfe784b5992b3443b8969fdae2f82c932c552", default-features = false }
+spirv-std = { version = "0.10.0", features = ["bytemuck"] }
+cargo-gpu-install = { version = "0.10.0", default-features = false }
 
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }

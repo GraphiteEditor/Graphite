@@ -14,12 +14,25 @@ impl MessageHandler<BroadcastMessage, ()> for BroadcastMessageHandler {
 			BroadcastMessage::TriggerEvent(message) => self.event.process_message(message, responses, EventMessageContext { listeners: &mut self.listeners }),
 
 			// Messages
-			BroadcastMessage::SubscribeEvent { on, send } => self.listeners.entry(on).or_default().push(*send),
+			BroadcastMessage::SubscribeEvent { on, send } => {
+				// Skip an existing listener, since some are subscribed again on every document switch
+				let listeners = self.listeners.entry(on).or_default();
+				if !listeners.contains(&send) {
+					listeners.push(*send);
+				}
+			}
 			BroadcastMessage::UnsubscribeEvent { on, send } => self.listeners.entry(on).or_default().retain(|msg| *msg != *send),
 		}
 	}
 
 	fn actions(&self) -> ActionList {
 		actions!(EventMessageDiscriminant;)
+	}
+}
+
+impl BroadcastMessageHandler {
+	#[cfg(test)]
+	pub fn listener_count(&self) -> usize {
+		self.listeners.values().map(Vec::len).sum()
 	}
 }

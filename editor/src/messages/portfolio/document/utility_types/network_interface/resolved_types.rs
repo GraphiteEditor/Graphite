@@ -4,12 +4,30 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
+use graphene_std::NodeIOTypes;
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
+
+/// Whether a `source` type can feed a `connector` type, directly or through the `input_adapter` node the compiler inserts to convert elements (such as `Color` into `Graphic`).
+pub fn type_feeds_connector(source: &Type, connector: &Type) -> bool {
+	let source = source.nested_type();
+	let connector = connector.nested_type();
+	if source == connector {
+		return true;
+	}
+
+	let (Type::Item(element) | Type::List(element)) = connector else { return false };
+	let adapter = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{}>", element.identifier_name()));
+	NODE_REGISTRY.get(&adapter).is_some_and(|implementations| {
+		implementations
+			.keys()
+			.any(|node_io| node_io.return_value.nested_type() == connector && node_io.inputs.first().is_some_and(|input| input.nested_type() == source))
+	})
+}
 
 // This file contains utility methods for interfacing with the resolved types returned from the compiler
 #[derive(Debug, Default)]
@@ -81,7 +99,7 @@ impl TypeSource {
 		}
 	}
 
-	/// Used when searching for nodes in the add Node popup.
+	/// Used when searching for nodes in the add node menu.
 	pub fn add_node_string(self) -> Option<String> {
 		self.compiled_nested_type().map(|ty| format!("type:{ty}"))
 	}
@@ -290,36 +308,91 @@ impl NodeNetworkInterface {
 
 				intersection.into_iter().collect::<Vec<_>>()
 			}
-			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-				let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
-					// The compiler removes the passthrough node, so it's expected to be absent from the registry
-					if proto_node_identifier != &graphene_std::ops::passthrough::IDENTIFIER {
-						log::error!("Proto node `{proto_node_identifier:?}` not found in the node registry, in potential_valid_input_types");
-					}
-					return Vec::new();
-				};
-				let number_of_inputs = self.number_of_inputs(node_id, network_path);
-				implementations
-					.keys()
-					.filter_map(|node_io| {
-						// Check if this NodeIOTypes implementation is valid for the other inputs
-						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
-							let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, iterator_index), network_path);
-							// TODO: Fix type checking for different call arguments
-							// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
-							node_io.inputs.get(iterator_index).map(|ty| ty.nested_type()) == input_type.compiled_nested_type()
-						});
-
-						// If so, then return the input at the chosen index
-						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
-					})
-					.collect::<Vec<_>>()
-			}
+			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => self
+				.implementations_matching_inputs(proto_node_identifier, node_id, Some(*input_index), network_path)
+				.filter_map(|node_io| node_io.inputs.get(*input_index).cloned())
+				.collect::<Vec<_>>(),
 			DocumentNodeImplementation::Extract => {
 				log::error!("Input types for extract node not supported");
 				Vec::new()
 			}
 		}
+	}
+
+	/// The types an output could produce: its compiled type, or else what [`Self::possible_output_types`] finds.
+	pub fn potential_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
+		if let Some(compiled_type) = self.output_type(output_connector, network_path).compiled_nested_type() {
+			return vec![compiled_type.clone()];
+		}
+
+		// Nodes outside the compiled graph, such as disconnected ones, have no resolved type
+		self.possible_output_types(output_connector, network_path)
+	}
+
+	/// Every type an output could produce given its node's current inputs, regardless of the one it was compiled with. An import can carry whatever its
+	/// subgraph node's input accepts. Only the primary output of a proto node is known, since a node's other outputs are fields of its return value.
+	pub fn possible_output_types(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
+		match output_connector {
+			OutputConnector::Import(import_index) => {
+				let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
+					return Vec::new();
+				};
+				self.potential_valid_input_types(&InputConnector::node_at_index(*encapsulating_node_id, *import_index), encapsulating_path)
+			}
+			OutputConnector::Node { node_id, output_index } => match self.implementation(node_id, network_path) {
+				Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) if *output_index == 0 => self
+					.implementations_matching_inputs(proto_node_identifier, node_id, None, network_path)
+					.map(|node_io| node_io.return_value.nested_type().clone())
+					.collect(),
+				// A subgraph's output carries whatever feeds its export
+				Some(DocumentNodeImplementation::Network(_)) => {
+					let nested_path = [network_path, &[*node_id]].concat();
+					let export = InputConnector::Export(*output_index);
+					match self.upstream_output_connector(&export, &nested_path) {
+						Some(upstream_output) => self.possible_output_types(&upstream_output, &nested_path),
+						// A value given to the export, unless it's a new export's empty placeholder
+						None => self
+							.input_type(&export, &nested_path)
+							.compiled_nested_type()
+							.filter(|value_type| **value_type != concrete!(()))
+							.cloned()
+							.into_iter()
+							.collect(),
+					}
+				}
+				_ => Vec::new(),
+			},
+		}
+	}
+
+	/// The registry implementations of a proto node whose inputs accept the node's current input types, ignoring `disregarded_input_index`.
+	fn implementations_matching_inputs<'a>(
+		&'a self,
+		proto_node_identifier: &ProtoNodeIdentifier,
+		node_id: &'a NodeId,
+		disregarded_input_index: Option<usize>,
+		network_path: &'a [NodeId],
+	) -> impl Iterator<Item = &'static NodeIOTypes> + 'a {
+		let implementations = NODE_REGISTRY.get(proto_node_identifier);
+
+		// The compiler removes the passthrough node, so it's expected to be absent from the registry
+		if implementations.is_none() && proto_node_identifier != &graphene_std::ops::passthrough::IDENTIFIER {
+			log::error!("Proto node `{proto_node_identifier:?}` not found in the node registry");
+		}
+
+		let number_of_inputs = self.number_of_inputs(node_id, network_path);
+		implementations.into_iter().flat_map(|implementations| implementations.keys()).filter(move |node_io| {
+			(0..number_of_inputs).filter(|index| Some(*index) != disregarded_input_index).all(|index| {
+				let input_type = self.input_type_not_invalid(&InputConnector::node_at_index(*node_id, index), network_path);
+				// TODO: Fix type checking for different call arguments
+				// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
+				match (input_type.compiled_nested_type(), node_io.inputs.get(index)) {
+					(Some(source), Some(connector)) => type_feeds_connector(source, connector),
+					(None, None) => true,
+					_ => false,
+				}
+			})
+		})
 	}
 
 	/// Performs a downstream traversal to ensure input type will work in the full context of the graph.
@@ -365,16 +438,30 @@ impl NodeNetworkInterface {
 					Some((encapsulating_node, encapsulating_path)) => self.valid_output_types(&OutputConnector::node(*encapsulating_node, *export_index), encapsulating_path),
 					None => {
 						// Valid types for the export are all types that can be fed into the render node
-						let render_node = graphene_std::render_node::render::IDENTIFIER;
+						let render_node = graphene_std::render_node::render_intermediate::IDENTIFIER;
 						let Some(implementations) = NODE_REGISTRY.get(&render_node) else {
 							log::error!("Protonode {render_node:?} not found in registry");
 							return Vec::new();
 						};
-						implementations.keys().map(|types| types.inputs[1].clone()).collect()
+						implementations.keys().filter_map(|types| types.inputs.first().cloned()).collect()
 					}
 				}
 			}
 		}
+	}
+
+	/// Whether a multi-output node is framed over a list, which happens when a list reaches any input its single-item variant takes as an `Item`.
+	fn multi_output_node_is_mapped(&self, node_id: &NodeId, identifier: &ProtoNodeIdentifier, mapped_type: &Type, network_path: &[NodeId]) -> bool {
+		let Some(implementations) = NODE_REGISTRY.get(identifier) else { return false };
+		let Some(single_item_variant) = implementations.keys().find(|node_io| node_io.return_value.nested_type() != mapped_type) else {
+			return false;
+		};
+
+		single_item_variant
+			.inputs
+			.iter()
+			.enumerate()
+			.any(|(input_index, declared_type)| matches!(declared_type.nested_type(), Type::Item(_)) && self.input_type(&InputConnector::node_at_index(*node_id, input_index), network_path).is_list())
 	}
 
 	pub fn output_type(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> TypeSource {
@@ -395,10 +482,26 @@ impl NodeNetworkInterface {
 					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => {
 						self.input_type(&InputConnector::primary_input(*node_id), network_path)
 					}
-					DocumentNodeImplementation::ProtoNode(_) => match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
-						Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
-						None => TypeSource::Unknown,
-					},
+					DocumentNodeImplementation::ProtoNode(identifier) => {
+						// A multi-output proto node's field output types are recorded in the registry, as lists in its mapped variant.
+						// The hidden primary output has no field, so it falls through to the compiled types below.
+						if let Some(metadata) = graphene_std::registry::MULTI_OUTPUT_NODES.get(identifier)
+							&& let Some(field_index) = metadata.field_index_for_output(*output_index)
+						{
+							return match metadata.fields.get(field_index) {
+								Some(field) => {
+									let is_mapped = self.multi_output_node_is_mapped(node_id, identifier, &metadata.mapped_type, network_path);
+									TypeSource::Compiled(if is_mapped { field.mapped_ty.clone() } else { field.ty.clone() })
+								}
+								None => TypeSource::Error("Output index out of range for proto node"),
+							};
+						}
+
+						match self.resolved_types.types.get(&[network_path, &[*node_id]].concat()) {
+							Some(resolved_type) => TypeSource::Compiled(resolved_type.output.clone()),
+							None => TypeSource::Unknown,
+						}
+					}
 					DocumentNodeImplementation::Extract => TypeSource::Compiled(concrete!(())),
 				}
 			}
@@ -433,5 +536,27 @@ impl NodeNetworkInterface {
 			.unwrap_or_default();
 
 		intersection.into_iter().collect::<Vec<_>>()
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::type_feeds_connector;
+	use graph_craft::item;
+	use graphene_std::vector::style::DashPattern;
+	use graphene_std::{Color, Graphic};
+
+	#[test]
+	fn input_adapter_conversions_feed_connectors() {
+		assert!(type_feeds_connector(&item!(f64), &item!(f64)), "identical types should match directly");
+		assert!(
+			type_feeds_connector(&item!(Color), &item!(Graphic)),
+			"a color paint should feed a graphic paint connector through its input adapter"
+		);
+		assert!(
+			type_feeds_connector(&item!(f64), &item!(DashPattern)),
+			"a number should feed a dash pattern connector through its input adapter"
+		);
+		assert!(!type_feeds_connector(&item!(f64), &item!(Graphic)), "a number has no conversion into a graphic");
 	}
 }

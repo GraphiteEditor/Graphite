@@ -1,4 +1,24 @@
-import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+// The flexbox styles for the parts of a widget's sizing that are set, leaving the rest to the defaults of the layout it appears in
+export function widgetSizingStyles(sizing: Partial<WidgetSizing> | undefined): Record<string, string> {
+	const styles: Record<string, string> = {};
+	if (typeof sizing?.basis === "number") styles["flex-basis"] = `${sizing.basis}px`;
+	if (typeof sizing?.grow === "boolean") styles["flex-grow"] = sizing.grow ? "1" : "0";
+	if (typeof sizing?.shrink === "boolean") styles["flex-shrink"] = sizing.shrink ? "1" : "0";
+	if (typeof sizing?.minWidth === "number") styles["min-width"] = `${sizing.minWidth}px`;
+	if (typeof sizing?.maxWidth === "number") styles["max-width"] = `${sizing.maxWidth}px`;
+	return styles;
+}
+
+// Writes out styles as the text of an element's `style` attribute
+export function styleText(styles: Record<string, string>): string | undefined {
+	return (
+		Object.entries(styles)
+			.map(([property, value]) => `${property}: ${value};`)
+			.join(" ") || undefined
+	);
+}
 
 type UIItem = Layout | LayoutGroup | WidgetInstance[][] | WidgetInstance[] | WidgetInstance;
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
@@ -19,7 +39,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 			if (targetLayout && "Column" in targetLayout) return targetLayout.Column.columnWidgets[i];
 			if (targetLayout && "Row" in targetLayout) return targetLayout.Row.rowWidgets[i];
 			if (targetLayout && "Table" in targetLayout) return targetLayout.Table.tableWidgets[i];
-			if (targetLayout && "Section" in targetLayout) return targetLayout.Section.layout[i];
+			if (targetLayout && "NodeSection" in targetLayout) return targetLayout.NodeSection.layout[i];
 			if (targetLayout && "widget" in targetLayout && "widgetId" in targetLayout) {
 				if ("PopoverButton" in targetLayout.widget && targetLayout.widget.PopoverButton.popoverLayout) {
 					return targetLayout.widget.PopoverButton.popoverLayout[i];

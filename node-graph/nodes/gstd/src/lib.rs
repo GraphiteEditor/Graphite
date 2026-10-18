@@ -33,6 +33,7 @@ pub mod vector {
 	pub use vector_types::vector::algorithms;
 	pub use vector_types::vector::click_target;
 	pub use vector_types::vector::misc::HandleId;
+	pub use vector_types::vector::{CurveType, Path, VectorGeometry, WorkingVector, no_paths, paths_from_item_attributes, paths_from_list_row_attributes};
 	pub use vector_types::vector::{PointId, SegmentId};
 	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 

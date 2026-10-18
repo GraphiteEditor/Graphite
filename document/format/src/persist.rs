@@ -134,7 +134,7 @@ impl<L: Layout> Gdd<L> {
 	/// advanced past what the working copy reflects, so the caller should treat the document as needing
 	/// re-persist (mirrors [`stage_runtime_snapshot`](Self::stage_runtime_snapshot)).
 	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), Error> {
-		self.session.apply_hot_op(op.clone())?;
+		self.session.replay_hot_op(op.clone())?;
 		self.append_hot_frame(&op)?;
 		Ok(())
 	}
@@ -176,6 +176,8 @@ impl<L: Layout> Gdd<L> {
 	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
+			// The annotation ticked the clock, which a reopen must not hand out again.
+			self.persist_session_state()?;
 		}
 		Ok(())
 	}
@@ -194,10 +196,14 @@ impl<L: Layout> Gdd<L> {
 	fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			peer_id: self.session.peer(),
+			user_id: self.session.user(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
+			last_hot_sequence: self.session.last_hot_sequence(),
+			retired_marks: self.session.retired_marks().clone(),
+			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};
@@ -205,12 +211,10 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Re-snapshot the materialized working registry to `registry.bin`. `Session::load` trusts the stored
-	/// registry to match the persisted `head`, so any cursor move (undo/redo) that rewinds the working
-	/// registry without retiring must re-persist it or a reopen would read a registry inconsistent with
-	/// `head`. Synchronous and hot-path-safe (`write_non_blocking`).
+	/// Re-snapshot the retired registry to `registry.bin`. `Session::load` trusts it to match the persisted `head`
+	/// and replays the hot log on top, so it must hold no hot op, and any cursor move must re-persist it.
 	fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
-		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
+		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.retired_registry())?;
 		Ok(())
 	}
 

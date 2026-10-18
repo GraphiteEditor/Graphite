@@ -20,8 +20,8 @@ use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::transform::RenderQuality;
-use graphene_std::vector::Vector;
 use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
 use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
@@ -61,7 +61,7 @@ pub struct NodeRuntime {
 	// TODO: Remove, it doesn't need to be persisted anymore
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
-	vector_modify: HashMap<NodeId, Vector>,
+	vector_modify: HashMap<NodeId, VectorGeometry>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -464,7 +464,11 @@ impl NodeRuntime {
 			// Vector list: vector modifications
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
 				// Insert the vector modify
-				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
+				let geometry = VectorGeometry::new(
+					io.output.element(0).cloned().unwrap_or_default(),
+					paths_from_list_row_attributes(&io.output, 0).cloned().unwrap_or_default(),
+				);
+				self.vector_modify.insert(parent_network_node_id, geometry);
 			}
 			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
 			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
@@ -487,7 +491,7 @@ impl NodeRuntime {
 					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
 				}
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Vector>>>() {
-				self.vector_modify.insert(parent_network_node_id, io.output.element().clone());
+				self.vector_modify.insert(parent_network_node_id, VectorGeometry::from_item(&io.output));
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<String>>>() {
 				if update_thumbnails {
 					let singleton = List::new_from_item(io.output.clone());

@@ -21,6 +21,7 @@ shader-nodes = ["std", "dep:raster-nodes-shaders", "dep:wgpu-executor"]
 std = [
 	"serde",
 	"dep:core-types",
+	"dep:graphene-core",
 	"dep:dyn-any",
 	"dep:graphene-resource",
 	"dep:graphene-hash",
@@ -32,6 +33,7 @@ std = [
 	"dep:rand_chacha",
 	"dep:fastnoise-lite",
 	"dep:kurbo",
+	"dep:color",
 ]
 wasm = [
 	"core-types/wasm",
@@ -49,6 +51,7 @@ node-macro = { workspace = true }
 # Local std dependencies
 dyn-any = { workspace = true, optional = true }
 core-types = { workspace = true, optional = true }
+graphene-core = { workspace = true, optional = true }
 graphene-resource = { workspace = true, optional = true }
 graphene-hash = { workspace = true, optional = true }
 raster-types = { workspace = true, optional = true }
@@ -71,6 +74,7 @@ rand_chacha = { workspace = true, optional = true }
 fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
+color = { workspace = true, optional = true }
 
 # Workspace Wasm dependencies
 tsify = { workspace = true, optional = true }

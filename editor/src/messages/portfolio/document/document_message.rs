@@ -7,11 +7,13 @@ use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainNodeCopy, NodeTemplate};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2, UVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Appearance;
+use graphene_std::list::Item;
 use graphene_std::raster::BlendMode;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -33,7 +35,7 @@ pub enum DocumentMessage {
 	#[child]
 	Overlays(OverlaysMessage),
 	#[child]
-	PropertiesPanel(PropertiesPanelMessage),
+	Inspector(InspectorMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
 	#[child]
@@ -89,6 +91,9 @@ pub enum DocumentMessage {
 	GridVisibility {
 		visible: bool,
 	},
+	LayersPanelHoverOverlays {
+		context: OverlayContext,
+	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
 	ExpandFillStrokeOnSelectedLayers,
@@ -100,9 +105,27 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	ReorderPropertiesSection {
+	ReorderInspectorSection {
 		node_id: NodeId,
 		insert_index: usize,
+		duplicate: bool,
+	},
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
+		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
+		insert_index: usize,
+		select_copies: bool,
+	},
+	PasteChainNodes {
+		copies: Vec<ChainNodeCopy>,
+	},
+	PasteNodes {
+		nodes: Vec<(NodeId, NodeTemplate)>,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
@@ -162,6 +185,12 @@ pub enum DocumentMessage {
 		ctrl: bool,
 		shift: bool,
 	},
+	SelectChainNode {
+		layer: NodeId,
+		node_id: NodeId,
+		ctrl: bool,
+		shift: bool,
+	},
 	SetActivePanel {
 		active_panel: PanelType,
 	},
@@ -170,6 +199,14 @@ pub enum DocumentMessage {
 	},
 	SetGraphFadeArtwork {
 		percentage: f64,
+	},
+	/// Renames a layer in the network the node graph is showing, which may be a subgraph.
+	SetLayerNameInGraph {
+		node_id: NodeId,
+		name: String,
+	},
+	SetLayersPanelHoveredLayer {
+		id: Option<NodeId>,
 	},
 	SetNodePinned {
 		node_id: NodeId,
@@ -194,6 +231,9 @@ pub enum DocumentMessage {
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},
+	SetSnappingAngleStep {
+		degrees: f64,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
@@ -201,6 +241,10 @@ pub enum DocumentMessage {
 	SetRenderMode {
 		render_mode: RenderMode,
 	},
+	ShowNodeInGraph {
+		node_id: NodeId,
+	},
+	ShowSelectionInGraph,
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,
@@ -214,7 +258,19 @@ pub enum DocumentMessage {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
-	ToggleNodePropertiesSectionExpanded {
+	ToggleNodeInspectorSectionExpanded {
+		node_id: NodeId,
+		recursive: bool,
+	},
+	ToggleNodeInspectorInputChain {
+		node_id: NodeId,
+		input_index: usize,
+	},
+	ToggleLayerChainExpanded {
+		layer_id: NodeId,
+	},
+	/// Hides or shows a node in the network holding the selection, which may be a subgraph.
+	ToggleNodeVisibility {
 		node_id: NodeId,
 	},
 	ToggleSelectedVisibility,
@@ -226,6 +282,7 @@ pub enum DocumentMessage {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
 		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
+		document_to_viewport: DAffine2,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
@@ -239,11 +296,12 @@ pub enum DocumentMessage {
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
 	},
-	UpdateVectorData {
-		vector_data: HashMap<NodeId, Arc<Vector>>,
-	},
 	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
-	// `UpdateAppearanceAttributes` is produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	// `UpdateVectorData` and `UpdateAppearanceAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so they never reach that serialization point.
+	#[serde(skip)]
+	UpdateVectorData {
+		vector_data: HashMap<NodeId, Arc<Item<Vector>>>,
+	},
 	#[serde(skip)]
 	UpdateAppearanceAttributes {
 		appearance_attributes: HashMap<NodeId, Arc<Appearance>>,

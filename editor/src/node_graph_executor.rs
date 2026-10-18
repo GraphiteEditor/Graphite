@@ -15,7 +15,7 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{Vector, graphic_types};
+use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, paths_from_list_row_attributes};
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
@@ -35,7 +35,7 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: ExecutionResult,
 	responses: VecDeque<FrontendMessage>,
-	vector_modify: HashMap<NodeId, Vector>,
+	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
 }
@@ -89,6 +89,8 @@ pub struct NodeGraphExecutor {
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
+	/// The view the render was asked for, which the footprints it reports back are measured in.
+	document_to_viewport: DAffine2,
 	// TODO: Eventually remove this document upgrade code
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
@@ -126,6 +128,12 @@ impl NodeGraphExecutor {
 			pending: None,
 		};
 		(node_executor, node_runtime)
+	}
+
+	/// Allows the test runner to see if any more executions have been queued.
+	#[cfg(test)]
+	pub fn current_execution_id(&self) -> u64 {
+		self.current_execution_id
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack.
@@ -217,6 +225,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -288,6 +297,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -352,6 +362,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: Some(export_config),
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -455,7 +466,7 @@ impl NodeGraphExecutor {
 
 					match (node_graph_output, execution_context.export_config) {
 						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses),
-						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, responses),
+						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, execution_context.document_to_viewport, responses),
 						(None, _) => {}
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
@@ -619,6 +630,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: Some((network_path, fill_node_id, gradient)),
 			},
 		));
@@ -699,7 +711,7 @@ impl NodeGraphExecutor {
 		self.node_graph_hash = 0;
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, document_to_viewport: DAffine2, responses: &mut VecDeque<Message>) {
 		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
 			log::error!("Invalid node graph output type: {node_graph_output:#?}");
 			responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
@@ -756,6 +768,7 @@ impl NodeGraphExecutor {
 			upstream_footprints,
 			local_transforms,
 			first_element_source_id,
+			document_to_viewport,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateOutlines { outlines });
@@ -879,7 +892,8 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 	if let Some(list) = introspected_output::<List<Vector>>(data) {
 		let vector = list.element(0)?;
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let bounds = vector.nonzero_bounding_box();
+		let paths = paths_from_list_row_attributes(&list, 0).unwrap_or_else(|| no_paths());
+		let bounds = vector.nonzero_bounding_box(paths);
 		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		return Some((bounding_box_affine, item_transform));
 	}

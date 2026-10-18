@@ -61,6 +61,7 @@
 		class:checked
 		class:mixed
 		for={`checkbox-input-${id}`}
+		data-checkbox-label={id}
 		on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
@@ -91,8 +92,6 @@
 		label {
 			display: flex;
 			height: 16px;
-			// Provides rounded corners for the :focus outline
-			border-radius: 2px;
 
 			.checkbox-box {
 				flex: 0 0 auto;

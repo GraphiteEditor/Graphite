@@ -40,12 +40,12 @@ enum Command {
 		/// Path to the .graphite document
 		document: PathBuf,
 	},
-	/// Export a .graphite document to a file (SVG, PNG, JPG, or GIF).
+	/// Export a .graphite document to a file (SVG, PNG, JPG, WebP, TIFF, BMP, TGA, ICO, or GIF).
 	Export {
 		/// Path to the .graphite document
 		document: PathBuf,
 
-		/// Output file path (extension determines format: .svg, .png, .jpg, .gif)
+		/// Output file path (extension determines format: .svg, .png, .jpg, .webp, .tiff, .bmp, .tga, .ico, .gif)
 		#[clap(long, short = 'o')]
 		output: PathBuf,
 
@@ -61,19 +61,19 @@ enum Command {
 		#[clap(long)]
 		height: Option<u32>,
 
-		/// Transparent background for PNG exports
+		/// Keep transparency in PNG, WebP, TIFF, BMP, TGA, and ICO exports instead of compositing onto white
 		#[clap(long)]
 		transparent: bool,
 
-		/// Frames per second for GIF animation (default: 30)
+		/// Frames per second for GIF animation or an image sequence (default: 30)
 		#[clap(long, default_value = "30")]
 		fps: f64,
 
-		/// Total number of frames for GIF animation
+		/// Total number of frames for GIF animation or an image sequence (an export of more than one frame to a format besides GIF writes numbered files)
 		#[clap(long)]
 		frames: Option<u32>,
 
-		/// Animation duration in seconds for GIF (takes precedence over --frames)
+		/// Animation duration in seconds for GIF animation or an image sequence (takes precedence over --frames)
 		#[clap(long)]
 		duration: Option<f64>,
 	},
@@ -217,12 +217,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				return Err("Fps number must be positive".into());
 			}
 
-			// Perform export based on file type
+			// Perform export based on file type, where a multi-frame export to a format besides GIF becomes a numbered image sequence
+			let settings = export::ExportSettings {
+				file_type,
+				scale,
+				size: (width, height),
+				transparent,
+			};
+			let animation = export::AnimationParams::new(fps, frames, duration);
 			if file_type == export::FileType::Gif {
-				let animation = export::AnimationParams::new(fps, frames, duration);
-				export::export_gif(&executor, wgpu_executor_ref, output, scale, (width, height), animation, &runtime, &spawner).await?;
+				export::export_gif(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
+			} else if animation.frames > 1 {
+				if file_type == export::FileType::Ico {
+					return Err("ICO can't be exported as an image sequence".into());
+				}
+				export::export_image_sequence(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent, &runtime, &spawner).await?;
+				export::export_document(&executor, wgpu_executor_ref, output, settings, &runtime, &spawner).await?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),

@@ -5,6 +5,8 @@ import pluginPrettier from "eslint-plugin-prettier";
 import pluginSvelte from "eslint-plugin-svelte";
 import globals from "globals";
 import ts from "typescript-eslint";
+// eslint-disable-next-line no-restricted-imports -- The config loads the rule from beside it, where absolute paths like `/src` don't resolve
+import requireDataSelectors from "./eslint-require-data-selectors.js";
 
 const importOrder = {
 	alphabetize: { order: "asc", caseInsensitive: true },
@@ -38,6 +40,7 @@ export default defineConfig([
 	{
 		plugins: {
 			prettier: pluginPrettier,
+			graphite: { rules: { "require-data-selectors": requireDataSelectors } },
 		},
 		settings: {
 			"import/parsers": { "@typescript-eslint/parser": [".ts"] },
@@ -123,6 +126,9 @@ export default defineConfig([
 			"import/no-relative-packages": "error",
 			"import/no-named-as-default-member": "off",
 			"import/order": ["error", importOrder],
+
+			// Graphite's own rules (for project conventions)
+			"graphite/require-data-selectors": "error",
 		},
 	},
 	{

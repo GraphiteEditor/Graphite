@@ -25,7 +25,7 @@
 	<LayoutCol class="content-container">
 		<LayoutCol class="content">
 			<LayoutRow class="logotype">
-				<IconLabel icon="GraphiteLogotypeSolid" />
+				<IconLabel icon="GraphiteLogotype" />
 			</LayoutRow>
 			<LayoutRow class="actions">
 				<WidgetLayout layout={$welcomeScreenButtonsLayout} layoutTarget="WelcomeScreenButtons" />

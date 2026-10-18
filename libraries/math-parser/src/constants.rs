@@ -348,20 +348,36 @@ fn combinatorial(x: Number, r: u64, binomial: bool) -> Value {
 	Value::Number(apply_climbing(x, |real| over_top(Complex::from(real)).re, over_top))
 }
 
-/// Resolves a base-suffixed function name like `log2` or `root3.25` into the corresponding two-argument
-/// function and the baked-in second argument parsed from the suffix.
-pub fn suffixed_function(name: &str) -> Option<(BuiltinFunction, f64)> {
-	let (function, suffix) = ["log", "root"].into_iter().find_map(|prefix| Some((prefix, name.strip_prefix(prefix)?)))?;
+/// The builtins whose second argument can be written into the name as a suffix, each as its form with the `_` that may come before
+/// the suffix, like `log_2(x)` or `log2(x)` for `log(x, 2)`.
+pub const SUFFIXED_FORMS: [&str; 2] = ["log_", "root_"];
+
+/// A base-suffixed form of a builtin, like `log2` or `root3.25`.
+pub struct SuffixedFunction {
+	/// The name of the builtin it's a form of, like `log`.
+	pub name: &'static str,
+	pub function: BuiltinFunction,
+	/// The second argument its suffix bakes in.
+	pub argument: f64,
+}
+
+/// Resolves a base-suffixed function name like `log2` or `root3.25` into the two-argument builtin it's a form of and the second
+/// argument parsed from the suffix.
+pub fn suffixed_function(name: &str) -> Option<SuffixedFunction> {
+	let (builtin, suffix) = SUFFIXED_FORMS.into_iter().find_map(|form| {
+		let builtin = form.strip_suffix('_')?;
+		Some((builtin, name.strip_prefix(builtin)?))
+	})?;
 	let suffix = suffix.strip_prefix('_').unwrap_or(suffix);
 
 	// A base is written in plain decimal, leaving anything else, like the keyword-valued `loginf` or the scientific `log2e5`, to resolve as a variable or custom function
 	if !suffix.starts_with(|c: char| c.is_ascii_digit()) || !suffix.chars().all(|c| c.is_ascii_digit() || c == '.') {
 		return None;
 	}
-	let base = suffix.parse::<f64>().ok().filter(|base| base.is_finite())?;
+	let argument = suffix.parse::<f64>().ok().filter(|argument| argument.is_finite())?;
 
-	match builtin_function(function)? {
-		Builtin::Values { function, .. } => Some((function, base)),
+	match builtin_function(builtin)? {
+		Builtin::Values { function, .. } => Some(SuffixedFunction { name: builtin, function, argument }),
 		_ => None,
 	}
 }
@@ -372,8 +388,8 @@ pub type MatrixToValue = fn(Matrix) -> Value;
 pub type MatrixToMatrix = fn(Matrix) -> Matrix;
 /// A built-in function building a matrix from values, like `rotation`.
 pub type ValuesToMatrix = fn(&[Value]) -> Option<Matrix>;
-/// A built-in function of a value and regions with a value result, like `within`.
-pub type ValueOfRegions = fn(Value, &[Region]) -> Result<Value, EvalError>;
+/// A built-in function of a value and regions with a value result, like `within`, and a trailing value where the builtin takes one.
+pub type ValueOfRegions = fn(Value, &[Region], Option<Value>) -> Result<Value, EvalError>;
 
 /// A built-in math function, by the sorts it takes and gives. Those taking matrices have their argument counts checked as the
 /// expression is parsed.
@@ -390,10 +406,11 @@ pub enum Builtin {
 		function: ValuesToMatrix,
 		arity: RangeInclusive<usize>,
 	},
-	/// A value, then `regions` regions.
+	/// A value, then `regions` regions, then one more value if `trailing_value`.
 	OfValueAndRegions {
 		function: ValueOfRegions,
 		regions: usize,
+		trailing_value: bool,
 	},
 }
 
@@ -407,6 +424,43 @@ fn variadic(function: BuiltinFunction) -> Builtin {
 	Builtin::Values { function, variadic: true }
 }
 
+/// Other spellings of built-in functions, each with the name an editor completes it to.
+pub const BUILTIN_FUNCTION_ALIASES: [(&str, &str); 33] = [
+	("arcsin", "asin"),
+	("arccos", "acos"),
+	("arctan", "atan"),
+	("arctan2", "atan2"),
+	("arccsc", "acsc"),
+	("arcsec", "asec"),
+	("arccot", "acot"),
+	("invsin", "asin"),
+	("invcos", "acos"),
+	("invtan", "atan"),
+	("invtan2", "atan2"),
+	("invcsc", "acsc"),
+	("invsec", "asec"),
+	("invcot", "acot"),
+	("arsinh", "asinh"),
+	("arcosh", "acosh"),
+	("artanh", "atanh"),
+	("arcsch", "acsch"),
+	("arsech", "asech"),
+	("arcoth", "acoth"),
+	("arcsinh", "asinh"),
+	("arccosh", "acosh"),
+	("arctanh", "atanh"),
+	("arccsch", "acsch"),
+	("arcsech", "asech"),
+	("arccoth", "acoth"),
+	("avg", "mean"),
+	("average", "mean"),
+	("mix", "lerp"),
+	("combinations", "choose"),
+	("ncr", "choose"),
+	("permutations", "pick"),
+	("npr", "pick"),
+];
+
 /// Looks up a built-in math function by name, holding a plain function pointer so dispatch avoids hashing and dynamic allocation.
 pub fn builtin_function(name: &str) -> Option<Builtin> {
 	Some(match name {
@@ -418,10 +472,14 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"sec" => fixed_arity(|values| climbing(values, |x| x.cos().recip(), |z| z.cos().recip())),
 		"cot" => fixed_arity(|values| climbing(values, |x| x.tan().recip(), |z| z.tan().recip())),
 
-		// TODO: Offer the `arc-`/`ar-` spellings (`arcsin`, `artanh`) and the legacy `inv-` names as autocomplete aliases in the expression widget, resolving to these canonical names
 		"asin" => fixed_arity(|values| climbing(values, f64::asin, Complex::asin)),
 		"acos" => fixed_arity(|values| climbing(values, f64::acos, Complex::acos)),
 		"atan" => fixed_arity(|values| climbing(values, f64::atan, Complex::atan)),
+		// The two-argument inverse tangent takes only real coordinates
+		"atan2" => fixed_arity(|values| {
+			let [y, x] = reals(values)?;
+			Some(Value::from_f64(y.atan2(x)))
+		}),
 		"acsc" => fixed_arity(|values| climbing(values, |x| x.recip().asin(), |z| z.recip().asin())),
 		"asec" => fixed_arity(|values| climbing(values, |x| x.recip().acos(), |z| z.recip().acos())),
 		"acot" => fixed_arity(|values| climbing(values, |x| x.recip().atan(), |z| z.recip().atan())),
@@ -445,10 +503,12 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"exp" => fixed_arity(|values| climbing(values, f64::exp, Complex::exp)),
 		"sqrt" => fixed_arity(|values| climbing(values, f64::sqrt, Complex::sqrt)),
 		"cbrt" => fixed_arity(|values| climbing(values, f64::cbrt, |z| z.powf(1. / 3.))),
-		"log2" => fixed_arity(|values| climbing(values, f64::log2, |z| z.ln() / LN_2)),
 
 		"log" => fixed_arity(|values| match values {
 			[value] => climbing(std::slice::from_ref(value), f64::log10, |z| z.log10()),
+			// Bases 2 and 10 have correctly rounded logarithms of their own, which a change of base would miss by an ulp, like `log(2^29, 2)`
+			[value, Value::Number(base)] if base.as_real() == Some(2.) => climbing(std::slice::from_ref(value), f64::log2, |z| z.ln() / LN_2),
+			[value, Value::Number(base)] if base.as_real() == Some(10.) => climbing(std::slice::from_ref(value), f64::log10, |z| z.log10()),
 			// Change of base, staying real when it can and otherwise climbing, each logarithm taken in its own plane
 			[Value::Number(x), Value::Number(base)] => {
 				if let (Some(x), Some(base)) = (x.as_real(), base.as_real()) {
@@ -482,11 +542,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		// Geometry Functions
 		// The Euclidean norm over the arguments' magnitudes, folding pairwise hypotenuses so nothing is ever squared, avoiding overflow
 		"hypot" => variadic(|values| (!values.is_empty()).then(|| Value::from_f64(values.iter().map(|Value::Number(number)| number.magnitude()).fold(0., f64::hypot)))),
-
-		"atan2" => fixed_arity(|values| {
-			let [y, x] = reals(values)?;
-			Some(Value::from_f64(y.atan2(x)))
-		}),
 
 		// Mapping functions, acting on each part of a vector
 		// `|x|` is instead the one magnitude of the whole value
@@ -553,7 +608,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		"max" => variadic(|values| extremum(values, Ordering::Greater).or_else(|| zipping(values, f64::max))),
 
 		// Statistics across one or more arguments: the median and mode over real ones, since they need an order, and the geometric and harmonic means within the complex plane
-		// TODO: Offer `avg` and `average` as autocomplete aliases in the expression widget, resolving to `mean`
 		"mean" => variadic(|values| {
 			if values.is_empty() {
 				return None;
@@ -755,6 +809,16 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Quaternion::new(0., q.x, q.y, q.z).normalized().map(Value::from)
 		}),
 
+		// The conjugate negates the vector part on every rung
+		"conj" => fixed_arity(|values| {
+			let [Value::Number(number)] = values else { return None };
+			Some(Value::Number(match number {
+				Number::Complex(complex) => Number::Complex(complex.conj()),
+				Number::Quaternion(quaternion) => Number::Quaternion(quaternion.conj()),
+				real => *real,
+			}))
+		}),
+
 		"project" => fixed_arity(|values| {
 			let [a, b] = quaternions(values)?;
 			projection(a, b).map(Value::from)
@@ -805,16 +869,6 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 			Some(combinatorial(*x, whole_count(r)?, false))
 		}),
 
-		// The conjugate negates the vector part on every rung
-		"conj" => fixed_arity(|values| {
-			let [Value::Number(number)] = values else { return None };
-			Some(Value::Number(match number {
-				Number::Complex(complex) => Number::Complex(complex.conj()),
-				Number::Quaternion(quaternion) => Number::Quaternion(quaternion.conj()),
-				real => *real,
-			}))
-		}),
-
 		// Matrix functions
 		"det" => Builtin::OfMatrix(|matrix| Value::from_f64(matrix.determinant())),
 		"linear" => Builtin::MatrixOfMatrix(|matrix| Matrix {
@@ -863,7 +917,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		// infinite, like `within(x, 0..inf)` for `x >= 0`, and any other region's, with a parameter in `0..1` where it extends and 0 elsewhere
 		"within" => Builtin::OfValueAndRegions {
 			regions: 1,
-			function: |p, regions| {
+			trailing_value: false,
+			function: |p, regions, _| {
 				let [region] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(p) = p;
 				let clamped = clamp_to_region(p, *region)?;
@@ -880,7 +935,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 
 		"clamp" => Builtin::OfValueAndRegions {
 			regions: 1,
-			function: |x, regions| {
+			trailing_value: false,
+			function: |x, regions, _| {
 				let [region] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(x) = x;
 				Ok(Value::Number(clamp_to_region(x, *region)?))
@@ -890,7 +946,8 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 		// From one range to another, `B A⁻¹ x`, where a flat axis of `A` leaves the parameter undefined
 		"remap" => Builtin::OfValueAndRegions {
 			regions: 2,
-			function: |x, regions| {
+			trailing_value: false,
+			function: |x, regions, _| {
 				let [from, to] = regions else { return Err(EvalError::TypeError) };
 				let Value::Number(x) = x;
 				let RangeParameter { parameter, flat, .. } = range_parameter(from.matrix(), x.to_quaternion())?;
@@ -898,6 +955,35 @@ pub fn builtin_function(name: &str) -> Option<Builtin> {
 					return Err(EvalError::FlatRemapSource);
 				}
 				Ok(Value::from(to.matrix().region().apply(parameter)))
+			},
+		},
+
+		// The ease of each part of the clamped parameter whose first `continuity` derivatives reach 0 at the edges:
+		// the ramp, the GLSL-styled cubic, the "smootherstep" quintic, or the septic
+		"smoothstep" => Builtin::OfValueAndRegions {
+			regions: 1,
+			trailing_value: true,
+			function: |x, regions, continuity| {
+				let [region] = regions else { return Err(EvalError::TypeError) };
+				let continuity = match continuity {
+					Some(continuity) => whole_count(&continuity).filter(|continuity| *continuity <= 3).ok_or(EvalError::SmoothstepContinuity)?,
+					None => 1,
+				};
+
+				let Value::Number(x) = x;
+				let clamped = clamp_to_region(x, *region)?;
+				let RangeParameter { parameter, flat, .. } = range_parameter(region.matrix(), clamped.to_quaternion())?;
+				if flat.contains(&true) {
+					return Err(EvalError::FlatSmoothstep);
+				}
+
+				let ease = |t: f64| match continuity {
+					0 => t,
+					1 => t * t * (3. - 2. * t),
+					2 => t * t * t * (10. + t * (-15. + 6. * t)),
+					_ => t * t * t * t * (35. + t * (-84. + t * (70. - 20. * t))),
+				};
+				Ok(Value::from(Quaternion::from_parts(parameter.parts().map(ease))))
 			},
 		},
 
@@ -961,4 +1047,39 @@ fn range_parameter(range: Matrix, p: Quaternion) -> Result<RangeParameter, EvalE
 
 	let extends = array::from_fn(|axis| range.axes[axis] && !flat[axis]);
 	Ok(RangeParameter { parameter, region, extends, flat })
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::documentation::BUILTIN_FUNCTIONS;
+
+	#[test]
+	fn every_builtin_function_is_listed_with_its_signature() {
+		// Each of the lookup's arms begins a line with its quoted name, so the list is checked against this file's own source
+		let source = include_str!("constants.rs");
+		let lookup = source.split("pub fn builtin_function").nth(1).and_then(|rest| rest.split("\n}\n").next()).unwrap();
+		let mut arms = lookup
+			.lines()
+			.filter_map(|line| line.trim_start().strip_prefix('"')?.split_once("\" =>").map(|(name, _)| name))
+			.collect::<Vec<_>>();
+		let mut listed = BUILTIN_FUNCTIONS.iter().map(|function| function.name).collect::<Vec<_>>();
+		arms.sort_unstable();
+		listed.sort_unstable();
+		assert_eq!(arms, listed);
+
+		for (alias, name) in BUILTIN_FUNCTION_ALIASES {
+			assert!(
+				builtin_function(name).is_some() && builtin_function(alias).is_none(),
+				"`{alias}` should be another spelling of `{name}`"
+			);
+		}
+
+		// A signature taking any count of arguments is exactly a variadic builtin's
+		for function in BUILTIN_FUNCTIONS {
+			let (name, parameters) = (function.name, function.parameter_list());
+			let variadic = matches!(builtin_function(name), Some(Builtin::Values { variadic: true, .. }));
+			assert_eq!(parameters == "…", variadic, "`{name}({parameters})`");
+		}
+	}
 }

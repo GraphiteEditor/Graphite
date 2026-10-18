@@ -10,6 +10,8 @@ use editor::messages::prelude::*;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::task::{Spawn, Task};
 use js_sys::{Object, Reflect};
+use std::cell::RefCell;
+use std::collections::HashSet;
 #[cfg(not(feature = "native"))]
 use std::sync::atomic::Ordering;
 use std::time::Duration;
@@ -83,6 +85,11 @@ pub(crate) fn wake_runtime() {
 	wasm_bindgen_futures::spawn_local(run_node_runtime());
 }
 
+thread_local! {
+	// The placeholder IDs of the last rendered artwork's images, each with its canvas on `window.imageCanvases`
+	static SHOWN_IMAGE_IDS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+}
+
 /// Blits each rasterized image to a canvas registered on `window.imageCanvases`
 pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<Item = &'a RasterizedImage>) {
 	let window = match window() {
@@ -108,6 +115,16 @@ pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<It
 		}
 	};
 	let canvases_obj = Object::from(canvases_obj);
+
+	// Each render gives its images new placeholder IDs, so the canvases of images the previous render showed and this one doesn't are freed
+	let image_data = image_data.into_iter().collect::<Vec<_>>();
+	let shown = image_data.iter().map(|image| image.id).collect::<HashSet<_>>();
+	let previously_shown = SHOWN_IMAGE_IDS.replace(shown.clone());
+	for stale in previously_shown.difference(&shown) {
+		if Reflect::delete_property(&canvases_obj, &JsValue::from_str(&stale.to_string())).is_err() {
+			error!("Failed to free the canvas of image {stale}");
+		}
+	}
 
 	for image in image_data {
 		let (placeholder_id, width, height) = (image.id, image.width, image.height);

@@ -188,8 +188,8 @@ fn diff_attributes(out: &mut String, label: &str, stored: &document_graph_storag
 	let (differing_values, differing_timestamps): (Vec<_>, Vec<_>) = stored_keys
 		.intersection(&target_keys)
 		.copied()
-		.filter(|k| stored.get(*k) != target.get(*k))
-		.partition(|k| stored.get(*k).map(|v| &v.value) != target.get(*k).map(|v| &v.value));
+		.filter(|k| stored.get(k) != target.get(k))
+		.partition(|k| stored.get(k).map(|v| &v.value) != target.get(k).map(|v| &v.value));
 
 	let _ = writeln!(
 		out,

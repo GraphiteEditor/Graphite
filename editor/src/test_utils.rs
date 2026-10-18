@@ -30,7 +30,7 @@ pub struct EditorTestUtils {
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
-		let _ = env_logger::builder().is_test(true).try_init();
+		init_test_logger();
 
 		let woken = Arc::new(AtomicBool::new(false));
 		let wake = woken.clone();
@@ -65,44 +65,56 @@ impl EditorTestUtils {
 		responses
 	}
 
-	pub fn eval_graph<'a>(&'a mut self) -> impl std::future::Future<Output = Result<Instrumented, String>> + 'a {
-		// An inner function is required since async functions in traits are a bit weird
-		async fn run<'a>(editor: &'a mut Editor, runtime: &'a mut NodeRuntime) -> Result<Instrumented, String> {
-			let portfolio = &mut editor.dispatcher.message_handlers.portfolio_message_handler;
-			let document_id = portfolio.active_document_id.unwrap();
-			let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
-			let document = documents.get_mut(&document_id).unwrap();
+	/// Submit an evaluation to the executor, run the runtime, and process the results.
+	///
+	/// If a deferred message triggers a second graph run, this will not occur. See [`Self::eval_graph_until_finished`] for this behaviour.
+	async fn eval_graph_once(&mut self) -> Result<Instrumented, String> {
+		let portfolio = &mut self.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
 
-			let instrumented = match executor.update_node_graph_instrumented(document) {
-				Ok(instrumented) => instrumented,
-				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
-			};
+		let instrumented = match executor.update_node_graph_instrumented(document) {
+			Ok(instrumented) => instrumented,
+			Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
+		};
 
-			if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
-				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
-			}
-			runtime.run().await;
+		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+			return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+		}
+		self.runtime.run().await;
 
-			let frontend_messages = editor.handle_message(Message::Wake);
-			if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
-				return Err("Graph should render".to_string());
-			}
-
-			for message in frontend_messages {
-				message.check_node_graph_error();
-			}
-
-			Ok(instrumented)
+		let frontend_messages = self.dispatch(Message::Wake);
+		if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+			return Err("Graph should render".to_string());
 		}
 
-		run(&mut self.editor, &mut self.runtime)
+		for message in frontend_messages {
+			message.check_node_graph_error();
+		}
+
+		Ok(instrumented)
+	}
+
+	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
+	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, String> {
+		const MAX_ITERATIONS: usize = 16;
+		for _iteration in 0..MAX_ITERATIONS {
+			let execution_id = self.portfolio_message_handler().executor.current_execution_id();
+			let result = self.eval_graph_once().await?;
+			// If there have been no other executions queued (other than the one we just queued ourselves above) then finish
+			if execution_id + 1 >= self.portfolio_message_handler().executor.current_execution_id() {
+				return Ok(result);
+			}
+		}
+		return Err(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping"));
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
 		let frontend_messages_from_msg = self.dispatch(message);
 
 		// Required to process any buffered messages
-		if let Err(e) = self.eval_graph().await {
+		if let Err(e) = self.eval_graph_until_finished().await {
 			panic!("Failed to evaluate graph: {e}");
 		}
 
@@ -195,12 +207,20 @@ impl EditorTestUtils {
 		.await;
 	}
 
+	pub fn portfolio_message_handler(&self) -> &PortfolioMessageHandler {
+		&self.editor.dispatcher.message_handlers.portfolio_message_handler
+	}
+
+	pub fn portfolio_message_handler_mut(&mut self) -> &mut PortfolioMessageHandler {
+		&mut self.editor.dispatcher.message_handlers.portfolio_message_handler
+	}
+
 	pub fn active_document(&self) -> &DocumentMessageHandler {
-		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document().unwrap()
+		self.portfolio_message_handler().active_document().unwrap()
 	}
 
 	pub fn active_document_mut(&mut self) -> &mut DocumentMessageHandler {
-		self.editor.dispatcher.message_handlers.portfolio_message_handler.active_document_mut().unwrap()
+		self.portfolio_message_handler_mut().active_document_mut().unwrap()
 	}
 
 	pub async fn move_mouse(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys, mouse_keys: MouseKeys) {
@@ -221,10 +241,29 @@ impl EditorTestUtils {
 	}
 
 	pub async fn press(&mut self, key: Key, modifier_keys: ModifierKeys) {
-		let key_repeat = false;
+		self.key_down(key, modifier_keys).await;
+		self.key_up(key, modifier_keys).await;
+	}
 
+	/// Puts a key down and leaves it held until `key_up`.
+	pub async fn key_down(&mut self, key: Key, modifier_keys: ModifierKeys) {
+		let key_repeat = false;
 		self.handle_message(InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat }).await;
+	}
+
+	pub async fn key_up(&mut self, key: Key, modifier_keys: ModifierKeys) {
+		let key_repeat = false;
 		self.handle_message(InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat }).await;
+	}
+
+	/// Sets the clock to a time in milliseconds and runs one animation frame, as the frontend does on each `requestAnimationFrame`.
+	pub async fn animation_frame(&mut self, timestamp: u64) {
+		let messages = Box::new([
+			InputPreprocessorMessage::CurrentTime { timestamp }.into(),
+			AnimationMessage::IncrementFrameCounter.into(),
+			BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into(),
+		]);
+		self.handle_message(Message::Batched { messages }).await;
 	}
 
 	pub async fn left_mousedown(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
@@ -375,6 +414,60 @@ impl FrontendMessageTestUtils for FrontendMessage {
 			panic!("errors: {errors:?}");
 		}
 	}
+}
+
+thread_local! {
+	static CAPTURED_ERRORS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
+}
+
+/// Prints like `env_logger`, and also records the errors logged on a thread while [`capture_logged_errors`] runs on it.
+struct TestLogger {
+	printer: env_logger::Logger,
+}
+
+impl log::Log for TestLogger {
+	fn enabled(&self, metadata: &log::Metadata) -> bool {
+		metadata.level() == log::Level::Error || self.printer.enabled(metadata)
+	}
+
+	fn log(&self, record: &log::Record) {
+		if record.level() == log::Level::Error {
+			CAPTURED_ERRORS.with_borrow_mut(|captured| {
+				if let Some(captured) = captured {
+					captured.push(record.args().to_string());
+				}
+			});
+		}
+
+		self.printer.log(record);
+	}
+
+	fn flush(&self) {
+		self.printer.flush();
+	}
+}
+
+/// Installs the logger shared by every test in the process, since only one can be installed.
+fn init_test_logger() {
+	static INSTALL: std::sync::Once = std::sync::Once::new();
+	INSTALL.call_once(|| {
+		let printer = env_logger::builder().is_test(true).build();
+		let max_level = printer.filter().max(log::LevelFilter::Error);
+		if log::set_boxed_logger(Box::new(TestLogger { printer })).is_ok() {
+			log::set_max_level(max_level);
+		}
+	});
+}
+
+/// Runs `operation`, returning its result along with the errors it logged.
+pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String>) {
+	init_test_logger();
+
+	CAPTURED_ERRORS.set(Some(Vec::new()));
+	let result = operation();
+	let errors = CAPTURED_ERRORS.take().unwrap_or_default();
+
+	(result, errors)
 }
 
 struct BlockingSpawner;

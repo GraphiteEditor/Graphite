@@ -5,6 +5,8 @@ use super::*;
 impl NodeNetworkInterface {
 	pub fn start_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Started;
+		self.clear_transaction_edited_nodes();
+		self.transaction_edited_nodes_scanned = self.deltas.len();
 	}
 
 	pub fn transaction_modified(&mut self) {
@@ -15,6 +17,7 @@ impl NodeNetworkInterface {
 
 	pub fn finish_transaction(&mut self) {
 		self.transaction_status = TransactionStatus::Finished;
+		self.clear_transaction_edited_nodes();
 	}
 
 	/// Mutably get the selected nodes for the network at the network_path. Every time they are mutated, the transient metadata for the top of the stack gets unloaded.
@@ -334,39 +337,6 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	pub fn modify_import_export(&mut self, network_path: &[NodeId]) -> Option<&ModifyImportExportClickTarget> {
-		self.load_modify_import_export(network_path);
-
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in modify_import_export");
-			return None;
-		};
-		let Some(click_targets) = transient.modify_import_export.get_loaded_mut() else {
-			log::error!("Could not load modify import export in modify_import_export");
-			return None;
-		};
-		Some(click_targets)
-	}
-
-	pub fn load_modify_import_export(&self, network_path: &[NodeId]) {
-		let Some(network_metadata) = self.network_metadata(network_path) else {
-			log::error!("Could not get nested network_metadata in load_modify_import_export");
-			return;
-		};
-		network_metadata
-			.transient_metadata
-			.modify_import_export
-			.ensure_loaded(|| self.compute_modify_import_export(network_path));
-	}
-
-	pub(crate) fn unload_modify_import_export(&mut self, network_path: &[NodeId]) {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			log::error!("Could not get nested network_metadata in unload_modify_import_export");
-			return;
-		};
-		transient.modify_import_export.unload();
-	}
-
 	/// Reads the owned nodes of a layer through &self if they are loaded.
 	pub(crate) fn with_owned_nodes_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&HashSet<NodeId>) -> R) -> Option<R> {
 		let layer_node = self.node_metadata(node_id, network_path)?;
@@ -447,7 +417,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Every input fed by each node output and each import of the network.
-	fn compute_outward_wires(&self, network_path: &[NodeId]) -> Option<HashMap<OutputConnector, Vec<InputConnector>>> {
+	pub(super) fn compute_outward_wires(&self, network_path: &[NodeId]) -> Option<HashMap<OutputConnector, Vec<InputConnector>>> {
 		let mut outward_wires = HashMap::new();
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get nested network in compute_outward_wires");
@@ -509,23 +479,72 @@ impl NodeNetworkInterface {
 	/// avoiding a full rebuild. If the cache is not loaded, this is a no-op (it will be fully
 	/// rebuilt on the next read via `outward_wires()`).
 	pub(crate) fn update_outward_wires(&mut self, network_path: &[NodeId], input_connector: &InputConnector, old_input: &NodeInput, new_input: &NodeInput) {
-		let Some(transient) = self.network_transient_mut(network_path) else {
-			return;
-		};
-		let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else {
-			return;
+		let drained = {
+			let Some(transient) = self.network_transient_mut(network_path) else { return };
+			let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else { return };
+
+			unhook_outward_wire(outward_wires, input_connector, old_input);
+			hook_outward_wire(outward_wires, input_connector, new_input);
+
+			drained_outward_wire(outward_wires, old_input)
 		};
 
-		// Remove the input_connector from the old output's downstream list
-		if let Some(old_output) = OutputConnector::from_input(old_input)
-			&& let Some(connections) = outward_wires.get_mut(&old_output)
-		{
-			connections.retain(|c| c != input_connector);
+		if let Some(output) = drained {
+			self.delist_vacated_output(network_path, output);
+		}
+	}
+
+	/// The same update for a node whose whole input list was swapped.
+	pub(crate) fn update_outward_wires_for_inputs(&mut self, network_path: &[NodeId], node_id: &NodeId, old_inputs: &[NodeInput], new_inputs: &[NodeInput]) {
+		let drained = {
+			let Some(transient) = self.network_transient_mut(network_path) else { return };
+			let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else { return };
+
+			for (input_index, old_input) in old_inputs.iter().enumerate() {
+				unhook_outward_wire(outward_wires, &InputConnector::node_at_index(*node_id, input_index), old_input);
+			}
+			for (input_index, new_input) in new_inputs.iter().enumerate() {
+				hook_outward_wire(outward_wires, &InputConnector::node_at_index(*node_id, input_index), new_input);
+			}
+
+			old_inputs.iter().filter_map(|old_input| drained_outward_wire(outward_wires, old_input)).collect::<Vec<_>>()
+		};
+
+		for output in drained {
+			self.delist_vacated_output(network_path, output);
+		}
+	}
+
+	/// Drops an emptied entry for an output the network no longer has, which a fresh computation keys only while a wire still reaches it.
+	fn delist_vacated_output(&mut self, network_path: &[NodeId], output: OutputConnector) {
+		let still_exists = match output {
+			OutputConnector::Node { node_id, output_index } => output_index < self.number_of_outputs(&node_id, network_path),
+			OutputConnector::Import(import_index) => import_index < self.number_of_imports(network_path),
+		};
+		if still_exists {
+			return;
 		}
 
-		// Add the input_connector to the new output's downstream list
-		if let Some(new_output) = OutputConnector::from_input(new_input) {
-			outward_wires.entry(new_output).or_default().push(*input_connector);
+		let Some(transient) = self.network_transient_mut(network_path) else { return };
+		let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else { return };
+
+		outward_wires.remove(&output);
+	}
+
+	/// Lists or delists a node's outputs after their count changed, since every output is keyed even with no consumers.
+	pub(crate) fn update_outward_wires_for_outputs(&mut self, network_path: &[NodeId], node_id: &NodeId, old_output_count: usize, new_output_count: usize) {
+		let Some(transient) = self.network_transient_mut(network_path) else { return };
+		let Some(outward_wires) = transient.outward_wires.get_loaded_mut() else { return };
+
+		// A consumer still wired to a vanished output keeps the entry, as a fresh computation lists it too
+		for output_index in new_output_count..old_output_count {
+			let output = OutputConnector::node(*node_id, output_index);
+			if outward_wires.get(&output).is_some_and(Vec::is_empty) {
+				outward_wires.remove(&output);
+			}
+		}
+		for output_index in old_output_count..new_output_count {
+			outward_wires.entry(OutputConnector::node(*node_id, output_index)).or_default();
 		}
 	}
 
@@ -597,8 +616,9 @@ impl NodeNetworkInterface {
 	}
 
 	fn load_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
-		// The export keeps its own solid wire while previewing, since previewing does not rewire it
-		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, false, network_path) else {
+		// While previewing, the export's wire leads to the temporarily previewed node
+		let dashed = *input == InputConnector::Export(0) && matches!(self.previewing(network_path), Previewing::Yes { .. });
+		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, dashed, network_path) else {
 			log::error!("Could not load wire path from input");
 			return;
 		};
@@ -710,14 +730,15 @@ impl NodeNetworkInterface {
 
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
-		let input_type = self.input_type(&input, network_path);
-		let data_type = input_type.displayed_type();
-		let is_list = input_type.is_list();
+		// Styled by the root node's own output, since the export it leads to is connected to the previewed node instead
+		let output_type = self.output_type(&upstream_output, network_path);
+		let data_type = output_type.displayed_type();
+		let is_list = output_type.is_list();
 		let wire_path_update = Some(WirePath {
 			path_string,
 			data_type,
 			thick,
-			dashed: true,
+			dashed: false,
 			is_list,
 			center_path_string,
 		});
@@ -799,14 +820,6 @@ impl NodeNetworkInterface {
 			.with_loaded_or(|| self.compute_node_click_targets(node_id, network_path), read)
 	}
 
-	/// Reads the modify import/export click targets through &self, loading them first if needed.
-	pub(crate) fn with_modify_import_export<R>(&self, network_path: &[NodeId], read: impl FnOnce(&ModifyImportExportClickTarget) -> R) -> Option<R> {
-		self.network_metadata(network_path)?
-			.transient_metadata
-			.modify_import_export
-			.with_loaded_or(|| self.compute_modify_import_export(network_path), read)
-	}
-
 	/// Reads the node click targets through &self if they are already loaded.
 	pub(crate) fn with_node_click_targets_if_loaded<R>(&self, node_id: &NodeId, network_path: &[NodeId], read: impl FnOnce(&DocumentNodeClickTargets) -> R) -> Option<R> {
 		let node_metadata = self.node_metadata(node_id, network_path)?;
@@ -867,4 +880,25 @@ impl NodeNetworkInterface {
 			self.unload_node_click_targets(upstream_id, network_path);
 		}
 	}
+}
+
+/// Drops `input_connector` from the consumers of the output that `input` was wired to.
+fn unhook_outward_wire(outward_wires: &mut HashMap<OutputConnector, Vec<InputConnector>>, input_connector: &InputConnector, input: &NodeInput) {
+	if let Some(output) = OutputConnector::from_input(input)
+		&& let Some(connections) = outward_wires.get_mut(&output)
+	{
+		connections.retain(|connection| connection != input_connector);
+	}
+}
+
+/// Adds `input_connector` to the consumers of the output that `input` is wired to.
+fn hook_outward_wire(outward_wires: &mut HashMap<OutputConnector, Vec<InputConnector>>, input_connector: &InputConnector, input: &NodeInput) {
+	if let Some(output) = OutputConnector::from_input(input) {
+		outward_wires.entry(output).or_default().push(*input_connector);
+	}
+}
+
+/// The output `input` was wired to, once it has lost its last consumer.
+fn drained_outward_wire(outward_wires: &HashMap<OutputConnector, Vec<InputConnector>>, input: &NodeInput) -> Option<OutputConnector> {
+	OutputConnector::from_input(input).filter(|output| outward_wires.get(output).is_some_and(Vec::is_empty))
 }

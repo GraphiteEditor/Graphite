@@ -10,6 +10,7 @@ use core_types::transform::Footprint;
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, Poll, RuntimeHandle, SourceId, Type, TypeDescriptor};
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_animation::AnimationCurve;
 use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
@@ -550,6 +551,7 @@ tagged_value! {
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(ResourceId),
+	AnimationCurve(AnimationCurve),
 	// Legacy
 	#[serde(alias = "OptionalDAffine2")]
 	LegacyOptionalDAffine2(Option<DAffine2>),
@@ -562,10 +564,8 @@ tagged_value! {
 	#[serde(alias = "LuminanceCalculation")]
 	DesaturateMethod(raster_nodes::adjustments::DesaturateMethod),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
-	XY(graphene_core::extract_xy::XY),
 	StringCapitalization(text_nodes::StringCapitalization),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
-	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
 	NoiseType(raster_nodes::adjustments::NoiseType),
 	FractalType(raster_nodes::adjustments::FractalType),
@@ -607,6 +607,8 @@ tagged_value! {
 	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
 	#[serde(alias = "Fill")]
 	LegacyFill(graphic_types::migrations::legacy::LegacyFill), // TODO: Eventually remove this document upgrade code
+	XY(graphene_core::extract_xy::XY), // TODO: Eventually remove this document upgrade code
+	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha), // TODO: Eventually remove this document upgrade code
 }
 
 impl TaggedValue {
@@ -786,8 +788,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
-				if let Some(vector) = vector {
-					let modification = Box::new(VectorModification::create_from_vector(&vector));
+				if let Some((vector, paths, turned)) = vector {
+					let modification = Box::new(VectorModification::create_from_vector(&vector, &paths).with_segments_turned_on_load(turned));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Vector))));
@@ -855,8 +857,39 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		}
 	}
 
-	let tagged_value: TaggedValue = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+	// Reparsing from text on failure provides the error positions needed to replace any `null` saved in place of a float
+	let tagged_value = TaggedValue::deserialize(&value)
+		.or_else(|_| deserialize_replacing_null_floats_with_zero(&value.to_string()))
+		.map_err(serde::de::Error::custom)?;
 	Ok(MemoHash::new(tagged_value))
+}
+
+/// Parses JSON where NaN or infinity was saved as `null`, which serde_json rejects as a float, by replacing each rejected `null` with `0.0` until it parses.
+#[cfg(feature = "loading")]
+pub fn deserialize_replacing_null_floats_with_zero<T: serde::de::DeserializeOwned>(serialized_content: &str) -> serde_json::Result<T> {
+	let mut content = std::borrow::Cow::Borrowed(serialized_content);
+
+	// O(n) reparse per replaced `null`, which only happens for content that would otherwise fail to load
+	loop {
+		let error = match serde_json::from_str(&content) {
+			Ok(value) => return Ok(value),
+			Err(error) => error,
+		};
+
+		// serde_json reports the position just past the `null` it read in place of a float
+		if !error.to_string().starts_with("invalid type: null, expected f") {
+			return Err(error);
+		}
+		let Some(preceding_lines) = error.line().checked_sub(1) else { return Err(error) };
+		let line_start = content.split_inclusive('\n').take(preceding_lines).map(str::len).sum::<usize>();
+		let null_end = line_start + error.column();
+		let Some(null_start) = null_end.checked_sub("null".len()).filter(|&start| content.get(start..null_end) == Some("null")) else {
+			return Err(error);
+		};
+
+		log::warn!("Loading a `null` in place of a number as 0 (line {}, column {})", error.line(), error.column());
+		content.to_mut().replace_range(null_start..null_end, "0.0");
+	}
 }
 
 impl Display for TaggedValue {

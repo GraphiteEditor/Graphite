@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
-use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::UVec2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -26,23 +26,7 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 
 				if self.infinite {
 					// Infinite canvas: add a locked white background layer
-					let node_id = NodeId::new();
-					responses.add(GraphOperationMessage::NewColorFillLayer {
-						node_id,
-						color: Color::WHITE,
-						parent: LayerNodeIdentifier::ROOT_PARENT,
-						insert_index: 0,
-					});
-					responses.add(NodeGraphMessage::SetDisplayNameImpl {
-						node_id,
-						network_path: Vec::new(),
-						alias: "Background".to_string(),
-					});
-					responses.add(NodeGraphMessage::SetLocked {
-						node_id,
-						network_path: Vec::new(),
-						locked: true,
-					});
+					graph_modification_utils::new_background_layer(0, responses);
 				} else if self.dimensions.x > 0 && self.dimensions.y > 0 {
 					// Finite canvas: create an artboard with the specified dimensions
 					responses.add(GraphOperationMessage::NewArtboard {
@@ -100,17 +84,22 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 impl LayoutHolder for NewDocumentDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let name = vec![
-			TextLabel::new("Name").table_align(true).min_width(90).widget_instance(),
+			TextLabel::new("Name").table_align(true).sizing(WidgetSizing::fixed(90)).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(&self.name)
 				.on_update(|text_input: &TextInput| NewDocumentDialogMessage::Name { name: text_input.value.clone() }.into())
-				.min_width(204) // Matches the 100px of both NumberInputs below + the 4px of the Unrelated-type separator
+				// Matches the 100px of both NumberInputs below plus the 4px of the Related-type separator between them
+				.sizing(WidgetSizing::default().min_width(204))
 				.widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).for_checkbox(checkbox_id).widget_instance(),
+			TextLabel::new("Infinite Canvas")
+				.table_align(true)
+				.sizing(WidgetSizing::fixed(90))
+				.for_checkbox(checkbox_id)
+				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite { infinite: checkbox_input.checked }.into())
@@ -119,7 +108,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 		];
 
 		let scale = vec![
-			TextLabel::new("Dimensions").table_align(true).min_width(90).widget_instance(),
+			TextLabel::new("Dimensions").table_align(true).sizing(WidgetSizing::fixed(90)).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.dimensions.x as f64))
 				.label("W")
@@ -128,7 +117,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.is_integer(true)
 				.disabled(self.infinite)
-				.min_width(100)
+				.sizing(WidgetSizing::default().min_width(100))
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX { width: number_input.value.unwrap() }.into())
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -139,7 +128,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 				.is_integer(true)
 				.disabled(self.infinite)
-				.min_width(100)
+				.sizing(WidgetSizing::default().min_width(100))
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsY { height: number_input.value.unwrap() }.into())
 				.widget_instance(),
 		];

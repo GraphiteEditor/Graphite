@@ -9,7 +9,8 @@ pub enum PanelType {
 	Welcome,
 	Document,
 	Layers,
-	Properties,
+	#[serde(alias = "Properties")]
+	Inspector,
 	Data,
 }
 
@@ -19,7 +20,7 @@ impl From<String> for PanelType {
 			"Welcome" => PanelType::Welcome,
 			"Document" => PanelType::Document,
 			"Layers" => PanelType::Layers,
-			"Properties" => PanelType::Properties,
+			"Inspector" | "Properties" => PanelType::Inspector,
 			"Data" => PanelType::Data,
 			_ => panic!("Unknown panel type: {value}"),
 		}
@@ -28,7 +29,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Properties, PanelType::Data]
+		&[PanelType::Layers, PanelType::Inspector, PanelType::Data]
 	}
 }
 
@@ -298,7 +299,7 @@ impl WorkspacePanelLayout {
 
 	/// Place a panel at its default structural position in the layout tree.
 	/// - Data: below the document in the left column (root child 0)
-	/// - Properties: top of the right column (root child 1)
+	/// - Inspector: top of the right column (root child 1)
 	/// - Layers: bottom of the right column (root child 1)
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
 		let new_id = self.next_id();
@@ -315,9 +316,9 @@ impl WorkspacePanelLayout {
 
 		// Determine which root child column to insert into and at which position
 		let (root_child_index, insert_at_end) = match panel_type {
-			PanelType::Data => (0, true),        // Left column, after document
-			PanelType::Properties => (1, false), // Right column, at top
-			PanelType::Layers => (1, true),      // Right column, at bottom
+			PanelType::Data => (0, true),       // Left column, after document
+			PanelType::Inspector => (1, false), // Right column, at top
+			PanelType::Layers => (1, true),     // Right column, at bottom
 			_ => (1, true),
 		};
 
@@ -375,7 +376,7 @@ impl Default for WorkspacePanelLayout {
 		// Default layout (sizes are recalculated by `recalculate_default_sizes` before being sent to the frontend):
 		// Row [
 		//   Column [Document]
-		//   Column [Properties, Layers]
+		//   Column [Inspector, Layers]
 		// ]
 		Self {
 			root: PanelLayoutSubdivision::Split {
@@ -402,7 +403,7 @@ impl Default for WorkspacePanelLayout {
 									subdivision: PanelLayoutSubdivision::PanelGroup {
 										id: PanelGroupId(1),
 										state: PanelGroupState {
-											tabs: vec![PanelType::Properties],
+											tabs: vec![PanelType::Inspector],
 											active_tab_index: 0,
 										},
 									},
