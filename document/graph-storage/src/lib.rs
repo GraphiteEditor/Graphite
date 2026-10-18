@@ -47,4 +47,5 @@ mod tests {
 	mod bookkeeping;
 	mod crdt;
 	mod round_trip;
+	mod sessions;
 }
