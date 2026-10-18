@@ -67,6 +67,7 @@ pub mod network {
 }
 
 pub mod delta {
-	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta.
+	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta. Also set on
+	/// the last hot op of an interaction.
 	pub const INTERACTION_END: &str = "interaction_end";
 }
