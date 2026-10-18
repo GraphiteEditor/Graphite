@@ -241,7 +241,14 @@ impl EditorWrapper {
 	/// Load persisted browser storage state (web only; on desktop, persistence is handled natively and this is never triggered)
 	#[cfg(all(feature = "web", not(feature = "native")))]
 	#[wasm_bindgen(js_name = loadPersistedState)]
-	pub fn load_persisted_state(&self, state: editor::messages::frontend::utility_types::PersistedState) {
+	pub fn load_persisted_state(&self, state: tsify::Ts<editor::messages::frontend::utility_types::PersistedState>) {
+		let state = match state.to_rust() {
+			Ok(state) => state,
+			Err(e) => {
+				log::error!("Cannot convert state to type utility_types::PersistedState: {e:?}");
+				return;
+			}
+		};
 		self.dispatch(PersistentStateMessage::LoadState { state });
 	}
 	#[cfg(feature = "native")]
