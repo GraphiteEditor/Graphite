@@ -229,14 +229,16 @@ fn an_interaction_with_a_gap_is_not_contiguous_until_the_gap_fills() {
 	};
 	host.replay_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
 	host.replay_hot_op(closing(guest_op(12, 3, RegistryDelta::Meta))).expect("guest marker, op 2 still in flight");
+	host.replay_hot_op(closing(guest_op(13, 4, set_attribute("guest", 2)))).expect("a later interaction");
 
 	let closed = host.closed_interactions();
-	assert_eq!(closed.len(), 1);
+	assert_eq!(closed.len(), 2);
 	assert!(!closed[0].contiguous);
+	assert!(!closed[1].contiguous, "the gap is behind the later interaction too");
 
 	host.replay_hot_op(guest_op(11, 2, set_attribute("guest", 1))).expect("the late op");
 	let closed = host.closed_interactions();
-	assert!(closed[0].contiguous);
+	assert!(closed.iter().all(|interaction| interaction.contiguous));
 	assert_eq!(closed[0].ops.len(), 3);
 }
 

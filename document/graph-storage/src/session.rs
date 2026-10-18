@@ -397,7 +397,6 @@ impl Session {
 						closed_at: hot_op.timestamp,
 						contiguous,
 					});
-					contiguous = true;
 				}
 			}
 		}
