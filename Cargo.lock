@@ -1902,9 +1902,9 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.33.10"
+version = "0.33.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "928452f9c953e142b2f0973e4bd5f34445fcaa8069556ea97a3c9d34d15a4cf8"
+checksum = "37bfe73dc8ec21f54d181e5a60554327ec3f1c600c455a75ccbfc65d2106a6c4"
 dependencies = [
  "bytemuck",
  "libm",
@@ -2138,6 +2138,7 @@ dependencies = [
  "url",
  "vector-nodes",
  "vector-types",
+ "vectorize-nodes",
  "vello_gpu",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -4023,6 +4024,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "62948e14d923ea95ea2c7c86c71013138b66525b86bdc08d2dcc262bdb497b87"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "ollev"
+version = "0.1.1"
+source = "git+https://github.com/tagtraumen/ollev#a4bdcd142a66f503dcc5c6323ebef3bb0550e63e"
+dependencies = [
+ "glam",
 ]
 
 [[package]]
@@ -6540,6 +6549,24 @@ dependencies = [
  "tinyvec",
  "tsify",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "vectorize-nodes"
+version = "0.0.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphene-hash",
+ "graphic-types",
+ "js-sys",
+ "kurbo",
+ "log",
+ "node-macro",
+ "ollev",
+ "raster-types",
+ "vector-types",
 ]
 
 [[package]]
