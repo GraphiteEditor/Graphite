@@ -19,6 +19,8 @@ type NodeGraphStoreState = {
 	hasLeftInputWire: Map<bigint, boolean>;
 	nodes: Map<bigint, FrontendNode>;
 	wirePathInProgress: WirePath | undefined;
+	wireInProgressDraggedFrom: [number, number] | undefined;
+	wireInProgressSnappedTo: [number, number] | undefined;
 	nodeDescriptions: Map<string, string>;
 	nodeIcons: Map<string, IconName>;
 	nodeTypes: FrontendNodeType[];
@@ -38,6 +40,8 @@ const initialState: NodeGraphStoreState = {
 	hasLeftInputWire: new Map(),
 	nodes: new Map(),
 	wirePathInProgress: undefined,
+	wireInProgressDraggedFrom: undefined,
+	wireInProgressSnappedTo: undefined,
 	nodeDescriptions: new Map(),
 	nodeIcons: new Map(),
 	nodeTypes: [],
@@ -231,6 +235,8 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	subscriptions.subscribeFrontendMessage("UpdateWirePathInProgress", (data) => {
 		update((state) => {
 			state.wirePathInProgress = data.wirePath;
+			state.wireInProgressDraggedFrom = data.draggedFrom;
+			state.wireInProgressSnappedTo = data.snappedTo;
 			return state;
 		});
 	});

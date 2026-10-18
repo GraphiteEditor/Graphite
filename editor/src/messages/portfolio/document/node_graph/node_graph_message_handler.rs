@@ -1102,6 +1102,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_from_connector = Some(connector_position);
 					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_from_new_import = Some(import_index);
+					Self::keep_pressed_connector_lit(Some(connector_position), responses);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1115,6 +1116,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_to_connector = Some(connector_position);
 					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_from_new_export = Some(export_index);
+					Self::keep_pressed_connector_lit(Some(connector_position), responses);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1158,6 +1160,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Begin moving an existing wire, or drag a new one backward out of an empty input toward an output
 				if let Some(clicked_input) = &clicked_input {
 					responses.add(DocumentMessage::StartTransaction);
+					Self::keep_pressed_connector_lit(network_interface.input_position(clicked_input, breadcrumb_network_path), responses);
 
 					let output_connector = if *clicked_input == InputConnector::Export(0) {
 						network_interface.root_node(breadcrumb_network_path).map(|root_node| root_node.to_connector())
@@ -1193,6 +1196,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					let output_type = network_interface.output_type(&clicked_output, breadcrumb_network_path);
 					self.wire_in_progress_type = output_type.displayed_type();
+					Self::keep_pressed_connector_lit(self.wire_in_progress_from_connector, responses);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1341,11 +1345,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.output_connector_from_click(ipp.mouse.position, selection_network_path)
 						.and_then(|output_connector| network_interface.output_position(&output_connector, selection_network_path));
 					let empty_import_position = || network_interface.empty_import_export_connector_at(point, true, selection_network_path).map(|(_, position)| position);
-					self.wire_in_progress_from_connector = Some(output_position.or_else(empty_import_position).unwrap_or(point));
+					let snapped_position = output_position.or_else(empty_import_position);
+					self.wire_in_progress_from_connector = Some(snapped_position.unwrap_or(point));
 
-					self.send_wire_in_progress(self.wire_in_progress_from_input, network_interface, selection_network_path, responses);
+					self.send_wire_in_progress(self.wire_in_progress_from_input, snapped_position.is_some(), network_interface, selection_network_path, responses);
 				} else if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
+					let empty_export_position = to_connector
+						.is_none()
+						.then(|| network_interface.empty_import_export_connector_at(point, false, selection_network_path))
+						.flatten()
+						.map(|(_, position)| position);
 					if let Some(to_connector) = &to_connector {
 						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
@@ -1354,7 +1364,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.wire_in_progress_to_connector = Some(input_position);
 					}
 					// Snap to a dimmed connector for adding an export, which a wire dropped on adds
-					else if let Some((_, empty_export_position)) = network_interface.empty_import_export_connector_at(point, false, selection_network_path) {
+					else if let Some(empty_export_position) = empty_export_position {
 						self.wire_in_progress_to_connector = Some(empty_export_position);
 					}
 					// Not hovering over a node input or node output, update with the mouse position.
@@ -1383,7 +1393,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 
-					self.send_wire_in_progress(to_connector, network_interface, selection_network_path, responses);
+					let loose_end_snapped = to_connector.is_some() || empty_export_position.is_some();
+					self.send_wire_in_progress(to_connector, loose_end_snapped, network_interface, selection_network_path, responses);
 
 					// Input connectors stick out past their node's edge, so hovering one counts as hovering its node
 					let wire_hovered_node = to_connector
@@ -2536,7 +2547,11 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_from_new_export = None;
 		self.disconnecting = None;
 
-		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+		responses.add(FrontendMessage::UpdateWirePathInProgress {
+			wire_path: None,
+			dragged_from: None,
+			snapped_to: None,
+		});
 	}
 
 	pub fn is_reordering_import_export(&self) -> bool {
@@ -2627,8 +2642,18 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_from_input.is_some() || self.wire_in_progress_from_new_export.is_some()
 	}
 
-	/// Draws the wire in progress between its two ends, where `input_end` is the input it meets at its input end, if any.
-	fn send_wire_in_progress(&self, input_end: Option<InputConnector>, network_interface: &NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+	/// Keeps a pressed connector lit as the source of the wire about to be dragged out of it, since the press ends its hover before the pointer moves far enough to draw the wire.
+	fn keep_pressed_connector_lit(center: Option<DVec2>, responses: &mut VecDeque<Message>) {
+		responses.add(FrontendMessage::UpdateWirePathInProgress {
+			wire_path: None,
+			dragged_from: center.map(|center| (center.x, center.y)),
+			snapped_to: None,
+		});
+	}
+
+	/// Draws the wire in progress between its two ends, where `input_end` is the input it meets at its input end, if any,
+	/// and `loose_end_snapped` is whether the end following the pointer has snapped to a connector.
+	fn send_wire_in_progress(&self, input_end: Option<InputConnector>, loose_end_snapped: bool, network_interface: &NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
 		let (Some(from_connector), Some(to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) else {
 			return;
 		};
@@ -2651,7 +2676,19 @@ impl NodeGraphMessageHandler {
 			is_list: false,
 			center_path_string: String::new(),
 		};
-		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
+
+		// The end it's dragged from always meets a connector, while the loose end does once it snaps to one
+		let (dragged_from, loose_end) = if self.wire_in_progress_is_backward() {
+			(to_connector, from_connector)
+		} else {
+			(from_connector, to_connector)
+		};
+
+		responses.add(FrontendMessage::UpdateWirePathInProgress {
+			wire_path: Some(wire_path),
+			dragged_from: Some((dragged_from.x, dragged_from.y)),
+			snapped_to: loose_end_snapped.then_some((loose_end.x, loose_end.y)),
+		});
 	}
 
 	/// The output the wire in progress is dragged from.

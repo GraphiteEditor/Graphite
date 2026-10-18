@@ -326,6 +326,12 @@ pub enum FrontendMessage {
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
+		/// Where the wire meets the connector it's dragged from, in node graph space.
+		#[serde(rename = "draggedFrom")]
+		dragged_from: Option<(f64, f64)>,
+		/// Where the wire's loose end meets a connector it has snapped onto, in node graph space.
+		#[serde(rename = "snappedTo")]
+		snapped_to: Option<(f64, f64)>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,

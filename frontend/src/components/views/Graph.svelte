@@ -42,6 +42,14 @@
 	// Whether a pointer button is held, in which case a drag may be underway and hover hints would only get in the way
 	let pointerHeld = false;
 
+	let graph: HTMLDivElement | undefined;
+
+	// The connector the wire being dragged comes from, which stays undimmed, and the one it has snapped onto, which looks hovered
+	let wireSourceConnector: Element | undefined;
+	let wireTargetConnector: Element | undefined;
+	let wireEndsMarked = "";
+	$: markWireEndConnectors($nodeGraph.wireInProgressDraggedFrom, $nodeGraph.wireInProgressSnappedTo);
+
 	// The import, export, or layer with its name being edited in place, and the name the field started with
 	type NameTarget = { kind: "Import" | "Export"; index: number } | { kind: "Layer"; nodeId: bigint };
 	let editingName: (NameTarget & { initialText: string }) | undefined = undefined;
@@ -124,6 +132,36 @@
 	function onDescriptionKeyDown(e: KeyboardEvent) {
 		const commandKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		if (commandKey && e.key === "Enter") closeDescriptionPopover();
+	}
+
+	// Finds the connectors at the wire's ends, which only change when the wire snaps onto or off of one
+	function markWireEndConnectors(draggedFrom: [number, number] | undefined, snappedTo: [number, number] | undefined) {
+		const ends = JSON.stringify([draggedFrom, snappedTo]);
+		if (ends === wireEndsMarked) return;
+		wireEndsMarked = ends;
+
+		wireSourceConnector?.classList.remove("wire-source");
+		wireTargetConnector?.classList.remove("wire-target");
+
+		wireSourceConnector = connectorAt(draggedFrom);
+		wireTargetConnector = connectorAt(snappedTo);
+
+		wireSourceConnector?.classList.add("wire-source");
+		wireTargetConnector?.classList.add("wire-target");
+	}
+
+	// The connector drawn at a point in node graph space, which can sit a few pixels from where its wires attach
+	function connectorAt(point: [number, number] | undefined): Element | undefined {
+		if (!graph || !point) return undefined;
+
+		const graphBounds = graph.getBoundingClientRect();
+		const { x, y, scale } = $nodeGraphTransform;
+		return Array.from(graph.querySelectorAll("[data-connector]")).find((connector) => {
+			const bounds = connector.getBoundingClientRect();
+			const centerX = (bounds.left + bounds.width / 2 - graphBounds.left - x) / scale;
+			const centerY = (bounds.top + bounds.height / 2 - graphBounds.top - y) / scale;
+			return Math.abs(centerX - point[0]) <= 4 && Math.abs(centerY - point[1]) <= 4;
+		});
 	}
 
 	function onWindowPointerDown() {
@@ -269,7 +307,7 @@
 	}
 </script>
 
-<div class="graph" class:pointer-held={pointerHeld} data-node-graph>
+<div class="graph" class:pointer-held={pointerHeld} bind:this={graph} data-node-graph>
 	<div
 		class="grid-background"
 		style:--grid-spacing={`${gridSpacing}px`}
@@ -560,10 +598,12 @@
 						data-connector="output"
 						data-tooltip-label="Add Primary Import"
 						data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
+						style:--data-color="var(--color-data-general)"
+						style:--data-color-dim="var(--color-data-general-dim)"
 						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 					</svg>
 				{/if}
 			{/each}
@@ -629,10 +669,12 @@
 						data-connector="input"
 						data-tooltip-label="Add Primary Export"
 						data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
+						style:--data-color="var(--color-data-general)"
+						style:--data-color-dim="var(--color-data-general-dim)"
 						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
 					>
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 					</svg>
 				{/if}
 			{/each}
@@ -646,10 +688,12 @@
 					data-connector="output"
 					data-tooltip-label="Add Import"
 					data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
+					style:--data-color="var(--color-data-general)"
+					style:--data-color-dim="var(--color-data-general-dim)"
 					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
 					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length) + 1}
 				>
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				</svg>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -658,10 +702,12 @@
 					data-connector="input"
 					data-tooltip-label="Add Export"
 					data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
+					style:--data-color="var(--color-data-general)"
+					style:--data-color-dim="var(--color-data-general-dim)"
 					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
 					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length) + 1}
 				>
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				</svg>
 			{/if}
 
@@ -734,6 +780,7 @@
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if node.primaryOutputConnectedToLayer}
 									<path
+										class="stack-wire-end"
 										d="M0,4.5 C0,4.5 0,-3.5 0,-3.5 C0,-3.5 3,-3.5 3,-3.5 C3,-3.5 3,2.565 3,2.565 C2.834,2.632 2.673,2.717 2.52,2.819 C2.52,2.819 0,4.5 0,4.5 ZM5,2.566 C5,2.566 5,-3.5 5,-3.5 C5,-3.5 8,-3.5 8,-3.5 C8,-3.5 8,4.5 8,4.5 C8,4.5 5.479,2.819 5.479,2.819 C5.326,2.717 5.166,2.633 5,2.566 Z"
 										fill="var(--data-color-dim)"
 									/>
@@ -759,6 +806,7 @@
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if node.primaryInputConnectedToLayer}
 								<path
+									class="stack-wire-end"
 									d="M2.512,9.26 C2.673,9.157 2.834,9.072 3,9 C3,9 3,16 3,16 C3,16 0,16 0,16 C0,16 0,10.95 0,10.95 C0,10.95 2.512,9.26 2.512,9.26 ZM5,16 C5,16 5,9 5,9 C5.166,9.073 5.327,9.158 5.48,9.26 C5.48,9.26 8,10.95 8,10.95 C8,10.95 8,16 8,16 C8,16 5,16 5,16 Z"
 									fill="var(--data-color-dim)"
 								/>
@@ -1072,7 +1120,8 @@
 		flex-direction: row;
 		flex-grow: 1;
 
-		// The outline around a hovered redirect dot, set where its data type color is
+		// The outline around a hovered connector or redirect dot, set where each one's data type color is
+		.connector,
 		.redirect-dot {
 			--hover-outline-color: var(--data-color-dim);
 		}
@@ -1680,6 +1729,40 @@
 
 		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
 			opacity: 1;
+		}
+
+		// Hovering a connector enlarges it and outlines its arrow, like the ring a hovered redirect dot gets
+		.connector,
+		.redirect-dot .wire-out-port {
+			overflow: visible;
+
+			// Enlarged about the arrow's own center, leaving the ends of a thick stack wire drawn within a layer's connector as they are
+			path {
+				transform-box: fill-box;
+				transform-origin: center;
+				transition:
+					fill 0.1s,
+					transform 0.1s;
+			}
+		}
+
+		&:not(.pointer-held) .connector:hover,
+		.connector.wire-target,
+		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
+			// Undimmed if disconnected, with the stroke painted beneath the fill, so only its outer half shows
+			path:not(.stack-wire-end) {
+				transform: scale(1.3);
+				fill: var(--data-color);
+				stroke: var(--hover-outline-color);
+				stroke-width: 4px;
+				stroke-linejoin: round;
+				paint-order: stroke;
+			}
+		}
+
+		// The connector a wire is dragged from stays undimmed, as it was while hovered
+		.connector.wire-source path:not(.stack-wire-end) {
+			fill: var(--data-color);
 		}
 
 		.node {
