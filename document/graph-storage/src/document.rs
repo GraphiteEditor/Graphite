@@ -350,7 +350,7 @@ impl Document {
 				registry.attributes.apply_delta(delta, timestamp);
 			}
 			// Merge is a structural sync point only; it mutates no registry state.
-			RegistryDelta::Merge { .. } | RegistryDelta::Other(_) => {}
+			RegistryDelta::Merge { .. } | RegistryDelta::Meta | RegistryDelta::Other(_) => {}
 		}
 		Ok(())
 	}

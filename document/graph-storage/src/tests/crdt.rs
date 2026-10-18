@@ -41,6 +41,7 @@ fn apply_hot_op_advances_clock_past_observed_timestamp() {
 		op: remove_node_op(NodeId(99)),
 		timestamp: observed,
 		sequence: crate::HotSequence(1),
+		attributes: Default::default(),
 	};
 
 	document
@@ -978,6 +979,7 @@ fn hot_op(op: RegistryDelta, counter: u64, peer: u64, sequence: u64) -> HotOp {
 		op,
 		timestamp: ts(counter, peer),
 		sequence,
+		attributes: Default::default(),
 	}
 }
 
