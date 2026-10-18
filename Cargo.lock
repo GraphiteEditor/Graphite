@@ -3963,6 +3963,7 @@ dependencies = [
 [[package]]
 name = "ollev"
 version = "0.1.0"
+source = "git+https://github.com/tagtraumen/ollev#e5b5838271821dd5b8cb150ce4067978687dc732"
 dependencies = [
  "glam 0.33.12",
 ]
