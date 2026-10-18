@@ -2889,7 +2889,12 @@ impl NodeGraphMessageHandler {
 
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
-		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp, SendClickTargets, EndSendClickTargets);
+		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp);
+
+		// Only development builds draw the click targets, so users don't come across the overlay by accident
+		if cfg!(debug_assertions) {
+			common.extend(actions!(NodeGraphMessageDiscriminant; SendClickTargets, EndSendClickTargets));
+		}
 
 		if self.has_selection {
 			common.extend(actions!(NodeGraphMessageDiscriminant;
@@ -3082,7 +3087,7 @@ impl NodeGraphMessageHandler {
 					let single_layer_selected = selection_includes_layers && !has_multiple_selection;
 
 					let mut node_chooser = NodeCatalog::new();
-					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+					node_chooser.initial_search = compatible_type.unwrap_or("".to_string());
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {
@@ -3696,7 +3701,7 @@ impl NodeGraphMessageHandler {
 		// A wire is in progress and its start and end connectors are set
 		let wiring = self.wire_in_progress_from_connector.is_some();
 
-		// Node gragging is in progress (having already moved at least one pixel from the mouse down position)
+		// Node dragging is in progress (having already moved at least one pixel from the mouse down position)
 		let dragging_nodes = self.drag_start.as_ref().is_some_and(|(_, dragged)| *dragged);
 
 		// A box selection is in progress
