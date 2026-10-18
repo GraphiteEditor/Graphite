@@ -137,6 +137,10 @@ pub(crate) fn input_chain(node_id: NodeId, input_index: usize, network_interface
 		if network_interface.is_layer(&chain_node_id, network_path) {
 			return Some((chain, Some(chain_node_id)));
 		}
+		// A redirect dot only bends a wire, so it gets no section, but the chain carries on through it
+		if network_interface.is_redirect_dot(&chain_node_id, network_path) {
+			continue;
+		}
 		chain.push(chain_node_id);
 	}
 

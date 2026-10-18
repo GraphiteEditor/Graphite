@@ -177,6 +177,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// How far, in viewport pixels, the second press of a double-click can land from the first, and how far the first can travel before its release.
+pub const DOUBLE_CLICK_ALLOWED_TRAVEL: f64 = 4.;
 /// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
 pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
 

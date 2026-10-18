@@ -40,11 +40,20 @@ pub struct ChainNodeCopy {
 }
 
 impl ChainNodeCopy {
-	/// The copied node with each of its wired inputs taking its fallback value, placed offset from its original, for pasting outside any flow.
-	pub fn into_loose_template(self) -> NodeTemplate {
+	/// Whether the copied node is a redirect dot, which comes along only to bend a wire between the other copies.
+	pub fn is_redirect_dot(&self) -> bool {
+		let passthrough = matches!(&self.template.implementation, NodeTemplateImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER);
+		passthrough && matches!(self.template.node_type_metadata, NodeTypePersistentMetadata::Node(_))
+	}
+
+	/// The copied node, placed offset from its original, for pasting outside any flow along with the copies of the nodes in `pasted`.
+	/// Its inputs stay wired to those copies, and each of its other wired inputs takes its fallback value.
+	pub fn into_loose_template(self, pasted: &HashSet<NodeId>) -> NodeTemplate {
 		let mut template = self.template;
 		for (index, fallback_value) in self.fallback_values {
-			if let Some(input) = template.inputs.get_mut(index) {
+			if let Some(input) = template.inputs.get_mut(index)
+				&& !input.as_node().is_some_and(|node_id| pasted.contains(&node_id))
+			{
 				*input = fallback_value;
 			}
 		}
@@ -262,10 +271,23 @@ impl OutputConnector {
 	}
 }
 
+/// Which side of a redirect dot an edit took a wire from, since each side leaves the dot orphaned only once it has no wire left there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum DotSide {
+	/// The wire feeding the dot.
+	Incoming,
+	/// One of the wires the dot feeds.
+	Outgoing,
+}
+
 #[derive(Debug, Clone)]
 pub struct Ports {
 	pub(crate) input_ports: Vec<(usize, ClickTarget)>,
 	pub(crate) output_ports: Vec<(usize, ClickTarget)>,
+	/// Where a wire attaches to an input port with a click target not centered on that point.
+	pub(crate) input_anchors: Vec<(usize, DVec2)>,
+	/// Where a wire attaches to an output port with a click target not centered on that point.
+	pub(crate) output_anchors: Vec<(usize, DVec2)>,
 }
 
 impl Default for Ports {
@@ -279,6 +301,8 @@ impl Ports {
 		Ports {
 			input_ports: Vec::new(),
 			output_ports: Vec::new(),
+			input_anchors: Vec::new(),
+			output_anchors: Vec::new(),
 		}
 	}
 
@@ -350,13 +374,34 @@ impl Ports {
 		self.output_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
 	}
 
+	/// Adds the input and output of a redirect dot. Its wires both attach at its center, but they're grabbed from the gutters on either side of its body.
+	pub(crate) fn insert_dot_ports(&mut self, center: DVec2) {
+		const GUTTER_OFFSET: f64 = 10.;
+		const GUTTER_RADIUS: f64 = 5.;
+
+		let gutter = |x_offset: f64| {
+			let gutter_center = center + DVec2::new(x_offset, 0.);
+			ClickTarget::new_with_path(ellipse_path(gutter_center - DVec2::splat(GUTTER_RADIUS), gutter_center + DVec2::splat(GUTTER_RADIUS)), 0.)
+		};
+		self.insert_custom_input_port(0, gutter(-GUTTER_OFFSET));
+		self.insert_custom_output_port(0, gutter(GUTTER_OFFSET));
+		self.input_anchors.push((0, center));
+		self.output_anchors.push((0, center));
+	}
+
 	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
+		if let Some((_, anchor)) = self.input_anchors.iter().find(|(port_index, _)| *port_index == index) {
+			return Some(*anchor);
+		}
 		self.input_ports
 			.iter()
 			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
 	}
 
 	pub fn output_port_position(&self, index: usize) -> Option<DVec2> {
+		if let Some((_, anchor)) = self.output_anchors.iter().find(|(port_index, _)| *port_index == index) {
+			return Some(*anchor);
+		}
 		self.output_ports
 			.iter()
 			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
@@ -523,6 +568,8 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
+	/// Cache for what the imports and exports keep their distance from, unloaded along with `all_nodes_bounding_box`.
+	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
@@ -532,6 +579,32 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
+}
+
+/// What the imports and exports keep their distance from horizontally, in node graph space. They keep a few grid cells from the sides of a node,
+/// but just one from a redirect dot, which only bends a wire, so the dots are measured apart from the other nodes.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ImportExportClearance {
+	/// The leftmost and rightmost sides of the nodes other than redirect dots.
+	pub node_sides: Option<[f64; 2]>,
+	/// The leftmost and rightmost centers of the redirect dots.
+	pub dot_centers: Option<[f64; 2]>,
+}
+
+impl ImportExportClearance {
+	/// The furthest right the imports can sit: `node_gap` (a negative distance) from the leftmost node's side rounded to the grid, or a grid cell left of the leftmost dot.
+	pub fn import_limit(&self, node_gap: f64) -> f64 {
+		let beside_nodes = self.node_sides.map(|[left, _]| (left / GRID_SIZE as f64 + 0.5).floor() * GRID_SIZE as f64 + node_gap);
+		let beside_dots = self.dot_centers.map(|[left, _]| left - GRID_SIZE as f64);
+		beside_nodes.into_iter().chain(beside_dots).reduce(f64::min).unwrap_or(node_gap)
+	}
+
+	/// The furthest left the exports can sit: `node_gap` from the rightmost node's side rounded to the grid, or a grid cell right of the rightmost dot.
+	pub fn export_limit(&self, node_gap: f64) -> f64 {
+		let beside_nodes = self.node_sides.map(|[_, right]| (right / GRID_SIZE as f64 + 0.5).floor() * GRID_SIZE as f64 + node_gap);
+		let beside_dots = self.dot_centers.map(|[_, right]| right + GRID_SIZE as f64);
+		beside_nodes.into_iter().chain(beside_dots).reduce(f64::max).unwrap_or(node_gap)
+	}
 }
 
 #[derive(Debug, Clone)]

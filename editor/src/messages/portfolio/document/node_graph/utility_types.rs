@@ -79,6 +79,9 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
+	/// Whether the node is a redirect dot, which is a Passthrough node drawn as a small dot bending the wire running through it.
+	#[serde(rename = "isRedirectDot")]
+	pub is_redirect_dot: bool,
 	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,

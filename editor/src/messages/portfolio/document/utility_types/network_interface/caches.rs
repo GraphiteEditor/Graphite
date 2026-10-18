@@ -382,7 +382,42 @@ impl NodeNetworkInterface {
 			return;
 		};
 		transient.all_nodes_bounding_box.unload();
+		transient.import_export_clearance.unload();
 		self.unload_import_export_ports(network_path);
+	}
+
+	pub(crate) fn import_export_clearance(&self, network_path: &[NodeId]) -> Option<ImportExportClearance> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in import_export_clearance");
+			return None;
+		};
+
+		network_metadata
+			.transient_metadata
+			.import_export_clearance
+			.with_loaded_or(|| self.compute_import_export_clearance(network_path), |clearance| *clearance)
+	}
+
+	/// The horizontal extents of the nodes in the network, with the redirect dots measured by their centers apart from the rest.
+	fn compute_import_export_clearance(&self, network_path: &[NodeId]) -> Option<ImportExportClearance> {
+		let network_metadata = self.network_metadata(network_path)?;
+		let widen = |span: Option<[f64; 2]>, left: f64, right: f64| Some(span.map_or([left, right], |[min, max]| [min.min(left), max.max(right)]));
+
+		let mut clearance = ImportExportClearance::default();
+		for node_id in network_metadata.persistent_metadata.node_metadata.keys() {
+			let Some([top_left, bottom_right]) = self.node_bounding_box(node_id, network_path) else {
+				continue;
+			};
+
+			if self.is_redirect_dot(node_id, network_path) {
+				let center = (top_left.x + bottom_right.x) / 2.;
+				clearance.dot_centers = widen(clearance.dot_centers, center, center);
+			} else {
+				clearance.node_sides = widen(clearance.node_sides, top_left.x, bottom_right.x);
+			}
+		}
+
+		Some(clearance)
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
