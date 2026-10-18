@@ -640,6 +640,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.drag_start = None;
 					self.node_graph_handler.select_if_not_dragged = None;
 					self.node_graph_handler.nodes_added_in_drag = false;
+					responses.add(NodeGraphMessage::UpdateWireInsertionPreview);
 				}
 				// Abort dragging a dot out of a connector, before the dot has appeared
 				else if self.node_graph_handler.dot_drag_out.is_some() {

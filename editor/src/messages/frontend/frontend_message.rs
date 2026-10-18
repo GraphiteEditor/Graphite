@@ -235,6 +235,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "exportIndex")]
 		index: Option<usize>,
 	},
+	/// The wire a dragged node would be inserted onto if dropped now, keyed by the node and index of the input it feeds (the max node ID for an export).
+	UpdateWireInsertionPreview {
+		wire: Option<(NodeId, usize)>,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
