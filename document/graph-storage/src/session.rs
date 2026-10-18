@@ -3,7 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value, to_value,
+	ApplyMode, Attributes, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value,
+	to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -146,15 +147,19 @@ impl Session {
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
 	/// before any of its edits. A no-op batch doesn't register, since registration rides a real edit.
 	pub(crate) fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
+		self.stage_ops_with(ops.into_iter().map(|op| (op, Attributes::new())))
+	}
+
+	fn stage_ops_with(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Attributes)>) -> Result<Vec<HotOp>, CrdtError> {
 		// A batch is staged whole or not at all.
-		let mut pending: Vec<RegistryDelta> = ops.into_iter().collect();
+		let mut pending: Vec<(RegistryDelta, Attributes)> = ops.into_iter().collect();
 		if pending.is_empty() {
 			return Ok(Vec::new());
 		}
 
 		let (peer, user) = (self.document.peer, self.document.user);
 		if self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
-			pending.insert(0, RegistryDelta::RegisterPeer { peer, user });
+			pending.insert(0, (RegistryDelta::RegisterPeer { peer, user }, Attributes::new()));
 		}
 
 		// A reused sequence would fall under the retired marks, so a batch running past the end is refused.
@@ -164,12 +169,13 @@ impl Session {
 
 		let sequence_before = self.document.last_hot_sequence;
 		let mut staged = Vec::with_capacity(pending.len());
-		for op in pending {
+		for (op, attributes) in pending {
 			let sequence = HotSequence(self.document.last_hot_sequence.0 + 1);
 			let hot_op = HotOp {
 				op,
 				timestamp: self.document.clock.tick(),
 				sequence,
+				attributes,
 			};
 			if let Err(error) = self.document.stage_hot_op(hot_op.clone(), ApplyMode::Strict) {
 				// The run continues where it was, so no sequence goes unused.
@@ -344,6 +350,60 @@ impl Session {
 		self.document.history.len()
 	}
 
+	/// Closes this peer's open interaction with a flagged [`RegistryDelta::Meta`] op. Returns the staged ops, a
+	/// re-registration possibly before the marker; empty when nothing is open.
+	pub fn end_interaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
+		let peer = self.document.peer;
+		let open = self
+			.document
+			.hot_log
+			.iter()
+			.rev()
+			.find(|hot_op| hot_op.timestamp.peer == peer)
+			.is_some_and(|hot_op| !hot_op.ends_interaction());
+		if !open {
+			return Ok(Vec::new());
+		}
+		let mut closing = Attributes::new();
+		closing.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), TimeStamp::ORIGIN);
+		self.stage_ops_with([(RegistryDelta::Meta, closing)])
+	}
+
+	/// Every author's closed interactions in the hot log, the earliest closed first.
+	pub fn closed_interactions(&self) -> Vec<ClosedInteraction> {
+		let mut by_author: HashMap<PeerId, Vec<&HotOp>> = HashMap::new();
+		for hot_op in &self.document.hot_log {
+			by_author.entry(hot_op.timestamp.peer).or_default().push(hot_op);
+		}
+
+		let mut closed = Vec::new();
+		for (author, mut ops) in by_author {
+			ops.sort_by_key(|hot_op| hot_op.sequence);
+			let mut expected = self.document.retired.retired_up_to.get(&author).copied().unwrap_or(HotSequence::NONE).next();
+			let mut current = Vec::new();
+			let mut contiguous = true;
+			for hot_op in ops {
+				// Retired past a gap: not in the log, but not missing either.
+				while expected < hot_op.sequence && self.document.retired.covers(HotOpId { peer: author, sequence: expected }) {
+					expected = expected.next();
+				}
+				contiguous &= hot_op.sequence == expected;
+				expected = hot_op.sequence.next();
+				current.push(hot_op.id());
+				if hot_op.ends_interaction() {
+					closed.push(ClosedInteraction {
+						author,
+						ops: std::mem::take(&mut current),
+						closed_at: hot_op.timestamp,
+						contiguous,
+					});
+				}
+			}
+		}
+		closed.sort_by_key(|interaction| interaction.closed_at);
+		closed
+	}
+
 	/// The hot ops stamped at or before `up_to`, which [`retire`](Self::retire) drains.
 	pub fn hot_ops_up_to(&self, up_to: TimeStamp) -> Vec<HotOpId> {
 		self.document.hot_log.iter().filter(|hot_op| hot_op.timestamp <= up_to).map(HotOp::id).collect()
@@ -351,7 +411,7 @@ impl Session {
 
 	/// Promote the given hot ops into retired deltas in hot-log order, each keeping its authored stamp.
 	///
-	/// One retired delta per hot op.
+	/// One retired delta per hot op, except a `Meta` op, which commits nothing.
 	pub fn retire_hot_ops(&mut self, ids: &[HotOpId]) -> Result<Vec<Rev>, CrdtError> {
 		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
 		let (drained, kept): (Vec<HotOp>, Vec<HotOp>) = self.document.hot_log.drain(..).partition(|hot_op| wanted.contains(&hot_op.id()));
@@ -359,7 +419,10 @@ impl Session {
 		self.document.resync_hot_timestamps();
 		self.document.retired.extend(drained.iter().map(HotOp::id));
 
-		let ops = drained.into_iter().map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
+		let ops = drained
+			.into_iter()
+			.filter(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta))
+			.map(|hot_op| (hot_op.op, Some(hot_op.timestamp)));
 		self.commit_ops_authored_at(ops, true)
 	}
 
@@ -627,9 +690,16 @@ pub struct HotOp {
 	pub timestamp: TimeStamp,
 	/// Position in its author's run. See [`HotSequence`].
 	pub sequence: HotSequence,
+	/// Shared with every peer, unlike `Delta::attributes`. Dropped at retirement.
+	#[serde(default)]
+	pub attributes: Attributes,
 }
 
 impl HotOp {
+	pub fn ends_interaction(&self) -> bool {
+		self.attributes.get_or(crate::attr::delta::INTERACTION_END, false)
+	}
+
 	/// Identifies the op in the retired marks, which track a contiguous prefix per author.
 	pub fn id(&self) -> HotOpId {
 		HotOpId {
@@ -637,6 +707,17 @@ impl HotOp {
 			sequence: self.sequence,
 		}
 	}
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ClosedInteraction {
+	pub author: PeerId,
+	/// In the author's order, the marker last.
+	pub ops: Vec<HotOpId>,
+	/// The marker's stamp.
+	pub closed_at: TimeStamp,
+	/// No gap in the author's sequence since its retired frontier.
+	pub contiguous: bool,
 }
 
 /// Position in one author's run of hot ops, counting from 1 with no gaps. Kept apart from the Lamport
