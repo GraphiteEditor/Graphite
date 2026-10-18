@@ -918,10 +918,15 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		));
 	}
 
+	// `#[source_id]` injects the node's `SourceId` as async nodes get it, so a synchronous node can bump its own generation
+	let source_id = extract_attribute(attrs, "source_id").is_some();
+
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
+		(Some(_), _) | (_, Some(_)) if source_id => return Err(Error::new_spanned(&pat_ident, "`source_id` cannot have a `default` or `scope` attribute")),
 		(Some(default_value), _) => ParsedValueSource::Default(default_value),
 		(_, Some(scope)) => ParsedValueSource::Scope(Box::new(scope)),
+		_ if source_id => ParsedValueSource::SourceId,
 		_ => ParsedValueSource::None,
 	};
 
