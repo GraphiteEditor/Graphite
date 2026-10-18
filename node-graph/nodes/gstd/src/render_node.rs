@@ -173,7 +173,7 @@ async fn create_context<'a: 'n>(
 		for_export: render_config.for_export,
 		render_output_type,
 		scale: render_config.scale,
-		viewport_zoom: logical_viewport.scale_magnitudes().x,
+		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),
 		..Default::default()
 	};
 

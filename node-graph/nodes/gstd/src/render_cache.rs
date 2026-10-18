@@ -12,6 +12,7 @@ use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
+use vector_types::vector::style::RenderMode;
 use wgpu_executor::WgpuExecutor;
 
 pub const TILE_SIZE: u32 = 256;
@@ -330,11 +331,13 @@ pub async fn render_output_cache<'a: 'n>(
 	#[data] tile_cache: TileCache,
 ) -> Item<RenderOutput> {
 	let footprint = ctx.footprint();
-	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
+	let Some(mut render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>().cloned()) else {
 		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint);
 		return data.eval(context.into_context()).await;
 	};
+
+	render_params.viewport_zoom = if let RenderMode::Outline = render_params.render_mode { render_params.viewport_zoom } else { None };
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
@@ -376,7 +379,7 @@ pub async fn render_output_cache<'a: 'n>(
 		if missing_region.tiles.is_empty() {
 			continue;
 		}
-		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, &footprint.transform, &device_origin_offset).await;
+		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), &render_params, &footprint.transform, &device_origin_offset).await;
 		new_regions.push(region);
 	}
 

@@ -24,7 +24,7 @@ async fn render_background<'a: 'n>(
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	if !render_params.to_canvas() || render_params.viewport_zoom <= 0.0 {
+	if !render_params.to_canvas() || render_params.viewport_zoom.unwrap_or(1.) <= 0.0 {
 		return data;
 	}
 
@@ -41,7 +41,7 @@ async fn render_background<'a: 'n>(
 					foreground: foreground_texture.as_ref(),
 					backgrounds: &metadata.backgrounds,
 					document_to_screen: doc_to_screen,
-					zoom: render_params.viewport_zoom.to_f32(),
+					zoom: render_params.viewport_zoom.unwrap_or(1.).to_f32(),
 				})
 				.await;
 
@@ -55,10 +55,10 @@ async fn render_background<'a: 'n>(
 
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * render_params.footprint.transform;
 
-			if render_params.viewport_zoom > 0. {
+			if render_params.viewport_zoom.unwrap_or_default() > 0. {
 				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
 					let checker_id = format!("{checker_id_prefix}-{}", generate_uuid());
-					let cell_size = 8. / render_params.viewport_zoom;
+					let cell_size = 8. / render_params.viewport_zoom.unwrap_or(1.);
 					let pattern_size = cell_size * 2.;
 
 					write!(
