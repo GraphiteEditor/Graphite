@@ -1,8 +1,8 @@
 use core::f64;
-use core_types::context::{CloneVarArgs, Context, ContextFeatures, Ctx, ExtractAll};
+use core_types::context::{CloneVarArgs, Context, ContextModification, Ctx, ExtractAll};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
 use core_types::transform::Footprint;
-use core_types::{Color, OwnedContextImpl};
+use core_types::{Color, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphene_animation::AnimationCurve;
 use graphic_types::vector_types::Gradient;
@@ -12,7 +12,7 @@ use raster_types::{CPU, GPU, Raster};
 /// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
 #[node_macro::node(category("_Context Nullification"))]
-async fn context_modification<T>(
+fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
@@ -48,16 +48,18 @@ async fn context_modification<T>(
 	)]
 	value: impl Node<Context<'static>, Output = T>,
 	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
-	features_to_keep: Item<ContextFeatures>,
-) -> T {
-	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep.into_element());
+	modification: Item<ContextModification>,
+) -> Result<T, Interrupt> {
+	let new_context = OwnedContextImpl::from_modification(ctx, modification.element());
 
-	value.eval(Some(new_context.into())).await
+	value.eval(Some(new_context.into()))
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::SourceId;
+	use core_types::context::ContextFeatures;
 	use core_types::graphene_hash::CacheHash;
 	use core_types::transform::Footprint;
 	use std::collections::hash_map::DefaultHasher;
@@ -121,5 +123,42 @@ mod tests {
 			hasher4.finish(),
 			"Hash should be stable when keeping only footprint and varargs and their values are the same"
 		);
+	}
+
+	fn hash_of(context: OwnedContextImpl) -> u64 {
+		let mut hasher = DefaultHasher::new();
+		context.cache_hash(&mut hasher);
+		hasher.finish()
+	}
+
+	fn with_generations(generations: &[(u64, u64)]) -> std::sync::Arc<OwnedContextImpl> {
+		let generations = generations.iter().map(|&(source, generation)| (SourceId(source), generation)).collect();
+		std::sync::Arc::new(OwnedContextImpl::empty().with_generations(generations))
+	}
+
+	#[test]
+	fn a_modification_keys_only_on_its_retained_sources() {
+		let modification = ContextModification {
+			features: ContextFeatures::all(),
+			sources: [SourceId(1)].into(),
+		};
+		let key = |generations: &[(u64, u64)]| hash_of(OwnedContextImpl::from_modification(with_generations(generations), &modification));
+		let initial = key(&[(0, 1), (1, 3)]);
+		assert_eq!(initial, key(&[(0, 2), (1, 3)]), "a bump of an unretained source keeps the key");
+		assert_ne!(initial, key(&[(0, 1), (1, 4)]), "a bump of a retained source changes the key");
+	}
+
+	#[test]
+	fn a_source_key_ignores_its_own_bumps() {
+		let key = |generations: &[(u64, u64)]| hash_of(OwnedContextImpl::from(with_generations(generations)).without_source(SourceId(7)));
+		let initial = key(&[(7, 1), (9, 5)]);
+		assert_eq!(initial, key(&[(7, 2), (9, 5)]), "its own bump keeps the key");
+		assert_ne!(initial, key(&[(7, 1), (9, 6)]), "another source's bump changes the key");
+	}
+
+	#[test]
+	fn an_unfiltered_context_sees_every_bump() {
+		let key = |generations: &[(u64, u64)]| hash_of(OwnedContextImpl::from(with_generations(generations)));
+		assert_ne!(key(&[(0, 1)]), key(&[(0, 2)]));
 	}
 }

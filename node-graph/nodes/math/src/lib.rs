@@ -1,9 +1,9 @@
-use core_types::Context;
 use core_types::FallibleVec2Operations;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
+use core_types::{Context, Interrupt};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -1377,7 +1377,7 @@ fn logical_not(
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"), icon("NodeSwitch"))]
-async fn switch<T: 'n + Send>(
+fn switch<T: Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	condition: Item<bool>,
 	#[expose]
@@ -1440,10 +1440,10 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	if_false: impl Node<Context<'static>, Output = Item<T>>,
-) -> Item<T> {
+) -> Result<Item<T>, Interrupt> {
 	let ctx = OwnedContextImpl::from(ctx).into_context();
 
-	if *condition.element() { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+	if *condition.element() { if_true.eval(ctx) } else { if_false.eval(ctx) }
 }
 
 /// Constructs a `Bool` value which may be set to true or false.
@@ -2327,8 +2327,8 @@ mod test {
 
 	#[test]
 	pub fn foo() {
-		let fnn = FnNode::new(|(a, b)| (b, a));
-		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
+		let fnn = FnNode::new(|&(a, b): &(u32, u32)| (b, a));
+		assert_eq!(fnn.eval(&(1u32, 2u32)).value(), Some((2, 1)));
 	}
 
 	#[test]

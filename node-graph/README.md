@@ -73,13 +73,13 @@ To test this:
 #[test]
 fn test_opacity_node() {
 	let opacity_node = OpacityNode {
-		opacity_multiplier: crate::value::CopiedNode(10_f64), // set opacity to 10%
+		opacity_multiplier: crate::value::ClonedNode(10_f64), // set opacity to 10%
 	};
 	assert_eq!(opacity_node.eval(Color::WHITE), Color::from_rgbaf32_unchecked(1., 1., 1., 0.1));
 }
 ```
 
-The `graphene_core::value::CopiedNode` is a node that, when evaluated, copies `10_f64` and returns it.
+The `graphene_core::value::ClonedNode` is a node that, when evaluated, clones `10_f64` and returns it.
 
 ## Creating a new node
 

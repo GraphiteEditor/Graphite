@@ -1,4 +1,6 @@
-use crate::application::Editor;
+use crate::application::{DEFAULT_ENVIRONMENT, Editor};
+use crate::builder::{Builder, EditorBuilder, RuntimeBuilder};
+use crate::messages::frontend::utility_types::RenderStatus;
 use crate::messages::input_mapper::utility_types::keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -8,30 +10,59 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
+use crate::task::{Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
+use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
+use graph_craft::application_io::PlatformApplicationIo;
+use graph_craft::application_io::resource::HashMapResourceStorage;
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
 	pub editor: Editor,
 	pub runtime: NodeRuntime,
+	woken: Arc<AtomicBool>,
 }
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
 		init_test_logger();
 
-		let (mut editor, runtime) = Editor::new_local_executor();
+		let woken = Arc::new(AtomicBool::new(false));
+		let wake = woken.clone();
+		let (editor, runtime) = Builder::new()
+			.with_editor(
+				EditorBuilder::new()
+					.with_wake(move || wake.store(true, Ordering::Relaxed))
+					.with_environment(DEFAULT_ENVIRONMENT)
+					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
+					.with_document_store(Arc::new(MemoryStore::default())),
+			)
+			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(PlatformApplicationIo::default()))
+			.with_spawner(BlockingSpawner)
+			.with_random_seed(0)
+			.build();
+		let mut editor = Self { editor, runtime, woken };
 
-		editor.handle_message(PortfolioMessage::Init);
+		editor.dispatch(PortfolioMessage::Init);
 
 		// Tests run with `.gdd` storage on and the dual-write soak validation enabled, so storage round-trip drift fails loud.
-		editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: true });
-		editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
+		editor.dispatch(PreferencesMessage::SaveAsGdd { enabled: true });
+		editor.dispatch(PreferencesMessage::ValidateStorageRoundTrip { enabled: true });
 
-		Self { editor, runtime }
+		editor
+	}
+
+	pub fn dispatch(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
+		let mut responses = self.editor.handle_message(message);
+		while self.woken.swap(false, Ordering::Relaxed) {
+			responses.extend(self.editor.handle_message(Message::Wake));
+		}
+		responses
 	}
 
 	/// Submit an evaluation to the executor, run the runtime, and process the results.
@@ -53,11 +84,10 @@ impl EditorTestUtils {
 		}
 		self.runtime.run().await;
 
-		let mut messages = VecDeque::new();
-		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut messages) {
-			return Err(format!("Graph should render\n\n{e}"));
+		let frontend_messages = self.dispatch(Message::Wake);
+		if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+			return Err("Graph should render".to_string());
 		}
-		let frontend_messages = messages.into_iter().flat_map(|message| self.editor.handle_message(message));
 
 		for message in frontend_messages {
 			message.check_node_graph_error();
@@ -81,7 +111,7 @@ impl EditorTestUtils {
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
-		let frontend_messages_from_msg = self.editor.handle_message(message);
+		let frontend_messages_from_msg = self.dispatch(message);
 
 		// Required to process any buffered messages
 		if let Err(e) = self.eval_graph_until_finished().await {
@@ -379,9 +409,9 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphErrorDiagnostic { error } = self else { return };
-		if let Some(error) = error {
-			panic!("error: {:?}", error);
+		let FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors } = self else { return };
+		if !errors.is_empty() {
+			panic!("errors: {errors:?}");
 		}
 	}
 }
@@ -438,6 +468,13 @@ pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String
 	let errors = CAPTURED_ERRORS.take().unwrap_or_default();
 
 	(result, errors)
+}
+
+struct BlockingSpawner;
+impl Spawn for BlockingSpawner {
+	fn spawn(&self, task: Task) {
+		futures::executor::block_on(task);
+	}
 }
 
 #[cfg(test)]

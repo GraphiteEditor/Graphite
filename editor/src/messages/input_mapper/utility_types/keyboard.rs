@@ -1,4 +1,4 @@
-use crate::application::Editor;
+use crate::application::{Environment, EnvironmentDisplay};
 use crate::messages::prelude::*;
 use bitflags::bitflags;
 use std::fmt::{self, Display, Formatter};
@@ -243,9 +243,9 @@ pub enum Key {
 	_KeysVariantCount, // This has to be the last element in the enum
 }
 
-impl fmt::Display for Key {
+impl EnvironmentDisplay for Key {
 	// TODO: Relevant key labels should be localized when we get around to implementing localization/internationalization
-	fn fmt(&self, f: &mut fmt::Formatter) -> std::fmt::Result {
+	fn fmt(&self, f: &mut fmt::Formatter, environment: Environment) -> std::fmt::Result {
 		let key_name = format!("{self:?}");
 
 		// Writing system keys
@@ -258,7 +258,7 @@ impl fmt::Display for Key {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
-		let is_mac = Editor::environment().is_mac();
+		let is_mac = environment.is_mac();
 
 		let name = match self {
 			// Writing system keys
@@ -345,35 +345,9 @@ pub const NUMBER_OF_KEYS: usize = Key::_KeysVariantCount as usize - 1;
 // =========
 
 /// Only `Key`s that exist on a physical keyboard should be used.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KeysGroup(pub Vec<Key>);
-
-impl fmt::Display for KeysGroup {
-	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		const JOINER_MARK: &str = " ";
-
-		let mut joined = self
-			.0
-			.iter()
-			.map(|key| {
-				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
-
-				if Editor::environment().is_mac() && key_is_modifier {
-					key.to_string()
-				} else {
-					key.to_string() + JOINER_MARK
-				}
-			})
-			.collect::<String>();
-
-		// Cut the joining character off the end, if present
-		if joined.ends_with(JOINER_MARK) {
-			joined.truncate(joined.len() - JOINER_MARK.len());
-		}
-
-		write!(f, "{joined}")
-	}
-}
 
 // ==========
 // LabeledKey
@@ -425,13 +399,16 @@ pub enum LabeledKeyOrMouseMotion {
 	MouseMotion(MouseMotion),
 }
 
-impl From<Key> for LabeledKeyOrMouseMotion {
-	fn from(key: Key) -> Self {
+impl LabeledKeyOrMouseMotion {
+	pub fn new(key: Key, environment: Environment) -> Self {
 		match key {
 			Key::MouseLeft => Self::MouseMotion(MouseMotion::Lmb),
 			Key::MouseRight => Self::MouseMotion(MouseMotion::Rmb),
 			Key::MouseMiddle => Self::MouseMotion(MouseMotion::Mmb),
-			_ => Self::Key(LabeledKey { key, label: key.to_string() }),
+			_ => Self::Key(LabeledKey {
+				key,
+				label: key.display(environment).to_string(),
+			}),
 		}
 	}
 }
@@ -444,9 +421,9 @@ impl From<Key> for LabeledKeyOrMouseMotion {
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct LabeledShortcut(pub Vec<LabeledKeyOrMouseMotion>);
 
-impl From<KeysGroup> for LabeledShortcut {
-	fn from(keys_group: KeysGroup) -> Self {
-		Self(keys_group.0.into_iter().map(|key| key.into()).collect())
+impl LabeledShortcut {
+	pub fn new(keys_group: KeysGroup, environment: Environment) -> Self {
+		Self(keys_group.0.into_iter().map(|key| LabeledKeyOrMouseMotion::new(key, environment)).collect())
 	}
 }
 
