@@ -123,7 +123,7 @@ pub enum RegistryDelta {
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
     Merge           { extra_parents: Vec<Rev> },                        // joins divergent tips; registry no-op
-    Meta,                                                              // carries a hot op's attributes; dropped at retirement
+    Meta,                                                              
     Other(Value),                                                      // forward-compatible escape hatch
 }
 
