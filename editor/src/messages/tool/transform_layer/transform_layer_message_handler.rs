@@ -20,7 +20,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::{Vector, VectorModificationType};
+use graphene_std::vector::{VectorGeometry, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
@@ -184,7 +184,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				let affected_point_refs = affected_points.iter().collect();
 
-				let get_location = |point: &&ManipulatorPointId| point.get_position(&vector).map(|position| viewspace.transform_point2(position));
+				let get_location = |point: &&ManipulatorPointId| vector.position_of(**point).map(|position| viewspace.transform_point2(position));
 				if let (Some((new_pivot, grab_target)), bounds) = calculate_pivot(
 					document,
 					&affected_point_refs,
@@ -480,9 +480,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					&& let [point] = selected_points.as_slice()
 				{
 					if matches!(point, ManipulatorPointId::Anchor(_)) {
-						if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
-							let handle1_length = handle1.length(&vector);
-							let handle2_length = handle2.length(&vector);
+						if let Some([handle1, handle2]) = vector.handle_pair_of(**point) {
+							let handle1_length = vector.handle_length(handle1);
+							let handle2_length = vector.handle_length(handle2);
 
 							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
 								// G should work for this point but not R and S
@@ -493,7 +493,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							}
 						}
 					} else {
-						let handle_length = point.as_handle().map(|handle| handle.length(&vector));
+						let handle_length = point.as_handle().map(|handle| vector.handle_length(handle));
 
 						if handle_length == Some(0.) {
 							selected.original_transforms.clear();
@@ -800,10 +800,10 @@ impl Snapping {
 
 			moving.edited.push(layer);
 			for point in points {
-				if let Some(anchor) = point.get_anchor(&vector) {
+				if let Some(anchor) = vector.anchor_of(point) {
 					moving.anchors.push((layer, anchor));
 				}
-				if let Some(position) = point.get_position(&vector) {
+				if let Some(position) = vector.position_of(point) {
 					starts.push(to_document.transform_point2(position));
 				}
 			}
@@ -952,7 +952,7 @@ fn snap_again(operation: &mut TransformOperation, snapping: Option<&Snapping>, s
 fn calculate_pivot(
 	document: &DocumentMessageHandler,
 	selected_points: &Vec<&ManipulatorPointId>,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	viewspace: DAffine2,
 	get_location: impl Fn(&ManipulatorPointId) -> Option<DVec2>,
 	gizmo: &mut PivotGizmo,
@@ -995,8 +995,8 @@ fn calculate_pivot(
 		ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 			// Get the anchor position and transform it to the pivot
 			let (Some(pivot_position), Some(position)) = (
-				point.get_anchor_position(vector).map(|anchor_position| viewspace.transform_point2(anchor_position)),
-				point.get_position(vector),
+				vector.anchor_position_of(**point).map(|anchor_position| viewspace.transform_point2(anchor_position)),
+				vector.position_of(**point),
 			) else {
 				return (None, None);
 			};
@@ -1015,18 +1015,18 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 	for &layer in selected_layers {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
-		for [handle1, handle2] in &vector.colinear_manipulators {
+		for [handle1, handle2] in vector.colinear_pairs() {
 			let manipulator1 = handle1.to_manipulator_point();
 			let manipulator2 = handle2.to_manipulator_point();
 
-			let Some(anchor_pos) = manipulator1.get_anchor_position(&vector) else { continue };
-			let Some(handle1_pos) = manipulator1.get_position(&vector) else { continue };
-			let Some(handle2_pos) = manipulator2.get_position(&vector) else { continue };
+			let Some(anchor_pos) = vector.anchor_position_of(manipulator1) else { continue };
+			let Some(handle1_pos) = vector.position_of(manipulator1) else { continue };
+			let Some(handle2_pos) = vector.position_of(manipulator2) else { continue };
 
 			// Check if handles are not colinear (not approximately equal to +/- PI)
 			if !is_almost_colinear(anchor_pos, handle1_pos, handle2_pos) {
 				let modification_type = VectorModificationType::SetG1Continuous {
-					handles: [*handle1, *handle2],
+					handles: [handle1, handle2],
 					enabled: false,
 				};
 
@@ -1840,7 +1840,7 @@ mod test_transform_layer {
 		let document = editor.active_document();
 		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
 		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-		let anchors: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| to_viewport.transform_point2(position)).collect();
+		let anchors: Vec<DVec2> = vector.anchor_positions().iter().map(|&position| to_viewport.transform_point2(position)).collect();
 		assert_eq!(anchors.len(), 2, "unexpected anchors {anchors:?}");
 		assert!(
 			anchors[0].distance(first) < 1e-6 && anchors[1].distance(DVec2::new(400., 300.)) < 1e-6,

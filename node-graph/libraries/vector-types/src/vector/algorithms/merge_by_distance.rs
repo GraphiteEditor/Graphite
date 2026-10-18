@@ -1,4 +1,7 @@
-use crate::vector::{PointDomain, PointId, SegmentDomain, SegmentId, Vector};
+use crate::vector::flatten::WorkingVector;
+use crate::vector::path::Path;
+use crate::vector::{PointId, SegmentId, Vector};
+use core_types::list::List;
 use glam::{DAffine2, DVec2};
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use petgraph::prelude::UnGraphMap;
@@ -7,20 +10,22 @@ use rustc_hash::FxHashSet;
 
 pub trait MergeByDistanceExt {
 	/// Collapse all points with edges shorter than the specified distance
-	fn merge_by_distance_topological(&mut self, distance: f64);
-	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64);
+	fn merge_by_distance_topological(&mut self, paths: &mut List<Path>, distance: f64);
+	fn merge_by_distance_spatial(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64);
 }
 
 impl MergeByDistanceExt for Vector {
-	fn merge_by_distance_topological(&mut self, distance: f64) {
-		// Treat self as an undirected graph
-		let indices = VectorIndex::build_from(self);
+	fn merge_by_distance_topological(&mut self, paths: &mut List<Path>, distance: f64) {
+		let mut working = WorkingVector::flatten(self, paths);
+
+		// Treat the working form as an undirected graph
+		let indices = VectorIndex::build_from(&working);
 
 		// TODO: We lose information on the winding order by using an undirected graph. Switch to a directed graph and fix the algorithm to handle that.
 		// Graph containing only short edges, referencing the data graph
 		let mut short_edges = UnGraphMap::new();
 
-		for segment_id in self.segment_ids().iter().copied() {
+		for segment_id in working.segment_ids.iter().copied() {
 			let length = indices.segment_chord_length(segment_id);
 			if length < distance {
 				let [start, end] = indices.segment_ends(segment_id);
@@ -39,7 +44,7 @@ impl MergeByDistanceExt for Vector {
 		let average_position = collapse
 			.iter()
 			.map(|collapse_set| {
-				let sum: DVec2 = collapse_set.iter().map(|&id| indices.point_position(id, self)).sum();
+				let sum: DVec2 = collapse_set.iter().map(|&id| indices.point_position(id, &working)).sum();
 				sum / collapse_set.len() as f64
 			})
 			.collect::<Vec<_>>();
@@ -49,11 +54,13 @@ impl MergeByDistanceExt for Vector {
 		let mut segments_to_delete = FxHashSet::default();
 		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position) {
 			// Remove any segments where both endpoints are in the collapse set
-			segments_to_delete.extend(self.segment_domain.iter().filter_map(|(id, start_offset, end_offset, _)| {
-				let start = self.point_domain.ids()[start_offset];
-				let end = self.point_domain.ids()[end_offset];
-				if collapse_set.contains(&start) && collapse_set.contains(&end) { Some(id) } else { None }
-			}));
+			for segment_index in 0..working.segment_ids.len() {
+				let start = working.point_ids[working.segment_start[segment_index]];
+				let end = working.point_ids[working.segment_end[segment_index]];
+				if collapse_set.contains(&start) && collapse_set.contains(&end) {
+					segments_to_delete.insert(working.segment_ids[segment_index]);
+				}
+			}
 
 			// Delete all points but the first, set its position to the average, and update segments
 			let first_id = collapse_set.iter().copied().next().unwrap();
@@ -61,52 +68,79 @@ impl MergeByDistanceExt for Vector {
 			let first_offset = indices.point_to_offset[&first_id];
 
 			// Look for segments with endpoints in `collapse_set` and replace them with the point we are collapsing to
-			for (_, start_offset, end_offset, handles) in self.segment_domain.iter_mut() {
-				let start_id = self.point_domain.ids()[*start_offset];
-				let end_id = self.point_domain.ids()[*end_offset];
+			for segment_index in 0..working.segment_ids.len() {
+				let start_id = working.point_ids[working.segment_start[segment_index]];
+				let end_id = working.point_ids[working.segment_end[segment_index]];
 
 				// Update Bezier handles for moved points
 				if start_id == first_id {
-					let point_position = self.point_domain.position[*start_offset];
-					handles.move_start(average_pos - point_position);
+					let point_position = working.point_positions[working.segment_start[segment_index]];
+					working.segment_handles[segment_index].move_start(average_pos - point_position);
 				}
 				if end_id == first_id {
-					let point_position = self.point_domain.position[*end_offset];
-					handles.move_end(average_pos - point_position);
+					let point_position = working.point_positions[working.segment_end[segment_index]];
+					working.segment_handles[segment_index].move_end(average_pos - point_position);
 				}
 
 				// Replace removed points with the collapsed point
 				if collapse_set.contains(&start_id) {
-					let point_position = self.point_domain.position[*start_offset];
-					*start_offset = first_offset;
-					handles.move_start(average_pos - point_position);
+					let point_position = working.point_positions[working.segment_start[segment_index]];
+					working.segment_start[segment_index] = first_offset;
+					working.segment_handles[segment_index].move_start(average_pos - point_position);
 				}
 				if collapse_set.contains(&end_id) {
-					let point_position = self.point_domain.position[*end_offset];
-					*end_offset = first_offset;
-					handles.move_end(average_pos - point_position);
+					let point_position = working.point_positions[working.segment_end[segment_index]];
+					working.segment_end[segment_index] = first_offset;
+					working.segment_handles[segment_index].move_end(average_pos - point_position);
 				}
 			}
 
 			// Update the position of the collapsed point
-			self.point_domain.position[first_offset] = average_pos;
+			working.point_positions[first_offset] = average_pos;
 
 			points_to_delete.extend(collapse_set)
 		}
 
-		self.segment_domain.retain(|id| !segments_to_delete.contains(id), usize::MAX);
-		self.point_domain.retain(&mut self.segment_domain, |id| !points_to_delete.contains(id));
+		// Drop the collapsed segments, then the merged-away points, remapping segment endpoints
+		let keep_segment: Vec<bool> = working.segment_ids.iter().map(|id| !segments_to_delete.contains(id)).collect();
+		working.carry_path_beginnings(&keep_segment);
+		retain_by(&mut working.segment_ids, &keep_segment);
+		retain_by(&mut working.segment_start, &keep_segment);
+		retain_by(&mut working.segment_end, &keep_segment);
+		retain_by(&mut working.segment_handles, &keep_segment);
+		retain_by(&mut working.segment_begins_path, &keep_segment);
+
+		let mut point_map = Vec::with_capacity(working.point_ids.len());
+		let mut new_index = 0;
+		let keep_point: Vec<bool> = working
+			.point_ids
+			.iter()
+			.map(|id| {
+				let keep = !points_to_delete.contains(id);
+				point_map.push(if keep { new_index } else { usize::MAX });
+				new_index += usize::from(keep);
+				keep
+			})
+			.collect();
+		retain_by(&mut working.point_ids, &keep_point);
+		retain_by(&mut working.point_positions, &keep_point);
+		for index in working.segment_start.iter_mut().chain(working.segment_end.iter_mut()) {
+			*index = point_map.get(*index).copied().unwrap_or(usize::MAX);
+		}
+
+		working.reweave(self, paths);
 	}
 
-	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64) {
-		let point_count = self.point_domain.positions().len();
+	fn merge_by_distance_spatial(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64) {
+		let mut working = WorkingVector::flatten(self, paths);
+		let point_count = working.point_positions.len();
 
 		// Find min x and y for grid cell normalization
 		let mut min_x = f64::MAX;
 		let mut min_y = f64::MAX;
 
 		// Calculate mins without collecting all positions
-		for &pos in self.point_domain.positions() {
+		for &pos in &working.point_positions {
 			let transformed_pos = transform.transform_point2(pos);
 			min_x = min_x.min(transformed_pos.x);
 			min_y = min_y.min(transformed_pos.y);
@@ -118,7 +152,7 @@ impl MergeByDistanceExt for Vector {
 
 		// Add points to grid cells without collecting all positions first
 		for i in 0..point_count {
-			let pos = transform.transform_point2(self.point_domain.positions()[i]);
+			let pos = transform.transform_point2(working.point_positions[i]);
 			let grid_x = ((pos.x - min_x) / distance).floor() as i32;
 			let grid_y = ((pos.y - min_y) / distance).floor() as i32;
 
@@ -137,7 +171,7 @@ impl MergeByDistanceExt for Vector {
 				continue;
 			}
 
-			let pos_i = transform.transform_point2(self.point_domain.positions()[i]);
+			let pos_i = transform.transform_point2(working.point_positions[i]);
 			let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
 			let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
 
@@ -151,7 +185,7 @@ impl MergeByDistanceExt for Vector {
 					if let Some(indices) = grid.get(&neighbor_cell) {
 						for &j in indices {
 							if j > i && point_index_map[j].is_none() {
-								let pos_j = transform.transform_point2(self.point_domain.positions()[j]);
+								let pos_j = transform.transform_point2(working.point_positions[j]);
 								if pos_i.distance(pos_j) <= distance {
 									group.push(j);
 								}
@@ -164,7 +198,7 @@ impl MergeByDistanceExt for Vector {
 			// Create merged point - calculate positions as needed
 			let merged_position = group
 				.iter()
-				.map(|&idx| transform.transform_point2(self.point_domain.positions()[idx]))
+				.map(|&idx| transform.transform_point2(working.point_positions[idx]))
 				.fold(DVec2::ZERO, |sum, pos| sum + pos)
 				/ group.len() as f64;
 
@@ -172,7 +206,7 @@ impl MergeByDistanceExt for Vector {
 			let merged_index = merged_positions.len();
 
 			merged_positions.push(merged_position);
-			merged_indices.push(self.point_domain.ids()[group[0]]);
+			merged_indices.push(working.point_ids[group[0]]);
 
 			// Update mapping for all points in the group
 			for &idx in &group {
@@ -180,43 +214,48 @@ impl MergeByDistanceExt for Vector {
 			}
 		}
 
-		// Create new point domain with merged points
-		let mut new_point_domain = PointDomain::new();
-		for (idx, pos) in merged_indices.into_iter().zip(merged_positions) {
-			new_point_domain.push(idx, pos);
+		// Segments with endpoints that collapsed together drop out, handing on any path they began
+		let keep_segment: Vec<bool> = (0..working.segment_ids.len())
+			.map(|segment_index| point_index_map[working.segment_start[segment_index]] != point_index_map[working.segment_end[segment_index]])
+			.collect();
+		working.carry_path_beginnings(&keep_segment);
+
+		// Build the merged working form from the kept segments
+		let mut merged = WorkingVector {
+			point_ids: merged_indices,
+			point_positions: merged_positions,
+			colinear: working.colinear,
+			..Default::default()
+		};
+
+		for segment_index in (0..working.segment_ids.len()).filter(|&segment_index| keep_segment[segment_index]) {
+			let new_start = point_index_map[working.segment_start[segment_index]].unwrap();
+			let new_end = point_index_map[working.segment_end[segment_index]].unwrap();
+
+			merged.segment_ids.push(working.segment_ids[segment_index]);
+			merged.segment_start.push(new_start);
+			merged.segment_end.push(new_end);
+			merged.segment_handles.push(working.segment_handles[segment_index]);
+			merged.segment_begins_path.push(working.segment_begins_path.get(segment_index).copied().unwrap_or(false));
 		}
 
-		// Update segment domain
-		let mut new_segment_domain = SegmentDomain::new();
-		for segment_idx in 0..self.segment_domain.ids().len() {
-			let id = self.segment_domain.ids()[segment_idx];
-			let start = self.segment_domain.start_point()[segment_idx];
-			let end = self.segment_domain.end_point()[segment_idx];
-			let handles = self.segment_domain.handles()[segment_idx];
-
-			// Get new indices for start and end points
-			let new_start = point_index_map[start].unwrap();
-			let new_end = point_index_map[end].unwrap();
-
-			// Skip segments where start and end points were merged
-			if new_start != new_end {
-				new_segment_domain.push(id, new_start, new_end, handles);
-			}
-		}
-
-		// Create new vector geometry
-		self.point_domain = new_point_domain;
-		self.segment_domain = new_segment_domain;
+		merged.reweave(self, paths);
 	}
 }
 
-/// All the fixed fields of a point from the point domain.
+/// Keeps only the elements flagged true, in order.
+fn retain_by<T>(values: &mut Vec<T>, keep: &[bool]) {
+	let mut flags = keep.iter();
+	values.retain(|_| *flags.next().unwrap_or(&false));
+}
+
+/// All the fixed fields of a point from the working form.
 pub(crate) struct Point {
 	pub id: PointId,
 	pub position: DVec2,
 }
 
-/// Useful indexes to speed up various operations on [`Vector`].
+/// Useful indexes to speed up various operations on the flattened working form.
 ///
 /// Important: It is the user's responsibility to ensure the indexes remain valid after mutations to the data.
 pub(crate) struct VectorIndex {
@@ -231,23 +270,23 @@ pub(crate) struct VectorIndex {
 }
 
 impl VectorIndex {
-	/// Construct a [`VectorIndex`] by building indexes from the given [`Vector`]. Takes `O(n)` time.
-	fn build_from(data: &Vector) -> Self {
-		let point_to_offset = data.point_domain.ids().iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
+	/// Construct a [`VectorIndex`] by building indexes from the given working form. Takes `O(n)` time.
+	fn build_from(working: &WorkingVector) -> Self {
+		let point_to_offset = working.point_ids.iter().copied().enumerate().map(|(a, b)| (b, a)).collect::<FxHashMap<_, _>>();
 
 		let mut point_to_node = FxHashMap::default();
 		let mut segment_to_edge = FxHashMap::default();
 
 		let mut graph = UnGraph::new_undirected();
 
-		for (point_id, position) in data.point_domain.iter() {
+		for (&point_id, &position) in working.point_ids.iter().zip(&working.point_positions) {
 			let idx = graph.add_node(Point { id: point_id, position });
 			point_to_node.insert(point_id, idx);
 		}
 
-		for (segment_id, start_offset, end_offset, ..) in data.segment_domain.iter() {
-			let start_id = data.point_domain.ids()[start_offset];
-			let end_id = data.point_domain.ids()[end_offset];
+		for (segment_index, &segment_id) in working.segment_ids.iter().enumerate() {
+			let start_id = working.point_ids[working.segment_start[segment_index]];
+			let end_id = working.point_ids[working.segment_end[segment_index]];
 			let edge = graph.add_edge(point_to_node[&start_id], point_to_node[&end_id], ());
 
 			segment_to_edge.insert(segment_id, edge);
@@ -290,8 +329,8 @@ impl VectorIndex {
 	/// # Panics
 	///
 	/// Will panic if `id` isn't in the data.
-	fn point_position(&self, id: PointId, data: &Vector) -> DVec2 {
+	fn point_position(&self, id: PointId, working: &WorkingVector) -> DVec2 {
 		let offset = self.point_to_offset[&id];
-		data.point_domain.positions()[offset]
+		working.point_positions[offset]
 	}
 }

@@ -779,8 +779,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
-				if let Some(vector) = vector {
-					let modification = Box::new(VectorModification::create_from_vector(&vector));
+				if let Some((vector, paths, turned)) = vector {
+					let modification = Box::new(VectorModification::create_from_vector(&vector, &paths).with_segments_turned_on_load(turned));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Vector))));

@@ -260,7 +260,7 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 
 		overlay_context.outline_vector(&vector, transform);
 
-		for (_, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
+		for (_, position) in vector.anchors() {
 			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
 		}
 	}

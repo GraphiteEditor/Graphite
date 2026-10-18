@@ -2168,6 +2168,7 @@ version = "0.0.0"
 dependencies = [
  "glam 0.33.10",
  "graphene-hash-derive",
+ "kurbo",
 ]
 
 [[package]]

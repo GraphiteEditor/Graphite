@@ -164,46 +164,54 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.
-pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
+pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpoint: PointId, responses: &mut VecDeque<Message>) {
 	let transform = document.metadata().transform_to_document(layer);
 	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 
-	let segment = vector.segment_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let segment = vector.segment_iter().find(|(_, _, start, end)| *end == second_endpoint || *start == second_endpoint);
 	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
 		log::error!("Could not get the segment for second_endpoint.");
 		return;
 	};
 
 	let mut handles = [None; 2];
-	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector).unwrap();
+	if let Some(handle_position) = vector.position_of(ManipulatorPointId::PrimaryHandle(segment)) {
+		let anchor_position = vector.position_of(ManipulatorPointId::Anchor(segment_start_point)).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[0] = Some(anchor_to_handle);
 	}
-	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector).unwrap();
+	if let Some(handle_position) = vector.position_of(ManipulatorPointId::EndHandle(segment)) {
+		let anchor_position = vector.position_of(ManipulatorPointId::Anchor(segment_end_point)).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[1] = Some(anchor_to_handle);
 	}
 
-	if segment_start_point == second_endpont {
-		core::mem::swap(&mut segment_start_point, &mut segment_end_point);
-		handles.reverse();
+	// The segment keeps its direction, with whichever end sat on the merged-away point moving to the point it merges into
+	if segment_start_point == second_endpoint {
+		segment_start_point = first_endpoint;
+	} else {
+		segment_end_point = first_endpoint;
 	}
 
-	let modification_type = VectorModificationType::RemovePoint { id: second_endpont };
+	let modification_type = VectorModificationType::RemovePoint { id: second_endpoint };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 	let modification_type = VectorModificationType::RemoveSegment { id: segment };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-	let points = [segment_start_point, first_endpoint];
+	let points = [segment_start_point, segment_end_point];
 	let id = SegmentId::generate();
 	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	// The replacement takes over as the beginning of the path that the removed segment began
+	if vector.path_beginnings().contains(&segment) {
+		let modification_type = VectorModificationType::SetPathBreak { segment: id, breaks: true };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	}
 }
 
 /// Create a new bitmap layer.

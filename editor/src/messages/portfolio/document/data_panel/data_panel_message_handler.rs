@@ -1,4 +1,3 @@
-use super::VectorTableTab;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget};
 use crate::messages::portfolio::document::data_panel::{DataPanelMessage, PathStep};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -25,14 +24,14 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BezierHandles, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
-	SpiralType,
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
 };
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
-use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
+use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel, SegmentId, Vector};
 use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
+use kurbo::BezPath;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -51,7 +50,6 @@ pub struct DataPanelMessageHandler {
 	introspected_node_path: Vec<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
 	element_path: Vec<PathStep>,
-	active_vector_table_tab: VectorTableTab,
 }
 
 #[message_handler_data]
@@ -67,7 +65,6 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 				self.introspected_node_path.clear();
 				self.introspected_data = None;
 				self.element_path.clear();
-				self.active_vector_table_tab = VectorTableTab::default();
 				self.update_layout(responses, context);
 			}
 			DataPanelMessage::Refresh => {
@@ -83,11 +80,6 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 			}
 			DataPanelMessage::TruncateElementPath { len } => {
 				self.element_path.truncate(len);
-				self.update_layout(responses, context);
-			}
-
-			DataPanelMessage::ViewVectorTableTab { tab } => {
-				self.active_vector_table_tab = tab;
 				self.update_layout(responses, context);
 			}
 		}
@@ -114,7 +106,6 @@ impl DataPanelMessageHandler {
 			node_lookup_network_path: Vec::new(),
 			gradient_settings: GradientSettings::default(),
 			breadcrumbs: Vec::new(),
-			vector_table_tab: self.active_vector_table_tab,
 		};
 
 		// Main data visualization
@@ -172,7 +163,6 @@ struct LayoutData<'a> {
 	/// rather than in the stop list itself. The enclosing `Item`/`List` sets it to the owning row's attributes.
 	gradient_settings: GradientSettings,
 	breadcrumbs: Vec<String>,
-	vector_table_tab: VectorTableTab,
 }
 
 macro_rules! generate_layout_downcast {
@@ -655,70 +645,42 @@ impl TableItemLayout for Graphic {
 	}
 }
 
+// The pool is a plain point list with its IDs riding its attributes, so the generic list layout shows it as-is
 impl TableItemLayout for Vector {
 	fn type_name() -> &'static str {
 		"Vector"
 	}
 	fn identifier(&self) -> String {
-		format!(
-			"Vector ({} point{}, {} segment{})",
-			self.point_domain.ids().len(),
-			if self.point_domain.ids().len() == 1 { "" } else { "s" },
-			self.segment_domain.ids().len(),
-			if self.segment_domain.ids().len() == 1 { "" } else { "s" }
-		)
+		self.0.identifier()
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Handles]
-			.into_iter()
-			.map(|tab| {
-				RadioEntryData::new(format!("{tab:?}"))
-					.label(format!("{tab:?}"))
-					.on_update(move |_| DataPanelMessage::ViewVectorTableTab { tab }.into())
-			})
-			.collect();
-		let table_tabs = vec![RadioInput::new(table_tab_entries).selected_index(Some(data.vector_table_tab as u32)).widget_instance()];
+		self.0.value_page(data)
+	}
+}
 
-		let mut table_rows = Vec::new();
-		match data.vector_table_tab {
-			VectorTableTab::Handles => {
-				table_rows.push(column_headings(&["", "colinear_manipulators[0]", "colinear_manipulators[1]"]));
-				table_rows.extend(self.colinear_manipulators.iter().enumerate().map(|(index, [a, b])| {
-					vec![
-						TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{a}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{b}")).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Points => {
-				table_rows.push(column_headings(&["", "position"]));
-				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format_dvec2(position)).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Segments => {
-				table_rows.push(column_headings(&["", "start_point", "end_point", "handles"]));
-				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
-					let handles = match handles {
-						BezierHandles::Linear => "Linear".to_string(),
-						BezierHandles::Quadratic { handle } => format!("Quadratic — {}", format_dvec2(handle)),
-						BezierHandles::Cubic { handle_start, handle_end } => format!("Cubic — start: {}, end: {}", format_dvec2(handle_start), format_dvec2(handle_end)),
-					};
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("Point {start}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("Point {end}")).narrow(true).widget_instance(),
-						TextLabel::new(handles).narrow(true).widget_instance(),
-					]
-				}));
-			}
-		}
+// A path is its list of point references, with segment IDs and smooth flags riding its attributes
+impl TableItemLayout for Path {
+	fn type_name() -> &'static str {
+		"Path"
+	}
+	fn identifier(&self) -> String {
+		self.0.identifier()
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.value_page(data)
+	}
+}
 
-		vec![LayoutGroup::row(table_tabs), LayoutGroup::table(table_rows, false)]
+// Only the click target attribute holds a bezpath, so it's named for what it does
+impl TableItemLayout for BezPath {
+	fn type_name() -> &'static str {
+		"Click Target"
+	}
+	fn identifier(&self) -> String {
+		Self::type_name().to_string()
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).narrow(true).widget_instance()]
 	}
 }
 
@@ -1151,6 +1113,7 @@ macro_rules! known_item_types {
 			List<Artboard>,
 			List<Graphic>,
 			List<Vector>,
+			List<Path>,
 			List<Raster<CPU>>,
 			List<Raster<GPU>>,
 			List<Color>,
@@ -1170,6 +1133,8 @@ macro_rules! known_item_types {
 			bool,
 			String,
 			Vector,
+			Path,
+			BezPath,
 			Raster<CPU>,
 			Raster<GPU>,
 			Graphic,
@@ -1228,6 +1193,15 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 		return Some(format_dvec2(*value));
 	}
 	if let Some(value) = any.downcast_ref::<BlendMode>() {
+		return Some(value.to_string());
+	}
+	if let Some(value) = any.downcast_ref::<PointId>() {
+		return Some(if *value == PointId::UNNAMED { String::new() } else { value.inner().to_string() });
+	}
+	if let Some(value) = any.downcast_ref::<SegmentId>() {
+		return Some(if *value == SegmentId::ZERO { String::new() } else { value.inner().to_string() });
+	}
+	if let Some(value) = any.downcast_ref::<CurveType>() {
 		return Some(value.to_string());
 	}
 	None
