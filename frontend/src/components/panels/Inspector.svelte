@@ -15,7 +15,7 @@
 	let dragging = false;
 	let fromIndex: number | undefined = undefined;
 	let insertIndex: number | undefined = undefined;
-	let insertMarkerTop: number | undefined = undefined;
+	let insertMarker: { top: number; left: number; width: number } | undefined = undefined;
 	let justFinishedDrag = false; // Used to suppress the click event that follows a drag release (which would otherwise toggle a section)
 
 	onMount(() => {
@@ -91,7 +91,7 @@
 		const sections = reorderableSections();
 		if (!container || sections.length === 0) {
 			insertIndex = undefined;
-			insertMarkerTop = undefined;
+			insertMarker = undefined;
 			return;
 		}
 
@@ -111,17 +111,38 @@
 
 		// Position the marker purely from the gap index so it has one fixed spot per gap, rather than snapping between adjacent
 		// sections' edges as the cursor crosses their shared boundary.
+		// Above the first, it's centered in the room left below what comes before, and below the last, in a gap as wide as the sections leave between each other
+		const halfGap = (parseFloat(getComputedStyle(sections[0]).getPropertyValue("--section-gap")) || 0) / 2;
 		let markerViewportY;
 		if (index <= 0) {
-			markerViewportY = sections[0].getBoundingClientRect().top - 2;
+			markerViewportY = (bottomOfContentAbove(sections[0], container) + sections[0].getBoundingClientRect().top) / 2;
 		} else if (index >= sections.length) {
-			markerViewportY = sections[sections.length - 1].getBoundingClientRect().bottom + 2;
+			markerViewportY = sections[sections.length - 1].getBoundingClientRect().bottom + halfGap;
 		} else {
 			markerViewportY = (sections[index - 1].getBoundingClientRect().bottom + sections[index].getBoundingClientRect().top) / 2;
 		}
 
+		// Spanning the sections, which a layer's frame around them indents
+		const firstRect = sections[0].getBoundingClientRect();
+
 		insertIndex = index;
-		insertMarkerTop = toContentOffset(markerViewportY);
+		insertMarker = { top: toContentOffset(markerViewportY), left: firstRect.left - containerRect.left, width: firstRect.width };
+	}
+
+	// The bottom of what's shown right above a section, which is the last row or section before it (even outside the frame it's in), or else the top of the panel
+	function bottomOfContentAbove(section: Element, container: HTMLElement): number {
+		let current = section;
+		while (current !== container && current.parentElement) {
+			let previous = current.previousElementSibling;
+			if (previous) {
+				// Down through the frames and section bodies to the last row or section within
+				while (previous.lastElementChild && previous.hasAttribute("data-section-contents")) previous = previous.lastElementChild;
+				return previous.getBoundingClientRect().bottom;
+			}
+
+			current = current.parentElement;
+		}
+		return container.getBoundingClientRect().top;
 	}
 
 	function draggingPointerUp(e: PointerEvent) {
@@ -160,15 +181,15 @@
 		dragging = false;
 		fromIndex = undefined;
 		insertIndex = undefined;
-		insertMarkerTop = undefined;
+		insertMarker = undefined;
 	}
 </script>
 
 <LayoutCol class="inspector">
 	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown}>
 		<WidgetLayout layout={$inspectorLayout} layoutTarget="Inspector" />
-		{#if dragging && insertMarkerTop !== undefined}
-			<div class="insert-mark" style:top={`${insertMarkerTop}px`}></div>
+		{#if dragging && insertMarker}
+			<div class="insert-mark" style:top={`${insertMarker.top}px`} style:left={`${insertMarker.left}px`} style:width={`${insertMarker.width}px`}></div>
 		{/if}
 	</LayoutCol>
 </LayoutCol>
@@ -201,8 +222,6 @@
 
 			.insert-mark {
 				position: absolute;
-				left: 4px;
-				right: 4px;
 				background: var(--color-e-nearwhite);
 				height: 5px;
 				// The marker's `top` is the center of the gap, so shift up by half its height to straddle that line
