@@ -24,13 +24,9 @@ pub const CAPABILITIES: ollev::Capabilities = ollev::Capabilities {
 	transparent_stops: true,
 };
 
-/// A quarter second of tracing per evaluation, which ollev's checkpoints overrun to about a second. Lowering a scene for Graphite
-/// takes 0.5 to 5 s, so a partial scene is shown after 2 s of tracing once the last lowering took at most a tenth of the tracing since.
-const BUDGET: Budget = Budget {
-	slice: 0.25,
-	partial_every: 2.,
-	lowering_share: 0.1,
-};
+/// A tenth of a second of tracing per evaluation, which ollev's checkpoints overrun by up to about half a second on a large image.
+/// The first scene ollev keeps is shown at once, and a newer one after each second of tracing.
+const BUDGET: Budget = Budget { slice: 0.1, partial_every: 1. };
 
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 ///
@@ -63,6 +59,13 @@ fn vectorize(
 	/// Draws repeated shapes as instances of one shape. Off, every copy is a shape of its own.
 	#[default(true)]
 	instancing: Item<bool>,
+	/// Fits gradients along a curve of a shape's boundary to shaded bands. Off, bands take linear or radial gradients.
+	#[default(true)]
+	path_gradients: Item<bool>,
+	/// The most pixels traced: a larger image is traced at the size holding this many and its shapes scaled back up. 0 traces every pixel.
+	#[default(0)]
+	#[hard(0..)]
+	max_pixels: Item<i64>,
 	#[scope("runtime")] runtime: Item<RuntimeHandle>,
 	#[source_id] _source: Item<SourceId>,
 	#[data] trace: TraceSlot,
@@ -73,8 +76,10 @@ fn vectorize(
 		primitives: *primitives.element(),
 		effects: *effects.element(),
 		instancing: *instancing.element(),
+		path_gradients: *path_gradients.element(),
 	};
-	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, trace, BUDGET);
+	let max_pixels = usize::try_from(*max_pixels.element()).ok().filter(|&pixels| pixels > 0);
+	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, max_pixels, trace, BUDGET);
 	if let Poll::Partial(_) = state {
 		// The task's end bumps this node's generation, so the editor evaluates the graph again and the next slice runs
 		runtime.element().spawn(*_source.element(), Box::pin(async {}));
@@ -83,7 +88,7 @@ fn vectorize(
 }
 
 /// One slice of the trace of `image` held in `slot`, which starts it when the slot holds no trace of these inputs.
-fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: ollev::Stages, slot: &TraceSlot, budget: Budget) -> Poll<List<Graphic>> {
+fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: ollev::Stages, max_pixels: Option<usize>, slot: &TraceSlot, budget: Budget) -> Poll<List<Graphic>> {
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let raster = image.element();
 	let (width, height) = (raster.width as usize, raster.height as usize);
@@ -93,8 +98,8 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 
 	let mut hasher = DefaultHasher::new();
 	image.cache_hash(&mut hasher);
-	(detail.to_bits(), tolerance.to_bits()).hash(&mut hasher);
-	[stages.translucency, stages.strokes, stages.primitives, stages.effects, stages.instancing].hash(&mut hasher);
+	(detail.to_bits(), tolerance.to_bits(), max_pixels).hash(&mut hasher);
+	[stages.translucency, stages.strokes, stages.primitives, stages.effects, stages.instancing, stages.path_gradients].hash(&mut hasher);
 
 	let start = || {
 		// Graphite's colors are linear light with straight alpha; ollev composites transparency over white
@@ -111,6 +116,7 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 		let options = ollev::TraceOptions {
 			tolerance,
 			detail: ollev::Detail::Scaled(detail),
+			max_pixels,
 			host: CAPABILITIES,
 			stages,
 			..Default::default()
@@ -133,11 +139,7 @@ mod test {
 	use std::task::{Context, Waker};
 
 	/// Slices short enough that every image takes several, each showing the scene where one is offered.
-	const SHORT: Budget = Budget {
-		slice: 0.01,
-		partial_every: 0.,
-		lowering_share: 1e9,
-	};
+	const SHORT: Budget = Budget { slice: 0.01, partial_every: 0. };
 
 	/// An image of `width` by `height` pixels colored by `color` at each pixel's column and row.
 	fn raster(width: u32, height: u32, color: impl Fn(u32, u32) -> Color) -> Item<Raster<CPU>> {
@@ -152,14 +154,14 @@ mod test {
 
 	/// One slice of `image` traced at default settings by the node holding `slot`.
 	fn slice(image: &Item<Raster<CPU>>, slot: &TraceSlot) -> Poll<List<Graphic>> {
-		trace_slice(image, 1., 1., ollev::Stages::ALL, slot, SHORT)
+		trace_slice(image, 1., 1., ollev::Stages::ALL, None, slot, SHORT)
 	}
 
 	/// The shapes traced from `image` at `detail` and `tolerance` by a node of its own, slice by slice.
 	fn trace(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64) -> List<Graphic> {
 		let slot = TraceSlot::default();
 		loop {
-			match trace_slice(image, detail, tolerance, ollev::Stages::ALL, &slot, SHORT) {
+			match trace_slice(image, detail, tolerance, ollev::Stages::ALL, None, &slot, SHORT) {
 				Poll::Partial(_) => {}
 				Poll::Final(traced) => return traced,
 				state => panic!("the trace ended in {state:?}"),
@@ -266,20 +268,34 @@ mod test {
 	fn new_inputs_and_a_dropped_node_cancel_the_trace() {
 		let slot = TraceSlot::default();
 		assert!(matches!(slice(&busy(96), &slot), Poll::Partial(_)));
-		assert_eq!(slices::held(), 1);
+		assert!(slot.tracing());
 
 		let image = ring(64, 12.8, 12.8);
 		let traced = loop {
 			if let Poll::Final(traced) = slice(&image, &slot) {
 				break traced;
 			}
-			assert_eq!(slices::held(), 1, "the trace of the former image is still held");
 		};
 		assert_eq!(traced, trace(&image, 1., 1.));
+		assert!(!slot.tracing(), "the trace of the former image is still running");
 
-		assert!(matches!(slice(&busy(96), &slot), Poll::Partial(_)));
+		assert!(matches!(slice(&busy(96), &slot), Poll::Partial(_)), "the former image's trace was resumed rather than started anew");
+		let released = slot.released();
+		let clone = slot.clone();
 		drop(slot);
-		assert_eq!(slices::held(), 0, "the dropped node's trace is still held");
+		assert!(!released(), "a clone of the node dropped the trace");
+		drop(clone);
+		assert!(released(), "the dropped node's trace is still held");
+	}
+
+	/// The first evaluation of a large enough image already shows a first look at it.
+	#[test]
+	fn the_first_evaluation_shows_shapes() {
+		let slot = TraceSlot::default();
+		match trace_slice(&busy(256), 1., 1., ollev::Stages::ALL, None, &slot, BUDGET) {
+			Poll::Partial(shown) => assert!(!shown.is_empty(), "the first partial result shows no shapes"),
+			state => panic!("the first slice ended in {state:?}"),
+		}
 	}
 
 	#[derive(Default)]
@@ -313,6 +329,8 @@ mod test {
 				Item::new_from_element(true),
 				Item::new_from_element(true),
 				Item::new_from_element(true),
+				Item::new_from_element(true),
+				Item::new_from_element(0),
 				Item::new_from_element(runtime.handle()),
 				Item::new_from_element(source),
 			);
