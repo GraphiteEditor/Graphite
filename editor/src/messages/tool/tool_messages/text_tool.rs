@@ -394,6 +394,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
 				DragStart,
+				EditSelected,
 				PointerOutsideViewport,
 				PointerMove,
 			),
@@ -1127,7 +1128,7 @@ impl Fsm for TextToolFsmState {
 					HintInfo::keys([Key::Shift], "Constrain Square").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				]),
-				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Edit Text")]),
+				HintGroup(vec![HintInfo::keys([Key::Enter], ""), HintInfo::mouse(MouseMotion::Lmb, "Edit Text").prepend_slash()]),
 				snapping_hints(),
 			]),
 			TextToolFsmState::Editing => HintData(vec![HintGroup(vec![
