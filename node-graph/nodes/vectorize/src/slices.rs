@@ -2,82 +2,54 @@ use core_types::Poll;
 use core_types::list::List;
 use graphic_types::Graphic;
 use ollev::model::Model;
-use std::cell::RefCell;
-use std::collections::HashMap;
 use std::ops::ControlFlow;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Weak};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-thread_local! {
-	/// The running and finished traces of the vectorize nodes evaluated on this thread, by node.
-	/// `ollev::Tracing` is not `Send` while nodes are, so a node holds only the key to its trace.
-	static TRACES: RefCell<HashMap<u64, Trace>> = RefCell::default();
-}
-
-/// How long one evaluation traces, and how often it lowers the scene to show it: after `partial_every` seconds of tracing and
-/// once the last lowering took at most `lowering_share` of the tracing since.
+/// How long one evaluation traces, and how many seconds of tracing pass between two partial scenes shown.
+/// The first partial scene is shown as soon as the trace has one.
 #[derive(Clone, Copy, Debug)]
 pub struct Budget {
 	pub slice: f64,
 	pub partial_every: f64,
-	pub lowering_share: f64,
 }
 
-/// A node's handle on its trace, which lives on the thread evaluating the node.
-/// Dropping the last clone drops the trace, which cancels it.
-#[derive(Clone, Debug, Default)]
-pub struct TraceSlot(Arc<Owner>);
+/// A node's trace, held across its evaluations. Replacing the trace or dropping the last clone of the slot cancels it.
+#[derive(Clone, Default)]
+pub struct TraceSlot(Arc<Mutex<Option<Trace>>>);
 
-#[derive(Debug)]
-struct Owner(u64);
-
-impl Default for Owner {
-	fn default() -> Self {
-		static NEXT: AtomicU64 = AtomicU64::new(0);
-		Self(NEXT.fetch_add(1, Ordering::Relaxed))
-	}
-}
-
-impl Drop for Owner {
-	fn drop(&mut self) {
-		// Dropped on another thread, the trace goes at that thread's next sweep instead
-		let _ = TRACES.try_with(|traces| traces.try_borrow_mut().map(|mut traces| traces.remove(&self.0)));
+impl std::fmt::Debug for TraceSlot {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		f.debug_struct("TraceSlot").finish_non_exhaustive()
 	}
 }
 
 struct Trace {
-	owner: Weak<Owner>,
 	/// A hash of the image and options traced.
 	inputs: u64,
 	/// None once the trace is done and `shown` is its result.
 	tracing: Option<ollev::Tracing>,
 	shown: List<Graphic>,
-	/// Seconds traced since `shown` was lowered.
+	/// The revision of the scene in `shown`, none before the first.
+	revision: Option<u64>,
+	/// Seconds traced since `shown` was converted.
 	unshown: f64,
-	/// Seconds the last lowering took.
-	lowering: f64,
 }
 
 impl TraceSlot {
 	/// Traces one slice of the trace of `inputs`, started by `start` when the slot holds no trace of them (the trace of other
-	/// inputs is dropped). Partial with the scene lowered last while tracing, Final once done.
+	/// inputs is dropped). Partial with the latest scene shown, Final once done.
 	pub fn poll(&self, inputs: u64, budget: Budget, start: impl FnOnce() -> Result<ollev::Tracing, ollev::TraceError>, convert: impl Fn(&Model) -> List<Graphic>) -> Poll<List<Graphic>> {
-		let id = self.0.0;
-		let held = TRACES.with_borrow_mut(|traces| {
-			traces.retain(|_, trace| trace.owner.strong_count() > 0);
-			traces.remove(&id)
-		});
-
-		let mut trace = match held.filter(|trace| trace.inputs == inputs) {
+		// The trace is out of the slot during the slice, so a slice that panics leaves the slot empty
+		let mut held = self.lock();
+		let mut trace = match held.take().filter(|trace| trace.inputs == inputs) {
 			Some(trace) => trace,
 			None => match start() {
 				Ok(tracing) => Trace {
-					owner: Arc::downgrade(&self.0),
 					inputs,
 					tracing: Some(tracing),
 					shown: List::new(),
-					unshown: 0.,
-					lowering: 0.,
+					revision: None,
+					unshown: budget.partial_every,
 				},
 				Err(error) => return Poll::fallback(List::new(), error),
 			},
@@ -86,16 +58,16 @@ impl TraceSlot {
 		if let Some(tracing) = &mut trace.tracing {
 			let started = now();
 			let deadline = started + budget.slice;
-			let (unshown, lowering) = (trace.unshown, trace.lowering);
-			// A partial is due after `partial_every` seconds of tracing, and after enough that lowering takes at most its share
-			let due = |time: f64| {
-				let traced = unshown + time - started;
-				traced >= budget.partial_every && lowering <= traced * budget.lowering_share
-			};
+			let (unshown, revision) = (trace.unshown, trace.revision);
+			// A partial is due once the trace has a scene other than the one shown and enough tracing has passed since
+			let due = |progress: &ollev::Progress, time: f64| progress.showable() && Some(progress.revision()) != revision && unshown + time - started >= budget.partial_every;
 			let step = tracing.step(|progress| {
 				let time = now();
-				let pause = time >= deadline || (progress.scene.is_some() && due(time));
-				if pause { ControlFlow::Break(()) } else { ControlFlow::Continue(()) }
+				if time >= deadline || due(progress, time) {
+					ControlFlow::Break(())
+				} else {
+					ControlFlow::Continue(())
+				}
 			});
 			let stepped = now();
 			trace.unshown += stepped - started;
@@ -105,12 +77,12 @@ impl TraceSlot {
 					trace.tracing = None;
 				}
 				ollev::Step::Paused(progress) => {
-					if due(stepped)
+					if due(&progress, stepped)
 						&& let Some(model) = progress.model()
 					{
 						trace.shown = convert(&model);
+						trace.revision = Some(progress.revision());
 						trace.unshown = 0.;
-						trace.lowering = now() - stepped;
 					}
 				}
 			}
@@ -120,15 +92,26 @@ impl TraceSlot {
 			Some(_) => Poll::Partial(trace.shown.clone()),
 			None => Poll::Final(trace.shown.clone()),
 		};
-		TRACES.with_borrow_mut(|traces| traces.insert(id, trace));
+		*held = Some(trace);
 		state
 	}
-}
 
-/// The traces held on this thread.
-#[cfg(test)]
-pub fn held() -> usize {
-	TRACES.with_borrow(HashMap::len)
+	fn lock(&self) -> MutexGuard<'_, Option<Trace>> {
+		self.0.lock().unwrap_or_else(PoisonError::into_inner)
+	}
+
+	/// Whether the slot holds a trace that is not yet done.
+	#[cfg(test)]
+	pub fn tracing(&self) -> bool {
+		self.lock().as_ref().is_some_and(|trace| trace.tracing.is_some())
+	}
+
+	/// Tells whether the slot's trace was dropped, which it is once every clone of the slot is.
+	#[cfg(test)]
+	pub fn released(&self) -> impl Fn() -> bool + use<> {
+		let held = Arc::downgrade(&self.0);
+		move || held.strong_count() == 0
+	}
 }
 
 /// Seconds since an arbitrary start.
