@@ -36,7 +36,7 @@ fn vectorize(
 	_: impl Ctx,
 	/// The image to trace.
 	image: Item<Raster<CPU>>,
-	/// How much detail to keep, as a multiple of the level estimated from how busy the image is. Higher values spend more segments on smaller features.
+	/// How much detail to keep, as a multiple of the default level read from how busy the image is. Higher values spend more segments on smaller features.
 	#[default(1.)]
 	#[hard(0.01..)]
 	detail: Item<f64>,
@@ -45,22 +45,22 @@ fn vectorize(
 	#[hard(0..)]
 	tolerance: Item<f64>,
 	/// Finds translucent layers and traces what they cover beneath them. Off, every region is drawn opaque.
-	#[default(true)]
+	#[default(false)]
 	translucency: Item<bool>,
 	/// Draws lines as strokes along their centerlines, dashed and dotted ones included. Off, lines are filled shapes.
-	#[default(true)]
+	#[default(false)]
 	strokes: Item<bool>,
 	/// Refits outlines as circles, ellipses and rectangles. Off, every outline stays a path.
 	#[default(true)]
 	primitives: Item<bool>,
 	/// Merges shaded bands into gradients and draws glows. Off, edges stay hard.
-	#[default(true)]
+	#[default(false)]
 	effects: Item<bool>,
 	/// Draws repeated shapes as instances of one shape. Off, every copy is a shape of its own.
 	#[default(true)]
 	instancing: Item<bool>,
 	/// Fits gradients along a curve of a shape's boundary to shaded bands. Off, bands take linear or radial gradients.
-	#[default(true)]
+	#[default(false)]
 	path_gradients: Item<bool>,
 	/// The most pixels traced: a larger image is traced at the size holding this many and its shapes scaled back up. 0 traces every pixel.
 	#[default(0)]
