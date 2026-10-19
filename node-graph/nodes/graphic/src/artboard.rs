@@ -1,6 +1,6 @@
 use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
-use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
@@ -9,7 +9,7 @@ use vector_types::Gradient;
 
 /// Constructs a single-element `Artboard[]` with the given content and metadata stored as row attributes.
 #[node_macro::node(category(""))]
-pub async fn create_artboard<T: IntoGraphicList>(
+fn create_artboard<T: IntoGraphicList>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// Graphics to include within the artboard.
 	#[implementations(
@@ -34,7 +34,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	#[default(true)]
 	clip: Item<bool>,
-) -> Item<Artboard> {
+) -> Result<Item<Artboard>, Interrupt> {
 	let (location, dimensions, clip) = (location.into_element(), dimensions.into_element(), clip.into_element());
 
 	let footprint = ctx.try_footprint().copied();
@@ -43,7 +43,7 @@ pub async fn create_artboard<T: IntoGraphicList>(
 		footprint.translate(location);
 		new_ctx = new_ctx.with_footprint(footprint);
 	}
-	let content = content.eval(new_ctx.into_context()).await.into_graphic_list();
+	let content = content.eval(new_ctx.into_context())?.into_graphic_list();
 
 	// Normalize so `location` is the top-left corner and `dimensions` are positive (allowing negative input
 	// dimensions to represent dragging from the opposite corner). Compute the corner using the raw signed
@@ -54,9 +54,9 @@ pub async fn create_artboard<T: IntoGraphicList>(
 	let background = background.into_element();
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
-	Item::new_from_element(Artboard::new(content))
+	Ok(Item::new_from_element(Artboard::new(content))
 		.with_attribute(ATTR_LOCATION, normalized_location)
 		.with_attribute(ATTR_DIMENSIONS, normalized_dimensions)
 		.with_attribute(ATTR_BACKGROUND, background)
-		.with_attribute(ATTR_CLIP, clip)
+		.with_attribute(ATTR_CLIP, clip))
 }

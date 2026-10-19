@@ -133,7 +133,7 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
-	pub(crate) context_features: ContextDependencies,
+	pub(crate) context_dependencies: ContextDependencies,
 }
 
 impl Default for ProtoNode {
@@ -144,7 +144,7 @@ impl Default for ProtoNode {
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
-			context_features: Default::default(),
+			context_dependencies: Default::default(),
 		}
 	}
 }
@@ -179,7 +179,7 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
-			context_features: Default::default(),
+			context_dependencies: Default::default(),
 		}
 	}
 
@@ -288,7 +288,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
 
@@ -318,7 +318,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_value_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextModification(context_deps))),
 				call_argument: concrete!(Context),
 				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
@@ -345,60 +345,80 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+	pub fn source_ids(&self) -> impl Iterator<Item = &SourceId> {
+		self.nodes.iter().filter_map(|(_, node)| match &node.construction_args {
+			ConstructionArgs::Value(value) => match &**value {
+				TaggedValue::SourceId(source) => Some(source),
+				_ => None,
+			},
+			_ => None,
+		})
+	}
+
+	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
-		let mut combined_deps = ContextFeatures::default();
+		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let context_features = self.nodes[node_index].1.context_features;
+		let dependencies = self.nodes[node_index].1.context_dependencies;
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
-			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
+			ConstructionArgs::Value(value) if let TaggedValue::SourceId(source) = **value => {
+				return (
+					ContextModification {
+						features: dependencies.extract,
+						sources: [source].into(),
+					},
+					Some(id),
+				);
+			}
+			ConstructionArgs::Value(_) | ConstructionArgs::Inline(_) => return (dependencies.extract.into(), Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
 			let branch = self.find_context_dependencies(node);
 
+			combined_deps.features |= branch.0.features;
+			combined_deps.sources.extend(&branch.0.sources);
 			branch_dependencies.push(branch);
-			combined_deps |= branch.0;
 		}
-		let mut new_deps = combined_deps;
-
-		// Remove requirements which this node provides
-		new_deps &= !context_features.inject;
-		// Add requirements we have
-		new_deps |= context_features.extract;
+		// Remove requirements which this node provides and add requirements we have
+		let features = (combined_deps.features & !dependencies.inject) | dependencies.extract;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
-		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+		let we_introduces_new_deps = !combined_deps.features.contains(features);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
 		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
-			} else if we_introduce_new_deps || deps != combined_deps {
+			} else if we_introduces_new_deps || deps != combined_deps {
 				*child_node = self.insert_context_nullification_node(*child_node, deps);
 			}
 		}
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
 		// Which dependencies do we supply (and don't need ourselves)?
-		let net_injections = context_features.inject.difference(context_features.extract);
+		let net_injections = dependencies.inject.difference(dependencies.extract);
 
 		// Which dependencies still need to be met after this node?
-		let remaining_deps_from_children = combined_deps.difference(net_injections);
+		let remaining_deps_from_children = combined_deps.features.difference(net_injections);
 
 		// Do we satisfy any existing dependencies?
-		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+		let we_supply_existing_deps = !combined_deps.features.difference(remaining_deps_from_children).is_empty();
+
+		let new_deps = ContextModification {
+			features,
+			sources: combined_deps.sources,
+		};
 
 		let mut new_id = None;
 		if we_supply_existing_deps {
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+			new_id = Some(self.insert_context_nullification_node(id, new_deps.clone()));
 		}
 
 		(new_deps, new_id)
@@ -700,7 +720,7 @@ impl TypingContext {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -734,8 +754,6 @@ impl TypingContext {
 			match (from, to) {
 				// Direct comparison of two concrete types.
 				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
 				// Direct comparison of two function types.
 				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
 				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
@@ -1043,6 +1061,89 @@ mod test {
 			ids,
 			vec![NodeId(7074930193456627328), NodeId(651950451264872860), NodeId(15983493604836528424), NodeId(2458326405488235061)]
 		);
+	}
+
+	#[test]
+	fn retain_filter_placement_on_source_free_branch() {
+		let mut network = source_branch_network(&[SourceId(1)], &[]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		let filters = nullification_filters(&network);
+		assert_eq!(filters.len(), 1);
+		let (filter_id, wrapped, retained) = &filters[0];
+		assert_eq!(wrapped, "source_b");
+		assert!(retained.is_empty());
+
+		let (source_a_id, _) = find_node(&network, "source_a");
+		let (_, join) = find_node(&network, "join");
+		let ConstructionArgs::Nodes(join_args) = &join.construction_args else { unreachable!() };
+		assert_eq!(join_args, &vec![source_a_id, *filter_id]);
+	}
+
+	#[test]
+	fn diverging_source_sets_filter_each_branch() {
+		let mut network = source_branch_network(&[SourceId(1)], &[SourceId(2)]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		let mut filters = nullification_filters(&network);
+		filters.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+		let summary: Vec<_> = filters.iter().map(|(_, wrapped, retained)| (wrapped.as_str(), retained.as_slice())).collect();
+		assert_eq!(summary, vec![("source_a", &[SourceId(1)][..]), ("source_b", &[SourceId(2)][..])]);
+	}
+
+	#[test]
+	fn matching_source_sets_insert_no_filter() {
+		let mut network = source_branch_network(&[SourceId(1)], &[SourceId(1)]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		assert!(nullification_filters(&network).is_empty());
+		assert_eq!(network.source_ids().copied().collect::<Vec<_>>(), vec![SourceId(1), SourceId(1)]);
+	}
+
+	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {
+		network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).map(|(id, node)| (*id, node)).unwrap()
+	}
+
+	fn nullification_filters(network: &ProtoNetwork) -> Vec<(NodeId, String, Vec<SourceId>)> {
+		let node = |id: NodeId| &network.nodes[id.0 as usize].1;
+		network
+			.nodes
+			.iter()
+			.filter(|(_, candidate)| candidate.identifier == graphene_core::context_modification::context_modification::IDENTIFIER)
+			.map(|(id, candidate)| {
+				let ConstructionArgs::Nodes(args) = &candidate.construction_args else { unreachable!() };
+				let ConstructionArgs::Nodes(memoized) = &node(args[0]).construction_args else { unreachable!() };
+				let ConstructionArgs::Value(value) = &node(args[1]).construction_args else { unreachable!() };
+				let TaggedValue::ContextModification(modification) = &**value else { unreachable!() };
+				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
+			})
+			.collect()
+	}
+
+	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {
+		let node = |name: &'static str, construction_args: ConstructionArgs| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			..Default::default()
+		};
+		let mut nodes = vec![(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into())))];
+		let mut branch = |name: &'static str, sources: &[SourceId]| {
+			let mut inputs = vec![NodeId(0)];
+			for &source in sources {
+				inputs.push(NodeId(nodes.len() as u64));
+				nodes.push((NodeId(nodes.len() as u64), node("source_id", ConstructionArgs::Value(TaggedValue::SourceId(source).into()))));
+			}
+			let id = NodeId(nodes.len() as u64);
+			nodes.push((id, node(name, ConstructionArgs::Nodes(inputs))));
+			id
+		};
+		let branch_a = branch("source_a", branch_a_sources);
+		let branch_b = branch("source_b", branch_b_sources);
+
+		let output = NodeId(nodes.len() as u64);
+		nodes.push((output, node("join", ConstructionArgs::Nodes(vec![branch_a, branch_b]))));
+		ProtoNetwork { inputs: vec![], output, nodes }
 	}
 
 	fn test_network() -> ProtoNetwork {

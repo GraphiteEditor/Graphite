@@ -1,7 +1,7 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, OwnedContextImpl};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -9,7 +9,7 @@ use vector_types::Gradient;
 use vector_types::vector::{no_paths, paths_from_list_row_attributes};
 
 #[node_macro::node(category("Repeat"), icon("NodeRepeat"))]
-async fn repeat<T: Send + Clone + 'static>(
+fn repeat<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> List<String>,
@@ -26,12 +26,12 @@ async fn repeat<T: Send + Clone + 'static>(
 		Context -> List<Gradient>,
 		Context -> List<Artboard>,
 	)]
-	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	content: impl Node<Context<'static>, Output = List<T>>,
 	#[default(1)]
 	#[hard(1..)]
 	count: Item<i64>,
 	reverse: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, Interrupt> {
 	// Someday this node can have the option to generate infinitely instead of a fixed count (basically `std::iter::repeat`).
 
 	let (count, reverse) = (count.into_element(), reverse.into_element());
@@ -43,18 +43,18 @@ async fn repeat<T: Send + Clone + 'static>(
 		let index = if reverse { count - index - 1 } else { index };
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
-		let generated_content = content.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context())?;
 
 		for generated_row in generated_content.into_iter() {
 			result_list.push(generated_row);
 		}
 	}
 
-	result_list
+	Ok(result_list)
 }
 
 #[node_macro::node(category("Repeat"), icon("NodeRepeatArray"))]
-pub async fn repeat_array<T: Send + Clone + 'static>(
+fn repeat_array<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> List<String>,
@@ -71,7 +71,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 		Context -> List<Gradient>,
 		Context -> List<Artboard>,
 	)]
-	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	content: impl Node<Context<'static>, Output = List<T>>,
 	#[unit(" px")]
 	#[default(100., 100.)]
 	// TODO: When using a custom Inspector layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Inspector. Investigation is needed.
@@ -83,7 +83,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	#[default(5)]
 	#[hard(1..)]
 	count: Item<i64>,
-) -> List<T> {
+) -> Result<List<T>, Interrupt> {
 	let (direction, angle, count) = (direction.into_element(), angle.into_element(), count.into_element());
 	let angle = angle.to_radians();
 	// A single copy has no steps between copies, so the denominator is kept at 1 to avoid `0. / 0.` producing a NaN transform
@@ -97,7 +97,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
-		let generated_content = content.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context())?;
 
 		for row_index in 0..generated_content.len() {
 			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
@@ -111,11 +111,11 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 		}
 	}
 
-	result_list
+	Ok(result_list)
 }
 
 #[node_macro::node(category("Repeat"), icon("NodeRepeatRadial"))]
-async fn repeat_radial<T: Send + Clone + 'static>(
+fn repeat_radial<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
 		Context -> List<String>,
@@ -132,7 +132,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 		Context -> List<Gradient>,
 		Context -> List<Artboard>,
 	)]
-	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	content: impl Node<Context<'static>, Output = List<T>>,
 	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
@@ -143,7 +143,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 	#[default(5)]
 	#[hard(1..)]
 	count: Item<i64>,
-) -> List<T> {
+) -> Result<List<T>, Interrupt> {
 	let (start_angle, radius, count) = (start_angle.into_element(), radius.into_element(), count.into_element());
 
 	let mut result_list = List::new();
@@ -154,7 +154,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 		let transform = angle * translation;
 
 		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
-		let generated_content = content.eval(new_ctx.into_context()).await;
+		let generated_content = content.eval(new_ctx.into_context())?;
 
 		for row_index in 0..generated_content.len() {
 			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
@@ -168,11 +168,11 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 		}
 	}
 
-	result_list
+	Ok(result_list)
 }
 
 #[node_macro::node(category("Repeat"), icon("NodeRepeatOnPoints"), name("Repeat on Points"))]
-async fn repeat_on_points<T: Send + Clone + 'static>(
+fn repeat_on_points<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs,
 	points: List<Vector>,
 	#[implementations(
@@ -190,9 +190,9 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 		Context -> List<Gradient>,
 		Context -> List<Artboard>,
 	)]
-	content: impl Node<'n, Context<'static>, Output = List<T>>,
+	content: impl Node<Context<'static>, Output = List<T>>,
 	reverse: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, Interrupt> {
 	let reverse = reverse.into_element();
 
 	let mut result_list = List::new();
@@ -201,16 +201,17 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 		let Some(points_element) = points.element(points_index) else { continue };
 		let transform: DAffine2 = points.attribute_cloned_or_default(ATTR_TRANSFORM, points_index);
 
-		let mut iteration = async |index, point| {
+		let mut iteration = |index, point| -> Result<(), Interrupt> {
 			let transformed_point = transform.transform_point2(point);
 
 			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(transformed_point);
-			let generated_content = content.eval(new_ctx.into_context()).await;
+			let generated_content = content.eval(new_ctx.into_context())?;
 
 			for mut generated_row in generated_content.into_iter() {
 				generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = transformed_point;
 				result_list.push(generated_row);
 			}
+			Ok(())
 		};
 
 		let paths = paths_from_list_row_attributes(&points, points_index).unwrap_or_else(|| no_paths());
@@ -218,32 +219,29 @@ async fn repeat_on_points<T: Send + Clone + 'static>(
 		let range = positions.iter().enumerate();
 		if reverse {
 			for (index, &point) in range.rev() {
-				iteration(index, point).await;
+				iteration(index, point)?;
 			}
 		} else {
 			for (index, &point) in range {
-				iteration(index, point).await;
+				iteration(index, point)?;
 			}
 		}
 	}
 
-	result_list
+	Ok(result_list)
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Ctx;
-	use core_types::Node;
 	use core_types::list::Item;
 	use core_types::transform::Footprint;
+	use core_types::{LazyInput, Node, Poll, Status};
 	use glam::DVec2;
 	use graphene_core::ReadPositionNode;
 	use graphic_types::Vector;
 	use kurbo::Shape;
 	use kurbo::{BezPath, DEFAULT_ACCURACY, Rect};
-	use std::future::Future;
-	use std::pin::Pin;
 	use vector_nodes::generator_nodes::RectangleNode;
 	use vector_types::vector::Path;
 	use vector_types::vector::misc::BoxCorners;
@@ -258,13 +256,12 @@ mod test {
 	}
 
 	#[derive(Clone)]
-	pub struct FutureWrapperNode<T: Clone>(T);
+	pub struct ValueNode<T: Clone>(T);
 
-	impl<'i, I: Ctx, T: 'i + Clone + Send> Node<'i, I> for FutureWrapperNode<T> {
-		type Output = Pin<Box<dyn Future<Output = T> + 'i + Send>>;
-		fn eval(&'i self, _input: I) -> Self::Output {
-			let value = self.0.clone();
-			Box::pin(async move { value })
+	impl<I, T: Clone> Node<I> for ValueNode<T> {
+		type Output = T;
+		fn eval(&self, _input: &I) -> Poll<T> {
+			Poll::Final(self.0.clone())
 		}
 	}
 
@@ -272,14 +269,10 @@ mod test {
 	#[derive(Clone)]
 	pub struct RaiseToListNode<N>(N);
 
-	impl<'i, I: 'i, N> Node<'i, I> for RaiseToListNode<N>
-	where
-		N: Node<'i, I, Output = Pin<Box<dyn Future<Output = Item<Vector>> + 'i + Send>>>,
-	{
-		type Output = Pin<Box<dyn Future<Output = List<Vector>> + 'i + Send>>;
-		fn eval(&'i self, input: I) -> Self::Output {
-			let future = self.0.eval(input);
-			Box::pin(async move { future.await.into() })
+	impl<I, N: Node<I, Output = Item<Vector>>> Node<I> for RaiseToListNode<N> {
+		type Output = List<Vector>;
+		fn eval(&self, input: &I) -> Poll<List<Vector>> {
+			self.0.eval(input).map(Into::into)
 		}
 	}
 
@@ -287,27 +280,26 @@ mod test {
 	#[derive(Clone)]
 	struct ExtractYNode<Position>(Position);
 
-	impl<'i, I: Ctx, Position> Node<'i, I> for ExtractYNode<Position>
+	impl<I: Ctx, Position> Node<I> for ExtractYNode<Position>
 	where
-		Position: Node<'i, I, Output = Pin<Box<dyn Future<Output = Item<DVec2>> + 'i + Send>>>,
+		Position: Node<I, Output = Item<DVec2>>,
 	{
-		type Output = Pin<Box<dyn Future<Output = Item<f64>> + 'i + Send>>;
-		fn eval(&'i self, input: I) -> Self::Output {
-			let position = self.0.eval(input);
-			Box::pin(async move { Item::new_from_element(position.await.element().y) })
+		type Output = Item<f64>;
+		fn eval(&self, input: &I) -> Poll<Item<f64>> {
+			self.0.eval(input).map(|position| Item::new_from_element(position.element().y))
 		}
 	}
 
-	#[tokio::test]
-	async fn repeat_on_points_test() {
+	#[test]
+	fn repeat_on_points_test() {
 		let context = OwnedContextImpl::default().into_context();
 		let rect = RectangleNode::new(
-			FutureWrapperNode(()),
-			ExtractYNode(ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(Item::new_from_element(0_i64)))),
-			FutureWrapperNode(Item::new_from_element(2_f64)),
-			FutureWrapperNode(Item::new_from_element(BoxCorners::default())),
-			FutureWrapperNode(Item::new_from_element(false)),
-			FutureWrapperNode(Item::new_from_element(false)),
+			ValueNode(()),
+			ExtractYNode(ReadPositionNode::new(ValueNode(()), ValueNode(Item::new_from_element(0_i64)))),
+			ValueNode(Item::new_from_element(2_f64)),
+			ValueNode(Item::new_from_element(BoxCorners::default())),
+			ValueNode(Item::new_from_element(false)),
+			ValueNode(Item::new_from_element(false)),
 		);
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
@@ -317,7 +309,8 @@ mod test {
 			polyline.line_to((position.x, position.y));
 		}
 		let points = vector_node_from_bezpath(polyline);
-		let generated = super::repeat_on_points(context, points, &RaiseToListNode(rect), Item::new_from_element(false)).await;
+		let status = Status::new();
+		let generated = super::repeat_on_points(context, points, LazyInput::new(&RaiseToListNode(rect), &status, 1), Item::new_from_element(false)).unwrap();
 		assert_eq!(generated.len(), positions.len());
 		for (position, index) in positions.into_iter().zip(0..generated.len()) {
 			let bounds = generated
@@ -330,20 +323,21 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn repeat() {
+	#[test]
+	fn repeat() {
 		let direction = DVec2::X * 1.5;
 		let count = 3;
 		let context = OwnedContextImpl::default().into_context();
+		let status = Status::new();
 		let repeated = super::repeat_array(
 			context,
-			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(direction),
 			Item::new_from_element(0.),
 			Item::new_from_element(count),
 		)
-		.await;
-		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
+		.unwrap();
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))));
 		let vector = vector_list.element(0).unwrap();
 		let paths = row_paths(&vector_list, 0);
 		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 3);
@@ -352,18 +346,19 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn repeat_single_copy() {
+	#[test]
+	fn repeat_single_copy() {
 		let context = OwnedContextImpl::default().into_context();
+		let status = Status::new();
 		let repeated = super::repeat_array(
 			context,
-			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(DVec2::new(12., 10.)),
 			Item::new_from_element(45.),
 			Item::new_from_element(1),
 		)
-		.await;
-		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
+		.unwrap();
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))));
 		let vector = vector_list.element(0).unwrap();
 		let paths = row_paths(&vector_list, 0);
 		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 1);
@@ -373,20 +368,21 @@ mod test {
 		assert!(anchor.length() < 1e-5, "Expected the single copy to be untransformed, found anchor {anchor}");
 	}
 
-	#[tokio::test]
-	async fn repeat_transform_position() {
+	#[test]
+	fn repeat_transform_position() {
 		let direction = DVec2::new(12., 10.);
 		let count = 8;
 		let context = OwnedContextImpl::default().into_context();
+		let status = Status::new();
 		let repeated = super::repeat_array(
 			context,
-			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(direction),
 			Item::new_from_element(0.),
 			Item::new_from_element(count),
 		)
-		.await;
-		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
+		.unwrap();
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))));
 		let vector = vector_list.element(0).unwrap();
 		let paths = row_paths(&vector_list, 0);
 		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 8);
@@ -395,18 +391,19 @@ mod test {
 		}
 	}
 
-	#[tokio::test]
-	async fn repeat_radial() {
+	#[test]
+	fn repeat_radial() {
 		let context = OwnedContextImpl::default().into_context();
+		let status = Status::new();
 		let repeated = super::repeat_radial(
 			context,
-			&FutureWrapperNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))),
+			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(45.),
 			Item::new_from_element(4.),
 			Item::new_from_element(8),
 		)
-		.await;
-		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))).await);
+		.unwrap();
+		let vector_list = List::new_from_item(vector_nodes::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(repeated))));
 		let vector = vector_list.element(0).unwrap();
 		let paths = row_paths(&vector_list, 0);
 		assert_eq!(vector.stroke_manipulator_groups(paths).count(), 8);

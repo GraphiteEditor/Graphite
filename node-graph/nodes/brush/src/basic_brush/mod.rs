@@ -15,7 +15,7 @@ use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
 #[node_macro::node(category("Raster: Brush"), icon("NodeBasicBrush"))]
-pub async fn basic_brush<'a: 'n>(
+fn basic_brush(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
 	#[widget(ParsedWidgetOverride::Hidden)] _cache: Item<BrushCache>,
@@ -57,7 +57,7 @@ pub async fn basic_brush<'a: 'n>(
 		strokes: &strokes,
 		cache: &cache,
 	};
-	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args).await else {
+	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args) else {
 		return List::new();
 	};
 	let raster = Raster::<GPU>::new_gpu(texture);
@@ -65,9 +65,9 @@ pub async fn basic_brush<'a: 'n>(
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn basic_brush_pipeline<'a: 'n>(
+fn basic_brush_pipeline(
 	_ctx: impl Ctx,
-	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<&'a WgpuExecutor>,
+	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
 	executor.into_element().pipeline_init::<BasicBrushPipeline>(pipeline);

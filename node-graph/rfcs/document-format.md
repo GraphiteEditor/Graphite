@@ -123,6 +123,7 @@ pub enum RegistryDelta {
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
     Merge           { extra_parents: Vec<Rev> },                        // joins divergent tips; registry no-op
+    Meta,                                                              
     Other(Value),                                                      // forward-compatible escape hatch
 }
 
@@ -156,6 +157,8 @@ Because `parent` is itself a `Rev`, an `id` transitively commits to the delta's 
 One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`. Slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
 `Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `interaction_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
+
+`HotOp.attributes` is the same bucket on a hot op, but shared: it travels with the op to every peer and is left behind at retirement. The same `interaction_end` key marks the last op of its author's interaction, so the retirer takes the author's ops through it as one unit. When the boundary comes after the last write was sent, a data-less `RegistryDelta::Meta` op carries the flag; retirement drops `Meta` ops. The retirer marks the unit's last retired delta with `Delta.attributes`' own `interaction_end`, so the boundary survives without the hot op.
 
 ## History as a tree
 

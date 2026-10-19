@@ -515,14 +515,6 @@ impl NodeNetworkInterface {
 		node.set_call_argument(call_argument);
 	}
 
-	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in set_context_features");
-			return;
-		};
-		node.set_context_features(context_features);
-	}
-
 	/// Lightweight version of `set_input` for bulk import operations.
 	/// Directly sets the input without `is_acyclic` checks, `load_structure`, position conversions,
 	/// or per-node cache invalidation. Call `load_structure`, `unload_all_nodes_click_targets`, and

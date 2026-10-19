@@ -211,6 +211,7 @@ pub enum RegistryDelta {
 	Merge {
 		extra_parents: Vec<Rev>,
 	},
+	Meta,
 	// Allow for future delta types without a model change
 	Other(Value),
 }

@@ -355,7 +355,7 @@ pub struct RenderParams {
 	pub inside_pattern: bool,
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
-	pub viewport_zoom: f64,
+	pub viewport_zoom: Option<f64>,
 	/// The nearest ancestor's appearance, cascading to items that lack their own.
 	pub inherited_appearance: Option<Appearance>,
 }
@@ -450,8 +450,9 @@ fn to_point(p: DVec2) -> kurbo::Point {
 fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::Color) {
 	use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
 
+	let zoom = render_params.viewport_zoom.unwrap_or(1.);
 	let outline_stroke = kurbo::Stroke {
-		width: LAYER_OUTLINE_STROKE_WEIGHT / if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. },
+		width: LAYER_OUTLINE_STROKE_WEIGHT / if zoom > 0. { zoom } else { 1. },
 		miter_limit: 4.,
 		join: Join::Miter,
 		start_cap: Cap::Butt,
