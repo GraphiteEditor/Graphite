@@ -14,6 +14,7 @@ pub(crate) use graphite_desktop_wrapper as wrapper;
 
 mod app;
 mod cli;
+mod clock;
 mod dirs;
 mod event;
 mod gpu_context;

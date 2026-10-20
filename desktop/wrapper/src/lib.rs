@@ -12,7 +12,7 @@ use std::sync::Arc;
 pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use graphite_editor::document_store::{DocumentStore, FolderStore};
-pub use graphite_editor::task::{Spawn, Task};
+pub use graphite_editor::task::{Clock, Scheduling, Spawn, Task};
 pub use wgpu_executor::Texture;
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
@@ -35,12 +35,15 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
+	#[allow(clippy::too_many_arguments)]
 	pub fn new(
 		random_seed: u64,
 		resource_storage: Arc<dyn ResourceStorage>,
 		document_store: Arc<dyn DocumentStore>,
 		wgpu_context: WgpuContext,
 		spawner: impl Spawn + Send + Sync + 'static,
+		clock: Arc<dyn Clock>,
+		scheduling: Scheduling,
 		editor_wake: impl Fn() + Send + Sync + 'static,
 		runtime_wake: impl Fn() + Send + Sync + 'static,
 	) -> (Self, NodeRuntime) {
@@ -61,7 +64,13 @@ impl DesktopWrapper {
 					.with_resource_storage(resource_storage)
 					.with_document_store(document_store),
 			)
-			.with_runtime(RuntimeBuilder::new().with_wake(runtime_wake).with_application_io(application_io))
+			.with_runtime(
+				RuntimeBuilder::new()
+					.with_wake(runtime_wake)
+					.with_application_io(application_io)
+					.with_clock(clock)
+					.with_scheduling(scheduling),
+			)
 			.with_spawner(spawner)
 			.with_random_seed(random_seed)
 			.build();

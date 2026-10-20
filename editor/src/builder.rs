@@ -2,14 +2,15 @@ use crate::application::{Editor, Environment};
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::{NodeGraphExecutor, NodeRuntime};
-use crate::task::{Spawn, Spawner};
+use crate::task::{Scheduling, Spawn, Spawner};
 use document_container::store::DocumentStore;
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
+use graphene_std::runtime::Clock;
 use std::sync::Arc;
 
 pub type ReadyEditorBuilder = EditorBuilder<Wake, Environment, Arc<dyn ResourceStorage>, Arc<dyn DocumentStore>>;
-pub type ReadyRuntimeBuilder = RuntimeBuilder<Wake, PlatformApplicationIo>;
+pub type ReadyRuntimeBuilder = RuntimeBuilder<Wake, PlatformApplicationIo, Arc<dyn Clock>>;
 
 pub struct Builder<E = (), R = (), S = (), N = ()> {
 	editor: E,
@@ -96,6 +97,8 @@ impl Builder<ReadyEditorBuilder, ReadyRuntimeBuilder, Spawner, u64> {
 		let RuntimeBuilder {
 			wake: runtime_wake,
 			mut application_io,
+			scheduling,
+			clock,
 		} = runtime;
 
 		graphene_std::uuid::set_uuid_seed(random_seed);
@@ -107,7 +110,8 @@ impl Builder<ReadyEditorBuilder, ReadyRuntimeBuilder, Spawner, u64> {
 
 		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
 		node_runtime.replace_application_io(application_io);
-		node_runtime.replace_task_executor(spawner, runtime_wake);
+		node_runtime.replace_task_executor(spawner, runtime_wake, clock);
+		node_runtime.set_scheduling(scheduling);
 
 		(Editor { dispatcher }, node_runtime)
 	}
@@ -181,14 +185,21 @@ impl<W, E, R> EditorBuilder<W, E, R, ()> {
 	}
 }
 
-pub struct RuntimeBuilder<W = (), A = ()> {
+pub struct RuntimeBuilder<W = (), A = (), C = ()> {
 	wake: W,
 	application_io: A,
+	clock: C,
+	scheduling: Scheduling,
 }
 
 impl RuntimeBuilder {
 	pub fn new() -> Self {
-		Self { wake: (), application_io: () }
+		Self {
+			wake: (),
+			application_io: (),
+			clock: (),
+			scheduling: Scheduling::default(),
+		}
 	}
 }
 
@@ -198,18 +209,44 @@ impl Default for RuntimeBuilder {
 	}
 }
 
-impl<A> RuntimeBuilder<(), A> {
+impl<A, C> RuntimeBuilder<(), A, C> {
 	/// Called from any thread when a graph task has completed, to run the runtime again as soon as possible.
-	pub fn with_wake(self, wake: impl Fn() + Send + Sync + 'static) -> RuntimeBuilder<Wake, A> {
+	pub fn with_wake(self, wake: impl Fn() + Send + Sync + 'static) -> RuntimeBuilder<Wake, A, C> {
 		RuntimeBuilder {
 			wake: Arc::new(wake),
 			application_io: self.application_io,
+			clock: self.clock,
+			scheduling: self.scheduling,
 		}
 	}
 }
 
-impl<W> RuntimeBuilder<W, ()> {
-	pub fn with_application_io(self, application_io: PlatformApplicationIo) -> RuntimeBuilder<W, PlatformApplicationIo> {
-		RuntimeBuilder { wake: self.wake, application_io }
+impl<W, C> RuntimeBuilder<W, (), C> {
+	pub fn with_application_io(self, application_io: PlatformApplicationIo) -> RuntimeBuilder<W, PlatformApplicationIo, C> {
+		RuntimeBuilder {
+			wake: self.wake,
+			application_io,
+			clock: self.clock,
+			scheduling: self.scheduling,
+		}
+	}
+}
+
+impl<W, A> RuntimeBuilder<W, A, ()> {
+	/// The host's clock, which frames and the nodes' own budgets are measured with.
+	pub fn with_clock(self, clock: Arc<dyn Clock>) -> RuntimeBuilder<W, A, Arc<dyn Clock>> {
+		RuntimeBuilder {
+			wake: self.wake,
+			application_io: self.application_io,
+			clock,
+			scheduling: self.scheduling,
+		}
+	}
+}
+
+impl<W, A, C> RuntimeBuilder<W, A, C> {
+	/// How the runtime schedules the evaluations finished tasks ask for, by default within a 16 ms frame budget.
+	pub fn with_scheduling(self, scheduling: Scheduling) -> Self {
+		Self { scheduling, ..self }
 	}
 }

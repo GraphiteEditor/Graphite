@@ -1,6 +1,7 @@
+use super::scheduling::Frame;
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::task::{Spawn, Spawner, Task};
+use crate::task::{Scheduling, Spawn, Spawner, Task};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -18,7 +19,7 @@ use graphene_std::ops::ConvertAsync;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::runtime::AsyncRuntime;
+use graphene_std::runtime::{AsyncRuntime, Clock};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
@@ -26,8 +27,8 @@ use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
 /// Some of these fields are put into a [`PlatformEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -40,13 +41,18 @@ pub struct NodeRuntime {
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
 	editor_wake: Wake,
-	dirty: Arc<AtomicBool>,
+	/// Whether to evaluate again once the frame has room, as after an export.
+	rerun: bool,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
 	async_runtime: Option<AsyncRuntime>,
+	scheduling: Scheduling,
+	frame: Frame,
+	/// Whether the last run left an evaluation a finished task asked for to the next frame.
+	deferred: bool,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -107,7 +113,7 @@ impl NodeRuntime {
 			receiver,
 			sender,
 			editor_wake,
-			dirty: Default::default(),
+			rerun: false,
 			pending: None,
 			pending_export: None,
 			editor_preferences: EditorPreferences::default(),
@@ -115,6 +121,9 @@ impl NodeRuntime {
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
 			async_runtime: None,
+			scheduling: Scheduling::default(),
+			frame: Frame::default(),
+			deferred: false,
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
@@ -176,7 +185,12 @@ impl NodeRuntime {
 			}
 		}
 
-		if self.dirty.swap(false, Ordering::Acquire) && execution.is_none() {
+		// Explicit requests run at once and read the newest generations, while evaluations finished tasks ask for fill the frame
+		let asked = std::mem::take(&mut self.rerun) | self.async_runtime().take_bumped();
+		self.deferred = asked && execution.is_none() && !self.frame.has_room(&self.scheduling, self.async_runtime().clock());
+		if self.deferred {
+			self.rerun = true;
+		} else if asked && execution.is_none() {
 			execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
 		}
 
@@ -268,7 +282,7 @@ impl NodeRuntime {
 							self.pending_export = Some(request);
 							return None;
 						}
-						(true, _) => self.dirty.store(true, Ordering::Release),
+						(true, _) => self.rerun = true,
 						_ => {}
 					}
 
@@ -611,33 +625,42 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
-		let spawn = NodeTaskExecutor {
-			spawner,
-			dirty: self.dirty.clone(),
-			wake,
-		};
-		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake, clock: Arc<dyn Clock>) {
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(NodeTaskExecutor { spawner, wake }), clock));
+		self.begin_frame();
 	}
 
-	fn async_runtime(&self) -> &AsyncRuntime {
+	pub fn set_scheduling(&mut self, scheduling: Scheduling) {
+		self.scheduling = scheduling;
+	}
+
+	/// Marks the start of a frame, which the host calls once the latest output had its chance to be shown.
+	/// The evaluations finished tasks ask for start only within the frame's budget, the rest waiting for the next frame.
+	pub fn begin_frame(&mut self) {
+		self.frame = Frame::begin(self.async_runtime().clock());
+	}
+
+	/// How long until the next frame starts, when the last run left an evaluation to it.
+	pub fn until_next_frame(&self) -> Option<Duration> {
+		self.deferred.then(|| self.frame.until_next(&self.scheduling, self.async_runtime().clock()))
+	}
+
+	pub(crate) fn async_runtime(&self) -> &AsyncRuntime {
 		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
 	}
 }
 
+/// Wakes the runtime when a task ends, which evaluates again if the task bumped its source's generation.
 struct NodeTaskExecutor {
 	spawner: Spawner,
-	dirty: Arc<AtomicBool>,
 	wake: Wake,
 }
 
 impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
-		let dirty = self.dirty.clone();
 		let wake = self.wake.clone();
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
-			dirty.store(true, Ordering::Release);
 			wake();
 		}));
 	}

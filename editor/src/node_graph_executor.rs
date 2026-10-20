@@ -25,6 +25,7 @@ use std::sync::mpsc::{Receiver, Sender};
 #[cfg(test)]
 mod recompile_tests;
 mod runtime;
+mod scheduling;
 pub use runtime::*;
 
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]

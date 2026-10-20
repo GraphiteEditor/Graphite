@@ -16,6 +16,7 @@ use winit::event_loop::run_on_demand::EventLoopExtRunOnDemand;
 use winit::event_loop::{ActiveEventLoop, AsyncRequestSerial, ControlFlow, DndAction, EventLoop};
 use winit::window::WindowId;
 
+use crate::clock::InstantClock;
 use crate::dirs;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::input::InputState;
@@ -26,7 +27,7 @@ use crate::spawner::TokioSpawner;
 use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
-use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, Scheduling, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -102,6 +103,8 @@ impl App {
 			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
 			wgpu_context.clone(),
 			TokioSpawner::new(async_runtime.handle().clone()),
+			Arc::new(InstantClock::new()),
+			Scheduling::default(),
 			editor_wake,
 			runtime_wake,
 		);
@@ -112,7 +115,17 @@ impl App {
 			loop {
 				let texture = async_runtime.block_on(node_runtime.run());
 				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
-				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
+				// A frame starts after waiting out a deferred one or an idle wait, while a wake mid-frame continues the frame
+				let next_frame = match node_runtime.until_next_frame() {
+					Some(wait) => {
+						thread::sleep(wait);
+						true
+					}
+					None => start_render_receiver.recv_timeout(Duration::from_millis(10)).is_err(),
+				};
+				if next_frame {
+					node_runtime.begin_frame();
+				}
 				if exiting_clone.load(Ordering::Relaxed) {
 					break;
 				}

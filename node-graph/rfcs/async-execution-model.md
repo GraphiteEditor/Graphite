@@ -221,7 +221,7 @@ pub trait Runtime {
 
 `Task` is a boxed `'static` future that is `Send` on native targets only. The editor owns an `AsyncRuntime`, which updates the live sources (`retain_sources`) and takes snapshots of the generations (`snapshot`). Nodes get a cloneable `RuntimeHandle` to the same state through the `runtime` scope input, which is always present. Graphs without async nodes never read it.
 
-The host provides the `Spawn` implementation: a tokio runtime on desktop and `spawn_local` on the web. The editor wraps it so that a finished task sets a dirty flag and calls the runtime's wake callback (a channel send on desktop, a queued runtime run on the web).
+The host provides the `Spawn` implementation (a tokio runtime on desktop and `spawn_local` on the web) and a `Clock` (`Instant` on desktop, `performance.now()` on the web), which the runtime carries and nodes read through `RuntimeHandle::clock` to budget their own work. A bumped generation sets a flag in the runtime, and the editor wraps the spawner so that a finished task calls the runtime's wake callback (a channel send on desktop, a queued runtime run on the web). `Runtime::spawn` returns an abort handle: an aborted task, or one whose source was removed, is dropped unfinished and bumps nothing.
 
 Executor construction, update, and execution are plain functions, and `execute` returns `Poll<TaggedValue>`. The only await left in the editor runtime is the GPU readback for exports and the eyedropper, which can't block on the web. On desktop, the runtime runs on its own thread under `block_on`, and the readback polls the device until the copy is done.
 
@@ -230,10 +230,11 @@ We don't use wakers to notify the graph. A waker resumes a suspended computation
 ## Scheduling
 
 - Generations are read once per evaluation. A task that finishes during an evaluation takes effect in the next one.
-- The dirty flag is checked once per runtime run, so N finished tasks cause one re-render of the last viewport request.
-- On recompile, `retain_sources` removes sources that no longer exist and adds new ones at generation zero. Nodes that were removed drop their slots, which aborts their tasks.
+- The bump flag is checked once per runtime run, so N finished tasks cause one re-render of the last viewport request.
+- The host marks frames with `begin_frame` (the animation frame on the web, the runtime thread's loop on desktop). An evaluation that finished tasks ask for starts only while the frame is within its budget (`Scheduling::frame_budget`, 16 ms by default and set by the host). Past it, the evaluation waits for the next frame, so the host shows the latest output first. On the web, every finished task otherwise runs the next evaluation in the same microtask checkpoint, and the browser would not paint until a chain of tasks ends. Graph updates and explicit execution requests are never deferred.
+- On recompile, `retain_sources` removes sources that no longer exist, aborting their unfinished tasks, and adds new ones at generation zero. Nodes that were removed drop their slots, which aborts their tasks.
 
-The editor maps the top-level `Poll` to an `ExecutionResult`: `Pending`, `Value`, `Fallback(value, errors)`, `Error(errors)`, or `Panic`. A `Pending` result keeps the last frame and its errors on screen. An export treats `Partial` like `Pending`: it is parked and re-run on every dirty wake until the result is final, and the runtime doesn't process other requests until then.
+The editor maps the top-level `Poll` to an `ExecutionResult`: `Pending`, `Value`, `Fallback(value, errors)`, `Error(errors)`, or `Panic`. A `Pending` result keeps the last frame and its errors on screen. An export treats `Partial` like `Pending`: it is parked and re-run on every wake after a bump until the result is final, and the runtime doesn't process other requests until then.
 
 ## Overhead
 

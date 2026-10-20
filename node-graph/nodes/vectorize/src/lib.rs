@@ -133,7 +133,7 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 mod test {
 	use super::*;
 	use core_types::Color;
-	use core_types::runtime::{AsyncRuntime, Spawn, Task};
+	use core_types::runtime::{AsyncRuntime, Clock, Spawn, Task};
 	use raster_types::Image;
 	use std::sync::{Arc, Mutex};
 	use std::task::{Context, Waker};
@@ -298,6 +298,15 @@ mod test {
 		}
 	}
 
+	/// Time since the clock was made, as the host's clock tells it.
+	struct InstantClock(std::time::Instant);
+
+	impl Clock for InstantClock {
+		fn now(&self) -> std::time::Duration {
+			self.0.elapsed()
+		}
+	}
+
 	#[derive(Default)]
 	struct CollectSpawner(Mutex<Vec<Task>>);
 
@@ -311,7 +320,7 @@ mod test {
 	#[test]
 	fn a_partial_result_asks_for_the_next_slice() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone());
+		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(InstantClock(std::time::Instant::now())));
 		let source = SourceId(7);
 		runtime.retain_sources(&[source]);
 
