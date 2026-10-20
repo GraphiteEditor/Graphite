@@ -13,6 +13,16 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+// Derives the ids for generated nodes from their contents / context to be deterministic arcoss graph compilations.
+// The identifier is needed such that different nodes with the same hash bytes get different node ids.
+fn producer_node_id(ident: &ProtoNodeIdentifier, key: impl Hash) -> NodeId {
+	let mut hasher = DefaultHasher::new();
+	"preprocessor producer".hash(&mut hasher);
+	ident.hash(&mut hasher);
+	key.hash(&mut hasher);
+	NodeId(hasher.finish())
+}
+
 #[derive(Debug, Clone)]
 struct Substitution {
 	node: DocumentNode,
@@ -53,13 +63,13 @@ impl Preprocessor {
 		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
-		for node in network.nodes.values_mut() {
+		for (&consumer_id, node) in &mut network.nodes {
 			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
 				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
 				continue;
 			}
 
-			for input in node.inputs.iter_mut() {
+			for (input_index, input) in node.inputs.iter_mut().enumerate() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
 
 				let node_id = match &**tagged_value {
@@ -70,7 +80,7 @@ impl Preprocessor {
 						};
 
 						*hash_to_node_id.entry(hash).or_insert_with(|| {
-							let id = NodeId::new();
+							let id = producer_node_id(&platform_application_io::editor_api::IDENTIFIER, resource_id);
 							let resource_node = DocumentNode {
 								inputs: vec![
 									NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
@@ -84,7 +94,7 @@ impl Preprocessor {
 						})
 					}
 					TaggedValue::AnimationCurve(curve) => {
-						let id = NodeId::new();
+						let id = producer_node_id(&graphene_core::animation::evaluate_curve::IDENTIFIER, (consumer_id, input_index));
 						let curve_node = DocumentNode {
 							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
 							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::evaluate_curve::IDENTIFIER),
