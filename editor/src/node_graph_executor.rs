@@ -22,6 +22,8 @@ use std::any::Any;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
+#[cfg(test)]
+mod recompile_tests;
 mod runtime;
 pub use runtime::*;
 
