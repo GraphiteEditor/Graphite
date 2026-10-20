@@ -29,6 +29,3 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 kurbo = { workspace = true }
 log = { workspace = true }
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-js-sys = { workspace = true }
