@@ -247,10 +247,15 @@ pub fn sync_color_options(
 		};
 		(state.enabled, display_choice, tracks_working)
 	} else {
-		// On a real deselect, revert to the working color; otherwise preserve the displayed value.
+		// A real deselect reverts to the natural state and the working color, while anything else keeps what's shown
+		let enabled = if selection_changed {
+			Some(natural_fill_enabled)
+		} else {
+			drawing.fill.enabled.or(Some(natural_fill_enabled))
+		};
 		let display_choice = if selection_changed { Some(fill_fallback) } else { drawing.fill.fill_choice.clone() };
 		let tracks_working = if selection_changed { true } else { drawing.fill.tracks_working_color };
-		(Some(natural_fill_enabled), display_choice, tracks_working)
+		(enabled, display_choice, tracks_working)
 	};
 	if drawing.fill.enabled != new_fill.0 || drawing.fill.fill_choice != new_fill.1 || drawing.fill.tracks_working_color != new_fill.2 {
 		drawing.fill.enabled = new_fill.0;
@@ -271,9 +276,14 @@ pub fn sync_color_options(
 		};
 		(state.enabled, display_choice, tracks_working)
 	} else {
+		let enabled = if selection_changed {
+			Some(natural_stroke_enabled)
+		} else {
+			drawing.stroke.enabled.or(Some(natural_stroke_enabled))
+		};
 		let display_choice = if selection_changed { Some(stroke_fallback) } else { drawing.stroke.fill_choice.clone() };
 		let tracks_working = if selection_changed { true } else { drawing.stroke.tracks_working_color };
-		(Some(natural_stroke_enabled), display_choice, tracks_working)
+		(enabled, display_choice, tracks_working)
 	};
 	if drawing.stroke.enabled != new_stroke.0 || drawing.stroke.fill_choice != new_stroke.1 || drawing.stroke.tracks_working_color != new_stroke.2 {
 		drawing.stroke.enabled = new_stroke.0;

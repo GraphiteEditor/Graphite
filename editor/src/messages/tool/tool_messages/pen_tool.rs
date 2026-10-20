@@ -2792,6 +2792,33 @@ mod test_pen_tool {
 		vector.anchor_positions().into_iter().map(|position| layer_to_viewport.transform_point2(position)).collect()
 	}
 
+	#[tokio::test]
+	async fn a_path_drawn_with_fill_unticked_gets_no_fill() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_id;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(300., 300., 400., 400.).await;
+		deselect_all(&mut editor).await;
+		editor.select_tool(ToolType::Pen).await;
+		editor
+			.handle_message(PenToolMessage::UpdateOptions {
+				options: super::PenOptionsUpdate::FillEnabled(false),
+			})
+			.await;
+
+		// Clicking without reselecting the tool, since that would sync the options afresh
+		for point in [A, DVec2::new(150., 200.), B] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+			editor.left_mousedown(point.x, point.y, ModifierKeys::empty()).await;
+			editor.left_mouseup(point.x, point.y, ModifierKeys::empty()).await;
+		}
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let (layer, _) = drawn_path(&editor).expect("Expected a drawn path");
+		assert!(get_fill_id(layer, &editor.active_document().network_interface).is_none(), "the path should have no Fill node");
+	}
+
 	async fn set_space_held(editor: &mut EditorTestUtils, held: bool) {
 		let (key, modifier_keys, key_repeat) = (Key::Space, ModifierKeys::empty(), false);
 		let message = if held {
