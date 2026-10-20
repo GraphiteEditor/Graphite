@@ -10,16 +10,18 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::{EvaluationErrors, NodeRuntime};
-use crate::task::{Spawn, Task};
+use crate::task::{Scheduling, Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graphene_std::raster::color::Color;
+use graphene_std::runtime::Clock;
 use graphene_std::uuid::NodeId;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::Duration;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -30,6 +32,10 @@ pub struct EditorTestUtils {
 
 impl EditorTestUtils {
 	pub fn create() -> Self {
+		Self::create_with(Scheduling::UNLIMITED, Arc::new(FakeClock::default()))
+	}
+
+	pub fn create_with(scheduling: Scheduling, clock: Arc<dyn Clock>) -> Self {
 		init_test_logger();
 
 		let woken = Arc::new(AtomicBool::new(false));
@@ -42,7 +48,12 @@ impl EditorTestUtils {
 					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
 					.with_document_store(Arc::new(MemoryStore::default())),
 			)
-			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(PlatformApplicationIo::default()))
+			.with_runtime(
+				RuntimeBuilder::new(clock)
+					.with_wake(|| {})
+					.with_application_io(PlatformApplicationIo::default())
+					.with_scheduling(scheduling),
+			)
 			.with_spawner(BlockingSpawner)
 			.with_random_seed(0)
 			.build();
@@ -491,6 +502,22 @@ pub fn capture_logged_errors<T>(operation: impl FnOnce() -> T) -> (T, Vec<String
 	let errors = CAPTURED_ERRORS.take().unwrap_or_default();
 
 	(result, errors)
+}
+
+/// A clock that only moves when advanced.
+#[derive(Debug, Default)]
+pub struct FakeClock(Mutex<Duration>);
+
+impl FakeClock {
+	pub fn advance(&self, by: Duration) {
+		*self.0.lock().unwrap_or_else(PoisonError::into_inner) += by;
+	}
+}
+
+impl Clock for FakeClock {
+	fn now(&self) -> Duration {
+		*self.0.lock().unwrap_or_else(PoisonError::into_inner)
+	}
 }
 
 struct BlockingSpawner;
