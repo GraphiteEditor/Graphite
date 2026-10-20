@@ -77,7 +77,7 @@ impl NodeNetworkInterface {
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
 		let inserted_index = if insert_index == -1 { self.number_of_exports(network_path) } else { insert_index as usize };
-		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string()) {
+		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string(), String::new()) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
@@ -287,7 +287,7 @@ impl NodeNetworkInterface {
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		if !self.move_export_slot(network_path, start_index, end_index) {
+		if end_index == start_index || !self.move_export_slot(network_path, start_index, end_index) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
@@ -317,7 +317,7 @@ impl NodeNetworkInterface {
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		if !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
+		if end_index == start_index || !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
@@ -454,6 +454,48 @@ impl NodeNetworkInterface {
 		node.resize_output_names(number_of_exports);
 	}
 
+	/// Used when opening a `.graphite` document to update the descriptions each node stores a copy of: "TODO" input descriptions take the definition's
+	/// text (or become empty where the node no longer matches it), and a node saved without any output descriptions takes the definition's.
+	pub fn validate_descriptions(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
+		let definition_template = self
+			.reference(node_id, network_path)
+			.as_ref()
+			.and_then(resolve_document_node_type)
+			.map(|definition| &definition.node_template);
+
+		let definition_input_metadata = definition_template
+			.map(|template| &template.input_metadata)
+			.filter(|input_metadata| input_metadata.len() == node.inputs.len());
+		let input_descriptions: Vec<(usize, String)> = (0..node.inputs.len())
+			.filter(|&index| {
+				let stored_metadata = self.persistent_input_metadata(node_id, index, network_path);
+				stored_metadata.is_some_and(|metadata| metadata.input_description.trim().eq_ignore_ascii_case("TODO"))
+			})
+			.map(|index| {
+				let description = definition_input_metadata.and_then(|input_metadata| input_metadata.get(index));
+				(index, description.map(|metadata| metadata.persistent_metadata.input_description.clone()).unwrap_or_default())
+			})
+			.collect();
+
+		// An emptied description keeps its slot, so only a node saved before it had output descriptions stores none at all
+		let has_output_descriptions = |output_descriptions: &[String]| output_descriptions.iter().any(|description| !description.is_empty());
+		let stores_output_descriptions = self
+			.node_metadata(node_id, network_path)
+			.is_some_and(|metadata| !metadata.persistent_metadata.output_descriptions.is_empty());
+		let output_descriptions = definition_template
+			.filter(|template| has_output_descriptions(&template.output_descriptions) && !stores_output_descriptions)
+			.filter(|template| template.output_names.len() == self.number_of_outputs(node_id, network_path))
+			.map(|template| template.output_descriptions.clone());
+
+		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		for (index, description) in input_descriptions {
+			node_entry.set_input_description(index, description);
+		}
+		if let Some(output_descriptions) = output_descriptions {
+			node_entry.set_output_descriptions(output_descriptions);
+		}
+	}
+
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
 	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {
@@ -471,14 +513,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		node.set_call_argument(call_argument);
-	}
-
-	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in set_context_features");
-			return;
-		};
-		node.set_context_features(context_features);
 	}
 
 	/// Lightweight version of `set_input` for bulk import operations.
@@ -603,14 +637,14 @@ impl NodeNetworkInterface {
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 
-			// A wire to or from the imports appeared or vanished
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. })
+			// A wire to or from the imports changed
+			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. } | NodeInput::Import { .. }, NodeInput::Import { .. })
 			| (NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_wire(input_connector, network_path);
 			}
 
 			// A node was disconnected
-			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. } | NodeInput::Import { .. }) => {
 				self.unload_wire(input_connector, network_path);
 
 				if let Some((old_upstream_node_id, previous_position)) = disconnected_upstream
@@ -1050,6 +1084,27 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn set_import_export_description(&mut self, description: String, index: ImportOrExport, network_path: &[NodeId]) {
+		let Some((encapsulating_node_id, encapsulating_network_path)) = network_path.split_last() else {
+			log::error!("Could not get encapsulating network in set_import_export_description");
+			return;
+		};
+
+		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+			log::error!("Could not get encapsulating node in set_import_export_description");
+			return;
+		};
+
+		let description_changed = match index {
+			ImportOrExport::Import(import_index) => node.set_input_description(import_index, description),
+			ImportOrExport::Export(export_index) => node.set_output_description(export_index, description),
+		};
+
+		if description_changed {
+			self.transaction_modified();
+		}
+	}
+
 	pub fn set_pinned(&mut self, node_id: &NodeId, network_path: &[NodeId], pinned: bool) {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_pinned");
@@ -1064,7 +1119,7 @@ impl NodeNetworkInterface {
 		self.transaction_modified();
 	}
 
-	/// Reorders a pinned node within its network's Properties panel display order so it ends up at `insert_index` among the
+	/// Reorders a pinned node within its network's Inspector display order so it ends up at `insert_index` among the
 	/// pinned nodes (0 being the topmost). Rebuilds the order from the list as currently shown, which also drops stale entries.
 	pub fn reorder_pinned_node(&mut self, node_id: NodeId, insert_index: usize, network_path: &[NodeId]) {
 		let shown = self.ordered_pinned_nodes(network_path);
@@ -1228,8 +1283,13 @@ impl NodeNetworkInterface {
 						new_export = root_node_to_restore.map(|root_node| root_node.to_connector());
 						new_previewing_state = Previewing::No;
 					}
-					// The export is clicked and there is no preview
+					// The export is clicked and there is no preview, so it already shows the primary output a preview would
+					else if previous_output_index == 0 {
+						return;
+					}
+					// The export is clicked and there is no preview, but it comes from another output, so preview the primary one and restore that afterward
 					else {
+						new_export = Some(OutputConnector::primary_output(toggle_id));
 						new_previewing_state = Previewing::Yes {
 							root_node_to_restore: Some(RootNode {
 								node_id: previous_export_id,
@@ -1246,10 +1306,10 @@ impl NodeNetworkInterface {
 					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
 						// There is also a solid line being drawn
 						if let Some(root_node_to_restore) = root_node_to_restore {
-							// If the node with the solid line is clicked, then start previewing that node without restore
+							// If the node with the solid line is clicked, then end the preview by restoring it
 							if root_node_to_restore.node_id == toggle_id {
-								new_export = Some(OutputConnector::primary_output(toggle_id));
-								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+								new_export = Some(root_node_to_restore.to_connector());
+								new_previewing_state = Previewing::No;
 							} else {
 								// Root node to restore does not change
 								new_previewing_state = Previewing::Yes {

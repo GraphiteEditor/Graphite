@@ -41,8 +41,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			icon,
 			fields,
 			description,
-			properties,
-			context_features,
+			inspector,
 			output_fields,
 			..
 		} = metadata;
@@ -90,7 +89,6 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 					inputs,
 					call_argument: input_type.clone(),
 					implementation: NodeTemplateImplementation::ProtoNode(id.clone()),
-					context_features: ContextDependencies::from(context_features.as_slice()),
 					// TODO: Store information for input overrides in the node macro
 					input_metadata: fields
 						.iter()
@@ -107,7 +105,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 				category,
 				icon: *icon,
 				description: Cow::Borrowed(description),
-				properties: *properties,
+				inspector: *inspector,
 			},
 		);
 	}

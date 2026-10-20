@@ -12,8 +12,9 @@ use crate::messages::tool::utility_types::ToolType;
 use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::list::List;
 use graphene_std::vector::misc::{BezierHandles, HandleId, point_to_dvec2, segment_to_handles};
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use graphite_proc_macros::{ExtractField, message_handler_data};
 use kurbo::ParamCurve;
 use std::sync::Arc;
@@ -434,18 +435,27 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						let stroke = graphene_std::vector::style::Stroke::new(DEFAULT_STROKE_WIDTH);
 						responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 
-						// Create new point ids and add those into the existing Vector path
+						// Materialize the copied snapshot so its points and segments can replay with fresh IDs
+						let (mut pasted_vector, mut pasted_paths) = (Vector::default(), List::new());
+						new_vector.apply(&mut pasted_vector, &mut pasted_paths);
+
+						// Create new point IDs and add those into the existing Vector path
 						let mut points_map = HashMap::new();
-						for (point, position) in new_vector.point_domain.iter() {
+						for index in pasted_vector.anchor_indices(&pasted_paths) {
+							let (Some(point), Some(position)) = (pasted_vector.point_id_at(index as u32), pasted_vector.position(index)) else {
+								continue;
+							};
+
 							let new_point_id = PointId::generate();
 							points_map.insert(point, new_point_id);
 							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 
-						// Create new segment ids and add the segments into the existing Vector path
+						// Create new segment IDs and add the segments into the existing Vector path
 						let mut segments_map = HashMap::new();
-						for (segment_id, segment, start, end) in new_vector.segment_iter() {
+						let path_beginnings = pasted_vector.path_beginnings(&pasted_paths);
+						for (segment_id, segment, start, end) in pasted_vector.segment_iter(&pasted_paths) {
 							let (Some(&start_point), Some(&end_point)) = (points_map.get(&start), points_map.get(&end)) else {
 								warn!("Skipping pasted vector segment with an unknown endpoint");
 								continue;
@@ -465,10 +475,19 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							let points = [start_point, end_point];
 							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+							// Every pasted path stays a path of its own, even where it sets out from the end of another
+							if path_beginnings.contains(&segment_id) {
+								let modification_type = VectorModificationType::SetPathBreak {
+									segment: new_segment_id,
+									breaks: true,
+								};
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
 						}
 
 						// Set G1 continuity
-						for handles in new_vector.colinear_manipulators {
+						for handles in pasted_vector.colinear_pairs(&pasted_paths) {
 							let to_new_handle = |handle: HandleId| -> Option<HandleId> {
 								Some(HandleId {
 									ty: handle.ty,

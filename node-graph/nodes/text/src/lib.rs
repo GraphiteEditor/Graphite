@@ -7,6 +7,7 @@ mod text_context;
 mod to_path;
 
 use convert_case::{Boundary, Converter, Pattern};
+use core_types::Interrupt;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
@@ -336,7 +337,7 @@ fn string_truncate(
 }
 
 /// Formats a number as a string with control over decimal places, decimal separator, and thousands grouping.
-#[node_macro::node(category("Text"), icon("NodeFormatNumber"), properties("format_number_properties"))]
+#[node_macro::node(category("Text"), icon("NodeFormatNumber"), inspector("format_number_inspector"))]
 fn format_number(
 	_: impl Ctx,
 	/// The number to format as a string.
@@ -797,7 +798,7 @@ fn string_occurrences(
 }
 
 /// Converts a string's capitalization style to another of the common upper and lower case patterns, optionally joining words with a chosen separator.
-#[node_macro::node(category("Text"), icon("NodeStringCapitalization"), properties("string_capitalization_properties"))]
+#[node_macro::node(category("Text"), icon("NodeStringCapitalization"), inspector("string_capitalization_inspector"))]
 fn string_capitalization(
 	_: impl Ctx,
 	/// The string to have its letter capitalization converted.
@@ -948,24 +949,24 @@ fn string_join(
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
 #[node_macro::node(category("Text"), icon("NodeMapString"))]
-async fn map_string(
+fn map_string(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> Item<String>)]
 	mapped: impl Node<Context<'static>, Output = Item<String>>,
-) -> List<String> {
+) -> Result<List<String>, Interrupt> {
 	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
-		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
+		let mapped_string = mapped.eval(owned_ctx.into_context())?;
 
 		result.push(mapped_string);
 	}
 
-	result
+	Ok(result)
 }
 
 /// Reads the current string from within a **Map String** node's loop.

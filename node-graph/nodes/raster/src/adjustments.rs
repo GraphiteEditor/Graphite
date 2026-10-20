@@ -299,7 +299,7 @@ impl BrightnessCurve {
 	name("Brightness/Contrast"),
 	category("Raster: Adjustment"),
 	icon("NodeBrightnessContrast"),
-	properties("brightness_contrast_properties"),
+	inspector("brightness_contrast_inspector"),
 	shader_node(PerPixelAdjust)
 )]
 fn brightness_contrast<T: Adjust<Color>>(
@@ -325,7 +325,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 	let use_classic = use_classic.into_element();
 	let classic_pivot = (classic_pivot.into_element() / 255.) as f32;
 
-	// Each algorithm has its own slider range, matched here and in the Properties panel
+	// Each algorithm has its own slider range, matched here and in the Inspector
 	let (brightness_extent, contrast_minimum) = if use_classic { (100., -100.) } else { (150., -50.) };
 	let brightness = (brightness.into_element() as f32).clamp(-brightness_extent, brightness_extent);
 	let contrast = (contrast.into_element() as f32).clamp(contrast_minimum, 100.) / 100.;
@@ -463,7 +463,7 @@ impl LevelsChain {
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), properties("levels_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), inspector("levels_inspector"), shader_node(PerPixelAdjust))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -678,8 +678,8 @@ fn levels<T: Adjust<Color>>(
 // stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
 // Needs the heap for its curves, so it stays off the shader build for now.
 #[cfg(feature = "std")]
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), properties("transfer_curves_properties"))]
-async fn curves<T: Adjust<Color> + Send>(
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), inspector("transfer_curves_inspector"))]
+fn curves<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	curve: Item<TransferCurve>,
@@ -733,7 +733,7 @@ fn points_to_transfer_curve(
 	name("Black & White"),
 	category("Raster: Adjustment"),
 	icon("NodeBlackAndWhite"),
-	properties("black_and_white_properties"),
+	inspector("black_and_white_inspector"),
 	shader_node(PerPixelAdjust)
 )]
 fn black_and_white<T: Adjust<Color>>(
@@ -1022,7 +1022,7 @@ fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
 	name("Hue/Saturation"),
 	category("Raster: Adjustment"),
 	icon("NodeHueSaturation"),
-	properties("hue_saturation_properties"),
+	inspector("hue_saturation_inspector"),
 	shader_node(PerPixelAdjust)
 )]
 fn hue_saturation<T: Adjust<Color>>(
@@ -1419,7 +1419,7 @@ fn invert<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), properties("threshold_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), inspector("threshold_inspector"), shader_node(PerPixelAdjust))]
 fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -1466,7 +1466,7 @@ fn threshold<T: Adjust<Color>>(
 // TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGradientMap"))]
-async fn gradient_map<T: Adjust<Color> + Send>(
+fn gradient_map<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)] image: Item<T>,
 	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
@@ -1493,7 +1493,7 @@ async fn gradient_map<T: Adjust<Color> + Send>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), properties("vibrance_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), inspector("vibrance_inspector"), shader_node(PerPixelAdjust))]
 fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -1693,7 +1693,7 @@ pub enum DomainWarpType {
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
 //
 // TODO: CMYK source channels once Graphite supports the CMYK color space.
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), inspector("channel_mixer_inspector"), shader_node(PerPixelAdjust))]
 fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -1802,7 +1802,7 @@ fn channel_mixer<T: Adjust<Color>>(
 	#[default(0.)]
 	blue_c: Item<f64>,
 
-	// Display-only properties (not used within the node)
+	// Display-only parameters (not used within the node)
 	_output_channel: Item<RedGreenBlue>,
 ) -> Item<T> {
 	let mut image = image;
@@ -1889,7 +1889,7 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), inspector("selective_color_inspector"), shader_node(PerPixelAdjust))]
 fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -2230,7 +2230,7 @@ fn posterize<T: Adjust<Color>>(
 //
 // The exposure, offset, and gamma operations follow:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), properties("exposure_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), inspector("exposure_inspector"), shader_node(PerPixelAdjust))]
 fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -2366,7 +2366,7 @@ fn color_balance_curve(s: i32, m: i32, h: i32, s_max: i32, m_max: i32, m_min: i3
 //
 // Every channel is a Levels curve whose black point, white point, and two-decimal gamma are derived from
 // the nine sliders, see `color_balance_curve`.
-#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), properties("color_balance_properties"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), inspector("color_balance_inspector"), shader_node(PerPixelAdjust))]
 fn color_balance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]
@@ -2423,7 +2423,7 @@ fn color_balance<T: Adjust<Color>>(
 
 	#[default(true)] preserve_luminosity: Item<bool>,
 
-	// Display-only property (not used within the node)
+	// Display-only parameter (not used within the node)
 	_tone: Item<TonalRange>,
 ) -> Item<T> {
 	let mut image = image;
@@ -2537,7 +2537,7 @@ fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 // TODO: Verify the tetrahedral interpolation, which is unconfirmed against other implementations.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorLookup"))]
-async fn color_lookup<T: Adjust<Color> + Send>(
+fn color_lookup<T: Adjust<Color> + Send>(
 	_: impl Ctx,
 	/// The image whose colors are remapped by the LUT (lookup table).
 	#[implementations(Raster<CPU>, Color, Gradient)]

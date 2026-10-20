@@ -60,6 +60,8 @@ pub enum NodeMetadataChange {
 	Pinned(bool),
 	/// The whole vec, since the encoding is one array-valued attribute rather than a slot each.
 	OutputNames(Vec<String>),
+	/// The whole vec, for the same reason as `OutputNames`.
+	OutputDescriptions(Vec<String>),
 	InputName {
 		index: usize,
 		name: String,
@@ -209,17 +211,6 @@ impl EditorDelta {
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetContextFeatures {
-				network_path,
-				node_id,
-				context_features,
-			}) => {
-				ops.push(RegistryDelta::ChangeNodeAttribute {
-					id: context.resolver.node_id(network_path, *node_id),
-					delta: document_graph_storage::from_runtime::encode_context_features(context_features)?,
-				});
-			}
-
 			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
 				construct_metadata_snapshot(network_path, *node_id, metadata, batch, &context.resolver, ops)?;
 			}
@@ -339,6 +330,11 @@ fn node_metadata_ops(global_id: document_graph_storage::NodeId, change: &NodeMet
 		NodeMetadataChange::OutputNames(output_names) => {
 			let value = (!output_names.is_empty()).then(|| serialize_attribute(node_attr::ui::OUTPUT_NAMES, output_names)).transpose()?;
 			vec![node_attribute(node_attr::ui::OUTPUT_NAMES, value)]
+		}
+		NodeMetadataChange::OutputDescriptions(output_descriptions) => {
+			let any_description = output_descriptions.iter().any(|description| !description.is_empty());
+			let value = any_description.then(|| serialize_attribute(node_attr::ui::OUTPUT_DESCRIPTIONS, output_descriptions)).transpose()?;
+			vec![node_attribute(node_attr::ui::OUTPUT_DESCRIPTIONS, value)]
 		}
 		NodeMetadataChange::InputName { index, name } => vec![input_attribute(node_attr::input::ui::NAME, *index, non_empty(name))?],
 		NodeMetadataChange::WidgetOverride { index, widget_override } => {
@@ -915,6 +911,10 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 
 	fn output_names(&self, metadata_path: &[NodeId], node_id: NodeId) -> Vec<String> {
 		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.output_names.clone()).unwrap_or_default()
+	}
+
+	fn output_descriptions(&self, metadata_path: &[NodeId], node_id: NodeId) -> Vec<String> {
+		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.output_descriptions.clone()).unwrap_or_default()
 	}
 
 	fn input_name(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {

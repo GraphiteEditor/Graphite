@@ -85,8 +85,6 @@ pub struct DropdownInput {
 	// Behavior
 	#[serde(rename = "virtualScrolling")]
 	pub virtual_scrolling: bool,
-	#[derivative(Default(value = "true"))]
-	pub interactive: bool,
 	// Set along with the `on_file_drop` callback
 	#[serde(rename = "takesFileDrop")]
 	#[widget_builder(skip)]

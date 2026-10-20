@@ -142,8 +142,9 @@
 			cursor: text;
 		}
 
-		&.center-align {
+		&.center-align.center-align {
 			text-align: center;
+			margin-inline: auto;
 		}
 
 		&.table-align {

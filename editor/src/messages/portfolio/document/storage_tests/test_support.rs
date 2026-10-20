@@ -10,14 +10,41 @@ use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNodeImplementation, NodeId};
 
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
+use crate::messages::portfolio::document::utility_types::network_interface::{NodeLocator, NodeNetworkInterface};
 
 /// Load a demo `.graphite` straight into a `DocumentMessageHandler` for inspection.
 pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
 	let path = format!("../demo-artwork/{file_name}");
 	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
 	DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"))
+}
+
+/// Open a demo `.graphite` the way the editor does, with its migrations and load-time fix-ups.
+pub fn open_demo(file_name: &str) -> DocumentMessageHandler {
+	let path = format!("../demo-artwork/{file_name}");
+	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
+	crate::messages::portfolio::document_storage_io::load_legacy_document(content, &HashMapResourceStorage::new(), false).unwrap_or_else(|e| panic!("Failed to open {path}: {e:?}"))
+}
+
+/// Load a demo `.graphite` and describe every subgraph node's outputs, which the demos predate, so a round trip has output descriptions to carry.
+pub fn load_demo_with_output_descriptions(file_name: &str) -> DocumentMessageHandler {
+	let mut document = load_demo(file_name);
+	let interface = &mut document.network_interface;
+
+	for (network_path, node_id) in node_paths(interface) {
+		let node_path = [network_path.as_slice(), &[node_id]].concat();
+		let Some(export_count) = interface.nested_network(&node_path).map(|network| network.exports.len()) else {
+			continue;
+		};
+
+		let output_descriptions = (0..export_count).map(|index| format!("Output {index} of node {node_id}.")).collect();
+		if let Some(mut node) = interface.node_mut(NodeLocator::new(node_id, &network_path)) {
+			node.set_output_descriptions(output_descriptions);
+		}
+	}
+
+	document
 }
 
 /// Walk every node in every nested network and collect `(network_path, local_id)` pairs, so a test can

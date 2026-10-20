@@ -293,51 +293,9 @@
 		}
 	}
 
-	// List of all elements that should show an outline when focused by tabbing or by clicking the element
-	.dropdown-input .dropdown-box,
-	.font-input .dropdown-box {
-		&:focus {
-			outline: 1px dashed var(--color-e-nearwhite);
-			outline-offset: -1px;
-		}
-	}
-
-	// List of all elements that should show an outline when focused by tabbing, but not by clicking the element
-	.icon-button,
-	.text-button,
-	.popover-button,
-	.color-input > button,
-	.color-picker .preset-color,
-	.working-colors-input .swatch > button,
-	.radio-input button,
-	.menu-list,
-	.menu-list-button .entry,
-	.layer-tree .expand-arrow,
-	.widget-section .header {
-		&:focus-visible {
-			outline: 1px dashed var(--color-e-nearwhite);
-			outline-offset: -1px;
-		}
-
-		// Variant: dark outline over light colors
-		&.preset-color.white,
-		&.text-button.emphasized {
-			&:focus-visible {
-				outline: 1px dashed var(--color-2-mildblack);
-			}
-		}
-	}
-
-	// Checkbox needs to apply the focus outline to its sibling label
-	.optional-input input:focus-visible + label,
-	.checkbox-input input:focus-visible + label {
-		outline: 1px dashed var(--color-e-nearwhite);
-		outline-offset: -1px;
-	}
-
-	// Variant: dark outline over light colors (when the checkbox is checked)
-	:not(.optional-input) > .checkbox-input input:focus-visible + label.checked {
-		outline: 1px dashed var(--color-2-mildblack);
+	// The browser's focus ring is left off since the keyboard only moves between text fields, whose focus styles are their own
+	:where(:focus-visible) {
+		outline: none;
 	}
 
 	@font-face {

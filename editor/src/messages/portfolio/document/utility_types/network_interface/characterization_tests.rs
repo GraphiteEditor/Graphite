@@ -1,11 +1,12 @@
 use super::{
-	ChainInsertionPoint, FlowType, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector, Previewing,
-	RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector,
+	Previewing, RootNode, TransactionStatus,
 };
-use crate::messages::portfolio::document::node_graph::utility_types::Direction;
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNodeImplementation, NodeInput};
 use graphene_std::uuid::NodeId;
 
 fn assert_invariants(editor: &EditorTestUtils, context: &str) {
@@ -948,6 +949,27 @@ async fn drag_offsets_do_not_outlive_programmatic_shifts() {
 }
 
 #[tokio::test]
+async fn each_arrow_key_nudge_is_its_own_undo_step() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node] }).await;
+	let start = editor.active_document().network_interface.position(&node, &[]).expect("The node should have a position");
+
+	editor.handle_message(NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }).await;
+	editor.handle_message(NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }).await;
+
+	// Undoing takes back only the last nudge, not the node's creation before them
+	editor.handle_message(DocumentMessage::Undo).await;
+	let network_interface = &editor.active_document().network_interface;
+	let position = network_interface.position(&node, &[]).expect("Undo should keep the node created before the nudges");
+	assert_eq!(position.x - start.x, 1, "Undo should take back only the last nudge");
+
+	assert_invariants(&editor, "after nudging and undoing");
+}
+
+#[tokio::test]
 async fn signature_edits_keep_parallel_metadata_in_sync() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -984,6 +1006,326 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 }
 
 #[tokio::test]
+async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	// Dropping an import or export just below itself leaves it where it was
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.reorder_import(1, 2, &path);
+	assert!(
+		network_interface.reference(&merge, &[]).is_some(),
+		"dropping an import back where it was should leave the subgraph matching its definition"
+	);
+	network_interface.reorder_export(0, 1, &path);
+	assert!(
+		network_interface.reference(&merge, &[]).is_some(),
+		"dropping an export back where it was should leave the subgraph matching its definition"
+	);
+
+	network_interface.add_import(TaggedValue::Number(1.), false, -1, "Parameter", "", &path);
+	let parameter_index = network_interface.number_of_imports(&path) - 1;
+	let previous_primary_name = network_interface.displayed_import_name(0, &path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::ReorderImport {
+			start_index: parameter_index,
+			end_index: 0,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	let new_primary = network_interface
+		.document_node(&merge, &[])
+		.and_then(|node| node.inputs.first())
+		.expect("Merge should have a primary input");
+	assert!(new_primary.is_exposed(), "a parameter moved to the front should be exposed as the primary import");
+	assert_eq!(network_interface.displayed_import_name(0, &path), "Parameter");
+	assert_eq!(
+		network_interface.displayed_import_name(1, &path),
+		previous_primary_name,
+		"the previous primary should become the first secondary import"
+	);
+
+	assert_invariants(&editor, "after reordering a parameter to be the primary import");
+}
+
+#[tokio::test]
+async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.add_import(TaggedValue::Number(1.), true, -1, "Parameter", "", &path);
+	let primary_name = network_interface.displayed_import_name(0, &path);
+	let secondary_name = network_interface.displayed_import_name(1, &path);
+	let fed_by_primary = fed_inputs(&editor, &OutputConnector::Import(0), &path);
+
+	// Drop the primary between the first and second secondary imports
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 2 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_import(&path), "the primary's place should be left empty");
+	assert_eq!(network_interface.displayed_import_name(1, &path), secondary_name, "the first secondary import should stay secondary");
+	assert_eq!(network_interface.displayed_import_name(2, &path), primary_name, "the moved import should land where it was dropped");
+	assert_eq!(
+		fed_inputs(&editor, &OutputConnector::Import(2), &path),
+		fed_by_primary,
+		"the moved import should keep feeding what it fed"
+	);
+
+	assert_invariants(&editor, "after moving the primary import among the secondary ones");
+}
+
+#[tokio::test]
+async fn the_primary_import_can_become_the_first_secondary_and_an_empty_primary_can_be_filled() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let network_interface = &editor.active_document().network_interface;
+	let primary_name = network_interface.displayed_import_name(0, &path);
+	let secondary_name = network_interface.displayed_import_name(1, &path);
+	let import_count = network_interface.number_of_imports(&path);
+
+	// Dropped just below the separator, the primary becomes the first secondary import
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_import(&path), "the primary's place should be left empty");
+	assert_eq!(network_interface.displayed_import_name(1, &path), primary_name, "the moved import should be the first secondary one");
+	assert_eq!(network_interface.displayed_import_name(2, &path), secondary_name);
+
+	// Dropping a secondary import into the empty primary fills it, rather than keeping the empty one as a secondary import
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 2, end_index: 0 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(!network_interface.hidden_primary_import(&path), "the primary should be filled");
+	assert_eq!(network_interface.displayed_import_name(0, &path), secondary_name);
+	assert_eq!(network_interface.displayed_import_name(1, &path), primary_name);
+	assert_eq!(network_interface.number_of_imports(&path), import_count, "the empty primary should be gone rather than pushed down");
+
+	assert_invariants(&editor, "after filling an empty primary import");
+}
+
+#[tokio::test]
+async fn the_primary_export_can_become_the_first_secondary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::AddSecondaryExport).await;
+	let network_interface = &editor.active_document().network_interface;
+	let primary_source = network_interface.upstream_output_connector(&InputConnector::Export(0), &path);
+	assert!(primary_source.is_some(), "Merge's primary export should be wired");
+
+	editor.handle_message(NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_export(&path), "the primary's place should be left empty");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::Export(1), &path),
+		primary_source,
+		"the moved export should be the first secondary one"
+	);
+	assert_eq!(network_interface.number_of_exports(&path), 3, "the empty primary should be added in front of both exports");
+
+	assert_invariants(&editor, "after making the primary export secondary");
+}
+
+/// The inputs fed by `output_connector` in the network at `network_path`, in no particular order.
+fn fed_inputs(editor: &EditorTestUtils, output_connector: &OutputConnector, network_path: &[NodeId]) -> HashSet<InputConnector> {
+	let network_interface = &editor.active_document().network_interface;
+	network_interface
+		.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned())
+		.flatten()
+		.unwrap_or_default()
+		.into_iter()
+		.collect()
+}
+
+#[tokio::test]
+async fn adding_an_import_passthrough_takes_over_the_wires_the_import_fed() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let content_import = OutputConnector::Import(1);
+	let fed_before = fed_inputs(&editor, &content_import, &path);
+	assert!(!fed_before.is_empty(), "Merge's content import should feed its subgraph: fixture is wrong");
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::AddImportPassthrough { import_index: 1 }).await;
+
+	let fed_after = fed_inputs(&editor, &content_import, &path);
+	let [InputConnector::Node { node_id: passthrough, input_index: 0 }] = fed_after.into_iter().collect::<Vec<_>>()[..] else {
+		panic!("the import should feed only the Passthrough's primary input");
+	};
+	assert_eq!(
+		fed_inputs(&editor, &OutputConnector::primary_output(passthrough), &path),
+		fed_before,
+		"the Passthrough should feed what the import fed"
+	);
+
+	assert_invariants(&editor, "after adding an import passthrough");
+}
+
+#[tokio::test]
+async fn editing_import_and_export_descriptions_stores_them_on_the_subgraph_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::SetImportExportDescription {
+			description: "The artwork to add.".to_string(),
+			index: ImportOrExport::Import(1),
+		})
+		.await;
+	editor
+		.handle_message(NodeGraphMessage::SetImportExportDescription {
+			description: "The combined result.".to_string(),
+			index: ImportOrExport::Export(0),
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let import_description = network_interface.persistent_input_metadata(&merge, 1, &[]).map(|metadata| metadata.input_description.as_str());
+	assert_eq!(import_description, Some("The artwork to add."));
+	assert_eq!(network_interface.output_description(&merge, 0, &[]), "The combined result.");
+
+	assert_invariants(&editor, "after editing import and export descriptions");
+}
+
+#[tokio::test]
+async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let import_count = editor.active_document().network_interface.number_of_imports(&path);
+
+	// With a primary, the only one is past the last import
+	let network_interface = &editor.active_document().network_interface;
+	let empty_connectors = network_interface.empty_import_export_connectors(true, &path);
+	assert_eq!(empty_connectors.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![import_count]);
+
+	// The attribute name given to Merge's interior Write Attribute node
+	let write_attribute = network_interface
+		.nested_network(&path)
+		.and_then(|network| {
+			network
+				.nodes
+				.iter()
+				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::graphic::write_attribute::IDENTIFIER))
+		})
+		.map(|(node_id, _)| *node_id)
+		.expect("Merge should contain a Write Attribute node");
+	let value_input = InputConnector::node_at_index(write_attribute, 1);
+	let Some(NodeInput::Value { tagged_value, .. }) = network_interface.input_from_connector(&value_input, &path) else {
+		panic!("Merge's Write Attribute node should be given its attribute name as a value");
+	};
+	let displaced_value = (**tagged_value).clone();
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::AddImportAndConnect {
+			import_index: import_count,
+			input_connector: value_input,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "the next import should be added");
+	assert!(
+		fed_inputs(&editor, &OutputConnector::Import(import_count), &path).contains(&value_input),
+		"the new import should be wired to the input"
+	);
+	let network_interface = &editor.active_document().network_interface;
+	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(merge, import_count), &[]);
+	assert!(
+		matches!(new_input, Some(NodeInput::Value { tagged_value, exposed: true }) if **tagged_value == displaced_value),
+		"the new import should take over the value its wire displaced, found {new_input:?}"
+	);
+	assert_eq!(
+		network_interface.displayed_import_name(import_count, &path),
+		displaced_value.ty().nested_type().to_string(),
+		"an import without a name should be shown by the type it took over"
+	);
+
+	// Emptying the primary adds a connector in its place, which fills it again from an input that's already wired
+	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: false }).await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.empty_import_export_connectors(true, &path).iter().any(|(index, _)| *index == 0));
+
+	// The content given to Merge's interior Write Attribute node by its Into Group node
+	let wired_input = InputConnector::node_at_index(write_attribute, 0);
+	assert!(
+		matches!(network_interface.input_from_connector(&wired_input, &path), Some(NodeInput::Node { .. })),
+		"Merge's Write Attribute node should be wired its content from another node"
+	);
+	editor
+		.handle_message(NodeGraphMessage::AddImportAndConnect {
+			import_index: 0,
+			input_connector: wired_input,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(!network_interface.hidden_primary_import(&path), "the empty primary should be filled");
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "filling the empty primary shouldn't add another import");
+
+	let drawn_wire = network_interface
+		.network_metadata(&path)
+		.and_then(|network_metadata| network_metadata.transient_metadata.wires.borrow().get(&wired_input).cloned())
+		.and_then(|wire| wire.wire_path_update);
+	let current_wire = network_interface.wire_path_from_input(&wired_input, GraphWireStyle::default(), false, &path);
+	assert_eq!(drawn_wire, current_wire, "the input's wire should be redrawn from its new import");
+
+	assert_invariants(&editor, "after adding imports from the empty connectors");
+}
+
+#[tokio::test]
+async fn showing_a_secondary_import_in_the_inspector_keeps_its_wires_in_the_subgraph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let content_import = OutputConnector::Import(1);
+	let fed_before = fed_inputs(&editor, &content_import, &path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 1, exposed: false }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let content_input = network_interface
+		.input_from_connector(&InputConnector::node_at_index(merge, 1), &[])
+		.expect("Merge should have a content input");
+	assert!(!content_input.is_exposed(), "the subgraph node should show the input as a parameter instead of a connector");
+	assert_eq!(
+		fed_inputs(&editor, &content_import, &path),
+		fed_before,
+		"the import should still feed the same inputs within the subgraph"
+	);
+
+	assert_invariants(&editor, "after showing a secondary import in the Inspector");
+}
+
+#[tokio::test]
 async fn toggle_preview_transitions_with_a_connected_export() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -1011,15 +1353,15 @@ async fn toggle_preview_transitions_with_a_connected_export() {
 	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
-	// Toggling the restore node while previewing promotes it to the export with nothing left to restore
+	// Toggling the restore node while previewing ends the preview by restoring it
 	network_interface.toggle_preview(node, &[]);
 	network_interface.toggle_preview(artboard, &[]);
 	assert_eq!(export_node(network_interface), Some(artboard));
-	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
-	// Toggling it once more ends the preview by disconnecting the export entirely
+	// Toggling the node already feeding the export changes nothing
 	network_interface.toggle_preview(artboard, &[]);
-	assert_eq!(export_node(network_interface), None);
+	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
 
 	assert_invariants(&editor, "after cycling through the preview states");
@@ -1269,4 +1611,237 @@ fn adding_an_import_ahead_of_a_wired_input_keeps_the_loaded_wire_cache_exact() {
 	assert_interface_invariants(&network_interface, "after adding an import ahead of a wired input");
 	let consumers = network_interface.outward_wires(&[]).and_then(|wires| wires.get(&OutputConnector::node(source, 0)).cloned());
 	assert_eq!(consumers.as_deref(), Some([InputConnector::node_at_index(node, 1)].as_slice()));
+}
+
+#[tokio::test]
+async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.add_export(TaggedValue::Number(1.), -1, "", &path);
+	network_interface.add_export(TaggedValue::None, -1, "", &path);
+	let number_output = OutputConnector::node(merge, network_interface.number_of_exports(&path) - 2);
+	let placeholder_output = OutputConnector::node(merge, network_interface.number_of_exports(&path) - 1);
+
+	let number_type = TaggedValue::Number(1.).ty().nested_type().clone();
+	assert_eq!(
+		network_interface.possible_output_types(&number_output, &[]),
+		vec![number_type],
+		"an export given a value can only produce its type"
+	);
+	assert!(
+		network_interface.possible_output_types(&placeholder_output, &[]).is_empty(),
+		"a new export's empty placeholder shouldn't be listed as a type it can produce"
+	);
+}
+
+/// Presses at `from` and releases at `to`, both in the graph space of the network at `path`, as the node graph receives a mouse drag.
+async fn drag_in_graph(editor: &mut EditorTestUtils, path: &[NodeId], from: DVec2, to: DVec2) {
+	let node_graph_to_viewport = editor
+		.active_document()
+		.network_interface
+		.network_metadata(path)
+		.expect("the network should have metadata")
+		.persistent_metadata
+		.navigation_metadata
+		.node_graph_to_viewport;
+	let (from, to) = (node_graph_to_viewport.transform_point2(from), node_graph_to_viewport.transform_point2(to));
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_from_an_empty_input_connects_to_the_output_it_is_dropped_on() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.upstream_output_connector(&fill_content, &[]).is_none(), "Fill's content should start out unwired");
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let output_position = network_interface
+		.output_position(&OutputConnector::node(rectangle, 0), &[])
+		.expect("Rectangle's output should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, output_position).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"the wire dragged back from Fill's content should connect it to Rectangle's output"
+	);
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_onto_empty_space_wires_the_node_picked_from_the_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	let input_position = editor
+		.active_document()
+		.network_interface
+		.input_position(&fill_content, &[])
+		.expect("Fill's content should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, input_position - DVec2::new(240., 0.)).await;
+
+	let context_menu = editor.active_document().node_graph_handler.context_menu.clone();
+	assert!(
+		matches!(context_menu.map(|menu| menu.context_menu_data), Some(ContextMenuData::CreateNode { compatible_type: None })),
+		"dropping the wire on empty space should open the node menu without filtering it"
+	);
+
+	let rectangle = NodeId::new();
+	editor
+		.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(rectangle),
+			node_type: rectangle_definition(),
+			xy: Some((0, 0)),
+			add_transaction: true,
+		})
+		.await;
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"the node picked from the menu should be wired into Fill's content"
+	);
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_from_the_dimmed_export_connector_adds_an_export() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let export_count = network_interface.number_of_exports(&path);
+	let (new_export_index, empty_export_position) = *network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	let result_output = network_interface
+		.upstream_output_connector(&InputConnector::Export(0), &path)
+		.expect("Merge's export should be fed by a node inside it");
+	let result_position = network_interface
+		.output_position(&result_output, &path)
+		.expect("the node feeding Merge's export should have an output position");
+
+	drag_in_graph(&mut editor, &path, empty_export_position, result_position).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_exports(&path), export_count + 1, "the export should be added");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::Export(new_export_index), &path),
+		Some(result_output),
+		"the added export should be wired from the output the wire was dropped on"
+	);
+
+	assert_invariants(&editor, "after dragging a wire backward from the dimmed export connector");
+}
+
+#[tokio::test]
+async fn clicking_an_empty_input_without_dragging_leaves_it_and_opens_no_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	let input_position = editor
+		.active_document()
+		.network_interface
+		.input_position(&fill_content, &[])
+		.expect("Fill's content should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+
+	assert!(editor.active_document().node_graph_handler.context_menu.is_none(), "a click shouldn't open the node menu");
+	assert!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]).is_none(),
+		"a click shouldn't wire anything into Fill's content"
+	);
+}
+
+#[tokio::test]
+async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let (_, empty_export_position) = *editor
+		.active_document()
+		.network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	drag_in_graph(&mut editor, &path, empty_export_position, empty_export_position - DVec2::new(240., 0.)).await;
+	assert!(
+		editor.active_document().node_graph_handler.context_menu.is_some(),
+		"dropping the wire on empty space should open the node menu"
+	);
+
+	editor.handle_message(DocumentMessage::ExitNestedNetwork { steps_back: 1 }).await;
+
+	let node_graph_handler = &editor.active_document().node_graph_handler;
+	assert!(node_graph_handler.context_menu.is_none(), "the node menu should close with the subgraph it was opened in");
+	assert!(node_graph_handler.wire_in_progress_from_connector.is_none(), "the wire should end with the subgraph it was dragged in");
+}
+
+#[tokio::test]
+async fn clicking_a_connected_input_leaves_it_connected_when_a_later_wire_is_dragged_away() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let other_rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 10).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	editor
+		.handle_message(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::node(rectangle, 0),
+			input_connector: fill_content,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let other_output_position = network_interface
+		.output_position(&OutputConnector::node(other_rectangle, 0), &[])
+		.expect("the other Rectangle's output should have a position");
+
+	// Click Fill's wired content without dragging, then drag a new wire out of the other Rectangle into empty space
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+	drag_in_graph(&mut editor, &[], other_output_position, other_output_position + DVec2::new(240., 240.)).await;
+
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"Fill's content should still be wired from the first Rectangle"
+	);
 }

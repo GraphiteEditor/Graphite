@@ -173,8 +173,7 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
-					hoverOutEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					previewIndex: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
 					fileDrop: (e: CustomEvent<File>) => widgetValueFileDrop(index, e.detail),
 				},
@@ -284,6 +283,7 @@
 				$$events: {
 					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
+					startHistoryTransaction: () => widgetValueCommit(index, undefined),
 				},
 			}),
 		},

@@ -255,6 +255,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 	let locked = node.attributes.get_or(node::ui::LOCKED, false);
 	let pinned = node.attributes.get_or(node::ui::PINNED, false);
 	let output_names: Vec<String> = node.attributes.get_or_default(node::ui::OUTPUT_NAMES);
+	let output_descriptions: Vec<String> = node.attributes.get_or_default(node::ui::OUTPUT_DESCRIPTIONS);
 
 	let input_metadata: Vec<InputMetadataEntry> = node.inputs.iter().map(|slot| &slot.attributes).map(extract_input_metadata).collect();
 
@@ -269,6 +270,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 		pinned,
 		input_metadata,
 		output_names,
+		output_descriptions,
 	}
 }
 
@@ -332,8 +334,8 @@ fn convert_node(
 		implementation: convert_implementation(context, &node.implementation, metadata_path, runtime_node_id, node_collector, network_collector)?,
 		visible: node.attributes.get_or(node::VISIBLE, true),
 		skip_deduplication: node.attributes.get_or(node::SKIP_DEDUPLICATION, false),
-		context_features: node.attributes.get_or_default(node::CONTEXT_FEATURES),
 		// Regenerated during compilation; not stored.
+		context_dependencies: None,
 		original_location: Default::default(),
 	})
 }

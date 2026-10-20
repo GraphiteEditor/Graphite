@@ -542,6 +542,42 @@ impl NodeNetworkInterface {
 		self.view(network_path).ok().and_then(|view| view.persistent_input_metadata(node_id, index).ok())
 	}
 
+	/// Whether the input is internal state of its proto node (named with a leading `_`), which is never exposed to the graph.
+	pub fn is_internal_input(&self, node_id: &NodeId, index: usize, network_path: &[NodeId]) -> bool {
+		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
+			return false;
+		};
+		let Ok(node_metadata) = graphene_std::registry::NODE_METADATA.lock() else { return false };
+
+		node_metadata
+			.get(proto_node_identifier)
+			.and_then(|metadata| metadata.fields.get(index))
+			.is_some_and(|field| field.internal)
+	}
+
+	/// The description stored for a node's output, or else for a proto node, the doc comment on its field in the struct a multi-output node returns.
+	pub fn output_description(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> String {
+		let stored_description = self
+			.node_metadata(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.output_descriptions.get(output_index))
+			.filter(|description| !description.is_empty());
+		if let Some(stored_description) = stored_description {
+			return stored_description.clone();
+		}
+
+		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
+			return String::new();
+		};
+		let Ok(node_metadata) = graphene_std::registry::NODE_METADATA.lock() else { return String::new() };
+
+		node_metadata
+			.get(proto_node_identifier)
+			.and_then(|metadata| metadata.output_fields.as_ref())
+			.and_then(|output_fields| output_fields.fields.get(output_fields.field_index_for_output(output_index)?))
+			.map(|field| field.description.to_string())
+			.unwrap_or_default()
+	}
+
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_input_override");
@@ -556,7 +592,7 @@ impl NodeNetworkInterface {
 			.unwrap_or_else(|| "Custom Node".to_string())
 	}
 
-	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
+	/// The uneditable name in the Inspector which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.query(network_path, "implementation_name", |view| Ok(view.implementation_name(node_id)))
 			.unwrap_or_else(|| "Custom Node".to_string())

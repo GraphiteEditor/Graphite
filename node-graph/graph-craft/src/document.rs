@@ -57,9 +57,8 @@ pub struct DocumentNode {
 	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
-	/// List of Extract and Inject annotations for the Context.
-	#[serde(default)]
-	pub context_features: ContextDependencies,
+	#[serde(skip)]
+	pub context_dependencies: Option<ContextDependencies>,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
 	pub original_location: OriginalLocation,
@@ -93,7 +92,7 @@ impl Default for DocumentNode {
 			visible: true,
 			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
-			context_features: Default::default(),
+			context_dependencies: Default::default(),
 		}
 	}
 }
@@ -167,7 +166,7 @@ impl DocumentNode {
 			construction_args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
-			context_features: self.context_features,
+			context_dependencies: self.context_dependencies.unwrap_or_default(),
 		}
 	}
 }
@@ -216,12 +215,14 @@ impl InlineRust {
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 pub enum DocumentNodeMetadata {
 	DocumentNodePath,
+	SourceId,
 }
 
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
 			DocumentNodeMetadata::DocumentNodePath => item!(core_types::list::NodeIdPath),
+			DocumentNodeMetadata::SourceId => item!(core_types::SourceId),
 		}
 	}
 }
@@ -422,7 +423,7 @@ pub struct OldDocumentNode {
 	#[serde(default)]
 	pub alias: String,
 	// TODO: Replace this name with a reference to the [`DocumentNodeDefinition`] node definition to use the name from there instead.
-	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate properties.
+	/// The name of the node definition, as originally set by [`DocumentNodeDefinition`], used to display in the UI and to display the appropriate Inspector layout.
 	#[serde(deserialize_with = "migrate_layer_to_merge")]
 	pub name: String,
 	/// The inputs to a node, which are either:
@@ -916,19 +917,28 @@ impl NodeNetwork {
 		if !node.visible && node.implementation != passthrough_node {
 			node.implementation = passthrough_node;
 
-			// Connect layer node to the group below
+			// A node without inputs has nothing to pass through, so it passes through the unit value instead
+			if node.inputs.is_empty() {
+				node.inputs.push(NodeInput::value(TaggedValue::None, false));
+			}
+
+			// Keep only the primary input, which the passthrough forwards
 			let removed_inputs = node.inputs.split_off(1);
 
 			// Remove the dependants on the ignored inputs
 			for removed_input in removed_inputs {
 				if let NodeInput::Node { node_id, output_index } = removed_input
 					&& let Some(former_dependency) = self.nodes.get_mut(&node_id)
-					// Ensure that the other node inputs do not also reference the dependancy
+					// Ensure that the other node inputs do not also reference the dependency
 					&& !node.inputs.iter().any(|input| matches!(input, NodeInput::Node { node_id: other, .. } if *other == node_id))
 				{
 					former_dependency.original_location.dependants[output_index].retain(|&dependant| dependant != id);
 				}
 			}
+
+			// Removing the passthrough later splices its input into its consumers, which accept only node wires, so an unwired input becomes a value node
+			let path = node.original_location.path.clone().unwrap_or_default();
+			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
 
 			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
@@ -949,6 +959,11 @@ impl NodeNetwork {
 			self.nodes.insert(id, node);
 			return;
 		};
+		debug_assert!(
+			node.context_dependencies.is_none(),
+			"Network {id} should not have context dependencies: {deps:#?}",
+			deps = node.context_dependencies
+		);
 
 		// Replace value and reflection imports with value nodes, added inside nested network
 		Self::replace_value_inputs_with_nodes(
@@ -1068,6 +1083,7 @@ impl NodeNetwork {
 				NodeInput::Value { tagged_value, exposed } => (tagged_value, exposed),
 				NodeInput::Reflection(reflect) => match reflect {
 					DocumentNodeMetadata::DocumentNodePath => (TaggedValue::NodeIdPath(core_types::list::NodeIdPath::from(path.to_vec())).into(), false),
+					DocumentNodeMetadata::SourceId => (TaggedValue::SourceId(core_types::SourceId::from_path(path)).into(), false),
 				},
 				previous_export => {
 					*export = previous_export;
@@ -1320,7 +1336,7 @@ impl core_types::graphene_hash::CacheHash for DocumentNode {
 		self.implementation.cache_hash(state);
 		self.visible.cache_hash(state);
 		self.skip_deduplication.cache_hash(state);
-		self.context_features.cache_hash(state);
+		self.context_dependencies.cache_hash(state);
 	}
 }
 
@@ -1330,6 +1346,7 @@ mod test {
 	use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 	use std::sync::atomic::AtomicU64;
 
+	/// Generates IDs from a counter all tests share, so the IDs a test gets depend on what else runs in parallel.
 	fn gen_node_id() -> NodeId {
 		static NODE_ID: AtomicU64 = AtomicU64::new(4);
 		NodeId(NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst))
@@ -1441,7 +1458,12 @@ mod test {
 			..Default::default()
 		};
 		network.populate_dependants();
-		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id);
+
+		// A counter of its own, since the expected network names the nodes by the IDs it generates
+		let next_id = AtomicU64::new(4);
+		let gen_id = || NodeId(next_id.fetch_add(1, std::sync::atomic::Ordering::SeqCst));
+		network.flatten_with_fns(NodeId(1), |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_id);
+
 		let expected = flatten_add_expected();
 		println!("{expected:#?}");
 		println!("{network:#?}");
@@ -1770,6 +1792,81 @@ mod test {
 		assert_eq!(&network.exports, &vec![NodeInput::node(NodeId(1), 2), NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(1), 2)]);
 
 		network.validate_dependants();
+	}
+
+	/// A hidden node with nothing wired into it (a layer chain's first node, or a generator) feeding a node with several inputs.
+	fn hidden_source_network(source_inputs: Vec<NodeInput>) -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(2), 0)],
+			nodes: [
+				(
+					NodeId(1),
+					DocumentNode {
+						inputs: source_inputs,
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::Source")),
+						visible: false,
+						..Default::default()
+					},
+				),
+				(
+					NodeId(2),
+					DocumentNode {
+						inputs: vec![NodeInput::node(NodeId(1), 0), NodeInput::value(TaggedValue::Number(2.), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::Consumer")),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		}
+	}
+
+	// Flattens and strips passthroughs as the compiler does, then resolves the proto nodes, where an unwired input would panic
+	fn compile_hidden_source(mut network: NodeNetwork) -> ProtoNetwork {
+		network.generate_node_paths(&[]);
+		network.populate_dependants();
+		let ids: Vec<_> = network.nodes.keys().copied().collect();
+		ids.into_iter()
+			.for_each(|id| network.flatten_with_fns(id, |self_id, inner_id| NodeId(self_id.0 * 10 + inner_id.0), gen_node_id));
+		network.remove_all_passthrough_nodes();
+		network.into_proto_networks().next().expect("The network should give a proto network")
+	}
+
+	#[test]
+	fn hidden_node_with_an_unwired_input_passes_its_value() {
+		let proto_network = compile_hidden_source(hidden_source_network(vec![NodeInput::value(TaggedValue::Number(1.), true)]));
+
+		// The consumer's first input is now a value node holding the hidden node's unwired value
+		let consumer = proto_network.nodes.iter().find(|(id, _)| *id == NodeId(2)).map(|(_, node)| node).expect("The consumer should remain");
+		let ConstructionArgs::Nodes(inputs) = &consumer.construction_args else {
+			panic!("The consumer should take node inputs")
+		};
+		let value_node = proto_network
+			.nodes
+			.iter()
+			.find(|(id, _)| *id == inputs[0])
+			.map(|(_, node)| node)
+			.expect("The consumer's first input should be a node");
+		assert!(matches!(&value_node.construction_args, ConstructionArgs::Value(value) if **value == TaggedValue::Number(1.)));
+	}
+
+	#[test]
+	fn hidden_node_without_inputs_passes_the_unit_value() {
+		let proto_network = compile_hidden_source(hidden_source_network(vec![]));
+
+		let consumer = proto_network.nodes.iter().find(|(id, _)| *id == NodeId(2)).map(|(_, node)| node).expect("The consumer should remain");
+		let ConstructionArgs::Nodes(inputs) = &consumer.construction_args else {
+			panic!("The consumer should take node inputs")
+		};
+		let value_node = proto_network
+			.nodes
+			.iter()
+			.find(|(id, _)| *id == inputs[0])
+			.map(|(_, node)| node)
+			.expect("The consumer's first input should be a node");
+		assert!(matches!(&value_node.construction_args, ConstructionArgs::Value(value) if **value == TaggedValue::None));
 	}
 
 	// TODO: Write more tests

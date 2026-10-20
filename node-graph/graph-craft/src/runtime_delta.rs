@@ -1,5 +1,5 @@
 use crate::document::{DocumentNode, NodeId, NodeInput};
-use core_types::{ContextDependencies, Type};
+use core_types::Type;
 
 /// One mutation's worth of structural graph change, carrying its post-change data as plain runtime
 /// types. Constructed by the mutation itself; a compound mutation emits several. Consumed typed and
@@ -59,11 +59,5 @@ pub enum RuntimeDelta {
 		network_path: Vec<NodeId>,
 		node_id: NodeId,
 		call_argument: Type,
-	},
-	/// The Extract and Inject annotations the node declares for the Context, as [`ContextDependencies`].
-	SetContextFeatures {
-		network_path: Vec<NodeId>,
-		node_id: NodeId,
-		context_features: ContextDependencies,
 	},
 }

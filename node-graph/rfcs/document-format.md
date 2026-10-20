@@ -123,6 +123,7 @@ pub enum RegistryDelta {
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
     Merge           { extra_parents: Vec<Rev> },                        // joins divergent tips; registry no-op
+    Meta,                                                              
     Other(Value),                                                      // forward-compatible escape hatch
 }
 
@@ -144,7 +145,7 @@ pub struct Delta {
     pub author: PeerId,
     pub timestamp: TimeStamp,
     pub kind: RegistryDelta,
-    pub reverse: RegistryDelta,      // precomputed for undo; excluded from id
+    pub reverse: Vec<Prior>,         // what the op overwrote, stamps included; excluded from id
     pub attributes: Attributes,      // mutable local annotations; excluded from id
 }
 ```
@@ -156,6 +157,8 @@ Because `parent` is itself a `Rev`, an `id` transitively commits to the delta's 
 One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`. Slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
 `Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `interaction_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
+
+`HotOp.attributes` is the same bucket on a hot op, but shared: it travels with the op to every peer and is left behind at retirement. The same `interaction_end` key marks the last op of its author's interaction, so the retirer takes the author's ops through it as one unit. When the boundary comes after the last write was sent, a data-less `RegistryDelta::Meta` op carries the flag; retirement drops `Meta` ops. The retirer marks the unit's last retired delta with `Delta.attributes`' own `interaction_end`, so the boundary survives without the hot op.
 
 ## History as a tree
 
@@ -178,7 +181,7 @@ History has two tiers:
 - **Hot ops** are speculative, intended to be broadcast per-keystroke for live collaboration (broadcast transport is not yet implemented, so today they stay local). They carry only a Lamport timestamp, with no parents and no content-addressed `Rev`. They live in `Document.hot_log`, are GC'd at retirement, and are persisted as a sidecar for crash recovery. They may pass through non-compiling intermediate states.
 - **Retired commits** are `Delta`s produced by retirement. Every retired commit compiles in the retiring peer's local view. They are content-addressed, durable, browseable, and replayable.
 
-Retirement promotes a window of hot ops (those with timestamp at or before a cutoff) into retired deltas, each keeping the timestamp it was authored at, so retiring changes no field's stamp and a peer's concurrent write still orders against it the same way. Today retirement is one retired delta per hot op. The interfaces are in place for coarsening a window into fewer, semantically-equivalent commits (one per logical `(node, field)` group), but that grouping is not yet implemented.
+Retirement promotes a window of hot ops (those with timestamp at or before a cutoff) into retired deltas, each keeping the timestamp it was authored at, so retiring changes no field's stamp and a peer's concurrent write still orders against it the same way. Each hot op also carries its author's `HotSequence`, a gap-free count; the ops a peer knows are done with form its `RetiredMarks`, a per-author prefix plus runs for gaps still in flight, persisted in `session.json` so a late copy of a retired op is dropped rather than retired again. Today retirement is one retired delta per hot op. The interfaces are in place for coarsening a window into fewer, semantically-equivalent commits (one per logical `(node, field)` group), but that grouping is not yet implemented.
 
 In a collaborative session a leader-elected peer would own retirement. That election is designed to be gossip-based (the lowest `PeerId` among peers whose `retirement_tip` matches the session max) and best-effort, needing no quorum because content-addressed `Rev`s make concurrent retirements that converge dedupe by construction. The `retirement_tip` heartbeat field exists but is inert until broadcast transport lands. Today every session retires its own hot ops (see solo retirement below).
 
@@ -197,14 +200,11 @@ The silent zone is the implemented path (solo editing has no transport yet).
 
 **Silent-zone cursor.** `head: Option<Rev>` is a movable pointer into the append-only DAG (`None` on an empty document with no commits yet). Undo/redo move it but never delete deltas (that would make redo impossible and discard branch history). The extra state is a redo stack `Vec<Rev>`, the checkpoints the user has undone past, because the DAG alone cannot say which child a `head` was undone *from*. New state persists in `session.json` alongside `head`, so redo survives reopen. A new edit while the redo stack is non-empty clears it (the undone-forward branch stays physically in the DAG but is no longer reachable via redo).
 
-**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
+**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary, a merge, another user's delta, or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
 
+**Restore, not reverse ops.** A delta's `reverse` is a list of `Prior`s: the state of every slot the op wrote, as it was just before, stamps included (a whole node, network, or resource where the op added, removed, or landed on a tombstone; otherwise one field plus the entity's presence stamp). Undo writes these back as they were, bypassing LWW, so the registry is again exactly the fold of history up to the new `head`. An op applied at its own timestamp could not express that: it can only write a value or a tombstone at that timestamp, while the prior state may be an older stamp or no entry at all, and a stamp the history does not account for decides later concurrent writes differently on different peers. Redo re-applies the forward ops with plain LWW, which folds them in exactly as retirement did. Both are O(steps moved), no clock advances, and identities are unchanged. Undo only takes this user's own interactions and never one containing a merge, since restoring past another peer's write would rewind it.
 
-**Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `kind`). These carry the *original* timestamp, which would tie (and so lose) the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
-
-
-**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal *by value* (their LWW field timestamps can differ, since retirement re-stamps the snapshot at a fresh time), and undo/redo rewind both.
-
+**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal, and undo/redo restore both; with ops still hot, the working registry is rebuilt as the rewound snapshot plus them.
 
 ## Concurrency model: CmRDT
 

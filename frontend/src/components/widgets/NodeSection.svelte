@@ -7,9 +7,9 @@
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { operatingSystem } from "/src/utility-functions/platform";
-	import type { EditorWrapper, LayoutTarget, WidgetSection as WidgetSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper, LayoutTarget, NodeSection as NodeSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let widgetData: WidgetSectionData;
+	export let widgetData: NodeSectionData;
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";
@@ -20,10 +20,10 @@
 	$: expanded = widgetData.expanded;
 
 	// The sections of the chain feeding one of this node's inputs, which follow its own rows and are shown beneath them
-	$: chainSections = widgetData.layout.flatMap((layoutGroup) => ("Section" in layoutGroup && layoutGroup.Section.outputWire ? [layoutGroup.Section] : []));
+	$: chainSections = widgetData.layout.flatMap((layoutGroup) => ("NodeSection" in layoutGroup && layoutGroup.NodeSection.outputWire ? [layoutGroup.NodeSection] : []));
 
-	// A reorderable section is a Properties panel node section the user can drag to reorder (a layer chain's node, or a pinned node)
-	$: reorderable = layoutTarget === "PropertiesPanel" && widgetData.draggable;
+	// A reorderable section is a Inspector node section the user can drag to reorder (a layer chain's node, or a pinned node)
+	$: reorderable = layoutTarget === "Inspector" && widgetData.draggable;
 
 	const editor = getContext<EditorWrapper>("editor");
 	const tooltip = getContext<TooltipStore>("tooltip");
@@ -31,13 +31,13 @@
 	// Like the Layers panel's expand arrows, a modifier key applies the toggle recursively to the sections nested within
 	function toggleExpandedWithModifiers(e: MouseEvent) {
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
-		editor.toggleNodePropertiesSectionExpanded(widgetData.id, e.altKey || accel);
+		editor.toggleNodeInspectorSectionExpanded(widgetData.id, e.altKey || accel);
 	}
 </script>
 
-<!-- TODO: Implement collapsable sections with properties system -->
+<!-- TODO: Implement collapsable sections with the Inspector system -->
 <LayoutCol
-	class={`widget-section ${className}`.trim()}
+	class={`node-section ${className}`.trim()}
 	classes={{
 		...classes,
 		"chain-wire": Boolean(widgetData.chainWire),
@@ -51,7 +51,7 @@
 		"--chain-wire-color": widgetData.chainWire && `var(--color-data-${widgetData.chainWire.dataType.toLowerCase()}-dim)`,
 		"--output-wire-color": widgetData.outputWire && `var(--color-data-${widgetData.outputWire.dataType.toLowerCase()}-dim)`,
 	}}
-	data-properties-reorderable-section={reorderable ? "" : undefined}
+	data-inspector-reorderable-section={reorderable ? "" : undefined}
 	data-node-id={reorderable ? String(widgetData.id) : undefined}
 >
 	{#if widgetData.nodeReference}
@@ -66,9 +66,8 @@
 			class:expanded
 			data-tooltip-label={widgetData.name}
 			data-tooltip-description={widgetData.description}
-			data-properties-reorder-handle={reorderable ? "" : undefined}
+			data-inspector-reorder-handle={reorderable ? "" : undefined}
 			on:click|stopPropagation={toggleExpandedWithModifiers}
-			tabindex="0"
 		>
 			<div
 				class="expand-arrow"
@@ -108,7 +107,7 @@
 				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 				size={24}
 				action={(e) => {
-					editor.toggleNodeVisibilityLayerPanel(widgetData.id);
+					editor.toggleNodeVisibilityInspector(widgetData.id);
 					e?.stopPropagation();
 				}}
 				class={widgetData.visible ? "show-only-on-hover" : ""}
@@ -119,8 +118,8 @@
 				{#each widgetData.layout as layoutGroup}
 					{#if "Row" in layoutGroup}
 						<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
-					{:else if "Section" in layoutGroup && !layoutGroup.Section.outputWire}
-						<svelte:self widgetData={layoutGroup.Section} {layoutTarget} />
+					{:else if "NodeSection" in layoutGroup && !layoutGroup.NodeSection.outputWire}
+						<svelte:self widgetData={layoutGroup.NodeSection} {layoutTarget} />
 					{/if}
 				{/each}
 			</LayoutCol>
@@ -136,11 +135,11 @@
 </LayoutCol>
 
 <style lang="scss">
-	.widget-section {
+	.node-section {
 		flex: 0 0 auto;
 		margin: 0 4px;
 
-		+ .widget-section {
+		+ .node-section {
 			margin-top: 4px;
 		}
 
@@ -179,13 +178,13 @@
 				border-radius: 0 0 4px 4px;
 
 				// Over the frame's right border, so the shared edge is one line
-				> .widget-section {
+				> .node-section {
 					margin-left: 0;
 					margin-right: -1px;
 				}
 
 				// Keeps the frame below as thick as beside
-				> .widget-section.collapsed:last-child > .header {
+				> .node-section.collapsed:last-child > .header {
 					margin-bottom: 0;
 				}
 			}
@@ -242,14 +241,14 @@
 		}
 
 		// A collapsed section keeps its header's bottom margin, which the wire from the section below crosses too
-		&.collapsed + .widget-section.output-wire::before {
+		&.collapsed + .node-section.output-wire::before {
 			top: calc(-4px - 4px);
 			height: calc(4px + 4px);
 		}
 
 		// The layer whose stack feeds the bottom of a chain, only referred to by a button like the Data panel's, its 16px icon centered on the wire reaching down to it
 		&.node-reference {
-			// As wide as its contents, unlike the Properties panel's buttons that share their row
+			// As wide as its contents, unlike the Inspector's buttons that share their row
 			.text-button {
 				flex-basis: auto;
 				padding-left: calc(12px - 16px / 2);

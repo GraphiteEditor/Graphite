@@ -1,5 +1,5 @@
 use super::network_interface::NodeNetworkInterface;
-use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
+use crate::consts::SCALE_INCREMENT;
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
@@ -102,7 +102,7 @@ impl OriginalTransforms {
 
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
-					let anchors = anchor_ids.filter_map(|id| vector.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
+					let anchors = anchor_ids.filter_map(|id| vector.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
 					let anchors = anchors.collect();
 
 					let selected_handles = selected_points.iter().filter_map(|point| point.as_handle());
@@ -112,13 +112,13 @@ impl OriginalTransforms {
 
 					let handles = all_handles
 						.filter_map(|id| {
-							let anchor = id.to_manipulator_point().get_anchor(&vector)?;
-							let initial = id.to_manipulator_point().get_position(&vector)?;
-							let relative = vector.point_domain.position_from_id(anchor)?;
+							let anchor = vector.anchor_of(id.to_manipulator_point())?;
+							let initial = vector.position_of(id.to_manipulator_point())?;
+							let relative = vector.position_from_id(anchor)?;
 							let other_handle = vector
 								.other_colinear_handle(id)
 								.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
-							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector)?)));
+							let mirror = other_handle.and_then(|id| Some((id, vector.position_of(id.to_manipulator_point())?)));
 
 							Some((id, HandlePoint { initial, relative, anchor, mirror }))
 						})
@@ -153,6 +153,8 @@ impl Axis {
 pub struct Translation {
 	pub dragged_distance: DVec2,
 	pub typed_distance: Option<f64>,
+	/// The distance a snap moved the dragged distance to, in the same terms, which is applied in its place.
+	pub snapped: Option<DVec2>,
 	pub constraint: Axis,
 }
 
@@ -166,10 +168,11 @@ impl Translation {
 				Axis::Both => self.dragged_distance,
 			}
 		} else {
+			let distance = self.snapped.unwrap_or(self.dragged_distance);
 			match self.constraint {
-				Axis::Both => self.dragged_distance,
-				Axis::X => DVec2::X * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
-				Axis::Y => DVec2::Y * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
+				Axis::Both => distance,
+				Axis::X => DVec2::X * distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
+				Axis::Y => DVec2::Y * distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
 			}
 		};
 		let displacement_viewport = displacement * document_to_viewport.matrix2.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
@@ -183,6 +186,7 @@ impl Translation {
 		Self {
 			dragged_distance: self.dragged_distance + delta,
 			typed_distance: None,
+			snapped: None,
 			constraint: self.constraint,
 		}
 	}
@@ -190,18 +194,23 @@ impl Translation {
 		Self {
 			dragged_distance: change,
 			typed_distance: None,
+			snapped: None,
 			constraint: self.constraint,
 		}
 	}
 
 	pub fn negate(self) -> Self {
 		let dragged_distance = -self.dragged_distance;
-		Self { dragged_distance, ..self }
+		Self {
+			dragged_distance,
+			snapped: None,
+			..self
+		}
 	}
 
 	pub fn with_constraint(self, target: Axis, local: bool) -> (Self, bool) {
 		let (constraint, local) = self.constraint.contrainted_to_axis(target, local);
-		(Self { constraint, ..self }, local)
+		(Self { constraint, snapped: None, ..self }, local)
 	}
 }
 
@@ -209,17 +218,20 @@ impl Translation {
 pub struct Rotation {
 	pub dragged_angle: f64,
 	pub typed_angle: Option<f64>,
+	/// The angle a snap moved the dragged angle to, which is applied in its place.
+	pub snapped: Option<f64>,
 }
 
 impl Rotation {
-	pub fn to_f64(self, increment_mode: bool) -> f64 {
+	/// The angle to turn by in radians, held to multiples of `increment_resolution` (also in radians) in increment mode.
+	pub fn to_f64(self, increment_mode: bool, increment_resolution: f64) -> f64 {
+		let angle = self.snapped.unwrap_or(self.dragged_angle);
 		if let Some(value) = self.typed_angle {
 			value.to_radians()
 		} else if increment_mode {
-			let increment_resolution = ROTATE_INCREMENT.to_radians();
-			(self.dragged_angle / increment_resolution).round() * increment_resolution
+			(angle / increment_resolution).round() * increment_resolution
 		} else {
-			self.dragged_angle
+			angle
 		}
 	}
 
@@ -228,18 +240,20 @@ impl Rotation {
 		Self {
 			dragged_angle: self.dragged_angle + delta,
 			typed_angle: None,
+			snapped: None,
 		}
 	}
 	pub fn set_amount(self, angle: f64) -> Self {
 		Self {
 			dragged_angle: angle,
 			typed_angle: None,
+			snapped: None,
 		}
 	}
 
 	pub fn negate(self) -> Self {
 		let dragged_angle = -self.dragged_angle;
-		Self { dragged_angle, ..self }
+		Self { dragged_angle, snapped: None, ..self }
 	}
 }
 
@@ -247,6 +261,8 @@ impl Rotation {
 pub struct Scale {
 	pub dragged_factor: f64,
 	pub typed_factor: Option<f64>,
+	/// The factor a snap moved the dragged factor to, which is applied in its place.
+	pub snapped: Option<f64>,
 	pub constraint: Axis,
 }
 
@@ -255,6 +271,7 @@ impl Default for Scale {
 		Self {
 			dragged_factor: 1.,
 			typed_factor: None,
+			snapped: None,
 			constraint: Axis::default(),
 		}
 	}
@@ -262,7 +279,7 @@ impl Default for Scale {
 
 impl Scale {
 	pub fn to_f64(self, increment: bool) -> f64 {
-		let factor = if let Some(value) = self.typed_factor { value } else { self.dragged_factor };
+		let factor = self.typed_factor.or(self.snapped).unwrap_or(self.dragged_factor);
 		if increment { (factor / SCALE_INCREMENT).round() * SCALE_INCREMENT } else { factor }
 	}
 
@@ -278,7 +295,11 @@ impl Scale {
 
 	pub fn negate(self) -> Self {
 		let dragged_factor = -self.dragged_factor;
-		Self { dragged_factor, ..self }
+		Self {
+			dragged_factor,
+			snapped: None,
+			..self
+		}
 	}
 
 	#[must_use]
@@ -286,6 +307,7 @@ impl Scale {
 		Self {
 			dragged_factor: (self.dragged_factor + delta),
 			typed_factor: None,
+			snapped: None,
 			constraint: self.constraint,
 		}
 	}
@@ -294,13 +316,14 @@ impl Scale {
 		Self {
 			dragged_factor: 1. + change,
 			typed_factor: None,
+			snapped: None,
 			constraint: self.constraint,
 		}
 	}
 
 	pub fn with_constraint(self, target: Axis, local: bool) -> (Self, bool) {
 		let (constraint, local) = self.constraint.contrainted_to_axis(target, local);
-		(Self { constraint, ..self }, local)
+		(Self { constraint, snapped: None, ..self }, local)
 	}
 }
 
@@ -335,7 +358,7 @@ impl TransformOperation {
 		if self != &TransformOperation::None {
 			let mut transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state, document)),
-				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals)),
+				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals, document.snapping_state.angle_step_radians())),
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
 				TransformOperation::None => unreachable!(),
 			};
@@ -343,7 +366,7 @@ impl TransformOperation {
 			transformation = normalized_transform * transformation * normalized_transform.inverse();
 
 			selected.update_transforms(transformation, Some(state.pivot_viewport(document)), Some(*self));
-			self.hints(selected.responses, state.is_transforming_in_local_space);
+			self.hints(selected.responses, state.is_transforming_in_local_space, state.is_snapping);
 		}
 	}
 
@@ -391,8 +414,19 @@ impl TransformOperation {
 		self.apply_transform_operation(selected, state, document);
 	}
 
-	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
+	/// Goes back to applying the amount the pointer asks for, rather than where a snap moved it.
+	pub fn clear_snapped(&mut self) {
+		match self {
+			TransformOperation::None => (),
+			TransformOperation::Grabbing(translation) => translation.snapped = None,
+			TransformOperation::Rotating(rotation) => rotation.snapped = None,
+			TransformOperation::Scaling(scale) => scale.snapped = None,
+		}
+	}
+
+	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool, snapping: bool) {
 		use crate::messages::input_mapper::utility_types::keyboard::{Key, MouseMotion};
+		use crate::messages::tool::common_functionality::snap_session::snapping_hints;
 		use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 
 		let mut input_hints = Vec::new();
@@ -452,6 +486,9 @@ impl TransformOperation {
 			}
 		}
 		hint_groups.push(HintGroup(typing_hints));
+		if snapping && !self.is_typing() {
+			hint_groups.push(snapping_hints());
+		}
 
 		HintData(hint_groups).send_layout(responses);
 	}

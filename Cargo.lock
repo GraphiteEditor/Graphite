@@ -471,8 +471,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-gpu-install"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "668b4bd1b59810c4f907eeb36bb0f0a450c824219b2e599b9b8ef2b3ae056e94"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.21.0",
@@ -830,6 +831,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 
 [[package]]
+name = "control-protocol"
+version = "0.0.0"
+dependencies = [
+ "glam 0.33.10",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "convert_case"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -903,6 +913,7 @@ dependencies = [
  "color",
  "ctor",
  "dyn-any",
+ "futures",
  "glam 0.33.10",
  "graphene-hash",
  "image",
@@ -922,7 +933,6 @@ dependencies = [
  "serde_json",
  "skrifa 0.42.1",
  "tinyvec",
- "tokio",
  "tsify",
  "wasm-bindgen",
 ]
@@ -2122,7 +2132,6 @@ dependencies = [
  "document-container",
  "document-format",
  "fern",
- "futures",
  "graph-craft",
  "graphene-std",
  "image",
@@ -2158,6 +2167,7 @@ version = "0.0.0"
 dependencies = [
  "glam 0.33.10",
  "graphene-hash-derive",
+ "kurbo",
 ]
 
 [[package]]
@@ -2412,7 +2422,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "simplecss",
- "spin",
+ "snapping",
  "thiserror 2.0.18",
  "tokio",
  "tsify",
@@ -2420,19 +2430,9 @@ dependencies = [
  "usvg",
  "vello",
  "wasm-bindgen",
- "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
  "zip",
-]
-
-[[package]]
-name = "graphite-editor-control-protocol"
-version = "0.0.0"
-dependencies = [
- "glam 0.33.10",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -2461,6 +2461,7 @@ dependencies = [
  "serde-wasm-bindgen",
  "serde_bytes",
  "serde_json",
+ "spin",
  "tsify",
  "wasm-bindgen",
  "wasm-bindgen-futures",
@@ -5066,8 +5067,9 @@ checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d703f5624720c5b6012f4b88d6e6766f43ed50d80144eaffd6791c3270754cdc"
 dependencies = [
  "rspirv",
  "semver",
@@ -5618,6 +5620,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "snapping"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "glam 0.33.10",
+ "kurbo",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5659,8 +5670,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57fa119866f0311546e5309b18770b72141c25d185452c11a812be2c7b9d84e9"
 dependencies = [
  "cargo_metadata 0.21.0",
  "log",
@@ -5675,8 +5687,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d98471765e294d4dd6289350e3633b5c5ba57bb382c3287d83e69ee737179e0"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -5692,8 +5705,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13a6a0d063d4dd003e43818135b7aa4a30c41c48b5d0efe2cac02220448d4f19"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5703,8 +5717,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "655632248eaaa205cea4656bc73c8285cbd8109fc784010b24ea6bd0bab79ac1"
 
 [[package]]
 name = "stable_deref_trait"
@@ -6911,9 +6926,9 @@ version = "0.0.0"
 dependencies = [
  "base64",
  "clap",
+ "control-protocol",
  "getrandom 0.3.3",
  "glam 0.33.10",
- "graphite-editor-control-protocol",
  "image",
  "interprocess",
  "serde",

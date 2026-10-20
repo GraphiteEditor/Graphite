@@ -322,6 +322,7 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
 		document.network_interface.validate_input_metadata(node_id, node, &path);
 		document.network_interface.validate_output_names(node_id, node, &path);
+		document.network_interface.validate_descriptions(node_id, node, &path);
 	}
 
 	// Ensure layers are positioned as stacks if they are upstream siblings of another layer

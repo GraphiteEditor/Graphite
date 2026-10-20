@@ -13,6 +13,7 @@ use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2, UVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Appearance;
+use graphene_std::list::Item;
 use graphene_std::raster::BlendMode;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -34,7 +35,7 @@ pub enum DocumentMessage {
 	#[child]
 	Overlays(OverlaysMessage),
 	#[child]
-	PropertiesPanel(PropertiesPanelMessage),
+	Inspector(InspectorMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
 	#[child]
@@ -104,7 +105,7 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	ReorderPropertiesSection {
+	ReorderInspectorSection {
 		node_id: NodeId,
 		insert_index: usize,
 		duplicate: bool,
@@ -199,6 +200,11 @@ pub enum DocumentMessage {
 	SetGraphFadeArtwork {
 		percentage: f64,
 	},
+	/// Renames a layer in the network the node graph is showing, which may be a subgraph.
+	SetLayerNameInGraph {
+		node_id: NodeId,
+		name: String,
+	},
 	SetLayersPanelHoveredLayer {
 		id: Option<NodeId>,
 	},
@@ -225,6 +231,9 @@ pub enum DocumentMessage {
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},
+	SetSnappingAngleStep {
+		degrees: f64,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
@@ -249,16 +258,20 @@ pub enum DocumentMessage {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
-	ToggleNodePropertiesSectionExpanded {
+	ToggleNodeInspectorSectionExpanded {
 		node_id: NodeId,
 		recursive: bool,
 	},
-	ToggleNodePropertiesInputChain {
+	ToggleNodeInspectorInputChain {
 		node_id: NodeId,
 		input_index: usize,
 	},
 	ToggleLayerChainExpanded {
 		layer_id: NodeId,
+	},
+	/// Hides or shows a node in the network holding the selection, which may be a subgraph.
+	ToggleNodeVisibility {
+		node_id: NodeId,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
@@ -269,6 +282,7 @@ pub enum DocumentMessage {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
 		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
+		document_to_viewport: DAffine2,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
@@ -282,11 +296,12 @@ pub enum DocumentMessage {
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
 	},
-	UpdateVectorData {
-		vector_data: HashMap<NodeId, Arc<Vector>>,
-	},
 	// `Message` is only serialized at `editor_wrapper.rs`, and only inputs from JS pass through it.
-	// `UpdateAppearanceAttributes` is produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so it never reaches that serialization point.
+	// `UpdateVectorData` and `UpdateAppearanceAttributes` are produced inside `editor.handle_message` by `node_graph_executor.rs` and consumed in the same dispatch loop, so they never reach that serialization point.
+	#[serde(skip)]
+	UpdateVectorData {
+		vector_data: HashMap<NodeId, Arc<Item<Vector>>>,
+	},
 	#[serde(skip)]
 	UpdateAppearanceAttributes {
 		appearance_attributes: HashMap<NodeId, Arc<Appearance>>,

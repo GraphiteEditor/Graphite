@@ -64,7 +64,6 @@
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	data-drag-droppable={droppableKinds}
 	data-icon-button
-	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >
 	<IconLabel {icon} {disabled} />

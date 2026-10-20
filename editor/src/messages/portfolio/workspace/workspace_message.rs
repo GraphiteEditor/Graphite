@@ -31,7 +31,7 @@ pub enum WorkspaceMessage {
 	},
 	ToggleFocusDocument,
 	ToggleDataPanelOpen,
-	TogglePropertiesPanelOpen,
+	ToggleInspectorOpen,
 	ToggleLayersPanelOpen,
 	TogglePalettePanelOpen,
 	UpdatePanelsLayout,

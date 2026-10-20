@@ -17,12 +17,12 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
-use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
+use crate::messages::tool::common_functionality::pivot::{Pivot, PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
-use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapManager};
+use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::*;
-use crate::messages::tool::common_functionality::utility_functions::{resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
+use crate::messages::tool::common_functionality::utility_functions::{push_nearest_anchors, resize_bounds, rotate_bounds, skew_bounds, text_bounding_box, transforming_transform_cage};
 use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -421,7 +421,26 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 			}
 		}
 
+		let previous_state = self.fsm_state;
 		self.fsm_state.process_event(message, &mut self.tool_data, context, &(), responses, false);
+
+		// However one of these drags ends, its snapping gesture ends with it
+		let snapping = matches!(
+			previous_state,
+			SelectToolFsmState::Dragging { .. }
+				| SelectToolFsmState::ResizingBounds
+				| SelectToolFsmState::SkewingBounds { .. }
+				| SelectToolFsmState::RotatingBounds
+				| SelectToolFsmState::DraggingPivot
+		);
+		if snapping && std::mem::discriminant(&previous_state) != std::mem::discriminant(&self.fsm_state) {
+			self.tool_data.slide = None;
+			if let Some(bounds) = &mut self.tool_data.bounding_box_manager {
+				(bounds.turning, bounds.skewing) = (None, None);
+			}
+			context.snap_session.end_gesture();
+			responses.add(OverlaysMessage::Draw);
+		}
 
 		if self.tool_data.pivot_gizmo.pivot.should_refresh_pivot_position() || self.tool_data.selected_layers_changed || redraw_reference_pivot || drawing_options_changed {
 			// Send the layout containing the updated pivot position (a bit ugly to do it here not in the fsm but that doesn't have SelectTool)
@@ -493,10 +512,28 @@ impl Default for SelectToolFsmState {
 	}
 }
 
+/// The layers being dragged, which slide together by however far the pointer asks from where it took hold.
+#[derive(Clone, Debug)]
+struct Slide {
+	/// Where the pointer took hold, in document space.
+	grip: DVec2,
+	/// The corners, the middles of the edges, and the center of the box around the dragged layers, then some of their anchors, each from where it began in document space.
+	features: Vec<FeatureMap>,
+	/// The corner nearest where the pointer took hold, which is the feature that lands on the grid.
+	lead: usize,
+	/// Which of the features make up the box, if the dragged layers have one.
+	box_features: Option<BoxFeatures>,
+	/// How far the dragged layers have been moved so far, in document space.
+	slid: DVec2,
+	/// Whether the copies being dragged have yet to render.
+	copies_pending: bool,
+}
+
 #[derive(Clone, Debug, Default)]
 struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
+	slide: Option<Slide>,
 	lasso_polygon: Vec<ViewportPosition>,
 	selection_mode: Option<SelectionMode>,
 	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
@@ -506,9 +543,10 @@ struct SelectToolData {
 	axis_align: bool,
 	non_duplicated_layers: Option<Vec<LayerNodeIdentifier>>,
 	bounding_box_manager: Option<BoundingBoxManager>,
-	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	pivot_gizmo: PivotGizmo,
+	/// The pivot as it was when a drag of it began, restored if the drag is aborted.
+	pivot_before_drag: Option<Pivot>,
 	pivot_gizmo_start: Option<DVec2>,
 	pivot_gizmo_shift: Option<DVec2>,
 	compass_rose: CompassRose,
@@ -519,22 +557,146 @@ struct SelectToolData {
 	/// Whether any selected layer can take paint, controlling the visibility of the fill/stroke widget row.
 	paintable_layers_selected: bool,
 	selected_layers_changed: bool,
-	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 }
 
 impl SelectToolData {
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) {
-		self.snap_candidates.clear();
-		for &layer in &self.layers_dragging {
-			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
-				snapping::get_layer_snap_points(layer, &SnapData::new(document, input, viewport), &mut self.snap_candidates);
-			}
-			if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
-				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
-				snapping::get_bbox_points(quad, &mut self.snap_candidates, snapping::BBoxSnapValues::BOUNDING_BOX, document);
-			}
+	/// Readies the dragged layers to slide together from where the pointer took hold.
+	fn prepare_slide(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+		let grip = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+		let mut slide = Slide {
+			grip,
+			features: Vec::new(),
+			lead: 0,
+			box_features: None,
+			slid: DVec2::ZERO,
+			copies_pending: false,
+		};
+
+		let Some(corners) = self.dragged_box(document) else {
+			self.slide = Some(slide);
+			return;
+		};
+
+		let middles = [0, 1, 2, 3].map(|i| (corners[i] + corners[(i + 1) % 4]) / 2.);
+		let mut starts: Vec<DVec2> = corners.into_iter().chain(middles).collect();
+		starts.push(corners.iter().sum::<DVec2>() / 4.);
+
+		// Along each document axis, the corner furthest toward either end carries that side of the box
+		let side = |axis: usize, toward_high: bool| {
+			let along = |&index: &usize| if toward_high { corners[index][axis] } else { -corners[index][axis] };
+			(0..4).max_by(|a, b| along(a).total_cmp(&along(b)))
+		};
+		slide.box_features = Some(BoxFeatures {
+			corners: [0, 1, 2, 3],
+			sides: [0, 1].map(|axis| [side(axis, false), side(axis, true)]),
+		});
+		slide.lead = (0..4)
+			.min_by(|&a, &b| corners[a].distance_squared(grip).total_cmp(&corners[b].distance_squared(grip)))
+			.unwrap_or_default();
+
+		push_nearest_anchors(&mut starts, document, &self.layers_dragging, grip);
+
+		slide.features = starts.into_iter().map(FeatureMap::sliding_from).collect();
+		self.slide = Some(slide);
+	}
+
+	/// The corners of the box the transform cage draws around the dragged layers, in document space and in order around it.
+	fn dragged_box(&self, document: &DocumentMessageHandler) -> Option<[DVec2; 4]> {
+		let metadata = document.metadata();
+		let viewport_to_document = metadata.rendered_document_to_viewport.inverse();
+		let artwork: Vec<_> = self.layers_dragging.iter().copied().filter(not_artboard(document)).collect();
+
+		// The cage is upright in the frame of the first layer it surrounds, which turns with a turned selection
+		let frame = artwork
+			.first()
+			.map(|&layer| metadata.transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+			.filter(|frame| frame.matrix2.determinant() != 0.);
+		if let Some(frame) = frame
+			&& let Some(bounds) = artwork
+				.iter()
+				.filter_map(|&layer| metadata.bounding_box_with_transform(layer, frame.inverse() * metadata.transform_to_viewport(layer)))
+				.reduce(Quad::combine_bounds)
+		{
+			return Some((viewport_to_document * frame * Quad::from_box(bounds)).0);
 		}
+
+		// Without a cage to follow, the upright box around them in the document
+		let as_rendered = |layer: LayerNodeIdentifier| metadata.bounding_box_with_transform(layer, metadata.transform_to_document_as_rendered(layer));
+		let bounds = self.layers_dragging.iter().copied().filter_map(as_rendered).reduce(Quad::combine_bounds)?;
+		Some(Quad::from_box(bounds).0)
+	}
+
+	/// Starts the snapping over to suit what is being dragged, as when a drag begins or Alt swaps copies in or out.
+	fn begin_snapping_gesture(&mut self, snap_session: &mut SnapSession, view: SnapView, removed_copies: &[LayerNodeIdentifier]) {
+		let metadata = view.document.metadata();
+		let dragging_copies = self.non_duplicated_layers.is_some();
+		let copies_pending = dragging_copies && !self.layers_dragging.iter().all(|&copy| metadata.click_targets(copy).is_some());
+		if let Some(slide) = &mut self.slide {
+			slide.copies_pending = copies_pending;
+		}
+
+		// Until the next render, the scene still shows copies being taken away, and originals where their new copies are
+		let originals = self.non_duplicated_layers.clone().unwrap_or_default();
+		let mut layers = self.layers_dragging.clone();
+		layers.extend(removed_copies);
+		if copies_pending {
+			layers.extend(&originals);
+		}
+
+		let moving = Moving {
+			layers,
+			copied: originals,
+			..Default::default()
+		};
+
+		// Once Alt has swapped layers in or out, the scene must take in the renders that show where they now are
+		if dragging_copies || !removed_copies.is_empty() {
+			snap_session.begin_gesture_following_edits(view, moving);
+		} else {
+			snap_session.begin_gesture(view, moving);
+		}
+	}
+
+	/// Slides the dragged layers by however far the pointer asks from where it took hold, and returns how far they move this time in the viewport.
+	fn slide_dragged_layers(&mut self, snap_session: &mut SnapSession, view: SnapView, held_direction: Option<DVec2>) -> DVec2 {
+		let metadata = view.document.metadata();
+		let document_to_viewport = metadata.document_to_viewport;
+		let Some(slide) = &mut self.slide else { return DVec2::ZERO };
+
+		let pointer = document_to_viewport.inverse().transform_point2(view.input.mouse.position);
+		let free = pointer - slide.grip;
+
+		// A held direction keeps the slide on its line through where the drag began, where it can still stop at what the line crosses
+		let required = held_direction.and_then(|direction| Locus::line(DVec2::ZERO, document_to_viewport.inverse().transform_vector2(direction)));
+
+		let slid = if !slide.features.is_empty() {
+			let options = PointOptions {
+				required,
+				box_features: slide.box_features,
+				..Default::default()
+			};
+			snap_session.snap_features(view, &slide.features, slide.lead, free, options)
+		} else {
+			required.map_or(free, |line| line.nearest(free))
+		};
+
+		// Only what has not yet been applied moves the layers, so the total stays right however the canvas has moved since
+		let moved = slid - slide.slid;
+		slide.slid = slid;
+		self.drag_current = document_to_viewport.transform_point2(slide.grip + slid);
+
+		// Moves in the viewport are read through the view the latest render was made with, which can lag a zoom or tilt
+		metadata.rendered_document_to_viewport.transform_vector2(moved)
+	}
+
+	/// Puts the drag's viewport positions where the canvas now shows where it began and where it has slid to.
+	fn follow_canvas(&mut self, document: &DocumentMessageHandler) {
+		let Some(slide) = &self.slide else { return };
+		let document_to_viewport = document.metadata().document_to_viewport;
+
+		self.drag_start = document_to_viewport.transform_point2(slide.grip);
+		self.drag_current = document_to_viewport.transform_point2(slide.grip + slide.slid);
 	}
 
 	/// The center of the combined viewport-space bounding box of the layers currently being dragged.
@@ -737,13 +899,19 @@ impl Fsm for SelectToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext { document, input, viewport, fonts, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			document,
+			document_id,
+			input,
+			viewport,
+			fonts,
+			snap_session,
+			..
+		} = tool_action_data;
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
-
 				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
@@ -799,8 +967,27 @@ impl Fsm for SelectToolFsmState {
 					// Artboards are included since they're needed for quick measurement, but will be filtered out for selection later on
 					let click = document.click_list_with_artboards(input, viewport).last();
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
-					if let Some(layer) = not_selected_click {
-						if overlay_context.visibility_settings.hover_outline() && !document.network_interface.is_artboard(&layer.to_node(), &[]) {
+					if let Some(clicked) = not_selected_click {
+						let clicked_artboard = document.network_interface.is_artboard(&clicked.to_node(), &[]);
+						let outlining = overlay_context.visibility_settings.hover_outline() && !clicked_artboard;
+
+						// Measure with Alt held down
+						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
+						let measuring = overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize);
+
+						// The layer the hover outline shows, which quick measurement also measures to, found only when either is drawn
+						let layer = (outlining || measuring).then(|| {
+							if clicked_artboard {
+								return clicked;
+							}
+							match tool_data.nested_selection_behavior {
+								NestedSelectionBehavior::Deepest => document.find_deepest(&[clicked]),
+								NestedSelectionBehavior::Shallowest => layer_selected_shallowest(clicked, document),
+							}
+							.unwrap_or(clicked)
+						});
+
+						if outlining && let Some(layer) = layer {
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
 									if let Some(bounds) = document.metadata().bounding_box_viewport(layer) {
@@ -810,16 +997,11 @@ impl Fsm for SelectToolFsmState {
 									draw_layer_outline(&mut overlay_context, document, layer, color);
 								}
 							};
-							let layer = match tool_data.nested_selection_behavior {
-								NestedSelectionBehavior::Deepest => document.find_deepest(&[layer]),
-								NestedSelectionBehavior::Shallowest => layer_selected_shallowest(layer, document),
-							}
-							.unwrap_or(layer);
 							hover_overlay_draw(layer, None);
 							if matches!(tool_data.nested_selection_behavior, NestedSelectionBehavior::Shallowest) {
 								let mut selected = document.network_interface.selected_nodes();
 								selected.add_selected_nodes(vec![layer.to_node()]);
-								if let Some(new_selected) = click.unwrap().ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
+								if let Some(new_selected) = clicked.ancestors(document.metadata()).filter(not_artboard(document)).find(|ancestor| {
 									ancestor
 										.parent(document.metadata())
 										.is_some_and(|parent| selected.selected_layers_contains(parent, document.metadata()))
@@ -829,9 +1011,7 @@ impl Fsm for SelectToolFsmState {
 							}
 						}
 
-						// Measure with Alt held down
-						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
-						if overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
+						if measuring && let Some(layer) = layer {
 							// Compute document-space bounding box (AABB) of all selected visible & unlocked layers
 							let selected_bounds_doc_space = document
 								.network_interface
@@ -844,16 +1024,14 @@ impl Fsm for SelectToolFsmState {
 								// Combine all individual bounding boxes into one overall bounding box that contains all selected layers
 								.reduce(Rect::combine_bounds);
 
-							// Compute document-space bounding box (AABB) of the currently hovered layer
-							let hovered_bounds_doc_space = document.metadata().bounding_box_document(layer);
+							// Compute document-space bounding box (AABB) of the hovered layer, or of the clicked layer within it if it's part of the selection
+							let hovered_selected = document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata());
+							let hovered_bounds_doc_space = document.metadata().bounding_box_document(if hovered_selected { clicked } else { layer });
 
 							// If both selected and hovered bounds exist, overlay measurement lines
 							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_doc_space, hovered_bounds_doc_space.map(Rect::from_box)) {
-								// Both `selected_bounds` and `hovered_bounds` are in document space.
-								// To correctly render overlay lines in the UI (which is in viewport space), we need to transform both rectangles from document to viewport space.
-								// Therefore, we pass `document_to_viewport` as both the `transform` and `document_to_viewport` parameters.
 								let document_to_viewport = document.metadata().document_to_viewport;
-								measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
+								measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, &mut overlay_context);
 							}
 						}
 					}
@@ -1182,18 +1360,25 @@ impl Fsm for SelectToolFsmState {
 
 				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
+					tool_data.pivot_before_drag = Some(tool_data.pivot_gizmo.pivot.clone());
 
-					// tool_data.snap_manager.start_snap(document, input, document.bounding_boxes(), true, true);
-					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
+					// The pivot snaps to the selected layers too, since they stay put while it moves
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
 
 					state
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if resize {
-					tool_data.get_snap_candidates(document, input, viewport);
+					let moving = Moving {
+						layers: tool_data.layers_dragging.clone(),
+						..Default::default()
+					};
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 					SelectToolFsmState::ResizingBounds
 				} else if skew {
-					tool_data.get_snap_candidates(document, input, viewport);
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.begin_skewing(SnapView::new(document, *document_id, input), snap_session, &tool_data.layers_dragging);
+					}
 					SelectToolFsmState::SkewingBounds { skew: Key::Control }
 				}
 				// Dragging the selected layers around to transform them
@@ -1207,7 +1392,6 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					tool_data.layers_dragging = selected;
-					tool_data.get_snap_candidates(document, input, viewport);
 					let (axis, using_compass) = {
 						let axis_state = compass_rose_state.axis_type().filter(|_| can_grab_compass_rose);
 						(axis_state.unwrap_or_default(), axis_state.is_some())
@@ -1225,6 +1409,9 @@ impl Fsm for SelectToolFsmState {
 				}
 				// Dragging near the transform cage bounding box to rotate it
 				else if rotate {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.begin_turning(SnapView::new(document, *document_id, input), snap_session, &tool_data.layers_dragging);
+					}
 					SelectToolFsmState::RotatingBounds
 				}
 				// Dragging a selection box
@@ -1250,7 +1437,6 @@ impl Fsm for SelectToolFsmState {
 							NestedSelectionBehavior::Shallowest if !input.keyboard.key(select_deepest) => drag_shallowest_manipulation(responses, selected, tool_data, document, false, extend),
 							_ => drag_deepest_manipulation(responses, selected, tool_data, document, false),
 						}
-						tool_data.get_snap_candidates(document, input, viewport);
 
 						responses.add(DocumentMessage::StartTransaction);
 
@@ -1270,10 +1456,28 @@ impl Fsm for SelectToolFsmState {
 				};
 				tool_data.non_duplicated_layers = None;
 
+				if matches!(state, SelectToolFsmState::Dragging { .. }) {
+					tool_data.prepare_slide(document, input);
+					tool_data.begin_snapping_gesture(snap_session, SnapView::new(document, *document_id, input), &[]);
+				}
+
 				state
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+
+				// The pivot lives in the tool rather than the document, so aborting the transaction doesn't put it back
+				if let Some(pivot) = tool_data.pivot_before_drag.take() {
+					let reported = tool_data.pivot_gizmo.pivot.old_pivot_position;
+					tool_data.pivot_gizmo.pivot = pivot;
+
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+					responses.add(OverlaysMessage::Draw);
+
+					// Only the tool keeps its last reported reference point, which makes the control bar refresh
+					tool_data.pivot_gizmo.pivot.old_pivot_position = reported;
+				}
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1291,20 +1495,26 @@ impl Fsm for SelectToolFsmState {
 				if !has_dragged {
 					responses.add(ToolMessage::UpdateHints);
 				}
-				if input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_none() {
+				tool_data.follow_canvas(document);
+
+				// Alt swaps the dragged layers for copies or puts the originals back, and the snapping starts over to suit
+				let duplicate = input.keyboard.key(modifier_keys.duplicate);
+				let swapped = duplicate != tool_data.non_duplicated_layers.is_some();
+				let mut removed_copies = Vec::new();
+				if duplicate && tool_data.non_duplicated_layers.is_none() {
 					tool_data.start_duplicates(document, responses);
-				} else if !input.keyboard.key(modifier_keys.duplicate) && tool_data.non_duplicated_layers.is_some() {
+				} else if !duplicate && tool_data.non_duplicated_layers.is_some() {
+					removed_copies = tool_data.layers_dragging.clone();
 					tool_data.stop_duplicates(document, responses);
+				}
+				let pending_copies_rendered =
+					tool_data.slide.as_ref().is_some_and(|slide| slide.copies_pending) && tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
+				if swapped || pending_copies_rendered {
+					tool_data.begin_snapping_gesture(snap_session, SnapView::new(document, *document_id, input), &removed_copies);
 				}
 
 				tool_data.axis_align = input.keyboard.key(modifier_keys.axis_align);
 
-				// Ignore the non duplicated layers if the current layers have not spawned yet.
-				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
-				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
-
-				let snap_data = SnapData::ignore(document, input, viewport, ignore);
-				let (start, current) = (tool_data.drag_start, tool_data.drag_current);
 				let e0 = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -1313,31 +1523,33 @@ impl Fsm for SelectToolFsmState {
 
 				// Constrain the drag to the selection's local axis (not the world axis) so a rotated object's arrows track the mouse one-to-one
 				let axis_constraint = match axis {
-					Axis::X => e0,
-					Axis::Y => e0.perp(),
-					Axis::None => DVec2::ZERO,
+					Axis::X => Some(e0),
+					Axis::Y => Some(e0.perp()),
+					Axis::None => None,
 				};
 
-				let mouse_delta = snap_drag(
-					start,
-					current,
-					tool_data.axis_align,
-					axis_constraint,
-					snap_data,
-					&mut tool_data.snap_manager,
-					&tool_data.snap_candidates,
-				);
+				// Shift holds the drag to the nearest axis from where it began, as seen in the viewport
+				let axis_aligned = || {
+					let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
+					let angle = DVec2::X.try_angle_to(input.mouse.position - tool_data.drag_start)?;
+					Some(DVec2::from_angle((angle / snap_resolution).round() * snap_resolution))
+				};
+				let held_direction = axis_constraint.or_else(|| tool_data.axis_align.then(axis_aligned).flatten());
 
-				// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
-				for layer in document.network_interface.shallowest_unique_layers(&[]) {
-					responses.add_front(GraphOperationMessage::TransformChange {
-						layer,
-						transform: DAffine2::from_translation(mouse_delta),
-						transform_in: TransformIn::Viewport,
-						skip_rerender: false,
-					});
+				// The move that swaps copies in or out slides nothing, as the swap only takes effect once its messages are processed
+				if !swapped {
+					let mouse_delta = tool_data.slide_dragged_layers(snap_session, SnapView::new(document, *document_id, input), held_direction);
+
+					// TODO: Cache the result of `shallowest_unique_layers` to avoid this heavy computation every frame of movement, see https://github.com/GraphiteEditor/Graphite/pull/481
+					for layer in document.network_interface.shallowest_unique_layers(&[]) {
+						responses.add_front(GraphOperationMessage::TransformChange {
+							layer,
+							transform: DAffine2::from_translation(mouse_delta),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+					}
 				}
-				tool_data.drag_current += mouse_delta;
 
 				// Auto-panning
 				let messages = [
@@ -1357,14 +1569,11 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { modifier_keys }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					resize_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
-						&mut tool_data.snap_manager,
-						&mut tool_data.snap_candidates,
-						input,
-						viewport,
 						input.keyboard.key(modifier_keys.center),
 						input.keyboard.key(modifier_keys.axis_align),
 						ToolType::Select,
@@ -1380,12 +1589,12 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					skew_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						input.keyboard.key(skew),
 						&mut tool_data.layers_dragging,
-						input.mouse.position,
 						ToolType::Select,
 					);
 				}
@@ -1394,12 +1603,12 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					rotate_bounds(
-						document,
+						SnapView::new(document, *document_id, input),
+						snap_session,
 						responses,
 						bounds,
 						&mut tool_data.layers_dragging,
 						tool_data.drag_start,
-						input.mouse.position,
 						input.keyboard.key(Key::Shift),
 						ToolType::Select,
 					);
@@ -1408,10 +1617,11 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::RotatingBounds
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
-				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let snapped = snap_session.snap_point(SnapView::new(document, *document_id, input), pointer, PointOptions::default());
 
-				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
+				tool_data.pivot_gizmo.pivot.set_viewport_position(document_to_viewport.transform_point2(snapped));
 
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -1591,15 +1801,11 @@ impl Fsm for SelectToolFsmState {
 									}
 								}
 							}
-
-							tool_data.get_snap_candidates(document, input, viewport);
 						}
 					}
 				}
 
 				tool_data.layer_selected_on_start = None;
-
-				tool_data.snap_manager.cleanup(responses);
 				tool_data.select_single_layer = None;
 
 				if let Some(start) = tool_data.pivot_gizmo_start {
@@ -1627,13 +1833,14 @@ impl Fsm for SelectToolFsmState {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 
+				tool_data.pivot_before_drag = None;
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 
 				responses.add(response);
 
 				tool_data.axis_align = false;
-				tool_data.snap_manager.cleanup(responses);
+				responses.add(OverlaysMessage::Draw);
 
 				if !matches!(self, SelectToolFsmState::DraggingPivot)
 					&& let Some(bounds) = &mut tool_data.bounding_box_manager
@@ -1735,7 +1942,6 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.snap_manager.cleanup(responses);
 				tool_data.axis_align = false;
 				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
@@ -1757,9 +1963,13 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.snap_manager.cleanup(responses);
 				tool_data.lasso_polygon.clear();
 				responses.add(OverlaysMessage::Draw);
+
+				// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
+				if matches!(self, SelectToolFsmState::Ready { .. }) {
+					snap_session.sleep_all();
+				}
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1876,6 +2086,7 @@ impl Fsm for SelectToolFsmState {
 				if !(*using_compass && axis.is_constraint()) {
 					hint_data.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]));
 				};
+				hint_data.push(snapping_hints());
 				let hint_data = HintData(hint_data);
 				hint_data.send_layout(responses);
 			}
@@ -1894,6 +2105,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
@@ -1901,6 +2113,7 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
@@ -1908,11 +2121,15 @@ impl Fsm for SelectToolFsmState {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
+					snapping_hints(),
 				]);
 				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::DraggingPivot => {
-				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					snapping_hints(),
+				]);
 				hint_data.send_layout(responses);
 			}
 		}
@@ -2135,4 +2352,964 @@ pub fn filter_nested_selection(metadata: &DocumentMetadata, new_selected: &HashS
 	}
 
 	filtered_selection
+}
+
+#[cfg(test)]
+mod test_select_tool {
+	use super::SelectOptionsUpdate;
+	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
+	use crate::messages::tool::common_functionality::snap_session::{SnapSession, WAKE_DWELL_ON_APPROACH};
+	use crate::test_utils::test_prelude::*;
+	use snapping::{Awake, Engagement, Highlight, Kind};
+	use std::f64::consts::FRAC_PI_2;
+
+	/// Draws a rectangle between two viewport positions, which leaves it selected, and returns its layer.
+	async fn draw_rectangle(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) -> LayerNodeIdentifier {
+		editor.draw_rect(from.x, from.y, to.x, to.y).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn rectangle should be selected");
+		assert_bounds(editor, layer, [from, to]);
+		layer
+	}
+
+	/// The least and greatest corners of a layer's bounding box in the viewport.
+	fn bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> [DVec2; 2] {
+		editor.active_document().metadata().bounding_box_viewport(layer).expect("the layer should have a bounding box")
+	}
+
+	fn assert_bounds(editor: &EditorTestUtils, layer: LayerNodeIdentifier, expected: [DVec2; 2]) {
+		let [min, max] = bounds(editor, layer);
+		let [expected_min, expected_max] = expected;
+		assert!(
+			min.distance(expected_min) < 1e-6 && max.distance(expected_max) < 1e-6,
+			"the layer spans {min} to {max} rather than {expected_min} to {expected_max}"
+		);
+	}
+
+	/// Presses the Select tool at a viewport position, which takes hold of the layer there.
+	async fn press_at(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.select_tool(ToolType::Select).await;
+		editor.move_mouse(position.x, position.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(position.x, position.y, ModifierKeys::empty()).await;
+	}
+
+	async fn move_to(editor: &mut EditorTestUtils, position: DVec2, modifier_keys: ModifierKeys) {
+		editor.move_mouse(position.x, position.y, modifier_keys, MouseKeys::LEFT).await;
+	}
+
+	async fn drag(editor: &mut EditorTestUtils, from: DVec2, to: DVec2, modifier_keys: ModifierKeys) {
+		press_at(editor, from).await;
+		move_to(editor, to, modifier_keys).await;
+		editor.left_mouseup(to.x, to.y, modifier_keys).await;
+	}
+
+	/// Takes hold of the transform cage at a viewport position, once drawing the overlays has laid it around the selected layers.
+	async fn press_cage_at(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.select_tool(ToolType::Select).await;
+		editor.handle_message(SelectToolMessage::Overlays { context: OverlayContext::default() }).await;
+		editor.move_mouse(position.x, position.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(position.x, position.y, ModifierKeys::empty()).await;
+	}
+
+	async fn resize(editor: &mut EditorTestUtils, from: DVec2, to: DVec2, modifier_keys: ModifierKeys) {
+		press_cage_at(editor, from).await;
+		move_to(editor, to, modifier_keys).await;
+		editor.left_mouseup(to.x, to.y, modifier_keys).await;
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_dragged_near_a_corner_of_another_lands_corner_to_corner() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		// Its top left corner is brought a few pixels from the other's bottom right corner
+		let grab = DVec2::new(330., 320.);
+		let to_the_corner = DVec2::new(200., 180.) - DVec2::new(300., 300.);
+		drag(&mut editor, grab, grab + to_the_corner + DVec2::new(3., -2.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(200., 180.), DVec2::new(260., 230.)]);
+	}
+
+	#[tokio::test]
+	async fn an_anchor_away_from_the_corners_and_middles_of_a_dragged_box_lands_on_a_corner_of_another() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.draw_polygon(300., 300., 400., 400.).await;
+		let polygon = editor.get_selected_layer().await.expect("the drawn polygon should be selected");
+
+		let drawn_anchors = |editor: &EditorTestUtils| {
+			let metadata = editor.active_document().metadata();
+			let to_viewport = metadata.transform_to_viewport(polygon);
+			let anchors = metadata.layer_outline(polygon).flat_map(crate::messages::tool::common_functionality::snap_session::anchor_positions);
+			anchors.map(|anchor| to_viewport.transform_point2(anchor)).collect::<Vec<_>>()
+		};
+
+		// The pentagon's leftmost corner is partway down the left side of its box
+		let leftmost = drawn_anchors(&editor).into_iter().min_by(|a, b| a.x.total_cmp(&b.x)).expect("the polygon should have anchors");
+		let corner = DVec2::new(200., 180.);
+		let grab = DVec2::new(350., 360.);
+		drag(&mut editor, grab, grab + corner - leftmost + DVec2::new(3., -2.), ModifierKeys::empty()).await;
+
+		assert!(drawn_anchors(&editor).iter().any(|anchor| anchor.distance(corner) < 1e-6), "no anchor landed on {corner}");
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_dragged_nearly_level_with_one_far_beside_it_lines_up_with_it_unasked() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(400., 300.), DVec2::new(440., 380.)).await;
+
+		// Its top comes four pixels below the other's top, with hundreds of pixels between them
+		let grab = DVec2::new(420., 340.);
+		drag(&mut editor, grab, grab + DVec2::new(7., -196.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(407., 100.), DVec2::new(447., 180.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_dragged_nearly_halfway_between_two_others_lands_with_the_same_gap_on_both_sides() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		draw_rectangle(&mut editor, DVec2::new(300., 100.), DVec2::new(360., 160.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(200., 112.), DVec2::new(240., 148.)).await;
+
+		// Halfway is ten further along, where the gap on either side comes to fifty
+		let grab = DVec2::new(220., 130.);
+		drag(&mut editor, grab, grab + DVec2::new(7., 0.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(210., 112.), DVec2::new(250., 148.)]);
+	}
+
+	#[tokio::test]
+	async fn on_the_grid_the_corner_nearest_where_a_rectangle_was_grabbed_lands_on_a_grid_point() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(357.3, 343.7));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		editor.active_document_mut().snapping_state.grid_snapping = true;
+
+		// Neither side length is a multiple of the grid spacing, so only one corner at a time can be on the grid
+		let grab = to - DVec2::new(3.7, 6.1);
+		drag(&mut editor, grab, grab + DVec2::new(41.3, 27.9), ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let state = &document.snapping_state;
+		let GridType::Rectangular { spacing } = state.grid.grid_type else {
+			panic!("the default grid should be rectangular")
+		};
+		let spacing = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz).expect("the default grid should be usable");
+
+		let bottom_right = document.metadata().document_to_viewport.inverse().transform_point2(bounds(&editor, layer)[1]);
+		let steps = (bottom_right - state.grid.origin) / spacing;
+		assert!(
+			(steps - steps.round()).abs().max_element() < 1e-6,
+			"the bottom right corner is at {bottom_right}, which is {steps} grid steps"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_dragged_with_shift_keeps_to_its_direction_and_stops_where_its_corner_meets_another_corner() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 300.), DVec2::new(160., 360.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		// The pointer strays well below the line, where the top left corner stops three pixels short of the other's top right corner
+		let grab = DVec2::new(330., 330.);
+		drag(&mut editor, grab, grab + DVec2::new(-137., 20.), ModifierKeys::SHIFT).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(160., 300.), DVec2::new(220., 360.)]);
+	}
+
+	#[tokio::test]
+	async fn an_alt_dragged_copy_lines_up_with_the_original_and_the_original_ends_where_it_began() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let original = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		// The original is moved before Alt is pressed, which puts it back and drags a copy from there instead
+		let grab = DVec2::new(330., 330.);
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, grab + DVec2::new(50., 0.), ModifierKeys::empty()).await;
+		move_to(&mut editor, grab + DVec2::new(50., 0.), ModifierKeys::ALT).await;
+
+		// The copy's top comes four pixels below the original's top
+		let pointer = grab + DVec2::new(100., 4.);
+		move_to(&mut editor, pointer, ModifierKeys::ALT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::ALT).await;
+
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+		assert_eq!(layers.len(), 2, "there should be the original and one copy");
+		let copy = layers.into_iter().find(|&layer| layer != original).expect("the copy should be a layer of its own");
+
+		assert_bounds(&editor, original, [DVec2::new(300., 300.), DVec2::new(360., 360.)]);
+		assert_bounds(&editor, copy, [DVec2::new(400., 300.), DVec2::new(460., 360.)]);
+	}
+
+	#[tokio::test]
+	async fn a_second_drag_snaps_to_where_the_first_left_a_rectangle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let first = draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let second = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		drag(&mut editor, DVec2::new(330., 330.), DVec2::new(530., 130.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, second, [DVec2::new(500., 100.), DVec2::new(560., 160.)]);
+
+		// The first rectangle, taken hold of without being selected, brings its bottom right corner a few pixels from the second's new top left corner
+		let grab = DVec2::new(130., 130.);
+		drag(&mut editor, grab, grab + DVec2::new(343., -62.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, first, [DVec2::new(440., 40.), DVec2::new(500., 100.)]);
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_drag_puts_the_rectangle_back_and_the_next_drag_still_snaps() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		let (grab, away) = (DVec2::new(330., 330.), DVec2::new(400., 420.));
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, away, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(370., 390.), DVec2::new(430., 450.)]);
+
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(away.x, away.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(360., 360.)]);
+
+		// Its top left corner is brought a few pixels from the other's bottom right corner
+		drag(&mut editor, grab, grab + DVec2::new(-137., -142.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(160., 160.), DVec2::new(220., 220.)]);
+	}
+
+	#[tokio::test]
+	async fn on_a_zoomed_and_tilted_canvas_a_rectangle_still_lands_corner_to_corner() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let other = draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		let document_bounds =
+			|editor: &EditorTestUtils, layer: LayerNodeIdentifier| editor.active_document().metadata().bounding_box_document(layer).expect("the rectangle should have a bounding box");
+		let [top_left, bottom_right] = document_bounds(&editor, layer);
+		let corner = document_bounds(&editor, other)[1];
+		let grab = editor.active_document().metadata().document_to_viewport.inverse().transform_point2(DVec2::new(330., 320.));
+
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30_f64.to_radians() }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
+
+		// Its top left corner is brought a few pixels on screen from the other's bottom right corner
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		let grab = document_to_viewport.transform_point2(grab);
+		let pointer = grab + document_to_viewport.transform_vector2(corner - top_left) + DVec2::new(3., -2.);
+		drag(&mut editor, grab, pointer, ModifierKeys::empty()).await;
+
+		let [min, max] = document_bounds(&editor, layer);
+		let expected = [corner, corner + bottom_right - top_left];
+		assert!(
+			min.distance(expected[0]) < 1e-6 && max.distance(expected[1]) < 1e-6,
+			"the rectangle spans {min} to {max} in the document rather than {expected:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_dragged_while_the_canvas_zooms_keeps_the_spot_it_was_grabbed_by_under_the_pointer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(360., 350.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+
+		let grab = DVec2::new(330., 320.);
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, DVec2::new(250., 270.), ModifierKeys::empty()).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
+
+		// The rectangle now appears twice as large around the spot it was grabbed by
+		let pointer = DVec2::new(420., 380.);
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [pointer + (from - grab) * 2., pointer + (to - grab) * 2.]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_resized_by_its_corner_to_near_a_corner_of_another_meets_it_while_the_opposite_corner_stays() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		// Its top left corner is brought a few pixels from the other's bottom right corner
+		resize(&mut editor, DVec2::new(300., 300.), DVec2::new(203., 178.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(200., 180.), DVec2::new(360., 350.)]);
+	}
+
+	#[tokio::test]
+	async fn a_pentagon_resized_by_its_corner_catches_a_corner_of_another_on_the_vertex_partway_down_its_side() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.draw_polygon(300., 300., 400., 400.).await;
+		let polygon = editor.get_selected_layer().await.expect("the drawn polygon should be selected");
+
+		let drawn_anchors = |editor: &EditorTestUtils| {
+			let metadata = editor.active_document().metadata();
+			let to_viewport = metadata.transform_to_viewport(polygon);
+			let anchors = metadata.layer_outline(polygon).flat_map(crate::messages::tool::common_functionality::snap_session::anchor_positions);
+			anchors.map(|anchor| to_viewport.transform_point2(anchor)).collect::<Vec<_>>()
+		};
+		let leftmost = drawn_anchors(&editor).into_iter().min_by(|a, b| a.x.total_cmp(&b.x)).expect("the polygon should have anchors");
+		let [top_left, bottom_right] = bounds(&editor, polygon);
+
+		// The top left corner is dragged to where the stretch brings the leftmost vertex a few pixels from the other's bottom right corner
+		let corner = DVec2::new(200., 180.);
+		let scale = (corner + DVec2::new(3., -2.) - bottom_right) / (leftmost - bottom_right);
+		resize(&mut editor, top_left, bottom_right + (top_left - bottom_right) * scale, ModifierKeys::empty()).await;
+
+		assert!(drawn_anchors(&editor).iter().any(|anchor| anchor.distance(corner) < 1e-6), "no anchor landed on {corner}");
+		assert!(bounds(&editor, polygon)[1].distance(bottom_right) < 1e-6);
+	}
+
+	#[tokio::test]
+	async fn on_a_zoomed_and_tilted_canvas_a_rectangle_resized_by_its_corner_meets_a_corner_of_another() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let other = draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		let document_bounds =
+			|editor: &EditorTestUtils, layer: LayerNodeIdentifier| editor.active_document().metadata().bounding_box_document(layer).expect("the rectangle should have a bounding box");
+		let [top_left, bottom_right] = document_bounds(&editor, layer);
+		let corner = document_bounds(&editor, other)[1];
+
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30_f64.to_radians() }).await;
+		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
+
+		// Its top left corner is brought a few pixels on screen from the other's bottom right corner
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		let pointer = document_to_viewport.transform_point2(corner) + DVec2::new(3., -2.);
+		resize(&mut editor, document_to_viewport.transform_point2(top_left), pointer, ModifierKeys::empty()).await;
+
+		let [min, max] = document_bounds(&editor, layer);
+		assert!(
+			min.distance(corner) < 1e-6 && max.distance(bottom_right) < 1e-6,
+			"the rectangle spans {min} to {max} in the document rather than {corner} to {bottom_right}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_corner_snapped_while_resizing_holds_on_as_the_pointer_strays_beyond_where_it_would_have_caught() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+		let (near, further) = (DVec2::new(203., 178.), DVec2::new(208.4, 171.6));
+
+		// Brought straight to the further place, the top left corner is too far from the other's bottom right corner, and the lines through it, to catch on them
+		press_cage_at(&mut editor, DVec2::new(300., 300.)).await;
+		move_to(&mut editor, further, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [further, DVec2::new(360., 350.)]);
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(further.x, further.y, ModifierKeys::empty()).await;
+
+		// Caught on the way there, it stays caught
+		press_cage_at(&mut editor, DVec2::new(300., 300.)).await;
+		move_to(&mut editor, near, ModifierKeys::empty()).await;
+		move_to(&mut editor, further, ModifierKeys::empty()).await;
+		editor.left_mouseup(further.x, further.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(200., 180.), DVec2::new(360., 350.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_stretched_by_its_right_edge_to_nearly_the_width_of_one_beside_it_lands_on_that_width() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 200.), DVec2::new(170., 270.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 200.), DVec2::new(350., 250.)).await;
+
+		// Seventy wide, as the other is, puts the right edge at 370, wherever the pointer is up or down
+		resize(&mut editor, DVec2::new(350., 225.), DVec2::new(367., 231.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 200.), DVec2::new(370., 250.)]);
+	}
+
+	#[tokio::test]
+	async fn a_horizontal_line_lengthened_by_its_end_to_near_the_edge_of_a_rectangle_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(500., 250.), DVec2::new(560., 400.)).await;
+		editor.drag_tool(ToolType::Line, 300., 300., 400., 300., ModifierKeys::empty()).await;
+		let line = editor.get_selected_layer().await.expect("the drawn line should be selected");
+
+		// The box around the line has no height, so its end stretches only along it, to a few pixels short of the rectangle's left edge
+		resize(&mut editor, DVec2::new(400., 300.), DVec2::new(497., 304.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, line, [DVec2::new(300., 300.), DVec2::new(500., 300.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_stretched_toward_one_beside_it_lands_where_its_gaps_on_either_side_are_equal() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// The rectangle to stretch is drawn first, since drawing it beside the others would already even out its gaps
+		let layer = draw_rectangle(&mut editor, DVec2::new(200., 110.), DVec2::new(242., 160.)).await;
+		draw_rectangle(&mut editor, DVec2::new(80., 100.), DVec2::new(150., 170.)).await;
+		draw_rectangle(&mut editor, DVec2::new(300., 100.), DVec2::new(360., 170.)).await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// The gap on the left is fifty, which the gap on the right comes to with the right edge at 250, short of where either width would put it
+		resize(&mut editor, DVec2::new(242., 135.), DVec2::new(247., 135.), ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(200., 110.), DVec2::new(250., 160.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_resized_with_shift_keeps_its_proportions_and_stops_where_its_corner_meets_the_edge_of_another() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(420., 360.), DVec2::new(480., 460.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 345.)).await;
+
+		// Twice the size puts the bottom right corner on the other's left edge, which the pointer stops a few pixels short of
+		resize(&mut editor, DVec2::new(360., 345.), DVec2::new(417., 388.), ModifierKeys::SHIFT).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(420., 390.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_resized_with_alt_stretches_about_its_center_and_its_corner_meets_a_corner_of_another() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(380., 380.), DVec2::new(440., 440.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		// Its bottom right corner is brought a few pixels from the other's top left corner, and its top left corner goes as far the other way
+		resize(&mut editor, DVec2::new(360., 360.), DVec2::new(377., 382.), ModifierKeys::ALT).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(280., 280.), DVec2::new(380., 380.)]);
+	}
+
+	#[tokio::test]
+	async fn a_second_resize_snaps_to_where_the_first_left_a_rectangle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let other = draw_rectangle(&mut editor, DVec2::new(420., 420.), DVec2::new(480., 480.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		resize(&mut editor, DVec2::new(300., 300.), DVec2::new(163., 158.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(160., 160.), DVec2::new(360., 360.)]);
+
+		// Once the resize is over, nothing is shown as snapped
+		assert!(editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_none());
+
+		// The other rectangle, selected by a click, has its top left corner brought a few pixels from the first one's bottom right corner
+		let inside_the_other = DVec2::new(450., 450.);
+		drag(&mut editor, inside_the_other, inside_the_other, ModifierKeys::empty()).await;
+		resize(&mut editor, DVec2::new(420., 420.), DVec2::new(363., 358.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, other, [DVec2::new(360., 360.), DVec2::new(480., 480.)]);
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_resize_puts_the_rectangle_back_and_the_next_resize_still_snaps() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 160.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 360.)).await;
+
+		let away = DVec2::new(420., 430.);
+		press_cage_at(&mut editor, DVec2::new(360., 360.)).await;
+		move_to(&mut editor, away, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), away]);
+
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(away.x, away.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(360., 360.)]);
+
+		// Its top left corner is brought a few pixels from the other's bottom right corner
+		resize(&mut editor, DVec2::new(300., 300.), DVec2::new(163., 158.), ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(160., 160.), DVec2::new(360., 360.)]);
+	}
+
+	/// A rectangle turned about its middle by a press just beyond its bottom right corner, which is a hundred from the middle.
+	const TURNED: [DVec2; 2] = [DVec2::new(290., 270.), DVec2::new(410., 430.)];
+	const TURNED_MIDDLE: DVec2 = DVec2::new(350., 350.);
+	const TURN_GRIP: DVec2 = DVec2::new(424., 444.);
+
+	/// Where the turn with a cosine of 0.6 and a sine of 0.8 carries the bottom right corner of [`TURNED`].
+	const ANCHOR_IN_THE_TURN: DVec2 = DVec2::new(322., 446.);
+
+	/// The turn that carries the bottom right corner of [`TURNED`] onto [`ANCHOR_IN_THE_TURN`], in radians.
+	fn onto_the_anchor() -> f64 {
+		DVec2::new(0.6, 0.8).to_angle()
+	}
+
+	/// Where a turn about a pivot through an angle in radians carries a position.
+	fn turned(position: DVec2, pivot: DVec2, angle: f64) -> DVec2 {
+		pivot + DVec2::from_angle(angle).rotate(position - pivot)
+	}
+
+	/// The least and greatest corners of the box around a rectangle once turned about a pivot through an angle in radians.
+	fn turned_bounds([from, to]: [DVec2; 2], pivot: DVec2, angle: f64) -> [DVec2; 2] {
+		let corners = [from, DVec2::new(to.x, from.y), to, DVec2::new(from.x, to.y)].map(|corner| turned(corner, pivot, angle));
+		[corners.into_iter().fold(DVec2::INFINITY, DVec2::min), corners.into_iter().fold(DVec2::NEG_INFINITY, DVec2::max)]
+	}
+
+	/// Draws a small rectangle with its top right corner at [`ANCHOR_IN_THE_TURN`], then the [`TURNED`] rectangle, which is left selected and returned.
+	async fn draw_a_rectangle_to_turn_onto_an_anchor(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+		draw_rectangle(editor, ANCHOR_IN_THE_TURN - DVec2::new(10., 0.), ANCHOR_IN_THE_TURN + DVec2::new(0., 10.)).await;
+		draw_rectangle(editor, TURNED[0], TURNED[1]).await
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_until_its_corner_nears_an_anchor_in_its_path_lands_with_the_corner_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
+
+		// Two degrees short of the anchor, the bottom right corner is a few pixels from it
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor() - 2_f64.to_radians());
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+
+		// The grip stays as far from the middle as it began, so the rectangle only turns
+		let to_document = editor.active_document().metadata().document_to_viewport.inverse();
+		let from_the_middle = |position: DVec2| position.distance(to_document.transform_point2(TURNED_MIDDLE));
+		let session = &editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session;
+		let grip = session.shown_position().expect("the turn should have tried to snap");
+		assert!((from_the_middle(grip) - from_the_middle(to_document.transform_point2(TURN_GRIP))).abs() < 1e-9);
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, onto_the_anchor()));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_with_shift_steps_to_a_multiple_of_the_angle_step_and_snaps_to_nothing() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
+
+		// Where the corner would otherwise land on the anchor, the turn of about 51 degrees steps down to 45
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor() - 2_f64.to_radians());
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::SHIFT).await;
+		assert!(editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_none());
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, 45_f64.to_radians()));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_with_shift_steps_by_the_angle_step_the_document_sets() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, TURNED[0], TURNED[1]).await;
+		editor.handle_message(DocumentMessage::SetSnappingAngleStep { degrees: 30. }).await;
+
+		// The turn of about 51 degrees steps up to 60 rather than down to 45
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, onto_the_anchor() - 2_f64.to_radians());
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::SHIFT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, 60_f64.to_radians()));
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_turned_with_the_grid_on_and_nothing_nearby_turns_as_far_as_the_pointer_asks() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, TURNED[0], TURNED[1]).await;
+		editor.active_document_mut().snapping_state.grid_snapping = true;
+
+		let angle = 23.7_f64.to_radians();
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, angle);
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, angle));
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_turn_puts_the_rectangle_back_and_ends_the_snapping_gesture() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_a_rectangle_to_turn_onto_an_anchor(&mut editor).await;
+		let shows_an_attempt = |editor: &EditorTestUtils| editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session.shown().is_some();
+
+		let angle = 30_f64.to_radians();
+		let pointer = turned(TURN_GRIP, TURNED_MIDDLE, angle);
+		press_cage_at(&mut editor, TURN_GRIP).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, turned_bounds(TURNED, TURNED_MIDDLE, angle));
+		assert!(shows_an_attempt(&editor));
+
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, TURNED);
+		assert!(!shows_an_attempt(&editor));
+	}
+
+	/// Where a press takes hold of the skew handle beside the middle of the top edge of a rectangle from (300, 300) to (420, 380).
+	const TOP_SKEW_HANDLE: DVec2 = DVec2::new(370.5, 300.);
+
+	#[tokio::test]
+	async fn a_rectangle_skewed_by_its_top_edge_until_a_corner_nears_a_corner_of_another_lands_on_it_while_the_bottom_stays() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(480., 260.), DVec2::new(520., 300.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(420., 380.)).await;
+
+		// The top right corner is slid to three pixels short of the other's bottom left corner, with the pointer straying downward
+		let pointer = TOP_SKEW_HANDLE + DVec2::new(57., 5.);
+		press_cage_at(&mut editor, TOP_SKEW_HANDLE).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 300.), DVec2::new(480., 380.)]);
+	}
+
+	#[tokio::test]
+	async fn a_rectangle_skewed_with_control_held_moves_its_top_edge_across_itself_as_well_as_along_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(420., 380.)).await;
+
+		// The top edge goes thirty along and twenty up, while the bottom edge stays
+		let pointer = TOP_SKEW_HANDLE + DVec2::new(30., -20.);
+		press_cage_at(&mut editor, TOP_SKEW_HANDLE).await;
+		move_to(&mut editor, pointer, ModifierKeys::CONTROL).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::CONTROL).await;
+
+		assert_bounds(&editor, layer, [DVec2::new(300., 280.), DVec2::new(450., 380.)]);
+	}
+
+	/// Turns on the pivot that the Select tool turns and scales about, which starts in the middle of the selection.
+	async fn turn_on_the_pivot(editor: &mut EditorTestUtils) {
+		editor.select_tool(ToolType::Select).await;
+		let options = SelectOptionsUpdate::SetPivotGizmoEnabled(true);
+		editor.handle_message(SelectToolMessage::SelectOptions { options }).await;
+	}
+
+	/// Drags the pivot, once drawing the overlays has placed it, from one viewport position to another.
+	async fn drag_pivot(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) {
+		press_cage_at(editor, from).await;
+		move_to(editor, to, ModifierKeys::empty()).await;
+		editor.left_mouseup(to.x, to.y, ModifierKeys::empty()).await;
+	}
+
+	/// Turns the selected rectangle from (300, 300) to (420, 380) a quarter turn about a pivot, held by Shift to a whole number of steps.
+	async fn turn_a_quarter_about(editor: &mut EditorTestUtils, pivot: DVec2) {
+		let grip = DVec2::new(434., 394.);
+		let pointer = turned(grip, pivot, FRAC_PI_2);
+		press_cage_at(editor, grip).await;
+		move_to(editor, pointer, ModifierKeys::SHIFT).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+	}
+
+	#[tokio::test]
+	async fn the_pivot_dragged_near_a_corner_of_its_layer_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		turn_on_the_pivot(&mut editor).await;
+
+		// From the middle, the pivot is brought a few pixels from the top left corner, which a turn then goes about
+		drag_pivot(&mut editor, DVec2::new(360., 340.), from + DVec2::new(3., -2.)).await;
+		turn_a_quarter_about(&mut editor, from).await;
+
+		assert_bounds(&editor, layer, turned_bounds([from, to], from, FRAC_PI_2));
+	}
+
+	#[tokio::test]
+	async fn the_pivot_dragged_near_the_middle_of_its_layer_lands_there() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		turn_on_the_pivot(&mut editor).await;
+
+		// The pivot is taken out of the way, then brought back to a few pixels from the middle, which a turn then goes about
+		let (middle, away) = (DVec2::new(360., 340.), DVec2::new(500., 220.));
+		drag_pivot(&mut editor, middle, away).await;
+		drag_pivot(&mut editor, away, middle + DVec2::new(2., -3.)).await;
+		turn_a_quarter_about(&mut editor, middle).await;
+
+		assert_bounds(&editor, layer, turned_bounds([from, to], middle, FRAC_PI_2));
+	}
+
+	#[tokio::test]
+	async fn a_typed_turn_after_escaping_a_pivot_drag_and_panning_goes_about_the_restored_pivot() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		turn_on_the_pivot(&mut editor).await;
+
+		// The pivot is taken out of the way, put back in the middle by Esc, then followed by a pan of the view
+		let middle = DVec2::new(360., 340.);
+		press_cage_at(&mut editor, middle).await;
+		move_to(&mut editor, DVec2::new(500., 220.), ModifierKeys::empty()).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(500., 220., ModifierKeys::empty()).await;
+		let pan = DVec2::new(40., -30.);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan }).await;
+		editor.handle_message(SelectToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.move_mouse(600., 500., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		for digit in [9, 0] {
+			editor.handle_message(TransformLayerMessage::TypeDigit { digit }).await;
+		}
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		assert_bounds(&editor, layer, turned_bounds([from + pan, to + pan], middle + pan, FRAC_PI_2));
+	}
+
+	fn snap_session(editor: &EditorTestUtils) -> &SnapSession {
+		&editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session
+	}
+
+	/// What the latest attempt to snap engaged.
+	fn engaged(editor: &EditorTestUtils) -> Engagement {
+		let engagement = snap_session(editor).shown().and_then(|shown| shown.outcome.engagement());
+		engagement.cloned().expect("the latest attempt to snap should have engaged something")
+	}
+
+	/// Moves the pointer, with no button down, to a viewport position.
+	async fn hover(editor: &mut EditorTestUtils, position: DVec2) {
+		editor.move_mouse(position.x, position.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	}
+
+	/// Rests the pointer at a viewport position from a time in milliseconds for as long as waking takes before any press, and returns the anchor this wakes.
+	async fn wake_anchor(editor: &mut EditorTestUtils, position: DVec2, time: u64) -> Awake {
+		let awake_before = snap_session(editor).awake().to_vec();
+		editor.animation_frame(time).await;
+		hover(editor, position).await;
+		editor.animation_frame(time + WAKE_DWELL_ON_APPROACH).await;
+
+		let latest = snap_session(editor).awake().last().copied();
+		let Some(anchor @ Awake::Anchor { .. }) = latest.filter(|latest| !awake_before.contains(latest)) else {
+			panic!("resting at {position} should have woken an anchor")
+		};
+		anchor
+	}
+
+	/// Checks that the latest attempt to snap lined the pointer up with a woken anchor, which put it at a viewport position.
+	fn assert_aligned_with(editor: &EditorTestUtils, anchor: Awake, expected: DVec2) {
+		let Awake::Anchor { layer, index } = anchor else { panic!("{anchor:?} should be an anchor") };
+		let session = snap_session(editor);
+
+		let lines_up = |candidate: &snapping::Candidate| candidate.key.kind == Kind::Alignment && candidate.highlight == Some(Highlight::Anchor { layer, index });
+		assert!(
+			session.shown().is_some_and(|shown| shown.outcome.engaged_candidates().any(lines_up)),
+			"the pointer should be lined up with {anchor:?}"
+		);
+
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		let landed = session.shown_position().map(|position| document_to_viewport.transform_point2(position));
+		assert!(
+			landed.is_some_and(|landed| landed.abs_diff_eq(expected, 1e-6)),
+			"the pointer landed at {landed:?} rather than {expected}"
+		);
+	}
+
+	#[tokio::test]
+	async fn holding_q_through_a_drag_lets_the_rectangle_follow_the_pointer_until_q_is_let_go() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		let layer = draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+		let on_the_corner = [DVec2::new(200., 180.), DVec2::new(260., 230.)];
+
+		// Its top left corner is brought three pixels from the other's bottom right corner, where it snaps
+		let grab = DVec2::new(330., 320.);
+		let mut pointer = grab + DVec2::new(-97., -122.);
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+
+		// Putting Q down lets go of the corner at once, and the rectangle follows the pointer exactly while Q is held
+		editor.key_down(Key::KeyQ, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(203., 178.), DVec2::new(263., 228.)]);
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, [DVec2::new(204., 178.), DVec2::new(264., 228.)]);
+		assert!(!snap_session(&editor).caught());
+
+		// Letting Q go snaps it back onto the corner, where it stays as the pointer moves on
+		editor.key_up(Key::KeyQ, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+		assert!(snap_session(&editor).caught());
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_bounds(&editor, layer, on_the_corner);
+	}
+
+	#[tokio::test]
+	async fn tapping_w_through_a_drag_steps_on_to_another_snap_within_reach_once_per_tap_and_holds_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		draw_rectangle(&mut editor, DVec2::new(300., 300.), DVec2::new(360., 350.)).await;
+
+		// Three pixels from the other's bottom right corner, the top left corner has that corner and the lines through it within reach
+		let grab = DVec2::new(330., 320.);
+		let mut pointer = grab + DVec2::new(-97., -122.);
+		press_at(&mut editor, grab).await;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		let natural = engaged(&editor);
+		assert!(natural.alternatives >= 2 && !natural.pinned, "there should be more than one snap to step through");
+
+		// W steps on as soon as it goes down, and staying down as the pointer moves steps no further
+		editor.key_down(Key::KeyW, ModifierKeys::empty()).await;
+		let stepped = engaged(&editor);
+		assert_ne!(stepped.key, natural.key);
+		assert!(stepped.pinned);
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		assert_eq!(engaged(&editor).key, stepped.key);
+		editor.key_up(Key::KeyW, ModifierKeys::empty()).await;
+
+		// Another tap steps on again, and what it reaches holds as the pointer moves on
+		editor.press(Key::KeyW, ModifierKeys::empty()).await;
+		pointer += DVec2::X;
+		move_to(&mut editor, pointer, ModifierKeys::empty()).await;
+		let stepped_again = engaged(&editor);
+		assert_ne!(stepped_again.key, stepped.key);
+		assert!(stepped_again.pinned);
+
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_corner_rested_on_before_drawing_lines_the_pointer_up_from_afar_until_escape_puts_it_back_to_sleep() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// With the Rectangle tool ready, the pointer drawing left on the corner is taken away, then rests beside the corner until it wakes
+		hover(&mut editor, DVec2::new(600., 500.)).await;
+		editor.animation_frame(1000).await;
+		hover(&mut editor, DVec2::new(202., 182.)).await;
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH - 1).await;
+		assert!(snap_session(&editor).awake().is_empty());
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH).await;
+		let &[woken @ Awake::Anchor { .. }] = snap_session(&editor).awake() else {
+			panic!("only the corner should be awake, not {:?}", snap_session(&editor).awake())
+		};
+
+		// Three hundred pixels away, the pointer lines up with it
+		let (far_but_level, level) = (DVec2::new(500., 182.), DVec2::new(500., 180.));
+		hover(&mut editor, far_but_level).await;
+		assert_aligned_with(&editor, woken, level);
+
+		// Drawing another rectangle elsewhere leaves it awake and still lined up with, as the next move shows
+		editor.drag_path(&[DVec2::new(400., 300.), DVec2::new(460., 360.)], ModifierKeys::empty()).await;
+		let drawn = editor.get_selected_layer().await.expect("the rectangle drawn last should be selected");
+		assert_bounds(&editor, drawn, [DVec2::new(400., 300.), DVec2::new(460., 360.)]);
+		hover(&mut editor, far_but_level).await;
+		assert_eq!(snap_session(&editor).awake(), [woken]);
+		assert_aligned_with(&editor, woken, level);
+
+		// Escape with nothing under way puts it back to sleep
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		assert!(snap_session(&editor).awake().is_empty());
+		hover(&mut editor, far_but_level + DVec2::Y).await;
+		assert!(!snap_session(&editor).caught());
+	}
+
+	#[tokio::test]
+	async fn with_the_pen_tool_a_corner_rested_on_before_the_first_point_lines_the_pointer_up_from_afar() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Pen).await;
+
+		hover(&mut editor, DVec2::new(600., 500.)).await;
+		editor.animation_frame(1000).await;
+		hover(&mut editor, DVec2::new(202., 182.)).await;
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH).await;
+		let &[woken @ Awake::Anchor { .. }] = snap_session(&editor).awake() else {
+			panic!("only the corner should be awake, not {:?}", snap_session(&editor).awake())
+		};
+
+		let (far_but_level, level) = (DVec2::new(500., 182.), DVec2::new(500., 180.));
+		hover(&mut editor, far_but_level).await;
+		assert_aligned_with(&editor, woken, level);
+	}
+
+	#[tokio::test]
+	async fn with_the_pen_tool_the_middle_of_an_edge_rested_on_before_the_first_point_lines_the_pointer_up_from_afar() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(200., 180.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Pen).await;
+
+		// Resting beside the middle of the top edge wakes that point, not the edge
+		hover(&mut editor, DVec2::new(600., 500.)).await;
+		editor.animation_frame(1000).await;
+		hover(&mut editor, DVec2::new(152., 102.)).await;
+		let resting_on: Vec<Kind> = snap_session(&editor).shown().unwrap().outcome.engaged_candidates().map(|candidate| candidate.key.kind).collect();
+		assert_eq!(resting_on, vec![Kind::Midpoint]);
+		editor.animation_frame(1000 + WAKE_DWELL_ON_APPROACH).await;
+		let &[Awake::Position { position, .. }] = snap_session(&editor).awake() else {
+			panic!("only the middle of the edge should be awake, not {:?}", snap_session(&editor).awake())
+		};
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		assert!(document_to_viewport.transform_point2(position).abs_diff_eq(DVec2::new(150., 100.), 1e-6));
+
+		// Far below it, the pointer lines up with it
+		hover(&mut editor, DVec2::new(153., 400.)).await;
+		let kinds: Vec<Kind> = snap_session(&editor).shown().unwrap().outcome.engaged_candidates().map(|candidate| candidate.key.kind).collect();
+		assert_eq!(kinds, vec![Kind::Alignment]);
+		let landed = snap_session(&editor).shown_position().map(|position| document_to_viewport.transform_point2(position));
+		assert!(landed.is_some_and(|landed| landed.abs_diff_eq(DVec2::new(150., 400.), 1e-6)), "the pointer landed at {landed:?}");
+	}
+
+	#[tokio::test]
+	async fn a_sixth_corner_rested_on_puts_the_first_one_woken_back_to_sleep() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_rectangle(&mut editor, DVec2::new(100., 100.), DVec2::new(160., 140.)).await;
+		draw_rectangle(&mut editor, DVec2::new(230., 190.), DVec2::new(310., 250.)).await;
+		draw_rectangle(&mut editor, DVec2::new(390., 290.), DVec2::new(430., 370.)).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// The top left and bottom right corners of each rectangle, none level with another, are rested on in turn from two pixels outside
+		let beside_corners = [(98., 98.), (162., 142.), (228., 188.), (312., 252.), (388., 288.), (432., 372.)].map(DVec2::from);
+		let [first_five @ .., sixth] = beside_corners;
+		let mut woken = Vec::new();
+		for (index, beside) in first_five.into_iter().enumerate() {
+			woken.push(wake_anchor(&mut editor, beside, 1000 + index as u64 * 2000).await);
+		}
+
+		// Five stay awake, and the first still lines the pointer up from afar
+		assert_eq!(snap_session(&editor).awake(), woken);
+		hover(&mut editor, DVec2::new(600., 102.)).await;
+		assert_aligned_with(&editor, woken[0], DVec2::new(600., 100.));
+
+		// The sixth puts the first back to sleep, while the rest stay awake in the order they woke
+		woken.push(wake_anchor(&mut editor, sixth, 11_000).await);
+		assert_eq!(snap_session(&editor).awake(), &woken[1..]);
+		hover(&mut editor, DVec2::new(600., 102.)).await;
+		assert!(!snap_session(&editor).caught());
+		hover(&mut editor, DVec2::new(600., 142.)).await;
+		assert_aligned_with(&editor, woken[1], DVec2::new(600., 140.));
+	}
 }

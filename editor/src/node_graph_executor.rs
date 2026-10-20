@@ -1,4 +1,5 @@
-use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage};
+use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage, RenderStatus};
+use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -6,7 +7,7 @@ use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
-use graphene_std::application_io::{ExportFormat, NodeGraphUpdateMessage, RenderConfig, TimingInformation};
+use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
 use graphene_std::list::List;
@@ -14,19 +15,17 @@ use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
-use graphene_std::vector::{Vector, graphic_types};
+use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, paths_from_list_row_attributes};
 use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
-
-mod runtime_io;
-pub use runtime_io::NodeRuntimeIO;
+use std::sync::mpsc::{Receiver, Sender};
 
 mod runtime;
 pub use runtime::*;
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct ExecutionRequest {
 	execution_id: u64,
 	render_config: RenderConfig,
@@ -34,12 +33,23 @@ pub struct ExecutionRequest {
 
 pub struct ExecutionResponse {
 	execution_id: u64,
-	result: Result<TaggedValue, String>,
+	result: ExecutionResult,
 	responses: VecDeque<FrontendMessage>,
-	vector_modify: HashMap<NodeId, Vector>,
+	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
 }
+
+#[derive(Debug)]
+pub enum ExecutionResult {
+	Pending,
+	Value(TaggedValue),
+	Fallback(TaggedValue, EvaluationError),
+	Error(EvaluationError),
+	Panic(Box<dyn Any + Send>),
+}
+
+pub type EvaluationError = Box<[(Arc<dyn std::error::Error + Send + Sync>, Box<[NodeId]>)]>;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
@@ -51,14 +61,15 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
-	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct NodeGraphExecutor {
-	runtime_io: NodeRuntimeIO,
+	sender: Sender<GraphRuntimeRequest>,
+	receiver: Receiver<NodeGraphUpdate>,
 	current_execution_id: u64,
 	futures: VecDeque<(u64, ExecutionContext)>,
+	pending: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
@@ -78,6 +89,8 @@ pub struct NodeGraphExecutor {
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
+	/// The view the render was asked for, which the footprints it reports back are measured in.
+	document_to_viewport: DAffine2,
 	// TODO: Eventually remove this document upgrade code
 	/// Set when this execution is a gradient-migration measurement run, carrying the "Fill" node (addressed by its enclosing
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
@@ -98,23 +111,23 @@ struct GradientMigration {
 }
 
 impl NodeGraphExecutor {
-	/// A local runtime is useful on threads since having global state causes flakes
-	#[cfg(test)]
-	pub(crate) fn new_with_local_runtime() -> (NodeRuntime, Self) {
+	pub(crate) fn new(editor_wake: Wake) -> (Self, NodeRuntime) {
 		let (request_sender, request_receiver) = std::sync::mpsc::channel();
 		let (response_sender, response_receiver) = std::sync::mpsc::channel();
-		let node_runtime = NodeRuntime::new(request_receiver, response_sender);
+		let node_runtime = NodeRuntime::new(request_receiver, response_sender, editor_wake);
 
 		let node_executor = Self {
 			futures: Default::default(),
-			runtime_io: NodeRuntimeIO::with_channels(request_sender, response_receiver),
+			sender: request_sender,
+			receiver: response_receiver,
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
+			pending: None,
 		};
-		(node_runtime, node_executor)
+		(node_executor, node_runtime)
 	}
 
 	/// Allows the test runner to see if any more executions have been queued.
@@ -128,13 +141,13 @@ impl NodeGraphExecutor {
 		let execution_id = self.current_execution_id;
 		self.current_execution_id += 1;
 		let request = ExecutionRequest { execution_id, render_config };
-		self.runtime_io.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
+		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
 	}
 
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
-		self.runtime_io
+		self.sender
 			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
 			.expect("Failed to send editor preferences");
 	}
@@ -149,7 +162,7 @@ impl NodeGraphExecutor {
 
 		let resources = document.resources.registry.clone();
 
-		self.runtime_io
+		self.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
@@ -170,7 +183,7 @@ impl NodeGraphExecutor {
 
 			let resources = document.resources.registry.clone();
 
-			self.runtime_io
+			self.sender
 				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
 		}
@@ -212,6 +225,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -283,6 +297,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -334,7 +349,7 @@ impl NodeGraphExecutor {
 		export_config.size = resolution;
 
 		// Execute the node graph
-		self.runtime_io
+		self.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
@@ -347,6 +362,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: Some(export_config),
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: None,
 			},
 		));
@@ -354,14 +370,14 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		// TODO: Eventually remove this document upgrade code
 		// A gradient migration belongs to one document; if the active document changed away from it, cancel so its stale in-flight response is ignored and revisiting restarts a fresh pass
 		if self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id != document_id) {
 			self.cancel_gradient_migration();
 		}
 
-		let results = self.runtime_io.receive().collect::<Vec<_>>();
+		let results = self.receiver.try_iter().collect::<Vec<_>>();
 		for response in results {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
@@ -381,42 +397,77 @@ impl NodeGraphExecutor {
 						}
 					}
 
-					let Some((queued_execution_id, execution_context)) = self.futures.pop_front() else {
-						panic!("InvalidGenerationId")
+					let execution_context = if self.futures.front().is_some_and(|&(queued_execution_id, _)| queued_execution_id == execution_id) {
+						let (_, execution_context) = self.futures.pop_front().expect("the front was just checked");
+						if execution_context.export_config.is_none() && execution_context.measure_fill.is_none() {
+							self.pending = Some((execution_id, execution_context.clone()));
+						}
+						execution_context
+					} else if let Some((rendered_execution_id, execution_context)) = &self.pending
+						&& *rendered_execution_id == execution_id
+					{
+						execution_context.clone()
+					} else {
+						continue;
 					};
-					assert_eq!(queued_execution_id, execution_id, "Missmatch in execution id");
 
 					// TODO: Eventually remove this document upgrade code
 					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
 					// Apply only to the active document's in-progress migration, dropping responses left over from a document switch.
 					if let Some(bake_target) = execution_context.measure_fill {
 						if execution_context.document_id == document_id && self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id == document_id) {
-							self.handle_gradient_measurement(document, document_id, bake_target, result.ok().and(inspect_result), responses);
+							let inspect_result = matches!(result, ExecutionResult::Value(_) | ExecutionResult::Fallback(..)).then_some(inspect_result).flatten();
+							self.handle_gradient_measurement(document, document_id, bake_target, inspect_result, responses);
 						}
 						continue;
 					}
 
 					responses.add(OverlaysMessage::Draw);
 
+					// A pending graph keeps the last frame, and the errors shown with it
+					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
+						let errors = match &result {
+							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => errors
+								.iter()
+								.map(|(error, node_path)| NodeEvaluationError {
+									node_path: node_path.to_vec(),
+									message: error.to_string(),
+								})
+								.collect(),
+							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Panic(_) => Vec::new(),
+						};
+						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
+					}
+
 					let node_graph_output = match result {
+						ExecutionResult::Pending => Ok(None),
+						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(Some(value)),
+						ExecutionResult::Error(errors) => Err(errors.iter().map(|(error, _)| error.to_string()).collect::<Vec<_>>().join("\n")),
+						ExecutionResult::Panic(payload) => {
+							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
+							Err(format!("Panicked: {}", message.unwrap_or("no message")))
+						}
+					};
+					let node_graph_output = match node_graph_output {
 						Ok(output) => output,
 						Err(e) => {
 							// Clear the click targets while the graph is in an un-renderable state
 							document.network_interface.update_click_targets(HashMap::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
-							return Err(format!("Node graph evaluation failed:\n{e}"));
+							log::error!("Node graph evaluation failed:\n{e}");
+							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+							return;
 						}
 					};
 
 					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.update_vector_modify(vector_modify);
 
-					if let Some(export_config) = execution_context.export_config {
-						// Special handling for exporting the artwork
-						self.process_export(node_graph_output, export_config, document, responses)?;
-					} else {
-						self.process_node_graph_output(node_graph_output, responses)?;
+					match (node_graph_output, execution_context.export_config) {
+						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses),
+						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, execution_context.document_to_viewport, responses),
+						(None, _) => {}
 					}
 					responses.add(DeferMessage::TriggerGraphRun {
 						execution_id,
@@ -457,7 +508,8 @@ impl NodeGraphExecutor {
 								node_graph_errors,
 							});
 
-							return Err(format!("Node graph evaluation failed:\n{e}"));
+							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+							return;
 						}
 						Ok(result) => result,
 					};
@@ -471,11 +523,8 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
-				NodeGraphUpdate::NodeGraphUpdateMessage(_) => {}
 			}
 		}
-
-		Ok(())
 	}
 
 	// TODO: Eventually remove this document upgrade code
@@ -543,7 +592,7 @@ impl NodeGraphExecutor {
 
 		let resources = document.resources.registry.clone();
 		if self
-			.runtime_io
+			.sender
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
 				network,
 				resources,
@@ -581,6 +630,7 @@ impl NodeGraphExecutor {
 			ExecutionContext {
 				export_config: None,
 				document_id,
+				document_to_viewport: viewport.transform,
 				measure_fill: Some((network_path, fill_node_id, gradient)),
 			},
 		));
@@ -661,9 +711,11 @@ impl NodeGraphExecutor {
 		self.node_graph_hash = 0;
 	}
 
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, document_to_viewport: DAffine2, responses: &mut VecDeque<Message>) {
 		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
-			return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
+			log::error!("Invalid node graph output type: {node_graph_output:#?}");
+			responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+			return;
 		};
 
 		match render_output.data {
@@ -691,7 +743,11 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
-			_ => return Err(format!("Invalid node graph output type: {:#?}", render_output.data)),
+			_ => {
+				log::error!("Invalid node graph output type: {:#?}", render_output.data);
+				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+				return;
+			}
 		}
 
 		let RenderMetadata {
@@ -712,6 +768,7 @@ impl NodeGraphExecutor {
 			upstream_footprints,
 			local_transforms,
 			first_element_source_id,
+			document_to_viewport,
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateOutlines { outlines });
@@ -723,10 +780,10 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
 
-		Ok(())
+		responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Rendering });
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let ExportConfig {
 			file_type,
 			name,
@@ -766,15 +823,19 @@ impl NodeGraphExecutor {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
 			}) if file_type != FileType::Svg => {
-				let content = file_type.encode(width, height, data)?.into();
+				let content = match file_type.encode(width, height, data) {
+					Ok(content) => content.into(),
+					Err(e) => {
+						log::error!("Failed to encode image: {e}");
+						return;
+					}
+				};
 				responses.add(FrontendMessage::TriggerSaveFile { name, folder, filters, content });
 			}
 			_ => {
-				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
+				log::error!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})");
 			}
-		};
-
-		Ok(())
+		}
 	}
 }
 
@@ -831,7 +892,8 @@ fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2,
 	if let Some(list) = introspected_output::<List<Vector>>(data) {
 		let vector = list.element(0)?;
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let bounds = vector.nonzero_bounding_box();
+		let paths = paths_from_list_row_attributes(&list, 0).unwrap_or_else(|| no_paths());
+		let bounds = vector.nonzero_bounding_box(paths);
 		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		return Some((bounding_box_affine, item_transform));
 	}

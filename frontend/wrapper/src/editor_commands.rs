@@ -55,30 +55,6 @@ mod editor_commands {
 		PortfolioMessage::AutoSaveAllDocuments.into()
 	}
 
-	fn add_primary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryImport.into()]),
-		}
-	}
-
-	fn add_secondary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryImport.into()]),
-		}
-	}
-
-	fn add_primary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryExport.into()]),
-		}
-	}
-
-	fn add_secondary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryExport.into()]),
-		}
-	}
-
 	fn app_window_direct_input(enabled: bool) -> Message {
 		AppWindowMessage::DirectInput { enabled }.into()
 	}
@@ -590,9 +566,9 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
-	fn reorder_properties_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
-		DocumentMessage::ReorderPropertiesSection {
+	/// Reorder a draggable Inspector section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_inspector_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
+		DocumentMessage::ReorderInspectorSection {
 			node_id: NodeId(node_id),
 			insert_index,
 			duplicate,
@@ -611,7 +587,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name for the layer
+	/// Set the name for the layer in the document network, as listed in the Layers panel
 	fn set_layer_name(id: u64, name: String) -> Message {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		NodeGraphMessage::SetDisplayName {
@@ -621,6 +597,11 @@ mod editor_commands {
 			skip_adding_history_step: false,
 		}
 		.into()
+	}
+
+	/// Set the name for a layer in the network shown by the node graph, which may be a subgraph
+	fn set_layer_name_in_graph(id: u64, name: String) -> Message {
+		DocumentMessage::SetLayerNameInGraph { node_id: NodeId(id), name }.into()
 	}
 
 	/// Translates document (in viewport coords)
@@ -712,7 +693,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Toggle visibility of a layer or node given its node ID
+	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel
 	fn toggle_node_visibility_layer_panel(id: u64) -> Message {
 		NodeGraphMessage::ToggleVisibility {
 			node_id: NodeId(id),
@@ -721,14 +702,19 @@ mod editor_commands {
 		.into()
 	}
 
+	/// Toggle visibility of a node shown in the Inspector, which may be in a subgraph
+	fn toggle_node_visibility_inspector(id: u64) -> Message {
+		DocumentMessage::ToggleNodeVisibility { node_id: NodeId(id) }.into()
+	}
+
 	/// Pin or unpin a node given its node ID
 	fn set_node_pinned(id: u64, pinned: bool) -> Message {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel, or recursively every section in its layer's chain
-	fn toggle_node_properties_section_expanded(id: u64, recursive: bool) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id), recursive }.into()
+	/// Collapse or expand a node's section in the Inspector, or recursively every section in its layer's chain
+	fn toggle_node_inspector_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id: NodeId(id), recursive }.into()
 	}
 
 	/// Expand or collapse a layer's chain into a row per node in the Layers panel
@@ -766,7 +752,7 @@ mod editor_commands {
 		DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer }.into()
 	}
 
-	/// Set the name of an import or export
+	/// Set the name of an import.
 	fn set_import_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
@@ -775,13 +761,116 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name of an export
+	/// Set the name of an export.
 	fn set_export_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
 			index: ImportOrExport::Export(index),
 		}
 		.into()
+	}
+
+	/// Set the description of an import.
+	fn set_import_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Import(index),
+		}
+		.into()
+	}
+
+	/// Set the description of an export.
+	fn set_export_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Export(index),
+		}
+		.into()
+	}
+
+	/// Remove an import, or hide it if it's the primary import.
+	fn remove_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Remove an export, or hide it if it's the primary export.
+	fn remove_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
+	}
+
+	/// Move an import to the front so it becomes the primary import.
+	fn make_import_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move an export to the front so it becomes the primary export.
+	fn make_export_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move the primary import to the first secondary import, leaving the primary empty.
+	fn make_import_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Move the primary export to the first secondary export, leaving the primary empty.
+	fn make_export_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Show an import on its subgraph node as an input connector, or else as a parameter in the Inspector.
+	fn set_import_exposed(index: usize, exposed: bool) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::ExposeEncapsulatingInput { input_index: index, exposed }.into(),
+			]),
+		}
+	}
+
+	/// Insert a Passthrough node that takes over the wires an import feeds.
+	fn add_import_passthrough(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddImportPassthrough { import_index: index }.into()]),
+		}
+	}
+
+	/// Disconnect every wire an import feeds.
+	fn disconnect_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Disconnect the wire feeding an export.
+	fn disconnect_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
 	}
 }
 
