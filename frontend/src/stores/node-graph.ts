@@ -250,6 +250,13 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("ClearNodeThumbnails", (data) => {
+		update((state) => {
+			data.ids.forEach((id) => state.thumbnails.delete(id));
+			return state;
+		});
+	});
+
 	subscriptions.subscribeFrontendMessage("UpdateWirePathInProgress", (data) => {
 		update((state) => {
 			state.wirePathInProgress = data.wirePath;
@@ -286,6 +293,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphTransform");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnail");
+	subscriptions.unsubscribeFrontendMessage("ClearNodeThumbnails");
 	subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
 }
 

@@ -1,6 +1,7 @@
 use super::document_diff::diff_networks;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
+use super::utility_types::layers_in_view::LayersInView;
 use super::utility_types::misc::{ANGLE_STEP_MAX, ANGLE_STEP_MIN, GroupFolderType, SNAPPING_OPTION_GROUPS, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
@@ -188,6 +189,9 @@ pub struct DocumentMessageHandler {
 	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
 	#[serde(skip)]
 	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
+	/// The layers the frontend shows in view, the only ones it's sent the details and thumbnails of.
+	#[serde(skip)]
+	pub layers_in_view: LayersInView,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -237,6 +241,7 @@ impl Default for DocumentMessageHandler {
 			layer_range_selection_reference: None,
 			chain_node_range_selection_reference: None,
 			layers_panel_hovered_layer: None,
+			layers_in_view: LayersInView::default(),
 			is_loaded: false,
 		}
 	}
@@ -322,6 +327,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						inspector_collapsed_sections: &mut self.inspector_collapsed_sections,
 						inspector_expanded_input_chains: &mut self.inspector_expanded_input_chains,
 						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
+						layers_in_view: &mut self.layers_in_view,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
@@ -769,6 +775,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
+
+					self.layers_in_view.set_node_graph(HashSet::new(), responses);
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -1518,6 +1526,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(OverlaysMessage::Draw);
 				}
 			}
+			DocumentMessage::SetLayersPanelView { layers, layers_missing_details } => {
+				self.layers_in_view.set_layers_panel(layers.into_iter().collect(), responses);
+				if !layers_missing_details.is_empty() {
+					responses.add(NodeGraphMessage::SendLayerPanelDetails { layers: layers_missing_details });
+				}
+			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::SetPinned { node_id, pinned });
@@ -1741,6 +1755,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(DocumentMessage::DocumentStructureChanged);
 			}
 			DocumentMessage::ToggleNodeVisibility { node_id } => {
 				responses.add(NodeGraphMessage::ToggleVisibility {
@@ -2622,11 +2637,21 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		let chain_rows = if self.layers_panel_expanded_chains.contains(&layer_id) {
+			self.network_interface.layer_chain_nodes(layer_id, &[]).len() as u32
+		} else {
+			0
+		};
+
 		LayerStructureEntry {
 			layer_id,
 			children,
 			children_present,
 			descendant_selected,
+			selected: selected_layers.contains(&layer_id),
+			visible: self.network_interface.is_visible(&layer_id, &[]),
+			unlocked: !self.network_interface.is_locked(&layer_id, &[]),
+			chain_rows,
 		}
 	}
 
