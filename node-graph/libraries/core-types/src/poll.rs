@@ -117,9 +117,9 @@ impl std::fmt::Display for NodeError {
 	}
 }
 
-impl Error for NodeError {
-	fn source(&self) -> Option<&(dyn Error + 'static)> {
-		self.error.source()
+impl<E: Error + Send + Sync + 'static> From<E> for NodeError {
+	fn from(error: E) -> Self {
+		Self::new(error)
 	}
 }
 
@@ -373,8 +373,8 @@ mod tests {
 		let parse_error = "x".parse::<u32>().unwrap_err();
 		let Poll::Error(error) = add(Poll::error(parse_error), Poll::Final(2)) else { unreachable!() };
 		assert_eq!(error.trace(), [0]);
-		let error: Box<dyn Error + Send + Sync> = error;
 		assert_eq!(error.to_string(), "invalid digit found in string");
+		assert!(error.error().is::<std::num::ParseIntError>());
 	}
 
 	#[test]
@@ -411,6 +411,13 @@ mod tests {
 			unreachable!()
 		};
 		assert!(error.upstream().is_empty(), "an input's error is passed on, not raised");
+	}
+
+	#[test]
+	fn a_std_error_converts_into_a_node_error() {
+		let error = NodeError::from("x".parse::<u32>().unwrap_err());
+		assert_eq!(error.to_string(), "invalid digit found in string");
+		assert!(error.trace().is_empty());
 	}
 
 	#[test]

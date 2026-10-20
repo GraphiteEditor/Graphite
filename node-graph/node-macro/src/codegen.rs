@@ -552,30 +552,32 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let lift = |call: TokenStream2| match tier {
 		NodeOutputTier::Plain | NodeOutputTier::Poll => quote!(Ok(#call)),
-		NodeOutputTier::Interrupt => call,
+		NodeOutputTier::Error => quote!(Ok(#call.map_err(#core_types::NodeError::from)?)),
 		NodeOutputTier::Fallback => quote! {
 			match #call {
 				Ok(value) => Ok(value),
 				Err((value, error)) => {
-					__cell.raise(error);
+					__cell.raise(#core_types::NodeError::from(error));
 					Ok(value)
 				}
 			}
 		},
+		NodeOutputTier::Interrupt => call,
 	};
 
 	let lift_slot = |call: TokenStream2| match tier {
 		NodeOutputTier::Plain | NodeOutputTier::Poll => call,
-		NodeOutputTier::Interrupt => quote!(#call?),
+		NodeOutputTier::Error => quote!(#call.map_err(#core_types::NodeError::from)?),
 		NodeOutputTier::Fallback => quote! {
 			match #call {
 				Ok(value) => value,
 				Err((value, error)) => {
-					__cell.raise(error);
+					__cell.raise(#core_types::NodeError::from(error));
 					value
 				}
 			}
 		},
+		NodeOutputTier::Interrupt => quote!(#call?),
 	};
 
 	let fold = match tier {
