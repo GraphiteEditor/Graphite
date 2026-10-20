@@ -5,13 +5,13 @@ pub use convert::{ATTR_OLLEV_REPEAT, RepeatStructure};
 pub use slices::TraceSlot;
 
 use core_types::list::{Item, List};
-use core_types::runtime::Runtime;
+use core_types::runtime::{Clock, Runtime};
 use core_types::{ATTR_TRANSFORM, CacheHash, Ctx, Poll, RuntimeHandle, SourceId};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use raster_types::{CPU, Raster};
-use slices::Budget;
 use std::hash::{DefaultHasher, Hash, Hasher};
+use std::time::Duration;
 
 /// What Graphite's renderer draws of ollev's model; the rest is lowered into it by ollev.
 pub const CAPABILITIES: ollev::Capabilities = ollev::Capabilities {
@@ -24,9 +24,9 @@ pub const CAPABILITIES: ollev::Capabilities = ollev::Capabilities {
 	transparent_stops: true,
 };
 
-/// A tenth of a second of tracing per evaluation, which ollev's checkpoints overrun by up to about half a second on a large image.
-/// The first scene ollev keeps is shown at once, and a newer one after each second of tracing.
-const BUDGET: Budget = Budget { slice: 0.1, partial_every: 1. };
+/// Ten milliseconds of tracing per evaluation, to fit a frame with its render; ollev's checkpoints overrun it by up to about
+/// half a second on a large image. Each evaluation shows the newest scene ollev keeps.
+const SLICE: Duration = Duration::from_millis(10);
 
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 ///
@@ -79,16 +79,18 @@ fn vectorize(
 		path_gradients: *path_gradients.element(),
 	};
 	let max_pixels = usize::try_from(*max_pixels.element()).ok().filter(|&pixels| pixels > 0);
-	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, max_pixels, trace, BUDGET);
+	let runtime = runtime.element();
+	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, max_pixels, trace, SLICE, runtime.clock());
 	if let Poll::Partial(_) = state {
 		// The task's end bumps this node's generation, so the editor evaluates the graph again and the next slice runs
-		runtime.element().spawn(*_source.element(), Box::pin(async {}));
+		trace.ask_next(runtime.spawn(*_source.element(), Box::pin(async {})));
 	}
 	state
 }
 
 /// One slice of the trace of `image` held in `slot`, which starts it when the slot holds no trace of these inputs.
-fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: ollev::Stages, max_pixels: Option<usize>, slot: &TraceSlot, budget: Budget) -> Poll<List<Graphic>> {
+#[allow(clippy::too_many_arguments)]
+fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: ollev::Stages, max_pixels: Option<usize>, slot: &TraceSlot, slice: Duration, clock: &dyn Clock) -> Poll<List<Graphic>> {
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let raster = image.element();
 	let (width, height) = (raster.width as usize, raster.height as usize);
@@ -126,20 +128,32 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 
 	// The traced coordinates are in pixels, while the image's transform maps the unit square onto the document
 	let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
-	slot.poll(hasher.finish(), budget, start, |model| convert::model_to_graphic(model, pixels_to_document))
+	slot.poll(hasher.finish(), slice, clock, start, |model| convert::model_to_graphic(model, pixels_to_document))
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
 	use core_types::Color;
-	use core_types::runtime::{AsyncRuntime, Clock, Spawn, Task};
+	use core_types::runtime::{AsyncRuntime, Spawn, Task};
 	use raster_types::Image;
 	use std::sync::{Arc, Mutex};
 	use std::task::{Context, Waker};
 
-	/// Slices short enough that every image takes several, each showing the scene where one is offered.
-	const SHORT: Budget = Budget { slice: 0.01, partial_every: 0. };
+	/// Time since the clock was made, as the host's clock tells it.
+	struct InstantClock(std::time::Instant);
+
+	impl Default for InstantClock {
+		fn default() -> Self {
+			Self(std::time::Instant::now())
+		}
+	}
+
+	impl Clock for InstantClock {
+		fn now(&self) -> Duration {
+			self.0.elapsed()
+		}
+	}
 
 	/// An image of `width` by `height` pixels colored by `color` at each pixel's column and row.
 	fn raster(width: u32, height: u32, color: impl Fn(u32, u32) -> Color) -> Item<Raster<CPU>> {
@@ -154,14 +168,14 @@ mod test {
 
 	/// One slice of `image` traced at default settings by the node holding `slot`.
 	fn slice(image: &Item<Raster<CPU>>, slot: &TraceSlot) -> Poll<List<Graphic>> {
-		trace_slice(image, 1., 1., ollev::Stages::ALL, None, slot, SHORT)
+		trace_slice(image, 1., 1., ollev::Stages::ALL, None, slot, SLICE, &InstantClock::default())
 	}
 
 	/// The shapes traced from `image` at `detail` and `tolerance` by a node of its own, slice by slice.
 	fn trace(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64) -> List<Graphic> {
 		let slot = TraceSlot::default();
 		loop {
-			match trace_slice(image, detail, tolerance, ollev::Stages::ALL, None, &slot, SHORT) {
+			match trace_slice(image, detail, tolerance, ollev::Stages::ALL, None, &slot, SLICE, &InstantClock::default()) {
 				Poll::Partial(_) => {}
 				Poll::Final(traced) => return traced,
 				state => panic!("the trace ended in {state:?}"),
@@ -292,18 +306,9 @@ mod test {
 	#[test]
 	fn the_first_evaluation_shows_shapes() {
 		let slot = TraceSlot::default();
-		match trace_slice(&busy(256), 1., 1., ollev::Stages::ALL, None, &slot, BUDGET) {
+		match trace_slice(&busy(256), 1., 1., ollev::Stages::ALL, None, &slot, SLICE, &InstantClock::default()) {
 			Poll::Partial(shown) => assert!(!shown.is_empty(), "the first partial result shows no shapes"),
 			state => panic!("the first slice ended in {state:?}"),
-		}
-	}
-
-	/// Time since the clock was made, as the host's clock tells it.
-	struct InstantClock(std::time::Instant);
-
-	impl Clock for InstantClock {
-		fn now(&self) -> std::time::Duration {
-			self.0.elapsed()
 		}
 	}
 
@@ -316,44 +321,80 @@ mod test {
 		}
 	}
 
+	impl CollectSpawner {
+		/// Polls each spawned task once, telling how many finished.
+		fn drain(&self) -> usize {
+			let tasks = std::mem::take(&mut *self.0.lock().unwrap());
+			tasks
+				.into_iter()
+				.map(|mut task| task.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_ready())
+				.filter(|&ready| ready)
+				.count()
+		}
+	}
+
+	/// A runtime whose tasks are collected, with `SOURCE` live.
+	fn collecting_runtime() -> (Arc<CollectSpawner>, AsyncRuntime) {
+		let spawner = Arc::new(CollectSpawner::default());
+		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(InstantClock::default()));
+		runtime.retain_sources(&[SOURCE]);
+		(spawner, runtime)
+	}
+
+	const SOURCE: SourceId = SourceId(7);
+
+	/// One evaluation of the node holding `slot` on `image`, with every stage on.
+	fn evaluate(slot: &TraceSlot, image: &Item<Raster<CPU>>, runtime: &AsyncRuntime) -> Poll<List<Graphic>> {
+		let on = || Item::new_from_element(true);
+		let (one, handle) = (|| Item::new_from_element(1.), Item::new_from_element(runtime.handle()));
+		vectorize(
+			(),
+			slot,
+			image.clone(),
+			one(),
+			one(),
+			on(),
+			on(),
+			on(),
+			on(),
+			on(),
+			on(),
+			Item::new_from_element(0),
+			handle,
+			Item::new_from_element(SOURCE),
+		)
+	}
+
 	/// Each partial result spawns a task whose end bumps the node's generation, so the editor evaluates the node again.
 	#[test]
 	fn a_partial_result_asks_for_the_next_slice() {
-		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(InstantClock(std::time::Instant::now())));
-		let source = SourceId(7);
-		runtime.retain_sources(&[source]);
-
+		let (spawner, runtime) = collecting_runtime();
 		let (image, slot) = (busy(96), TraceSlot::default());
 		let mut generation = 0;
 		loop {
-			let state = vectorize(
-				(),
-				&slot,
-				image.clone(),
-				Item::new_from_element(1.),
-				Item::new_from_element(1.),
-				Item::new_from_element(true),
-				Item::new_from_element(true),
-				Item::new_from_element(true),
-				Item::new_from_element(true),
-				Item::new_from_element(true),
-				Item::new_from_element(true),
-				Item::new_from_element(0),
-				Item::new_from_element(runtime.handle()),
-				Item::new_from_element(source),
-			);
-			for mut task in std::mem::take(&mut *spawner.0.lock().unwrap()) {
-				assert!(task.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_ready());
-			}
+			let state = evaluate(&slot, &image, &runtime);
 			let partial = matches!(state, Poll::Partial(_));
+			assert_eq!(spawner.drain(), usize::from(partial));
 			generation += u64::from(partial);
-			assert_eq!(&*runtime.snapshot(), &[(source, generation)]);
+			assert_eq!(&*runtime.snapshot(), &[(SOURCE, generation)]);
 			if !partial {
 				assert!(matches!(state, Poll::Final(_)));
 				break;
 			}
 		}
 		assert!(generation > 0, "the trace took a single slice");
+	}
+
+	/// New inputs drop the former trace's request for its next slice, which then asks for no evaluation.
+	#[test]
+	fn new_inputs_drop_the_former_request_for_a_slice() {
+		let (spawner, runtime) = collecting_runtime();
+		let slot = TraceSlot::default();
+		assert!(matches!(evaluate(&slot, &busy(96), &runtime), Poll::Partial(_)));
+		assert!(matches!(evaluate(&slot, &busy(128), &runtime), Poll::Partial(_)));
+
+		assert_eq!(spawner.drain(), 2);
+		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 1)], "the dropped trace's request bumped the generation");
+		assert!(runtime.take_bumped());
 	}
 }

@@ -1,17 +1,11 @@
 use core_types::Poll;
 use core_types::list::List;
+use core_types::runtime::{AbortHandle, Clock};
 use graphic_types::Graphic;
 use ollev::model::Model;
 use std::ops::ControlFlow;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
-
-/// How long one evaluation traces, and how many seconds of tracing pass between two partial scenes shown.
-/// The first partial scene is shown as soon as the trace has one.
-#[derive(Clone, Copy, Debug)]
-pub struct Budget {
-	pub slice: f64,
-	pub partial_every: f64,
-}
+use std::time::Duration;
 
 /// A node's trace, held across its evaluations. Replacing the trace or dropping the last clone of the slot cancels it.
 #[derive(Clone, Default)]
@@ -31,14 +25,29 @@ struct Trace {
 	shown: List<Graphic>,
 	/// The revision of the scene in `shown`, none before the first.
 	revision: Option<u64>,
-	/// Seconds traced since `shown` was converted.
-	unshown: f64,
+	/// The task asking for the next slice, aborted when the trace is dropped so it asks for no evaluation.
+	next: Option<AbortHandle>,
+}
+
+impl Drop for Trace {
+	fn drop(&mut self) {
+		if let Some(next) = &self.next {
+			next.abort();
+		}
+	}
 }
 
 impl TraceSlot {
-	/// Traces one slice of the trace of `inputs`, started by `start` when the slot holds no trace of them (the trace of other
-	/// inputs is dropped). Partial with the latest scene shown, Final once done.
-	pub fn poll(&self, inputs: u64, budget: Budget, start: impl FnOnce() -> Result<ollev::Tracing, ollev::TraceError>, convert: impl Fn(&Model) -> List<Graphic>) -> Poll<List<Graphic>> {
+	/// Traces `slice` of the trace of `inputs` on `clock`, started by `start` when the slot holds no trace of them (the trace
+	/// of other inputs is dropped). Partial with the latest showable scene, Final once done.
+	pub fn poll(
+		&self,
+		inputs: u64,
+		slice: Duration,
+		clock: &dyn Clock,
+		start: impl FnOnce() -> Result<ollev::Tracing, ollev::TraceError>,
+		convert: impl Fn(&Model) -> List<Graphic>,
+	) -> Poll<List<Graphic>> {
 		// The trace is out of the slot during the slice, so a slice that panics leaves the slot empty
 		let mut held = self.lock();
 		let mut trace = match held.take().filter(|trace| trace.inputs == inputs) {
@@ -49,40 +58,27 @@ impl TraceSlot {
 					tracing: Some(tracing),
 					shown: List::new(),
 					revision: None,
-					unshown: budget.partial_every,
+					next: None,
 				},
 				Err(error) => return Poll::fallback(List::new(), error),
 			},
 		};
 
 		if let Some(tracing) = &mut trace.tracing {
-			let started = now();
-			let deadline = started + budget.slice;
-			let (unshown, revision) = (trace.unshown, trace.revision);
-			// A partial is due once the trace has a scene other than the one shown and enough tracing has passed since
-			let due = |progress: &ollev::Progress, time: f64| progress.showable() && Some(progress.revision()) != revision && unshown + time - started >= budget.partial_every;
-			let step = tracing.step(|progress| {
-				let time = now();
-				if time >= deadline || due(progress, time) {
-					ControlFlow::Break(())
-				} else {
-					ControlFlow::Continue(())
-				}
-			});
-			let stepped = now();
-			trace.unshown += stepped - started;
+			let deadline = clock.now() + slice;
+			let step = tracing.step(|_| if clock.now() >= deadline { ControlFlow::Break(()) } else { ControlFlow::Continue(()) });
 			match step {
 				ollev::Step::Done(model) => {
 					trace.shown = convert(&model);
 					trace.tracing = None;
 				}
 				ollev::Step::Paused(progress) => {
-					if due(&progress, stepped)
+					if progress.showable()
+						&& Some(progress.revision()) != trace.revision
 						&& let Some(model) = progress.model()
 					{
 						trace.shown = convert(&model);
 						trace.revision = Some(progress.revision());
-						trace.unshown = 0.;
 					}
 				}
 			}
@@ -94,6 +90,14 @@ impl TraceSlot {
 		};
 		*held = Some(trace);
 		state
+	}
+
+	/// Holds `next`, the task asking for the next slice of the slot's trace, to abort it if the trace is dropped first.
+	pub fn ask_next(&self, next: AbortHandle) {
+		match self.lock().as_mut() {
+			Some(trace) => trace.next = Some(next),
+			None => next.abort(),
+		}
 	}
 
 	fn lock(&self) -> MutexGuard<'_, Option<Trace>> {
@@ -112,17 +116,4 @@ impl TraceSlot {
 		let held = Arc::downgrade(&self.0);
 		move || held.strong_count() == 0
 	}
-}
-
-/// Seconds since an arbitrary start.
-#[cfg(not(target_family = "wasm"))]
-fn now() -> f64 {
-	static START: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
-	START.elapsed().as_secs_f64()
-}
-
-/// Seconds since an arbitrary start.
-#[cfg(target_family = "wasm")]
-fn now() -> f64 {
-	js_sys::Date::now() / 1000.
 }

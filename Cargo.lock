@@ -6663,7 +6663,6 @@ dependencies = [
  "glam 0.33.12",
  "graphene-hash",
  "graphic-types",
- "js-sys",
  "kurbo",
  "log",
  "node-macro",
