@@ -55,30 +55,6 @@ mod editor_commands {
 		PortfolioMessage::AutoSaveAllDocuments.into()
 	}
 
-	fn add_primary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryImport.into()]),
-		}
-	}
-
-	fn add_secondary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryImport.into()]),
-		}
-	}
-
-	fn add_primary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryExport.into()]),
-		}
-	}
-
-	fn add_secondary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryExport.into()]),
-		}
-	}
-
 	fn app_window_direct_input(enabled: bool) -> Message {
 		AppWindowMessage::DirectInput { enabled }.into()
 	}
@@ -521,6 +497,35 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Outline in the viewport the layer under the pointer in the Layers panel, or nothing once the pointer leaves it.
+	fn set_layers_panel_hovered_layer(id: Option<u64>) -> Message {
+		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
+	}
+
+	/// Select exactly the given nodes.
+	fn select_nodes(ids: Vec<u64>) -> Message {
+		NodeGraphMessage::SelectedNodesSet {
+			nodes: ids.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Select a node in the document network and open the node graph centered on it.
+	fn show_node_in_graph(node_id: u64) -> Message {
+		DocumentMessage::ShowNodeInGraph { node_id: NodeId(node_id) }.into()
+	}
+
+	/// Modify the selection based on the node clicked in the chain feeding a layer, with the same <kbd>Ctrl</kbd> and <kbd>Shift</kbd> behavior as selecting layers.
+	fn select_chain_node(layer: u64, node_id: u64, ctrl: bool, shift: bool) -> Message {
+		DocumentMessage::SelectChainNode {
+			layer: NodeId(layer),
+			node_id: NodeId(node_id),
+			ctrl,
+			shift,
+		}
+		.into()
+	}
+
 	/// Deselect all layers
 	fn deselect_all_layers() -> Message {
 		DocumentMessage::DeselectAllLayers.into()
@@ -540,11 +545,33 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers.
-	fn reorder_properties_section(node_id: u64, insert_index: usize) -> Message {
-		DocumentMessage::ReorderPropertiesSection {
+	/// Move nodes together into a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn move_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::MoveChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+		}
+		.into()
+	}
+
+	/// Insert and select copies of nodes together in a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn duplicate_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::DuplicateChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+			select_copies: true,
+		}
+		.into()
+	}
+
+	/// Reorder a draggable Inspector section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_inspector_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
+		DocumentMessage::ReorderInspectorSection {
 			node_id: NodeId(node_id),
 			insert_index,
+			duplicate,
 		}
 		.into()
 	}
@@ -675,9 +702,14 @@ mod editor_commands {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel
-	fn toggle_node_properties_section_expanded(id: u64) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) }.into()
+	/// Collapse or expand a node's section in the Inspector, or recursively every section in its layer's chain
+	fn toggle_node_inspector_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id: NodeId(id), recursive }.into()
+	}
+
+	/// Expand or collapse a layer's chain into a row per node in the Layers panel
+	fn toggle_layer_chain_expanded(id: u64) -> Message {
+		DocumentMessage::ToggleLayerChainExpanded { layer_id: NodeId(id) }.into()
 	}
 
 	/// Delete a layer or node given its node ID
@@ -710,7 +742,7 @@ mod editor_commands {
 		DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer }.into()
 	}
 
-	/// Set the name of an import or export
+	/// Set the name of an import.
 	fn set_import_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
@@ -719,13 +751,116 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name of an export
+	/// Set the name of an export.
 	fn set_export_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
 			index: ImportOrExport::Export(index),
 		}
 		.into()
+	}
+
+	/// Set the description of an import.
+	fn set_import_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Import(index),
+		}
+		.into()
+	}
+
+	/// Set the description of an export.
+	fn set_export_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Export(index),
+		}
+		.into()
+	}
+
+	/// Remove an import, or hide it if it's the primary import.
+	fn remove_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Remove an export, or hide it if it's the primary export.
+	fn remove_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
+	}
+
+	/// Move an import to the front so it becomes the primary import.
+	fn make_import_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move an export to the front so it becomes the primary export.
+	fn make_export_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move the primary import to the first secondary import, leaving the primary empty.
+	fn make_import_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Move the primary export to the first secondary export, leaving the primary empty.
+	fn make_export_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Show an import on its subgraph node as an input connector, or else as a parameter in the Inspector.
+	fn set_import_exposed(index: usize, exposed: bool) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::ExposeEncapsulatingInput { input_index: index, exposed }.into(),
+			]),
+		}
+	}
+
+	/// Insert a Passthrough node that takes over the wires an import feeds.
+	fn add_import_passthrough(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddImportPassthrough { import_index: index }.into()]),
+		}
+	}
+
+	/// Disconnect every wire an import feeds.
+	fn disconnect_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Disconnect the wire feeding an export.
+	fn disconnect_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
 	}
 }
 

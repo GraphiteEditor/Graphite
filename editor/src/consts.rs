@@ -37,20 +37,15 @@ pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
 pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
 pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
+/// How long a dragged wire must rest over a node before the node reveals its hidden inputs the wire could connect to.
+pub const WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS: u64 = 250;
 
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
-/// These are layers whose bounding boxes are used for alignment.
-pub const MAX_ALIGNMENT_CANDIDATES: usize = 100;
-/// These are layers that are used for the layer snapper.
-pub const MAX_SNAP_CANDIDATES: usize = 10;
-/// These are points (anchors and bounding box corners etc.) in the layer snapper.
-pub const MAX_LAYER_SNAP_POINTS: usize = 100;
 
 pub const DRAG_THRESHOLD: f64 = 1.;
 
 // TRANSFORMING LAYER
-pub const ROTATE_INCREMENT: f64 = 15.;
 pub const SCALE_INCREMENT: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
 pub const NUDGE_AMOUNT: f64 = 1.;
@@ -112,7 +107,6 @@ pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const DRILL_THROUGH_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
-pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SEGMENT_INSERTION_DISTANCE: f64 = 5.;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
@@ -130,9 +124,6 @@ pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
 // SPLINE TOOL
 pub const PATH_JOIN_THRESHOLD: f64 = 5.;
 
-// LINE TOOL
-pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
-
 // BRUSH TOOL
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const BRUSH_SIZE_DEFAULT: f64 = 40.;
@@ -143,11 +134,10 @@ pub const BRUSH_FLOW_DEFAULT: f64 = 100.;
 pub const EYEDROPPER_PREVIEW_AREA_RESOLUTION: u32 = 11;
 
 // GIZMOS
-pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
+pub const SPIRAL_END_HOVER_RADIUS: f64 = 8.;
 pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION: f64 = 1.2;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH: f64 = 10.;
-pub const ARC_SNAP_THRESHOLD: f64 = 5.;
 pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
@@ -187,6 +177,14 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
+pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
+
+// FONTS
+/// How long a font catalog request may go unanswered before another can be sent.
+pub const FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS: u64 = 60_000;
+/// How long to wait after a failed font catalog request before sending another.
+pub const FONT_CATALOG_RETRY_DELAY_MILLISECONDS: u64 = 10_000;
 
 // UI
 pub const UI_SCALE_DEFAULT: f64 = 1.;

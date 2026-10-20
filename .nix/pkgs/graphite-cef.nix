@@ -30,12 +30,13 @@ pkgs.cef-binary.overrideAttrs {
   postInstall = ''
     rm -r $out/* $out/.* || true
     strip ./Release/*.so*
-    mv ./Release/* $out/
+    mkdir $out/lib
+    mv ./Release/* $out/lib/
     find "./Resources/locales" -maxdepth 1 -type f ! -name 'en-US.pak' -delete
-    mv ./Resources/* $out/
-    mv ./include $out/
+    mv ./Resources/* $out/lib/
+    mv ./include $out/lib/
 
-    cat ./CREDITS.html | ${pkgs.xz}/bin/xz -9 -e -c > $out/CREDITS.html.xz
+    cat ./CREDITS.html | ${pkgs.xz}/bin/xz -9 -e -c > $out/lib/CREDITS.html.xz
 
     echo '${
       builtins.toJSON {
@@ -43,6 +44,6 @@ pkgs.cef-binary.overrideAttrs {
         name = builtins.baseNameOf url;
         sha1 = "";
       }
-    }' > $out/archive.json
+    }' > $out/lib/archive.json
   '';
 }

@@ -9,7 +9,8 @@ pub struct OverlaysMessageContext<'a> {
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct OverlaysMessageHandler {
-	pub overlay_providers: HashSet<OverlayProvider>,
+	/// In the order they were added, which is the order they draw in.
+	pub overlay_providers: Vec<OverlayProvider>,
 	#[cfg(target_family = "wasm")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	#[cfg(target_family = "wasm")]
@@ -63,6 +64,13 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							viewport: *viewport,
 						},
 					});
+					responses.add(DocumentMessage::LayersPanelHoverOverlays {
+						context: OverlayContext {
+							render_context: canvas_context.clone(),
+							visibility_settings: visibility_settings.clone(),
+							viewport: *viewport,
+						},
+					});
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
@@ -80,6 +88,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
+					responses.add(DocumentMessage::LayersPanelHoverOverlays { context: overlay_context.clone() });
 
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));
@@ -92,10 +101,12 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 				let _ = (responses, visibility_settings, viewport);
 			}
 			OverlaysMessage::AddProvider { provider: message } => {
-				self.overlay_providers.insert(message);
+				// A provider added again moves to the end, so it draws on top from then on
+				self.overlay_providers.retain(|provider| !std::ptr::fn_addr_eq(*provider, message));
+				self.overlay_providers.push(message);
 			}
 			OverlaysMessage::RemoveProvider { provider: message } => {
-				self.overlay_providers.remove(&message);
+				self.overlay_providers.retain(|provider| !std::ptr::fn_addr_eq(*provider, message));
 			}
 		}
 	}

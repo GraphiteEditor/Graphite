@@ -62,7 +62,7 @@ mod blend_std {
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
-#[node_macro::node(category("Raster"), cfg(feature = "std"))]
+#[node_macro::node(category("Raster"), icon("NodeMix"), cfg(feature = "std"))]
 fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
@@ -97,7 +97,7 @@ fn mix<T: Blend<Color> + Send>(
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorOverlay"), shader_node(PerPixelAdjust))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(

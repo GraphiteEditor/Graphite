@@ -1,5 +1,6 @@
 use crate::consts::DEFAULT_STROKE_WIDTH;
 use crate::messages::clipboard::utility_types::{ClipboardContent, ClipboardContentRaw, ClipboardItem, ClipboardLayer, ClipboardResource, ResourceData};
+use crate::messages::portfolio::document::SelectionParts;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -79,23 +80,18 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 			}
 
 			ClipboardMessage::CopyLayers => {
-				if current_tool == &ToolType::Path {
+				let Some(active_document) = portfolio.active_document() else { return };
+
+				// The Path tool copies the points it's editing in the viewport
+				if current_tool == &ToolType::Path && !active_document.graph_view_overlay_open() {
 					responses.add(PathToolMessage::Copy);
 					return;
 				}
 
-				let Some(active_document) = portfolio.active_document_id.and_then(|id| portfolio.documents.get_mut(&id)) else {
-					return;
-				};
+				let SelectionParts { layers, chain_nodes, other_nodes } = active_document.partition_selection();
+				let mut items = Vec::new();
 
-				if active_document.graph_view_overlay_open() {
-					responses.add(NodeGraphMessage::Copy);
-					return;
-				}
-
-				let mut buffer = Vec::new();
-
-				let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
+				let mut ordered_last_elements = layers;
 				ordered_last_elements.sort_by_key(|layer| {
 					let Some(parent) = layer.parent(active_document.metadata()) else { return usize::MAX };
 					DocumentMessageHandler::get_calculated_insert_index(active_document.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
@@ -123,38 +119,69 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						.collect::<Vec<_>>();
 					tree_path.reverse();
 
-					buffer.push(ClipboardLayer {
+					items.push(ClipboardItem::Layer(ClipboardLayer {
 						nodes: active_document.network_interface.copy_nodes(&copy_ids, &[]).collect(),
 						visible: active_document.network_interface.selected_nodes().layer_visible(layer, &active_document.network_interface),
 						locked: active_document.network_interface.selected_nodes().layer_locked(layer, &active_document.network_interface),
 						collapsed: active_document.collapsed.0.contains(&tree_path),
-					});
+					}));
 				}
 
-				responses.add(ClipboardMessage::WriteItems {
-					items: buffer.into_iter().map(ClipboardItem::Layer).collect(),
-				});
+				let copies = chain_nodes
+					.iter()
+					.filter_map(|node_id| active_document.network_interface.copy_chain_node(node_id, &[]))
+					.collect::<Vec<_>>();
+				if !copies.is_empty() {
+					items.push(ClipboardItem::ChainNodes(copies));
+				}
+
+				// Other nodes are kept under their own IDs, so a paste can tell when it's over the same nodes
+				if !other_nodes.is_empty() {
+					let copy_ids = active_document.with_layer_content(&other_nodes).into_iter().map(|node_id| (node_id, node_id)).collect();
+					let nodes = active_document.network_interface.copy_nodes(&copy_ids, active_document.selection_network_path()).collect();
+					items.push(ClipboardItem::Nodes(nodes));
+				}
+
+				responses.add(ClipboardMessage::WriteItems { items });
 			}
 			ClipboardMessage::CutLayers => {
-				if current_tool == &ToolType::Path {
+				let Some(active_document) = portfolio.active_document() else { return };
+
+				if current_tool == &ToolType::Path && !active_document.graph_view_overlay_open() {
 					responses.add(PathToolMessage::Cut);
 					return;
 				}
 
-				if let Some(active_document) = portfolio.active_document()
-					&& active_document.graph_view_overlay_open()
-				{
-					responses.add(NodeGraphMessage::Cut);
+				let SelectionParts { layers, chain_nodes, other_nodes } = active_document.partition_selection();
+				responses.add(ClipboardMessage::CopyLayers);
+
+				// Layers and other nodes go along with what only they use, while chain nodes go alone so pasting them can wire back to what fed them
+				let deleted_with_children = layers.iter().map(|layer| layer.to_node()).chain(other_nodes).collect::<Vec<_>>();
+				if deleted_with_children.is_empty() && chain_nodes.is_empty() {
 					return;
 				}
-
-				responses.add(ClipboardMessage::CopyLayers);
-				responses.add(DocumentMessage::DeleteSelectedLayers);
+				responses.add(DocumentMessage::AddTransaction);
+				if !deleted_with_children.is_empty() {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: deleted_with_children,
+						delete_children: true,
+					});
+				}
+				if !chain_nodes.is_empty() {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: chain_nodes,
+						delete_children: false,
+					});
+				}
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SelectedNodesUpdated);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			ClipboardMessage::WriteItems { items } => {
 				let has_content = items.iter().any(|item| match item {
 					ClipboardItem::Layer(entry) => !entry.nodes.is_empty(),
 					ClipboardItem::Nodes(nodes) => !nodes.is_empty(),
+					ClipboardItem::ChainNodes(copies) => !copies.is_empty(),
 					ClipboardItem::Vector(vector) => !vector.is_empty(),
 					ClipboardItem::Resource(_) => true,
 				});
@@ -167,6 +194,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					match item {
 						ClipboardItem::Layer(entry) => entry.nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
 						ClipboardItem::Nodes(nodes) => nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
+						ClipboardItem::ChainNodes(copies) => copies.iter().for_each(|copy| network_interface::collect_template_resources(&copy.template, &mut resource_ids)),
 						ClipboardItem::Vector(_) | ClipboardItem::Resource(_) => {}
 					}
 				}
@@ -227,6 +255,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 
 				let mut layers = Vec::new();
 				let mut node_groups = Vec::new();
+				let mut chain_node_groups = Vec::new();
 				let mut vectors = Vec::new();
 				let mut resources = Vec::new();
 				for item in items {
@@ -243,6 +272,12 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 								template.normalize_stored_types();
 							}
 							node_groups.push(nodes);
+						}
+						ClipboardItem::ChainNodes(mut copies) => {
+							for copy in &mut copies {
+								copy.template.normalize_stored_types();
+							}
+							chain_node_groups.push(copies);
 						}
 						ClipboardItem::Vector(vector) => vectors.push(vector),
 						ClipboardItem::Resource(resource) => resources.push(resource),
@@ -279,7 +314,10 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					responses.add(ClipboardMessage::PasteLayers { entries: layers });
 				}
 				for nodes in node_groups {
-					responses.add(NodeGraphMessage::InsertNodes { nodes });
+					responses.add(DocumentMessage::PasteNodes { nodes });
+				}
+				for copies in chain_node_groups {
+					responses.add(DocumentMessage::PasteChainNodes { copies });
 				}
 				for paths in vectors {
 					responses.add(ClipboardMessage::PasteVectors { paths });
@@ -302,7 +340,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						.collect::<Vec<_>>();
 					parent_tree_path.reverse();
 
-					let mut all_new_ids = Vec::new();
 					let mut layers = Vec::new();
 
 					let mut added_nodes = false;
@@ -320,8 +357,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							responses.add(DocumentMessage::AddTransaction);
 							added_nodes = true;
 						}
-
-						all_new_ids.extend(new_ids.values().copied());
 
 						responses.add(NodeGraphMessage::AddNodes { nodes: entry.nodes, new_ids });
 						responses.add(NodeGraphMessage::MoveLayerToStack { layer, parent, insert_index: 0 });
@@ -351,22 +386,24 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					}
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: all_new_ids });
+					responses.add(NodeGraphMessage::SelectedNodesSet {
+						nodes: layers.iter().map(|layer| layer.to_node()).collect(),
+					});
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![PortfolioMessage::CenterLayers { layers }.into()],
 					});
 				}
 			}
 			ClipboardMessage::PasteVectors { paths } => {
-				// If using Path tool then send the operation to Path tool
+				// The Path tool pastes points into the path it's editing in the viewport
 				// TODO: Consider if this is actually the correct place to put this logic
 				// TODO: Consider making paste in general go through the current tool, so that the tool can decide what to do
-				if *current_tool == ToolType::Path {
+				if *current_tool == ToolType::Path && portfolio.active_document().is_some_and(|document| !document.graph_view_overlay_open()) {
 					responses.add(PathToolMessage::Paste { paths });
 					return;
 				}
 
-				// If not using Path tool, create new layers and add paths into those
+				// Otherwise, create new layers and add paths into those
 				if let Some(document) = portfolio.active_document() {
 					let mut layers = Vec::new();
 

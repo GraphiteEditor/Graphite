@@ -68,6 +68,8 @@ pub enum FrontendMessage {
 	SendUIMetadata {
 		#[serde(rename = "nodeDescriptions")]
 		node_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeIcons")]
+		node_icons: Vec<(String, IconName)>,
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},

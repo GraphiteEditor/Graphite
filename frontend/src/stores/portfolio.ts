@@ -35,11 +35,11 @@ if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
-export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
+export const inspectorLayout = makeLayoutStore("inspectorLayout");
 export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
 export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
-export const layersPanelControlBarRightLayout = makeLayoutStore("layersPanelControlBarRightLayout");
-export const layersPanelBottomBarLayout = makeLayoutStore("layersPanelBottomBarLayout");
+export const layersPanelBottomBarLeftLayout = makeLayoutStore("layersPanelBottomBarLeftLayout");
+export const layersPanelBottomBarRightLayout = makeLayoutStore("layersPanelBottomBarRightLayout");
 
 // Each panel layout has its own dedicated store so a layout update only re-renders that panel's consumers.
 // Putting them at module scope (not inside the component) lets them survive a Svelte remount during a
@@ -135,9 +135,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(welcomeScreenButtonsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("PropertiesPanel", async (data) => {
+	subscriptions.subscribeLayoutUpdate("Inspector", async (data) => {
 		await tick();
-		patchLayoutStore(propertiesPanelLayout, data);
+		patchLayoutStore(inspectorLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
@@ -150,14 +150,14 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(layersPanelControlBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelControlBarRightLayout, data);
+		patchLayoutStore(layersPanelBottomBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelBottomBarLayout, data);
+		patchLayoutStore(layersPanelBottomBarRightLayout, data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
@@ -190,11 +190,11 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
-	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+	subscriptions.unsubscribeLayoutUpdate("Inspector");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 }

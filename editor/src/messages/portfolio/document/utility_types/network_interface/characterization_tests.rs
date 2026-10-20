@@ -1,8 +1,12 @@
-use super::{InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, OutputConnector, Previewing, RootNode, TransactionStatus};
-use crate::messages::portfolio::document::node_graph::utility_types::Direction;
+use super::{
+	ChainInsertionPoint, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector,
+	Previewing, RootNode, TransactionStatus,
+};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
+use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNodeImplementation, NodeInput};
 use graphene_std::uuid::NodeId;
 
 fn assert_invariants(editor: &EditorTestUtils, context: &str) {
@@ -291,6 +295,580 @@ async fn chain_membership_follows_wiring() {
 	assert_invariants(&editor, "after forming and breaking a chain");
 }
 
+fn fill_definition() -> DefinitionIdentifier {
+	DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER)
+}
+
+/// Builds a layer fed by the chain `near <- far <- source` (a generator fixed at the upstream end), with an outside node also wired into the near node's second input.
+async fn layer_with_chain(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId, NodeId, NodeId) {
+	let layer = editor.create_node_by_name_at(merge_definition(), 30, 10).await;
+	let near = editor.create_node_by_name_at(fill_definition(), 23, 10).await;
+	let far = editor.create_node_by_name_at(fill_definition(), 16, 10).await;
+	let source = editor.create_node_by_name_at(rectangle_definition(), 9, 10).await;
+	let outside = editor.create_node_by_name_at(rectangle_definition(), 16, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&layer, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(near), &InputConnector::layer_secondary_input(layer), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(far), &InputConnector::primary_input(near), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(source), &InputConnector::primary_input(far), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(outside), &InputConnector::node_at_index(near, 1), &[]);
+
+	(layer, near, far, source, outside)
+}
+
+/// The layer from `layer_with_chain` placed in an artboard, making it part of the layer structure that the Layers panel and clipboard act on.
+async fn layer_with_chain_in_artboard(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId, NodeId, NodeId) {
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let nodes = layer_with_chain(editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(nodes.0, network_interface), artboard_layer, 0, &[]);
+
+	nodes
+}
+
+fn chain_of(network_interface: &NodeNetworkInterface, layer: NodeId) -> Vec<NodeId> {
+	network_interface.upstream_flow_back_from_nodes(vec![layer], &[], FlowType::HorizontalFlow).skip(1).collect()
+}
+
+#[tokio::test]
+async fn reordering_chain_nodes_keeps_the_source_at_the_upstream_end() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+
+	// Gap 2 is upstream of both reorderable nodes, beside the fixed source
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.reorder_chain_nodes(&[near], 2, &[]);
+	assert_eq!(chain_of(network_interface, layer), vec![far, near, source]);
+
+	assert_invariants(&editor, "after reordering a chain node");
+}
+
+#[tokio::test]
+async fn duplicating_chain_nodes_inserts_copies_that_keep_their_other_wires() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, outside) = layer_with_chain(&mut editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.duplicate_chain_nodes(&[near], Some((layer, 2)), &[]);
+
+	let chain = chain_of(network_interface, layer);
+	assert_eq!(chain.len(), 4, "The copy should join the chain");
+	assert_eq!(
+		(chain[0], chain[1], chain[3]),
+		(near, far, source),
+		"The originals should keep their places, with the source still at the end"
+	);
+
+	let copy = chain[2];
+	assert!(network_interface.is_chain(&copy, &[]), "The copy should be positioned as a chain node");
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(copy, 1), &[]),
+		Some(&NodeInput::node(outside, 0)),
+		"The copy should keep its original's other wires"
+	);
+
+	assert_invariants(&editor, "after duplicating a chain node");
+}
+
+#[tokio::test]
+async fn duplicating_chain_nodes_in_place_one_at_a_time_interleaves_the_copies() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let near_copy = network_interface.duplicate_chain_nodes(&[near], None, &[]);
+	let far_copy = network_interface.duplicate_chain_nodes(&[far], None, &[]);
+	assert_eq!((near_copy.len(), far_copy.len()), (1, 1));
+
+	// Each copy lands just downstream of its own original
+	assert_eq!(chain_of(network_interface, layer), vec![near_copy[0], near, far_copy[0], far, source]);
+
+	assert_invariants(&editor, "after duplicating chain nodes in place");
+}
+
+#[tokio::test]
+async fn pasting_a_chain_node_at_another_layers_chain_end_keeps_only_wires_that_exist() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, near, _, _, outside) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	let copy = network_interface.copy_chain_node(&near, &[]).expect("The chain node should be copyable");
+
+	// Pasted while the outside node exists, the copy stays wired to it
+	let pasted = network_interface.paste_into_chain(ChainInsertionPoint::BesideLayer(other_layer), vec![copy.clone()], &[]);
+	assert_eq!(chain_of(network_interface, other_layer), pasted, "The copy should form the other layer's chain");
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(pasted[0], 1), &[]),
+		Some(&NodeInput::node(outside, 0))
+	);
+
+	// Pasted where the outside node is missing, the copy takes the value it had
+	network_interface.delete_nodes(vec![outside], false, &[]);
+	let pasted_again = network_interface.paste_into_chain(ChainInsertionPoint::BesideLayer(other_layer), vec![copy], &[]);
+	assert_eq!(
+		chain_of(network_interface, other_layer),
+		vec![pasted_again[0], pasted[0]],
+		"Pasting at the chain's end should go beside the layer"
+	);
+	assert!(
+		matches!(
+			network_interface.input_from_connector(&InputConnector::node_at_index(pasted_again[0], 1), &[]),
+			Some(NodeInput::Value { .. })
+		),
+		"A wire to a missing node should become its fallback value"
+	);
+
+	assert_invariants(&editor, "after pasting chain nodes");
+}
+
+#[tokio::test]
+async fn cutting_a_chain_node_and_pasting_it_back_keeps_its_wires() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, outside) = layer_with_chain_in_artboard(&mut editor).await;
+
+	// Cutting removes just the node, keeping the node that fed its second input
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
+	let clipboard = editor
+		.handle_message(ClipboardMessage::CutLayers)
+		.await
+		.into_iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+			_ => None,
+		})
+		.expect("Cutting a chain node should write it to the clipboard");
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(chain_of(network_interface, layer), vec![far, source], "Cutting should close the chain around the node");
+	assert!(network_interface.document_node(&outside, &[]).is_some(), "Cutting should keep what fed the node's other inputs");
+
+	// Pasting with the layer selected puts the node back beside the layer, wired as before
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }).await;
+	editor
+		.handle_message(ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(clipboard),
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	let chain = chain_of(network_interface, layer);
+	assert_eq!(chain.len(), 3, "The pasted node should join the chain");
+	assert_eq!(chain[1..], [far, source], "The pasted node should go beside the layer");
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(chain[0], 1), &[]),
+		Some(&NodeInput::node(outside, 0)),
+		"The pasted node should be wired to what fed it before"
+	);
+	assert_eq!(
+		network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>(),
+		vec![chain[0]],
+		"The pasted node should be selected"
+	);
+
+	assert_invariants(&editor, "after cutting and pasting a chain node");
+}
+
+#[tokio::test]
+async fn pasted_chain_nodes_go_beside_their_originals_or_pair_with_a_new_selection() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain_in_artboard(&mut editor).await;
+	let copy = editor.active_document().network_interface.copy_chain_node(&near, &[]).expect("The chain node should be copyable");
+
+	// Over the same selection that was copied, the copy goes beside its original
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![near] }).await;
+	editor.handle_message(DocumentMessage::PasteChainNodes { copies: vec![copy.clone()] }).await;
+	let chain = chain_of(&editor.active_document().network_interface, layer);
+	let first_copy = chain[0];
+	assert_eq!(chain, vec![first_copy, near, far, source], "The copy should go beside the node it was copied from");
+
+	// Over a different selection of the same size, the copy pairs with that node instead
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![far] }).await;
+	editor.handle_message(DocumentMessage::PasteChainNodes { copies: vec![copy] }).await;
+	let chain = chain_of(&editor.active_document().network_interface, layer);
+	let second_copy = chain[2];
+	assert_eq!(chain, vec![first_copy, near, second_copy, far, source], "The copy should go beside the newly selected node");
+	assert_eq!(
+		editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>(),
+		vec![second_copy],
+		"The pasted copy should become the selection"
+	);
+
+	assert_invariants(&editor, "after pasting chain nodes over a selection");
+}
+
+#[tokio::test]
+async fn moving_a_chain_node_to_another_layer_closes_the_gap_it_leaves() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	network_interface.move_chain_nodes(&[near], other_layer, 0, &[]);
+
+	assert_eq!(chain_of(network_interface, layer), vec![far, source], "The source chain should close up around the moved node");
+	assert_eq!(chain_of(network_interface, other_layer), vec![near], "The moved node should form the other layer's chain");
+
+	assert_invariants(&editor, "after moving a chain node between layers");
+}
+
+#[tokio::test]
+async fn a_chain_node_reading_from_a_layer_joins_its_chain_only_as_an_unwired_copy() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain(&mut editor).await;
+	let other_layer = editor.create_node_by_name_at(merge_definition(), 30, 30).await;
+
+	// The other layer feeds the near node's second input, so its chain taking the near node with that wire would close a cycle
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&other_layer, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(other_layer), &InputConnector::node_at_index(near, 1), &[]);
+
+	network_interface.move_chain_nodes(&[near], other_layer, 0, &[]);
+	assert_eq!(chain_of(network_interface, layer), vec![near, far, source], "A refused move should leave the node in its own chain");
+	assert!(chain_of(network_interface, other_layer).is_empty(), "A refused move should leave the other chain as it was");
+
+	let copies = network_interface.duplicate_chain_nodes(&[near], Some((other_layer, 0)), &[]);
+	assert_eq!(chain_of(network_interface, other_layer), copies, "The copy should join the other chain");
+	assert!(
+		matches!(network_interface.input_from_connector(&InputConnector::node_at_index(copies[0], 1), &[]), Some(NodeInput::Value { .. })),
+		"The copy's wire from the layer it joined should fall back to a value"
+	);
+
+	assert_invariants(&editor, "after chain edits that would close a cycle");
+}
+
+#[tokio::test]
+async fn duplicating_a_mixed_graph_selection_stacks_the_layers_and_offsets_the_other_nodes() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let (layer, near, _, _, _) = layer_with_chain(&mut editor).await;
+	let loose = editor.create_node_by_name_at(rectangle_definition(), 40, 40).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let artboard_layer = LayerNodeIdentifier::new(artboard, network_interface);
+	network_interface.move_layer_to_stack(LayerNodeIdentifier::new(layer, network_interface), artboard_layer, 0, &[]);
+
+	// The selected chain node comes along with its layer's copy, so only the loose node gets an offset copy of its own
+	editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer, near, loose] }).await;
+	editor.handle_message(NodeGraphMessage::DuplicateSelectedNodes).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let children = artboard_layer.children(network_interface.document_metadata()).map(|child| child.to_node()).collect::<Vec<_>>();
+	assert_eq!(children.len(), 2, "The layer's copy should join the stack beside it");
+	let layer_copy = *children.iter().find(|child| **child != layer).unwrap();
+	assert_eq!(chain_of(network_interface, layer_copy).len(), 3, "The layer's copy should bring its own chain");
+
+	let selected = network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>();
+	assert_eq!(selected.len(), 2, "Only the layer's copy and the loose node's copy should be selected");
+	assert!(selected.contains(&layer_copy), "The layer's copy should be selected");
+	let loose_copy = *selected.iter().find(|node| **node != layer_copy).unwrap();
+	assert_eq!(
+		network_interface.position(&loose_copy, &[]),
+		network_interface.position(&loose, &[]).map(|position| position + IVec2::new(2, 2))
+	);
+
+	assert_invariants(&editor, "after duplicating a mixed selection of layers and nodes");
+}
+
+/// A generator feeding three nodes in a row through their primary inputs, outside any layer.
+async fn floating_flow(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId, NodeId) {
+	let generator = editor.create_node_by_name_at(rectangle_definition(), 0, 40).await;
+	let first = editor.create_node_by_name_at(fill_definition(), 7, 40).await;
+	let middle = editor.create_node_by_name_at(fill_definition(), 14, 40).await;
+	let last = editor.create_node_by_name_at(fill_definition(), 21, 40).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.create_wire(&OutputConnector::primary_output(generator), &InputConnector::primary_input(first), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(first), &InputConnector::primary_input(middle), &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(middle), &InputConnector::primary_input(last), &[]);
+
+	(generator, first, middle, last)
+}
+
+async fn duplicate_selection(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> Vec<NodeId> {
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+	editor.handle_message(DocumentMessage::DuplicateSelectedLayers).await;
+	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
+}
+
+fn primary_input_of(network_interface: &NodeNetworkInterface, node_id: NodeId) -> Option<NodeInput> {
+	network_interface.input_from_connector(&InputConnector::primary_input(node_id), &[]).cloned()
+}
+
+#[tokio::test]
+async fn duplicating_a_node_inside_a_flow_puts_its_copy_right_after_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, middle, last) = floating_flow(&mut editor).await;
+
+	let copies = duplicate_selection(&mut editor, vec![middle]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		primary_input_of(network_interface, copies[0]),
+		Some(NodeInput::node(middle, 0)),
+		"The copy should be fed by the original"
+	);
+	assert_eq!(
+		primary_input_of(network_interface, last),
+		Some(NodeInput::node(copies[0], 0)),
+		"The copy should feed what the original fed"
+	);
+
+	assert_invariants(&editor, "after duplicating a node inside a flow");
+}
+
+#[tokio::test]
+async fn duplicating_the_end_of_a_flow_extends_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, _, last) = floating_flow(&mut editor).await;
+
+	let copies = duplicate_selection(&mut editor, vec![last]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+	assert_eq!(
+		primary_input_of(&editor.active_document().network_interface, copies[0]),
+		Some(NodeInput::node(last, 0)),
+		"The copy should extend the flow from the original"
+	);
+
+	assert_invariants(&editor, "after duplicating the end of a flow");
+}
+
+#[tokio::test]
+async fn duplicating_a_solo_node_or_a_generator_makes_an_offset_copy_outside_the_flow() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (generator, first, _, _) = floating_flow(&mut editor).await;
+	let solo = editor.create_node_by_name_at(fill_definition(), 0, 60).await;
+
+	let copies = duplicate_selection(&mut editor, vec![generator, solo]).await;
+	assert_eq!(copies.len(), 2, "Both copies should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		primary_input_of(network_interface, first),
+		Some(NodeInput::node(generator, 0)),
+		"The generator should still feed the flow"
+	);
+	for copy in copies {
+		let original = if network_interface.reference(&copy, &[]) == network_interface.reference(&generator, &[]) {
+			generator
+		} else {
+			solo
+		};
+		assert_eq!(
+			network_interface.position(&copy, &[]),
+			network_interface.position(&original, &[]).map(|position| position + IVec2::new(2, 2)),
+			"A copy outside the flow should sit offset from its original"
+		);
+		assert!(
+			!matches!(primary_input_of(network_interface, copy), Some(NodeInput::Node { .. })),
+			"A copy outside the flow should not be wired into it"
+		);
+	}
+
+	assert_invariants(&editor, "after duplicating nodes outside any flow");
+}
+
+#[tokio::test]
+async fn duplicating_a_floating_layer_in_a_stack_puts_its_copy_above_it_with_its_content() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, _, _, _) = layer_with_chain(&mut editor).await;
+	let layer_above = editor.create_node_by_name_at(merge_definition(), 30, 0).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.set_to_node_or_layer(&layer_above, &[], true);
+	network_interface.create_wire(&OutputConnector::primary_output(layer), &InputConnector::primary_input(layer_above), &[]);
+
+	let copies = duplicate_selection(&mut editor, vec![layer]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.is_layer(&copies[0], &[]), "The copy should be a layer");
+	assert_eq!(
+		primary_input_of(network_interface, copies[0]),
+		Some(NodeInput::node(layer, 0)),
+		"The copy should be stacked on the original"
+	);
+	assert_eq!(
+		primary_input_of(network_interface, layer_above),
+		Some(NodeInput::node(copies[0], 0)),
+		"The layer above should now be stacked on the copy"
+	);
+	assert_eq!(chain_of(network_interface, copies[0]).len(), 3, "The copy should bring a copy of the layer's chain");
+
+	assert_invariants(&editor, "after duplicating a floating layer in a stack");
+}
+
+#[tokio::test]
+async fn duplicating_a_solo_floating_layer_makes_an_offset_copy_with_its_content() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, _, _, _) = layer_with_chain(&mut editor).await;
+
+	let copies = duplicate_selection(&mut editor, vec![layer]).await;
+	assert_eq!(copies.len(), 1, "The copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.is_layer(&copies[0], &[]), "The copy should be a layer");
+	assert_eq!(chain_of(network_interface, copies[0]).len(), 3, "The copy should bring a copy of the layer's chain");
+	assert_eq!(
+		network_interface.position(&copies[0], &[]),
+		network_interface.position(&layer, &[]).map(|position| position + IVec2::new(2, 2)),
+		"The copy should sit offset from the original"
+	);
+
+	assert_invariants(&editor, "after duplicating a solo floating layer");
+}
+
+async fn copy_in_graph(editor: &mut EditorTestUtils, nodes: Vec<NodeId>) -> String {
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+	editor
+		.handle_message(NodeGraphMessage::Copy)
+		.await
+		.into_iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerClipboardWrite { content } => Some(content),
+			_ => None,
+		})
+		.expect("Copying nodes should write them to the clipboard")
+}
+
+async fn paste(editor: &mut EditorTestUtils, clipboard: String) -> Vec<NodeId> {
+	editor
+		.handle_message(ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(clipboard),
+		})
+		.await;
+	editor.active_document().network_interface.selected_nodes().selected_nodes().copied().collect()
+}
+
+#[tokio::test]
+async fn pasting_graph_nodes_over_their_copied_selection_duplicates_them_into_the_flow() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, middle, last) = floating_flow(&mut editor).await;
+
+	let clipboard = copy_in_graph(&mut editor, vec![middle]).await;
+	let pasted = paste(&mut editor, clipboard).await;
+	assert_eq!(pasted.len(), 1, "The pasted copy should become the selection");
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		primary_input_of(network_interface, pasted[0]),
+		Some(NodeInput::node(middle, 0)),
+		"The copy should be fed by the original"
+	);
+	assert_eq!(
+		primary_input_of(network_interface, last),
+		Some(NodeInput::node(pasted[0], 0)),
+		"The copy should feed what the original fed"
+	);
+
+	assert_invariants(&editor, "after pasting graph nodes over their copied selection");
+}
+
+#[tokio::test]
+async fn pasting_graph_nodes_over_an_empty_selection_puts_loose_copies_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (_, _, middle, last) = floating_flow(&mut editor).await;
+
+	let clipboard = copy_in_graph(&mut editor, vec![middle]).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() }).await;
+	let pasted = paste(&mut editor, clipboard).await;
+	assert_eq!(pasted.len(), 1, "The pasted copy should become the selection");
+
+	let document = editor.active_document();
+	assert!(
+		!matches!(primary_input_of(&document.network_interface, pasted[0]), Some(NodeInput::Node { .. })),
+		"The pasted copy should be outside any flow"
+	);
+	assert_eq!(
+		primary_input_of(&document.network_interface, last),
+		Some(NodeInput::node(middle, 0)),
+		"The flow should be left as it was"
+	);
+	assert!(document.graph_view_overlay_open(), "The graph should open to show the pasted copy");
+
+	assert_invariants(&editor, "after pasting graph nodes over an empty selection");
+}
+
+#[tokio::test]
+async fn pasting_chain_nodes_over_an_empty_selection_puts_loose_copies_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, far, source, _) = layer_with_chain_in_artboard(&mut editor).await;
+	let copy = editor.active_document().network_interface.copy_chain_node(&near, &[]).expect("The chain node should be copyable");
+
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() }).await;
+	editor.handle_message(DocumentMessage::PasteChainNodes { copies: vec![copy] }).await;
+
+	let document = editor.active_document();
+	let pasted = document.network_interface.selected_nodes().selected_nodes().copied().collect::<Vec<_>>();
+	assert_eq!(pasted.len(), 1, "The pasted copy should become the selection");
+	assert!(
+		!matches!(primary_input_of(&document.network_interface, pasted[0]), Some(NodeInput::Node { .. })),
+		"The pasted copy should be outside any flow"
+	);
+	assert_eq!(chain_of(&document.network_interface, layer), vec![near, far, source], "The chain should be left as it was");
+	assert!(document.graph_view_overlay_open(), "The graph should open to show the pasted copy");
+
+	assert_invariants(&editor, "after pasting chain nodes over an empty selection");
+}
+
+#[tokio::test]
+async fn a_copied_layer_pastes_the_same_whether_copied_in_the_graph_or_not() {
+	for copied_in_graph in [false, true] {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (layer, _, _, _, _) = layer_with_chain_in_artboard(&mut editor).await;
+
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: copied_in_graph }).await;
+		let clipboard = copy_in_graph(&mut editor, vec![layer]).await;
+		editor.handle_message(DocumentMessage::GraphViewOverlay { open: false }).await;
+		let pasted = paste(&mut editor, clipboard).await;
+		assert_eq!(pasted.len(), 1, "Only the pasted layer should be selected (copied in the graph: {copied_in_graph})");
+
+		// The copy goes on top of the stack its original is in, bringing its chain along
+		let network_interface = &editor.active_document().network_interface;
+		let metadata = network_interface.document_metadata();
+		let parent = LayerNodeIdentifier::new(layer, network_interface).parent(metadata);
+		assert!(parent.is_some(), "The original layer should be in the layer structure");
+		assert_eq!(
+			parent.and_then(|parent| parent.children(metadata).next()).map(|child| child.to_node()),
+			Some(pasted[0]),
+			"The pasted layer should go on top of the stack (copied in the graph: {copied_in_graph})"
+		);
+		assert_eq!(
+			chain_of(network_interface, pasted[0]).len(),
+			3,
+			"The pasted layer should bring its chain (copied in the graph: {copied_in_graph})"
+		);
+
+		assert_invariants(&editor, "after pasting a copied layer");
+	}
+}
+
 #[tokio::test]
 async fn move_layer_to_stack_builds_the_layer_stack() {
 	let mut editor = EditorTestUtils::create();
@@ -407,6 +985,326 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 }
 
 #[tokio::test]
+async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	// Dropping an import or export just below itself leaves it where it was
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.reorder_import(1, 2, &path);
+	assert!(
+		network_interface.reference(&merge, &[]).is_some(),
+		"dropping an import back where it was should leave the subgraph matching its definition"
+	);
+	network_interface.reorder_export(0, 1, &path);
+	assert!(
+		network_interface.reference(&merge, &[]).is_some(),
+		"dropping an export back where it was should leave the subgraph matching its definition"
+	);
+
+	network_interface.add_import(TaggedValue::Number(1.), false, -1, "Parameter", "", &path);
+	let parameter_index = network_interface.number_of_imports(&path) - 1;
+	let previous_primary_name = network_interface.displayed_import_name(0, &path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::ReorderImport {
+			start_index: parameter_index,
+			end_index: 0,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	let new_primary = network_interface
+		.document_node(&merge, &[])
+		.and_then(|node| node.inputs.first())
+		.expect("Merge should have a primary input");
+	assert!(new_primary.is_exposed(), "a parameter moved to the front should be exposed as the primary import");
+	assert_eq!(network_interface.displayed_import_name(0, &path), "Parameter");
+	assert_eq!(
+		network_interface.displayed_import_name(1, &path),
+		previous_primary_name,
+		"the previous primary should become the first secondary import"
+	);
+
+	assert_invariants(&editor, "after reordering a parameter to be the primary import");
+}
+
+#[tokio::test]
+async fn moving_the_primary_import_among_the_secondary_ones_leaves_an_empty_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.add_import(TaggedValue::Number(1.), true, -1, "Parameter", "", &path);
+	let primary_name = network_interface.displayed_import_name(0, &path);
+	let secondary_name = network_interface.displayed_import_name(1, &path);
+	let fed_by_primary = fed_inputs(&editor, &OutputConnector::Import(0), &path);
+
+	// Drop the primary between the first and second secondary imports
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 2 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_import(&path), "the primary's place should be left empty");
+	assert_eq!(network_interface.displayed_import_name(1, &path), secondary_name, "the first secondary import should stay secondary");
+	assert_eq!(network_interface.displayed_import_name(2, &path), primary_name, "the moved import should land where it was dropped");
+	assert_eq!(
+		fed_inputs(&editor, &OutputConnector::Import(2), &path),
+		fed_by_primary,
+		"the moved import should keep feeding what it fed"
+	);
+
+	assert_invariants(&editor, "after moving the primary import among the secondary ones");
+}
+
+#[tokio::test]
+async fn the_primary_import_can_become_the_first_secondary_and_an_empty_primary_can_be_filled() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let network_interface = &editor.active_document().network_interface;
+	let primary_name = network_interface.displayed_import_name(0, &path);
+	let secondary_name = network_interface.displayed_import_name(1, &path);
+	let import_count = network_interface.number_of_imports(&path);
+
+	// Dropped just below the separator, the primary becomes the first secondary import
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_import(&path), "the primary's place should be left empty");
+	assert_eq!(network_interface.displayed_import_name(1, &path), primary_name, "the moved import should be the first secondary one");
+	assert_eq!(network_interface.displayed_import_name(2, &path), secondary_name);
+
+	// Dropping a secondary import into the empty primary fills it, rather than keeping the empty one as a secondary import
+	editor.handle_message(NodeGraphMessage::ReorderImport { start_index: 2, end_index: 0 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(!network_interface.hidden_primary_import(&path), "the primary should be filled");
+	assert_eq!(network_interface.displayed_import_name(0, &path), secondary_name);
+	assert_eq!(network_interface.displayed_import_name(1, &path), primary_name);
+	assert_eq!(network_interface.number_of_imports(&path), import_count, "the empty primary should be gone rather than pushed down");
+
+	assert_invariants(&editor, "after filling an empty primary import");
+}
+
+#[tokio::test]
+async fn the_primary_export_can_become_the_first_secondary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::AddSecondaryExport).await;
+	let network_interface = &editor.active_document().network_interface;
+	let primary_source = network_interface.upstream_output_connector(&InputConnector::Export(0), &path);
+	assert!(primary_source.is_some(), "Merge's primary export should be wired");
+
+	editor.handle_message(NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.hidden_primary_export(&path), "the primary's place should be left empty");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::Export(1), &path),
+		primary_source,
+		"the moved export should be the first secondary one"
+	);
+	assert_eq!(network_interface.number_of_exports(&path), 3, "the empty primary should be added in front of both exports");
+
+	assert_invariants(&editor, "after making the primary export secondary");
+}
+
+/// The inputs fed by `output_connector` in the network at `network_path`, in no particular order.
+fn fed_inputs(editor: &EditorTestUtils, output_connector: &OutputConnector, network_path: &[NodeId]) -> HashSet<InputConnector> {
+	let network_interface = &editor.active_document().network_interface;
+	network_interface
+		.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned())
+		.flatten()
+		.unwrap_or_default()
+		.into_iter()
+		.collect()
+}
+
+#[tokio::test]
+async fn adding_an_import_passthrough_takes_over_the_wires_the_import_fed() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let content_import = OutputConnector::Import(1);
+	let fed_before = fed_inputs(&editor, &content_import, &path);
+	assert!(!fed_before.is_empty(), "Merge's content import should feed its subgraph: fixture is wrong");
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::AddImportPassthrough { import_index: 1 }).await;
+
+	let fed_after = fed_inputs(&editor, &content_import, &path);
+	let [InputConnector::Node { node_id: passthrough, input_index: 0 }] = fed_after.into_iter().collect::<Vec<_>>()[..] else {
+		panic!("the import should feed only the Passthrough's primary input");
+	};
+	assert_eq!(
+		fed_inputs(&editor, &OutputConnector::primary_output(passthrough), &path),
+		fed_before,
+		"the Passthrough should feed what the import fed"
+	);
+
+	assert_invariants(&editor, "after adding an import passthrough");
+}
+
+#[tokio::test]
+async fn editing_import_and_export_descriptions_stores_them_on_the_subgraph_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::SetImportExportDescription {
+			description: "The artwork to add.".to_string(),
+			index: ImportOrExport::Import(1),
+		})
+		.await;
+	editor
+		.handle_message(NodeGraphMessage::SetImportExportDescription {
+			description: "The combined result.".to_string(),
+			index: ImportOrExport::Export(0),
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let import_description = network_interface.persistent_input_metadata(&merge, 1, &[]).map(|metadata| metadata.input_description.as_str());
+	assert_eq!(import_description, Some("The artwork to add."));
+	assert_eq!(network_interface.output_description(&merge, 0, &[]), "The combined result.");
+
+	assert_invariants(&editor, "after editing import and export descriptions");
+}
+
+#[tokio::test]
+async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_primary() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let import_count = editor.active_document().network_interface.number_of_imports(&path);
+
+	// With a primary, the only one is past the last import
+	let network_interface = &editor.active_document().network_interface;
+	let empty_connectors = network_interface.empty_import_export_connectors(true, &path);
+	assert_eq!(empty_connectors.iter().map(|(index, _)| *index).collect::<Vec<_>>(), vec![import_count]);
+
+	// The attribute name given to Merge's interior Write Attribute node
+	let write_attribute = network_interface
+		.nested_network(&path)
+		.and_then(|network| {
+			network
+				.nodes
+				.iter()
+				.find(|(_, node)| node.implementation == DocumentNodeImplementation::ProtoNode(graphene_std::graphic::write_attribute::IDENTIFIER))
+		})
+		.map(|(node_id, _)| *node_id)
+		.expect("Merge should contain a Write Attribute node");
+	let value_input = InputConnector::node_at_index(write_attribute, 1);
+	let Some(NodeInput::Value { tagged_value, .. }) = network_interface.input_from_connector(&value_input, &path) else {
+		panic!("Merge's Write Attribute node should be given its attribute name as a value");
+	};
+	let displaced_value = (**tagged_value).clone();
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor
+		.handle_message(NodeGraphMessage::AddImportAndConnect {
+			import_index: import_count,
+			input_connector: value_input,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "the next import should be added");
+	assert!(
+		fed_inputs(&editor, &OutputConnector::Import(import_count), &path).contains(&value_input),
+		"the new import should be wired to the input"
+	);
+	let network_interface = &editor.active_document().network_interface;
+	let new_input = network_interface.input_from_connector(&InputConnector::node_at_index(merge, import_count), &[]);
+	assert!(
+		matches!(new_input, Some(NodeInput::Value { tagged_value, exposed: true }) if **tagged_value == displaced_value),
+		"the new import should take over the value its wire displaced, found {new_input:?}"
+	);
+	assert_eq!(
+		network_interface.displayed_import_name(import_count, &path),
+		displaced_value.ty().nested_type().to_string(),
+		"an import without a name should be shown by the type it took over"
+	);
+
+	// Emptying the primary adds a connector in its place, which fills it again from an input that's already wired
+	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 0, exposed: false }).await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.empty_import_export_connectors(true, &path).iter().any(|(index, _)| *index == 0));
+
+	// The content given to Merge's interior Write Attribute node by its Into Group node
+	let wired_input = InputConnector::node_at_index(write_attribute, 0);
+	assert!(
+		matches!(network_interface.input_from_connector(&wired_input, &path), Some(NodeInput::Node { .. })),
+		"Merge's Write Attribute node should be wired its content from another node"
+	);
+	editor
+		.handle_message(NodeGraphMessage::AddImportAndConnect {
+			import_index: 0,
+			input_connector: wired_input,
+		})
+		.await;
+	let network_interface = &editor.active_document().network_interface;
+	assert!(!network_interface.hidden_primary_import(&path), "the empty primary should be filled");
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "filling the empty primary shouldn't add another import");
+
+	let drawn_wire = network_interface
+		.network_metadata(&path)
+		.and_then(|network_metadata| network_metadata.transient_metadata.wires.borrow().get(&wired_input).cloned())
+		.and_then(|wire| wire.wire_path_update);
+	let current_wire = network_interface.wire_path_from_input(&wired_input, GraphWireStyle::default(), false, &path);
+	assert_eq!(drawn_wire, current_wire, "the input's wire should be redrawn from its new import");
+
+	assert_invariants(&editor, "after adding imports from the empty connectors");
+}
+
+#[tokio::test]
+async fn showing_a_secondary_import_in_the_inspector_keeps_its_wires_in_the_subgraph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	let content_import = OutputConnector::Import(1);
+	let fed_before = fed_inputs(&editor, &content_import, &path);
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+	editor.handle_message(NodeGraphMessage::ExposeEncapsulatingInput { input_index: 1, exposed: false }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let content_input = network_interface
+		.input_from_connector(&InputConnector::node_at_index(merge, 1), &[])
+		.expect("Merge should have a content input");
+	assert!(!content_input.is_exposed(), "the subgraph node should show the input as a parameter instead of a connector");
+	assert_eq!(
+		fed_inputs(&editor, &content_import, &path),
+		fed_before,
+		"the import should still feed the same inputs within the subgraph"
+	);
+
+	assert_invariants(&editor, "after showing a secondary import in the Inspector");
+}
+
+#[tokio::test]
 async fn toggle_preview_transitions_with_a_connected_export() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -508,6 +1406,71 @@ fn replacing_inputs_keeps_the_loaded_wire_cache_exact() {
 	// The wire returns at a new index, as a migration restores the inputs it keeps
 	network_interface.set_input(&InputConnector::node_at_index(node, 2), NodeInput::node(source, 0), &[]);
 	assert_interface_invariants(&network_interface, "after rewiring the source into the replaced node");
+}
+
+// A chain node is placed only by its link into the next node, so it leaves the chain only when replacing inputs drops that link
+#[test]
+fn replacing_inputs_breaks_a_chain_only_where_its_link_is_dropped() {
+	let (layer, chain_node, side_consumer) = (NodeId(1), NodeId(2), NodeId(3));
+	let mut network_interface = NodeNetworkInterface::default();
+	network_interface.insert_node(
+		layer,
+		NodeTemplate {
+			inputs: vec![value_input(); 2],
+			node_type_metadata: NodeTypePersistentMetadata::layer(IVec2::ZERO),
+			..Default::default()
+		},
+		&[],
+	);
+	let two_exports = NodeNetworkTemplate {
+		exports: vec![NodeInput::value(TaggedValue::None, true), value_input()],
+		..Default::default()
+	};
+	network_interface.insert_node(
+		chain_node,
+		NodeTemplate {
+			inputs: vec![value_input()],
+			implementation: NodeTemplateImplementation::Network(two_exports),
+			output_names: vec![String::new(); 2],
+			node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, 0)),
+			..Default::default()
+		},
+		&[],
+	);
+	network_interface.insert_node(
+		side_consumer,
+		NodeTemplate {
+			inputs: vec![value_input(); 2],
+			..Default::default()
+		},
+		&[],
+	);
+
+	// Only consumers of the primary output keep a node out of a chain, so one feeding a parameter from its second output still joins
+	network_interface.set_input(&InputConnector::node_at_index(side_consumer, 1), NodeInput::node(chain_node, 1), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(layer, 1), NodeInput::node(chain_node, 0), &[]);
+	assert!(network_interface.is_chain(&chain_node, &[]), "the node should join the layer's chain");
+	let chain_position = network_interface.position(&chain_node, &[]);
+
+	let replacement = || {
+		let mut template = NodeTemplate {
+			inputs: vec![value_input(); 2],
+			..Default::default()
+		};
+		template.normalize_input_metadata();
+		template
+	};
+
+	network_interface.replace_inputs(&side_consumer, &[], &mut replacement());
+	assert!(
+		network_interface.is_chain(&chain_node, &[]),
+		"dropping the wire from its second output should leave the node in the chain"
+	);
+
+	network_interface.replace_inputs(&layer, &[], &mut replacement());
+	assert!(!network_interface.is_chain(&chain_node, &[]), "dropping its link into the layer should take the node out of the chain");
+	assert_eq!(network_interface.position(&chain_node, &[]), chain_position, "the node should stay where the chain placed it");
+	assert_interface_invariants(&network_interface, "after replacing the inputs around a chain node");
 }
 
 #[test]
@@ -627,4 +1590,237 @@ fn adding_an_import_ahead_of_a_wired_input_keeps_the_loaded_wire_cache_exact() {
 	assert_interface_invariants(&network_interface, "after adding an import ahead of a wired input");
 	let consumers = network_interface.outward_wires(&[]).and_then(|wires| wires.get(&OutputConnector::node(source, 0)).cloned());
 	assert_eq!(consumers.as_deref(), Some([InputConnector::node_at_index(node, 1)].as_slice()));
+}
+
+#[tokio::test]
+async fn a_subgraph_output_fed_by_a_value_can_produce_its_type() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.add_export(TaggedValue::Number(1.), -1, "", &path);
+	network_interface.add_export(TaggedValue::None, -1, "", &path);
+	let number_output = OutputConnector::node(merge, network_interface.number_of_exports(&path) - 2);
+	let placeholder_output = OutputConnector::node(merge, network_interface.number_of_exports(&path) - 1);
+
+	let number_type = TaggedValue::Number(1.).ty().nested_type().clone();
+	assert_eq!(
+		network_interface.possible_output_types(&number_output, &[]),
+		vec![number_type],
+		"an export given a value can only produce its type"
+	);
+	assert!(
+		network_interface.possible_output_types(&placeholder_output, &[]).is_empty(),
+		"a new export's empty placeholder shouldn't be listed as a type it can produce"
+	);
+}
+
+/// Presses at `from` and releases at `to`, both in the graph space of the network at `path`, as the node graph receives a mouse drag.
+async fn drag_in_graph(editor: &mut EditorTestUtils, path: &[NodeId], from: DVec2, to: DVec2) {
+	let node_graph_to_viewport = editor
+		.active_document()
+		.network_interface
+		.network_metadata(path)
+		.expect("the network should have metadata")
+		.persistent_metadata
+		.navigation_metadata
+		.node_graph_to_viewport;
+	let (from, to) = (node_graph_to_viewport.transform_point2(from), node_graph_to_viewport.transform_point2(to));
+
+	editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_from_an_empty_input_connects_to_the_output_it_is_dropped_on() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+
+	let network_interface = &editor.active_document().network_interface;
+	assert!(network_interface.upstream_output_connector(&fill_content, &[]).is_none(), "Fill's content should start out unwired");
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let output_position = network_interface
+		.output_position(&OutputConnector::node(rectangle, 0), &[])
+		.expect("Rectangle's output should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, output_position).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"the wire dragged back from Fill's content should connect it to Rectangle's output"
+	);
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_onto_empty_space_wires_the_node_picked_from_the_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	let input_position = editor
+		.active_document()
+		.network_interface
+		.input_position(&fill_content, &[])
+		.expect("Fill's content should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, input_position - DVec2::new(240., 0.)).await;
+
+	let context_menu = editor.active_document().node_graph_handler.context_menu.clone();
+	assert!(
+		matches!(context_menu.map(|menu| menu.context_menu_data), Some(ContextMenuData::CreateNode { compatible_type: None })),
+		"dropping the wire on empty space should open the node menu without filtering it"
+	);
+
+	let rectangle = NodeId::new();
+	editor
+		.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(rectangle),
+			node_type: rectangle_definition(),
+			xy: Some((0, 0)),
+			add_transaction: true,
+		})
+		.await;
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"the node picked from the menu should be wired into Fill's content"
+	);
+}
+
+#[tokio::test]
+async fn a_wire_dragged_backward_from_the_dimmed_export_connector_adds_an_export() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let export_count = network_interface.number_of_exports(&path);
+	let (new_export_index, empty_export_position) = *network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	let result_output = network_interface
+		.upstream_output_connector(&InputConnector::Export(0), &path)
+		.expect("Merge's export should be fed by a node inside it");
+	let result_position = network_interface
+		.output_position(&result_output, &path)
+		.expect("the node feeding Merge's export should have an output position");
+
+	drag_in_graph(&mut editor, &path, empty_export_position, result_position).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_exports(&path), export_count + 1, "the export should be added");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::Export(new_export_index), &path),
+		Some(result_output),
+		"the added export should be wired from the output the wire was dropped on"
+	);
+
+	assert_invariants(&editor, "after dragging a wire backward from the dimmed export connector");
+}
+
+#[tokio::test]
+async fn clicking_an_empty_input_without_dragging_leaves_it_and_opens_no_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	let input_position = editor
+		.active_document()
+		.network_interface
+		.input_position(&fill_content, &[])
+		.expect("Fill's content should have a position");
+
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+
+	assert!(editor.active_document().node_graph_handler.context_menu.is_none(), "a click shouldn't open the node menu");
+	assert!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]).is_none(),
+		"a click shouldn't wire anything into Fill's content"
+	);
+}
+
+#[tokio::test]
+async fn leaving_a_subgraph_ends_the_wire_and_closes_the_node_menu_left_open_in_it() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let (_, empty_export_position) = *editor
+		.active_document()
+		.network_interface
+		.empty_import_export_connectors(false, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an export");
+	drag_in_graph(&mut editor, &path, empty_export_position, empty_export_position - DVec2::new(240., 0.)).await;
+	assert!(
+		editor.active_document().node_graph_handler.context_menu.is_some(),
+		"dropping the wire on empty space should open the node menu"
+	);
+
+	editor.handle_message(DocumentMessage::ExitNestedNetwork { steps_back: 1 }).await;
+
+	let node_graph_handler = &editor.active_document().node_graph_handler;
+	assert!(node_graph_handler.context_menu.is_none(), "the node menu should close with the subgraph it was opened in");
+	assert!(node_graph_handler.wire_in_progress_from_connector.is_none(), "the wire should end with the subgraph it was dragged in");
+}
+
+#[tokio::test]
+async fn clicking_a_connected_input_leaves_it_connected_when_a_later_wire_is_dragged_away() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	let other_rectangle = editor.create_node_by_name_at(rectangle_definition(), 0, 10).await;
+	let fill = editor.create_node_by_name_at(fill_definition(), 20, 0).await;
+	let fill_content = InputConnector::node_at_index(fill, 0);
+	editor
+		.handle_message(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::node(rectangle, 0),
+			input_connector: fill_content,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let input_position = network_interface.input_position(&fill_content, &[]).expect("Fill's content should have a position");
+	let other_output_position = network_interface
+		.output_position(&OutputConnector::node(other_rectangle, 0), &[])
+		.expect("the other Rectangle's output should have a position");
+
+	// Click Fill's wired content without dragging, then drag a new wire out of the other Rectangle into empty space
+	drag_in_graph(&mut editor, &[], input_position, input_position).await;
+	drag_in_graph(&mut editor, &[], other_output_position, other_output_position + DVec2::new(240., 240.)).await;
+
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&fill_content, &[]),
+		Some(OutputConnector::node(rectangle, 0)),
+		"Fill's content should still be wired from the first Rectangle"
+	);
 }

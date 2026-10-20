@@ -471,8 +471,9 @@ dependencies = [
 
 [[package]]
 name = "cargo-gpu-install"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "668b4bd1b59810c4f907eeb36bb0f0a450c824219b2e599b9b8ef2b3ae056e94"
 dependencies = [
  "anyhow",
  "cargo_metadata 0.21.0",
@@ -828,6 +829,15 @@ name = "constant_time_eq"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+
+[[package]]
+name = "control-protocol"
+version = "0.0.0"
+dependencies = [
+ "glam 0.33.10",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "convert_case"
@@ -2040,6 +2050,7 @@ dependencies = [
  "dyn-any",
  "glam 0.33.10",
  "graph-craft",
+ "graphene-animation",
  "graphene-application-io",
  "graphene-core",
  "graphene-hash",
@@ -2064,6 +2075,17 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
+]
+
+[[package]]
+name = "graphene-animation"
+version = "0.0.0"
+dependencies = [
+ "dyn-any",
+ "glam 0.33.10",
+ "graphene-hash",
+ "kurbo",
+ "serde",
 ]
 
 [[package]]
@@ -2129,6 +2151,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "glam 0.33.10",
+ "graphene-animation",
  "graphene-hash",
  "graphic-types",
  "log",
@@ -2399,6 +2422,7 @@ dependencies = [
  "serde_bytes",
  "serde_json",
  "simplecss",
+ "snapping",
  "spin",
  "thiserror 2.0.18",
  "tokio",
@@ -2990,6 +3014,7 @@ dependencies = [
  "futures",
  "glam 0.33.10",
  "graph-craft",
+ "graphene-animation",
  "graphene-core",
  "graphene-std",
  "gungraun",
@@ -3427,7 +3452,9 @@ name = "math-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
+ "dyn-any",
  "glam 0.33.10",
+ "graphene-core",
  "graphic-types",
  "log",
  "math-parser",
@@ -4400,6 +4427,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
+ "glam 0.33.10",
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
@@ -4622,6 +4650,7 @@ dependencies = [
  "fastnoise-lite",
  "futures",
  "glam 0.33.10",
+ "graphene-core",
  "graphene-hash",
  "graphene-resource",
  "image",
@@ -5039,8 +5068,9 @@ checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 
 [[package]]
 name = "rustc_codegen_spirv-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d703f5624720c5b6012f4b88d6e6766f43ed50d80144eaffd6791c3270754cdc"
 dependencies = [
  "rspirv",
  "semver",
@@ -5591,6 +5621,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "snapping"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "glam 0.33.10",
+ "kurbo",
+]
+
+[[package]]
 name = "socket2"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5632,8 +5671,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-builder"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "57fa119866f0311546e5309b18770b72141c25d185452c11a812be2c7b9d84e9"
 dependencies = [
  "cargo_metadata 0.21.0",
  "log",
@@ -5648,8 +5688,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d98471765e294d4dd6289350e3633b5c5ba57bb382c3287d83e69ee737179e0"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
@@ -5665,8 +5706,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-macros"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "13a6a0d063d4dd003e43818135b7aa4a30c41c48b5d0efe2cac02220448d4f19"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5676,8 +5718,9 @@ dependencies = [
 
 [[package]]
 name = "spirv-std-types"
-version = "0.10.0-alpha.1"
-source = "git+https://github.com/Rust-GPU/rust-gpu.git?rev=2fff75a21a1909945ac85f5818843dd9960004d7#2fff75a21a1909945ac85f5818843dd9960004d7"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "655632248eaaa205cea4656bc73c8285cbd8109fc784010b24ea6bd0bab79ac1"
 
 [[package]]
 name = "stable_deref_trait"
@@ -6876,6 +6919,22 @@ dependencies = [
  "log",
  "once_cell",
  "pkg-config",
+]
+
+[[package]]
+name = "web-editor-driver"
+version = "0.0.0"
+dependencies = [
+ "base64",
+ "clap",
+ "control-protocol",
+ "getrandom 0.3.3",
+ "glam 0.33.10",
+ "image",
+ "interprocess",
+ "serde",
+ "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -1,10 +1,12 @@
 <script lang="ts">
-	import { createEventDispatcher } from "svelte";
+	import { createEventDispatcher, onDestroy } from "svelte";
 	import MenuList from "/src/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
-	import type { MenuListEntry, ActionShortcut } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { openDropdownMenuCount } from "/src/stores/dropdown-menus";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { MenuListEntry, ActionShortcut, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const DASH_ENTRY: MenuListEntry = {
 		value: "",
@@ -21,7 +23,7 @@
 		tooltipCode: "",
 	};
 
-	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number; fileDrop: File }>();
+	const dispatch = createEventDispatcher<{ selectedIndex: number; previewIndex: number; fileDrop: File }>();
 
 	let self: LayoutRow | undefined;
 
@@ -34,74 +36,100 @@
 	export let entriesHash: bigint | undefined = undefined;
 	// Styling
 	export let narrow = false;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
+	export let sizedToSelection = false;
 	// Behavior
 	export let virtualScrolling = false;
-	export let interactive = true;
 	export let takesFileDrop = false;
-	// Sizing
-	export let minWidth = 0;
-	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let activeEntry = makeActiveEntry();
-	let activeEntrySkipWatcher = false;
 	let initialSelectedIndex: number | undefined = undefined;
+	// The entry the open menu last previewed, until it's committed
+	let previewedIndex: number | undefined = undefined;
 	let open = false;
 	let fileDragOver = false;
+	// The width of the menu's widest entry, so the dropdown keeps one width whichever entry is chosen
+	let naturalWidth = 0;
+	let measuredWidth = 0;
+	// When sized to its selection instead, the width it had as a menu opened
+	let heldWidth: number | undefined = undefined;
+	let countedAsOpen = false;
 
 	$: watchSelectedIndex(selectedIndex);
 	$: watchEntries(entries);
-	$: watchActiveEntry(activeEntry);
 	$: watchOpen(open);
+	$: if ($openDropdownMenuCount === 0) naturalWidth = measuredWidth;
+	$: watchOpenDropdownMenuCount($openDropdownMenuCount);
+	$: width = sizedToSelection ? heldWidth : naturalWidth || undefined;
+
+	onDestroy(() => {
+		if (countedAsOpen) openDropdownMenuCount.update((count) => count - 1);
+	});
+
+	function watchOpenDropdownMenuCount(count: number) {
+		if (count === 0) heldWidth = undefined;
+		else if (sizedToSelection && heldWidth === undefined) heldWidth = self?.div?.()?.getBoundingClientRect().width;
+	}
 
 	function watchOpen(open: boolean) {
+		// A preview the menu closes on without committing goes back to the value it opened with
+		if (!open) revertPreview();
 		initialSelectedIndex = open ? selectedIndex : undefined;
+
+		if (open !== countedAsOpen) {
+			openDropdownMenuCount.update((count) => count + (open ? 1 : -1));
+			countedAsOpen = open;
+		}
 	}
 
 	// Called only when `selectedIndex` is changed from outside this component
 	function watchSelectedIndex(_: typeof selectedIndex) {
-		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
 
 	// Called only when `entries` is changed from outside this component
 	function watchEntries(_: typeof entries) {
-		activeEntrySkipWatcher = true;
 		activeEntry = makeActiveEntry();
 	}
 
-	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `watchSelectedIndex()` watcher above (but we want to skip that case)
-	function watchActiveEntry(activeEntry: MenuListEntry) {
-		if (activeEntrySkipWatcher) {
-			activeEntrySkipWatcher = false;
-		} else if (activeEntry !== DASH_ENTRY) {
-			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
-			const index = entries.flat().findIndex((entry) => entry.value === activeEntry.value);
-			if (index !== -1) {
-				dispatch("selectedIndex", index);
-			} else {
-				// eslint-disable-next-line no-console
-				console.error("Selected index not found in entries:", activeEntry);
-			}
-		}
+	function previewEntry(entry: MenuListEntry) {
+		// Opened showing no value, there's none to go back to after a preview
+		if (initialSelectedIndex === undefined) return;
+
+		const index = entryIndex(entry);
+		if (index === undefined) return;
+
+		previewedIndex = index;
+		dispatch("previewIndex", index);
 	}
 
-	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		const index = entries.flat().findIndex((entry) => entry.value === hoveredEntry.value);
+	function commitEntry(entry: MenuListEntry) {
+		const index = entryIndex(entry);
+		if (index === undefined) return;
 
-		if (index !== -1) {
-			dispatch("hoverInEntry", index);
-		} else {
-			// eslint-disable-next-line no-console
-			console.error("Hovered entry not found in entries:", hoveredEntry);
-		}
+		// Undone first, so the history step saved by the commit holds the value from before the menu opened
+		revertPreview();
+
+		activeEntry = entry;
+		dispatch("selectedIndex", index);
 	}
 
-	function dispatchHoverOutEntry() {
-		if (initialSelectedIndex !== undefined) dispatch("hoverOutEntry", initialSelectedIndex);
+	function revertPreview() {
+		if (previewedIndex !== undefined && initialSelectedIndex !== undefined && previewedIndex !== initialSelectedIndex) dispatch("previewIndex", initialSelectedIndex);
+		previewedIndex = undefined;
+	}
+
+	function entryIndex(entry: MenuListEntry): number | undefined {
+		const index = entries.flat().findIndex((candidate) => candidate.value === entry.value);
+		if (index !== -1) return index;
+
+		// eslint-disable-next-line no-console
+		console.error("Dropdown entry not found in entries:", entry);
+		return undefined;
 	}
 
 	function makeActiveEntry(): MenuListEntry {
@@ -111,11 +139,6 @@
 			return allEntries[selectedIndex];
 		}
 		return DASH_ENTRY;
-	}
-
-	function unFocusDropdownBox(e: FocusEvent) {
-		const blurTarget = (e.target instanceof Element ? e.target.closest("[data-dropdown-input]") : undefined) || undefined;
-		if (blurTarget !== self?.div?.()) open = false;
 	}
 
 	function takesDraggedFile(e: DragEvent): boolean {
@@ -154,8 +177,8 @@
 	class="dropdown-input"
 	classes={{ narrow, "file-drag-over": fileDragOver }}
 	styles={{
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+		...(width !== undefined ? { width: `${width}px` } : {}),
+		...widgetSizingStyles(sizing),
 	}}
 	on:dragover={fileDragOverWidget}
 	on:dragleave={fileDragLeaveWidget}
@@ -163,17 +186,7 @@
 	bind:this={self}
 	data-dropdown-input
 >
-	<LayoutRow
-		class="dropdown-box"
-		classes={{ disabled, open }}
-		{tooltipLabel}
-		{tooltipDescription}
-		{tooltipShortcut}
-		on:click={() => !disabled && (open = true)}
-		on:blur={unFocusDropdownBox}
-		tabindex={disabled ? undefined : 0}
-		data-floating-menu-spawner
-	>
+	<LayoutRow class="dropdown-box" classes={{ disabled, open }} {tooltipLabel} {tooltipDescription} {tooltipShortcut} on:click={() => !disabled && (open = true)} data-floating-menu-spawner>
 		{#if activeEntry.icon}
 			<IconLabel class="dropdown-icon" icon={activeEntry.icon} />
 		{/if}
@@ -181,18 +194,18 @@
 		<IconLabel class="dropdown-arrow" icon="DropdownArrow" />
 	</LayoutRow>
 	<MenuList
-		on:naturalWidth={({ detail }) => (minWidth = detail)}
-		on:activeEntry={({ detail }) => (activeEntry = detail)}
-		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
-		on:hoverOutEntry={() => dispatchHoverOutEntry()}
+		on:naturalWidth={({ detail }) => (measuredWidth = detail)}
+		measuresNaturalWidth={!sizedToSelection}
+		on:preview={({ detail }) => previewEntry(detail)}
+		on:activeEntry={({ detail }) => commitEntry(detail)}
 		on:open={({ detail }) => (open = detail)}
 		{open}
-		{activeEntry}
+		activeEntry={activeEntry === DASH_ENTRY ? undefined : activeEntry}
 		{entries}
 		entriesHash={entriesHash || 0n}
 		{drawIcon}
-		{interactive}
 		{virtualScrolling}
+		holdsValue={true}
 		direction="Bottom"
 		scrollableY={true}
 	/>
@@ -201,6 +214,7 @@
 <style lang="scss">
 	.dropdown-input {
 		position: relative;
+		flex: 1 1 auto;
 		--widget-height: 24px;
 
 		&.narrow.narrow {
@@ -226,7 +240,9 @@
 			.dropdown-label {
 				margin: 0;
 				margin-left: 8px;
-				flex: 1 1 100%;
+				flex: 1 1 auto;
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 
 			.dropdown-icon {
@@ -265,5 +281,10 @@
 		.menu-list .floating-menu-container .floating-menu-content {
 			max-height: 400px;
 		}
+	}
+
+	// The row stops clipping so the file drag outline, drawn outside the dropdown, shows in full
+	.widget-span.row:has(> .dropdown-input.file-drag-over) {
+		overflow: visible;
 	}
 </style>

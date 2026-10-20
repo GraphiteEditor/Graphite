@@ -7,7 +7,7 @@ use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 
-#[node_macro::node(category("Repeat"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeat"))]
 async fn repeat<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -52,7 +52,7 @@ async fn repeat<T: Send + Clone + 'static>(
 	result_list
 }
 
-#[node_macro::node(category("Repeat"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeatArray"))]
 pub async fn repeat_array<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -73,7 +73,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	content: impl Node<'n, Context<'static>, Output = List<T>>,
 	#[unit(" px")]
 	#[default(100., 100.)]
-	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
+	// TODO: When using a custom Inspector layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Inspector. Investigation is needed.
 	direction: Item<DVec2>,
 	#[unit("°")]
 	#[range]
@@ -113,7 +113,7 @@ pub async fn repeat_array<T: Send + Clone + 'static>(
 	result_list
 }
 
-#[node_macro::node(category("Repeat"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeatRadial"))]
 async fn repeat_radial<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -170,7 +170,7 @@ async fn repeat_radial<T: Send + Clone + 'static>(
 	result_list
 }
 
-#[node_macro::node(category("Repeat"), name("Repeat on Points"))]
+#[node_macro::node(category("Repeat"), icon("NodeRepeatOnPoints"), name("Repeat on Points"))]
 async fn repeat_on_points<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectVarArgs,
 	points: List<Vector>,
@@ -236,7 +236,6 @@ mod test {
 	use core_types::transform::Footprint;
 	use glam::DVec2;
 	use graphene_core::ReadPositionNode;
-	use graphene_core::extract_xy::{ExtractXyNode, XY};
 	use graphic_types::Vector;
 	use kurbo::Shape;
 	use kurbo::{BezPath, DEFAULT_ACCURACY, Rect};
@@ -275,15 +274,27 @@ mod test {
 		}
 	}
 
+	/// Test helper that extracts the Y component of an upstream node's `Item<DVec2>` output.
+	#[derive(Clone)]
+	struct ExtractYNode<Position>(Position);
+
+	impl<'i, I: Ctx, Position> Node<'i, I> for ExtractYNode<Position>
+	where
+		Position: Node<'i, I, Output = Pin<Box<dyn Future<Output = Item<DVec2>> + 'i + Send>>>,
+	{
+		type Output = Pin<Box<dyn Future<Output = Item<f64>> + 'i + Send>>;
+		fn eval(&'i self, input: I) -> Self::Output {
+			let position = self.0.eval(input);
+			Box::pin(async move { Item::new_from_element(position.await.element().y) })
+		}
+	}
+
 	#[tokio::test]
 	async fn repeat_on_points_test() {
 		let context = OwnedContextImpl::default().into_context();
 		let rect = RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(
-				ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(Item::new_from_element(0_i64))),
-				FutureWrapperNode(Item::new_from_element(XY::Y)),
-			),
+			ExtractYNode(ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(Item::new_from_element(0_i64)))),
 			FutureWrapperNode(Item::new_from_element(2_f64)),
 			FutureWrapperNode(Item::new_from_element(BoxCorners::default())),
 			FutureWrapperNode(Item::new_from_element(false)),

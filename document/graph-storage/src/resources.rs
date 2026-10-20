@@ -18,6 +18,20 @@ pub struct SourceKey {
 pub struct SourceValue {
 	pub source: Value,
 	pub timestamp: TimeStamp,
+	/// A removed source stays as a stamped tombstone, which readers see as absent.
+	#[serde(default)]
+	pub deleted: bool,
+}
+
+impl SourceValue {
+	/// The tombstone of a source removed at `timestamp`.
+	pub fn deleted(timestamp: TimeStamp) -> Self {
+		Self {
+			source: Value::None,
+			timestamp,
+			deleted: true,
+		}
+	}
 }
 
 /// A single content-addressable resource: an ordered, conflict-mergeable chain of fallback sources
@@ -26,8 +40,12 @@ pub struct SourceValue {
 /// resource agree by construction, since the hash is content-derived).
 #[derive(Clone, Debug, Default, PartialEq, Serialize)]
 pub struct ResourceEntry {
+	/// The latest addition or write; see [`Node::presence`](crate::Node).
+	pub(crate) presence: TimeStamp,
 	/// Fallback chain kept sorted by `SourceKey`, so iteration yields highest-priority first.
 	pub sources: Vec<(SourceKey, SourceValue)>,
+	/// When `sources` was last written whole, by an addition; a key the chain lacks is deleted as of then.
+	pub sources_timestamp: TimeStamp,
 	pub hash: Option<ResourceHash>,
 	pub hash_timestamp: TimeStamp,
 }
@@ -39,12 +57,22 @@ impl<'de> Deserialize<'de> for ResourceEntry {
 		// collapse any duplicate keys, keeping the higher-timestamp value (LWW).
 		#[derive(Deserialize)]
 		struct Raw {
+			#[serde(default)]
+			presence: TimeStamp,
 			sources: Vec<(SourceKey, SourceValue)>,
+			#[serde(default)]
+			sources_timestamp: TimeStamp,
 			hash: Option<ResourceHash>,
 			hash_timestamp: TimeStamp,
 		}
 
-		let Raw { mut sources, hash, hash_timestamp } = Raw::deserialize(deserializer)?;
+		let Raw {
+			presence,
+			mut sources,
+			sources_timestamp,
+			hash,
+			hash_timestamp,
+		} = Raw::deserialize(deserializer)?;
 		sources.sort_by_key(|(a, _)| *a);
 		sources.dedup_by(|(later_key, later_value), (kept_key, kept_value)| {
 			// `dedup_by` keeps the first of each run; sorting is stable, so resolve duplicates by LWW.
@@ -57,7 +85,13 @@ impl<'de> Deserialize<'de> for ResourceEntry {
 			true
 		});
 
-		Ok(Self { sources, hash, hash_timestamp })
+		Ok(Self {
+			presence,
+			sources,
+			sources_timestamp,
+			hash,
+			hash_timestamp,
+		})
 	}
 }
 
@@ -68,52 +102,89 @@ impl ResourceEntry {
 	pub fn embedded(hash: ResourceHash, peer: PeerId, timestamp: TimeStamp) -> Self {
 		let embedded = to_value(&graphene_resource::DataSource::Embedded).expect("DataSource::Embedded serializes");
 		let priority = Priority::new(0.).expect("0. is finite");
-		let sources = vec![(SourceKey { priority, peer }, SourceValue { source: embedded, timestamp })];
+		let sources = vec![(
+			SourceKey { priority, peer },
+			SourceValue {
+				source: embedded,
+				timestamp,
+				deleted: false,
+			},
+		)];
 
 		Self {
+			presence: timestamp,
 			sources,
+			sources_timestamp: timestamp,
 			hash: Some(hash),
 			hash_timestamp: timestamp,
 		}
 	}
 
-	/// The source body and timestamp stored under `key`, if any.
+	/// The live source stored under `key`, if any; a tombstone is absent.
 	pub fn source(&self, key: &SourceKey) -> Option<&SourceValue> {
-		self.sources.binary_search_by(|(candidate, _)| candidate.cmp(key)).ok().map(|index| &self.sources[index].1)
+		self.find(key).ok().map(|index| &self.sources[index].1).filter(|value| !value.deleted)
 	}
 
-	/// Insert or LWW-overwrite the entry at `key`. A re-set at an existing key wins only if `value`'s
-	/// timestamp is strictly newer; a fresh key is inserted in sorted position.
-	pub fn set_source(&mut self, key: SourceKey, value: SourceValue) {
-		match self.sources.binary_search_by(|(candidate, _)| candidate.cmp(&key)) {
-			Ok(index) => {
-				if value.timestamp > self.sources[index].1.timestamp {
-					self.sources[index].1 = value;
-				}
-			}
-			Err(index) => self.sources.insert(index, (key, value)),
-		}
+	/// The live sources in precedence order, tombstones skipped.
+	pub(crate) fn live_sources(&self) -> impl Iterator<Item = (&SourceKey, &SourceValue)> {
+		self.sources.iter().filter(|(_, value)| !value.deleted).map(|(key, value)| (key, value))
 	}
 
-	/// Like [`set_source`](Self::set_source) but assigns unconditionally (silent-zone rewind), where the
-	/// precomputed reverse/forward value is authoritative even if its timestamp ties what it replaces.
-	pub fn force_set_source(&mut self, key: SourceKey, value: SourceValue) {
-		match self.sources.binary_search_by(|(candidate, _)| candidate.cmp(&key)) {
+	fn find(&self, key: &SourceKey) -> Result<usize, usize> {
+		self.sources.binary_search_by(|(candidate, _)| candidate.cmp(key))
+	}
+
+	/// The stamp that decides a write to `key`: its entry's, tombstone included, or the chain's floor.
+	fn deciding_timestamp(&self, key: &SourceKey) -> TimeStamp {
+		self.find(key).map_or(self.sources_timestamp, |index| self.sources[index].1.timestamp)
+	}
+
+	fn put(&mut self, key: SourceKey, value: SourceValue) {
+		match self.find(&key) {
 			Ok(index) => self.sources[index].1 = value,
 			Err(index) => self.sources.insert(index, (key, value)),
 		}
 	}
 
-	/// Remove the entry at `key` if its timestamp is strictly older than `timestamp` (LWW). Returns
-	/// whether anything was removed.
-	pub fn remove_source(&mut self, key: &SourceKey, timestamp: TimeStamp) -> bool {
-		match self.sources.binary_search_by(|(candidate, _)| candidate.cmp(key)) {
-			Ok(index) if timestamp > self.sources[index].1.timestamp => {
-				self.sources.remove(index);
-				true
+	/// Writes the chain whole at `timestamp`: the floor deletes every other key without a tombstone per key.
+	pub(crate) fn stamp_sources(&mut self, timestamp: TimeStamp) {
+		self.sources.retain(|(_, value)| !value.deleted);
+		self.sources.iter_mut().for_each(|(_, value)| value.timestamp = timestamp);
+		self.sources_timestamp = timestamp;
+	}
+
+	/// Folds another chain in key by key, as attribute maps merge.
+	pub(crate) fn merge_sources(&mut self, other: Vec<(SourceKey, SourceValue)>, other_floor: TimeStamp) {
+		self.sources.retain(|(_, value)| value.timestamp >= other_floor);
+		for (key, value) in other {
+			match self.find(&key) {
+				Ok(index) if value.timestamp > self.sources[index].1.timestamp => self.sources[index].1 = value,
+				Err(index) if value.timestamp >= self.sources_timestamp => self.sources.insert(index, (key, value)),
+				_ => {}
 			}
-			_ => false,
 		}
+		self.sources_timestamp = self.sources_timestamp.max(other_floor);
+	}
+
+	/// Insert or LWW-overwrite the entry at `key`; a re-set wins only with a strictly newer stamp.
+	pub fn set_source(&mut self, key: SourceKey, value: SourceValue) {
+		if value.timestamp > self.deciding_timestamp(&key) {
+			self.put(key, value);
+		}
+	}
+
+	/// Like [`set_source`](Self::set_source) but assigns unconditionally (silent-zone rewind, or building an entry).
+	pub fn force_set_source(&mut self, key: SourceKey, value: SourceValue) {
+		self.put(key, value);
+	}
+
+	/// Remove the source at `key` if `timestamp` is newer than what decides it, leaving a tombstone. Returns whether it landed.
+	pub fn remove_source(&mut self, key: &SourceKey, timestamp: TimeStamp) -> bool {
+		if timestamp <= self.deciding_timestamp(key) {
+			return false;
+		}
+		self.put(*key, SourceValue::deleted(timestamp));
+		true
 	}
 
 	/// Like [`remove_source`](Self::remove_source) but removes unconditionally (silent-zone rewind).
@@ -130,15 +201,14 @@ impl ResourceEntry {
 	/// True if the chain already carries a `DataSource::Embedded` source. Decodes each source body into
 	/// `DataSource` so a shape change in the serialized form can't slip an embedded source past detection.
 	pub fn has_embedded_source(&self) -> bool {
-		self.sources
-			.iter()
+		self.live_sources()
 			.any(|(_, value)| matches!(from_value::<graphene_resource::DataSource>(&value.source), Ok(graphene_resource::DataSource::Embedded)))
 	}
 
 	/// A `SourceKey` ordered strictly ahead of every current source, so an inserted entry becomes the
 	/// highest-precedence fallback.
 	pub fn highest_precedence_key(&self, peer: PeerId) -> SourceKey {
-		let min_priority = self.sources.first().map(|(key, _)| key.priority.value()).unwrap_or(0.);
+		let min_priority = self.live_sources().next().map(|(key, _)| key.priority.value()).unwrap_or(0.);
 		SourceKey {
 			priority: Priority::new(min_priority - 1.).expect("finite priority minus one is finite"),
 			peer,
@@ -247,12 +317,15 @@ mod tests {
 				SourceValue {
 					source: Value::Float(priority),
 					timestamp: TimeStamp::ORIGIN,
+					deleted: false,
 				},
 			)
 		};
 
 		// Build a deliberately unsorted chain as a literal (bypassing the sorted-insert API), then round-trip it through `Value`.
 		let unsorted = ResourceEntry {
+			presence: TimeStamp::ORIGIN,
+			sources_timestamp: TimeStamp::ORIGIN,
 			sources: vec![source(2.), source(0.), source(1.)],
 			hash: None,
 			hash_timestamp: TimeStamp::ORIGIN,
@@ -277,11 +350,14 @@ mod tests {
 				SourceValue {
 					source: Value::Str(body.into()),
 					timestamp: TimeStamp { counter, peer: PeerId(1) },
+					deleted: false,
 				},
 			)
 		};
 
 		let with_duplicates = ResourceEntry {
+			presence: TimeStamp::ORIGIN,
+			sources_timestamp: TimeStamp::ORIGIN,
 			sources: vec![entry(5, "newer"), entry(1, "older")],
 			hash: None,
 			hash_timestamp: TimeStamp::ORIGIN,

@@ -31,6 +31,8 @@ pub struct NavigationMessageHandler {
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
 	abortable_pan_start: Option<f64>,
+	/// Whether the current drag navigates the artwork behind the open node graph, rather than the graph itself.
+	artwork_behind_graph: bool,
 }
 
 #[message_handler_data]
@@ -45,6 +47,17 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			preferences,
 			viewport,
 		} = context;
+
+		// Until the drag or wheel scroll ends, act on the artwork as if the graph were closed
+		if let NavigationMessage::BeginCanvasPan { artwork_behind_graph }
+		| NavigationMessage::BeginCanvasZoom { artwork_behind_graph }
+		| NavigationMessage::CanvasPanMouseWheel { artwork_behind_graph, .. }
+		| NavigationMessage::CanvasZoomMouseWheel { artwork_behind_graph } = &message
+		{
+			self.artwork_behind_graph = *artwork_behind_graph && graph_view_overlay_open;
+		}
+		let graph_view_overlay_open = graph_view_overlay_open && !self.artwork_behind_graph;
+		let wheel_scroll_on_artwork = self.artwork_behind_graph && matches!(message, NavigationMessage::CanvasPanMouseWheel { .. } | NavigationMessage::CanvasZoomMouseWheel { .. });
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
 			if !graph_view_overlay_open {
@@ -74,7 +87,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 		let old_zoom = ptz.zoom();
 
 		match message {
-			NavigationMessage::BeginCanvasPan => {
+			NavigationMessage::BeginCanvasPan { .. } => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
 				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
@@ -89,9 +102,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
 				};
-				// If the node graph is open, prevent tilt and instead start panning
+				// The node graph can't be tilted, so the tilt shortcut pans the artwork behind it instead
 				if graph_view_overlay_open {
-					responses.add(NavigationMessage::BeginCanvasPan);
+					responses.add(NavigationMessage::BeginCanvasPan { artwork_behind_graph: true });
 				} else {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 					HintData(vec![
@@ -110,7 +123,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					self.finish_operation_with_click = was_dispatched_from_menu;
 				}
 			}
-			NavigationMessage::BeginCanvasZoom => {
+			NavigationMessage::BeginCanvasZoom { .. } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
 				};
@@ -174,7 +187,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				ptz.pan += transformed_delta;
 				responses.add(DocumentMessage::PTZUpdate);
 			}
-			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
+			NavigationMessage::CanvasPanMouseWheel { use_y_as_x, .. } => {
 				// On Mac, the OS already converts Shift+scroll into horizontal scrolling
 				let delta = if use_y_as_x && !Editor::environment().is_mac() {
 					(ipp.mouse.scroll_delta.y, 0.).into()
@@ -182,20 +195,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					ipp.mouse.scroll_delta.as_dvec2()
 				} * -VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
-			}
-			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {
-				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					log::error!("Could not get mutable PTZ in CanvasTiltResetAndZoomTo100Percent");
-					return;
-				};
-				ptz.set_tilt(0.);
-				ptz.set_zoom(1.);
-				if graph_view_overlay_open {
-					responses.add(NodeGraphMessage::UpdateGraphBarRight);
-				} else {
-					responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				}
-				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasTiltSet { angle_radians } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -231,7 +230,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
-			NavigationMessage::CanvasZoomMouseWheel => {
+			NavigationMessage::CanvasZoomMouseWheel { .. } => {
 				let scroll = ipp.mouse.scroll_delta.scroll_delta();
 				let mut zoom_factor = 1. + scroll.abs() * preferences.viewport_zoom_wheel_rate;
 				if ipp.mouse.scroll_delta.y > 0. {
@@ -291,6 +290,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
+			NavigationMessage::EndArtworkBehindGraph => {
+				self.artwork_behind_graph = false;
+			}
 			NavigationMessage::EndCanvasPTZ { abort_transform } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get mutable PTZ in EndCanvasPTZ");
@@ -323,6 +325,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
+				self.artwork_behind_graph = false;
 
 				// Send the final messages to close out the operation
 				responses.add(EventMessage::CanvasTransformed);
@@ -481,6 +484,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				self.mouse_position = ipp.mouse.position;
 			}
+		}
+
+		// Queued behind the wheel scroll's pan or zoom, which still need the artwork as their target
+		if wheel_scroll_on_artwork {
+			responses.add(NavigationMessage::EndArtworkBehindGraph);
 		}
 	}
 

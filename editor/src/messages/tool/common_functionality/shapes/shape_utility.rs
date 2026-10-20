@@ -10,6 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::Inpu
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::common_functionality::transformation_cage::BoundingBoxManager;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
@@ -23,7 +24,10 @@ use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
-use std::f64::consts::{PI, TAU};
+use std::f64::consts::{FRAC_PI_2, PI, TAU};
+
+/// The most points of a shape being drawn that snap, counted from its first.
+const MAX_SNAPPING_SHAPE_POINTS: usize = 16;
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Default, serde::Serialize, serde::Deserialize)]
@@ -132,7 +136,7 @@ pub trait ShapeGizmoHandler {
 	/// Called during a drag interaction to update the shape's parameters in real time.
 	///
 	/// For example, a handle might calculate the distance from the drag start to determine a new radius or update the number of points.
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>);
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>);
 
 	/// Draws the static or hover-dependent overlays associated with the gizmo.
 	///
@@ -391,6 +395,19 @@ pub fn arc_end_points_ignore_layer(radius: f64, start_angle: f64, sweep_angle: f
 	Some((start_point, end_point))
 }
 
+/// How far the pointer must move on screen to turn its angle about a layer's center, in the layer's own space, by a radian.
+/// On a layer scaled evenly, that is its distance from the center.
+pub fn pointer_travel_per_radian(layer_to_viewport: DAffine2, pointer: DVec2) -> f64 {
+	let from_center = pointer - layer_to_viewport.translation;
+	let determinant = layer_to_viewport.matrix2.determinant();
+	if determinant == 0. {
+		return f64::NAN;
+	}
+
+	let in_layer = layer_to_viewport.matrix2.inverse() * from_center;
+	in_layer.length_squared() * determinant.abs() / from_center.length()
+}
+
 /// Calculate the viewport position of a star vertex given its index
 /// Extract the node input values of Circle.
 /// Returns an option of (radius).
@@ -423,6 +440,27 @@ pub fn polygon_vertex_position(viewport: DAffine2, vertex_index: i32, n: u32, ra
 		x: radius * angle.sin(),
 		y: -radius * angle.cos(),
 	})
+}
+
+/// The vertices of a regular polygon as offsets from its center in units of its radius, placed as [`regular_polygon_bezpath`] places them, up to the most that snap.
+pub fn regular_polygon_points(sides: u32) -> Vec<DVec2> {
+	let sides = sides.max(3);
+	let angle_increment = TAU / (sides as f64);
+	(0..sides)
+		.take(MAX_SNAPPING_SHAPE_POINTS)
+		.map(|i| DVec2::from_angle((i as f64) * angle_increment - FRAC_PI_2))
+		.collect()
+}
+
+/// The points of a star as offsets from its center in units of its outer radius, placed as [`star_polygon_bezpath`] places them, up to the most that snap.
+pub fn star_points(sides: u32, inner_radius: f64) -> Vec<DVec2> {
+	let sides = sides.max(2);
+	let angle_increment = 0.5 * TAU / (sides as f64);
+	let point = |i: u32| {
+		let radius = if i.is_multiple_of(2) { 1. } else { inner_radius };
+		radius * DVec2::from_angle((i as f64) * angle_increment - FRAC_PI_2)
+	};
+	(0..sides * 2).take(MAX_SNAPPING_SHAPE_POINTS).map(point).collect()
 }
 
 /// Outlines the geometric shape made by star-node

@@ -29,6 +29,46 @@ pub fn ellipse_path(corner1: DVec2, corner2: DVec2) -> BezPath {
 	path
 }
 
+/// A copy of a node from a layer's chain, which can be inserted into a chain in this or another document.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct ChainNodeCopy {
+	/// The node that was copied.
+	pub source: NodeId,
+	pub template: NodeTemplate,
+	/// The value of each input wired to another node, which the copy takes where that node is missing.
+	pub fallback_values: Vec<(usize, NodeInput)>,
+}
+
+impl ChainNodeCopy {
+	/// The copied node with each of its wired inputs taking its fallback value, placed offset from its original, for pasting outside any flow.
+	pub fn into_loose_template(self) -> NodeTemplate {
+		let mut template = self.template;
+		for (index, fallback_value) in self.fallback_values {
+			if let Some(input) = template.inputs.get_mut(index) {
+				*input = fallback_value;
+			}
+		}
+
+		if let NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+			position: NodePosition::Absolute(position),
+		}) = &mut template.node_type_metadata
+		{
+			*position += IVec2::new(2, 2);
+		}
+
+		template
+	}
+}
+
+/// Where copied nodes go when inserted into a layer's chain.
+#[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum ChainInsertionPoint {
+	/// Beside a node in a layer's chain, just downstream of it.
+	BesideNode(NodeId),
+	/// At the downstream end of a layer's chain, beside the layer.
+	BesideLayer(NodeId),
+}
+
 #[derive(PartialEq)]
 pub enum FlowType {
 	/// Iterate over all upstream nodes (inclusive) from every input (the primary and all secondary).
@@ -406,7 +446,7 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
 	pub node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
-	/// The display order of pinned nodes in the Properties panel (shown when nothing is selected in this network), keyed by node ID.
+	/// The display order of pinned nodes in the Inspector (shown when nothing is selected in this network), keyed by node ID.
 	#[serde(default)]
 	pub pinned_node_order: Vec<NodeId>,
 	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
@@ -487,21 +527,11 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
-	/// Click targets for adding, removing, and moving import/export ports
-	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
 	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ModifyImportExportClickTarget {
-	// Subtract icon that appears when hovering over an import/export
-	pub remove_imports_exports: Ports,
-	// Grip drag icon that appears when hovering over an import/export
-	pub reorder_imports_exports: Ports,
 }
 
 #[derive(Debug, Clone)]
@@ -590,7 +620,7 @@ pub enum WidgetOverride {
 	Custom(String),
 }
 
-// TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
+// TODO: Custom deserialization/serialization to ensure number of input metadata rows matches number of node inputs
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
@@ -621,40 +651,40 @@ impl InputPersistentMetadata {
 			WidgetOverride::Hidden => {
 				self.widget_override = Some("hidden".to_string());
 			}
-			WidgetOverride::String(string_properties) => {
-				self.input_data.insert("string_properties".to_string(), Value::String(string_properties));
+			WidgetOverride::String(string_inspector) => {
+				self.input_data.insert("string_inspector".to_string(), Value::String(string_inspector));
 				self.widget_override = Some("string".to_string());
 			}
-			WidgetOverride::Number(mut number_properties) => {
-				if let Some(unit) = number_properties.unit.take() {
+			WidgetOverride::Number(mut number_inspector) => {
+				if let Some(unit) = number_inspector.unit.take() {
 					self.input_data.insert("unit".to_string(), json!(unit));
 				}
-				if let Some(min) = number_properties.min.take() {
+				if let Some(min) = number_inspector.min.take() {
 					self.input_data.insert("min".to_string(), json!(min));
 				}
-				if let Some(max) = number_properties.max.take() {
+				if let Some(max) = number_inspector.max.take() {
 					self.input_data.insert("max".to_string(), json!(max));
 				}
-				if let Some(step) = number_properties.step.take() {
+				if let Some(step) = number_inspector.step.take() {
 					self.input_data.insert("step".to_string(), json!(step));
 				}
-				if let Some(range_min) = number_properties.range_min.take() {
+				if let Some(range_min) = number_inspector.range_min.take() {
 					self.input_data.insert("range_min".to_string(), json!(range_min));
 				}
-				if let Some(range_max) = number_properties.range_max.take() {
+				if let Some(range_max) = number_inspector.range_max.take() {
 					self.input_data.insert("range_max".to_string(), json!(range_max));
 				}
-				self.input_data.insert("mode".to_string(), json!(number_properties.mode));
-				self.input_data.insert("is_integer".to_string(), Value::Bool(number_properties.is_integer));
-				self.input_data.insert("blank_assist".to_string(), Value::Bool(number_properties.blank_assist));
+				self.input_data.insert("mode".to_string(), json!(number_inspector.mode));
+				self.input_data.insert("is_integer".to_string(), Value::Bool(number_inspector.is_integer));
+				self.input_data.insert("blank_assist".to_string(), Value::Bool(number_inspector.blank_assist));
 				self.widget_override = Some("number".to_string());
 			}
-			WidgetOverride::Vec2(vec2_properties) => {
-				self.input_data.insert("x".to_string(), json!(vec2_properties.x));
-				self.input_data.insert("y".to_string(), json!(vec2_properties.y));
-				self.input_data.insert("unit".to_string(), json!(vec2_properties.unit));
-				self.input_data.insert("is_integer".to_string(), Value::Bool(vec2_properties.is_integer));
-				if let Some(min) = vec2_properties.min {
+			WidgetOverride::Vec2(vec2_inspector) => {
+				self.input_data.insert("x".to_string(), json!(vec2_inspector.x));
+				self.input_data.insert("y".to_string(), json!(vec2_inspector.y));
+				self.input_data.insert("unit".to_string(), json!(vec2_inspector.unit));
+				self.input_data.insert("is_integer".to_string(), Value::Bool(vec2_inspector.is_integer));
+				if let Some(min) = vec2_inspector.min {
 					self.input_data.insert("min".to_string(), json!(min));
 				}
 				self.widget_override = Some("vec2".to_string());
@@ -684,14 +714,17 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
+	/// Stores metadata to override the widgets in the Inspector for each input. These can either be generated automatically based on the type, or with a custom function.
 	/// Must match the length of node inputs
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
+	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
+	#[serde(default)]
+	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
+	/// Indicates that the node will be shown in the Inspector when it would otherwise be empty, letting a user easily edit its inputs by just deselecting everything.
 	#[serde(default)]
 	pub pinned: bool,
 	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
@@ -878,6 +911,13 @@ pub enum TransactionStatus {
 	Modified,
 	#[default]
 	Finished,
+}
+
+/// The open transaction's bookkeeping from [`NodeNetworkInterface::transaction_checkpoint`], to put back once the writes made after it are undone.
+#[derive(Clone, Debug)]
+pub struct TransactionCheckpoint {
+	pub(super) status: TransactionStatus,
+	pub(super) edited_nodes: HashSet<NodeId>,
 }
 
 /// How [`NodeNetworkInterface::is_sole_dependent`] should treat a downstream connector it encounters.

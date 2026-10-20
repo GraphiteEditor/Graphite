@@ -10,6 +10,7 @@
 	import type { MathExpressionAnalysis, MathExpressionEvaluation, MathExpressionStore } from "/src/stores/math-expression";
 	import { defaultDigit, parseDecimal } from "/src/utility-functions/decimal";
 	import type { Digit } from "/src/utility-functions/decimal";
+	import { tabBetweenTextFields } from "/src/utility-functions/input";
 	import { fromMathGlyphs, mathGlyph, operatorGlyph } from "/src/utility-functions/math-expression";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type {
@@ -945,6 +946,9 @@
 			if (stepThroughBrackets(e.shiftKey)) {
 				e.preventDefault();
 				signatureOpen = true;
+			} else {
+				// Done here, since open completions keep the key from reaching the editor's own handling of it
+				tabBetweenTextFields(e);
 			}
 		} else if (e.key === "Escape" && (constant || dragging)) {
 			// A parent floating menu mustn't also close, and during a drag, Escape is the number input's to abort it
@@ -1058,6 +1062,7 @@
 		role="textbox"
 		tabindex={disabled ? undefined : 0}
 		contenteditable={!disabled}
+		data-input-element
 		spellcheck="false"
 		autocapitalize="off"
 		bind:this={editor}
@@ -1108,7 +1113,7 @@
 						<NumberInput
 							exact={constant.text}
 							digit={constant.digit}
-							minWidth={Math.max(120, constant.text.length * 8 + 64)}
+							sizing={{ minWidth: Math.max(120, constant.text.length * 8 + 64) }}
 							on:exactValue={({ detail }) => adjustConstant(detail)}
 							on:commitText={({ detail }) => evaluateConstant(detail)}
 							on:digit={({ detail }) => constant && (constant = { ...constant, digit: detail })}

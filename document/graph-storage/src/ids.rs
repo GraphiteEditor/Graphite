@@ -56,6 +56,8 @@ pub const ROOT_NETWORK: NetworkId = NetworkId(0);
 /// Upper bound on a network's export slot count, guarding `SetExport` against a malicious or corrupted
 /// slot index forcing an unbounded `exports` allocation.
 pub(crate) const MAX_EXPORT_SLOTS: usize = 1 << 16;
+/// A per-slot write can bring a slot past the end of the list into being, so it is capped the same way.
+pub(crate) const MAX_INPUT_SLOTS: usize = 1 << 16;
 
 /// Per-device identity. Stable per `(device, document)`. Used for CRDT tiebreaking and `NodeId`
 /// scoping. Globally unique across all peers ever in a document.

@@ -1,5 +1,5 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainNodeCopy, NodeTemplate};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use glam::DAffine2;
@@ -27,6 +27,8 @@ pub type ClipboardVectorEntry = (LayerNodeIdentifier, Vector, DAffine2);
 pub enum ClipboardItem {
 	Layer(ClipboardLayer),
 	Nodes(Vec<(NodeId, NodeTemplate)>),
+	/// Nodes copied from layers' chains, ordered by their layer's place in the Layers panel, then from the layer outward.
+	ChainNodes(Vec<ChainNodeCopy>),
 	Vector(Vec<ClipboardVectorEntry>),
 	Resource(ClipboardResource),
 }

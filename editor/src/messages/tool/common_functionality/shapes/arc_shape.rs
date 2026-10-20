@@ -6,7 +6,8 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::sweep_angle_gizmo::{SweepAngleGizmo, SweepAngleGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, arc_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, arc_end_points_ignore_layer, arc_outline, extract_arc_parameters};
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -52,13 +53,13 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.sweep_angle_gizmo.is_dragging_or_snapped() {
-			self.sweep_angle_gizmo.update_arc(document, input, responses);
+			self.sweep_angle_gizmo.update_arc(view, snap_session, responses);
 		}
 
 		if self.arc_radius_handle.is_dragging() {
-			self.arc_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.arc_radius_handle.update_inner_radius(view, snap_session, responses, drag_start);
 		}
 	}
 
@@ -142,32 +143,37 @@ impl Arc {
 	}
 
 	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
+		view: SnapView,
+		snap_session: &mut SnapSession,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let document = view.document;
 		let (center, lock_ratio) = (modifier[0], modifier[1]);
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
+
+		// The arc's two ends snap, since the box around its whole circle is not drawn
+		let ends = extract_arc_parameters(Some(layer), document)
+			.and_then(|(_, start_angle, sweep_angle, _)| arc_end_points_ignore_layer(1., start_angle, sweep_angle, None))
+			.map(|(start, end)| vec![start, end])
+			.unwrap_or_default();
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(snap_session, view, center, lock_ratio, &ends) {
 			let Some(node_id) = graph_modification_utils::get_arc_id(layer, &document.network_interface) else {
 				return;
 			};
 
 			let dimensions = (start - end).abs();
 			let mut aspect = DVec2::ONE;
-			let radius: f64;
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
-			if dimensions.x > dimensions.y {
+			let radius = if dimensions.x > dimensions.y {
 				aspect.x = dimensions.x / dimensions.y;
-				radius = dimensions.y / 2.;
+				dimensions.y / 2.
 			} else {
 				aspect.y = dimensions.y / dimensions.x;
-				radius = dimensions.x / 2.;
-			}
+				dimensions.x / 2.
+			};
 
 			let radius = radius / viewport_zoom(document);
 

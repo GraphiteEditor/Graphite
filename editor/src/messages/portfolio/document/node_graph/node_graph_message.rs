@@ -2,7 +2,7 @@ use super::utility_types::Direction;
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector, RootNode};
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
@@ -19,8 +19,16 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
-	AddPrimaryImport,
-	AddSecondaryImport,
+	/// Adds the import at `import_index` wired to `input_connector`, from a wire dragged out of a dimmed connector for adding one.
+	/// Index 0 fills the empty primary, and any other is the next secondary import.
+	AddImportAndConnect {
+		import_index: usize,
+		input_connector: InputConnector,
+	},
+	/// Inserts a Passthrough node beside the import that takes over the wires it fed, so nodes can be placed in front of all of them at once.
+	AddImportPassthrough {
+		import_index: usize,
+	},
 	AddExport,
 	AddPrimaryExport,
 	AddSecondaryExport,
@@ -60,7 +68,14 @@ pub enum NodeGraphMessage {
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
+	/// Disconnects every wire an import feeds, or the wire feeding an export.
+	DisconnectImportExport {
+		index: ImportOrExport,
+	},
 	DisconnectRootNode,
+	SetRootNodeToRestore {
+		root_node_to_restore: RootNode,
+	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
@@ -68,7 +83,10 @@ pub enum NodeGraphMessage {
 		set_to_exposed: bool,
 		start_transaction: bool,
 	},
-	ExposeEncapsulatingPrimaryInput {
+	/// Whether the subgraph node shows its input for an import as a connector rather than as a parameter in the Inspector.
+	/// A hidden primary import also disappears from the subgraph.
+	ExposeEncapsulatingInput {
+		input_index: usize,
 		exposed: bool,
 	},
 	ExposePrimaryExport {
@@ -94,9 +112,22 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
-	ReorderChainNode {
-		node_id: NodeId,
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
 		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		destination: Option<(NodeId, usize)>,
+		select_copies: bool,
+	},
+	DuplicateNodesInFlow {
+		node_ids: Vec<NodeId>,
+	},
+	PasteIntoChain {
+		target: ChainInsertionPoint,
+		copies: Vec<ChainNodeCopy>,
 	},
 	ReorderPinnedNode {
 		node_id: NodeId,
@@ -121,6 +152,8 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	/// Sent every frame while a dragged wire hovers a node, to expand it once the hover delay passes.
+	WireHoverTick,
 	ShakeNode,
 	UpdateNodeGraphWidth,
 	RemoveImport {
@@ -128,6 +161,10 @@ pub enum NodeGraphMessage {
 	},
 	RemoveExport {
 		export_index: usize,
+	},
+	/// Removes an import or export, or hides it if it's the primary, since the primary slot always remains.
+	RemoveImportExport {
+		index: ImportOrExport,
 	},
 	ReorderImport {
 		start_index: usize,
@@ -212,6 +249,14 @@ pub enum NodeGraphMessage {
 		name: String,
 		index: ImportOrExport,
 	},
+	SetImportExportDescription {
+		description: String,
+		index: ImportOrExport,
+	},
+	SetImportExportDescriptionImpl {
+		description: String,
+		index: ImportOrExport,
+	},
 	ToggleSelectedAsLayersOrNodes,
 	ToggleSelectedLocked,
 	ToggleLocked {
@@ -246,7 +291,6 @@ pub enum NodeGraphMessage {
 		node_ids: Vec<NodeId>,
 		network_path: Vec<NodeId>,
 	},
-	UpdateEdges,
 	UpdateBoxSelection,
 	UpdateImportsExports,
 	UpdateLayerPanel,

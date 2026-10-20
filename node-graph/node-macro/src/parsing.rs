@@ -45,9 +45,10 @@ pub(crate) struct ParsedNodeFn {
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
+	pub(crate) icon: Option<LitStr>,
 	pub(crate) path: Option<Path>,
 	pub(crate) skip_impl: bool,
-	pub(crate) properties_string: Option<LitStr>,
+	pub(crate) inspector_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
 	/// if this node should get a gpu implementation, defaults to None
@@ -407,9 +408,10 @@ impl Parse for NodeFnAttributes {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let mut category = None;
 		let mut display_name = None;
+		let mut icon = None;
 		let mut path = None;
 		let mut skip_impl = false;
-		let mut properties_string = None;
+		let mut inspector_string = None;
 		let mut cfg = None;
 		let mut shader_node = None;
 		let mut serialize = None;
@@ -451,6 +453,18 @@ impl Parse for NodeFnAttributes {
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
 				}
+				// Name of the icon, from the frontend's icon registry, shown for this node in the node graph.
+				//
+				// Example usage:
+				// #[node_macro::node(..., icon("NodeCircle"), ...)]
+				"icon" => {
+					let meta = meta.require_list()?;
+					if icon.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'icon' attributes are not allowed"));
+					}
+					let parsed_icon: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'icon', e.g., icon(\"NodeCircle\")"))?;
+					icon = Some(parsed_icon);
+				}
 				// Override for the fully qualified path used by Graphene to identify the node implementation.
 				// If not provided, the path will be inferred from the module path and function name.
 				// Use this if the node implementation has moved to a different module or crate but a migration to that new path is not desired.
@@ -481,21 +495,21 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
-				// Override UI layout generator function name defined in `node_properties.rs` that returns a custom Properties panel layout for this node.
+				// Override UI layout generator function name defined in `node_inspector.rs` that returns a custom Inspector layout for this node.
 				// This is used to create custom UI for the input parameters of the node in cases where the defaults generated from the type and attributes are insufficient.
 				//
 				// Example usage:
-				// #[node_macro::node(..., properties("channel_mixer_properties"), ...)]
-				"properties" => {
+				// #[node_macro::node(..., inspector("channel_mixer_inspector"), ...)]
+				"inspector" => {
 					let meta = meta.require_list()?;
-					if properties_string.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'properties' attributes are not allowed"));
+					if inspector_string.is_some() {
+						return Err(Error::new_spanned(path, "Multiple 'inspector' attributes are not allowed"));
 					}
-					let parsed_properties_string: LitStr = meta
+					let parsed_inspector_string: LitStr = meta
 						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., properties(\"channel_mixer_properties\")"))?;
+						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'inspector', e.g., inspector(\"channel_mixer_inspector\")"))?;
 
-					properties_string = Some(parsed_properties_string);
+					inspector_string = Some(parsed_inspector_string);
 				}
 				// Conditional compilation tokens to gate when this node is included in the build.
 				//
@@ -563,7 +577,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -589,9 +603,10 @@ impl Parse for NodeFnAttributes {
 		Ok(NodeFnAttributes {
 			category,
 			display_name,
+			icon,
 			path,
 			skip_impl,
-			properties_string,
+			inspector_string,
 			cfg,
 			shader_node,
 			serialize,
@@ -828,6 +843,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				"Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters",
 			));
 		}
+	}
+	if exposed && ident.to_string().starts_with('_') {
+		return Err(Error::new_spanned(
+			&pat_ident,
+			"Parameters named with a leading `_` cannot be exposed (#[expose]). They are internal state, which is never exposed to the graph",
+		));
 	}
 
 	let value_source = match (default_value, scope) {
@@ -1278,9 +1299,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
+				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: true,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,
@@ -1353,9 +1375,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("General")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,
@@ -1445,9 +1468,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector: Shape")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,
@@ -1516,9 +1540,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster: Adjustment")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,
@@ -1599,9 +1624,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
+				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: false,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,
@@ -1685,9 +1711,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
 				display_name: None,
+				icon: None,
 				path: None,
 				skip_impl: false,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,
@@ -1756,9 +1783,10 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),
+				icon: None,
 				path: None,
 				skip_impl: false,
-				properties_string: None,
+				inspector_string: None,
 				cfg: None,
 				shader_node: None,
 				serialize: None,

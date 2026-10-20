@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainNodeCopy, NodeTemplate};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2, UVec2};
@@ -33,7 +34,7 @@ pub enum DocumentMessage {
 	#[child]
 	Overlays(OverlaysMessage),
 	#[child]
-	PropertiesPanel(PropertiesPanelMessage),
+	Inspector(InspectorMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
 	#[child]
@@ -89,6 +90,9 @@ pub enum DocumentMessage {
 	GridVisibility {
 		visible: bool,
 	},
+	LayersPanelHoverOverlays {
+		context: OverlayContext,
+	},
 	BlendSelectedLayers,
 	MorphSelectedLayers,
 	ExpandFillStrokeOnSelectedLayers,
@@ -100,9 +104,27 @@ pub enum DocumentMessage {
 		parent: LayerNodeIdentifier,
 		insert_index: usize,
 	},
-	ReorderPropertiesSection {
+	ReorderInspectorSection {
 		node_id: NodeId,
 		insert_index: usize,
+		duplicate: bool,
+	},
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
+		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
+		insert_index: usize,
+		select_copies: bool,
+	},
+	PasteChainNodes {
+		copies: Vec<ChainNodeCopy>,
+	},
+	PasteNodes {
+		nodes: Vec<(NodeId, NodeTemplate)>,
 	},
 	MoveSelectedLayersToGroup {
 		parent: LayerNodeIdentifier,
@@ -162,6 +184,12 @@ pub enum DocumentMessage {
 		ctrl: bool,
 		shift: bool,
 	},
+	SelectChainNode {
+		layer: NodeId,
+		node_id: NodeId,
+		ctrl: bool,
+		shift: bool,
+	},
 	SetActivePanel {
 		active_panel: PanelType,
 	},
@@ -170,6 +198,9 @@ pub enum DocumentMessage {
 	},
 	SetGraphFadeArtwork {
 		percentage: f64,
+	},
+	SetLayersPanelHoveredLayer {
+		id: Option<NodeId>,
 	},
 	SetNodePinned {
 		node_id: NodeId,
@@ -194,6 +225,9 @@ pub enum DocumentMessage {
 		closure: Option<for<'a> fn(&'a mut SnappingState) -> &'a mut bool>,
 		snapping_state: bool,
 	},
+	SetSnappingAngleStep {
+		degrees: f64,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
@@ -201,6 +235,10 @@ pub enum DocumentMessage {
 	SetRenderMode {
 		render_mode: RenderMode,
 	},
+	ShowNodeInGraph {
+		node_id: NodeId,
+	},
+	ShowSelectionInGraph,
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,
@@ -214,8 +252,16 @@ pub enum DocumentMessage {
 		tree_path: Vec<NodeId>,
 		recursive: bool,
 	},
-	ToggleNodePropertiesSectionExpanded {
+	ToggleNodeInspectorSectionExpanded {
 		node_id: NodeId,
+		recursive: bool,
+	},
+	ToggleNodeInspectorInputChain {
+		node_id: NodeId,
+		input_index: usize,
+	},
+	ToggleLayerChainExpanded {
+		layer_id: NodeId,
 	},
 	ToggleSelectedVisibility,
 	ToggleSelectedLocked,
@@ -226,6 +272,7 @@ pub enum DocumentMessage {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
 		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
+		document_to_viewport: DAffine2,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,

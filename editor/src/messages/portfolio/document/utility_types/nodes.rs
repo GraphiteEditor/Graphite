@@ -30,7 +30,22 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "implementationName")]
 	pub implementation_name: String,
 	#[serde(rename = "iconName")]
-	pub icon_name: Option<IconName>,
+	pub icon_name: IconName,
+	/// The nodes in the chain feeding this layer, in the graph's left-to-right order.
+	#[serde(rename = "chainNodes")]
+	pub chain_nodes: Vec<LayerPanelChainNode>,
+	/// Whether the chain is expanded into a row per node beneath the layer's row.
+	#[serde(rename = "chainExpanded")]
+	pub chain_expanded: bool,
+	/// How the active tool edits the layer node itself, if it does, for the tooltip of its outlined icon.
+	#[serde(rename = "toolTargetDescription")]
+	pub tool_target_description: Option<String>,
+	/// Whether an edit in progress, like a drag, has written to the layer node itself, which brightens its icon's outline.
+	#[serde(rename = "editInProgress")]
+	pub edit_in_progress: bool,
+	/// The node the active tool would add to the chain to edit this layer, shown ghosted where it would go.
+	#[serde(rename = "toolTargetInsertion")]
+	pub tool_target_insertion: Option<LayerPanelChainInsertion>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
@@ -43,6 +58,40 @@ pub struct LayerPanelEntry {
 	pub descendant_of_selected: bool,
 	pub clipped: bool,
 	pub clippable: bool,
+}
+
+/// A node in the chain feeding a layer, shown as a button with its icon in the layer's row.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct LayerPanelChainNode {
+	pub id: NodeId,
+	pub icon: IconName,
+	pub name: String,
+	/// The name shown in place of a custom one, as the placeholder while renaming.
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
+	/// Whether the node is selected, shown in every layer whose chain shares it.
+	pub selected: bool,
+	/// Whether the node can be dragged to reorder it, unlike a source node (with no primary input) fixed at the chain's upstream end.
+	pub reorderable: bool,
+	pub visible: bool,
+	/// How the active tool edits this node, if it does, for the tooltip of its outlined icon.
+	#[serde(rename = "toolTargetDescription")]
+	pub tool_target_description: Option<String>,
+	/// Whether an edit in progress, like a drag, has written to this node, which brightens its outline.
+	#[serde(rename = "editInProgress")]
+	pub edit_in_progress: bool,
+}
+
+/// A node not yet in a layer's chain, which the active tool would add there.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct LayerPanelChainInsertion {
+	/// The position among the chain nodes, counted from the upstream end.
+	pub index: u32,
+	pub icon: IconName,
+	pub name: String,
+	pub description: String,
 }
 
 /// IMPORTANT: the same node may appear multiple times.

@@ -77,22 +77,18 @@ pub struct DropdownInput {
 
 	// Styling
 	pub narrow: bool,
+	pub sizing: WidgetSizing,
+	// Sized to the selected entry, rather than the widest, so its width changes with the selection
+	#[serde(rename = "sizedToSelection")]
+	pub sized_to_selection: bool,
 
 	// Behavior
 	#[serde(rename = "virtualScrolling")]
 	pub virtual_scrolling: bool,
-	#[derivative(Default(value = "true"))]
-	pub interactive: bool,
 	// Set along with the `on_file_drop` callback
 	#[serde(rename = "takesFileDrop")]
 	#[widget_builder(skip)]
 	pub takes_file_drop: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -222,6 +218,7 @@ pub struct NumberInput {
 
 	// Styling
 	pub narrow: bool,
+	pub sizing: WidgetSizing,
 
 	// Behavior
 	pub mode: NumberInputMode,
@@ -247,12 +244,6 @@ pub struct NumberInput {
 	#[serde(rename = "unitIsHiddenWhenEditing")]
 	#[derivative(Default(value = "true"))]
 	pub unit_is_hidden_when_editing: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]
@@ -367,10 +358,7 @@ pub struct RadioInput {
 
 	// Styling
 	pub narrow: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
+	pub sizing: WidgetSizing,
 	//
 	// Callbacks exists on the `RadioEntryData` children, not this parent `RadioInput`
 }
@@ -481,12 +469,7 @@ pub struct TextInput {
 	// Styling
 	pub narrow: bool,
 	pub centered: bool,
-
-	// Sizing
-	#[serde(rename = "minWidth")]
-	pub min_width: u32,
-	#[serde(rename = "maxWidth")]
-	pub max_width: u32,
+	pub sizing: WidgetSizing,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

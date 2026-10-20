@@ -3,21 +3,26 @@
 //! [`History`] owns the deltas in topological order (every parent precedes its children) plus an
 //! index from [`Rev`] to position for O(1) lookup. The order is a valid replay order, so it is what
 //! gets serialized to the on-disk history file and what [`crate::Session::replay_from_history`]
-//! consumes. Retired commits have a single writer in every regime (solo editing, or leader-ordered
-//! collaboration where the leader serializes retired commits), so appending preserves the order by
-//! construction. The only operation that introduces out-of-order deltas is [`merge`](History::merge),
-//! which re-sorts the combined set into the canonical order to restore the invariant.
+//! consumes. Appending a commit keeps the order; deltas arriving out of it are put back by
+//! a canonical sort.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::{CrdtError, Delta, Rev, TimeStamp, Value};
+use crate::{CrdtError, Delta, RegistryDelta, ResourceHash, Rev, TimeStamp, Value};
 
+/// Every mutator maintains the indexes, so the tips and named hashes are probes, not scans of a growing history.
 #[derive(Clone, Debug, Default)]
 pub struct History {
 	/// Deltas in topological order. Mutated only via [`push`](Self::push).
 	deltas: Vec<Delta>,
 	/// `Rev` to its position in `deltas`. Kept in sync with `deltas` by every mutator.
 	index: HashMap<Rev, usize>,
+	/// Every rev some delta names as a parent.
+	referenced: HashSet<Rev>,
+	/// Deltas no other delta names as a parent.
+	tips: HashSet<Rev>,
+	/// Content hashes the deltas name, from resource additions and removals.
+	resource_hashes: HashSet<ResourceHash>,
 }
 
 impl History {
@@ -27,8 +32,9 @@ impl History {
 
 	/// Build from deltas already in topological order (the on-disk load path), indexing them in place.
 	pub fn from_ordered(deltas: Vec<Delta>) -> Self {
-		let index = deltas.iter().enumerate().map(|(position, delta)| (delta.id, position)).collect();
-		Self { deltas, index }
+		let mut history = Self::default();
+		deltas.into_iter().for_each(|delta| history.push(delta));
+		history
 	}
 
 	pub fn get(&self, rev: Rev) -> Option<&Delta> {
@@ -37,6 +43,11 @@ impl History {
 
 	pub fn contains(&self, rev: Rev) -> bool {
 		self.index.contains_key(&rev)
+	}
+
+	/// The content hashes named by any resource addition or removal in history.
+	pub fn resource_hashes(&self) -> &HashSet<ResourceHash> {
+		&self.resource_hashes
 	}
 
 	pub fn len(&self) -> usize {
@@ -51,9 +62,24 @@ impl History {
 	/// (idempotent re-apply) overwrites the existing entry in place rather than appending, so the
 	/// order and index are unchanged.
 	pub fn push(&mut self, delta: Delta) {
+		match &delta.kind {
+			RegistryDelta::AddResource { entry, .. } => self.resource_hashes.extend(entry.hash),
+			RegistryDelta::RemoveResource { snapshot, .. } => self.resource_hashes.extend(snapshot.hash),
+			RegistryDelta::SetResourceHash { hash: Some(hash), .. } => {
+				self.resource_hashes.insert(*hash);
+			}
+			_ => {}
+		}
 		if let Some(&position) = self.index.get(&delta.id) {
 			self.deltas[position] = delta;
 			return;
+		}
+		for parent in delta.all_parents() {
+			self.referenced.insert(parent);
+			self.tips.remove(&parent);
+		}
+		if !self.referenced.contains(&delta.id) {
+			self.tips.insert(delta.id);
 		}
 		self.index.insert(delta.id, self.deltas.len());
 		self.deltas.push(delta);
@@ -119,11 +145,24 @@ impl History {
 		}
 	}
 
+	/// `roots` and everything reachable from them through all parent links. Unknown roots are skipped.
+	pub(crate) fn ancestors(&self, roots: impl IntoIterator<Item = Rev>) -> HashSet<Rev> {
+		let mut seen = HashSet::new();
+		let mut stack: Vec<Rev> = roots.into_iter().filter(|rev| self.contains(*rev)).collect();
+		while let Some(rev) = stack.pop() {
+			if seen.insert(rev)
+				&& let Some(delta) = self.get(rev)
+			{
+				stack.extend(delta.all_parents());
+			}
+		}
+		seen
+	}
+
 	/// The current tips: revs that no other delta lists as a parent (the divergent heads). A linear
 	/// history has exactly one tip; concurrent branches have several. Sorted ascending for determinism.
 	pub fn tips(&self) -> Vec<Rev> {
-		let referenced: std::collections::HashSet<Rev> = self.deltas.iter().flat_map(|delta| delta.all_parents()).collect();
-		let mut tips: Vec<Rev> = self.deltas.iter().map(|delta| delta.id).filter(|rev| !referenced.contains(rev)).collect();
+		let mut tips: Vec<Rev> = self.tips.iter().copied().collect();
 		tips.sort_unstable();
 		tips
 	}
