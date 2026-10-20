@@ -694,6 +694,30 @@ impl PenToolData {
 		responses.add(OverlaysMessage::Draw);
 	}
 
+	/// Takes back the drawing's first anchor if the drawing ends before a segment is drawn from it, along with its layer if that anchor is all the layer holds.
+	fn remove_lone_initial_anchor(&self, document: &DocumentMessageHandler, layer: Option<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) {
+		// A drawing begun from an anchor already in the layer leaves that anchor be
+		let begun_from_existing_anchor = self.prior_segment_endpoint.is_some() && self.prior_segment_layer == layer;
+		if self.point_index != 0 || begun_from_existing_anchor {
+			return;
+		}
+
+		let Some(layer) = layer else { return };
+		let Some(id) = self.latest_point().map(|point| point.id) else { return };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+
+		if vector.anchor_points().count() == 1 {
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![layer.to_node()],
+				delete_children: true,
+			});
+			responses.add(NodeGraphMessage::RunDocumentGraph);
+		} else {
+			let modification_type = VectorModificationType::RemovePoint { id };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+	}
+
 	/// Selects the handle which is currently dragged by the user.
 	fn add_target_selections(&self, shape_editor: &mut ShapeState, layer: Option<LayerNodeIdentifier>) {
 		let Some(shape_state) = layer.and_then(|layer| shape_editor.selected_shape_state.get_mut(&layer)) else {
@@ -2342,6 +2366,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
+				tool_data.remove_lone_initial_anchor(document, layer, responses);
 				tool_data.cleanup(snap_session, responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
@@ -2362,23 +2387,10 @@ impl Fsm for PenToolFsmState {
 				tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses).unwrap_or(PenToolFsmState::Ready)
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Abort) => {
-				let should_delete_layer = if let Some(vector) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
-					vector.anchor_points().count() == 1
-				} else {
-					false
-				};
-
 				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.remove_lone_initial_anchor(document, layer, responses);
 				tool_data.cleanup(snap_session, responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
-
-				if should_delete_layer {
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![layer.unwrap().to_node()],
-						delete_children: true,
-					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
 				responses.add(OverlaysMessage::Draw);
 
 				PenToolFsmState::Ready
@@ -2530,6 +2542,36 @@ mod test_pen_tool {
 	const B: DVec2 = DVec2::new(200., 100.);
 	const C: DVec2 = DVec2::new(200., 200.);
 	const D: DVec2 = DVec2::new(100., 200.);
+
+	#[tokio::test]
+	async fn enter_or_esc_after_a_single_click_leaves_no_layer() {
+		for key in [Key::Enter, Key::Escape] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+
+			click_pen(&mut editor, A).await;
+			editor.press(key, ModifierKeys::empty()).await;
+
+			assert!(drawn_path(&editor).is_none(), "{key:?} should take back the lone anchor and its layer");
+		}
+	}
+
+	#[tokio::test]
+	async fn enter_or_esc_after_a_shift_click_takes_back_its_lone_anchor() {
+		for key in [Key::Enter, Key::Escape] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			click_pen(&mut editor, A).await;
+			click_pen(&mut editor, B).await;
+			editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+			// Shift adds the click to the selected path as an anchor of its own
+			editor.click_tool(ToolType::Pen, MouseKeys::LEFT, D, ModifierKeys::SHIFT).await;
+			editor.press(key, ModifierKeys::empty()).await;
+
+			assert_path_shape(&editor, 2, 1);
+		}
+	}
 
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
