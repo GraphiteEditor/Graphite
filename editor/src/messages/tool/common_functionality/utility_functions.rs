@@ -300,7 +300,7 @@ pub fn resize_bounds(
 		});
 
 		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, dragging_layers, responses, &document.network_interface, None, &tool, None);
-		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 	}
 }
 
@@ -356,7 +356,7 @@ pub fn rotate_bounds(
 		&tool,
 		None,
 	);
-	selected.update_transforms(delta, None, None);
+	selected.update_transforms(delta, None);
 }
 
 pub fn skew_bounds(
@@ -386,7 +386,7 @@ pub fn skew_bounds(
 		});
 
 		let mut selected = Selected::new(&mut bounds.original_transforms, &mut pivot, layers, responses, &document.network_interface, None, &tool, None);
-		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse(), None);
+		selected.apply_transformation(bounds.original_bound_transform * transformation * bounds.original_bound_transform.inverse());
 	}
 }
 
