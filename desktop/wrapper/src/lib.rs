@@ -5,9 +5,11 @@ use graphite_editor::builder::{Builder, EditorBuilder, RuntimeBuilder};
 use graphite_editor::messages::frontend::FrontendMessage;
 use graphite_editor::node_graph_executor::NodeRuntime;
 
+use graphite_editor::task::{Clock, Scheduling};
 use message_dispatcher::DesktopWrapperMessageDispatcher;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
@@ -61,7 +63,12 @@ impl DesktopWrapper {
 					.with_resource_storage(resource_storage)
 					.with_document_store(document_store),
 			)
-			.with_runtime(RuntimeBuilder::new().with_wake(runtime_wake).with_application_io(application_io))
+			.with_runtime(
+				RuntimeBuilder::new(Arc::new(InstantClock(Instant::now())))
+					.with_wake(runtime_wake)
+					.with_application_io(application_io)
+					.with_scheduling(Scheduling::default()),
+			)
 			.with_spawner(spawner)
 			.with_random_seed(random_seed)
 			.build();
@@ -73,6 +80,14 @@ impl DesktopWrapper {
 		let mut executor = DesktopWrapperMessageDispatcher::new(&mut self.editor);
 		executor.queue_desktop_wrapper_message(message);
 		executor.execute()
+	}
+}
+
+struct InstantClock(Instant);
+
+impl Clock for InstantClock {
+	fn now(&self) -> Duration {
+		self.0.elapsed()
 	}
 }
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::task::{Spawn, Spawner, Task};
+use crate::task::{Scheduling, Spawn, Spawner, Task};
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -18,7 +18,7 @@ use graphene_std::ops::ConvertAsync;
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::runtime::AsyncRuntime;
+use graphene_std::runtime::{AsyncRuntime, Clock};
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
@@ -26,8 +26,8 @@ use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
 /// Some of these fields are put into a [`PlatformEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -40,13 +40,16 @@ pub struct NodeRuntime {
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
 	editor_wake: Wake,
-	dirty: Arc<AtomicBool>,
+	/// A re-evaluation waiting for the next frame, or for the end of an export.
+	rerun: bool,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	update_thumbnails: bool,
 	async_runtime: Option<AsyncRuntime>,
+	scheduling: Scheduling,
+	frame_start: Duration,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -107,7 +110,7 @@ impl NodeRuntime {
 			receiver,
 			sender,
 			editor_wake,
-			dirty: Default::default(),
+			rerun: false,
 			pending: None,
 			pending_export: None,
 			editor_preferences: EditorPreferences::default(),
@@ -115,6 +118,8 @@ impl NodeRuntime {
 			resources: ResourceRegistry::default(),
 			update_thumbnails: true,
 			async_runtime: None,
+			scheduling: Scheduling::default(),
+			frame_start: Duration::ZERO,
 
 			editor_api: PlatformEditorApi {
 				editor_preferences: Box::new(EditorPreferences::default()),
@@ -176,8 +181,14 @@ impl NodeRuntime {
 			}
 		}
 
-		if self.dirty.swap(false, Ordering::Acquire) && execution.is_none() {
-			execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
+		// An explicit request already reads the newest generations; a re-evaluation only starts while the frame has budget left
+		let rerun = std::mem::take(&mut self.rerun) | self.async_runtime().take_bumped();
+		if rerun && execution.is_none() {
+			if self.frame_has_budget() {
+				execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
+			} else {
+				self.rerun = true;
+			}
 		}
 
 		// Eydropper should use the same time and pointer to not invalidate the cache
@@ -268,7 +279,7 @@ impl NodeRuntime {
 							self.pending_export = Some(request);
 							return None;
 						}
-						(true, _) => self.dirty.store(true, Ordering::Release),
+						(true, _) => self.rerun = true,
 						_ => {}
 					}
 
@@ -611,33 +622,50 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
-		let spawn = NodeTaskExecutor {
-			spawner,
-			dirty: self.dirty.clone(),
-			wake,
-		};
-		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake, clock: Arc<dyn Clock>) {
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(NodeTaskExecutor { spawner, wake }), clock));
+		self.begin_frame();
 	}
 
-	fn async_runtime(&self) -> &AsyncRuntime {
+	pub fn set_scheduling(&mut self, scheduling: Scheduling) {
+		self.scheduling = scheduling;
+	}
+
+	/// Called by the host once the previous output had a chance to be shown.
+	pub fn begin_frame(&mut self) {
+		self.frame_start = self.async_runtime().clock().now();
+	}
+
+	/// How long until the next frame boundary, if a re-evaluation is waiting for it.
+	pub fn until_next_frame(&self) -> Option<Duration> {
+		let budget = self.scheduling.frame_budget.filter(|budget| !budget.is_zero())?;
+		let elapsed = self.frame_elapsed().as_nanos() % budget.as_nanos();
+		self.rerun.then(|| budget - Duration::from_nanos(elapsed as u64))
+	}
+
+	fn frame_elapsed(&self) -> Duration {
+		self.async_runtime().clock().now().saturating_sub(self.frame_start)
+	}
+
+	fn frame_has_budget(&self) -> bool {
+		self.scheduling.frame_budget.is_none_or(|budget| self.frame_elapsed() < budget)
+	}
+
+	pub(crate) fn async_runtime(&self) -> &AsyncRuntime {
 		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
 	}
 }
 
 struct NodeTaskExecutor {
 	spawner: Spawner,
-	dirty: Arc<AtomicBool>,
 	wake: Wake,
 }
 
 impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
-		let dirty = self.dirty.clone();
 		let wake = self.wake.clone();
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
-			dirty.store(true, Ordering::Release);
 			wake();
 		}));
 	}
@@ -749,4 +777,77 @@ fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) ->
 		};
 	}
 	Some(current)
+}
+
+#[cfg(test)]
+mod test {
+	use crate::messages::prelude::*;
+	use crate::task::Scheduling;
+	use crate::test_utils::{EditorTestUtils, FakeClock};
+	use glam::{DVec2, UVec2};
+	use graphene_std::SourceId;
+	use graphene_std::runtime::Runtime;
+	use std::sync::Arc;
+	use std::time::Duration;
+
+	const SOURCE: SourceId = SourceId(1);
+
+	async fn editor(clock: &Arc<FakeClock>) -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create_with(Scheduling::default(), clock.clone());
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.runtime.async_runtime().retain_sources(&[SOURCE]);
+		editor.runtime.begin_frame();
+		editor
+	}
+
+	fn finish_task(editor: &EditorTestUtils) {
+		editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
+	}
+
+	/// Whether one runtime run re-evaluated the graph.
+	async fn evaluates(editor: &mut EditorTestUtils) -> bool {
+		editor.runtime.run().await;
+		let messages = editor.editor.handle_message(Message::Wake);
+		messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
+	}
+
+	#[tokio::test]
+	async fn reevaluations_past_the_frame_budget_wait_for_the_next_frame() {
+		let clock = Arc::new(FakeClock::default());
+		let mut editor = editor(&clock).await;
+
+		finish_task(&editor);
+		finish_task(&editor);
+		assert!(evaluates(&mut editor).await);
+		assert!(!evaluates(&mut editor).await, "two finished tasks re-evaluated twice");
+
+		clock.advance(Duration::from_millis(20));
+		finish_task(&editor);
+		assert!(!evaluates(&mut editor).await);
+		assert_eq!(editor.runtime.until_next_frame(), Some(Duration::from_millis(12)));
+
+		editor.runtime.begin_frame();
+		assert!(evaluates(&mut editor).await);
+		assert_eq!(editor.runtime.until_next_frame(), None);
+	}
+
+	#[tokio::test]
+	async fn explicit_requests_ignore_the_frame_budget() {
+		let clock = Arc::new(FakeClock::default());
+		let mut editor = editor(&clock).await;
+
+		clock.advance(Duration::from_millis(100));
+		finish_task(&editor);
+		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO)
+			.unwrap();
+
+		assert!(evaluates(&mut editor).await);
+		assert!(!evaluates(&mut editor).await, "the finished task re-evaluated after the explicit request");
+	}
 }
