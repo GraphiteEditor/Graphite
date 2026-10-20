@@ -1,4 +1,4 @@
-use super::utility_types::Direction;
+use super::utility_types::{Direction, NodeEvaluationError};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -227,6 +227,10 @@ pub enum NodeGraphMessage {
 		x: i32,
 		y: i32,
 	},
+	/// Moves the selected nodes one grid cell with the arrow keys, as an undo step of its own.
+	NudgeSelectedNodes {
+		direction: Direction,
+	},
 	ShiftSelectedNodes {
 		direction: Direction,
 		rubber_band: bool,
@@ -300,6 +304,9 @@ pub enum NodeGraphMessage {
 		resolved_types: ResolvedDocumentNodeTypesDelta,
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
+	},
+	UpdateEvaluationErrors {
+		errors: Vec<NodeEvaluationError>,
 	},
 	UpdateActionButtons,
 	UpdateGraphBarRight,

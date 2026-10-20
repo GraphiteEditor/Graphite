@@ -11,6 +11,7 @@
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { pasteFile } from "/src/utility-functions/files";
+	import { targetIsTextField } from "/src/utility-functions/input";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -814,8 +815,8 @@
 	function handleLayerPanelKeyDown(e: KeyboardEvent) {
 		// TODO: Handle this F2 shortcut detection in the backend, not frontend, so it uses the standard key binding system
 
-		// Only handle F2 if not currently editing a layer name
-		if (e.key === "F2" && !layers.some((layer) => layer.editingName)) {
+		// Only handle F2 if not currently editing a layer name or typing in another text field
+		if (e.key === "F2" && !layers.some((layer) => layer.editingName) && !targetIsTextField(e.target || undefined)) {
 			// Find the first selected layer
 			const selectedLayer = layers.find((layer) => layer.entry.selected);
 			if (selectedLayer) {
@@ -1328,11 +1329,15 @@
 					background: rgb(from var(--color-4-dimgray) r g b / 0.5);
 				}
 
+				// Spanning the insertion line beside the layer (past the visibility column and the indent), plus its own thickness outward so it clears the icons at both ends
 				&.insert-folder::after {
+					--outline-thickness: 3px;
 					content: "";
 					position: absolute;
 					inset: 0;
-					border: 3px solid var(--color-e-nearwhite);
+					left: calc(24px + var(--layer-indent-levels) * 16px - var(--outline-thickness));
+					right: calc(-1 * var(--outline-thickness));
+					border: var(--outline-thickness) solid var(--color-e-nearwhite);
 					border-radius: 2px;
 					pointer-events: none;
 				}
@@ -1411,7 +1416,7 @@
 				}
 
 				// The name (and lock) and the chain split the rest of the row evenly, except that either gives the other whatever share it doesn't need.
-				// Between them, the spacer keeps an unrelated-width gap. The right margin keeps the layer icon 4px from the row's end like the visibility icon at its start.
+				// Between them, the spacer keeps an unrelated-width gap.
 				.layer-name-and-chain {
 					flex: 1 1 0;
 					min-width: 0;
@@ -1419,7 +1424,6 @@
 					display: grid;
 					grid-template-columns: minmax(0, max-content) auto minmax(4px, 1fr) minmax(0, var(--chain-width));
 					align-items: center;
-					margin-right: 2px;
 
 					// While renaming, the name takes all the room its text needs, which the chain gives up until it disappears
 					&.editing {
@@ -1691,10 +1695,10 @@
 					margin: 0 8px;
 				}
 
-				// At the row's end, past the layer icon's margin and the row's margin
+				// At the row's end, past a margin like the layer icon's
 				.chain-node-icon {
 					margin-left: auto;
-					margin-right: calc(2px + 2px);
+					margin-right: 2px;
 
 					// Outlined like the layer icon when the active tool edits it
 					&.tool-target,

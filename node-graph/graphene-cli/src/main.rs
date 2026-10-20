@@ -5,27 +5,19 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use fern::colors::{Color, ColoredLevelConfig};
-use futures::executor::block_on;
 use graph_craft::application_io::EditorPreferences;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
-use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
+use graphene_std::application_io::ApplicationIo;
+use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
 use std::path::PathBuf;
-use std::sync::Arc;
-
-struct UpdateLogger {}
-
-impl NodeGraphUpdateSender for UpdateLogger {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		println!("{message:?}");
-	}
-}
+use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Parser)]
 #[clap(name = "graphene-cli", version)]
@@ -183,10 +175,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	};
 	let editor_api = Arc::new(PlatformEditorApi {
 		application_io: Some(application_io_for_api),
-		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
 	});
-	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref())?;
+	let spawner = Arc::new(TokioSpawner::default());
+	let runtime = AsyncRuntime::new(spawner.clone());
+	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
 
 	match app.command {
 		Command::Compile { print_proto, .. } => {
@@ -218,6 +211,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 			// Create executor
 			let executor = create_executor(proto_graph)?;
+			runtime.retain_sources(executor.sources());
 
 			if fps <= 0. {
 				return Err("Fps number must be positive".into());
@@ -232,14 +226,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			};
 			let animation = export::AnimationParams::new(fps, frames, duration);
 			if file_type == export::FileType::Gif {
-				export::export_gif(&executor, wgpu_executor_ref, output, settings, animation).await?;
+				export::export_gif(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
 			} else if animation.frames > 1 {
 				if file_type == export::FileType::Ico {
 					return Err("ICO can't be exported as an image sequence".into());
 				}
-				export::export_image_sequence(&executor, wgpu_executor_ref, output, settings, animation).await?;
+				export::export_image_sequence(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref, output, settings).await?;
+				export::export_document(&executor, wgpu_executor_ref, output, settings, &runtime, &spawner).await?;
 			}
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
@@ -277,10 +271,10 @@ fn init_logging(log_level: u8) {
 		.unwrap();
 }
 
-fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>) -> Result<ProtoNetwork, Box<dyn Error>> {
+fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let preprocessor = preprocessor::Preprocessor::new();
 
-	let mut network = wrap_network_in_scope(network, editor_api);
+	let mut network = wrap_network_in_scope(network, editor_api, runtime);
 
 	// A `.gdd` resolves resource hashes from its registry; a legacy `.graphite` has no resource store, so it
 	// preprocesses against an empty registry (matching the pre-`.gdd` CLI behavior).
@@ -296,6 +290,26 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
-	let executor = block_on(DynamicExecutor::new(proto_network)).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
+	let executor = DynamicExecutor::new(proto_network).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
 	Ok(executor)
+}
+
+#[derive(Default)]
+pub(crate) struct TokioSpawner(Mutex<Vec<tokio::task::JoinHandle<()>>>);
+
+impl Spawn for TokioSpawner {
+	fn spawn(&self, task: Task) {
+		self.0.lock().unwrap().push(tokio::spawn(task));
+	}
+}
+
+impl TokioSpawner {
+	pub(crate) async fn join(&self) -> bool {
+		let tasks = std::mem::take(&mut *self.0.lock().unwrap());
+		let pending = !tasks.is_empty();
+		for task in tasks {
+			let _ = task.await;
+		}
+		pending
+	}
 }

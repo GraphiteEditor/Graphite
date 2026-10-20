@@ -58,13 +58,12 @@
 		editingName = undefined;
 		if (!target || editingNameText === target.initialText) return;
 
-		if (target.kind === "Layer") editor.setLayerName(target.nodeId, editingNameText);
+		if (target.kind === "Layer") editor.setLayerNameInGraph(target.nodeId, editingNameText);
 		else if (target.kind === "Import") editor.setImportName(target.index, editingNameText);
 		else editor.setExportName(target.index, editingNameText);
 	}
 
-	// The name fields stop propagation of the keys they handle so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
-	// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
+	// The name fields stop propagation of the keys they handle so no window listener also acts on them
 	function onNameInputKeyDown(e: KeyboardEvent) {
 		if (e.key === "Enter") commitEditingName();
 		else if (e.key === "Escape") editingName = undefined;
@@ -421,14 +420,16 @@
 		{/if}
 	</FloatingMenu>
 
-	{#if $nodeGraph.error}
+	{#if $nodeGraph.errors.length > 0}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
-			<span class="node-error faded" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
-				{$nodeGraph.error.error}
-			</span>
-			<span class="node-error hover" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
-				{$nodeGraph.error.error}
-			</span>
+			{#each $nodeGraph.errors as error}
+				<span class="node-error faded" style:left={`${error.position[0]}px`} style:top={`${error.position[1]}px`} transition:fade={FADE_TRANSITION}>
+					{error.error}
+				</span>
+				<span class="node-error hover" style:left={`${error.position[0]}px`} style:top={`${error.position[1]}px`} transition:fade={FADE_TRANSITION}>
+					{error.error}
+				</span>
+			{/each}
 		</div>
 	{/if}
 

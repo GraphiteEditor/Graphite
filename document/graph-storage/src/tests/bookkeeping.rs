@@ -25,6 +25,7 @@ fn retirement_takes_the_ops_under_the_cutoff_in_any_applied_order() {
 		op,
 		timestamp: crate::TimeStamp { counter, peer: PeerId(peer) },
 		sequence: crate::HotSequence(1),
+		attributes: Default::default(),
 	};
 	let (late, own) = (hot(add_network(9), 50, 2), hot(set_attribute("x", 1), 20, 3));
 	host.replay_hot_op(late.clone()).expect("the late-stamped op lands first");
@@ -83,6 +84,7 @@ fn a_reopened_session_drops_a_late_copy_of_a_retired_op() {
 		op: set_attribute("k", 1),
 		timestamp: crate::TimeStamp { counter: 3, peer: PeerId(2) },
 		sequence: crate::HotSequence(1),
+		attributes: Default::default(),
 	};
 	let mut host = Session::with_peer(PeerId(1));
 	host.replay_hot_op(op.clone()).unwrap();
@@ -165,6 +167,7 @@ fn a_retired_late_copy_still_advances_the_sequence_and_the_clock() {
 		op: set_attribute("k", 1),
 		timestamp: crate::TimeStamp { counter: 50, peer: PeerId(1) },
 		sequence: crate::HotSequence(7),
+		attributes: Default::default(),
 	};
 	let mut marks = crate::RetiredMarks::default();
 	marks.extend([own.id()]);
@@ -175,4 +178,89 @@ fn a_retired_late_copy_still_advances_the_sequence_and_the_clock() {
 	let next = staged.last().expect("staged");
 	assert!(next.sequence > own.sequence, "a fresh sequence");
 	assert!(next.timestamp > own.timestamp, "a later stamp");
+}
+
+#[test]
+fn only_closed_interactions_are_listed_and_the_marker_commits_nothing() {
+	let mut host = Session::with_peer(PeerId(1));
+	let guest_op = |counter: u64, sequence: u64, op: RegistryDelta| crate::HotOp {
+		op,
+		timestamp: crate::TimeStamp { counter, peer: PeerId(2) },
+		sequence: crate::HotSequence(sequence),
+		attributes: Default::default(),
+	};
+
+	assert!(host.end_interaction().expect("nothing to close").is_empty(), "no op of this peer is open");
+
+	// The guest's open interaction is stamped before everything the host does.
+	host.replay_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
+	host.replay_hot_op(guest_op(11, 2, set_attribute("guest", 1))).expect("guest op");
+
+	host.stage_ops([set_attribute("host", 1)]).expect("host op");
+	let marker = host.end_interaction().expect("close").pop().expect("the host's interaction was open");
+	assert!(matches!(marker.op, RegistryDelta::Meta) && marker.ends_interaction());
+	assert!(host.end_interaction().expect("nothing more to close").is_empty(), "closing twice stages nothing");
+
+	let closed = host.closed_interactions();
+	assert_eq!(closed.len(), 1, "the guest's open interaction is not listed: {closed:?}");
+	assert_eq!(closed[0].author, PeerId(1));
+	assert!(closed[0].contiguous);
+	assert_eq!(closed[0].ops.len(), 3, "RegisterPeer, the attribute write and the marker");
+
+	let revs = host.retire_hot_ops(&closed[0].ops).expect("retire");
+	assert_eq!(revs.len(), 2, "the marker commits no delta");
+	assert_eq!(host.hot_log().len(), 2, "the guest's ops stay hot");
+
+	host.replay_hot_op(closing(guest_op(12, 3, RegistryDelta::Meta))).expect("guest marker");
+	let closed = host.closed_interactions();
+	assert_eq!(closed.len(), 1);
+	assert_eq!(closed[0].author, PeerId(2));
+	assert_eq!(closed[0].ops.len(), 3);
+}
+
+#[test]
+fn an_interaction_with_a_gap_is_not_contiguous_until_the_gap_fills() {
+	let mut host = Session::with_peer(PeerId(1));
+	let guest_op = |counter: u64, sequence: u64, op: RegistryDelta| crate::HotOp {
+		op,
+		timestamp: crate::TimeStamp { counter, peer: PeerId(2) },
+		sequence: crate::HotSequence(sequence),
+		attributes: Default::default(),
+	};
+	host.replay_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
+	host.replay_hot_op(closing(guest_op(12, 3, RegistryDelta::Meta))).expect("guest marker, op 2 still in flight");
+	host.replay_hot_op(closing(guest_op(13, 4, set_attribute("guest", 2)))).expect("a later interaction");
+
+	let closed = host.closed_interactions();
+	assert_eq!(closed.len(), 2);
+	assert!(!closed[0].contiguous);
+	assert!(!closed[1].contiguous, "the gap is behind the later interaction too");
+
+	host.replay_hot_op(guest_op(11, 2, set_attribute("guest", 1))).expect("the late op");
+	let closed = host.closed_interactions();
+	assert!(closed.iter().all(|interaction| interaction.contiguous));
+	assert_eq!(closed[0].ops.len(), 3);
+}
+
+#[test]
+fn a_flagged_write_closes_its_interaction() {
+	let mut host = Session::with_peer(PeerId(1));
+	let guest_op = |counter: u64, sequence: u64, op: RegistryDelta| crate::HotOp {
+		op,
+		timestamp: crate::TimeStamp { counter, peer: PeerId(2) },
+		sequence: crate::HotSequence(sequence),
+		attributes: Default::default(),
+	};
+	host.replay_hot_op(guest_op(10, 1, add_network(9))).expect("guest op");
+	assert!(host.closed_interactions().is_empty(), "the interaction is open");
+
+	host.replay_hot_op(closing(guest_op(11, 2, set_attribute("guest", 1)))).expect("flagged write");
+	let closed = host.closed_interactions();
+	assert_eq!(closed.len(), 1);
+	assert_eq!(closed[0].ops.len(), 2, "both writes, and no marker of its own");
+}
+
+fn closing(mut hot_op: crate::HotOp) -> crate::HotOp {
+	hot_op.attributes.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), crate::TimeStamp::ORIGIN);
+	hot_op
 }

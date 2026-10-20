@@ -20,10 +20,6 @@ pub enum DataPanelMessage {
 	TruncateElementPath {
 		len: usize,
 	},
-
-	ViewVectorTableTab {
-		tab: VectorTableTab,
-	},
 }
 
 /// One hop in the breadcrumb path through nested data the Data panel is displaying.
@@ -32,12 +28,4 @@ pub enum DataPanelMessage {
 pub enum PathStep {
 	Element(usize),
 	Attribute { row: usize, key: String },
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorTableTab {
-	#[default]
-	Points,
-	Segments,
-	Handles,
 }

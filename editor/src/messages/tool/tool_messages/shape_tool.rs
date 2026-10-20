@@ -22,7 +22,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeTo
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
-use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapView, snapping_hints};
+use crate::messages::tool::common_functionality::snap_session::{Drawn, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
@@ -593,7 +593,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				responses.add(OverlaysMessage::Draw);
 			}
 
-			if is_set_shape {
+			// A shape's own key pressed mid-drag leaves the drag as it is
+			if is_set_shape && matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
 				handle_shape_mode_change(&mut self.options, self.tool_data.current_shape, shape_before, context.global_tool_data, context.document);
 				self.send_layout(responses, LayoutTarget::ToolOptions);
 			}
@@ -918,6 +919,9 @@ impl Fsm for ShapeToolFsmState {
 					Arrow::overlays(document, tool_data, input.mouse.position, &mut overlay_context);
 
 					if all_selected_layers_line_or_arrow {
+						// Lines, arrows, and an empty selection have no cage, so an earlier selection's cage mustn't stay behind to catch presses
+						tool_data.bounding_box_manager = None;
+
 						let cursor = if hovering_over_endpoint { MouseCursorIcon::Default } else { MouseCursorIcon::Crosshair };
 						tool_data.cursor = cursor;
 						responses.add(FrontendMessage::UpdateMouseCursor { cursor });
@@ -1051,7 +1055,8 @@ impl Fsm for ShapeToolFsmState {
 
 				tool_data.line_data.drag_current = mouse_pos;
 
-				if tool_data.gizmo_manager.handle_click() && !input.keyboard.key(Key::Accel) {
+				// The modifiers are checked first in these, as the gizmo and line end checks mark what they find as being dragged
+				if !input.keyboard.key(Key::Accel) && tool_data.gizmo_manager.handle_click() {
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
 					responses.add(DocumentMessage::StartTransaction);
@@ -1070,14 +1075,14 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				// If clicked on endpoints of a selected line or arrow, drag its endpoints
-				if let Some((layer, _, _)) = closest_point(
-					document,
-					mouse_pos,
-					SNAP_POINT_TOLERANCE,
-					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
-					|_| false,
-				) && clicked_on_shape_endpoints(layer, document, input, tool_data)
-					&& !input.keyboard.key(Key::Control)
+				if !input.keyboard.key(Key::Control)
+					&& let Some((layer, _, _)) = closest_point(
+						document,
+						mouse_pos,
+						SNAP_POINT_TOLERANCE,
+						document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
+						|_| false,
+					) && clicked_on_shape_endpoints(layer, document, input, tool_data)
 				{
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -1088,6 +1093,11 @@ impl Fsm for ShapeToolFsmState {
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 
 					return ShapeToolFsmState::DraggingLineEndpoints;
+				}
+
+				// The overlay pass that clears it may not have run since the selection changed
+				if all_selected_layers_line_or_arrow {
+					tool_data.bounding_box_manager = None;
 				}
 
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, None);
@@ -1411,23 +1421,7 @@ impl Fsm for ShapeToolFsmState {
 				| ShapeToolFsmState::ModifyingGizmo,
 				ShapeToolMessage::Abort,
 			) => {
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.data.cleanup();
-				snap_session.end_gesture();
-				responses.add(OverlaysMessage::Draw);
-				tool_data.line_data.dragging_endpoint = None;
-				tool_data.line_data.editing_layer = None;
-
-				tool_data.gizmo_manager.handle_cleanup();
-
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					bounds.original_transforms.clear();
-					bounds.shape_resize_basis.clear();
-				}
-
-				tool_data.cursor = MouseCursorIcon::Crosshair;
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
-
+				cancel_drag(tool_data, snap_session, responses);
 				ShapeToolFsmState::Ready(tool_data.current_shape)
 			}
 			(_, ShapeToolMessage::WorkingColorChanged) => {
@@ -1436,22 +1430,10 @@ impl Fsm for ShapeToolFsmState {
 				});
 				self
 			}
-			(_, ShapeToolMessage::SetShape { shape }) => {
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.data.cleanup();
-				snap_session.end_gesture();
-				responses.add(OverlaysMessage::Draw);
-				tool_data.current_shape = shape;
-				// Update hints for the new shape (without updating options.shape_type)
-				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
-				ShapeToolFsmState::Ready(shape)
-			}
-			(_, ShapeToolMessage::SyncShapeWithOptions) => {
-				// Sync current_shape with the dropdown selection when returning from alias tools
-				tool_data.current_shape = tool_options.shape_type;
-				update_dynamic_hints(&ShapeToolFsmState::Ready(tool_options.shape_type), responses, tool_data);
-				ShapeToolFsmState::Ready(tool_options.shape_type)
-			}
+			// The Line, Rectangle, and Ellipse tools set their own shape (without updating options.shape_type)
+			(_, ShapeToolMessage::SetShape { shape }) => switch_shape(self, shape, tool_data, snap_session, responses),
+			// Returning to the Shape tool from one of those draws the dropdown's shape again
+			(_, ShapeToolMessage::SyncShapeWithOptions) => switch_shape(self, tool_options.shape_type, tool_data, snap_session, responses),
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;
 				responses.add(ToolMessage::RefreshToolOptions);
@@ -1468,6 +1450,40 @@ impl Fsm for ShapeToolFsmState {
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
 		responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 	}
+}
+
+/// Ends a drag without keeping anything it changed.
+fn cancel_drag(tool_data: &mut ShapeToolData, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
+	responses.add(DocumentMessage::AbortTransaction);
+	tool_data.data.cleanup();
+	snap_session.end_gesture();
+	responses.add(OverlaysMessage::Draw);
+	tool_data.line_data.dragging_endpoint = None;
+	tool_data.line_data.editing_layer = None;
+
+	tool_data.gizmo_manager.handle_cleanup();
+
+	if let Some(bounds) = &mut tool_data.bounding_box_manager {
+		bounds.original_transforms.clear();
+		bounds.shape_resize_basis.clear();
+	}
+
+	tool_data.cursor = MouseCursorIcon::Crosshair;
+	responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
+}
+
+/// Switches to drawing another shape. Mid-drag, this cancels the drag as changing tools does, unless the shape is the one already being drawn, whose key is ignored as other tools ignore their own.
+fn switch_shape(state: ShapeToolFsmState, shape: ShapeType, tool_data: &mut ShapeToolData, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) -> ShapeToolFsmState {
+	if !matches!(state, ShapeToolFsmState::Ready(_)) {
+		if shape == tool_data.current_shape {
+			return state;
+		}
+		cancel_drag(tool_data, snap_session, responses);
+	}
+
+	tool_data.current_shape = shape;
+	update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
+	ShapeToolFsmState::Ready(shape)
 }
 
 fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Message>, tool_data: &ShapeToolData) {
@@ -1597,10 +1613,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 #[cfg(test)]
 mod test_shape_tool {
 	use super::ShapeOptionsUpdate;
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-	use crate::messages::tool::common_functionality::graph_modification_utils::get_arc_id;
+	use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id};
 	use crate::messages::tool::common_functionality::shapes::shape_utility::{
 		ShapeType, arc_end_points, extract_arc_parameters, extract_circle_radius, extract_spiral_parameters, extract_star_parameters, regular_polygon_points, star_vertex_position,
 	};
@@ -1721,6 +1738,21 @@ mod test_shape_tool {
 			let mut editor = EditorTestUtils::create();
 			editor.new_document().await;
 			draw_checking_shape_points(&mut editor, ShapeType::Star, from, to, modifier_keys, 10).await;
+		}
+	}
+
+	#[tokio::test]
+	async fn an_odd_polygon_or_star_dragged_upward_is_drawn_flipped_to_point_down() {
+		for (shape, point_count) in [(ShapeType::Polygon, 5), (ShapeType::Star, 10)] {
+			for (from, to, flipped) in [(DVec2::new(300., 300.), DVec2::new(380., 380.), false), (DVec2::new(300., 380.), DVec2::new(380., 300.), true)] {
+				let mut editor = EditorTestUtils::create();
+				editor.new_document().await;
+				let layer = draw_checking_shape_points(&mut editor, shape, from, to, ModifierKeys::empty(), point_count).await;
+
+				// The tip of an upright shape is in the middle of the top of its box, and a flipped one's is in the middle of the bottom
+				let tip = DVec2::new(340., if flipped { 380. } else { 300. });
+				assert_has_anchor_at(&drawn_anchors(&editor, layer), tip);
+			}
 		}
 	}
 
@@ -2171,5 +2203,130 @@ mod test_shape_tool {
 		);
 
 		editor.left_mouseup(last.x, last.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_once_the_selection_has_no_cage() {
+		for leave_cage in [DocumentMessage::Undo, DocumentMessage::DeselectAllLayers] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.draw_rect(300., 300., 400., 380.).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			editor.handle_message(leave_cage).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			editor.draw_rect(400., 380., 480., 440.).await;
+			let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+			assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_before_the_overlays_next_update() {
+		for leave_cage in [DocumentMessage::Undo, DocumentMessage::DeselectAllLayers, DocumentMessage::DeleteSelectedLayers] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			editor.draw_rect(300., 300., 400., 380.).await;
+			editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+			// The press comes within the same frame, or with overlays hidden, so no overlay pass clears the cage first
+			editor.handle_message(leave_cage).await;
+
+			editor.draw_rect(400., 380., 480., 440.).await;
+			let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+			assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_drag_from_where_a_cage_was_draws_once_only_a_line_is_selected() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(300., 300., 400., 380.).await;
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::empty()).await;
+		let line = editor.get_selected_layer().await.expect("the line drawn should be selected");
+		let line_bounds = editor.active_document().metadata().bounding_box_viewport(line);
+		editor.handle_message(ShapeToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.draw_rect(400., 380., 480., 440.).await;
+		let layer = editor.get_selected_layer().await.expect("the drag should draw a rectangle");
+		assert_ne!(layer, line, "the drag should draw a new layer rather than change the line");
+		assert_bounds(&editor, layer, [DVec2::new(400., 380.), DVec2::new(480., 440.)]);
+		assert_eq!(editor.active_document().metadata().bounding_box_viewport(line), line_bounds, "the line should be left as it was");
+	}
+
+	/// Presses at one viewport position, drags halfway to another, sends a tool key's message, then finishes the drag.
+	async fn drag_pressing_mid_way(editor: &mut EditorTestUtils, from: DVec2, to: DVec2, key_message: ToolMessage) {
+		let halfway = from.midpoint(to);
+		editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(from.x, from.y, ModifierKeys::empty()).await;
+		editor.move_mouse(halfway.x, halfway.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.handle_message(key_message).await;
+		editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(to.x, to.y, ModifierKeys::empty()).await;
+	}
+
+	fn layer_count(editor: &EditorTestUtils) -> usize {
+		editor.active_document().metadata().all_layers().count()
+	}
+
+	#[tokio::test]
+	async fn the_shape_tools_own_key_mid_drag_is_ignored_and_leaves_nothing_to_undo_later() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Shape).await;
+		drag_pressing_mid_way(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.), ToolMessage::ActivateToolShape).await;
+
+		// The pentagon reaches nearly the right of the drag's box, as its side vertices sit at 95% of the box's half width
+		let layer = editor.get_selected_layer().await.expect("the pentagon drawn should be selected");
+		let [_, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the pentagon should have a bounding box");
+		assert!(max.x > 395., "the pentagon reaches only {max} rather than the release");
+
+		// Switching to another of the Shape tool's modes finds no drawing left to cancel
+		let count = layer_count(&editor);
+		editor.select_tool(ToolType::Ellipse).await;
+		assert_eq!(layer_count(&editor), count, "the pentagon should survive switching to the Ellipse tool");
+	}
+
+	#[tokio::test]
+	async fn switching_to_the_shape_tool_mid_drag_cancels_the_rectangle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Rectangle).await;
+		let count = layer_count(&editor);
+		drag_pressing_mid_way(&mut editor, DVec2::new(300., 300.), DVec2::new(400., 380.), ToolMessage::ActivateToolShape).await;
+
+		assert_eq!(layer_count(&editor), count, "switching tools mid-drag should cancel the rectangle");
+	}
+
+	#[tokio::test]
+	async fn a_line_ctrl_dragged_from_a_selected_lines_start_runs_from_the_press_to_the_release() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Line, 100., 100., 300., 100., ModifierKeys::empty()).await;
+
+		// Ctrl is let go once the press starts a new line, so its angle isn't locked
+		editor.move_mouse(100., 100., ModifierKeys::CONTROL, MouseKeys::empty()).await;
+		editor.left_mousedown(100., 100., ModifierKeys::CONTROL).await;
+		editor.move_mouse(100., 300., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(100., 300., ModifierKeys::empty()).await;
+
+		let layer = editor.get_selected_layer().await.expect("the new line should be selected");
+		let document = editor.active_document();
+		let Some(&TaggedValue::DVec2(line_to)) = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface)
+			.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))
+			.and_then(|inputs| inputs[1].as_value())
+		else {
+			panic!("the new layer should be a line")
+		};
+		let to_viewport = document.metadata().transform_to_viewport(layer);
+		let (start, end) = (to_viewport.transform_point2(DVec2::ZERO), to_viewport.transform_point2(line_to));
+		assert!(
+			start.distance(DVec2::new(100., 100.)) < 1e-6 && end.distance(DVec2::new(100., 300.)) < 1e-6,
+			"the line runs from {start} to {end}"
+		);
 	}
 }

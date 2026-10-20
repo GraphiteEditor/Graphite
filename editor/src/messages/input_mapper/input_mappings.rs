@@ -1,4 +1,4 @@
-use crate::application::Editor;
+use crate::application::Environment;
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::keyboard::{Key, KeyStates};
@@ -13,20 +13,20 @@ use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpd
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use glam::DVec2;
 
-impl From<MappingVariant> for Mapping {
-	fn from(value: MappingVariant) -> Self {
-		match value {
-			MappingVariant::Default => input_mappings(false),
-			MappingVariant::ZoomWithScroll => input_mappings(true),
+impl Mapping {
+	pub fn new(variant: MappingVariant, environment: Environment) -> Self {
+		match variant {
+			MappingVariant::Default => input_mappings(false, environment),
+			MappingVariant::ZoomWithScroll => input_mappings(true, environment),
 		}
 	}
 }
 
-pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
+pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mapping {
 	use InputMapperMessage::*;
 	use Key::*;
 
-	let is_mac = Editor::environment().is_mac();
+	let is_mac = environment.is_mac();
 
 	// NOTICE:
 	// If a new mapping you added here isn't working (and perhaps another lower-precedence one is instead), make sure to advertise
@@ -89,10 +89,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=NodeGraphMessage::SendClickTargets),
 		entry!(KeyDown(KeyM); modifiers=[Accel], action_dispatch=NodeGraphMessage::MergeSelectedNodes),
 		entry!(KeyUp(KeyC); action_dispatch=NodeGraphMessage::EndSendClickTargets),
-		entry!(KeyDown(ArrowUp); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Up, rubber_band: false }),
-		entry!(KeyDown(ArrowRight); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Right, rubber_band: false }),
-		entry!(KeyDown(ArrowDown); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Down, rubber_band: false }),
-		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, rubber_band: false }),
+		entry!(KeyDown(ArrowUp); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Up }),
+		entry!(KeyDown(ArrowRight); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }),
+		entry!(KeyDown(ArrowDown); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Down }),
+		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Left }),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),

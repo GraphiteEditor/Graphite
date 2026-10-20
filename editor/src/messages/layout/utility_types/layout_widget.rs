@@ -1,7 +1,7 @@
 use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
-use crate::application::generate_uuid;
+use crate::application::{Environment, generate_uuid};
 use crate::messages::frontend::IconName;
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -423,9 +423,15 @@ pub struct NodeSection {
 	/// For a section in the chain feeding another section's input, the wire drawn up to the section above, which its node's output feeds.
 	#[serde(rename = "outputWire")]
 	pub output_wire: Option<SectionWire>,
-	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for the layer whose stack feeds the bottom of a chain).
+	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for a layer feeding a chain, or feeding or fed by the selected layer).
 	#[serde(rename = "nodeReference")]
 	pub node_reference: bool,
+	/// For a section referring to layers that take the wire from the section below into their content, rather than from their bottom, that wire turning in from the left past its indent.
+	#[serde(rename = "contentWire")]
+	pub content_wire: Option<SectionWire>,
+	/// Whether the content wire also continues up past its turn, to the section above that takes it from the bottom.
+	#[serde(rename = "contentWireContinues")]
+	pub content_wire_continues: bool,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
 	/// The ID of the node whose Inspector section this is.
@@ -477,6 +483,8 @@ impl LayoutGroup {
 			chain_wire: None,
 			output_wire: None,
 			node_reference: false,
+			content_wire: None,
+			content_wire_continues: false,
 			expanded,
 			id,
 			layout,
@@ -582,6 +590,8 @@ impl Diffable for LayoutGroup {
 					chain_wire: current_chain_wire,
 					output_wire: current_output_wire,
 					node_reference: current_node_reference,
+					content_wire: current_content_wire,
+					content_wire_continues: current_content_wire_continues,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
@@ -596,6 +606,8 @@ impl Diffable for LayoutGroup {
 					chain_wire: new_chain_wire,
 					output_wire: new_output_wire,
 					node_reference: new_node_reference,
+					content_wire: new_content_wire,
+					content_wire_continues: new_content_wire_continues,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -613,6 +625,8 @@ impl Diffable for LayoutGroup {
 					|| *current_chain_wire != new_chain_wire
 					|| *current_output_wire != new_output_wire
 					|| *current_node_reference != new_node_reference
+					|| *current_content_wire != new_content_wire
+					|| *current_content_wire_continues != new_content_wire_continues
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
@@ -626,6 +640,8 @@ impl Diffable for LayoutGroup {
 					*current_chain_wire = new_chain_wire;
 					*current_output_wire = new_output_wire;
 					*current_node_reference = new_node_reference;
+					*current_content_wire = new_content_wire;
+					*current_content_wire_continues = new_content_wire_continues;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
@@ -641,6 +657,8 @@ impl Diffable for LayoutGroup {
 						chain_wire: new_chain_wire,
 						output_wire: new_output_wire,
 						node_reference: new_node_reference,
+						content_wire: new_content_wire,
+						content_wire_continues: new_content_wire_continues,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,
@@ -996,7 +1014,7 @@ pub enum DiffUpdate {
 
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
-	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
 		// Go through each widget to convert `ActionShortcut::Action` to `ActionShortcut::Shortcut` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_instance: &mut WidgetInstance| {
 			// Handle all the widgets that have tooltips
@@ -1033,7 +1051,7 @@ impl DiffUpdate {
 
 			// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 			if let Some(tooltip_shortcut) = tooltip_shortcut {
-				tooltip_shortcut.realize_shortcut(action_input_mapping);
+				tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
@@ -1041,23 +1059,23 @@ impl DiffUpdate {
 				for radio_entry_data in &mut radio_input.entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = radio_entry_data.tooltip_shortcut.as_mut() {
-						tooltip_shortcut.realize_shortcut(action_input_mapping);
+						tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 					}
 				}
 			}
 		};
 
 		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
 			for entries in entry_sections {
 				for entry in entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-						tooltip_shortcut.realize_shortcut(action_input_mapping);
+						tooltip_shortcut.realize_shortcut(action_input_mapping, environment);
 					}
 
 					// Recursively call this function on the menu's children
-					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
+					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping, environment);
 				}
 			}
 		}
@@ -1065,29 +1083,39 @@ impl DiffUpdate {
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut *widget_instance.widget {
 			Widget::DropdownInput(dropdown_input) => {
-				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping);
+				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping, environment);
 				dropdown_input.entries_hash = hash_menu_list_entry_sections(&dropdown_input.entries);
 			}
 			Widget::TextButton(text_button) => {
-				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping);
+				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping, environment);
 				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
 			}
 			_ => {}
 		};
 
-		match self {
-			Self::Layout(layout) => layout.0.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
-			}),
-			Self::LayoutGroup(layout_group) => layout_group.iter_mut().for_each(|widget_instance| {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
-			}),
-			Self::Widget(widget_instance) => {
-				convert_tooltip(widget_instance);
-				convert_menu_lists(widget_instance);
+		let convert = |widget_instance: &mut WidgetInstance| {
+			convert_tooltip(widget_instance);
+			convert_menu_lists(widget_instance);
+		};
+
+		fn convert_layout_group(layout_group: &mut LayoutGroup, convert: &impl Fn(&mut WidgetInstance)) {
+			match layout_group {
+				LayoutGroup::Column(WidgetColumn { widgets }) | LayoutGroup::Row(WidgetRow { widgets }) => widgets.iter_mut().for_each(|widget_instance| convert_widget(widget_instance, convert)),
+				LayoutGroup::Table(WidgetTable { rows, .. }) => rows.iter_mut().flatten().flatten().for_each(|widget_instance| convert_widget(widget_instance, convert)),
+				LayoutGroup::NodeSection(NodeSection { layout, .. }) => layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, convert)),
 			}
+		}
+		fn convert_widget(widget_instance: &mut WidgetInstance, convert: &impl Fn(&mut WidgetInstance)) {
+			convert(widget_instance);
+			if let Widget::PopoverButton(popover_button) = &mut *widget_instance.widget {
+				popover_button.popover_layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, convert));
+			}
+		}
+
+		match self {
+			Self::Layout(layout) => layout.0.iter_mut().for_each(|layout_group| convert_layout_group(layout_group, &convert)),
+			Self::LayoutGroup(layout_group) => convert_layout_group(layout_group, &convert),
+			Self::Widget(widget_instance) => convert_widget(widget_instance, &convert),
 		}
 	}
 }

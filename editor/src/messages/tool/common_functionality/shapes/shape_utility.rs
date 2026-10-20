@@ -6,8 +6,7 @@ use crate::messages::message::Message;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage, Responses};
+use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler};
 use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
@@ -15,7 +14,6 @@ use crate::messages::tool::common_functionality::transformation_cage::BoundingBo
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::*;
 use glam::{DAffine2, DMat2, DVec2};
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::core_types::misc::format_f64;
 use graphene_std::math::float_noise::round_away_float_noise;
@@ -210,41 +208,9 @@ pub fn clicked_on_shape_endpoints(layer: LayerNodeIdentifier, document: &Documen
 	endpoint_click
 }
 
-/// Center, Lock Ratio, Lock Angle, Snap Angle, Increase/Decrease Side
-pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-	let sign_num = if end[1] > start[1] { 1. } else { -1. };
-	let new_layer = NodeGraphLayer::new(layer, &document.network_interface);
-
-	if let Some(&TaggedValue::Integer(sides)) = new_layer.parameter_value(graphene_std::vector::generator_nodes::regular_polygon::SidesInput)
-		&& sides % 2 != 0
-	{
-		let Some(polygon_node_id) = new_layer.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::regular_polygon::IDENTIFIER)) else {
-			return;
-		};
-
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
-			input: NodeInput::value(TaggedValue::Number(sign_num * 0.5), false),
-		});
-		return;
-	}
-
-	if let Some(&TaggedValue::Integer(sides)) = new_layer.parameter_value(graphene_std::vector::generator_nodes::star::SidesInput)
-		&& sides % 2 != 0
-	{
-		let Some(star_node_id) = new_layer.upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::star::IDENTIFIER)) else {
-			return;
-		};
-
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
-			input: NodeInput::value(TaggedValue::Number(sign_num * 0.5), false),
-		});
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
-			input: NodeInput::value(TaggedValue::Number(sign_num * 0.25), false),
-		});
-	}
+/// Whether an odd-sided polygon or star being drawn is flipped to point down, which it is when dragged upward. It's flipped by negating its radius.
+pub fn drawn_flipped(sides: u32, viewport_drag_start: DVec2, pointer: DVec2) -> bool {
+	sides % 2 == 1 && pointer.y < viewport_drag_start.y
 }
 
 pub fn transform_cage_overlays(document: &DocumentMessageHandler, tool_data: &mut ShapeToolData, overlay_context: &mut OverlayContext) {
@@ -294,7 +260,7 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 
 		overlay_context.outline_vector(&vector, transform);
 
-		for (_, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
+		for (_, position) in vector.anchors() {
 			overlay_context.manipulator_anchor(transform.transform_point2(position), false, None);
 		}
 	}

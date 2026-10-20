@@ -1,5 +1,5 @@
 use super::keyboard::{KeysGroup, LabeledShortcut, all_required_modifiers_pressed};
-use crate::messages::input_mapper::key_mapping::MappingVariant;
+use crate::application::Environment;
 use crate::messages::input_mapper::utility_types::keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::input_mapper::utility_types::pointer::NUMBER_OF_MOUSE_BUTTONS;
 use crate::messages::prelude::*;
@@ -16,12 +16,6 @@ pub struct Mapping {
 	pub wheel_scroll: KeyMappingEntries,
 	pub pointer_move: KeyMappingEntries,
 	pub pointer_shake: KeyMappingEntries,
-}
-
-impl Default for Mapping {
-	fn default() -> Self {
-		MappingVariant::Default.into()
-	}
 }
 
 impl Mapping {
@@ -113,19 +107,20 @@ pub struct MappingEntry {
 pub enum ActionShortcut {
 	#[serde(skip)]
 	Action(MessageDiscriminant),
+	#[serde(skip)]
+	Keys(KeysGroup),
 	#[serde(rename = "shortcut")]
 	Shortcut(LabeledShortcut),
 }
 
 impl ActionShortcut {
-	pub fn realize_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-		if let Self::Action(action) = self {
-			if let Some(keys) = action_input_mapping(action) {
-				*self = Self::Shortcut(keys.into());
-			} else {
-				*self = Self::Shortcut(KeysGroup::default().into());
-			}
-		}
+	pub fn realize_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>, environment: Environment) {
+		let keys = match self {
+			Self::Action(action) => action_input_mapping(action).unwrap_or_default(),
+			Self::Keys(keys) => std::mem::take(keys),
+			Self::Shortcut(_) => return,
+		};
+		*self = Self::Shortcut(LabeledShortcut::new(keys, environment));
 	}
 }
 

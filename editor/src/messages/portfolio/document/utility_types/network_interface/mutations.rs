@@ -515,14 +515,6 @@ impl NodeNetworkInterface {
 		node.set_call_argument(call_argument);
 	}
 
-	pub fn set_context_features(&mut self, node_id: &NodeId, network_path: &[NodeId], context_features: ContextDependencies) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in set_context_features");
-			return;
-		};
-		node.set_context_features(context_features);
-	}
-
 	/// Lightweight version of `set_input` for bulk import operations.
 	/// Directly sets the input without `is_acyclic` checks, `load_structure`, position conversions,
 	/// or per-node cache invalidation. Call `load_structure`, `unload_all_nodes_click_targets`, and
@@ -1291,8 +1283,13 @@ impl NodeNetworkInterface {
 						new_export = root_node_to_restore.map(|root_node| root_node.to_connector());
 						new_previewing_state = Previewing::No;
 					}
-					// The export is clicked and there is no preview
+					// The export is clicked and there is no preview, so it already shows the primary output a preview would
+					else if previous_output_index == 0 {
+						return;
+					}
+					// The export is clicked and there is no preview, but it comes from another output, so preview the primary one and restore that afterward
 					else {
+						new_export = Some(OutputConnector::primary_output(toggle_id));
 						new_previewing_state = Previewing::Yes {
 							root_node_to_restore: Some(RootNode {
 								node_id: previous_export_id,
@@ -1309,10 +1306,10 @@ impl NodeNetworkInterface {
 					if let Previewing::Yes { root_node_to_restore } = self.previewing(network_path) {
 						// There is also a solid line being drawn
 						if let Some(root_node_to_restore) = root_node_to_restore {
-							// If the node with the solid line is clicked, then start previewing that node without restore
+							// If the node with the solid line is clicked, then end the preview by restoring it
 							if root_node_to_restore.node_id == toggle_id {
-								new_export = Some(OutputConnector::primary_output(toggle_id));
-								new_previewing_state = Previewing::Yes { root_node_to_restore: None };
+								new_export = Some(root_node_to_restore.to_connector());
+								new_previewing_state = Previewing::No;
 							} else {
 								// Root node to restore does not change
 								new_previewing_state = Previewing::Yes {
