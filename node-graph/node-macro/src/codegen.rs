@@ -592,6 +592,23 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let kernel_call = lift(quote!(self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #regular_field_names)*)));
 
+	let landed = |call: TokenStream2| match tier {
+		NodeOutputTier::Plain => quote!(#core_types::Poll::Final(#call)),
+		NodeOutputTier::Error => quote! {
+			match #call {
+				Ok(value) => #core_types::Poll::Final(value),
+				Err(error) => #core_types::Poll::Error(Box::new(#core_types::NodeError::from(error))),
+			}
+		},
+		NodeOutputTier::Fallback => quote! {
+			match #call {
+				Ok(value) => #core_types::Poll::Final(value),
+				Err((value, error)) => #core_types::Poll::Fallback(Box::new((value, #core_types::NodeError::from(error)))),
+			}
+		},
+		NodeOutputTier::Interrupt | NodeOutputTier::Poll => unreachable!("Validation rejects async nodes returning `Interrupt` or `Poll`"),
+	};
+
 	let eval_impl = if parsed.is_async {
 		let declared_field_names: Vec<_> = fields.iter().filter(|field| !field.is_data_field).map(|field| &field.pat_ident.ident).collect();
 		let placeholder = match &attributes.placeholder {
@@ -599,6 +616,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			None => quote!(None),
 		};
 		let data_clones = data_field_names.iter().map(|name| quote!(let #name = self.#name.clone();));
+		let landed_call = landed(quote!(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await));
 		quote! {
 			type Output = #output;
 			#[inline]
@@ -628,9 +646,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __runtime = _runtime.element().clone();
 				let __context = __input.clone();
 				#(#data_clones)*
-				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move {
-					#core_types::Poll::Final(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await)
-				});
+				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move { #landed_call });
 				__cell.merge(__state)
 			}
 

@@ -225,7 +225,10 @@ impl Status {
 			}
 			Poll::Fallback(boxed) => {
 				let (value, error) = *boxed;
-				self.fail(error);
+				match error.trace.is_empty() {
+					true => self.raise(error),
+					false => self.fail(error),
+				}
 				self.finish(value)
 			}
 			Poll::Pending => self.bail(Interrupt::Pending),
@@ -392,6 +395,27 @@ mod tests {
 		let [upstream] = error.upstream() else { unreachable!() };
 		assert_eq!(upstream.to_string(), "input");
 		assert_eq!(upstream.trace(), [0]);
+	}
+
+	#[test]
+	fn a_merged_own_fallback_carries_the_input_error_upstream() {
+		let cell = Status::new();
+		cell.record(0, Poll::fallback(1, "input")).unwrap();
+		let Poll::Fallback(boxed) = cell.merge(Poll::fallback(2, "own")) else { unreachable!() };
+		let (value, error) = *boxed;
+		assert_eq!(value, 2);
+		assert_eq!(error.to_string(), "own");
+		let [upstream] = error.upstream() else { unreachable!() };
+		assert_eq!(upstream.to_string(), "input");
+
+		let cell = Status::new();
+		let mut passed_on = NodeError::new("passed on");
+		passed_on.track(1);
+		cell.record(0, Poll::fallback(1, "input")).unwrap();
+		let Poll::Fallback(boxed) = cell.merge(Poll::Fallback(Box::new((2, passed_on)))) else {
+			unreachable!()
+		};
+		assert_eq!(boxed.1.to_string(), "input", "an input's fallback is passed on, not raised");
 	}
 
 	#[test]
