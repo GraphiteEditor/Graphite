@@ -423,9 +423,15 @@ pub struct NodeSection {
 	/// For a section in the chain feeding another section's input, the wire drawn up to the section above, which its node's output feeds.
 	#[serde(rename = "outputWire")]
 	pub output_wire: Option<SectionWire>,
-	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for the layer whose stack feeds the bottom of a chain).
+	/// Whether this section only refers to its node with a row like the Data panel's, in place of its header and parameters (for a layer feeding a chain, or feeding or fed by the selected layer).
 	#[serde(rename = "nodeReference")]
 	pub node_reference: bool,
+	/// For a section referring to layers that take the wire from the section below into their content, rather than from their bottom, that wire turning in from the left past its indent.
+	#[serde(rename = "contentWire")]
+	pub content_wire: Option<SectionWire>,
+	/// Whether the content wire also continues up past its turn, to the section above that takes it from the bottom.
+	#[serde(rename = "contentWireContinues")]
+	pub content_wire_continues: bool,
 	/// Whether this section is expanded to show its contents, as opposed to being collapsed down to just its header.
 	pub expanded: bool,
 	/// The ID of the node whose Inspector section this is.
@@ -477,6 +483,8 @@ impl LayoutGroup {
 			chain_wire: None,
 			output_wire: None,
 			node_reference: false,
+			content_wire: None,
+			content_wire_continues: false,
 			expanded,
 			id,
 			layout,
@@ -582,6 +590,8 @@ impl Diffable for LayoutGroup {
 					chain_wire: current_chain_wire,
 					output_wire: current_output_wire,
 					node_reference: current_node_reference,
+					content_wire: current_content_wire,
+					content_wire_continues: current_content_wire_continues,
 					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
@@ -596,6 +606,8 @@ impl Diffable for LayoutGroup {
 					chain_wire: new_chain_wire,
 					output_wire: new_output_wire,
 					node_reference: new_node_reference,
+					content_wire: new_content_wire,
+					content_wire_continues: new_content_wire_continues,
 					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
@@ -613,6 +625,8 @@ impl Diffable for LayoutGroup {
 					|| *current_chain_wire != new_chain_wire
 					|| *current_output_wire != new_output_wire
 					|| *current_node_reference != new_node_reference
+					|| *current_content_wire != new_content_wire
+					|| *current_content_wire_continues != new_content_wire_continues
 					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
@@ -626,6 +640,8 @@ impl Diffable for LayoutGroup {
 					*current_chain_wire = new_chain_wire;
 					*current_output_wire = new_output_wire;
 					*current_node_reference = new_node_reference;
+					*current_content_wire = new_content_wire;
+					*current_content_wire_continues = new_content_wire_continues;
 					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
@@ -641,6 +657,8 @@ impl Diffable for LayoutGroup {
 						chain_wire: new_chain_wire,
 						output_wire: new_output_wire,
 						node_reference: new_node_reference,
+						content_wire: new_content_wire,
+						content_wire_continues: new_content_wire_continues,
 						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,
