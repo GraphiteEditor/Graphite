@@ -1044,7 +1044,7 @@ pub fn node_reference_button(
 	network_path: &[NodeId],
 	selection_network_path: &[NodeId],
 	select: impl Fn() -> Message + Send + Sync + 'static,
-) -> WidgetInstance {
+) -> TextButton {
 	let is_layer = network_interface.is_layer(&node_id, network_path);
 	let icon = network_interface.node_icon(&node_id, network_path);
 	let name = network_interface.display_name(&node_id, network_path);
@@ -1063,7 +1063,6 @@ pub fn node_reference_button(
 			(true, false, _) => "",
 		})
 		.on_update(move |_| select())
-		.widget_instance()
 }
 
 impl TableItemLayout for NodeId {
@@ -1097,7 +1096,7 @@ impl TableItemLayout for NodeId {
 				NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
 			]),
 		};
-		vec![node_reference_button(node_id, network_interface, &network_path, data.selection_network_path, select)]
+		vec![node_reference_button(node_id, network_interface, &network_path, data.selection_network_path, select).widget_instance()]
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), data))]
