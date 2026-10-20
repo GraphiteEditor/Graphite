@@ -653,6 +653,7 @@ impl Fsm for TextToolFsmState {
 		let ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			fonts,
 			viewport,
@@ -1022,7 +1023,7 @@ impl Fsm for TextToolFsmState {
 						..TypesettingConfig::default()
 					},
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
-					color: tool_options.fill.active_color(),
+					color: tool_options.fill.new_shape_paint(true, global_tool_data.primary_color).and_then(|paint| paint.as_solid()),
 				};
 				tool_data.new_text(document, editing_text, fonts, responses);
 				TextToolFsmState::Editing

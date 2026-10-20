@@ -16,6 +16,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, is_almost_colinear, should_extend};
+use crate::messages::tool::utility_types::DocumentToolData;
 use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -1360,6 +1361,7 @@ impl PenToolData {
 		viewport: &ViewportMessageHandler,
 		responses: &mut VecDeque<Message>,
 		tool_options: &PenOptions,
+		global_tool_data: &DocumentToolData,
 		append: bool,
 		shape_editor: &mut ShapeState,
 		start: DVec2,
@@ -1438,8 +1440,8 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.drawing.fill.apply_fill(layer, responses);
-		tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+		tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, responses);
+		tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, responses);
 		tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
@@ -1606,6 +1608,7 @@ impl Fsm for PenToolFsmState {
 		let ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			shape_editor,
 			snap_session,
@@ -1984,7 +1987,7 @@ impl Fsm for PenToolFsmState {
 				let start = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				tool_data.store_clicked_endpoint(document, start);
-				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor, start);
+				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, global_tool_data, append, shape_editor, start);
 				tool_data.begin_snapping_gesture(snap_session, view, Some(drawn_layer));
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle

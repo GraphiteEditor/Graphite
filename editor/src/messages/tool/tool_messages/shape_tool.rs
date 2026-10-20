@@ -878,6 +878,7 @@ impl Fsm for ShapeToolFsmState {
 		ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			shape_editor,
 			snap_session,
@@ -1196,8 +1197,8 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_options.drawing.fill.apply_fill(layer, defered_responses);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, defered_responses);
 						tool_options.drawing.apply_stroke_order_to_new_layer(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
@@ -1211,8 +1212,8 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.fill.apply_fill(layer, defered_responses);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, defered_responses);
 						tool_options.drawing.apply_stroke_order_to_new_layer(layer, defered_responses);
 					}
 					ShapeType::Line => {
@@ -1226,7 +1227,7 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, defered_responses);
 					}
 				}
 

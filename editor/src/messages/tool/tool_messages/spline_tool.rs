@@ -338,6 +338,7 @@ impl Fsm for SplineToolFsmState {
 		let ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			viewport,
 			shape_editor,
@@ -448,8 +449,8 @@ impl Fsm for SplineToolFsmState {
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.fill.apply_fill(layer, responses);
-				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+				tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, responses);
 				tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 				tool_data.current_layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(viewport_vec);
