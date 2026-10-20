@@ -3086,15 +3086,6 @@ pub(crate) fn rectangle_inspector(node_id: NodeId, context: &mut NodeInspectorCo
 	]
 }
 
-pub(crate) fn node_no_inspector_content(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
-	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no parameters"
-	} else {
-		"Node has no parameters"
-	};
-	string_inspector(text)
-}
-
 pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
@@ -3183,10 +3174,6 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 		}
 	}
 
-	if layout.is_empty() {
-		layout = node_no_inspector_content(node_id, context);
-	}
-
 	let display_name = context
 		.network_interface
 		.node_metadata(&node_id, context.selection_network_path)
@@ -3237,16 +3224,12 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 		}
 
 		// That layer is only referred to, as in the Data panel, rather than shown with its own parameters and chain
-		if let Some(layer) = stack_layer {
-			let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
-				NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
-			});
-			let name = context.network_interface.display_name(&layer, network_path);
-			let visible = context.network_interface.is_visible(&layer, network_path);
-
-			let mut reference_section = LayoutGroup::section(name, None, "", visible, false, true, layer.0, Layout(vec![LayoutGroup::row(vec![button])]));
+		let feeds_content = input_index == LAYER_SECONDARY_INPUT_INDEX && context.network_interface.is_layer(&node_id, network_path);
+		let tooltip_label = if feeds_content { "Select Child Layer" } else { "Select Layer" };
+		if let Some(layer) = stack_layer
+			&& let Some(mut reference_section) = layer_references_section(&[layer], tooltip_label, context)
+		{
 			if let LayoutGroup::NodeSection(section) = &mut reference_section {
-				section.node_reference = true;
 				section.output_wire = Some(output_section_wire(layer, context));
 			}
 
@@ -3261,8 +3244,35 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 	section
 }
 
+/// A section only referring to layers, as the Data panel does, with a row of buttons that each select one rather than showing its parameters and chain.
+/// Their tooltip label names how the layers relate to the section they're shown beside.
+pub(crate) fn layer_references_section(layers: &[NodeId], tooltip_label: &str, context: &NodeInspectorContext) -> Option<LayoutGroup> {
+	let network_path = context.selection_network_path;
+	let &first_layer = layers.first()?;
+
+	let mut buttons = Vec::with_capacity(layers.len() * 2);
+	for &layer in layers {
+		if !buttons.is_empty() {
+			buttons.push(Separator::new(SeparatorStyle::Related).widget_instance());
+		}
+		let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
+			NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
+		});
+		buttons.push(button.tooltip_label(tooltip_label).widget_instance());
+	}
+
+	let name = context.network_interface.display_name(&first_layer, network_path);
+	let visible = context.network_interface.is_visible(&first_layer, network_path);
+
+	let mut section = LayoutGroup::section(name, None, "", visible, false, true, first_layer.0, Layout(vec![LayoutGroup::row(buttons)]));
+	if let LayoutGroup::NodeSection(node_section) = &mut section {
+		node_section.node_reference = true;
+	}
+	Some(section)
+}
+
 /// The wire drawn up from a node's section in a chain to the section above, which its output feeds.
-fn output_section_wire(node_id: NodeId, context: &NodeInspectorContext) -> SectionWire {
+pub(crate) fn output_section_wire(node_id: NodeId, context: &NodeInspectorContext) -> SectionWire {
 	let output_type = context.network_interface.output_type(&OutputConnector::node(node_id, 0), context.selection_network_path);
 
 	SectionWire {

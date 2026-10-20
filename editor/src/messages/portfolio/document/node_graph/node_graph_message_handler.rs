@@ -3076,7 +3076,73 @@ impl NodeGraphMessageHandler {
 					}
 				}
 
-				vec![layer_section]
+				// The layers this one's output feeds, which a stack used in several places can be many of, and the graph's output none of.
+				// Followed through any nodes between, each layer takes it either from its bottom (as the sibling above in its stack) or into its content (as its parent).
+				let network_path = context.selection_network_path;
+				let outward_connectors = |node_id: NodeId| {
+					context
+						.network_interface
+						.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id)).cloned())
+						.flatten()
+						.unwrap_or_default()
+				};
+				let (mut siblings, mut parents) = (Vec::new(), Vec::new());
+				let mut pending_connectors = outward_connectors(layer);
+				let mut visited_nodes = HashSet::new();
+				while let Some(connector) = pending_connectors.pop() {
+					let Some(node_id) = connector.node_id() else { continue };
+
+					if context.network_interface.is_layer(&node_id, network_path) {
+						let receivers = if connector.input_index() == 0 { &mut siblings } else { &mut parents };
+						receivers.push(node_id);
+						continue;
+					}
+
+					// A node passes it on only when taking it as its primary input, rather than as a parameter
+					if connector.input_index() == 0 && visited_nodes.insert(node_id) {
+						pending_connectors.extend(outward_connectors(node_id));
+					}
+				}
+
+				// Sorted for a stable button order, since outward wires are unordered
+				siblings.sort_unstable();
+				siblings.dedup();
+				parents.sort_unstable();
+				parents.dedup();
+
+				// The layer feeding this one from below in its stack, unless this is the bottom
+				let layer_below = node_inspector::input_chain(layer, 0, context.network_interface, network_path).and_then(|(_, stack_layer)| stack_layer);
+
+				// Each is only referred to by a button, wired to the layer's section. Parents sit just above, the wire turning into their content,
+				// and siblings above them, the wire continuing up past that turn into their bottom.
+				let mut sections = Vec::new();
+
+				if let Some(siblings_section) = node_inspector::layer_references_section(&siblings, "Select Sibling Layer", context) {
+					sections.push(siblings_section);
+				}
+				if let Some(mut parents_section) = node_inspector::layer_references_section(&parents, "Select Parent Layer", context) {
+					if let LayoutGroup::NodeSection(section) = &mut parents_section {
+						section.content_wire = Some(node_inspector::output_section_wire(layer, context));
+						section.content_wire_continues = !siblings.is_empty();
+					}
+					sections.push(parents_section);
+				}
+				if !sections.is_empty()
+					&& let LayoutGroup::NodeSection(section) = &mut layer_section
+				{
+					section.output_wire = Some(node_inspector::output_section_wire(layer, context));
+				}
+				sections.push(layer_section);
+				if let Some(layer_below) = layer_below
+					&& let Some(mut below_section) = node_inspector::layer_references_section(&[layer_below], "Select Sibling Layer", context)
+				{
+					if let LayoutGroup::NodeSection(section) = &mut below_section {
+						section.output_wire = Some(node_inspector::output_section_wire(layer_below, context));
+					}
+					sections.push(below_section);
+				}
+
+				sections
 			}
 			// If multiple layers and/or nodes are selected, show nothing
 			_ => Vec::new(),
