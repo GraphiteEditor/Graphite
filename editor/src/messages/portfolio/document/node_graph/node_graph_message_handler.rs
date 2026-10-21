@@ -78,6 +78,8 @@ pub struct NodeGraphMessageHandler {
 	pub drag_start_chain_nodes: Vec<NodeId>,
 	/// The wire a dragged node would be inserted onto if dropped now, which the frontend shows undimmed.
 	wire_insertion_preview: Option<InputConnector>,
+	/// The center of the connector a press at the pointer would grab, in node graph space, which the frontend shows hovered.
+	hovered_connector: Option<DVec2>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
 	pub box_selection_start: Option<(DVec2, bool)>,
@@ -359,6 +361,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							input_connector,
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+				}
+				// A wire dragged out of a dimmed connector for adding an import adds that import, wired to the new node's first exposed input
+				else if let Some(import_index) = self.wire_in_progress_from_new_import {
+					if let Some((input_index, _)) = node_template.inputs.iter().enumerate().find(|(_, input)| input.is_exposed()) {
+						responses.add(NodeGraphMessage::AddImportAndConnect {
+							import_index,
+							input_connector: InputConnector::node_at_index(node_id, input_index),
+						});
 					}
 				}
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
@@ -1102,6 +1113,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_from_connector = Some(connector_position);
 					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_from_new_import = Some(import_index);
+					Self::keep_pressed_connector_lit(Some(connector_position), responses);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1115,6 +1127,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_to_connector = Some(connector_position);
 					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_from_new_export = Some(export_index);
+					Self::keep_pressed_connector_lit(Some(connector_position), responses);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1158,6 +1171,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Begin moving an existing wire, or drag a new one backward out of an empty input toward an output
 				if let Some(clicked_input) = &clicked_input {
 					responses.add(DocumentMessage::StartTransaction);
+					Self::keep_pressed_connector_lit(network_interface.input_position(clicked_input, breadcrumb_network_path), responses);
 
 					let output_connector = if *clicked_input == InputConnector::Export(0) {
 						network_interface.root_node(breadcrumb_network_path).map(|root_node| root_node.to_connector())
@@ -1193,6 +1207,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.wire_in_progress_from_connector = network_interface.output_position(&clicked_output, selection_network_path);
 					let output_type = network_interface.output_type(&clicked_output, breadcrumb_network_path);
 					self.wire_in_progress_type = output_type.displayed_type();
+					Self::keep_pressed_connector_lit(self.wire_in_progress_from_connector, responses);
 
 					self.update_node_graph_hints(responses);
 					return;
@@ -1301,9 +1316,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				// Auto-panning
-				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
-				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+				// Auto-panning, only while dragging since hovering also moves the pointer here
+				if self.drag_start.is_some() || self.box_selection_start.is_some() || self.wire_in_progress_from_connector.is_some() {
+					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
+					self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+				}
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -1341,11 +1358,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.output_connector_from_click(ipp.mouse.position, selection_network_path)
 						.and_then(|output_connector| network_interface.output_position(&output_connector, selection_network_path));
 					let empty_import_position = || network_interface.empty_import_export_connector_at(point, true, selection_network_path).map(|(_, position)| position);
-					self.wire_in_progress_from_connector = Some(output_position.or_else(empty_import_position).unwrap_or(point));
+					let snapped_position = output_position.or_else(empty_import_position);
+					self.wire_in_progress_from_connector = Some(snapped_position.unwrap_or(point));
 
-					self.send_wire_in_progress(self.wire_in_progress_from_input, network_interface, selection_network_path, responses);
+					self.send_wire_in_progress(self.wire_in_progress_from_input, snapped_position.is_some(), network_interface, selection_network_path, responses);
 				} else if self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none() {
 					let to_connector = network_interface.input_connector_from_click(ipp.mouse.position, selection_network_path);
+					let empty_export_position = to_connector
+						.is_none()
+						.then(|| network_interface.empty_import_export_connector_at(point, false, selection_network_path))
+						.flatten()
+						.map(|(_, position)| position);
 					if let Some(to_connector) = &to_connector {
 						let Some(input_position) = network_interface.input_position(to_connector, selection_network_path) else {
 							log::error!("Could not get input position for connector: {to_connector:?}");
@@ -1354,7 +1377,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.wire_in_progress_to_connector = Some(input_position);
 					}
 					// Snap to a dimmed connector for adding an export, which a wire dropped on adds
-					else if let Some((_, empty_export_position)) = network_interface.empty_import_export_connector_at(point, false, selection_network_path) {
+					else if let Some(empty_export_position) = empty_export_position {
 						self.wire_in_progress_to_connector = Some(empty_export_position);
 					}
 					// Not hovering over a node input or node output, update with the mouse position.
@@ -1383,7 +1406,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 
-					self.send_wire_in_progress(to_connector, network_interface, selection_network_path, responses);
+					let loose_end_snapped = to_connector.is_some() || empty_export_position.is_some();
+					self.send_wire_in_progress(to_connector, loose_end_snapped, network_interface, selection_network_path, responses);
 
 					// Input connectors stick out past their node's edge, so hovering one counts as hovering its node
 					let wire_hovered_node = to_connector
@@ -1447,6 +1471,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					self.update_node_graph_hints(responses);
 				}
+
+				responses.add(NodeGraphMessage::UpdateHoveredConnector);
 			}
 			NodeGraphMessage::PointerUp => {
 				// A press released where it was made is a click, which a second press soon after can make a double-click
@@ -1551,7 +1577,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(NodeGraphMessage::RemoveOrphanedDots);
 					}
 					// With its loose end dropped elsewhere, the node creation menu opens for a node to wire it to, unless a backward wire was only clicked
-					else if !self.initial_disconnecting && (output_connector.is_some() || (backward && wire_in_progress_from_connector != wire_in_progress_to_connector)) {
+					else if !self.initial_disconnecting
+						&& (output_connector.is_some() || new_import_index.is_some() || (backward && wire_in_progress_from_connector != wire_in_progress_to_connector))
+					{
 						// If the add node menu is already open, we don't want to open it again
 						if self.context_menu.is_some() {
 							return;
@@ -1569,9 +1597,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// A forward wire offers the nodes taking its type, with the new node's input where it was dropped.
 						// A backward wire offers every node, with the new node's output (on its right, five grid cells across) where it was dropped.
 						// TODO: Filter both directions to the nodes that fit, decided in the backend with the conversion-aware type checks from https://github.com/GraphiteEditor/Graphite/pull/4688
-						let (compatible_type, node_creation_point) = match output_connector {
-							Some(output_connector) if !backward => (network_interface.output_type(&output_connector, selection_network_path).add_node_string(), point),
-							_ => (None, point - DVec2::new((5 * GRID_SIZE) as f64, 0.)),
+						let (compatible_type, node_creation_point) = match (backward, output_connector) {
+							(false, Some(output_connector)) => (network_interface.output_type(&output_connector, selection_network_path).add_node_string(), point),
+							(false, None) => (None, point),
+							(true, _) => (None, point - DVec2::new((5 * GRID_SIZE) as f64, 0.)),
 						};
 
 						self.context_menu = Some(ContextMenuInformation {
@@ -1999,6 +2028,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						has_left_input_wire,
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
+					responses.add(NodeGraphMessage::UpdateHoveredConnector);
 					self.update_node_graph_hints(responses);
 				}
 			}
@@ -2308,6 +2338,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(InspectorMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
 			}
+			NodeGraphMessage::UpdateHoveredConnector => {
+				let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) else {
+					return;
+				};
+				let viewport_location = ipp.mouse.position;
+				let point = network_metadata
+					.persistent_metadata
+					.navigation_metadata
+					.node_graph_to_viewport
+					.inverse()
+					.transform_point2(viewport_location);
+
+				// Moving nodes or drawing a selection box can't grab a connector, so none is shown hovered meanwhile
+				let can_grab_connector = graph_view_overlay_open && self.drag_start.is_none() && self.box_selection_start.is_none();
+				let in_viewport = viewport.is_in_bounds(viewport.logical(viewport_location) + viewport.offset());
+				let hovered_connector = (can_grab_connector && in_viewport)
+					.then(|| Self::connector_under_pointer(viewport_location, point, network_interface, breadcrumb_network_path))
+					.flatten();
+				self.set_hovered_connector(hovered_connector, responses);
+			}
 			NodeGraphMessage::UpdateWireInsertionPreview => {
 				// Only a drag in progress inserts anything on drop, and one that hasn't started moving yet inserts nothing
 				let target = if self.drag_start.is_some() && !self.begin_dragging {
@@ -2536,7 +2586,11 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_from_new_export = None;
 		self.disconnecting = None;
 
-		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+		responses.add(FrontendMessage::UpdateWirePathInProgress {
+			wire_path: None,
+			dragged_from: None,
+			snapped_to: None,
+		});
 	}
 
 	pub fn is_reordering_import_export(&self) -> bool {
@@ -2590,6 +2644,39 @@ impl NodeGraphMessageHandler {
 		self.update_node_graph_hints(responses);
 	}
 
+	/// The center of the connector a press at the pointer would grab, in node graph space, as `PointerDown` decides what lies under it.
+	fn connector_under_pointer(viewport_location: DVec2, point: DVec2, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Option<DVec2> {
+		// Names and layer buttons take presses before the connectors beneath them
+		let layer_button_under_pointer = |target_type| network_interface.layer_click_target_from_click(viewport_location, target_type, network_path).is_some();
+		if network_interface.import_export_name_from_point(point, network_path).is_some()
+			|| layer_button_under_pointer(network_interface::LayerClickTargetTypes::Visibility)
+			|| layer_button_under_pointer(network_interface::LayerClickTargetTypes::Lock)
+		{
+			return None;
+		}
+
+		let empty_connector = |is_import| network_interface.empty_import_export_connector_at(point, is_import, network_path).map(|(_, center)| center);
+		let input = || {
+			let input = network_interface.input_port_from_click(viewport_location, network_path)?;
+			network_interface.input_position(&input, network_path)
+		};
+		let output = || {
+			let output = network_interface.output_port_from_click(viewport_location, network_path)?;
+			network_interface.output_position(&output, network_path)
+		};
+		empty_connector(true).or_else(|| empty_connector(false)).or_else(input).or_else(output)
+	}
+
+	/// Tells the frontend which connector to show hovered, given by its center in node graph space.
+	fn set_hovered_connector(&mut self, hovered_connector: Option<DVec2>, responses: &mut VecDeque<Message>) {
+		if self.hovered_connector != hovered_connector {
+			self.hovered_connector = hovered_connector;
+			responses.add(FrontendMessage::UpdateHoveredConnector {
+				center: hovered_connector.map(|center| (center.x, center.y)),
+			});
+		}
+	}
+
 	/// Stops highlighting the wire a dragged node would be inserted onto.
 	fn clear_wire_insertion_preview(&mut self, responses: &mut VecDeque<Message>) {
 		if self.wire_insertion_preview.take().is_some() {
@@ -2627,8 +2714,18 @@ impl NodeGraphMessageHandler {
 		self.wire_in_progress_from_input.is_some() || self.wire_in_progress_from_new_export.is_some()
 	}
 
-	/// Draws the wire in progress between its two ends, where `input_end` is the input it meets at its input end, if any.
-	fn send_wire_in_progress(&self, input_end: Option<InputConnector>, network_interface: &NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+	/// Keeps a pressed connector lit as the source of the wire about to be dragged out of it, since the press ends its hover before the pointer moves far enough to draw the wire.
+	fn keep_pressed_connector_lit(center: Option<DVec2>, responses: &mut VecDeque<Message>) {
+		responses.add(FrontendMessage::UpdateWirePathInProgress {
+			wire_path: None,
+			dragged_from: center.map(|center| (center.x, center.y)),
+			snapped_to: None,
+		});
+	}
+
+	/// Draws the wire in progress between its two ends, where `input_end` is the input it meets at its input end, if any,
+	/// and `loose_end_snapped` is whether the end following the pointer has snapped to a connector.
+	fn send_wire_in_progress(&self, input_end: Option<InputConnector>, loose_end_snapped: bool, network_interface: &NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
 		let (Some(from_connector), Some(to_connector)) = (self.wire_in_progress_from_connector, self.wire_in_progress_to_connector) else {
 			return;
 		};
@@ -2651,7 +2748,19 @@ impl NodeGraphMessageHandler {
 			is_list: false,
 			center_path_string: String::new(),
 		};
-		responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
+
+		// The end it's dragged from always meets a connector, while the loose end does once it snaps to one
+		let (dragged_from, loose_end) = if self.wire_in_progress_is_backward() {
+			(to_connector, from_connector)
+		} else {
+			(from_connector, to_connector)
+		};
+
+		responses.add(FrontendMessage::UpdateWirePathInProgress {
+			wire_path: Some(wire_path),
+			dragged_from: Some((dragged_from.x, dragged_from.y)),
+			snapped_to: loose_end_snapped.then_some((loose_end.x, loose_end.y)),
+		});
 	}
 
 	/// The output the wire in progress is dragged from.
@@ -2780,7 +2889,12 @@ impl NodeGraphMessageHandler {
 
 	/// Similar to [`NodeGraphMessageHandler::actions`], but this provides additional actions if the node graph is open and should only be called in that circumstance.
 	pub fn actions_additional_if_node_graph_is_open(&self) -> ActionList {
-		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp, SendClickTargets, EndSendClickTargets);
+		let mut common = actions!(NodeGraphMessageDiscriminant; EnterNestedNetwork, PointerDown, PointerMove, PointerUp);
+
+		// Only development builds draw the click targets, so users don't come across the overlay by accident
+		if cfg!(debug_assertions) {
+			common.extend(actions!(NodeGraphMessageDiscriminant; SendClickTargets, EndSendClickTargets));
+		}
 
 		if self.has_selection {
 			common.extend(actions!(NodeGraphMessageDiscriminant;
@@ -2973,7 +3087,7 @@ impl NodeGraphMessageHandler {
 					let single_layer_selected = selection_includes_layers && !has_multiple_selection;
 
 					let mut node_chooser = NodeCatalog::new();
-					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+					node_chooser.initial_search = compatible_type.unwrap_or("".to_string());
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {
@@ -3587,7 +3701,7 @@ impl NodeGraphMessageHandler {
 		// A wire is in progress and its start and end connectors are set
 		let wiring = self.wire_in_progress_from_connector.is_some();
 
-		// Node gragging is in progress (having already moved at least one pixel from the mouse down position)
+		// Node dragging is in progress (having already moved at least one pixel from the mouse down position)
 		let dragging_nodes = self.drag_start.as_ref().is_some_and(|(_, dragged)| *dragged);
 
 		// A box selection is in progress
@@ -3652,6 +3766,7 @@ impl Default for NodeGraphMessageHandler {
 			box_selection_start: None,
 			drag_start_chain_nodes: Vec::new(),
 			wire_insertion_preview: None,
+			hovered_connector: None,
 			selection_before_pointer_down: Vec::new(),
 			disconnecting: None,
 			initial_disconnecting: false,

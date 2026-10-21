@@ -1780,6 +1780,51 @@ async fn a_wire_dragged_backward_from_the_dimmed_export_connector_adds_an_export
 }
 
 #[tokio::test]
+async fn a_wire_dragged_from_the_dimmed_import_connector_onto_empty_space_wires_a_new_import_into_the_node_picked_from_the_menu() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
+	let path = vec![merge];
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let import_count = network_interface.number_of_imports(&path);
+	let (new_import_index, empty_import_position) = *network_interface
+		.empty_import_export_connectors(true, &path)
+		.last()
+		.expect("there should be a dimmed connector for adding an import");
+
+	drag_in_graph(&mut editor, &path, empty_import_position, empty_import_position + DVec2::new(240., 0.)).await;
+
+	let context_menu = editor.active_document().node_graph_handler.context_menu.clone();
+	assert!(
+		matches!(context_menu.map(|menu| menu.context_menu_data), Some(ContextMenuData::CreateNode { compatible_type: None })),
+		"dropping the wire on empty space should open the node menu without filtering it, as the import has no type yet"
+	);
+
+	let fill = NodeId::new();
+	editor
+		.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(fill),
+			node_type: fill_definition(),
+			xy: Some((10, 0)),
+			add_transaction: true,
+		})
+		.await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(network_interface.number_of_imports(&path), import_count + 1, "the import should be added");
+	assert_eq!(
+		network_interface.upstream_output_connector(&InputConnector::node_at_index(fill, 0), &path),
+		Some(OutputConnector::Import(new_import_index)),
+		"the added import should be wired into the node picked from the menu"
+	);
+
+	assert_invariants(&editor, "after dragging a wire from the dimmed import connector onto empty space");
+}
+
+#[tokio::test]
 async fn clicking_an_empty_input_without_dragging_leaves_it_and_opens_no_menu() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
@@ -2502,10 +2547,16 @@ async fn double_click_in_graph(editor: &mut EditorTestUtils, point: DVec2, secon
 	editor.handle_message(NodeGraphMessage::EnterNestedNetwork).await;
 }
 
-/// The middle of the wire feeding the input, in the graph space of the document network.
+/// The middle of the longest segment of the wire feeding the input, in document network graph space.
 fn wire_middle(network_interface: &NodeNetworkInterface, input: InputConnector) -> DVec2 {
+	use kurbo::ParamCurveArclen;
+
 	let (wire, _, _) = network_interface.vector_wire_from_input(&input, GraphWireStyle::Direct, &[]).expect("the wire should have a path");
-	let middle = wire.segments().next().map(|segment| kurbo::ParamCurve::eval(&segment, 0.5)).expect("the wire should have a segment");
+	let longest_segment = wire
+		.segments()
+		.max_by(|a, b| a.arclen(kurbo::DEFAULT_ACCURACY).total_cmp(&b.arclen(kurbo::DEFAULT_ACCURACY)))
+		.expect("the wire should have a segment");
+	let middle = kurbo::ParamCurve::eval(&longest_segment, 0.5);
 	DVec2::new(middle.x, middle.y)
 }
 

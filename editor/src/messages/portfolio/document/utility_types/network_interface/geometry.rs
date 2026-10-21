@@ -198,10 +198,15 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		}
 
-		let port_center = |click_target: &ClickTarget| click_target.bounding_box().map(|[min, max]| (min + max) / 2.);
 		let Some((import_centers, export_centers)) = self.with_import_export_ports(network_path, |import_exports| {
-			let import_centers: Vec<_> = import_exports.output_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
-			let export_centers: Vec<_> = import_exports.input_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
+			let import_centers: Vec<_> = import_exports
+				.output_ports()
+				.filter_map(|(index, _)| Some((*index, import_exports.output_port_position(*index)?)))
+				.collect();
+			let export_centers: Vec<_> = import_exports
+				.input_ports()
+				.filter_map(|(index, _)| Some((*index, import_exports.input_port_position(*index)?)))
+				.collect();
 			(import_centers, export_centers)
 		}) else {
 			return Vec::new();
