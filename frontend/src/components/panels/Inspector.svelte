@@ -3,6 +3,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { inspectorLayout } from "/src/stores/portfolio";
+	import { createAutoScroller } from "/src/utility-functions/auto-scroll";
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const editor = getContext<EditorWrapper>("editor");
@@ -18,9 +19,16 @@
 	let insertMarker: { top: number; left: number; width: number } | undefined = undefined;
 	let justFinishedDrag = false; // Used to suppress the click event that follows a drag release (which would otherwise toggle a section)
 
+	// Scrolling the sections near the panel's edges during a drag shifts them under the pointer, so the gap is found again where the pointer last was
+	let lastDragClientY = 0;
+	const autoScroller = createAutoScroller(() => calculateInsertIndex(lastDragClientY));
+
 	onMount(() => {
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("pointerup", draggingPointerUp);
+		// A drag cut short by the pointer being canceled or the window losing focus won't get the release that ends it
+		addEventListener("pointercancel", abortDrag);
+		addEventListener("blur", abortDrag);
 		addEventListener("keydown", draggingKeyDown);
 		addEventListener("mousedown", draggingMouseDown);
 		// Capture phase so this runs before a section header's own click handler
@@ -30,9 +38,13 @@
 	onDestroy(() => {
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("pointerup", draggingPointerUp);
+		removeEventListener("pointercancel", abortDrag);
+		removeEventListener("blur", abortDrag);
 		removeEventListener("keydown", draggingKeyDown);
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("click", suppressClickAfterDrag, true);
+
+		autoScroller.stop();
 	});
 
 	function suppressClickAfterDrag(e: MouseEvent) {
@@ -83,7 +95,11 @@
 			fromIndex = reorderableSections().findIndex((section) => section.getAttribute("data-node-id") === String(dragState?.nodeId));
 		}
 
+		lastDragClientY = e.clientY;
 		calculateInsertIndex(e.clientY);
+
+		const container = sectionsCol?.div();
+		if (container) autoScroller.update(container, e.clientX, e.clientY, 1);
 	}
 
 	function calculateInsertIndex(clientY: number) {
@@ -177,6 +193,7 @@
 	}
 
 	function abortDrag() {
+		autoScroller.stop();
 		dragState = undefined;
 		dragging = false;
 		fromIndex = undefined;

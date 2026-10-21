@@ -13,6 +13,16 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+// Derives the ids for generated nodes from their contents / context to be deterministic arcoss graph compilations.
+// The identifier is needed such that different nodes with the same hash bytes get different node ids.
+fn producer_node_id(ident: &ProtoNodeIdentifier, key: impl Hash) -> NodeId {
+	let mut hasher = DefaultHasher::new();
+	"preprocessor producer".hash(&mut hasher);
+	ident.hash(&mut hasher);
+	key.hash(&mut hasher);
+	NodeId(hasher.finish())
+}
+
 #[derive(Debug, Clone)]
 struct Substitution {
 	node: DocumentNode,
@@ -53,13 +63,13 @@ impl Preprocessor {
 		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
-		for node in network.nodes.values_mut() {
+		for (&consumer_id, node) in &mut network.nodes {
 			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
 				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
 				continue;
 			}
 
-			for input in node.inputs.iter_mut() {
+			for (input_index, input) in node.inputs.iter_mut().enumerate() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
 
 				let node_id = match &**tagged_value {
@@ -70,7 +80,7 @@ impl Preprocessor {
 						};
 
 						*hash_to_node_id.entry(hash).or_insert_with(|| {
-							let id = NodeId::new();
+							let id = producer_node_id(&platform_application_io::editor_api::IDENTIFIER, resource_id);
 							let resource_node = DocumentNode {
 								inputs: vec![
 									NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
@@ -84,7 +94,7 @@ impl Preprocessor {
 						})
 					}
 					TaggedValue::AnimationCurve(curve) => {
-						let id = NodeId::new();
+						let id = producer_node_id(&graphene_core::animation::evaluate_curve::IDENTIFIER, (consumer_id, input_index));
 						let curve_node = DocumentNode {
 							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
 							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::evaluate_curve::IDENTIFIER),
@@ -185,34 +195,16 @@ impl Preprocessor {
 				.take(input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
-					// A field registering the Item/List wire pair gets a input adapter instead of a typed conversion
-					if inputs.len() != 1
-						&& let Some(list_input) = collapse_item_list_pair(inputs)
-					{
-						let element_name = match list_input.nested_type() {
-							Type::List(element) => element.identifier_name(),
-							nested => nested.identifier_name(),
-						};
-						let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
-
-						let document_node = if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
-							generated_nodes += 1;
-							let mut original_location = OriginalLocation::default();
-							original_location.auto_convert_index = Some(i);
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(X), i)],
-								implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
-								visible: true,
-								original_location,
-								..Default::default()
-							}
-						} else {
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(X), i)],
-								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
-								visible: false,
-								..Default::default()
-							}
+					if let Some(input_adapter_identifier) = input_adapter_identifier(inputs, into_node_registry) {
+						generated_nodes += 1;
+						let mut original_location = OriginalLocation::default();
+						original_location.auto_convert_index = Some(i);
+						let document_node = DocumentNode {
+							inputs: vec![NodeInput::import(generic!(X), i)],
+							implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
+							visible: true,
+							original_location,
+							..Default::default()
 						};
 						return (NodeId(i as u64), document_node);
 					}
@@ -225,31 +217,6 @@ impl Preprocessor {
 						NodeId(i as u64),
 						match single_wire_type {
 							Some(input) => {
-								let input_ty = input.nested_type();
-
-								// A single-registered ranked field gets the input adapter, so ranked wires pass through and convertible elements cast
-								let element_name = match input_ty {
-									Type::Item(element) => Some(element.identifier_name()),
-									Type::List(element) => Some(element.identifier_name()),
-									_ => (input_ty.identifier_name() == "ListDyn").then(|| "ListDyn".to_string()),
-								};
-								if let Some(element_name) = element_name {
-									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
-									if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
-										generated_nodes += 1;
-										let mut original_location = OriginalLocation::default();
-										original_location.auto_convert_index = Some(i);
-										let document_node = DocumentNode {
-											inputs: vec![NodeInput::import(generic!(X), i)],
-											implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
-											visible: true,
-											original_location,
-											..Default::default()
-										};
-										return (NodeId(i as u64), document_node);
-									}
-								}
-
 								let mut original_location = OriginalLocation::default();
 								original_location.auto_convert_index = Some(i);
 								DocumentNode {
@@ -688,6 +655,23 @@ impl std::fmt::Display for PreprocessorError {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
 		}
 	}
+}
+
+/// The `input_adapter` placed ahead of a node input registered with `input_types`, so ranked wires pass through and convertible elements are cast.
+/// Only an input registered with one ranked type, or with the `Item` and `List` forms of one element, gets one (if the registry has it for that element).
+pub fn input_adapter_identifier<Implementations>(input_types: &HashSet<Type>, node_registry: &HashMap<ProtoNodeIdentifier, Implementations>) -> Option<ProtoNodeIdentifier> {
+	let input_type = match input_types.len() {
+		1 => input_types.iter().next()?,
+		_ => collapse_item_list_pair(input_types)?,
+	};
+	let element_name = match input_type.nested_type() {
+		Type::Item(element) | Type::List(element) => element.identifier_name(),
+		nested if nested.identifier_name() == "ListDyn" => "ListDyn".to_string(),
+		_ => return None,
+	};
+
+	let identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
+	node_registry.contains_key(&identifier).then_some(identifier)
 }
 
 /// Collapses an element-wise node's dual wire registration for one field, `{Item<X>, List<X>}`, to its `List<X>` document wire form.

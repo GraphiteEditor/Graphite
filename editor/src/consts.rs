@@ -11,6 +11,8 @@ pub const STACK_VERTICAL_GAP: i32 = 3;
 pub const LAYER_INDENT_OFFSET: i32 = 8;
 /// Horizontal grid width of a non-layer node in a chain.
 pub const NODE_CHAIN_WIDTH: i32 = 7;
+/// How quickly a dragged node glides into the grid cell it moves to, as the time it takes to cover all but 1/e (about 37%) of the remaining distance.
+pub const NODE_GLIDE_TIME_CONSTANT_MILLISECONDS: f64 = 30.;
 
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
@@ -177,6 +179,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// How far, in viewport pixels, the second press of a double-click can land from the first, and how far the first can travel before its release.
+pub const DOUBLE_CLICK_ALLOWED_TRAVEL: f64 = 4.;
 /// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
 pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
 

@@ -24,7 +24,7 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
 };
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
@@ -209,7 +209,8 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<StrokeJoin>,
 		List<StrokeAlign>,
 		List<StrokeCap>,
-		List<MergeByDistanceAlgorithm>,
+		List<WeldMethod>,
+		List<UnweldMethod>,
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
 		List<StringCapitalization>,
@@ -263,7 +264,8 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<StrokeJoin>,
 		Item<StrokeAlign>,
 		Item<StrokeCap>,
-		Item<MergeByDistanceAlgorithm>,
+		Item<WeldMethod>,
+		Item<UnweldMethod>,
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
 		Item<StringCapitalization>,
@@ -981,7 +983,8 @@ impl_table_item_layout_for_choice_enum!(
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	StringCapitalization,
@@ -1153,7 +1156,8 @@ macro_rules! known_item_types {
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
-			MergeByDistanceAlgorithm,
+			WeldMethod,
+			UnweldMethod,
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
 			StringCapitalization,

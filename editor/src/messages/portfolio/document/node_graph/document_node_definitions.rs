@@ -1530,8 +1530,8 @@ impl InputTypeConstraint {
 		}
 	}
 
-	/// Check if a type reaches the constraint through an `input_adapter`, the per-connector node which the preprocessor places ahead of
-	/// every ranked connector to convert or embed a convertible element, such as a color literal feeding a `Graphic` paint wire.
+	/// Check if a type reaches the constraint through any `input_adapter`, which converts or embeds a convertible element (such as a color literal feeding a
+	/// `Graphic` paint wire) ahead of an input registered with one ranked type. Whether this input is one that gets an adapter isn't checked.
 	#[must_use]
 	fn satisfies_through_input_adapter(&self, ty: &Type) -> bool {
 		let provided = Self::type_name(ty);
@@ -1619,7 +1619,8 @@ impl InputTypeConstraint {
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !registry::is_hidden_category(definition.category))
+		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
+		.filter(|(identifier, definition)| !registry::is_hidden_category(definition.category) && **identifier != DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {

@@ -22,6 +22,8 @@ use std::any::Any;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
 
+#[cfg(test)]
+mod recompile_tests;
 mod runtime;
 pub use runtime::*;
 
@@ -35,6 +37,8 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: ExecutionResult,
 	responses: VecDeque<FrontendMessage>,
+	/// The layers whose thumbnails the runtime let go of, which it renders anew if they're monitored again.
+	dropped_thumbnails: Vec<NodeId>,
 	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
@@ -370,24 +374,28 @@ impl NodeGraphExecutor {
 		Ok(())
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+	/// Applies the graph runtime's responses to the active document, giving back the layers whose thumbnails the runtime dropped meanwhile.
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>) -> Vec<NodeId> {
 		// TODO: Eventually remove this document upgrade code
 		// A gradient migration belongs to one document; if the active document changed away from it, cancel so its stale in-flight response is ignored and revisiting restarts a fresh pass
 		if self.gradient_migration.as_ref().is_some_and(|migration| migration.document_id != document_id) {
 			self.cancel_gradient_migration();
 		}
 
-		let results = self.receiver.try_iter().collect::<Vec<_>>();
-		for response in results {
+		let mut all_dropped_thumbnails = Vec::new();
+		let mut results = self.receiver.try_iter().collect::<Vec<_>>().into_iter();
+		while let Some(response) = results.next() {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
 					let ExecutionResponse {
 						execution_id,
 						result,
 						responses: existing_responses,
+						dropped_thumbnails,
 						vector_modify,
 						inspect_result,
 					} = *execution_response;
+					all_dropped_thumbnails.extend(dropped_thumbnails.iter().copied());
 
 					while let Some(&(queued_execution_id, _)) = self.futures.front() {
 						if queued_execution_id < execution_id {
@@ -410,6 +418,11 @@ impl NodeGraphExecutor {
 					} else {
 						continue;
 					};
+
+					// Only from the active document's own renders, and before their thumbnails arrive, since the runtime dropped these before rendering them
+					if execution_context.document_id == document_id {
+						document.layers_in_view.forget_thumbnails(&dropped_thumbnails, responses);
+					}
 
 					// TODO: Eventually remove this document upgrade code
 					// Gradient-migration measurement runs only read back the fill's evaluated geometry; they never render to the artwork.
@@ -457,11 +470,22 @@ impl NodeGraphExecutor {
 							document.network_interface.update_vector_modify(HashMap::new());
 							log::error!("Node graph evaluation failed:\n{e}");
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
-							return;
+							break;
 						}
 					};
 
-					responses.extend(existing_responses.into_iter().map(Into::into));
+					// Thumbnails reach the frontend only for the layers it shows in view
+					for response in existing_responses {
+						match response {
+							FrontendMessage::UpdateNodeThumbnail { id, value } => {
+								// A render finishing after a switch to another document has thumbnails of the previous one's layers
+								if execution_context.document_id == document_id {
+									document.layers_in_view.receive_thumbnail(id, value, responses);
+								}
+							}
+							response => responses.add(response),
+						}
+					}
 					document.network_interface.update_vector_modify(vector_modify);
 
 					match (node_graph_output, execution_context.export_config) {
@@ -509,7 +533,7 @@ impl NodeGraphExecutor {
 							});
 
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
-							return;
+							break;
 						}
 						Ok(result) => result,
 					};
@@ -525,6 +549,27 @@ impl NodeGraphExecutor {
 				}
 			}
 		}
+
+		// An error leaves the later responses unapplied, but the runtime still dropped their thumbnails
+		for response in results {
+			if let NodeGraphUpdate::ExecutionResponse(execution_response) = response {
+				if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
+					document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
+				}
+				all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
+			}
+		}
+
+		all_dropped_thumbnails
+	}
+
+	/// The document an execution was submitted for, while it's still queued or pending.
+	fn document_of_execution(&self, execution_id: u64) -> Option<DocumentId> {
+		self.futures
+			.iter()
+			.chain(&self.pending)
+			.find(|(queued_execution_id, _)| *queued_execution_id == execution_id)
+			.map(|(_, execution_context)| execution_context.document_id)
 	}
 
 	// TODO: Eventually remove this document upgrade code

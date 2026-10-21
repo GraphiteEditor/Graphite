@@ -40,11 +40,20 @@ pub struct ChainNodeCopy {
 }
 
 impl ChainNodeCopy {
-	/// The copied node with each of its wired inputs taking its fallback value, placed offset from its original, for pasting outside any flow.
-	pub fn into_loose_template(self) -> NodeTemplate {
+	/// Whether the copied node is a redirect dot, which comes along only to bend a wire between the other copies.
+	pub fn is_redirect_dot(&self) -> bool {
+		let passthrough = matches!(&self.template.implementation, NodeTemplateImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER);
+		passthrough && matches!(self.template.node_type_metadata, NodeTypePersistentMetadata::Node(_))
+	}
+
+	/// The copied node, placed offset from its original, for pasting outside any flow along with the copies of the nodes in `pasted`.
+	/// Its inputs stay wired to those copies, and each of its other wired inputs takes its fallback value.
+	pub fn into_loose_template(self, pasted: &HashSet<NodeId>) -> NodeTemplate {
 		let mut template = self.template;
 		for (index, fallback_value) in self.fallback_values {
-			if let Some(input) = template.inputs.get_mut(index) {
+			if let Some(input) = template.inputs.get_mut(index)
+				&& !input.as_node().is_some_and(|node_id| pasted.contains(&node_id))
+			{
 				*input = fallback_value;
 			}
 		}
@@ -262,10 +271,49 @@ impl OutputConnector {
 	}
 }
 
+/// Which side of a redirect dot an edit took a wire from, since each side leaves the dot orphaned only once it has no wire left there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum DotSide {
+	/// The wire feeding the dot.
+	Incoming,
+	/// One of the wires the dot feeds.
+	Outgoing,
+}
+
+/// The corners of the click target for a connector on a node or layer's left or right side, or an import or export.
+/// It fills its row's height and reaches further away from the node than into it, leaving the node body grabbable.
+pub(crate) fn side_port_bounds(center: DVec2, is_input: bool) -> [DVec2; 2] {
+	const INWARD_REACH: f64 = 8.;
+	const OUTWARD_REACH: f64 = 12.;
+	const HALF_HEIGHT: f64 = 12.;
+
+	// Inputs face left and outputs face right
+	let (left_reach, right_reach) = if is_input { (OUTWARD_REACH, INWARD_REACH) } else { (INWARD_REACH, OUTWARD_REACH) };
+	[center - DVec2::new(left_reach, HALF_HEIGHT), center + DVec2::new(right_reach, HALF_HEIGHT)]
+}
+
+/// The corners of the click target for a layer's top output or bottom input, which reaches only 8 px toward the connector it faces in a stack.
+fn stack_port_bounds(center: DVec2) -> [DVec2; 2] {
+	const HALF_SIZE: DVec2 = DVec2::new(12., 8.);
+
+	[center - HALF_SIZE, center + HALF_SIZE]
+}
+
+pub(crate) fn port_click_target([corner1, corner2]: [DVec2; 2]) -> ClickTarget {
+	const CORNER_RADIUS: f64 = 4.;
+
+	let path = rounded_rectangle_path(corner1, corner2, [CORNER_RADIUS; 4]);
+	ClickTarget::new_with_path(path, 0.)
+}
+
 #[derive(Debug, Clone)]
 pub struct Ports {
 	pub(crate) input_ports: Vec<(usize, ClickTarget)>,
 	pub(crate) output_ports: Vec<(usize, ClickTarget)>,
+	/// Where a wire attaches to an input port with a click target not centered on that point.
+	pub(crate) input_anchors: Vec<(usize, DVec2)>,
+	/// Where a wire attaches to an output port with a click target not centered on that point.
+	pub(crate) output_anchors: Vec<(usize, DVec2)>,
 }
 
 impl Default for Ports {
@@ -279,6 +327,8 @@ impl Ports {
 		Ports {
 			input_ports: Vec::new(),
 			output_ports: Vec::new(),
+			input_anchors: Vec::new(),
+			output_anchors: Vec::new(),
 		}
 	}
 
@@ -298,8 +348,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
-		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_input_port(input_index, ClickTarget::new_with_path(path, 0.));
+		self.insert_custom_input_port(input_index, port_click_target(side_port_bounds(center, true)));
+		self.input_anchors.push((input_index, center));
 	}
 
 	pub(crate) fn insert_custom_input_port(&mut self, input_index: usize, click_target: ClickTarget) {
@@ -307,8 +357,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
-		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_output_port(output_index, ClickTarget::new_with_path(path, 0.));
+		self.insert_custom_output_port(output_index, port_click_target(side_port_bounds(center, false)));
+		self.output_anchors.push((output_index, center));
 	}
 
 	pub(crate) fn insert_custom_output_port(&mut self, output_index: usize, click_target: ClickTarget) {
@@ -328,18 +378,19 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
-		let center = if input_index == 0 {
-			node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.)
+		// The primary input sits beneath the layer's thumbnail, and the secondary input on its left side
+		if input_index == 0 {
+			let center = node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.);
+			self.insert_custom_input_port(input_index, port_click_target(stack_port_bounds(center)));
 		} else {
-			node_top_left + DVec2::new(0., 24. * 1.)
-		};
-		self.insert_input_port_at_center(input_index, center);
+			self.insert_input_port_at_center(input_index, node_top_left + DVec2::new(0., 24. * 1.));
+		}
 	}
 
 	pub(crate) fn insert_layer_output(&mut self, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
+		// The center of the click target is 8 px above the layer, over its thumbnail
 		let center = node_top_left + DVec2::new(2. * 24., -8.);
-		self.insert_output_port_at_center(0, center);
+		self.insert_custom_output_port(0, port_click_target(stack_port_bounds(center)));
 	}
 
 	pub fn clicked_input_port_from_point(&self, point: DVec2) -> Option<usize> {
@@ -350,13 +401,34 @@ impl Ports {
 		self.output_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
 	}
 
+	/// Adds the input and output of a redirect dot. Its wires both attach at its center, but they're grabbed from the gutters on either side of its body.
+	pub(crate) fn insert_dot_ports(&mut self, center: DVec2) {
+		const GUTTER_OFFSET: f64 = 10.;
+		const GUTTER_RADIUS: f64 = 5.;
+
+		let gutter = |x_offset: f64| {
+			let gutter_center = center + DVec2::new(x_offset, 0.);
+			ClickTarget::new_with_path(ellipse_path(gutter_center - DVec2::splat(GUTTER_RADIUS), gutter_center + DVec2::splat(GUTTER_RADIUS)), 0.)
+		};
+		self.insert_custom_input_port(0, gutter(-GUTTER_OFFSET));
+		self.insert_custom_output_port(0, gutter(GUTTER_OFFSET));
+		self.input_anchors.push((0, center));
+		self.output_anchors.push((0, center));
+	}
+
 	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
+		if let Some((_, anchor)) = self.input_anchors.iter().find(|(port_index, _)| *port_index == index) {
+			return Some(*anchor);
+		}
 		self.input_ports
 			.iter()
 			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
 	}
 
 	pub fn output_port_position(&self, index: usize) -> Option<DVec2> {
+		if let Some((_, anchor)) = self.output_anchors.iter().find(|(port_index, _)| *port_index == index) {
+			return Some(*anchor);
+		}
 		self.output_ports
 			.iter()
 			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
@@ -523,6 +595,8 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
+	/// Cache for what the imports and exports keep their distance from, unloaded along with `all_nodes_bounding_box`.
+	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
@@ -532,6 +606,82 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
+	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
+	pub(crate) glide_offsets: std::cell::RefCell<GlideOffsets>,
+}
+
+/// How far the nodes, imports, and exports gliding into the grid cells they just moved to are drawn from those cells, in node graph space.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GlideOffsets {
+	pub nodes: HashMap<NodeId, DVec2>,
+	pub imports: DVec2,
+	pub exports: DVec2,
+}
+
+impl GlideOffsets {
+	pub fn is_empty(&self) -> bool {
+		self.nodes.is_empty() && self.imports == DVec2::ZERO && self.exports == DVec2::ZERO
+	}
+
+	pub fn node(&self, node_id: &NodeId) -> DVec2 {
+		self.nodes.get(node_id).copied().unwrap_or_default()
+	}
+
+	pub fn input(&self, input: &InputConnector) -> DVec2 {
+		match input {
+			InputConnector::Node { node_id, .. } => self.node(node_id),
+			InputConnector::Export(_) => self.exports,
+		}
+	}
+
+	pub fn output(&self, output: &OutputConnector) -> DVec2 {
+		match output {
+			OutputConnector::Node { node_id, .. } => self.node(node_id),
+			OutputConnector::Import(_) => self.imports,
+		}
+	}
+
+	/// Shrinks every offset to the given fraction of itself, settling those left too small to see.
+	pub fn shrink(&mut self, remaining_fraction: f64) {
+		const SMALLEST_VISIBLE_OFFSET: f64 = 0.5;
+
+		let shrink = |offset: &mut DVec2| {
+			*offset *= remaining_fraction;
+			if offset.length() < SMALLEST_VISIBLE_OFFSET {
+				*offset = DVec2::ZERO;
+			}
+		};
+		self.nodes.values_mut().for_each(shrink);
+		self.nodes.retain(|_, offset| *offset != DVec2::ZERO);
+		shrink(&mut self.imports);
+		shrink(&mut self.exports);
+	}
+}
+
+/// What the imports and exports keep their distance from horizontally, in node graph space. They keep a few grid cells from the sides of a node,
+/// but just one from a redirect dot, which only bends a wire, so the dots are measured apart from the other nodes.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ImportExportClearance {
+	/// The leftmost and rightmost sides of the nodes other than redirect dots.
+	pub node_sides: Option<[f64; 2]>,
+	/// The leftmost and rightmost centers of the redirect dots.
+	pub dot_centers: Option<[f64; 2]>,
+}
+
+impl ImportExportClearance {
+	/// The furthest right the imports can sit: `node_gap` (a negative distance) from the leftmost node's side rounded to the grid, or a grid cell left of the leftmost dot.
+	pub fn import_limit(&self, node_gap: f64) -> f64 {
+		let beside_nodes = self.node_sides.map(|[left, _]| (left / GRID_SIZE as f64 + 0.5).floor() * GRID_SIZE as f64 + node_gap);
+		let beside_dots = self.dot_centers.map(|[left, _]| left - GRID_SIZE as f64);
+		beside_nodes.into_iter().chain(beside_dots).reduce(f64::min).unwrap_or(node_gap)
+	}
+
+	/// The furthest left the exports can sit: `node_gap` from the rightmost node's side rounded to the grid, or a grid cell right of the rightmost dot.
+	pub fn export_limit(&self, node_gap: f64) -> f64 {
+		let beside_nodes = self.node_sides.map(|[_, right]| (right / GRID_SIZE as f64 + 0.5).floor() * GRID_SIZE as f64 + node_gap);
+		let beside_dots = self.dot_centers.map(|[_, right]| right + GRID_SIZE as f64);
+		beside_nodes.into_iter().chain(beside_dots).reduce(f64::max).unwrap_or(node_gap)
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -994,7 +1144,7 @@ mod tests {
 	}
 
 	#[test]
-	fn port_click_targets_are_clickable_at_their_center() {
+	fn port_click_targets_reach_around_the_connector_where_wires_attach() {
 		let center = DVec2::new(100., 50.);
 		let mut ports = Ports::new();
 		ports.insert_input_port_at_center(0, center);
@@ -1002,9 +1152,14 @@ mod tests {
 
 		assert_eq!(ports.clicked_input_port_from_point(center), Some(0));
 		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(5., 5.)), Some(0));
-		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(20., 0.)), None);
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(0., 11.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(-11., 0.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(10., 0.)), None);
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(0., 13.)), None);
 
 		assert_eq!(ports.clicked_output_port_from_point(center + DVec2::new(200., 0.)), Some(0));
 		assert_eq!(ports.clicked_output_port_from_point(center), None);
+
+		assert_eq!(ports.input_port_position(0), Some(center), "wires should attach at the connector's center, not the click target's");
 	}
 }

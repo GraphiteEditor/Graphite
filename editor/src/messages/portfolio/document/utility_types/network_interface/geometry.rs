@@ -20,6 +20,28 @@ impl NodeNetworkInterface {
 
 		let node_top_left = node_position.as_dvec2() * GRID_SIZE as f64;
 		let mut port_click_targets = Ports::new();
+
+		// A redirect dot is centered on the grid point at the connector height of an ordinary node's first row.
+		// Its body also covers the gutters beside it holding its ports, so every press near it moves the dot unless it lands on an available port.
+		if self.is_redirect_dot(node_id, network_path) {
+			const DOT_HALF_WIDTH: f64 = 15.;
+			const DOT_HALF_HEIGHT: f64 = 8.;
+
+			let center = node_top_left + DVec2::new(0., GRID_SIZE as f64);
+			port_click_targets.insert_dot_ports(center);
+			let path = rounded_rectangle_path(
+				center - DVec2::new(DOT_HALF_WIDTH, DOT_HALF_HEIGHT),
+				center + DVec2::new(DOT_HALF_WIDTH, DOT_HALF_HEIGHT),
+				[DOT_HALF_HEIGHT; 4],
+			);
+
+			return Some(DocumentNodeClickTargets {
+				node_click_target: ClickTarget::new_with_path(path, 0.),
+				port_click_targets,
+				node_type_metadata: NodeTypeClickTargets::Node,
+			});
+		}
+
 		let document_node_click_targets = if !node_metadata.persistent_metadata.is_layer() {
 			let mut input_row_count = 0;
 			for (input_index, input) in document_node.inputs.iter().enumerate() {
@@ -176,10 +198,15 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		}
 
-		let port_center = |click_target: &ClickTarget| click_target.bounding_box().map(|[min, max]| (min + max) / 2.);
 		let Some((import_centers, export_centers)) = self.with_import_export_ports(network_path, |import_exports| {
-			let import_centers: Vec<_> = import_exports.output_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
-			let export_centers: Vec<_> = import_exports.input_ports().filter_map(|(index, click_target)| Some((*index, port_center(click_target)?))).collect();
+			let import_centers: Vec<_> = import_exports
+				.output_ports()
+				.filter_map(|(index, _)| Some((*index, import_exports.output_port_position(*index)?)))
+				.collect();
+			let export_centers: Vec<_> = import_exports
+				.input_ports()
+				.filter_map(|(index, _)| Some((*index, import_exports.input_port_position(*index)?)))
+				.collect();
 			(import_centers, export_centers)
 		}) else {
 			return Vec::new();
@@ -289,6 +316,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get all nodes bounding box in import_export_position");
 			return None;
 		};
+		// Horizontally, the imports and exports keep their distance from the sides of the nodes, but only a grid cell from a redirect dot
+		let Some(clearance) = self.import_export_clearance(network_path) else {
+			log::error!("Could not get the import and export clearance in import_export_position");
+			return None;
+		};
 		let Some(network) = self.nested_network(network_path) else {
 			log::error!("Could not get current network in import_export_position");
 			return None;
@@ -322,7 +354,10 @@ impl NodeNetworkInterface {
 			DVec2::new(-4. * GRID_SIZE as f64, 0.)
 		};
 
-		let bounding_box_top_left = DVec2::new((all_nodes_bounding_box[0].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.) + offset_from_top_left;
+		let bounding_box_top_left = DVec2::new(
+			clearance.import_limit(offset_from_top_left.x),
+			(all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24. + offset_from_top_left.y,
+		);
 		let import_top_left = DVec2::new(top_left_inner_bound.x.min(bounding_box_top_left.x), top_left_inner_bound.y.min(bounding_box_top_left.y));
 		let rounded_import_top_left = DVec2::new((import_top_left.x / 24.).round() * 24., (import_top_left.y / 24.).round() * 24.);
 
@@ -353,8 +388,10 @@ impl NodeNetworkInterface {
 			DVec2::new(4. * GRID_SIZE as f64, 0.)
 		};
 
-		let mut bounding_box_top_right = DVec2::new((all_nodes_bounding_box[1].x / 24. + 0.5).floor() * 24., (all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24.);
-		bounding_box_top_right += offset_from_top_right;
+		let bounding_box_top_right = DVec2::new(
+			clearance.export_limit(offset_from_top_right.x),
+			(all_nodes_bounding_box[0].y / 24. + 0.5).floor() * 24. + offset_from_top_right.y,
+		);
 		let export_top_right = DVec2::new(top_right_inner_bound.x.max(bounding_box_top_right.x), top_right_inner_bound.y.min(bounding_box_top_right.y));
 		let rounded_export_top_right = DVec2::new((export_top_right.x / 24.).round() * 24., (export_top_right.y / 24.).round() * 24.);
 

@@ -318,6 +318,7 @@ impl<'a> ModifyInputsContext<'a> {
 		if !paint_chain.nodes.is_empty() {
 			self.network_interface.delete_nodes(paint_chain.nodes.clone(), false, &[]);
 		}
+		self.network_interface.remove_orphaned_dots(&[]);
 	}
 
 	/// Wire a node that paints the layer's whole expanse into the start of its chain,

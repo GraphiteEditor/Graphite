@@ -128,7 +128,11 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					}));
 				}
 
-				let copies = chain_nodes
+				// The dots on wires between the copied chain nodes go along with them, so pasting them loose keeps those wires
+				let chain_nodes_with_dots = active_document.network_interface.selection_with_bridging_dots(chain_nodes, &[]);
+				let other_nodes = other_nodes.into_iter().filter(|node_id| !chain_nodes_with_dots.contains(node_id)).collect::<Vec<_>>();
+
+				let copies = chain_nodes_with_dots
 					.iter()
 					.filter_map(|node_id| active_document.network_interface.copy_chain_node(node_id, &[]))
 					.collect::<Vec<_>>();
