@@ -916,7 +916,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				if !document.is_loaded {
 					document.is_loaded = true;
-					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(InspectorMessage::Clear);
 				}
@@ -1240,6 +1239,9 @@ impl PortfolioMessageHandler {
 		);
 
 		self.documents.insert(document_id, new_document);
+
+		// Resolved on load rather than on first activation, so a document saved without ever being viewed still embeds its resources
+		responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 
 		if self.active_document().is_some() {
 			responses.add(EventMessage::ToolAbort);

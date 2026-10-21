@@ -46,7 +46,10 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 						style: Some(style_name),
 					},
 				);
-				responses.add(ResourceMessage::Resolve { resource_id });
+				responses.add(PortfolioMessage::DocumentPassMessage {
+					document_id,
+					message: ResourceMessage::Resolve { resource_id }.into(),
+				});
 			}
 			ResourceMessage::ResolveAll => {
 				let storage = resource_storage.resources_mut();
@@ -55,7 +58,11 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					if self.pending_resolves.contains(&id) {
 						continue;
 					}
-					responses.add(ResourceMessage::Resolve { resource_id: id });
+					// Addressed to this document, since a bare message would reach whichever document is active
+					responses.add(PortfolioMessage::DocumentPassMessage {
+						document_id,
+						message: ResourceMessage::Resolve { resource_id: id }.into(),
+					});
 				}
 			}
 			ResourceMessage::Resolve { resource_id } => {
@@ -337,7 +344,12 @@ mod tests {
 			},
 		);
 
-		let resolve_requested = |id: ResourceId| responses.contains(&Message::from(ResourceMessage::Resolve { resource_id: id }));
+		let resolve_requested = |id: ResourceId| {
+			responses.contains(&Message::from(PortfolioMessage::DocumentPassMessage {
+				document_id: DocumentId(0),
+				message: ResourceMessage::Resolve { resource_id: id }.into(),
+			}))
+		};
 		assert!(resolve_requested(evicted), "a resource whose bytes are gone should be resolved again");
 		assert!(!resolve_requested(cached), "a resource whose bytes are in storage should be left alone");
 		assert_eq!(handler.registry.hash(&evicted), Some(evicted_hash), "the hash keeps naming the content");

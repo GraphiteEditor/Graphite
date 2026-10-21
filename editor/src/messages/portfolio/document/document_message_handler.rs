@@ -2512,13 +2512,14 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Rebuild the runtime resource registry from storage. The preprocessor resolves `Resource` inputs through it, so an
-	/// interface swapped in from storage needs it refreshed alongside. Keeps the current registry on failure.
+	/// Bring the runtime resource registry in line with storage. The preprocessor resolves `Resource` inputs through it, so an
+	/// interface swapped in from storage needs it refreshed alongside. Storage wins where both have an entry, and entries
+	/// not yet staged, like those a legacy document's migration added, are kept. Keeps the current registry on failure.
 	fn refresh_resource_registry(&mut self) {
 		let Some(storage) = self.history.storage() else { return };
 
 		match storage.registry().to_resource_registry() {
-			Ok(resource_registry) => self.resources.registry = resource_registry,
+			Ok(resource_registry) => self.resources.registry.overlay(resource_registry),
 			Err(error) => log::error!("Failed to rebuild the resource registry from storage: {error}"),
 		}
 	}

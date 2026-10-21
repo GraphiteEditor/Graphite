@@ -345,6 +345,12 @@ impl ResourceRegistry {
 		self.hashes.insert(*id, hash)
 	}
 
+	/// Takes every hash and source list `other` has, keeping the entries and fields only this registry has.
+	pub fn overlay(&mut self, other: ResourceRegistry) {
+		self.hashes.extend(other.hashes);
+		self.sources.extend(other.sources);
+	}
+
 	pub fn hash(&self, id: &ResourceId) -> Option<ResourceHash> {
 		self.hashes.get(id).copied()
 	}

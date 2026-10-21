@@ -671,6 +671,26 @@ fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> ResourcesHandle {
 	byte_store
 }
 
+/// A legacy document's migration adds registry entries before its working copy exists. Mounting a fresh, empty copy
+/// keeps them, so their pending resolves still find them.
+#[tokio::test]
+async fn mounting_fresh_storage_keeps_unstaged_resources() {
+	use graph_craft::application_io::resource::{DataSource, ResourceId};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let font = ResourceId::from(42);
+	let source = DataSource::Font {
+		family: "Source Sans Pro".into(),
+		style: Some("Regular (400)".into()),
+	};
+	editor.active_document_mut().resources.registry.push_source_back(&font, source.clone());
+
+	mount_in_memory_storage(&mut editor);
+	let registry = &editor.active_document().resources.registry;
+	assert_eq!(registry.info(&font).map(|info| info.sources.to_vec()), Some(vec![source]), "the migrated font survives the mount");
+}
+
 /// Open a real demo artwork, mount storage, edit it, and trigger autosave. The autosave runs
 /// `verify_storage_round_trip`, which panics in tests on any conversion or round-trip drift, so a clean run
 /// is itself the assertion that the whole pipeline holds on real document data. Also checks that committing
