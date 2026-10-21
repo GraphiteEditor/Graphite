@@ -3658,7 +3658,7 @@ fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 	})
 }
 
-/// Closes every open path with a straight segment from its end back to its start.
+/// Closes every open path with a straight segment from its end back to its start, or by joining the two where they already meet.
 #[node_macro::node(category("Vector: Modifier"), icon("NodeClosePaths"), path(core_types::vector))]
 fn close_paths<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
