@@ -132,10 +132,31 @@ pub enum ArcType {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
-pub enum MergeByDistanceAlgorithm {
+pub enum WeldMethod {
+	/// Any points within the distance of each other join.
 	#[default]
-	Spatial,
-	Topological,
+	#[cfg_attr(feature = "serde", serde(alias = "Spatial"))]
+	All,
+	/// Each segment shorter than the distance collapses, joining its two ends.
+	#[cfg_attr(feature = "serde", serde(alias = "Topological"))]
+	Connected,
+	/// Only the ends of open path flows join, leaving every other anchor where it is.
+	FlowEnds,
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum UnweldMethod {
+	/// Every anchor is split, so each segment stands alone.
+	All,
+	/// Every point that more than one path flow uses is split, so each path flow becomes a path of its own.
+	#[default]
+	SharedPoints,
+	/// Only the shared points where a path flow ends are split, so path flows passing through a shared point stay joined.
+	FlowEnds,
 }
 
 #[repr(C)]
@@ -618,7 +639,8 @@ graphene_hash::impl_via_hash!(
 	RowsOrColumns,
 	GridType,
 	ArcType,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	SpiralType,

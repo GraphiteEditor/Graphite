@@ -162,7 +162,6 @@ import NodeCrossProduct from "/../branding/assets/16x16-nodes/node-cross-product
 import NodeCurves from "/../branding/assets/16x16-nodes/node-curves.svg";
 import NodeCustomNode from "/../branding/assets/16x16-nodes/node-custom-node.svg";
 import NodeCutPath from "/../branding/assets/16x16-nodes/node-cut-path.svg";
-import NodeCutSegments from "/../branding/assets/16x16-nodes/node-cut-segments.svg";
 import NodeDashPattern from "/../branding/assets/16x16-nodes/node-dash-pattern.svg";
 import NodeDecimate from "/../branding/assets/16x16-nodes/node-decimate.svg";
 import NodeDecodeImage from "/../branding/assets/16x16-nodes/node-decode-image.svg";
@@ -260,7 +259,6 @@ import NodeMax from "/../branding/assets/16x16-nodes/node-max.svg";
 import NodeMaximum from "/../branding/assets/16x16-nodes/node-maximum.svg";
 import NodeMedianFilter from "/../branding/assets/16x16-nodes/node-median-filter.svg";
 import NodeMemoize from "/../branding/assets/16x16-nodes/node-memoize.svg";
-import NodeMergeByDistance from "/../branding/assets/16x16-nodes/node-merge-by-distance.svg";
 import NodeMerge from "/../branding/assets/16x16-nodes/node-merge.svg";
 import NodeMin from "/../branding/assets/16x16-nodes/node-min.svg";
 import NodeMinimum from "/../branding/assets/16x16-nodes/node-minimum.svg";
@@ -377,11 +375,13 @@ import NodeText from "/../branding/assets/16x16-nodes/node-text.svg";
 import NodeThreshold from "/../branding/assets/16x16-nodes/node-threshold.svg";
 import NodeTransform from "/../branding/assets/16x16-nodes/node-transform.svg";
 import NodeTriangulate from "/../branding/assets/16x16-nodes/node-triangulate.svg";
+import NodeUnweld from "/../branding/assets/16x16-nodes/node-unweld.svg";
 import NodeUploadTexture from "/../branding/assets/16x16-nodes/node-upload-texture.svg";
 import NodeVec2ToNumbers from "/../branding/assets/16x16-nodes/node-vec2-to-numbers.svg";
 import NodeVec2Value from "/../branding/assets/16x16-nodes/node-vec2-value.svg";
 import NodeVibrance from "/../branding/assets/16x16-nodes/node-vibrance.svg";
 import NodeVoronoiCells from "/../branding/assets/16x16-nodes/node-voronoi-cells.svg";
+import NodeWeld from "/../branding/assets/16x16-nodes/node-weld.svg";
 import NodeWriteAttribute from "/../branding/assets/16x16-nodes/node-write-attribute.svg";
 
 export const ICON_16X16_NODES = {
@@ -443,7 +443,6 @@ export const ICON_16X16_NODES = {
 	NodeCurves: { svg: NodeCurves, size: 16 },
 	NodeCustomNode: { svg: NodeCustomNode, size: 16 },
 	NodeCutPath: { svg: NodeCutPath, size: 16 },
-	NodeCutSegments: { svg: NodeCutSegments, size: 16 },
 	NodeDashPattern: { svg: NodeDashPattern, size: 16 },
 	NodeDecimate: { svg: NodeDecimate, size: 16 },
 	NodeDecodeImage: { svg: NodeDecodeImage, size: 16 },
@@ -542,7 +541,6 @@ export const ICON_16X16_NODES = {
 	NodeMedianFilter: { svg: NodeMedianFilter, size: 16 },
 	NodeMemoize: { svg: NodeMemoize, size: 16 },
 	NodeMerge: { svg: NodeMerge, size: 16 },
-	NodeMergeByDistance: { svg: NodeMergeByDistance, size: 16 },
 	NodeMin: { svg: NodeMin, size: 16 },
 	NodeMinimum: { svg: NodeMinimum, size: 16 },
 	NodeMirror: { svg: NodeMirror, size: 16 },
@@ -658,11 +656,13 @@ export const ICON_16X16_NODES = {
 	NodeThreshold: { svg: NodeThreshold, size: 16 },
 	NodeTransform: { svg: NodeTransform, size: 16 },
 	NodeTriangulate: { svg: NodeTriangulate, size: 16 },
+	NodeUnweld: { svg: NodeUnweld, size: 16 },
 	NodeUploadTexture: { svg: NodeUploadTexture, size: 16 },
 	NodeVec2ToNumbers: { svg: NodeVec2ToNumbers, size: 16 },
 	NodeVec2Value: { svg: NodeVec2Value, size: 16 },
 	NodeVibrance: { svg: NodeVibrance, size: 16 },
 	NodeVoronoiCells: { svg: NodeVoronoiCells, size: 16 },
+	NodeWeld: { svg: NodeWeld, size: 16 },
 	NodeWriteAttribute: { svg: NodeWriteAttribute, size: 16 },
 } as const;
 

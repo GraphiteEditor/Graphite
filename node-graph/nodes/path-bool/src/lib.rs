@@ -4,7 +4,7 @@ use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY
 use glam::DAffine2;
 use graphic_types::Appearance;
 use graphic_types::graphic::bake_paint_transforms;
-use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use graphic_types::vector_types::vector::algorithms::weld::WeldExt;
 use graphic_types::vector_types::vector::{Path, no_paths, paths_from_list_row_attributes};
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
@@ -61,7 +61,7 @@ fn boolean_operation(
 		// Clean up the boolean operation result by merging duplicated points
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		let mut result_paths = result_vector_list.attribute::<List<Path>>(ATTR_PATHS, 0).cloned().unwrap_or_default();
-		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(&mut result_paths, merge_transform, 0.0001);
+		result_vector_list.element_mut(0).unwrap().weld_all(&mut result_paths, merge_transform, 0.0001);
 		result_vector_list.set_attribute(ATTR_PATHS, 0, result_paths);
 	}
 
