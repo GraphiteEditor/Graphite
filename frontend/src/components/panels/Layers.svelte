@@ -7,7 +7,7 @@
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import { createDragToggleManager, destroyDragToggleManager } from "/src/managers/drag-toggle";
 	import type { NodeGraphStore } from "/src/stores/node-graph";
-	import { layersPanelControlBarLeftLayout, layersPanelBottomBarLeftLayout, layersPanelBottomBarRightLayout } from "/src/stores/portfolio";
+	import { layersPanelControlBarLeftLayout, layersPanelBottomBarLeftLayout, layersPanelBottomBarRightLayout, retainLayerDetails } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { createAutoScroller, speedWhileAimingAt } from "/src/utility-functions/auto-scroll";
@@ -17,18 +17,25 @@
 	import type { EditorWrapper, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry, LayerStructureEntry } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	type LayerListingInfo = {
+		id: bigint;
 		folderIndex: number;
 		bottomLayer: boolean;
 		editingName: boolean;
-		entry: LayerPanelEntry;
+		// Known only while the listing is in view, since the backend sends the details of just those layers
+		entry: LayerPanelEntry | undefined;
 		depth: number;
 		parentId: bigint | undefined;
-		childrenPresent: boolean;
-		expanded: boolean;
-		ancestorOfSelected: boolean;
+		// Along this listing's own path, since a layer listed under several parents can inherit a hide or lock from just one
 		parentsVisible: boolean;
 		parentsUnlocked: boolean;
+		childrenPresent: boolean;
+		expanded: boolean;
+		selected: boolean;
+		ancestorOfSelected: boolean;
 		treePath: bigint[];
+		// Where the listing's rows start in the list, and how tall they are together with those of its expanded chain
+		top: number;
+		height: number;
 	};
 
 	type DraggingData = {
@@ -72,6 +79,12 @@
 	const CHAIN_EXPAND_ARROW_WIDTH = 12;
 	const LAYER_ICON_WIDTH = 20;
 
+	// The height of a layer's row and of a row listing a node of its expanded chain, each with its bottom border, as styled below
+	const LAYER_ROW_HEIGHT = 33;
+	const CHAIN_NODE_ROW_HEIGHT = 25;
+	// Rows this far past either end of the list's visible part are rendered too, so scrolling doesn't uncover them before they appear
+	const RENDERED_BEYOND_VIEW_PIXELS = 240;
+
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
 	const tooltip = getContext<TooltipStore>("tooltip");
@@ -82,6 +95,16 @@
 	let list: LayoutCol | undefined;
 
 	let layers: LayerListingInfo[] = [];
+	let layersBuiltFrom: LayerStructureEntry[] | undefined = undefined;
+
+	// Rows are rendered only for the listings from `firstRendered` up to but not including `endRendered`, with the rest of the list's height left empty around them
+	let firstRendered = 0;
+	let endRendered = 0;
+	let listHeight = 0;
+	// The document and layers the backend was last told have rows rendered, which it sends the details and thumbnails of
+	let renderedDocumentSent: bigint | undefined = undefined;
+	let renderedLayersSent = "";
+	const listAreaResizeObserver = new ResizeObserver(() => updateRenderedRows());
 
 	// Interactive dragging
 	let draggable = true;
@@ -115,6 +138,8 @@
 	// Viewport hover outline, tracked by row index since rows get reused when the layers change beneath a still pointer
 	let hoveredRowIndex: number | undefined = undefined;
 	let hoveredLayerSent: bigint | undefined = undefined;
+	// Scrolling carries rows beneath a pointer that hasn't moved, which doesn't count as hovering them until it moves again
+	let hoverPausedByScroll = false;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
@@ -136,11 +161,15 @@
 		chainWidths = chainWidths;
 	});
 
-	$: rebuildLayerHierarchy($portfolio.layerStructure, $portfolio.layerCache);
+	$: rebuildLayerHierarchy($portfolio.layerStructure);
+	$: attachLayerDetails($portfolio.layerCache);
 	$: sendHoveredLayer(layers, hoveredRowIndex);
 
 	onMount(() => {
 		createDragToggleManager(dragToggleListener);
+
+		const listAreaDiv = listArea?.div();
+		if (listAreaDiv) listAreaResizeObserver.observe(listAreaDiv);
 
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
@@ -153,6 +182,8 @@
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
 		addEventListener("keyup", clippingKeyPress);
+
+		addEventListener("pointermove", resumeHoverAfterScroll);
 	});
 
 	onDestroy(() => {
@@ -170,15 +201,125 @@
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
 
+		removeEventListener("pointermove", resumeHoverAfterScroll);
+
 		chainResizeObserver.disconnect();
+		listAreaResizeObserver.disconnect();
 		stopAutoScroll();
+
+		// With no rows left, the backend stops sending details, so the ones kept here would go stale
+		editor.setLayersPanelView(new BigUint64Array(), new BigUint64Array());
+		retainLayerDetails(new Set(), false);
 
 		// Closing the panel removes the hovered row without a `pointerleave`
 		if (hoveredLayerSent !== undefined) editor.setLayersPanelHoveredLayer(undefined);
 	});
 
+	// Renders the rows of just the listings in or near view, and tells the backend which layers those are so it sends only their details and thumbnails
+	function updateRenderedRows() {
+		const container = listArea?.div();
+		const listElement = list?.div();
+		if (!container || !listElement) return;
+
+		// Measured from the top of the list's first row
+		const renderedTop = container.scrollTop - listElement.offsetTop - RENDERED_BEYOND_VIEW_PIXELS;
+		const renderedBottom = container.scrollTop - listElement.offsetTop + container.clientHeight + RENDERED_BEYOND_VIEW_PIXELS;
+
+		const [previousFirstRendered, previousEndRendered] = [firstRendered, endRendered];
+		firstRendered = firstListingWhere((listing) => listing.top + listing.height > renderedTop);
+		endRendered = firstListingWhere((listing) => listing.top >= renderedBottom);
+
+		// Listings no longer rendered let go of their details, which the backend stops keeping current, and of renaming, since their removed input can't lose focus to end it
+		layers.slice(previousFirstRendered, previousEndRendered).forEach((listing, offset) => {
+			const index = previousFirstRendered + offset;
+			if (index >= firstRendered && index < endRendered) return;
+
+			listing.entry = undefined;
+			if (listing.editingName) {
+				listing.editingName = false;
+				draggable = true;
+			}
+		});
+
+		attachLayerDetails($portfolio.layerCache);
+		sendRenderedLayers();
+	}
+
+	// The index of the first listing meeting a condition that every later listing meets too, found in O(log n)
+	function firstListingWhere(condition: (listing: LayerListingInfo) => boolean): number {
+		let low = 0;
+		let high = layers.length;
+		while (low < high) {
+			const middle = Math.floor((low + high) / 2);
+			if (condition(layers[middle])) high = middle;
+			else low = middle + 1;
+		}
+		return low;
+	}
+
+	function sendRenderedLayers() {
+		const documentId = $portfolio.documents[$portfolio.activeDocumentIndex]?.id;
+		const renderedLayers = layers.slice(firstRendered, endRendered).map((listing) => listing.id);
+		const key = renderedLayers.join(",");
+		if (documentId === renderedDocumentSent && key === renderedLayersSent) return;
+		const otherDocument = documentId !== renderedDocumentSent;
+		renderedDocumentSent = documentId;
+		renderedLayersSent = key;
+
+		// The backend keeps only these layers' details current, so the others kept here would go stale
+		retainLayerDetails(new Set(renderedLayers.map(String)), otherDocument);
+		const missingDetails = renderedLayers.filter((id) => !$portfolio.layerCache.has(String(id)));
+		editor.setLayersPanelView(BigUint64Array.from(renderedLayers), BigUint64Array.from(missingDetails));
+	}
+
+	// O(rendered rows)
+	function attachLayerDetails(cache: Map<string, LayerPanelEntry>) {
+		layers.slice(firstRendered, endRendered).forEach((listing) => {
+			listing.entry = cache.get(String(listing.id));
+		});
+		layers = layers;
+	}
+
+	// Brings a listing's rows into view, rendering them before it resolves
+	async function scrollListingIntoView(listing: LayerListingInfo) {
+		const container = listArea?.div();
+		const listElement = list?.div();
+		if (!container || !listElement) return;
+
+		const top = listElement.offsetTop + listing.top;
+		if (top < container.scrollTop) container.scrollTop = top;
+		else if (top + LAYER_ROW_HEIGHT > container.scrollTop + container.clientHeight) container.scrollTop = top + LAYER_ROW_HEIGHT - container.clientHeight;
+
+		updateRenderedRows();
+		await tick();
+	}
+
+	function listAreaScroll() {
+		pauseHoverForScroll();
+		updateRenderedRows();
+	}
+
+	function hoverRow(rowIndex: number) {
+		if (!hoverPausedByScroll) hoveredRowIndex = rowIndex;
+	}
+
+	function pauseHoverForScroll() {
+		hoverPausedByScroll = true;
+		hoveredRowIndex = undefined;
+	}
+
+	// The pointer's first actual move after a scroll hovers whichever row it's over, which it may have entered while hovering was paused
+	function resumeHoverAfterScroll(e: PointerEvent) {
+		if (!hoverPausedByScroll || (e.movementX === 0 && e.movementY === 0)) return;
+		hoverPausedByScroll = false;
+
+		const row = e.target instanceof Element ? e.target.closest("[data-layer], [data-chain-row-of]") : undefined;
+		if (!row || !list?.div()?.contains(row)) return;
+		hoveredRowIndex = Number(row.getAttribute("data-chain-row-of") || row.getAttribute("data-index"));
+	}
+
 	function sendHoveredLayer(listings: LayerListingInfo[], rowIndex: number | undefined) {
-		const id = rowIndex === undefined ? undefined : listings.at(rowIndex)?.entry.id;
+		const id = rowIndex === undefined ? undefined : listings.at(rowIndex)?.id;
 		if (id === hoveredLayerSent) return;
 
 		hoveredLayerSent = id;
@@ -207,6 +348,9 @@
 	async function onEditLayerName(listing: LayerListingInfo) {
 		if (listing.editingName) return;
 
+		// A layer chosen from beyond the rendered rows, like the next one by keyboard, needs its row before its name can be edited
+		await scrollListingIntoView(listing);
+
 		draggable = false;
 		listing.editingName = true;
 		layers = layers;
@@ -227,8 +371,8 @@
 		layers = layers;
 
 		const name = (e.target instanceof HTMLInputElement && e.target.value) || "";
-		editor.setLayerName(listing.entry.id, name);
-		listing.entry.alias = name;
+		editor.setLayerName(listing.id, name);
+		if (listing.entry) listing.entry.alias = name;
 	}
 
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
@@ -237,7 +381,7 @@
 		layers = layers;
 
 		// Set it back to the original name if the user didn't enter a new name
-		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry.alias;
+		if (document.activeElement instanceof HTMLInputElement) document.activeElement.value = listing.entry?.alias || "";
 
 		// Deselect the text so it doesn't appear selected while the input field becomes disabled and styled to look like regular text
 		window.getSelection()?.removeAllRanges();
@@ -290,7 +434,7 @@
 		const [accel, oppositeAccel] = operatingSystem() === "Mac" ? [meta, ctrl] : [ctrl, meta];
 
 		// Alt-clicking to make a clipping mask
-		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
+		if (layerToClipAltKeyPressed && layerToClipUponClick?.entry?.clippable) clipLayer(layerToClipUponClick);
 		// Select the layer only if the accel and/or shift keys are pressed
 		else if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
@@ -298,7 +442,7 @@
 	}
 
 	function clipLayer(listing: LayerListingInfo) {
-		editor.clipLayer(listing.entry.id);
+		editor.clipLayer(listing.id);
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
@@ -345,7 +489,7 @@
 		// Don't select while we are entering text to rename the layer
 		if (listing.editingName) return;
 
-		editor.selectLayer(listing.entry.id, accel, shift);
+		editor.selectLayer(listing.id, accel, shift);
 	}
 
 	function chainNodeClick(e: MouseEvent | undefined, listing: LayerListingInfo, nodeId: bigint) {
@@ -358,17 +502,17 @@
 		const [accel, oppositeAccel] = operatingSystem() === "Mac" ? [e?.metaKey, e?.ctrlKey] : [e?.ctrlKey, e?.metaKey];
 		if (oppositeAccel || e?.altKey) return;
 
-		editor.selectChainNode(listing.entry.id, nodeId, Boolean(accel), Boolean(e?.shiftKey));
+		editor.selectChainNode(listing.id, nodeId, Boolean(accel), Boolean(e?.shiftKey));
 	}
 
 	// Double-clicking a chain node's icon, or the layer's own icon at the row's end (unless it expands the chain), opens the graph centered on that node
 	function chainIconsDoubleClick(e: MouseEvent, listing: LayerListingInfo) {
 		const target = e.target instanceof Element ? e.target : undefined;
 		const chainNodeButton = target?.closest("[data-chain-node]");
-		const chainNode = chainNodeButton ? listing.entry.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))] : undefined;
+		const chainNode = chainNodeButton ? listing.entry?.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))] : undefined;
 
 		if (chainNode) editor.showNodeInGraph(chainNode.id);
-		else if (target?.closest("[data-layer-icon]") && !target.closest("[data-chain-expandable]")) editor.showNodeInGraph(listing.entry.id);
+		else if (target?.closest("[data-layer-icon]") && !target.closest("[data-chain-expandable]")) editor.showNodeInGraph(listing.id);
 	}
 
 	// The kind of node it is, followed by its name if it's been renamed
@@ -483,14 +627,14 @@
 				// Dropping after the layer lands below its chain's node rows, if they're shown
 				const lastChainRow = Array.from(treeChildren).findLast((child) => child.getAttribute("data-chain-row-of") === indexAttribute);
 				const bottom = (lastChainRow || treeChild).getBoundingClientRect().bottom;
-				if (listing.entry.childrenAllowed || listing.childrenPresent) {
+				if (listing.entry?.childrenAllowed || listing.childrenPresent) {
 					if (pointerPercentage < 0.25) {
 						insertParentId = listing.parentId;
 						insertDepth = listing.depth - 1;
 						insertIndex = listing.folderIndex;
 						markerHeight = rect.top - layerPanelTop;
 					} else if (pointerPercentage < 0.75 || (listing.childrenPresent && listing.expanded)) {
-						insertParentId = listing.entry.id;
+						insertParentId = listing.id;
 						insertDepth = listing.depth;
 						insertIndex = 0;
 						highlightFolder = true;
@@ -515,9 +659,9 @@
 					}
 				}
 			});
-			// Dragging to the empty space below all layers
-			let lastLayer = treeChildren[treeChildren.length - 1];
-			if (lastLayer.getBoundingClientRect().bottom < clientY) {
+			// Dragging to the empty space below all layers, which only follows the last row once that's rendered
+			const lastLayer = treeChildren[treeChildren.length - 1];
+			if (endRendered === layers.length && lastLayer && lastLayer.getBoundingClientRect().bottom < clientY) {
 				const numberRootLayers = layers.filter((listing) => listing.depth === 1).length;
 				insertParentId = undefined;
 				insertDepth = 0;
@@ -544,14 +688,14 @@
 		// Pressing one of the chain's node buttons drags that node within the chain, rather than dragging the whole layer
 		const chainNodeButton = (e.target instanceof Element && e.target.closest("[data-chain-node]")) || undefined;
 		if (chainNodeButton) {
-			const chainNode = listing.entry.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))];
+			const chainNode = listing.entry?.chainNodes[Number(chainNodeButton.getAttribute("data-chain-node"))];
 			if (chainNode) chainNodePointerDown(e, listing, chainNode);
 			return;
 		}
 
 		internalDragState = {
 			active: false,
-			layerId: listing.entry.id,
+			layerId: listing.id,
 			listing: listing,
 			startX: e.clientX,
 			startY: e.clientY,
@@ -563,9 +707,10 @@
 		if (!chainNode.reorderable) return;
 
 		// Dragging a selected node brings along the chain's other selected nodes, which all end up together at the drop
-		const nodeIds = chainNode.selected ? listing.entry.chainNodes.filter((node) => node.reorderable && node.selected).map((node) => node.id) : [chainNode.id];
+		const chainNodes = listing.entry?.chainNodes || [];
+		const nodeIds = chainNode.selected ? chainNodes.filter((node) => node.reorderable && node.selected).map((node) => node.id) : [chainNode.id];
 
-		chainDragState = { active: false, layerId: listing.entry.id, nodeIds, startX: e.clientX, startY: e.clientY };
+		chainDragState = { active: false, layerId: listing.id, nodeIds, startX: e.clientX, startY: e.clientY };
 	}
 
 	// Scrolls the list while a drag's pointer is near or past its top or bottom edge, easing off while it heads from where it began toward a bottom bar button it can be dropped on
@@ -653,7 +798,7 @@
 		let markerX: number | undefined;
 		let index: number;
 		if (edges.length === 0) {
-			index = layers[Number(row.getAttribute("data-index"))]?.entry.chainNodes.filter((node) => node.reorderable).length || 0;
+			index = layers[Number(row.getAttribute("data-index"))]?.entry?.chainNodes.filter((node) => node.reorderable).length || 0;
 			const chainNodeButtons = row.querySelectorAll("[data-chain-node]");
 			const fixedSource = chainNodeButtons[chainNodeButtons.length - 1];
 			markerX = fixedSource ? fixedSource.getBoundingClientRect().right : row.querySelector("[data-layer-chain]")?.getBoundingClientRect().left;
@@ -765,9 +910,9 @@
 				dragInPanel = true;
 				layerToClipUponClick = undefined;
 
-				const layer = internalDragState.listing.entry;
-				if (!$nodeGraph.selected.includes(layer.id)) {
-					fakeHighlightOfNotYetSelectedLayerBeingDragged = layer.id;
+				const layerId = internalDragState.listing.id;
+				if (!$nodeGraph.selected.includes(layerId)) {
+					fakeHighlightOfNotYetSelectedLayerBeingDragged = layerId;
 				}
 			}
 		}
@@ -878,7 +1023,7 @@
 		// Only handle F2 if not currently editing a layer name or typing in another text field
 		if (e.key === "F2" && !layers.some((layer) => layer.editingName) && !targetIsTextField(e.target || undefined)) {
 			// Find the first selected layer
-			const selectedLayer = layers.find((layer) => layer.entry.selected);
+			const selectedLayer = layers.find((layer) => layer.selected);
 			if (selectedLayer) {
 				e.preventDefault();
 				onEditLayerName(selectedLayer);
@@ -891,12 +1036,12 @@
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
 			const name = inputElement.value || "";
-			editor.setLayerName(currentListing.entry.id, name);
-			currentListing.entry.alias = name;
+			editor.setLayerName(currentListing.id, name);
+			if (currentListing.entry) currentListing.entry.alias = name;
 		}
 
 		// Find current layer index
-		const currentIndex = layers.findIndex((layer) => layer.entry.id === currentListing.entry.id);
+		const currentIndex = layers.indexOf(currentListing);
 		if (currentIndex === -1) return;
 
 		// Calculate target index based on direction
@@ -950,45 +1095,51 @@
 		stopAutoScroll();
 	}
 
-	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[], cache: Map<string, LayerPanelEntry>) {
+	// O(listed layers), so it's skipped when only the layers' details change
+	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
+		if (layerStructure === layersBuiltFrom) return;
+		layersBuiltFrom = layerStructure;
+
 		// Track the editing state by flat list index, not layer ID, since a layer can appear at multiple positions
 		const editingIndex = layers.findIndex((layer: LayerListingInfo) => layer.editingName);
 
 		// Clear the layer hierarchy before rebuilding it
 		layers = [];
+		let top = 0;
 
 		// Build the new layer hierarchy
 		const recurse = (children: LayerStructureEntry[], depth: number, parentId: bigint | undefined, parentPath: bigint[], parentsVisible: boolean, parentsUnlocked: boolean) => {
 			children.forEach((item, index) => {
 				const treePath = [...parentPath, item.layerId];
-				const mapping = cache.get(String(item.layerId));
+				const height = LAYER_ROW_HEIGHT + item.chainRows * CHAIN_NODE_ROW_HEIGHT;
 
-				if (mapping) {
-					mapping.id = item.layerId;
-					layers.push({
-						folderIndex: index,
-						bottomLayer: index === children.length - 1,
-						entry: mapping,
-						editingName: editingIndex === layers.length,
-						depth,
-						parentId,
-						childrenPresent: item.childrenPresent,
-						expanded: item.childrenPresent && item.children.length > 0,
-						ancestorOfSelected: item.descendantSelected,
-						parentsVisible,
-						parentsUnlocked,
-						treePath,
-					});
-				}
+				layers.push({
+					id: item.layerId,
+					folderIndex: index,
+					bottomLayer: index === children.length - 1,
+					editingName: editingIndex === layers.length,
+					entry: undefined,
+					depth,
+					parentId,
+					parentsVisible,
+					parentsUnlocked,
+					childrenPresent: item.childrenPresent,
+					expanded: item.childrenPresent && item.children.length > 0,
+					selected: item.selected,
+					ancestorOfSelected: item.descendantSelected,
+					treePath,
+					top,
+					height,
+				});
+				top += height;
 
-				// Call self recursively, propagating this layer's visibility/lock state to its children
-				const childParentsVisible = parentsVisible && (mapping?.visible ?? true);
-				const childParentsUnlocked = parentsUnlocked && (mapping?.unlocked ?? true);
-				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, treePath, childParentsVisible, childParentsUnlocked);
+				if (item.children.length >= 1) recurse(item.children, depth + 1, item.layerId, treePath, parentsVisible && item.visible, parentsUnlocked && item.unlocked);
 			});
 		};
 		recurse(layerStructure, 1, undefined, [], true, true);
-		layers = layers;
+		listHeight = top;
+
+		updateRenderedRows();
 	}
 </script>
 
@@ -996,282 +1147,298 @@
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
 	</LayoutRow>
-	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true} bind:this={listArea}>
+	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true} bind:this={listArea} on:scroll={listAreaScroll}>
 		<LayoutCol
 			class="list"
-			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
+			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry?.clippable ? "alias" : "auto" }}
 			data-layer-panel
 			bind:this={list}
 			on:click={() => deselectAllLayers()}
 			on:dragover={fileDragOver}
 			on:drop={fileDrop}
 		>
-			{#each layers as listing, index}
-				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
-				{@const slots = chainSlots(listing.entry)}
-				{@const inlineSlots = listing.entry.chainExpanded && listing.entry.chainNodes.length > 0 ? slots.filter((slot) => slot.kind === "insertion") : slots}
-				{@const ellipsis = chainEllipsis(inlineSlots, chainWidths[index])}
-				<LayoutRow
-					class="layer"
-					classes={{
-						selected,
-						"ancestor-of-selected": listing.ancestorOfSelected,
-						"descendant-of-selected": listing.entry.descendantOfSelected,
-						"selected-but-not-in-selected-network": selected && !listing.entry.inSelectedNetwork,
-						"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.highlightFolderIndex === index,
-					}}
-					styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
-					data-layer
-					data-index={index}
-					on:pointerdown={(e) => layerPointerDown(e, listing)}
-					on:click={(e) => selectLayerWithModifiers(e, listing)}
-					on:dblclick={(e) => chainIconsDoubleClick(e, listing)}
-					on:pointerenter={() => (hoveredRowIndex = index)}
-					on:pointerleave={() => (hoveredRowIndex = undefined)}
-				>
-					<IconButton
-						class="status-toggle"
-						classes={{ inherited: !listing.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
-						size={24}
-						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
-						data-drag-toggle-group="layer-visibility"
-						data-drag-toggle-state={listing.entry.visible ? "visible" : "hidden"}
-					/>
-					{#if listing.entry.childrenAllowed || listing.childrenPresent}
-						<button
-							class="expand-arrow"
-							class:expanded={listing.expanded}
-							disabled={!listing.childrenPresent}
-							data-tooltip-label={listing.expanded ? "Collapse (All)" : "Expand (All)"}
-							data-tooltip-description={(listing.expanded
-								? "Hide this layer's children. (To recursively collapse all descendants, perform the shortcut shown.)"
-								: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
-								(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
-							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.treePath)}
-						></button>
-					{:else}
-						<div class="expand-arrow-none"></div>
-					{/if}
-					{#if listing.entry.clipped}
-						<IconLabel
-							icon="Clipped"
-							class="clipped-arrow"
-							tooltipLabel="Layer Clipped"
-							tooltipDescription="Clipping mask is active. To release it, target the bottom border of the layer and perform the shortcut shown."
-							tooltipShortcut={$tooltip.altClickShortcut}
+			<!-- Stand-ins as tall as the rows left unrendered above and below the rendered ones -->
+			<div class="unrendered-rows" style:height={`${layers.at(firstRendered)?.top || 0}px`}></div>
+			<!-- Keyed by position in the whole list, so a row scrolling into view gets new elements that measure their chain width -->
+			{#each layers.slice(firstRendered, endRendered) as listing, renderedIndex (firstRendered + renderedIndex)}
+				{@const index = firstRendered + renderedIndex}
+				{#if !listing.entry}
+					<!-- Held open until the backend sends the details its row needs -->
+					<div class="layer-placeholder" style:height={`${listing.height}px`}></div>
+				{:else}
+					{@const entry = listing.entry}
+					{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.id : entry.selected}
+					{@const slots = chainSlots(entry)}
+					{@const inlineSlots = entry.chainExpanded && entry.chainNodes.length > 0 ? slots.filter((slot) => slot.kind === "insertion") : slots}
+					{@const ellipsis = chainEllipsis(inlineSlots, chainWidths[index])}
+					<LayoutRow
+						class="layer"
+						classes={{
+							selected,
+							"ancestor-of-selected": listing.ancestorOfSelected,
+							"descendant-of-selected": entry.descendantOfSelected,
+							"selected-but-not-in-selected-network": selected && !entry.inSelectedNetwork,
+							"insert-folder": (draggingData?.highlightFolder || false) && draggingData?.highlightFolderIndex === index,
+						}}
+						styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
+						data-layer
+						data-index={index}
+						on:pointerdown={(e) => layerPointerDown(e, listing)}
+						on:click={(e) => selectLayerWithModifiers(e, listing)}
+						on:dblclick={(e) => chainIconsDoubleClick(e, listing)}
+						on:pointerenter={() => hoverRow(index)}
+						on:pointerleave={() => (hoveredRowIndex = undefined)}
+					>
+						<IconButton
+							class="status-toggle"
+							classes={{ inherited: !listing.parentsVisible }}
+							action={(e) => (toggleNodeVisibilityLayerPanel(listing.id), e?.stopPropagation())}
+							size={24}
+							icon={entry.visible ? "EyeVisible" : "EyeHidden"}
+							hoverIcon={entry.visible ? "EyeHide" : "EyeShow"}
+							tooltipLabel={entry.visible ? "Hide" : "Show"}
+							tooltipDescription={!listing.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+							data-drag-toggle-group="layer-visibility"
+							data-drag-toggle-state={entry.visible ? "visible" : "hidden"}
 						/>
-					{/if}
-					<div class="thumbnail">
-						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
-							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
+						{#if entry.childrenAllowed || listing.childrenPresent}
+							<button
+								class="expand-arrow"
+								class:expanded={listing.expanded}
+								disabled={!listing.childrenPresent}
+								data-tooltip-label={listing.expanded ? "Collapse (All)" : "Expand (All)"}
+								data-tooltip-description={(listing.expanded
+									? "Hide this layer's children. (To recursively collapse all descendants, perform the shortcut shown.)"
+									: "Show this layer's children. (To recursively expand all descendants, perform the shortcut shown.)") +
+									(listing.ancestorOfSelected && !listing.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+								data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
+								on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.treePath)}
+							></button>
+						{:else}
+							<div class="expand-arrow-none"></div>
 						{/if}
-					</div>
-					<div class="layer-name-and-chain" class:editing={listing.editingName} style:--chain-width={`${chainFullWidth(inlineSlots.length, slots.length > 0)}px`}>
-						<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
-							<input
-								class="name-input"
-								data-layer-name-input
-								type="text"
-								value={listing.entry.alias}
-								placeholder={listing.entry.implementationName}
-								disabled={!listing.editingName}
-								on:blur={() => onEditLayerNameDeselect(listing)}
-								on:keydown={(e) => {
-									if (e.key === "Escape") {
-										onEditLayerNameDeselect(listing);
-									} else if (e.key === "Enter") {
-										onEditLayerNameChange(listing, e);
-									} else if (e.key === "Tab") {
-										e.preventDefault();
-										navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
-									} else if (e.key === "ArrowUp") {
-										e.preventDefault();
-										navigateToLayer(listing, "Up");
-									} else if (e.key === "ArrowDown") {
-										e.preventDefault();
-										navigateToLayer(listing, "Down");
-									}
-								}}
-								on:change={(e) => onEditLayerNameChange(listing, e)}
-							/>
-						</LayoutRow>
-						{#if !listing.entry.unlocked || !listing.parentsUnlocked}
-							<IconButton
-								class="status-toggle layer-lock"
-								classes={{ inherited: !listing.parentsUnlocked }}
-								action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
-								size={24}
-								icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
-								hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-								tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
-								tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
-								data-drag-toggle-group="layer-lock"
-								data-drag-toggle-state={listing.entry.unlocked ? "unlocked" : "locked"}
-							/>
-						{:else if activeDragToggleGroup === "layer-lock"}
-							<IconButton
-								class="status-toggle layer-lock drag-toggle-placeholder"
-								action={(e) => (toggleLayerLock(listing.entry.id), e?.stopPropagation())}
-								size={24}
-								icon="PadlockUnlocked"
-								data-drag-toggle-group="layer-lock"
-								data-drag-toggle-state="unlocked"
+						{#if entry.clipped}
+							<IconLabel
+								icon="Clipped"
+								class="clipped-arrow"
+								tooltipLabel="Layer Clipped"
+								tooltipDescription="Clipping mask is active. To release it, target the bottom border of the layer and perform the shortcut shown."
+								tooltipShortcut={$tooltip.altClickShortcut}
 							/>
 						{/if}
-						<LayoutRow class="layer-name-spacer" />
-						<div class="layer-chain-icons" data-layer-chain use:observeChainWidth>
-							{#if chainFits(inlineSlots.length, slots.length > 0, chainWidths[index])}
-								<!-- An expanded chain lists its nodes in rows beneath the layer instead, keeping only a ghost node here -->
-								{#each inlineSlots as slot, slotIndex}
-									{#if ellipsis && slotIndex === ellipsis.start}
-										<LayoutRow
-											class="chain-ellipsis"
-											classes={{
-												selected: ellipsis.nodes.some((node) => node.selected),
-												"tool-target": ellipsis.nodes.some((node) => node.toolTargetDescription),
-												"edit-in-progress": ellipsis.nodes.some((node) => node.editInProgress),
-											}}
-											tooltipLabel={`${ellipsis.nodes.length} More Nodes`}
-											tooltipDescription={ellipsis.nodes.map((node) => node.name).join(", ")}
-											data-chain-gap-before={ellipsis.gapBefore}
-											data-chain-gap-after={ellipsis.gapAfter}
-										>
-											<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">
-												<circle cx="2" cy="11" r="1" />
-												<circle cx="6" cy="11" r="1" />
-												<circle cx="10" cy="11" r="1" />
-											</svg>
-										</LayoutRow>
-									{/if}
-									{#if !ellipsis || slotIndex < ellipsis.start || slotIndex >= ellipsis.end}
-										{#if slot.kind === "insertion"}
-											<IconLabel icon={slot.insertion.icon} class="tool-target-insertion" tooltipLabel={slot.insertion.name} tooltipDescription={slot.insertion.description} />
-										{:else}
-											{@const chainNode = slot.node}
-											<IconButton
-												icon={chainNode.icon}
-												size={24}
-												classes={{
-													selected: chainNode.selected,
-													hidden: !chainNode.visible,
-													"tool-target": Boolean(chainNode.toolTargetDescription),
-													"edit-in-progress": chainNode.editInProgress,
-												}}
-												action={(e) => chainNodeClick(e, listing, chainNode.id)}
-												tooltipLabel={chainNodeTooltipLabel(chainNode)}
-												tooltipDescription={chainNode.toolTargetDescription}
-												data-chain-node={slot.nodeIndex}
-												data-chain-gap-before={slot.reorderablePosition}
-												data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
-											/>
-										{/if}
-									{/if}
-								{/each}
-								<button
-									class="chain-expand-button"
-									class:with-arrow={slots.length > 0}
-									class:expandable={listing.entry.chainNodes.length > 0}
-									data-chain-expandable={listing.entry.chainNodes.length > 0 ? "" : undefined}
-									class:expanded={listing.entry.chainExpanded && listing.entry.chainNodes.length > 0}
-									data-tooltip-label={listing.entry.chainNodes.length === 0 ? undefined : listing.entry.chainExpanded ? "Collapse Chain" : "Expand Chain"}
-									data-tooltip-description={listing.entry.chainNodes.length === 0
-										? undefined
-										: listing.entry.chainExpanded
-											? "Stop listing this layer's chain one node per row."
-											: "List this layer's chain one node per row, beneath the layer."}
-									on:click={(e) => {
-										// Without a chain to expand, a click selects the layer as it does elsewhere in the row
-										if (listing.entry.chainNodes.length === 0) return;
-										e.stopPropagation();
-										editor.toggleLayerChainExpanded(listing.entry.id);
-									}}
-								>
-									<IconLabel
-										icon={listing.entry.iconName}
-										class="layer-type-icon"
-										classes={{ hidden: !listing.entry.visible, "tool-target": Boolean(listing.entry.toolTargetDescription), "edit-in-progress": listing.entry.editInProgress }}
-										tooltipLabel={listing.entry.implementationName}
-										tooltipDescription={listing.entry.toolTargetDescription}
-										data-layer-icon
-									/>
-								</button>
+						<div class="thumbnail">
+							{#if $nodeGraph.thumbnails.has(listing.id)}
+								{@html $nodeGraph.thumbnails.get(listing.id)}
 							{/if}
 						</div>
-					</div>
-					{#if chainDropRowIndex === index && chainInsertMarkerLeft !== undefined}
-						<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>
-					{/if}
-				</LayoutRow>
-				{#if listing.entry.chainExpanded}
-					<!-- Downstream first, so the node feeding the layer sits right beneath it -->
-					{#each slots.flatMap((slot) => (slot.kind === "node" ? [slot] : [])).reverse() as slot}
-						{@const chainNode = slot.node}
-						{@const editingName = editingChainNodeName?.rowIndex === index && editingChainNodeName.nodeId === chainNode.id}
-						<LayoutRow
-							class="chain-node-row"
-							classes={{ selected: chainNode.selected }}
-							styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
-							data-chain-row-of={index}
-							data-chain-row-node={slot.nodeIndex}
-							data-chain-gap-before={slot.reorderablePosition}
-							data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
-							on:pointerdown={(e) => {
-								if (e.button === 0 && draggable) chainNodePointerDown(e, listing, chainNode);
-							}}
-							on:click={(e) => chainNodeClick(e, listing, chainNode.id)}
-							on:dblclick={(e) => {
-								// Only the node's icon opens it in the graph
-								if (e.target instanceof Element && e.target.closest("[data-chain-node-row-icon]")) editor.showNodeInGraph(chainNode.id);
-							}}
-							on:pointerenter={() => (hoveredRowIndex = index)}
-							on:pointerleave={() => (hoveredRowIndex = undefined)}
-						>
-							<IconButton
-								class="chain-node-visibility"
-								action={(e) => (toggleNodeVisibilityLayerPanel(chainNode.id), e?.stopPropagation())}
-								size={24}
-								icon={chainNode.visible ? "EyeVisible" : "EyeHidden"}
-								hoverIcon={chainNode.visible ? "EyeHide" : "EyeShow"}
-								tooltipLabel={chainNode.visible ? "Hide" : "Show"}
-								data-drag-toggle-group="layer-visibility"
-								data-drag-toggle-state={chainNode.visible ? "visible" : "hidden"}
-							/>
-							<LayoutRow class="chain-node-name" on:dblclick={() => onEditChainNodeName(index, chainNode.id)}>
+						<div class="layer-name-and-chain" class:editing={listing.editingName} style:--chain-width={`${chainFullWidth(inlineSlots.length, slots.length > 0)}px`}>
+							<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 								<input
 									class="name-input"
-									data-chain-node-name-input
+									data-layer-name-input
 									type="text"
-									value={chainNode.name}
-									placeholder={chainNode.implementationName}
-									disabled={!editingName}
-									on:blur={() => onEditChainNodeNameDeselect(chainNode)}
+									value={entry.alias}
+									placeholder={entry.implementationName}
+									disabled={!listing.editingName}
+									on:blur={() => onEditLayerNameDeselect(listing)}
 									on:keydown={(e) => {
-										if (e.key === "Escape") onEditChainNodeNameDeselect(chainNode);
-										else if (e.key === "Enter") onEditChainNodeNameChange(chainNode.id, e);
+										if (e.key === "Escape") {
+											onEditLayerNameDeselect(listing);
+										} else if (e.key === "Enter") {
+											onEditLayerNameChange(listing, e);
+										} else if (e.key === "Tab") {
+											e.preventDefault();
+											navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
+										} else if (e.key === "ArrowUp") {
+											e.preventDefault();
+											navigateToLayer(listing, "Up");
+										} else if (e.key === "ArrowDown") {
+											e.preventDefault();
+											navigateToLayer(listing, "Down");
+										}
 									}}
-									on:change={(e) => onEditChainNodeNameChange(chainNode.id, e)}
+									on:change={(e) => onEditLayerNameChange(listing, e)}
 								/>
 							</LayoutRow>
-							<IconLabel
-								icon={chainNode.icon}
-								class="chain-node-icon"
-								classes={{ "tool-target": Boolean(chainNode.toolTargetDescription), "edit-in-progress": chainNode.editInProgress }}
-								tooltipLabel={chainNode.implementationName}
-								tooltipDescription={chainNode.toolTargetDescription}
-								data-chain-node-row-icon
-							/>
-							{#if chainDropRowIndex === index && chainRowInsertMarker?.nodeIndex === slot.nodeIndex}
-								<div class="chain-row-insert-mark" class:bottom={chainRowInsertMarker.edge === "bottom"}></div>
+							{#if !entry.unlocked || !listing.parentsUnlocked}
+								<IconButton
+									class="status-toggle layer-lock"
+									classes={{ inherited: !listing.parentsUnlocked }}
+									action={(e) => (toggleLayerLock(listing.id), e?.stopPropagation())}
+									size={24}
+									icon={entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
+									hoverIcon={entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
+									tooltipLabel={entry.unlocked ? "Lock" : "Unlock"}
+									tooltipDescription={!listing.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
+									data-drag-toggle-group="layer-lock"
+									data-drag-toggle-state={entry.unlocked ? "unlocked" : "locked"}
+								/>
+							{:else if activeDragToggleGroup === "layer-lock"}
+								<IconButton
+									class="status-toggle layer-lock drag-toggle-placeholder"
+									action={(e) => (toggleLayerLock(listing.id), e?.stopPropagation())}
+									size={24}
+									icon="PadlockUnlocked"
+									data-drag-toggle-group="layer-lock"
+									data-drag-toggle-state="unlocked"
+								/>
 							{/if}
-						</LayoutRow>
-					{/each}
+							<LayoutRow class="layer-name-spacer" />
+							<div class="layer-chain-icons" data-layer-chain use:observeChainWidth>
+								{#if chainFits(inlineSlots.length, slots.length > 0, chainWidths[index])}
+									<!-- An expanded chain lists its nodes in rows beneath the layer instead, keeping only a ghost node here -->
+									{#each inlineSlots as slot, slotIndex}
+										{#if ellipsis && slotIndex === ellipsis.start}
+											<LayoutRow
+												class="chain-ellipsis"
+												classes={{
+													selected: ellipsis.nodes.some((node) => node.selected),
+													"tool-target": ellipsis.nodes.some((node) => node.toolTargetDescription),
+													"edit-in-progress": ellipsis.nodes.some((node) => node.editInProgress),
+												}}
+												tooltipLabel={`${ellipsis.nodes.length} More Nodes`}
+												tooltipDescription={ellipsis.nodes.map((node) => node.name).join(", ")}
+												data-chain-gap-before={ellipsis.gapBefore}
+												data-chain-gap-after={ellipsis.gapAfter}
+											>
+												<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12">
+													<circle cx="2" cy="11" r="1" />
+													<circle cx="6" cy="11" r="1" />
+													<circle cx="10" cy="11" r="1" />
+												</svg>
+											</LayoutRow>
+										{/if}
+										{#if !ellipsis || slotIndex < ellipsis.start || slotIndex >= ellipsis.end}
+											{#if slot.kind === "insertion"}
+												<IconLabel
+													icon={slot.insertion.icon}
+													class="tool-target-insertion"
+													tooltipLabel={slot.insertion.name}
+													tooltipDescription={slot.insertion.description}
+												/>
+											{:else}
+												{@const chainNode = slot.node}
+												<IconButton
+													icon={chainNode.icon}
+													size={24}
+													classes={{
+														selected: chainNode.selected,
+														hidden: !chainNode.visible,
+														"tool-target": Boolean(chainNode.toolTargetDescription),
+														"edit-in-progress": chainNode.editInProgress,
+													}}
+													action={(e) => chainNodeClick(e, listing, chainNode.id)}
+													tooltipLabel={chainNodeTooltipLabel(chainNode)}
+													tooltipDescription={chainNode.toolTargetDescription}
+													data-chain-node={slot.nodeIndex}
+													data-chain-gap-before={slot.reorderablePosition}
+													data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
+												/>
+											{/if}
+										{/if}
+									{/each}
+									<button
+										class="chain-expand-button"
+										class:with-arrow={slots.length > 0}
+										class:expandable={entry.chainNodes.length > 0}
+										data-chain-expandable={entry.chainNodes.length > 0 ? "" : undefined}
+										class:expanded={entry.chainExpanded && entry.chainNodes.length > 0}
+										data-tooltip-label={entry.chainNodes.length === 0 ? undefined : entry.chainExpanded ? "Collapse Chain" : "Expand Chain"}
+										data-tooltip-description={entry.chainNodes.length === 0
+											? undefined
+											: entry.chainExpanded
+												? "Stop listing this layer's chain one node per row."
+												: "List this layer's chain one node per row, beneath the layer."}
+										on:click={(e) => {
+											// Without a chain to expand, a click selects the layer as it does elsewhere in the row
+											if (entry.chainNodes.length === 0) return;
+											e.stopPropagation();
+											editor.toggleLayerChainExpanded(listing.id);
+										}}
+									>
+										<IconLabel
+											icon={entry.iconName}
+											class="layer-type-icon"
+											classes={{ hidden: !entry.visible, "tool-target": Boolean(entry.toolTargetDescription), "edit-in-progress": entry.editInProgress }}
+											tooltipLabel={entry.implementationName}
+											tooltipDescription={entry.toolTargetDescription}
+											data-layer-icon
+										/>
+									</button>
+								{/if}
+							</div>
+						</div>
+						{#if chainDropRowIndex === index && chainInsertMarkerLeft !== undefined}
+							<div class="chain-insert-mark" style:left={`${chainInsertMarkerLeft}px`}></div>
+						{/if}
+					</LayoutRow>
+					{#if entry.chainExpanded}
+						<!-- Downstream first, so the node feeding the layer sits right beneath it -->
+						{#each slots.flatMap((slot) => (slot.kind === "node" ? [slot] : [])).reverse() as slot}
+							{@const chainNode = slot.node}
+							{@const editingName = editingChainNodeName?.rowIndex === index && editingChainNodeName.nodeId === chainNode.id}
+							<LayoutRow
+								class="chain-node-row"
+								classes={{ selected: chainNode.selected }}
+								styles={{ "--layer-indent-levels": `${listing.depth - 1}` }}
+								data-chain-row-of={index}
+								data-chain-row-node={slot.nodeIndex}
+								data-chain-gap-before={slot.reorderablePosition}
+								data-chain-gap-after={slot.reorderablePosition === undefined ? undefined : slot.reorderablePosition + 1}
+								on:pointerdown={(e) => {
+									if (e.button === 0 && draggable) chainNodePointerDown(e, listing, chainNode);
+								}}
+								on:click={(e) => chainNodeClick(e, listing, chainNode.id)}
+								on:dblclick={(e) => {
+									// Only the node's icon opens it in the graph
+									if (e.target instanceof Element && e.target.closest("[data-chain-node-row-icon]")) editor.showNodeInGraph(chainNode.id);
+								}}
+								on:pointerenter={() => hoverRow(index)}
+								on:pointerleave={() => (hoveredRowIndex = undefined)}
+							>
+								<IconButton
+									class="chain-node-visibility"
+									action={(e) => (toggleNodeVisibilityLayerPanel(chainNode.id), e?.stopPropagation())}
+									size={24}
+									icon={chainNode.visible ? "EyeVisible" : "EyeHidden"}
+									hoverIcon={chainNode.visible ? "EyeHide" : "EyeShow"}
+									tooltipLabel={chainNode.visible ? "Hide" : "Show"}
+									data-drag-toggle-group="layer-visibility"
+									data-drag-toggle-state={chainNode.visible ? "visible" : "hidden"}
+								/>
+								<LayoutRow class="chain-node-name" on:dblclick={() => onEditChainNodeName(index, chainNode.id)}>
+									<input
+										class="name-input"
+										data-chain-node-name-input
+										type="text"
+										value={chainNode.name}
+										placeholder={chainNode.implementationName}
+										disabled={!editingName}
+										on:blur={() => onEditChainNodeNameDeselect(chainNode)}
+										on:keydown={(e) => {
+											if (e.key === "Escape") onEditChainNodeNameDeselect(chainNode);
+											else if (e.key === "Enter") onEditChainNodeNameChange(chainNode.id, e);
+										}}
+										on:change={(e) => onEditChainNodeNameChange(chainNode.id, e)}
+									/>
+								</LayoutRow>
+								<IconLabel
+									icon={chainNode.icon}
+									class="chain-node-icon"
+									classes={{ "tool-target": Boolean(chainNode.toolTargetDescription), "edit-in-progress": chainNode.editInProgress }}
+									tooltipLabel={chainNode.implementationName}
+									tooltipDescription={chainNode.toolTargetDescription}
+									data-chain-node-row-icon
+								/>
+								{#if chainDropRowIndex === index && chainRowInsertMarker?.nodeIndex === slot.nodeIndex}
+									<div class="chain-row-insert-mark" class:bottom={chainRowInsertMarker.edge === "bottom"}></div>
+								{/if}
+							</LayoutRow>
+						{/each}
+					{/if}
 				{/if}
 			{/each}
+			<div class="unrendered-rows" style:height={`${listHeight - (layers.at(endRendered)?.top ?? listHeight)}px`}></div>
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
 			<div class="insert-mark" style:left={`${4 + 24 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
@@ -1375,9 +1542,16 @@
 			padding-top: 4px;
 			// Combine with the bottom bar to avoid a double border
 			margin-bottom: -1px;
+			// The browser would otherwise shift the scroll position to make up for the padding that stands in for unrendered rows changing as they're rendered
+			overflow-anchor: none;
 
 			&.drag-ongoing .layer {
 				pointer-events: none;
+			}
+
+			.unrendered-rows,
+			.layer-placeholder {
+				flex: 0 0 auto;
 			}
 
 			.layer {

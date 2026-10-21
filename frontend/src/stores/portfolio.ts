@@ -29,6 +29,9 @@ const initialState: PortfolioStoreState = {
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
+// The layers (by ID string) the Layers panel has rows rendered for, whose details are the only ones it keeps
+let layersWithDetails = new Set<string>();
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
@@ -168,6 +171,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		// Details sent before their layer's row left view would otherwise be kept without the backend updating them
+		if (!layersWithDetails.has(String(data.data.id))) return;
+
 		update((state) => {
 			state.layerCache.set(String(data.data.id), data.data);
 			return state;
@@ -175,6 +181,17 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	return { subscribe };
+}
+
+// Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document
+export function retainLayerDetails(layerIds: Set<string>, otherDocument: boolean) {
+	layersWithDetails = layerIds;
+	update((state) => {
+		Array.from(state.layerCache.keys()).forEach((id) => {
+			if (otherDocument || !layerIds.has(id)) state.layerCache.delete(id);
+		});
+		return state;
+	});
 }
 
 export function destroyPortfolioStore() {

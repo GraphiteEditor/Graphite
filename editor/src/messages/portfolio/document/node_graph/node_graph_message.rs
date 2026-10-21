@@ -326,7 +326,12 @@ pub enum NodeGraphMessage {
 	/// Highlights the wire a dragged node would be inserted onto if dropped where it is, or stops highlighting one.
 	UpdateWireInsertionPreview,
 	UpdateImportsExports,
+	/// Sends the Layers panel the details of every layer it has a row in view for.
 	UpdateLayerPanel,
+	/// Sends the Layers panel the details of the given layers.
+	SendLayerPanelDetails {
+		layers: Vec<NodeId>,
+	},
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]

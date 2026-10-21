@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
 	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
@@ -42,6 +43,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub inspector_collapsed_sections: &'a mut Vec<NodeId>,
 	pub inspector_expanded_input_chains: &'a mut Vec<(NodeId, Option<usize>)>,
 	pub layers_panel_expanded_chains: &'a mut Vec<NodeId>,
+	pub layers_in_view: &'a mut LayersInView,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub graph_view_overlay_open: bool,
 	pub graph_fade_artwork_percentage: f64,
@@ -149,6 +151,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			inspector_collapsed_sections,
 			inspector_expanded_input_chains,
 			layers_panel_expanded_chains,
+			layers_in_view,
 			ipp,
 			graph_view_overlay_open,
 			graph_fade_artwork_percentage,
@@ -2071,6 +2074,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 				}
 
+				layers_in_view.set_node_graph(nodes.iter().copied().collect(), responses);
 				responses.add(FrontendMessage::UpdateVisibleNodes { nodes });
 			}
 			NodeGraphMessage::SendGraph => {
@@ -2560,7 +2564,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 
 			NodeGraphMessage::UpdateLayerPanel => {
-				Self::update_layer_panel(network_interface, selection_network_path, layers_panel_open, tool_edit_target, layers_panel_expanded_chains, responses);
+				let layers = layers_in_view.layers_panel().iter().copied();
+				Self::update_layer_panel(
+					layers,
+					network_interface,
+					selection_network_path,
+					layers_panel_open,
+					tool_edit_target,
+					layers_panel_expanded_chains,
+					responses,
+				);
+			}
+			NodeGraphMessage::SendLayerPanelDetails { layers } => {
+				Self::update_layer_panel(
+					layers,
+					network_interface,
+					selection_network_path,
+					layers_panel_open,
+					tool_edit_target,
+					layers_panel_expanded_chains,
+					responses,
+				);
 			}
 			NodeGraphMessage::UpdateNewNodeGraph => {
 				let Some(selected_nodes) = network_interface.selected_nodes_mut(selection_network_path) else {
@@ -3812,7 +3836,10 @@ impl NodeGraphMessageHandler {
 			.collect()
 	}
 
+	/// Sends the Layers panel the details of the given layers, which it needs only for the rows it has in view.
+	// O(given layers × nesting depth), apart from what the active tool would edit in the selected layers
 	fn update_layer_panel(
+		layers: impl IntoIterator<Item = NodeId>,
 		network_interface: &NodeNetworkInterface,
 		selection_network_path: &[NodeId],
 		layers_panel_open: bool,
@@ -3839,16 +3866,17 @@ impl NodeGraphMessageHandler {
 		let selected_nodes = network_interface.selected_nodes().selected_nodes().copied().collect::<HashSet<_>>();
 		let edited_nodes = network_interface.transaction_edited_nodes();
 
-		let mut descendants_of_selected = HashSet::new();
-		for selected_layer in &selected_layers {
-			for descendant in LayerNodeIdentifier::new(*selected_layer, network_interface).descendants(network_interface.document_metadata()) {
-				descendants_of_selected.insert(descendant.to_node());
-			}
-		}
-
-		for (&node_id, node_metadata) in &network_interface.document_network_metadata().persistent_metadata.node_metadata {
-			if node_metadata.persistent_metadata.is_layer() {
+		let node_metadata = &network_interface.document_network_metadata().persistent_metadata.node_metadata;
+		for node_id in layers {
+			// The Layers panel may still list a layer that has since been deleted
+			if node_metadata.get(&node_id).is_some_and(|metadata| metadata.persistent_metadata.is_layer()) {
 				let layer = LayerNodeIdentifier::new(node_id, network_interface);
+
+				let descendant_of_selected = layer
+					.ancestors(network_interface.document_metadata())
+					.skip(1)
+					.filter(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT)
+					.any(|ancestor| selected_layers.contains(&ancestor.to_node()));
 
 				let children_allowed =
 						// The layer has other layers as children along the secondary input's horizontal flow
@@ -3912,7 +3940,7 @@ impl NodeGraphMessageHandler {
 					visible: network_interface.is_visible(&node_id, &[]),
 					unlocked: !network_interface.is_locked(&node_id, &[]),
 					selected: selected_layers.contains(&node_id),
-					descendant_of_selected: descendants_of_selected.contains(&node_id),
+					descendant_of_selected,
 					clipped: get_clip_mode(layer, network_interface).unwrap_or(false) && clippable,
 					clippable,
 				};

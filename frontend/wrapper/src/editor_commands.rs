@@ -502,6 +502,15 @@ mod editor_commands {
 		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
 	}
 
+	/// Tell the backend which layers have a row in view in the Layers panel, and which of those the panel lacks the details of.
+	fn set_layers_panel_view(layers: Vec<u64>, layers_missing_details: Vec<u64>) -> Message {
+		DocumentMessage::SetLayersPanelView {
+			layers: layers.into_iter().map(NodeId).collect(),
+			layers_missing_details: layers_missing_details.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
 	/// Select exactly the given nodes.
 	fn select_nodes(ids: Vec<u64>) -> Message {
 		NodeGraphMessage::SelectedNodesSet {
