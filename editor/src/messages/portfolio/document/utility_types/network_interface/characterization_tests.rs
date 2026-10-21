@@ -1,8 +1,9 @@
 use super::{
-	ChainInsertionPoint, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata, OutputConnector,
-	Previewing, RootNode, TransactionStatus,
+	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata,
+	OutputConnector, Previewing, RootNode, TransactionStatus,
 };
 use crate::consts::GRID_SIZE;
+use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
@@ -973,6 +974,7 @@ async fn drag_offsets_do_not_outlive_programmatic_shifts() {
 		.handle_message(NodeGraphMessage::ShiftSelectedNodes {
 			direction: Direction::Down,
 			rubber_band: false,
+			glide: false,
 		})
 		.await;
 	let network_interface = &editor.active_document().network_interface;
@@ -1330,7 +1332,7 @@ async fn the_empty_import_connectors_add_the_next_import_or_fill_the_empty_prima
 		.network_metadata(&path)
 		.and_then(|network_metadata| network_metadata.transient_metadata.wires.borrow().get(&wired_input).cloned())
 		.and_then(|wire| wire.wire_path_update);
-	let current_wire = network_interface.wire_path_from_input(&wired_input, GraphWireStyle::default(), false, &path);
+	let current_wire = network_interface.wire_path_from_input(&wired_input, GraphWireStyle::default(), false, &GlideOffsets::default(), &path);
 	assert_eq!(drawn_wire, current_wire, "the input's wire should be redrawn from its new import");
 
 	assert_invariants(&editor, "after adding imports from the empty connectors");
@@ -3165,4 +3167,99 @@ fn a_wire_is_found_near_its_path_but_not_away_from_it() {
 
 	assert_eq!(network_interface.wire_input_from_point(on_wire, 6., GraphWireStyle::Direct, &[]), Some(input));
 	assert_eq!(network_interface.wire_input_from_point(on_wire + DVec2::new(0., 200.), 6., GraphWireStyle::Direct, &[]), None);
+}
+
+#[tokio::test]
+async fn a_dragged_layer_keeps_its_wires_where_it_is_drawn_in_the_frame_it_moves() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, ..) = layer_with_chain(&mut editor).await;
+	editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+
+	let left_input = InputConnector::layer_secondary_input(layer);
+	let network_interface = &editor.active_document().network_interface;
+	let wire_before = network_interface.wire_path_from_input(&left_input, GraphWireStyle::default(), false, &GlideOffsets::default(), &[]);
+	let bounds = network_interface.node_bounding_box(&layer, &[]).expect("the layer should have bounds");
+	let press = DVec2::new(bounds[1].x - 30., (bounds[0].y + bounds[1].y) / 2.);
+	let node_graph_to_viewport = network_interface
+		.network_metadata(&[])
+		.expect("the network should have metadata")
+		.persistent_metadata
+		.navigation_metadata
+		.node_graph_to_viewport;
+
+	let pressed = node_graph_to_viewport.transform_point2(press);
+	editor.move_mouse(pressed.x, pressed.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+
+	// One grid cell right, through the input preprocessor so the frontend messages of the move itself are returned
+	let moved = node_graph_to_viewport.transform_point2(press + DVec2::new(GRID_SIZE as f64, 0.));
+	let editor_mouse_state = EditorPointerState {
+		editor_position: moved,
+		mouse_keys: MouseKeys::LEFT,
+		..Default::default()
+	};
+	let messages = editor
+		.handle_message(InputPreprocessorMessage::PointerMove {
+			editor_mouse_state,
+			modifier_keys: ModifierKeys::empty(),
+		})
+		.await;
+
+	// Still drawn a whole cell back as it starts gliding, so the last wire sent to its left input is the one from before the move
+	let last_wire_sent = messages
+		.into_iter()
+		.filter_map(|message| match message {
+			FrontendMessage::UpdateNodeGraphWires { wires } => Some(wires),
+			_ => None,
+		})
+		.flatten()
+		.rfind(|wire| wire.id == layer && wire.input_index == 1)
+		.and_then(|wire| wire.wire_path_update);
+	assert_eq!(last_wire_sent.map(|wire| wire.path_string), wire_before.map(|wire| wire.path_string));
+}
+
+/// Nudges the only node of a new document while its graph is open, so the node starts gliding into the cell it moved to.
+async fn gliding_nudged_node(editor: &mut EditorTestUtils) -> NodeId {
+	editor.new_document().await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	editor.handle_message(DocumentMessage::GraphViewOverlay { open: true }).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node] }).await;
+	editor.handle_message(NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }).await;
+	assert!(
+		!editor.active_document().network_interface.glide_offsets(&[]).is_empty(),
+		"the nudged node should be gliding: fixture is wrong"
+	);
+	node
+}
+
+#[tokio::test]
+async fn redoing_a_nudge_undone_while_it_glides_leaves_nothing_gliding() {
+	let mut editor = EditorTestUtils::create();
+	// Undone from the history's own snapshots, rather than the storage rebuilt afresh
+	editor.editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: false });
+	gliding_nudged_node(&mut editor).await;
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	editor.handle_message(DocumentMessage::Redo).await;
+
+	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
+}
+
+#[tokio::test]
+async fn entering_a_node_while_its_network_glides_settles_it() {
+	let mut editor = EditorTestUtils::create();
+	gliding_nudged_node(&mut editor).await;
+	let merge = editor.create_node_by_name_at(merge_definition(), 20, 0).await;
+
+	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+
+	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
 }

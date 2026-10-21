@@ -11,6 +11,8 @@ pub const STACK_VERTICAL_GAP: i32 = 3;
 pub const LAYER_INDENT_OFFSET: i32 = 8;
 /// Horizontal grid width of a non-layer node in a chain.
 pub const NODE_CHAIN_WIDTH: i32 = 7;
+/// How quickly a dragged node glides into the grid cell it moves to, as the time it takes to cover all but 1/e (about 37%) of the remaining distance.
+pub const NODE_GLIDE_TIME_CONSTANT_MILLISECONDS: f64 = 30.;
 
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
