@@ -1619,7 +1619,8 @@ impl InputTypeConstraint {
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !registry::is_hidden_category(definition.category))
+		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
+		.filter(|(identifier, definition)| !registry::is_hidden_category(definition.category) && **identifier != DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {

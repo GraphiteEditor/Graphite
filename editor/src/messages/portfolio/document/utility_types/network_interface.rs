@@ -39,7 +39,7 @@ use crate::consts::{
 	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, HALF_GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH,
 	STACK_VERTICAL_GAP,
 };
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
@@ -100,6 +100,10 @@ pub struct NodeNetworkInterface {
 	/// Whether `transaction_edited_nodes` changed since `update_transaction_edited_nodes` last reported it.
 	#[serde(skip)]
 	transaction_edited_nodes_changed: bool,
+	/// The redirect dots in each network that an edit took a wire from, and on which side, since `remove_orphaned_dots` last judged them there.
+	/// Only these are judged, so a Passthrough left without a wire by anything other than an edit (like one a migration made from a removed node) is left in place.
+	#[serde(skip)]
+	dots_that_lost_a_wire: HashMap<Vec<NodeId>, HashSet<(NodeId, DotSide)>>,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -114,6 +118,7 @@ impl Clone for NodeNetworkInterface {
 			transaction_edited_nodes: HashSet::new(),
 			transaction_edited_nodes_scanned: 0,
 			transaction_edited_nodes_changed: false,
+			dots_that_lost_a_wire: HashMap::new(),
 		}
 	}
 }

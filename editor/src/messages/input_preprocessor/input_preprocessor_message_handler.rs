@@ -162,6 +162,11 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
+	/// When the first of the pointer buttons now held was pressed, in milliseconds, timed by its pointer event or else, lacking a timestamp, the latest animation frame.
+	pub fn pointer_down_time(&self) -> f64 {
+		self.pointer_down_time
+	}
+
 	fn translate_mouse_event(&mut self, mut new_state: PointerState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		let click_mappings = [
 			(MouseKeys::LEFT, Key::MouseLeft),

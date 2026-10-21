@@ -21,7 +21,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -639,7 +639,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
 					self.node_graph_handler.select_if_not_dragged = None;
-					self.node_graph_handler.duplicated_in_drag = false;
+					self.node_graph_handler.nodes_added_in_drag = false;
+				}
+				// Abort dragging a dot out of a connector, before the dot has appeared
+				else if self.node_graph_handler.dot_drag_out.is_some() {
+					self.node_graph_handler.dot_drag_out = None;
 				}
 				// Abort box selection
 				else if self.node_graph_handler.box_selection_start.is_some() {
@@ -894,6 +898,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::PasteChainNodes { copies } => {
+				// A chain wires its nodes straight to one another, so the dots bending the wires between the copies only come along to a loose paste
+				let (dot_copies, copies): (Vec<_>, Vec<_>) = copies.into_iter().partition(ChainNodeCopy::is_redirect_dot);
+
 				// Layers and their chains live in the document network, so a nested one open in the graph has no chain to paste into
 				let (chain_nodes, layers) = if self.selection_network_path.is_empty() {
 					let layers = self.network_interface.selected_nodes().selected_layers(self.metadata()).map(|layer| layer.to_node()).collect();
@@ -917,9 +924,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Each selected layer gets all the copies at the end of its chain
 				insertions.extend(layers.into_iter().map(|layer| (ChainInsertionPoint::BesideLayer(layer), copies.clone())));
 
-				// With no chain to go in, such as over an empty selection, the copies are pasted loose into the graph and shown there
+				// With no chain to go in, such as over an empty selection, the copies are pasted loose into the graph and shown there, still wired to one another
 				if insertions.is_empty() {
-					let nodes = copies.into_iter().map(|copy| (copy.source, copy.into_loose_template())).collect();
+					let pasted = copies.iter().chain(&dot_copies).map(|copy| copy.source).collect::<HashSet<_>>();
+					let nodes = copies.into_iter().chain(dot_copies).map(|copy| (copy.source, copy.into_loose_template(&pasted))).collect();
 					responses.add(NodeGraphMessage::InsertNodes { nodes });
 					responses.add(DocumentMessage::ShowSelectionInGraph);
 					return;
@@ -2901,6 +2909,8 @@ impl DocumentMessageHandler {
 	pub fn partition_selection(&self) -> SelectionParts {
 		let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path).unwrap_or_default();
 		let selected_nodes = selected_nodes.selected_nodes().copied().collect::<Vec<_>>();
+		// Redirect dots are part of their wires, so they are copied only along with the nodes they connect
+		let selected_nodes = self.network_interface.selection_with_bridging_dots(selected_nodes, &self.selection_network_path);
 		if !self.selection_network_path.is_empty() {
 			return SelectionParts {
 				layers: Vec::new(),
@@ -2924,6 +2934,9 @@ impl DocumentMessageHandler {
 
 			chain_nodes = self.selected_reorderable_chain_nodes().into_iter().filter(|node_id| other_nodes.contains(node_id)).collect();
 			other_nodes.retain(|node_id| !chain_nodes.contains(node_id));
+
+			// Dots leading to a layer or chain node are dropped, since those nodes go separately
+			other_nodes = self.network_interface.selection_with_bridging_dots(other_nodes, &[]);
 		}
 
 		SelectionParts { layers, chain_nodes, other_nodes }
