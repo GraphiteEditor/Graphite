@@ -239,6 +239,12 @@ pub enum FrontendMessage {
 	UpdateWireInsertionPreview {
 		wire: Option<(NodeId, usize)>,
 	},
+	/// How far each node, and the imports and exports, gliding into the place it moved to is drawn from that place, in node graph space.
+	UpdateGlideOffsets {
+		nodes: Vec<(NodeId, (f64, f64))>,
+		imports: (f64, f64),
+		exports: (f64, f64),
+	},
 	/// The connector a press at the pointer would grab, by its center in node graph space.
 	UpdateHoveredConnector {
 		center: Option<(f64, f64)>,

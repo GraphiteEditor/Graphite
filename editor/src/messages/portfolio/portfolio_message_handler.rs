@@ -806,6 +806,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				}
 
+				// The document we are leaving won't get the frames that settle what glides in its graph, so it settles at once
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+				{
+					document.node_graph_handler.stop_gliding(&document.network_interface, responses);
+				}
+
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {

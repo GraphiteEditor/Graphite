@@ -171,6 +171,10 @@ pub enum NodeGraphMessage {
 	},
 	/// Sent every frame while a dragged wire hovers a node, to expand it once the hover delay passes.
 	WireHoverTick,
+	/// Sends where everything gliding into place is drawn, along with the wires that follow it.
+	SendGlide,
+	/// Sent every frame while nodes glide into their grid cells, to bring them closer.
+	GlideTick,
 	ShakeNode,
 	UpdateNodeGraphWidth,
 	RemoveImport {
@@ -248,13 +252,17 @@ pub enum NodeGraphMessage {
 	NudgeSelectedNodes {
 		direction: Direction,
 	},
+	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodes {
 		direction: Direction,
 		rubber_band: bool,
+		glide: bool,
 	},
+	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodesByAmount {
 		graph_delta: IVec2,
 		rubber_band: bool,
+		glide: bool,
 	},
 	TogglePreview {
 		node_id: NodeId,

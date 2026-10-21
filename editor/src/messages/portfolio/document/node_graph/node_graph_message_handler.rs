@@ -1,6 +1,6 @@
 use super::node_inspector;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
-use crate::consts::{DOUBLE_CLICK_ALLOWED_TRAVEL, DOUBLE_CLICK_MILLISECONDS, GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
+use crate::consts::{DOUBLE_CLICK_ALLOWED_TRAVEL, DOUBLE_CLICK_MILLISECONDS, GRID_SIZE, NODE_GLIDE_TIME_CONSTANT_MILLISECONDS, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
+	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint, type_feeds_connector,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -109,6 +109,12 @@ pub struct NodeGraphMessageHandler {
 	wire_expanded_node: Option<(NodeId, Vec<usize>, TransactionCheckpoint)>,
 	/// Whether [`NodeGraphMessage::WireHoverTick`] is subscribed to animation frames.
 	wire_hover_tick_subscribed: bool,
+	/// The network with whatever is gliding into the place it moved to, which keeps its own glide offsets.
+	glide_network_path: Vec<NodeId>,
+	/// When the gliding nodes were last brought closer to their grid cells, in milliseconds, once an animation frame has arrived.
+	glide_last_tick_time: Option<u64>,
+	/// Whether [`NodeGraphMessage::GlideTick`] is subscribed to animation frames.
+	glide_tick_subscribed: bool,
 	/// State for the context menus.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
@@ -791,6 +797,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 					graph_delta: -center_of_selected_nodes_grid_space - IVec2::new(2, 2),
 					rubber_band: false,
+					glide: false,
 				});
 
 				for (input_connector, import_index) in import_connections {
@@ -946,6 +953,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.select_if_not_dragged = None;
 						self.nodes_added_in_drag = false;
 						self.clear_wire_insertion_preview(responses);
+						self.stop_gliding(network_interface, responses);
 						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
@@ -1431,6 +1439,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
 								rubber_band: false,
+								glide: false,
 							});
 							self.preview_on_mouse_up = None;
 							self.nodes_added_in_drag = true;
@@ -1447,7 +1456,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					graph_delta.x -= previous_round_x;
 					graph_delta.y -= previous_round_y;
 
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true });
+					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
+						graph_delta,
+						rubber_band: true,
+						glide: true,
+					});
 					if graph_delta != IVec2::ZERO {
 						self.node_has_moved_in_drag = true;
 
@@ -1714,6 +1727,42 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::WireHoverTick => {
 				self.expand_wire_hovered_node_after_delay(ipp.time, network_interface, selection_network_path, responses);
 			}
+			NodeGraphMessage::SendGlide => {
+				let glide_offsets = network_interface.glide_offsets(&self.glide_network_path);
+				Self::send_glide(&glide_offsets, &glide_offsets, network_interface, preferences.graph_wire_style, &self.glide_network_path, responses);
+			}
+			NodeGraphMessage::GlideTick => {
+				// A document switched to from one that was gliding inherits its frame subscription, which it ends
+				if !self.glide_tick_subscribed {
+					responses.add(BroadcastMessage::UnsubscribeEvent {
+						on: EventMessage::AnimationFrame,
+						send: Box::new(NodeGraphMessage::GlideTick.into()),
+					});
+					return;
+				}
+
+				if !graph_view_overlay_open || self.glide_network_path != breadcrumb_network_path {
+					self.stop_gliding(network_interface, responses);
+					return;
+				}
+
+				// Whatever settles this frame still needs its wires sent once more, to meet it where it sits
+				let was_gliding = network_interface.glide_offsets(&self.glide_network_path);
+				let mut glide_offsets = was_gliding.clone();
+
+				// Each offset shrinks exponentially, which eases the node in and keeps up with a drag that moves it again before it settles
+				if let Some(last_tick_time) = self.glide_last_tick_time {
+					let elapsed = ipp.time.saturating_sub(last_tick_time) as f64;
+					glide_offsets.shrink((-elapsed / NODE_GLIDE_TIME_CONSTANT_MILLISECONDS).exp());
+				}
+				self.glide_last_tick_time = Some(ipp.time);
+				network_interface.set_glide_offsets(glide_offsets.clone(), &self.glide_network_path);
+
+				Self::send_glide(&glide_offsets, &was_gliding, network_interface, preferences.graph_wire_style, &self.glide_network_path, responses);
+				if glide_offsets.is_empty() {
+					self.set_glide_tick_subscribed(false, responses);
+				}
+			}
 			NodeGraphMessage::ShakeNode => {
 				let Some((drag_start, _)) = &mut self.drag_start else {
 					log::error!("Drag start should be initialized when shaking a node");
@@ -1851,7 +1900,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// }
 				}
 				if !self.nodes_added_in_drag {
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: false });
+					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
+						graph_delta,
+						rubber_band: false,
+						glide: false,
+					});
 				}
 				// A dot left with nothing to carry, like one fed by a shaken generator, goes along with its wire
 				responses.add(NodeGraphMessage::RemoveOrphanedDots);
@@ -1968,7 +2021,20 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(FrontendMessage::ClearAllNodeGraphWires);
 			}
 			NodeGraphMessage::SendWires => {
-				let wires = self.collect_wires(network_interface, preferences.graph_wire_style, breadcrumb_network_path);
+				let mut wires = self.collect_wires(network_interface, preferences.graph_wire_style, breadcrumb_network_path);
+
+				// The dispatcher defers this past any glide update in the same batch, so the wires following whatever glides must come last here too
+				let glide_offsets = network_interface.glide_offsets(breadcrumb_network_path);
+				if !glide_offsets.is_empty() {
+					wires.extend(Self::gliding_wires(
+						&glide_offsets,
+						&glide_offsets,
+						network_interface,
+						preferences.graph_wire_style,
+						breadcrumb_network_path,
+					));
+				}
+
 				responses.add(FrontendMessage::UpdateNodeGraphWires { wires });
 			}
 			NodeGraphMessage::UpdateVisibleNodes => {
@@ -2072,14 +2138,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::NudgeSelectedNodes { direction } => {
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band: false });
+				responses.add(NodeGraphMessage::ShiftSelectedNodes {
+					direction,
+					rubber_band: false,
+					glide: true,
+				});
 				responses.add(DocumentMessage::EndTransaction);
 			}
-			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band } => {
+			NodeGraphMessage::ShiftSelectedNodes { direction, rubber_band, glide } => {
+				// The shift can also push other nodes and the imports and exports, so everything it moves glides to where it lands
+				let positions_before = (glide && graph_view_overlay_open).then(|| Self::glide_positions(network_interface, selection_network_path));
+
 				network_interface.shift_selected_nodes(direction, self.shift_without_push, selection_network_path);
 
 				if !rubber_band {
 					network_interface.clear_drag_offsets(selection_network_path);
+				}
+
+				if let Some(positions_before) = positions_before {
+					self.begin_glide(positions_before, network_interface, selection_network_path, responses);
+					responses.add(NodeGraphMessage::SendGlide);
 				}
 
 				if graph_view_overlay_open {
@@ -2088,13 +2166,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
-			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, rubber_band } => {
+			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, rubber_band, glide } => {
 				while graph_delta != IVec2::ZERO {
 					match graph_delta.x.cmp(&0) {
 						Ordering::Greater => {
 							responses.add(NodeGraphMessage::ShiftSelectedNodes {
 								direction: Direction::Right,
 								rubber_band,
+								glide,
 							});
 							graph_delta.x -= 1;
 						}
@@ -2102,6 +2181,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							responses.add(NodeGraphMessage::ShiftSelectedNodes {
 								direction: Direction::Left,
 								rubber_band,
+								glide,
 							});
 							graph_delta.x += 1;
 						}
@@ -2113,6 +2193,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							responses.add(NodeGraphMessage::ShiftSelectedNodes {
 								direction: Direction::Down,
 								rubber_band,
+								glide,
 							});
 							graph_delta.y -= 1;
 						}
@@ -2120,6 +2201,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							responses.add(NodeGraphMessage::ShiftSelectedNodes {
 								direction: Direction::Up,
 								rubber_band,
+								glide,
 							});
 							graph_delta.y += 1;
 						}
@@ -2655,14 +2737,19 @@ impl NodeGraphMessageHandler {
 			return None;
 		}
 
-		let empty_connector = |is_import| network_interface.empty_import_export_connector_at(point, is_import, network_path).map(|(_, center)| center);
+		// Centered where it's drawn, even while gliding into place
+		let glide_offsets = network_interface.glide_offsets(network_path);
+		let empty_connector = |is_import| {
+			let (_, center) = network_interface.empty_import_export_connector_at(point, is_import, network_path)?;
+			Some(center + if is_import { glide_offsets.imports } else { glide_offsets.exports })
+		};
 		let input = || {
 			let input = network_interface.input_port_from_click(viewport_location, network_path)?;
-			network_interface.input_position(&input, network_path)
+			Some(network_interface.input_position(&input, network_path)? + glide_offsets.input(&input))
 		};
 		let output = || {
 			let output = network_interface.output_port_from_click(viewport_location, network_path)?;
-			network_interface.output_position(&output, network_path)
+			Some(network_interface.output_position(&output, network_path)? + glide_offsets.output(&output))
 		};
 		empty_connector(true).or_else(|| empty_connector(false)).or_else(input).or_else(output)
 	}
@@ -2704,6 +2791,7 @@ impl NodeGraphMessageHandler {
 			self.update_node_graph_hints(responses);
 		}
 		self.clear_wire_insertion_preview(responses);
+		self.stop_gliding(network_interface, responses);
 		if self.context_menu.take().is_some() {
 			responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 		}
@@ -2866,6 +2954,138 @@ impl NodeGraphMessageHandler {
 
 		*input_exposed = exposed;
 		network_interface.set_input(&input_connector, input, network_path);
+	}
+
+	/// Where each node and the imports and exports sit, to find what a shift moves.
+	fn glide_positions(network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> (HashMap<NodeId, IVec2>, Option<(IVec2, IVec2)>) {
+		let node_ids = network_interface
+			.nested_network(network_path)
+			.map(|network| network.nodes.keys().copied().collect::<Vec<_>>())
+			.unwrap_or_default();
+		let node_positions = network_interface.positions(node_ids, network_path).into_iter().collect();
+
+		(node_positions, network_interface.import_export_position(network_path))
+	}
+
+	/// Lets everything that moved away from `positions_before` glide to where it now sits from where it was drawn, so it doesn't jump.
+	fn begin_glide(
+		&mut self,
+		positions_before: (HashMap<NodeId, IVec2>, Option<(IVec2, IVec2)>),
+		network_interface: &NodeNetworkInterface,
+		network_path: &[NodeId],
+		responses: &mut VecDeque<Message>,
+	) {
+		if self.glide_network_path != network_path {
+			self.stop_gliding(network_interface, responses);
+			self.glide_network_path = network_path.to_vec();
+		}
+
+		let (node_positions_before, import_export_position_before) = positions_before;
+		let (node_positions, import_export_position) = Self::glide_positions(network_interface, network_path);
+		let mut glide_offsets = network_interface.glide_offsets(network_path);
+
+		for (node_id, position) in node_positions {
+			if let Some(position_before) = node_positions_before.get(&node_id)
+				&& *position_before != position
+			{
+				*glide_offsets.nodes.entry(node_id).or_default() += (*position_before - position).as_dvec2() * GRID_SIZE as f64;
+			}
+		}
+
+		if let (Some((imports_before, exports_before)), Some((imports, exports))) = (import_export_position_before, import_export_position) {
+			glide_offsets.imports += (imports_before - imports).as_dvec2();
+			glide_offsets.exports += (exports_before - exports).as_dvec2();
+		}
+
+		self.set_glide_tick_subscribed(!glide_offsets.is_empty(), responses);
+		network_interface.set_glide_offsets(glide_offsets, network_path);
+	}
+
+	/// Sends where everything gliding into place is drawn, along with the wires meeting whatever was gliding, which follow it rather than where it sits.
+	fn send_glide(
+		glide_offsets: &GlideOffsets,
+		was_gliding: &GlideOffsets,
+		network_interface: &NodeNetworkInterface,
+		wire_style: GraphWireStyle,
+		network_path: &[NodeId],
+		responses: &mut VecDeque<Message>,
+	) {
+		responses.add(FrontendMessage::UpdateGlideOffsets {
+			nodes: glide_offsets.nodes.iter().map(|(node_id, offset)| (*node_id, (offset.x, offset.y))).collect(),
+			imports: (glide_offsets.imports.x, glide_offsets.imports.y),
+			exports: (glide_offsets.exports.x, glide_offsets.exports.y),
+		});
+
+		let wires = Self::gliding_wires(glide_offsets, was_gliding, network_interface, wire_style, network_path);
+		responses.add(FrontendMessage::UpdateNodeGraphWires { wires });
+	}
+
+	/// The wires meeting whatever was gliding, drawn to follow it rather than where it sits.
+	fn gliding_wires(glide_offsets: &GlideOffsets, was_gliding: &GlideOffsets, network_interface: &NodeNetworkInterface, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Vec<WirePathUpdate> {
+		// The inputs of the nodes and exports that were gliding, and those fed by the nodes and imports that were gliding (leaving out any node deleted meanwhile)
+		let mut inputs = HashSet::new();
+		let mut outputs = Vec::new();
+		let network = network_interface.nested_network(network_path);
+		for node_id in was_gliding.nodes.keys().filter(|node_id| network.is_some_and(|network| network.nodes.contains_key(node_id))) {
+			inputs.extend((0..network_interface.number_of_inputs(node_id, network_path)).map(|input_index| InputConnector::node_at_index(*node_id, input_index)));
+			outputs.extend((0..network_interface.number_of_outputs(node_id, network_path)).map(|output_index| OutputConnector::node(*node_id, output_index)));
+		}
+
+		if was_gliding.exports != DVec2::ZERO {
+			inputs.extend((0..network_interface.number_of_exports(network_path)).map(InputConnector::Export));
+		}
+		if was_gliding.imports != DVec2::ZERO {
+			outputs.extend((0..network_interface.number_of_imports(network_path)).map(OutputConnector::Import));
+		}
+
+		network_interface.with_outward_wires(network_path, |outward_wires| {
+			for output in &outputs {
+				inputs.extend(outward_wires.get(output).into_iter().flatten().copied());
+			}
+		});
+
+		let mut wires = inputs
+			.iter()
+			.filter(|input| network_interface.input_from_connector(input, network_path).is_some_and(|input| input.is_exposed()))
+			.filter_map(|input| network_interface.wire_update_from_input(input, wire_style, glide_offsets, network_path))
+			.collect::<Vec<_>>();
+		wires.extend(network_interface.wire_to_root(wire_style, glide_offsets, network_path));
+		wires
+	}
+
+	/// Settles whatever is gliding into place at once, such as when the drag moving it is aborted.
+	pub fn stop_gliding(&mut self, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
+		if !self.glide_tick_subscribed {
+			return;
+		}
+
+		network_interface.set_glide_offsets(GlideOffsets::default(), &self.glide_network_path);
+		responses.add(FrontendMessage::UpdateGlideOffsets {
+			nodes: Vec::new(),
+			imports: (0., 0.),
+			exports: (0., 0.),
+		});
+		self.set_glide_tick_subscribed(false, responses);
+	}
+
+	fn set_glide_tick_subscribed(&mut self, subscribed: bool, responses: &mut VecDeque<Message>) {
+		if self.glide_tick_subscribed == subscribed {
+			return;
+		}
+		self.glide_tick_subscribed = subscribed;
+		self.glide_last_tick_time = None;
+
+		let send = Box::new(NodeGraphMessage::GlideTick.into());
+		responses.add(match subscribed {
+			true => BroadcastMessage::SubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+			false => BroadcastMessage::UnsubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send,
+			},
+		});
 	}
 
 	fn set_wire_hover_tick_subscribed(&mut self, subscribed: bool, responses: &mut VecDeque<Message>) {
@@ -3444,7 +3664,7 @@ impl NodeGraphMessageHandler {
 			wire_path_update: None,
 		}));
 
-		if let Some(wire_to_root) = network_interface.wire_to_root(graph_wire_style, breadcrumb_network_path) {
+		if let Some(wire_to_root) = network_interface.wire_to_root(graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path) {
 			added_wires.push(wire_to_root);
 		} else {
 			added_wires.push(WirePathUpdate {
@@ -3583,7 +3803,11 @@ impl NodeGraphMessageHandler {
 				if network_interface.is_layer(&node, breadcrumb_network_path) {
 					position += IVec2::new(12, -12)
 				}
-				Some(NodeGraphErrorDiagnostic { position: position.into(), error })
+				Some(NodeGraphErrorDiagnostic {
+					node_id: node,
+					position: position.into(),
+					error,
+				})
 			})
 			.collect()
 	}
@@ -3780,6 +4004,9 @@ impl Default for NodeGraphMessageHandler {
 			wire_hovered_node: None,
 			wire_expanded_node: None,
 			wire_hover_tick_subscribed: false,
+			glide_network_path: Vec::new(),
+			glide_last_tick_time: None,
+			glide_tick_subscribed: false,
 			context_menu: None,
 			deselect_on_pointer_up: None,
 			auto_panning: Default::default(),
