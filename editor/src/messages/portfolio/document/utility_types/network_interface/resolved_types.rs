@@ -71,6 +71,8 @@ static TYPE_PRESERVING_NODES: Lazy<HashSet<ProtoNodeIdentifier>> = Lazy::new(|| 
 					.all(|node_io| matches!(node_io.inputs.as_slice(), [input] if input.nested_type() == node_io.return_value.nested_type()))
 		})
 		.map(|(identifier, _)| identifier.clone())
+		// The compiler removes passthrough nodes, so they're absent from the registry, but their output carries their input's type too
+		.chain(std::iter::once(graphene_std::ops::passthrough::IDENTIFIER))
 		.collect()
 });
 
@@ -376,8 +378,7 @@ impl NodeNetworkInterface {
 	/// Whether a wire of `source_type` can feed the input given the node's other inputs, directly or through what the compiler converts and promotes.
 	pub fn input_accepts_type(&self, input_connector: &InputConnector, source_type: &Type, network_path: &[NodeId]) -> bool {
 		let InputConnector::Node { node_id, input_index } = input_connector else {
-			// An export can have any type connected to it
-			return true;
+			return self.type_acceptor(input_connector, network_path)(source_type);
 		};
 
 		match self.implementation(node_id, network_path) {
@@ -405,9 +406,23 @@ impl NodeNetworkInterface {
 	/// Unlike [`Self::input_accepts_type`], a node passing its input's type through unchanged (like Monitor) also needs the inputs it feeds to accept the type.
 	fn type_acceptor(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Box<dyn Fn(&Type) -> bool> {
 		let accepts_here: Box<dyn Fn(&Type) -> bool> = match input_connector {
-			// An export can have any type connected to it
-			InputConnector::Export(_) => Box::new(|_| true),
+			InputConnector::Export(export_index) => match network_path.split_last() {
+				// The document network's export is the canvas, which takes anything
+				None => Box::new(|_| true),
+				// A subgraph's export passes the wire on out of its node's output, so it accepts only what that output feeds in the parent network
+				Some((subgraph_node_id, parent_path)) => {
+					let consumers = self
+						.with_outward_wires(parent_path, |outward_wires| outward_wires.get(&OutputConnector::node(*subgraph_node_id, *export_index)).cloned())
+						.flatten()
+						.unwrap_or_default();
+					let consumer_acceptors = consumers.iter().map(|consumer| self.type_acceptor(consumer, parent_path)).collect::<Vec<_>>();
+
+					Box::new(move |source_type| consumer_acceptors.iter().all(|accepts| accepts(source_type)))
+				}
+			},
 			InputConnector::Node { node_id, input_index } => match self.implementation(node_id, network_path) {
+				// A passthrough node takes anything itself, leaving the inputs it feeds to constrain the wire
+				Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) if *proto_node_identifier == graphene_std::ops::passthrough::IDENTIFIER => Box::new(|_| true),
 				Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) => {
 					let conversions = input_conversions(proto_node_identifier).get(*input_index).copied().flatten();
 					let connectors = self
@@ -440,7 +455,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// The inputs fed by the node of `input_connector`, if that node passes its input's type through unchanged, since those constrain a wire through it more
-	/// than the node's own broad set of types. Exports are left out because they accept anything.
+	/// than the node's own broad set of types.
 	fn inputs_fed_by_type_preserving_node(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<Vec<InputConnector>> {
 		let InputConnector::Node { node_id, .. } = input_connector else { return None };
 		let Some(DocumentNodeImplementation::ProtoNode(proto_node_identifier)) = self.implementation(node_id, network_path) else {
@@ -452,9 +467,8 @@ impl NodeNetworkInterface {
 
 		let fed_inputs = self
 			.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(*node_id)).cloned())
-			.flatten()
-			.unwrap_or_default();
-		Some(fed_inputs.into_iter().filter(|fed_input| matches!(fed_input, InputConnector::Node { .. })).collect())
+			.flatten();
+		Some(fed_inputs.unwrap_or_default())
 	}
 
 	/// The types that every one of `input_connectors` accepts, which is what a single wire feeding all of them can carry.
@@ -752,6 +766,53 @@ mod tests {
 		assert!(
 			!content_types.iter().any(|ty| ty == "Color"),
 			"Path's content should not accept a color just because its Monitor does, found {content_types:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_subgraph_input_passed_through_to_its_export_accepts_only_what_the_subgraph_output_feeds() {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let merge = editor.create_node_by_name_at(DefinitionIdentifier::Network("Merge".into()), 0, 0).await;
+		let fill = editor
+			.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER), 20, 0)
+			.await;
+		let fill_content = InputConnector::node_at_index(fill, 0);
+		editor
+			.handle_message(NodeGraphMessage::CreateWire {
+				output_connector: OutputConnector::node(merge, 0),
+				input_connector: fill_content,
+			})
+			.await;
+
+		// A new import passed straight through to Merge's export, which the editor bridges with a Passthrough node
+		editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
+		let import_index = editor.active_document().network_interface.number_of_imports(&[merge]);
+		editor
+			.handle_message(NodeGraphMessage::AddImportAndConnect {
+				import_index,
+				input_connector: InputConnector::Export(0),
+			})
+			.await;
+
+		let network_interface = &editor.active_document().network_interface;
+		let passed_through = InputConnector::node_at_index(merge, import_index);
+		let fill_content_type = network_interface
+			.potential_valid_input_types(&fill_content, &[])
+			.first()
+			.cloned()
+			.expect("Fill's content should accept some type");
+		assert!(
+			network_interface.input_accepts_type(&passed_through, &fill_content_type, &[]),
+			"the input should accept what the Fill fed by Merge's output takes"
+		);
+		assert!(
+			!network_interface.input_accepts_type(&passed_through, &item!(f64), &[]),
+			"the input should reject a number, which the Fill fed by Merge's output can't take"
 		);
 	}
 }
