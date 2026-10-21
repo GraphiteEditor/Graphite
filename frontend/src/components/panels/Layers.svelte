@@ -10,6 +10,7 @@
 	import { layersPanelControlBarLeftLayout, layersPanelBottomBarLeftLayout, layersPanelBottomBarRightLayout } from "/src/stores/portfolio";
 	import type { PortfolioStore } from "/src/stores/portfolio";
 	import type { TooltipStore } from "/src/stores/tooltip";
+	import { createAutoScroller, speedWhileAimingAt } from "/src/utility-functions/auto-scroll";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { targetIsTextField } from "/src/utility-functions/input";
 	import { operatingSystem } from "/src/utility-functions/platform";
@@ -57,6 +58,9 @@
 		startY: number;
 	};
 
+	// What a drag reads from a pointer move, which auto-scrolling also gives when it redoes the drag where the pointer last was
+	type DragPointer = Pick<PointerEvent, "clientX" | "clientY" | "target">;
+
 	// One place along a layer's chain: one of its nodes (with its place among the reorderable ones, if it is one), or the ghost of a node the active tool would add there
 	type ChainSlot = { kind: "node"; node: LayerPanelChainNode; nodeIndex: number; reorderablePosition: number | undefined } | { kind: "insertion"; insertion: LayerPanelChainInsertion };
 
@@ -73,6 +77,8 @@
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
+	let listArea: LayoutRow | undefined;
+	let bottomBar: LayoutRow | undefined;
 	let list: LayoutCol | undefined;
 
 	let layers: LayerListingInfo[] = [];
@@ -95,6 +101,16 @@
 	let chainInsertMarkerLeft: number | undefined = undefined;
 	let chainRowInsertMarker: { nodeIndex: number; edge: "top" | "bottom" } | undefined = undefined;
 	let chainDragDropTarget: HTMLElement | undefined = undefined;
+
+	// Scrolling the list near its edges during a drag shifts the content under the pointer, so the drag is redone where the pointer last was
+	let lastDragPointer: { clientX: number; clientY: number } | undefined = undefined;
+	const autoScroller = createAutoScroller(() => {
+		if (!lastDragPointer) return;
+		const { clientX, clientY } = lastDragPointer;
+
+		if (internalDragState || chainDragState) draggingPointerMove({ clientX, clientY, target: document.elementFromPoint(clientX, clientY) });
+		else if (list) draggingData = calculateDragIndex(list, clientY);
+	});
 
 	// Viewport hover outline, tracked by row index since rows get reused when the layers change beneath a still pointer
 	let hoveredRowIndex: number | undefined = undefined;
@@ -128,6 +144,8 @@
 
 		addEventListener("pointerup", draggingPointerUp);
 		addEventListener("pointermove", draggingPointerMove);
+		addEventListener("pointercancel", abortDrags);
+		addEventListener("blur", abortDrags);
 		addEventListener("mousedown", draggingMouseDown);
 		addEventListener("keydown", draggingKeyDown);
 		addEventListener("keydown", handleLayerPanelKeyDown);
@@ -142,6 +160,8 @@
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
+		removeEventListener("pointercancel", abortDrags);
+		removeEventListener("blur", abortDrags);
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("keydown", draggingKeyDown);
 		removeEventListener("keydown", handleLayerPanelKeyDown);
@@ -151,6 +171,7 @@
 		removeEventListener("keyup", clippingKeyPress);
 
 		chainResizeObserver.disconnect();
+		stopAutoScroll();
 
 		// Closing the panel removes the hovered row without a `pointerleave`
 		if (hoveredLayerSent !== undefined) editor.setLayersPanelHoveredLayer(undefined);
@@ -547,7 +568,36 @@
 		chainDragState = { active: false, layerId: listing.entry.id, nodeIds, startX: e.clientX, startY: e.clientY };
 	}
 
-	function chainDraggingPointerMove(e: PointerEvent) {
+	// Scrolls the list while a drag's pointer is near or past its top or bottom edge, easing off while it heads from where it began toward a bottom bar button it can be dropped on
+	function autoScrollDrag(clientX: number, clientY: number, aim?: { start: [number, number]; droppable: string }) {
+		lastDragPointer = { clientX, clientY };
+		const container = listArea?.div();
+		if (!container) return;
+
+		const dropTargets = aim && dropTargetBounds(aim.droppable);
+		const speed = aim && dropTargets ? speedWhileAimingAt(aim.start, clientX, clientY, dropTargets) : 1;
+		autoScroller.update(container, clientX, clientY, speed);
+	}
+
+	// The area spanned by the bottom bar buttons that accept the kind of item being dragged
+	function dropTargetBounds(droppable: string): DOMRect | undefined {
+		const buttons = Array.from(bottomBar?.div()?.querySelectorAll(`[data-drag-droppable~="${droppable}"]`) || []);
+		if (buttons.length === 0) return undefined;
+
+		const rects = buttons.map((button) => button.getBoundingClientRect());
+		const left = Math.min(...rects.map((rect) => rect.left));
+		const top = Math.min(...rects.map((rect) => rect.top));
+		const right = Math.max(...rects.map((rect) => rect.right));
+		const bottom = Math.max(...rects.map((rect) => rect.bottom));
+		return new DOMRect(left, top, right - left, bottom - top);
+	}
+
+	function stopAutoScroll() {
+		lastDragPointer = undefined;
+		autoScroller.stop();
+	}
+
+	function chainDraggingPointerMove(e: DragPointer) {
 		if (!chainDragState) return;
 
 		if (!chainDragState.active) {
@@ -570,6 +620,7 @@
 		const target = e.target instanceof Element ? e.target : undefined;
 		const droppable = target?.closest("[data-drag-droppable~=chain-nodes]");
 		chainDragDropTarget = droppable instanceof HTMLElement ? droppable : undefined;
+		autoScrollDrag(e.clientX, e.clientY, { start: [chainDragState.startX, chainDragState.startY], droppable: "chain-nodes" });
 		if (chainDragDropTarget || target?.closest("[data-layer-bottom-bar]")) return;
 
 		// Otherwise the nodes drop into the chain of whichever layer is under the cursor, or whose expanded chain's node row is
@@ -693,9 +744,10 @@
 		chainRowInsertMarker = undefined;
 		chainDragDropTarget = undefined;
 		dragInPanel = false;
+		stopAutoScroll();
 	}
 
-	function draggingPointerMove(e: PointerEvent) {
+	function draggingPointerMove(e: DragPointer) {
 		if (chainDragState) {
 			chainDraggingPointerMove(e);
 			return;
@@ -729,6 +781,7 @@
 
 			// Hide the move-in-tree insert indicator whenever the cursor enters the bottom bar
 			const overBottomBar = ((e.target instanceof Element && e.target.closest("[data-layer-bottom-bar]")) || undefined) !== undefined;
+			autoScrollDrag(e.clientX, e.clientY, { start: [internalDragState.startX, internalDragState.startY], droppable: "layers" });
 			if (dragDropTarget || overBottomBar) {
 				draggingData = undefined;
 				return;
@@ -787,6 +840,13 @@
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
 		dragDropTarget = undefined;
+		stopAutoScroll();
+	}
+
+	// A drag cut short by the pointer being canceled or the window losing focus won't get the release that ends it
+	function abortDrags() {
+		if (internalDragState) abortDrag();
+		if (chainDragState) abortChainDrag();
 	}
 
 	function draggingMouseDown(e: MouseEvent) {
@@ -863,6 +923,16 @@
 		dragInPanel = true;
 
 		if (list) draggingData = calculateDragIndex(list, e.clientY);
+		autoScrollDrag(e.clientX, e.clientY);
+	}
+
+	function fileDragLeave(e: DragEvent) {
+		// Crossing between the list's own elements, as auto-scrolling content does beneath the pointer, doesn't leave the list where files are dropped
+		const listAreaDiv = listArea?.div();
+		if (listAreaDiv && e.relatedTarget instanceof Node && listAreaDiv.contains(e.relatedTarget)) return;
+
+		dragInPanel = false;
+		stopAutoScroll();
 	}
 
 	function fileDrop(e: DragEvent) {
@@ -877,6 +947,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		stopAutoScroll();
 	}
 
 	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[], cache: Map<string, LayerPanelEntry>) {
@@ -921,11 +992,11 @@
 	}
 </script>
 
-<LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
+<LayoutCol class="layers" on:dragleave={fileDragLeave}>
 	<LayoutRow class="control-bar" scrollableX={true}>
 		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
 	</LayoutRow>
-	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
+	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true} bind:this={listArea}>
 		<LayoutCol
 			class="list"
 			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
@@ -1206,7 +1277,13 @@
 			<div class="insert-mark" style:left={`${4 + 24 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
-	<LayoutRow class="bottom-bar" classes={{ "layer-drag-active": Boolean(internalDragState?.active), "chain-node-drag-active": chainDragActive }} scrollableX={true} data-layer-bottom-bar>
+	<LayoutRow
+		class="bottom-bar"
+		classes={{ "layer-drag-active": Boolean(internalDragState?.active), "chain-node-drag-active": chainDragActive }}
+		scrollableX={true}
+		bind:this={bottomBar}
+		data-layer-bottom-bar
+	>
 		<WidgetLayout layout={$layersPanelBottomBarLeftLayout} layoutTarget="LayersPanelBottomLeftBar" />
 		<WidgetLayout layout={$layersPanelBottomBarRightLayout} layoutTarget="LayersPanelBottomRightBar" />
 	</LayoutRow>
