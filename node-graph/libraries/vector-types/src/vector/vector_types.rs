@@ -1,6 +1,7 @@
 use super::addressing;
+use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use super::connectivity::Connectivity;
-use super::contour::{contour_bezpaths, contours};
+use super::contour::{Contour, contour_bezpaths, contours};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use super::path::{
 	CurveType, Path, append_named_bezpaths, curve_type_at, curve_types_of, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes,
@@ -661,12 +662,23 @@ impl Vector {
 	}
 
 	/// Welds every open contour shut with a linear segment from its last point back to its first, stored where the contour runs on into it.
+	/// A contour already ending on its start, within floating point noise, merges that end into the start instead.
 	pub fn close_subpaths(&mut self, paths: &mut List<Path>) {
+		let mut open: Vec<Contour> = contours(self.point_count(), paths).into_iter().filter(|contour| !contour.closed).collect();
+
+		// An end resting on its own start is that point, so it merges in rather than drawing a closing segment of no length
+		let positions = self.0.iter_element_values().as_slice();
+		let rests_on_start = |contour: &&Contour| matches!((positions.get(contour.entry as usize), positions.get(contour.exit as usize)), (Some(entry), Some(exit)) if entry.distance_squared(*exit) <= CLOSE_POINT_TOLERANCE * CLOSE_POINT_TOLERANCE);
+		let resting: Vec<(u32, u32)> = open.iter().filter(rests_on_start).map(|contour| (contour.exit, contour.entry)).collect();
+		if !resting.is_empty() {
+			self.merge_points(paths, &resting);
+			open = contours(self.point_count(), paths).into_iter().filter(|contour| !contour.closed).collect();
+		}
+
 		// A closing segment sits after the contour's last stored path, or before it when the contour crosses that path
 		// backward, since that is the neighbor the contour reads on into. Either way it is read from the contour's exit.
-		let closings: Vec<(usize, bool, [u32; 2])> = contours(self.point_count(), paths)
+		let closings: Vec<(usize, bool, [u32; 2])> = open
 			.into_iter()
-			.filter(|contour| !contour.closed)
 			.filter_map(|contour| {
 				let last = contour.parts.last()?;
 				Some(if last.reversed {
@@ -709,6 +721,49 @@ impl Vector {
 		}
 
 		*paths = rebuilt;
+	}
+
+	/// Merges the first point of each pair into the second, renaming every reference to it and dropping it from the pool, in O(points + references).
+	fn merge_points(&mut self, paths: &mut List<Path>, merges: &[(u32, u32)]) {
+		let point_count = self.0.len();
+
+		// Each point's representative is found by following merges to a point merged into nothing, which settles chains and cycles alike
+		let mut merged_into: Vec<usize> = (0..point_count).collect();
+		let representative = |merged_into: &mut Vec<usize>, mut point: usize| {
+			while merged_into[point] != point {
+				merged_into[point] = merged_into[merged_into[point]];
+				point = merged_into[point];
+			}
+			point
+		};
+		for &(from, to) in merges {
+			let (from, to) = (from as usize, to as usize);
+			if from >= point_count || to >= point_count {
+				continue;
+			}
+
+			let (from, to) = (representative(&mut merged_into, from), representative(&mut merged_into, to));
+			merged_into[from] = to;
+		}
+		let representatives: Vec<usize> = (0..point_count).map(|point| representative(&mut merged_into, point)).collect();
+
+		// Kept points are renumbered past those dropped, and every reference names its point's representative
+		let mut renumbered = Vec::with_capacity(point_count);
+		let mut kept_count = 0;
+		for (point, &representative) in representatives.iter().enumerate() {
+			renumbered.push(kept_count);
+			kept_count += usize::from(representative == point);
+		}
+		for path in paths.iter_element_values_mut() {
+			for reference in path.0.iter_element_values_mut() {
+				if let Some(&representative) = usize::try_from(*reference).ok().and_then(|point| representatives.get(point)) {
+					*reference = renumbered[representative] as i64;
+				}
+			}
+		}
+
+		let kept = representatives.iter().enumerate().map(|(point, &representative)| representative == point);
+		self.0 = std::mem::take(&mut self.0).into_iter().zip(kept).filter_map(|(point, kept)| kept.then_some(point)).collect();
 	}
 
 	/// Appends another vector's points and paths, remapping IDs that collide with this vector's.
@@ -1135,5 +1190,53 @@ mod tests {
 
 		vector.close_subpaths(&mut paths);
 		assert_eq!(paths.len(), 6);
+	}
+
+	// An end resting on its own start, within floating point noise, merges into it instead of adding a closing segment, while a wider gap still gets one
+	#[test]
+	fn close_subpaths_merges_an_end_resting_on_its_start() {
+		for (gap, merges) in [(0., true), (1e-9, true), (1e-3, false)] {
+			let mut vector = Vector::default();
+			for position in [(0., 0.), (10., 0.), (10., 10.), (gap, 0.)] {
+				vector.0.push(Item::new_from_element(DVec2::from(position)));
+			}
+			let mut paths = List::new();
+			push_path(&mut paths, CurveType::Linear, [0, 1, 2, 3], []);
+
+			vector.close_subpaths(&mut paths);
+
+			let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+			if merges {
+				assert_eq!(references, [vec![0, 1, 2, 0]], "gap {gap}");
+				assert_eq!(vector.point_count(), 3, "gap {gap}");
+			} else {
+				assert_eq!(references, [vec![0, 1, 2, 3], vec![3, 0]], "gap {gap}");
+				assert_eq!(vector.point_count(), 4, "gap {gap}");
+			}
+			assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed), "gap {gap}");
+		}
+	}
+
+	// Paths ending where a merged end was still meet the closed path there, at the start it merged into
+	#[test]
+	fn close_subpaths_keeps_paths_meeting_a_merged_end() {
+		let mut vector = Vector::default();
+		for position in [(0., 0.), (10., 0.), (10., 10.), (0., 0.), (-10., 0.), (0., -10.)] {
+			vector.0.push(Item::new_from_element(DVec2::from(position)));
+		}
+		let mut paths = List::new();
+		for references in [vec![0, 1, 2, 3], vec![4, 3], vec![5, 3]] {
+			push_path(&mut paths, CurveType::Linear, references, []);
+		}
+
+		vector.close_subpaths(&mut paths);
+
+		assert_eq!(vector.point_count(), 5);
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references[0], [0, 1, 2, 0]);
+		assert!(
+			references.iter().filter(|path| path.contains(&3)).all(|path| path.contains(&0)),
+			"the side paths end at the merged start"
+		);
 	}
 }
