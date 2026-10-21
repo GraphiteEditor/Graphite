@@ -354,10 +354,12 @@ impl NodeNetworkInterface {
 
 	/// Drops what the writes since the last drain changed, for writes that are not edits to the document,
 	/// after reading it for the nodes an open transaction has written to.
+	/// The redirect dots those writes took wires from are forgotten too, so no later edit removes them.
 	pub(crate) fn discard_deltas(&mut self) {
 		self.scan_transaction_edited_nodes();
 		self.transaction_edited_nodes_scanned = 0;
 		self.deltas.clear();
+		self.dots_that_lost_a_wire.clear();
 	}
 
 	/// Records the open transaction's bookkeeping, so writes that are undone before [`Self::restore_transaction_checkpoint`] don't count toward it.

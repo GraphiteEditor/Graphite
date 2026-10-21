@@ -38,6 +38,9 @@
 
 	let inputElement: HTMLInputElement;
 
+	// Whether a pointer button is held, in which case a drag may be underway and hover hints would only get in the way
+	let pointerHeld = false;
+
 	// The import, export, or layer with its name being edited in place, and the name the field started with
 	type NameTarget = { kind: "Import" | "Export"; index: number } | { kind: "Layer"; nodeId: bigint };
 	let editingName: (NameTarget & { initialText: string }) | undefined = undefined;
@@ -122,16 +125,35 @@
 		if (commandKey && e.key === "Enter") closeDescriptionPopover();
 	}
 
+	function onWindowPointerDown() {
+		pointerHeld = true;
+	}
+
+	function onWindowPointerUp() {
+		pointerHeld = false;
+	}
+
 	onMount(() => {
 		// Backend dispatches this when the user double-clicks a layer's name area
 		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", (data) => {
 			const node = $nodeGraph.nodes.get(data.nodeId);
 			if (node) startEditingName({ kind: "Layer", nodeId: data.nodeId }, node.displayName);
 		});
+
+		// Capturing so the state follows the pointer even where another handler stops the event
+		window.addEventListener("pointerdown", onWindowPointerDown, true);
+		window.addEventListener("pointerup", onWindowPointerUp, true);
+		window.addEventListener("pointercancel", onWindowPointerUp, true);
+		window.addEventListener("blur", onWindowPointerUp);
 	});
 
 	onDestroy(() => {
 		subscriptions.unsubscribeFrontendMessage("TriggerEditLayerNameInGraph");
+
+		window.removeEventListener("pointerdown", onWindowPointerDown, true);
+		window.removeEventListener("pointerup", onWindowPointerUp, true);
+		window.removeEventListener("pointercancel", onWindowPointerUp, true);
+		window.removeEventListener("blur", onWindowPointerUp);
 	});
 
 	function calculateGridSpacing(scale: number): number {
@@ -241,7 +263,7 @@
 	}
 </script>
 
-<div class="graph" data-node-graph>
+<div class="graph" class:pointer-held={pointerHeld} data-node-graph>
 	<div
 		class="grid-background"
 		style:--grid-spacing={`${gridSpacing}px`}
@@ -351,16 +373,6 @@
 							label={exposed ? "Unexpose in Graph" : "Expose in Graph"}
 							action={() => {
 								editor.setImportExposed(index, !exposed);
-								closeContextMenu();
-							}}
-							flush={true}
-						/>
-					{/if}
-					{#if isImport}
-						<TextButton
-							label="Add Passthrough"
-							action={() => {
-								editor.addImportPassthrough(index);
 								closeContextMenu();
 							}}
 							flush={true}
@@ -869,7 +881,7 @@
 
 		<!-- Nodes -->
 		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => !node.isLayer && $visibleNodes.has(nodeId))
+			.filter(([nodeId, node]) => !node.isLayer && !node.isRedirectDot && $visibleNodes.has(nodeId))
 			.map(([_, node]) => node) as node (node.id)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
@@ -1003,6 +1015,35 @@
 				</svg>
 			</div>
 		{/each}
+
+		<!-- Redirect dots, which are Passthrough nodes bending the wires running through them -->
+		{#each Array.from($nodeGraph.nodes)
+			.filter(([nodeId, node]) => node.isRedirectDot && $visibleNodes.has(nodeId))
+			.map(([_, node]) => node) as node (node.id)}
+			<div
+				class="redirect-dot"
+				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:previewed={node.previewed}
+				style:--offset-left={node.position?.[0] || 0}
+				style:--offset-top={node.position?.[1] || 0}
+				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+				data-tooltip-label={node.primaryOutput ? connectorTooltipLabel(node.primaryOutput) : node.displayName}
+				data-tooltip-description={node.primaryOutput ? outputTooltipDescription(node.primaryOutput) : ""}
+				data-node={node.id}
+			>
+				<!-- The hover zones mirror the click targets in the backend: the middle and (once wired) left gutter move the dot, and the right gutter pulls out a new wire -->
+				<div class="zone move"></div>
+				{#if !node.primaryInput?.connected}
+					<div class="zone wire-in"></div>
+				{/if}
+				<div class="zone wire-out"></div>
+				<div class="dot" class:unwired={!node.primaryInput?.connected && !node.primaryOutput?.connected}></div>
+				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="wire-out-port">
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+				</svg>
+			</div>
+		{/each}
 	</div>
 </div>
 
@@ -1024,6 +1065,11 @@
 		display: flex;
 		flex-direction: row;
 		flex-grow: 1;
+
+		// The outline around a hovered redirect dot, set where its data type color is
+		.redirect-dot {
+			--hover-outline-color: var(--data-color-dim);
+		}
 
 		.grid-background {
 			position: absolute;
@@ -1526,6 +1572,106 @@
 			.input.connectors .connector {
 				left: 24px;
 			}
+		}
+
+		.redirect-dot {
+			position: absolute;
+			left: calc(var(--offset-left) * 24px - 15px);
+			top: calc((var(--offset-top) + 1) * 24px - 8px);
+			// Matches the dot's click target in the backend, which also covers the port gutters to either side
+			width: 30px;
+			height: 16px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			.zone {
+				position: absolute;
+				z-index: 1;
+
+				// Left and middle, where pressing selects the dot and dragging moves it
+				&.move {
+					inset: 0;
+				}
+
+				// Right gutter, matching the output port's click target (a 10px circle centered 10px right of the dot)
+				&.wire-out {
+					left: 20px;
+					top: 3px;
+					width: 10px;
+					height: 10px;
+					border-radius: 50%;
+					z-index: 2;
+				}
+
+				// Left gutter of a dot with nothing feeding it, matching the input port's click target there, which pulls a wire out rather than moving the dot
+				&.wire-in {
+					left: 0;
+					top: 3px;
+					width: 10px;
+					height: 10px;
+					border-radius: 50%;
+					z-index: 2;
+				}
+			}
+
+			.dot {
+				box-sizing: border-box;
+				width: 10px;
+				height: 10px;
+				border-radius: 50%;
+				background: var(--data-color);
+				// Faded in on hover
+				outline: 2px solid transparent;
+				pointer-events: none;
+				transition:
+					transform 0.1s,
+					background-color 0.1s,
+					outline-color 0.1s;
+
+				&.unwired {
+					background: var(--data-color-dim);
+				}
+			}
+
+			// The same connector arrow nodes have on their outputs, offered where a new wire can be pulled out
+			.wire-out-port {
+				position: absolute;
+				left: 21px;
+				top: 4px;
+				width: 8px;
+				height: 8px;
+				overflow: visible;
+				pointer-events: none;
+				opacity: 0;
+				transition: opacity 0.1s;
+			}
+
+			&.selected .dot {
+				outline: 2px solid rgb(from var(--color-f-white) r g b / 0.5);
+			}
+
+			&.previewed .dot {
+				outline: 1px dashed var(--data-color);
+				outline-offset: 2px;
+			}
+		}
+
+		// Hover hints stay hidden while a pointer button is held, since a drag may be underway, except on the dot being pressed.
+		// Hovering to select or drag enlarges the dot and rings it.
+		&:not(.pointer-held) .redirect-dot .zone.move:hover ~ .dot,
+		.redirect-dot .zone.move:active ~ .dot {
+			transform: scale(1.3);
+			outline: 2px solid var(--hover-outline-color);
+		}
+
+		// Hovering the right gutter instead dims the dot and reveals the connector to pull a wire from
+		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .dot {
+			background-color: var(--data-color-dim);
+		}
+
+		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
+			opacity: 1;
 		}
 
 		.node {

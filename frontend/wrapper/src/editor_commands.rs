@@ -846,13 +846,6 @@ mod editor_commands {
 		}
 	}
 
-	/// Insert a Passthrough node that takes over the wires an import feeds.
-	fn add_import_passthrough(index: usize) -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddImportPassthrough { import_index: index }.into()]),
-		}
-	}
-
 	/// Disconnect every wire an import feeds.
 	fn disconnect_import(index: usize) -> Message {
 		Message::Batched {

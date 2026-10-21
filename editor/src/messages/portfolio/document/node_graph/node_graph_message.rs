@@ -25,10 +25,6 @@ pub enum NodeGraphMessage {
 		import_index: usize,
 		input_connector: InputConnector,
 	},
-	/// Inserts a Passthrough node beside the import that takes over the wires it fed, so nodes can be placed in front of all of them at once.
-	AddImportPassthrough {
-		import_index: usize,
-	},
 	AddExport,
 	AddPrimaryExport,
 	AddSecondaryExport,
@@ -53,6 +49,11 @@ pub enum NodeGraphMessage {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
 	},
+	/// Wires an output into several inputs together, so the exports among them share one redirect dot if the output is an import.
+	CreateWires {
+		output_connector: OutputConnector,
+		input_connectors: Vec<InputConnector>,
+	},
 	ConnectUpstreamOutputToInput {
 		downstream_input: InputConnector,
 		input_connector: InputConnector,
@@ -65,6 +66,8 @@ pub enum NodeGraphMessage {
 	DeleteSelectedNodes {
 		delete_children: bool,
 	},
+	/// Removes each redirect dot that the preceding operation left without a wire.
+	RemoveOrphanedDots,
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
@@ -101,6 +104,20 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		input_connector: InputConnector,
 		insert_node_input_index: usize,
+	},
+	/// Splits the wire feeding an input with a new redirect dot centered on a grid point.
+	InsertDotOnWire {
+		node_id: NodeId,
+		input_connector: InputConnector,
+		x: i32,
+		y: i32,
+	},
+	/// Runs the wires leaving an output through a new redirect dot centered on a grid point, so they fan out from the dot instead.
+	InsertDotOnOutput {
+		node_id: NodeId,
+		output_connector: OutputConnector,
+		x: i32,
+		y: i32,
 	},
 	MergeSelectedNodes,
 	MoveLayerToStack {
