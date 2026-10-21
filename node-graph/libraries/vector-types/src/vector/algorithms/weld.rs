@@ -140,6 +140,10 @@ impl WeldExt for Vector {
 	}
 
 	fn weld_all(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64) {
+		if !transform.matrix2.determinant().is_normal() {
+			return;
+		}
+
 		let mut working = WorkingVector::flatten(self, paths);
 		let point_count = working.point_positions.len();
 
@@ -782,6 +786,20 @@ mod tests {
 		vector.weld_flow_ends(&mut paths, scale, 1.);
 		assert_eq!(references(&paths), [vec![0, 1], vec![1, 2]]);
 		assert!(near(vector.0.element(1), (1.025, 0.)));
+	}
+
+	// A transform that collapses the item has no inverse to bring joined points back through, so nothing joins
+	#[test]
+	fn welding_all_under_a_collapsed_transform_changes_nothing() {
+		let mut vector = pool(&[(0., 0.), (10., 0.), (10.05, 0.), (20., 0.)]);
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1], []);
+		push_path(&mut paths, CurveType::Linear, [2, 3], []);
+
+		vector.weld_all(&mut paths, DAffine2::from_scale(DVec2::new(1., 0.)), 0.1);
+
+		assert_eq!(references(&paths), [vec![0, 1], vec![2, 3]]);
+		assert!(vector.0.iter_element_values().all(|position| position.is_finite()));
 	}
 
 	// Three ends within the distance of the first meet at their average
