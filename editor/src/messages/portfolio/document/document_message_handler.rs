@@ -640,6 +640,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.drag_start = None;
 					self.node_graph_handler.select_if_not_dragged = None;
 					self.node_graph_handler.nodes_added_in_drag = false;
+					self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 					responses.add(NodeGraphMessage::UpdateWireInsertionPreview);
 				}
 				// Abort dragging a dot out of a connector, before the dot has appeared
@@ -2800,6 +2801,8 @@ impl DocumentMessageHandler {
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let network_interface = self.history.pop_undo()?;
+		// Settled first, so the interface stored for redo keeps none of the offsets of a glide underway
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
@@ -2826,6 +2829,8 @@ impl DocumentMessageHandler {
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let network_interface = self.history.pop_redo()?;
+		// Settled first, as when undoing
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents

@@ -192,6 +192,9 @@ pub struct ContextMenuInformation {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphErrorDiagnostic {
+	/// The node the error is shown beside, which it follows as the node glides into place.
+	#[serde(rename = "nodeId")]
+	pub node_id: NodeId,
 	pub position: (i32, i32),
 	pub error: String,
 }

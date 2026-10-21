@@ -606,6 +606,56 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
+	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
+	pub(crate) glide_offsets: std::cell::RefCell<GlideOffsets>,
+}
+
+/// How far the nodes, imports, and exports gliding into the grid cells they just moved to are drawn from those cells, in node graph space.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GlideOffsets {
+	pub nodes: HashMap<NodeId, DVec2>,
+	pub imports: DVec2,
+	pub exports: DVec2,
+}
+
+impl GlideOffsets {
+	pub fn is_empty(&self) -> bool {
+		self.nodes.is_empty() && self.imports == DVec2::ZERO && self.exports == DVec2::ZERO
+	}
+
+	pub fn node(&self, node_id: &NodeId) -> DVec2 {
+		self.nodes.get(node_id).copied().unwrap_or_default()
+	}
+
+	pub fn input(&self, input: &InputConnector) -> DVec2 {
+		match input {
+			InputConnector::Node { node_id, .. } => self.node(node_id),
+			InputConnector::Export(_) => self.exports,
+		}
+	}
+
+	pub fn output(&self, output: &OutputConnector) -> DVec2 {
+		match output {
+			OutputConnector::Node { node_id, .. } => self.node(node_id),
+			OutputConnector::Import(_) => self.imports,
+		}
+	}
+
+	/// Shrinks every offset to the given fraction of itself, settling those left too small to see.
+	pub fn shrink(&mut self, remaining_fraction: f64) {
+		const SMALLEST_VISIBLE_OFFSET: f64 = 0.5;
+
+		let shrink = |offset: &mut DVec2| {
+			*offset *= remaining_fraction;
+			if offset.length() < SMALLEST_VISIBLE_OFFSET {
+				*offset = DVec2::ZERO;
+			}
+		};
+		self.nodes.values_mut().for_each(shrink);
+		self.nodes.retain(|_, offset| *offset != DVec2::ZERO);
+		shrink(&mut self.imports);
+		shrink(&mut self.exports);
+	}
 }
 
 /// What the imports and exports keep their distance from horizontally, in node graph space. They keep a few grid cells from the sides of a node,

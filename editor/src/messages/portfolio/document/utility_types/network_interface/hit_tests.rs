@@ -136,12 +136,14 @@ impl NodeNetworkInterface {
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+		// Each node is pressed where it's drawn, even while gliding into its grid cell
+		let glide_offsets = self.glide_offsets(network_path);
 		let nodes = network.nodes.keys().copied().collect::<Vec<_>>();
 		let clicked_nodes = nodes
 			.iter()
 			.filter(|node_id| {
 				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
-					transient_node_metadata.node_click_target.intersect_point_no_stroke(point)
+					transient_node_metadata.node_click_target.intersect_point_no_stroke(point - glide_offsets.node(node_id))
 				}) == Some(true)
 			})
 			.cloned()
@@ -170,11 +172,13 @@ impl NodeNetworkInterface {
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+		let glide_offsets = self.glide_offsets(network_path);
 		let node_ids: Vec<_> = network.nodes.keys().copied().collect();
 
 		node_ids
 			.iter()
 			.filter_map(|node_id| {
+				let point = point - glide_offsets.node(node_id);
 				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					if let NodeTypeClickTargets::Layer(layer) = &transient_node_metadata.node_type_metadata {
 						match click_target_type {
@@ -194,6 +198,9 @@ impl NodeNetworkInterface {
 
 	/// The dimmed connector for adding an import (or else export) under `point`, given in node graph space, as the index it adds with its center.
 	pub fn empty_import_export_connector_at(&self, point: DVec2, is_import: bool, network_path: &[NodeId]) -> Option<(usize, DVec2)> {
+		let glide_offsets = self.glide_offsets(network_path);
+		let point = point - if is_import { glide_offsets.imports } else { glide_offsets.exports };
+
 		// The same reach as an import (output) or export (input) port's click target
 		self.empty_import_export_connectors(is_import, network_path)
 			.into_iter()
@@ -202,9 +209,17 @@ impl NodeNetworkInterface {
 
 	/// The import or export with its name under `point`, given in node graph space.
 	pub fn import_export_name_from_point(&self, point: DVec2, network_path: &[NodeId]) -> Option<ImportOrExport> {
+		let glide_offsets = self.glide_offsets(network_path);
 		self.import_export_name_bounds(network_path)
 			.into_iter()
-			.find(|(_, [name_min, name_max])| name_min.cmple(point).all() && point.cmple(*name_max).all())
+			.find(|(import_or_export, [name_min, name_max])| {
+				let point = point
+					- match import_or_export {
+						ImportOrExport::Import(_) => glide_offsets.imports,
+						ImportOrExport::Export(_) => glide_offsets.exports,
+					};
+				name_min.cmple(point).all() && point.cmple(*name_max).all()
+			})
 			.map(|(import_or_export, _)| import_or_export)
 	}
 
@@ -234,11 +249,12 @@ impl NodeNetworkInterface {
 	/// The input fed by a wire passing within `tolerance` of the point (in node graph space), for placing a dot on it. Only wires a dot can bend are found.
 	pub fn wire_input_from_point(&self, point: DVec2, tolerance: f64, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<InputConnector> {
 		let target = dvec2_to_point(point);
+		let glide_offsets = self.glide_offsets(network_path);
 		self.node_graph_input_connectors(network_path)
 			.into_iter()
 			.filter(|input| self.can_bend_wire_into(input, network_path))
 			.filter_map(|input| {
-				let (wire, _, _) = self.vector_wire_from_input(&input, wire_style, network_path)?;
+				let (wire, _, _) = self.gliding_vector_wire_from_input(&input, wire_style, &glide_offsets, network_path)?;
 				let distance = wire
 					.segments()
 					.map(|segment| segment.nearest(target, DEFAULT_ACCURACY).distance_sq.sqrt())
@@ -261,6 +277,7 @@ impl NodeNetworkInterface {
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+		let glide_offsets = self.glide_offsets(network_path);
 		let covering_dot = self.redirect_dot_from_click(click, network_path);
 		network
 			.nodes
@@ -273,16 +290,18 @@ impl NodeNetworkInterface {
 				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata
 						.port_click_targets
-						.clicked_input_port_from_point(point)
+						.clicked_input_port_from_point(point - glide_offsets.node(node_id))
 						.map(|port| InputConnector::node_at_index(*node_id, port))
 				})
 				.flatten()
 			})
 			.find(|input_connector| !self.is_wired_dot_input(input_connector, network_path))
 			.or_else(|| {
-				self.with_import_export_ports(network_path, |import_export_ports| import_export_ports.clicked_input_port_from_point(point).map(InputConnector::Export))
-					.flatten()
-					.filter(|_| covering_dot.is_none())
+				self.with_import_export_ports(network_path, |import_export_ports| {
+					import_export_ports.clicked_input_port_from_point(point - glide_offsets.exports).map(InputConnector::Export)
+				})
+				.flatten()
+				.filter(|_| covering_dot.is_none())
 			})
 	}
 
@@ -298,6 +317,7 @@ impl NodeNetworkInterface {
 		};
 
 		let point = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(click);
+		let glide_offsets = self.glide_offsets(network_path);
 		// A redirect dot is drawn above everything else, so where it covers other ports, only its own can be pressed
 		let covering_dot = self.redirect_dot_from_click(click, network_path);
 		let nodes = network.nodes.keys().copied().collect::<Vec<_>>();
@@ -308,7 +328,7 @@ impl NodeNetworkInterface {
 				self.with_node_click_targets(node_id, network_path, |transient_node_metadata| {
 					transient_node_metadata
 						.port_click_targets
-						.clicked_output_port_from_point(point)
+						.clicked_output_port_from_point(point - glide_offsets.node(node_id))
 						.map(|output_index| OutputConnector::node(*node_id, output_index))
 				})
 				.flatten()
@@ -316,7 +336,7 @@ impl NodeNetworkInterface {
 			.next()
 			.or_else(|| {
 				self.with_import_export_ports(network_path, |import_export_ports| {
-					import_export_ports.clicked_output_port_from_point(point).map(OutputConnector::Import)
+					import_export_ports.clicked_output_port_from_point(point - glide_offsets.imports).map(OutputConnector::Import)
 				})
 				.flatten()
 				.filter(|_| covering_dot.is_none())

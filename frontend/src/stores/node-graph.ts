@@ -81,6 +81,11 @@ if (import.meta.hot) import.meta.hot.data.wiresStore = wiresStore;
 const wireInsertionPreviewStore: Writable<[bigint, number] | undefined> = import.meta.hot?.data?.wireInsertionPreviewStore || writable(undefined);
 if (import.meta.hot) import.meta.hot.data.wireInsertionPreviewStore = wireInsertionPreviewStore;
 
+// Separate glide offsets store so the per-frame offsets of whatever is gliding into the place it moved to don't trigger full node re-renders
+export type GlideOffsets = { nodes: Map<bigint, [number, number]>; imports: [number, number]; exports: [number, number] };
+const glideOffsetsStore: Writable<GlideOffsets> = import.meta.hot?.data?.glideOffsetsStore || writable<GlideOffsets>({ nodes: new Map(), imports: [0, 0], exports: [0, 0] });
+if (import.meta.hot) import.meta.hot.data.glideOffsetsStore = glideOffsetsStore;
+
 export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
 
@@ -199,6 +204,10 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		visibleNodesStore.set(newNodes);
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateGlideOffsets", (data) => {
+		glideOffsetsStore.set({ nodes: new Map(data.nodes), imports: data.imports, exports: data.exports });
+	});
+
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
 		if (data.wires.length === 0) return;
 
@@ -250,7 +259,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore, wireInsertionPreviewStore };
+	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore, wireInsertionPreviewStore, glideOffsetsStore };
 }
 
 export function destroyNodeGraphStore() {
@@ -271,6 +280,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics");
 	subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
+	subscriptions.unsubscribeFrontendMessage("UpdateGlideOffsets");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");
 	subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");

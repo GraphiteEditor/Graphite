@@ -28,6 +28,7 @@
 	const visibleNodes = nodeGraph.visibleNodesStore;
 	const nodeGraphWires = nodeGraph.wiresStore;
 	const wireInsertionPreview = nodeGraph.wireInsertionPreviewStore;
+	const nodeGlideOffsets = nodeGraph.glideOffsetsStore;
 	const documentState = getContext<DocumentStore>("document");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
@@ -279,6 +280,12 @@
 		return preview !== undefined && preview[0] === nodeId && preview[1] === inputIndex;
 	}
 
+	// Whatever is gliding into the place it moved to is drawn short of that place, by this many grid cells along the axis.
+	// It shifts the position rather than transforming, since a transform would trap a layer's connectors beneath the wires drawn after it.
+	function glideCells(offset: [number, number] | undefined, axis: 0 | 1): number {
+		return (offset?.[axis] || 0) / GRID_SIZE;
+	}
+
 	function nodeNameTooltipLabel(node: FrontendNode): string {
 		return node.displayName === node.implementationName ? node.displayName : `${node.implementationName} (${node.displayName})`;
 	}
@@ -495,10 +502,13 @@
 	{#if $nodeGraph.errors.length > 0}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 			{#each $nodeGraph.errors as error}
-				<span class="node-error faded" style:left={`${error.position[0]}px`} style:top={`${error.position[1]}px`} transition:fade={FADE_TRANSITION}>
+				{@const glideOffset = $nodeGlideOffsets.nodes.get(error.nodeId)}
+				{@const left = `${error.position[0] + (glideOffset?.[0] || 0)}px`}
+				{@const top = `${error.position[1] + (glideOffset?.[1] || 0)}px`}
+				<span class="node-error faded" style:left style:top transition:fade={FADE_TRANSITION}>
 					{error.error}
 				</span>
-				<span class="node-error hover" style:left={`${error.position[0]}px`} style:top={`${error.position[1]}px`} transition:fade={FADE_TRANSITION}>
+				<span class="node-error hover" style:left style:top transition:fade={FADE_TRANSITION}>
 					{error.error}
 				</span>
 			{/each}
@@ -567,8 +577,8 @@
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 1) + importExportRowOffset(index)}
 					>
 						{#if frontendOutput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -581,8 +591,8 @@
 						class="edit-import-export import"
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
-						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 1) + importExportRowOffset(index)}
 					>
 						{#if editingName?.kind === "Import" && editingName.index === index}
 							<input
@@ -616,8 +626,8 @@
 						data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
 						style:--data-color="var(--color-data-general)"
 						style:--data-color-dim="var(--color-data-general-dim)"
-						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 1) + importExportRowOffset(index)}
 					>
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 					</svg>
@@ -636,8 +646,8 @@
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 1) + importExportRowOffset(index)}
 					>
 						{#if frontendInput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -649,8 +659,8 @@
 						class="edit-import-export export"
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
-						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 1) + importExportRowOffset(index)}
 					>
 						{#if editingName?.kind === "Export" && editingName.index === index}
 							<input
@@ -687,8 +697,8 @@
 						data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
 						style:--data-color="var(--color-data-general)"
 						style:--data-color-dim="var(--color-data-general-dim)"
-						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 1) + importExportRowOffset(index)}
 					>
 						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 					</svg>
@@ -706,8 +716,11 @@
 					data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
 					style:--data-color="var(--color-data-general)"
 					style:--data-color-dim="var(--color-data-general-dim)"
-					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length) + 1}
+					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 +
+						glideCells($nodeGlideOffsets.imports, 1) +
+						importExportRowOffset($nodeGraphImportsExports.imports.length) +
+						1}
 				>
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				</svg>
@@ -720,8 +733,11 @@
 					data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
 					style:--data-color="var(--color-data-general)"
 					style:--data-color-dim="var(--color-data-general-dim)"
-					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length) + 1}
+					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 +
+						glideCells($nodeGlideOffsets.exports, 1) +
+						importExportRowOffset($nodeGraphImportsExports.exports.length) +
+						1}
 				>
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				</svg>
@@ -732,7 +748,11 @@
 					x: Number($nodeGraphImportsExports.importPosition[0]),
 					y: Number($nodeGraphImportsExports.importPosition[1]) + reorderLineTop(Number($nodeGraph.reorderImportIndex)),
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x - 58) / 24} style:--offset-top={position.y / 24}></div>
+				<div
+					class="reorder-bar"
+					style:--offset-left={(position.x - 58) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+					style:--offset-top={position.y / 24 + glideCells($nodeGlideOffsets.imports, 1)}
+				></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
@@ -740,7 +760,11 @@
 					x: Number($nodeGraphImportsExports.exportPosition[0]),
 					y: Number($nodeGraphImportsExports.exportPosition[1]) + reorderLineTop(Number($nodeGraph.reorderExportIndex)),
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x + 9) / 24} style:--offset-top={position.y / 24}></div>
+				<div
+					class="reorder-bar"
+					style:--offset-left={(position.x + 9) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+					style:--offset-top={position.y / 24 + glideCells($nodeGlideOffsets.exports, 1)}
+				></div>
 			{/if}
 		{/if}
 	</div>
@@ -764,8 +788,8 @@
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				class:locked={node.locked}
-				style:--offset-left={node.position?.[0] || 0}
-				style:--offset-top={node.position?.[1] || 0}
+				style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+				style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
@@ -962,8 +986,8 @@
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={node.position?.[0] || 0}
-				style:--offset-top={node.position?.[1] || 0}
+				style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+				style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
@@ -1094,8 +1118,8 @@
 				class="redirect-dot"
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
-				style:--offset-left={node.position?.[0] || 0}
-				style:--offset-top={node.position?.[1] || 0}
+				style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+				style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				data-tooltip-label={node.primaryOutput ? connectorTooltipLabel(node.primaryOutput) : node.displayName}
@@ -1108,7 +1132,8 @@
 					<div class="zone wire-in"></div>
 				{/if}
 				<div class="zone wire-out"></div>
-				<div class="dot" class:unwired={!node.primaryInput?.connected && !node.primaryOutput?.connected}></div>
+				<!-- Where both its wires attach, so it stands in for its connectors as the end of a wire being dragged -->
+				<div class="dot" class:unwired={!node.primaryInput?.connected && !node.primaryOutput?.connected} data-connector="dot"></div>
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="wire-out-port">
 					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 				</svg>
@@ -1745,6 +1770,20 @@
 
 		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
 			opacity: 1;
+		}
+
+		// A wire dragged out of the dot keeps showing its connector as hovering the gutter did, and one snapped onto it rings it like a hover
+		.redirect-dot .dot.wire-source {
+			background-color: var(--data-color-dim);
+
+			~ .wire-out-port {
+				opacity: 1;
+			}
+		}
+
+		.redirect-dot .dot.wire-target {
+			transform: scale(1.3);
+			outline: 2px solid var(--hover-outline-color);
 		}
 
 		// Hovering a connector enlarges it and outlines its arrow, like the ring a hovered redirect dot gets
