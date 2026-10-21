@@ -1964,6 +1964,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
+					responses.add(NodeGraphMessage::UpdateHoveredConnector);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
@@ -3843,7 +3844,7 @@ impl DocumentMessageHandler {
 					});
 
 					let mut node_chooser = NodeCatalog::new();
-					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+					node_chooser.initial_search = compatible_type.unwrap_or("".to_string());
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {

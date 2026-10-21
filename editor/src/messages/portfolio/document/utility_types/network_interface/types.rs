@@ -280,6 +280,32 @@ pub(crate) enum DotSide {
 	Outgoing,
 }
 
+/// The corners of the click target for a connector on a node or layer's left or right side, or an import or export.
+/// It fills its row's height and reaches further away from the node than into it, leaving the node body grabbable.
+pub(crate) fn side_port_bounds(center: DVec2, is_input: bool) -> [DVec2; 2] {
+	const INWARD_REACH: f64 = 8.;
+	const OUTWARD_REACH: f64 = 12.;
+	const HALF_HEIGHT: f64 = 12.;
+
+	// Inputs face left and outputs face right
+	let (left_reach, right_reach) = if is_input { (OUTWARD_REACH, INWARD_REACH) } else { (INWARD_REACH, OUTWARD_REACH) };
+	[center - DVec2::new(left_reach, HALF_HEIGHT), center + DVec2::new(right_reach, HALF_HEIGHT)]
+}
+
+/// The corners of the click target for a layer's top output or bottom input, which reaches only 8 px toward the connector it faces in a stack.
+fn stack_port_bounds(center: DVec2) -> [DVec2; 2] {
+	const HALF_SIZE: DVec2 = DVec2::new(12., 8.);
+
+	[center - HALF_SIZE, center + HALF_SIZE]
+}
+
+pub(crate) fn port_click_target([corner1, corner2]: [DVec2; 2]) -> ClickTarget {
+	const CORNER_RADIUS: f64 = 4.;
+
+	let path = rounded_rectangle_path(corner1, corner2, [CORNER_RADIUS; 4]);
+	ClickTarget::new_with_path(path, 0.)
+}
+
 #[derive(Debug, Clone)]
 pub struct Ports {
 	pub(crate) input_ports: Vec<(usize, ClickTarget)>,
@@ -322,8 +348,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
-		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_input_port(input_index, ClickTarget::new_with_path(path, 0.));
+		self.insert_custom_input_port(input_index, port_click_target(side_port_bounds(center, true)));
+		self.input_anchors.push((input_index, center));
 	}
 
 	pub(crate) fn insert_custom_input_port(&mut self, input_index: usize, click_target: ClickTarget) {
@@ -331,8 +357,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
-		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_output_port(output_index, ClickTarget::new_with_path(path, 0.));
+		self.insert_custom_output_port(output_index, port_click_target(side_port_bounds(center, false)));
+		self.output_anchors.push((output_index, center));
 	}
 
 	pub(crate) fn insert_custom_output_port(&mut self, output_index: usize, click_target: ClickTarget) {
@@ -352,18 +378,19 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
-		let center = if input_index == 0 {
-			node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.)
+		// The primary input sits beneath the layer's thumbnail, and the secondary input on its left side
+		if input_index == 0 {
+			let center = node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.);
+			self.insert_custom_input_port(input_index, port_click_target(stack_port_bounds(center)));
 		} else {
-			node_top_left + DVec2::new(0., 24. * 1.)
-		};
-		self.insert_input_port_at_center(input_index, center);
+			self.insert_input_port_at_center(input_index, node_top_left + DVec2::new(0., 24. * 1.));
+		}
 	}
 
 	pub(crate) fn insert_layer_output(&mut self, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
+		// The center of the click target is 8 px above the layer, over its thumbnail
 		let center = node_top_left + DVec2::new(2. * 24., -8.);
-		self.insert_output_port_at_center(0, center);
+		self.insert_custom_output_port(0, port_click_target(stack_port_bounds(center)));
 	}
 
 	pub fn clicked_input_port_from_point(&self, point: DVec2) -> Option<usize> {
@@ -1067,7 +1094,7 @@ mod tests {
 	}
 
 	#[test]
-	fn port_click_targets_are_clickable_at_their_center() {
+	fn port_click_targets_reach_around_the_connector_where_wires_attach() {
 		let center = DVec2::new(100., 50.);
 		let mut ports = Ports::new();
 		ports.insert_input_port_at_center(0, center);
@@ -1075,9 +1102,14 @@ mod tests {
 
 		assert_eq!(ports.clicked_input_port_from_point(center), Some(0));
 		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(5., 5.)), Some(0));
-		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(20., 0.)), None);
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(0., 11.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(-11., 0.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(10., 0.)), None);
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(0., 13.)), None);
 
 		assert_eq!(ports.clicked_output_port_from_point(center + DVec2::new(200., 0.)), Some(0));
 		assert_eq!(ports.clicked_output_port_from_point(center), None);
+
+		assert_eq!(ports.input_port_position(0), Some(center), "wires should attach at the connector's center, not the click target's");
 	}
 }

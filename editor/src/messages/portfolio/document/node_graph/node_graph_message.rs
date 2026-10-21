@@ -313,6 +313,8 @@ pub enum NodeGraphMessage {
 		network_path: Vec<NodeId>,
 	},
 	UpdateBoxSelection,
+	/// Shows hovered the connector a press at the pointer would grab, or none.
+	UpdateHoveredConnector,
 	/// Highlights the wire a dragged node would be inserted onto if dropped where it is, or stops highlighting one.
 	UpdateWireInsertionPreview,
 	UpdateImportsExports,

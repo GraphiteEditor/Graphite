@@ -239,6 +239,10 @@ pub enum FrontendMessage {
 	UpdateWireInsertionPreview {
 		wire: Option<(NodeId, usize)>,
 	},
+	/// The connector a press at the pointer would grab, by its center in node graph space.
+	UpdateHoveredConnector {
+		center: Option<(f64, f64)>,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
@@ -326,6 +330,12 @@ pub enum FrontendMessage {
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
+		/// Where the wire meets the connector it's dragged from, in node graph space.
+		#[serde(rename = "draggedFrom")]
+		dragged_from: Option<(f64, f64)>,
+		/// Where the wire's loose end meets a connector it has snapped onto, in node graph space.
+		#[serde(rename = "snappedTo")]
+		snapped_to: Option<(f64, f64)>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,

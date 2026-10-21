@@ -194,12 +194,10 @@ impl NodeNetworkInterface {
 
 	/// The dimmed connector for adding an import (or else export) under `point`, given in node graph space, as the index it adds with its center.
 	pub fn empty_import_export_connector_at(&self, point: DVec2, is_import: bool, network_path: &[NodeId]) -> Option<(usize, DVec2)> {
-		// The same reach as an import or export port's click target
-		const CONNECTOR_RADIUS: f64 = 8.;
-
+		// The same reach as an import (output) or export (input) port's click target
 		self.empty_import_export_connectors(is_import, network_path)
 			.into_iter()
-			.find(|(_, center)| center.distance(point) <= CONNECTOR_RADIUS)
+			.find(|(_, center)| port_click_target(side_port_bounds(*center, !is_import)).intersect_point_no_stroke(point))
 	}
 
 	/// The import or export with its name under `point`, given in node graph space.
