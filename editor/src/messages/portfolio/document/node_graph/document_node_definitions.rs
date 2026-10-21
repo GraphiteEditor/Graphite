@@ -1001,14 +1001,13 @@ fn static_input_inspector() -> InputInspector {
 		// The custom number input settings are only available on proto nodes
 		"optional_f64".to_string(),
 		Box::new(|node_id, index, context| {
-			let node_metadata = registry::NODE_METADATA.lock().unwrap();
 			let mut number_input = NumberInput::default();
+			// The field is cloned so the lock is released before building the row below, which locks the node metadata again
 			if let Some(field) = context
 				.network_interface
 				.implementation(&node_id, context.selection_network_path)
 				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
-				.and_then(|proto_node_identifier| node_metadata.get(proto_node_identifier))
-				.and_then(|metadata| metadata.fields.get(index))
+				.and_then(|proto_node_identifier| registry::NODE_METADATA.lock().unwrap().get(proto_node_identifier)?.fields.get(index).cloned())
 			{
 				if let Some(unit) = field.unit {
 					number_input = number_input.unit(unit);
@@ -1531,8 +1530,8 @@ impl InputTypeConstraint {
 		}
 	}
 
-	/// Check if a type reaches the constraint through an `input_adapter`, the per-connector node which the preprocessor places ahead of
-	/// every ranked connector to convert or embed a convertible element, such as a color literal feeding a `Graphic` paint wire.
+	/// Check if a type reaches the constraint through any `input_adapter`, which converts or embeds a convertible element (such as a color literal feeding a
+	/// `Graphic` paint wire) ahead of an input registered with one ranked type. Whether this input is one that gets an adapter isn't checked.
 	#[must_use]
 	fn satisfies_through_input_adapter(&self, ty: &Type) -> bool {
 		let provided = Self::type_name(ty);
@@ -1620,7 +1619,8 @@ impl InputTypeConstraint {
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !registry::is_hidden_category(definition.category))
+		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
+		.filter(|(identifier, definition)| !registry::is_hidden_category(definition.category) && **identifier != DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
@@ -1721,6 +1721,19 @@ mod test {
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::MoveNodeToChainStart { node_id, parent: layer }).await;
+	}
+
+	// Guards the `optional_f64` widget override against holding the node metadata lock while building rows that lock it again
+	#[tokio::test]
+	async fn optional_f64_inspector_row_builds() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let node_id = editor
+			.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::qr_code::IDENTIFIER))
+			.await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }).await;
+		editor.handle_message(InspectorMessage::Refresh).await;
 	}
 }
 

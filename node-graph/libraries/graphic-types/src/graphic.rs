@@ -13,6 +13,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 pub use vector_types::Vector;
+use vector_types::vector::{Path, paths_from_item_attributes, paths_from_list_row_attributes};
 use vector_types::{Gradient, GradientSpread};
 
 /// The possible forms of graphical content that can be rendered by the Render node (to targets like SVG and raster) or another render boundary node.
@@ -52,11 +53,6 @@ impl From<List<Graphic>> for Graphic {
 }
 
 // Vector
-impl From<Vector> for Graphic {
-	fn from(vector: Vector) -> Self {
-		Graphic::Vector(Box::new(Item::new_from_element(vector)))
-	}
-}
 impl From<Item<Vector>> for Graphic {
 	fn from(vector: Item<Vector>) -> Self {
 		Graphic::Vector(Box::new(vector))
@@ -771,9 +767,9 @@ fn every_item_has_full_opacity<T>(list: &List<T>) -> bool {
 }
 
 /// Bounding box of one vector, inflated by its appearance's stroke when `include_stroke` is true.
-/// Stroke parameters live on the item attribute, out of reach of the element-level impl.
-fn vector_bounding_box(vector: &Vector, composed_transform: DAffine2, appearance: Option<&Appearance>, include_stroke: bool) -> Option<[DVec2; 2]> {
-	let mut bounds = vector.bounding_box_with_transform(composed_transform)?;
+/// Paths and stroke parameters live on the holder's attributes, out of reach of the element-level impl.
+fn vector_bounding_box(vector: &Vector, paths: Option<&List<Path>>, composed_transform: DAffine2, appearance: Option<&Appearance>, include_stroke: bool) -> Option<[DVec2; 2]> {
+	let mut bounds = vector.bounding_box_with_transform(paths?, composed_transform)?;
 
 	// The full line width (not half) accounts for different styles of stroke caps
 	if include_stroke && let Some(stroke) = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params) {
@@ -789,7 +785,13 @@ fn vector_bounding_box(vector: &Vector, composed_transform: DAffine2, appearance
 pub fn vector_item_bounding_box(item: &Item<Vector>, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 	let composed_transform = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 
-	match vector_bounding_box(item.element(), composed_transform, item.attribute::<Appearance>(ATTR_APPEARANCE), include_stroke) {
+	match vector_bounding_box(
+		item.element(),
+		paths_from_item_attributes(item),
+		composed_transform,
+		item.attribute::<Appearance>(ATTR_APPEARANCE),
+		include_stroke,
+	) {
 		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
 		None => RenderBoundingBox::None,
 	}
@@ -804,7 +806,7 @@ pub fn vector_list_bounding_box(list: &List<Vector>, transform: DAffine2, includ
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		let appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index);
 
-		let Some(bounds) = vector_bounding_box(element, transform * item_transform, appearance, include_stroke) else {
+		let Some(bounds) = vector_bounding_box(element, paths_from_list_row_attributes(list, index), transform * item_transform, appearance, include_stroke) else {
 			continue;
 		};
 

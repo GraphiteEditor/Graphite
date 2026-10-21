@@ -17,7 +17,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::compass_rose::{Axis, CompassRose};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::measure;
-use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
+use crate::messages::tool::common_functionality::pivot::{Pivot, PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::SelectionShapeType;
 use crate::messages::tool::common_functionality::snap_session::{BoxFeatures, FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
@@ -545,6 +545,8 @@ struct SelectToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	cursor: MouseCursorIcon,
 	pivot_gizmo: PivotGizmo,
+	/// The pivot as it was when a drag of it began, restored if the drag is aborted.
+	pivot_before_drag: Option<Pivot>,
 	pivot_gizmo_start: Option<DVec2>,
 	pivot_gizmo_shift: Option<DVec2>,
 	compass_rose: CompassRose,
@@ -1358,6 +1360,7 @@ impl Fsm for SelectToolFsmState {
 
 				let state = if let Some(state) = tool_data.state_from_pivot_gizmo(input.mouse.position) {
 					responses.add(DocumentMessage::StartTransaction);
+					tool_data.pivot_before_drag = Some(tool_data.pivot_gizmo.pivot.clone());
 
 					// The pivot snaps to the selected layers too, since they stay put while it moves
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
@@ -1462,6 +1465,19 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+
+				// The pivot lives in the tool rather than the document, so aborting the transaction doesn't put it back
+				if let Some(pivot) = tool_data.pivot_before_drag.take() {
+					let reported = tool_data.pivot_gizmo.pivot.old_pivot_position;
+					tool_data.pivot_gizmo.pivot = pivot;
+
+					let pivot_gizmo = tool_data.pivot_gizmo();
+					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
+					responses.add(OverlaysMessage::Draw);
+
+					// Only the tool keeps its last reported reference point, which makes the control bar refresh
+					tool_data.pivot_gizmo.pivot.old_pivot_position = reported;
+				}
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1817,6 +1833,7 @@ impl Fsm for SelectToolFsmState {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 
+				tool_data.pivot_before_drag = None;
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 
@@ -3028,6 +3045,34 @@ mod test_select_tool {
 		turn_a_quarter_about(&mut editor, middle).await;
 
 		assert_bounds(&editor, layer, turned_bounds([from, to], middle, FRAC_PI_2));
+	}
+
+	#[tokio::test]
+	async fn a_typed_turn_after_escaping_a_pivot_drag_and_panning_goes_about_the_restored_pivot() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_rectangle(&mut editor, from, to).await;
+		turn_on_the_pivot(&mut editor).await;
+
+		// The pivot is taken out of the way, put back in the middle by Esc, then followed by a pan of the view
+		let middle = DVec2::new(360., 340.);
+		press_cage_at(&mut editor, middle).await;
+		move_to(&mut editor, DVec2::new(500., 220.), ModifierKeys::empty()).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(500., 220., ModifierKeys::empty()).await;
+		let pan = DVec2::new(40., -30.);
+		editor.handle_message(NavigationMessage::CanvasPan { delta: pan }).await;
+		editor.handle_message(SelectToolMessage::Overlays { context: OverlayContext::default() }).await;
+
+		editor.move_mouse(600., 500., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.handle_message(TransformLayerMessage::BeginRotate).await;
+		for digit in [9, 0] {
+			editor.handle_message(TransformLayerMessage::TypeDigit { digit }).await;
+		}
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		assert_bounds(&editor, layer, turned_bounds([from + pan, to + pan], middle + pan, FRAC_PI_2));
 	}
 
 	fn snap_session(editor: &EditorTestUtils) -> &SnapSession {

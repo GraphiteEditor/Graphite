@@ -147,8 +147,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_vector(&mut self, bezpath: BezPath, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
 		// Build a VectorModification that reproduces the geometry (same format the Pen tool uses)
-		let vector = Vector::from_bezpath(bezpath);
-		let modification = Box::new(VectorModification::create_from_vector(&vector));
+		let (vector, paths) = Vector::from_bezpath(&bezpath);
+		let modification = Box::new(VectorModification::create_from_vector(&vector, &paths));
 
 		let shape = resolve_network_node_type("Path")
 			.expect("Path node does not exist")
@@ -247,14 +247,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Clear the whole-expanse paint one tool left on a layer so the other can start its own chain there.
-	/// Severing at the attachment detaches the layer from whatever the walk stopped at, which is the only part a node
-	/// the rest of the graph also draws from is subjected to, since such a node is never among those deleted.
+	/// Severing at the attachment detaches the layer from the old chain, which is all that a node the rest of
+	/// the graph also draws from is subjected to, since such a node is never among those deleted.
 	fn clear_paint_chain(&mut self, paint_chain: &ReplaceablePaintChain) {
 		self.network_interface.disconnect_input(&paint_chain.attachment_input, &[]);
 
 		if !paint_chain.nodes.is_empty() {
 			self.network_interface.delete_nodes(paint_chain.nodes.clone(), false, &[]);
 		}
+		self.network_interface.remove_orphaned_dots(&[]);
 	}
 
 	/// Wire a node that paints the layer's whole expanse into the start of its chain,

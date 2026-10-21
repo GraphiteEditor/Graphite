@@ -1,11 +1,12 @@
 use super::document_diff::diff_networks;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
+use super::utility_types::layers_in_view::LayersInView;
 use super::utility_types::misc::{ANGLE_STEP_MAX, ANGLE_STEP_MIN, GroupFolderType, SNAPPING_OPTION_GROUPS, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use super::{CursorMoveError, DocumentHistory};
-use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
+use crate::application::{Environment, GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
 	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 };
@@ -21,7 +22,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -58,6 +59,7 @@ use std::time::Duration;
 #[derive(ExtractField)]
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
+	pub environment: Environment,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub executor: &'a mut NodeGraphExecutor,
 	pub current_tool: &'a ToolType,
@@ -187,6 +189,9 @@ pub struct DocumentMessageHandler {
 	/// The layer under the pointer in the Layers panel, which gets a hover outline in the viewport.
 	#[serde(skip)]
 	layers_panel_hovered_layer: Option<LayerNodeIdentifier>,
+	/// The layers the frontend shows in view, the only ones it's sent the details and thumbnails of.
+	#[serde(skip)]
+	pub layers_in_view: LayersInView,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -236,6 +241,7 @@ impl Default for DocumentMessageHandler {
 			layer_range_selection_reference: None,
 			chain_node_range_selection_reference: None,
 			layers_panel_hovered_layer: None,
+			layers_in_view: LayersInView::default(),
 			is_loaded: false,
 		}
 	}
@@ -246,6 +252,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 	fn process_message(&mut self, message: DocumentMessage, responses: &mut VecDeque<Message>, context: DocumentMessageContext) {
 		let DocumentMessageContext {
 			document_id,
+			environment,
 			ipp,
 			executor,
 			viewport,
@@ -263,6 +270,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			// Sub-messages
 			DocumentMessage::Navigation(message) => {
 				let context = NavigationMessageContext {
+					environment,
 					network_interface: &mut self.network_interface,
 					breadcrumb_network_path: &self.breadcrumb_network_path,
 					ipp,
@@ -319,6 +327,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						inspector_collapsed_sections: &mut self.inspector_collapsed_sections,
 						inspector_expanded_input_chains: &mut self.inspector_expanded_input_chains,
 						layers_panel_expanded_chains: &mut self.layers_panel_expanded_chains,
+						layers_in_view: &mut self.layers_in_view,
 						ipp,
 						graph_view_overlay_open: self.graph_view_overlay_open,
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
@@ -626,12 +635,23 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::Escape => {
+				// The same Esc cancels the pan, tilt, or zoom drag through its own binding
+				if self.navigation_handler.is_navigating() {
+					return;
+				}
+
 				// Abort dragging nodes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
 					self.node_graph_handler.select_if_not_dragged = None;
-					self.node_graph_handler.duplicated_in_drag = false;
+					self.node_graph_handler.nodes_added_in_drag = false;
+					self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+					responses.add(NodeGraphMessage::UpdateWireInsertionPreview);
+				}
+				// Abort dragging a dot out of a connector, before the dot has appeared
+				else if self.node_graph_handler.dot_drag_out.is_some() {
+					self.node_graph_handler.dot_drag_out = None;
 				}
 				// Abort box selection
 				else if self.node_graph_handler.box_selection_start.is_some() {
@@ -755,6 +775,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
+
+					self.layers_in_view.set_node_graph(HashSet::new(), responses);
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
@@ -886,6 +908,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(InspectorMessage::Refresh);
 			}
 			DocumentMessage::PasteChainNodes { copies } => {
+				// A chain wires its nodes straight to one another, so the dots bending the wires between the copies only come along to a loose paste
+				let (dot_copies, copies): (Vec<_>, Vec<_>) = copies.into_iter().partition(ChainNodeCopy::is_redirect_dot);
+
 				// Layers and their chains live in the document network, so a nested one open in the graph has no chain to paste into
 				let (chain_nodes, layers) = if self.selection_network_path.is_empty() {
 					let layers = self.network_interface.selected_nodes().selected_layers(self.metadata()).map(|layer| layer.to_node()).collect();
@@ -909,9 +934,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Each selected layer gets all the copies at the end of its chain
 				insertions.extend(layers.into_iter().map(|layer| (ChainInsertionPoint::BesideLayer(layer), copies.clone())));
 
-				// With no chain to go in, such as over an empty selection, the copies are pasted loose into the graph and shown there
+				// With no chain to go in, such as over an empty selection, the copies are pasted loose into the graph and shown there, still wired to one another
 				if insertions.is_empty() {
-					let nodes = copies.into_iter().map(|copy| (copy.source, copy.into_loose_template())).collect();
+					let pasted = copies.iter().chain(&dot_copies).map(|copy| copy.source).collect::<HashSet<_>>();
+					let nodes = copies.into_iter().chain(dot_copies).map(|copy| (copy.source, copy.into_loose_template(&pasted))).collect();
 					responses.add(NodeGraphMessage::InsertNodes { nodes });
 					responses.add(DocumentMessage::ShowSelectionInGraph);
 					return;
@@ -1485,11 +1511,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.graph_fade_artwork_percentage = percentage;
 				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
 			}
+			DocumentMessage::SetLayerNameInGraph { node_id, name } => {
+				responses.add(NodeGraphMessage::SetDisplayName {
+					node_id,
+					network_path: self.breadcrumb_network_path.clone(),
+					alias: name,
+					skip_adding_history_step: false,
+				});
+			}
 			DocumentMessage::SetLayersPanelHoveredLayer { id } => {
 				let layer = id.filter(|id| self.network_interface.is_layer(id, &[])).map(LayerNodeIdentifier::new_unchecked);
 				if layer != self.layers_panel_hovered_layer {
 					self.layers_panel_hovered_layer = layer;
 					responses.add(OverlaysMessage::Draw);
+				}
+			}
+			DocumentMessage::SetLayersPanelView { layers, layers_missing_details } => {
+				self.layers_in_view.set_layers_panel(layers.into_iter().collect(), responses);
+				if !layers_missing_details.is_empty() {
+					responses.add(NodeGraphMessage::SendLayerPanelDetails { layers: layers_missing_details });
 				}
 			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
@@ -1715,6 +1755,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(DocumentMessage::DocumentStructureChanged);
+			}
+			DocumentMessage::ToggleNodeVisibility { node_id } => {
+				responses.add(NodeGraphMessage::ToggleVisibility {
+					node_id,
+					network_path: self.selection_network_path.clone(),
+				});
 			}
 			DocumentMessage::ToggleSelectedLocked => responses.add(NodeGraphMessage::ToggleSelectedLocked),
 			DocumentMessage::ToggleSelectedVisibility => {
@@ -1933,6 +1980,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
+					responses.add(NodeGraphMessage::UpdateHoveredConnector);
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
@@ -2589,11 +2637,21 @@ impl DocumentMessageHandler {
 			false
 		};
 
+		let chain_rows = if self.layers_panel_expanded_chains.contains(&layer_id) {
+			self.network_interface.layer_chain_nodes(layer_id, &[]).len() as u32
+		} else {
+			0
+		};
+
 		LayerStructureEntry {
 			layer_id,
 			children,
 			children_present,
 			descendant_selected,
+			selected: selected_layers.contains(&layer_id),
+			visible: self.network_interface.is_visible(&layer_id, &[]),
+			unlocked: !self.network_interface.is_locked(&layer_id, &[]),
+			chain_rows,
 		}
 	}
 
@@ -2768,6 +2826,8 @@ impl DocumentMessageHandler {
 	pub fn undo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let network_interface = self.history.pop_undo()?;
+		// Settled first, so the interface stored for redo keeps none of the offsets of a glide underway
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
@@ -2794,6 +2854,8 @@ impl DocumentMessageHandler {
 	pub fn redo(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<NodeNetworkInterface> {
 		// If there is no history return and don't broadcast SelectionChanged
 		let network_interface = self.history.pop_redo()?;
+		// Settled first, as when undoing
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		let previous_network = self.install_history_snapshot(network_interface, viewport);
 
 		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
@@ -2879,6 +2941,8 @@ impl DocumentMessageHandler {
 	pub fn partition_selection(&self) -> SelectionParts {
 		let selected_nodes = self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path).unwrap_or_default();
 		let selected_nodes = selected_nodes.selected_nodes().copied().collect::<Vec<_>>();
+		// Redirect dots are part of their wires, so they are copied only along with the nodes they connect
+		let selected_nodes = self.network_interface.selection_with_bridging_dots(selected_nodes, &self.selection_network_path);
 		if !self.selection_network_path.is_empty() {
 			return SelectionParts {
 				layers: Vec::new(),
@@ -2902,6 +2966,9 @@ impl DocumentMessageHandler {
 
 			chain_nodes = self.selected_reorderable_chain_nodes().into_iter().filter(|node_id| other_nodes.contains(node_id)).collect();
 			other_nodes.retain(|node_id| !chain_nodes.contains(node_id));
+
+			// Dots leading to a layer or chain node are dropped, since those nodes go separately
+			other_nodes = self.network_interface.selection_with_bridging_dots(other_nodes, &[]);
 		}
 
 		SelectionParts { layers, chain_nodes, other_nodes }
@@ -3807,7 +3874,7 @@ impl DocumentMessageHandler {
 					});
 
 					let mut node_chooser = NodeCatalog::new();
-					node_chooser.intial_search = compatible_type.unwrap_or("".to_string());
+					node_chooser.initial_search = compatible_type.unwrap_or("".to_string());
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {
@@ -4317,6 +4384,7 @@ fn deserialize_collapsed_layers<'de, D: serde::Deserializer<'de>>(deserializer: 
 mod document_message_handler_tests {
 	use super::*;
 	use crate::consts::{BIG_NUDGE_AMOUNT, NUDGE_AMOUNT};
+	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
 
@@ -4557,8 +4625,8 @@ mod document_message_handler_tests {
 			.unwrap();
 		editor.runtime.run().await;
 
-		let mut messages = VecDeque::new();
-		editor.editor.poll_node_graph_evaluation(&mut messages).unwrap();
+		let frontend_messages = editor.editor.handle_message(Message::Wake);
+		assert!(!frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }));
 	}
 
 	#[tokio::test]

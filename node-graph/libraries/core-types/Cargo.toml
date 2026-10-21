@@ -50,6 +50,7 @@ lyon_geom = { workspace = true }
 log = { workspace = true }
 base64 = { workspace = true }
 polycool = { workspace = true }
+futures = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
@@ -58,5 +59,4 @@ wasm-bindgen = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies
-tokio = { workspace = true }
 serde_json = { workspace = true }

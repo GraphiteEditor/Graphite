@@ -565,7 +565,15 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				// Switching tools keeps the spline drawn so far, like the Pen tool, but leaves its ends unjoined as the tool won't be active to finish them
+				if tool_data.points.len() <= 1 {
+					responses.add(DocumentMessage::AbortTransaction);
+				} else {
+					delete_preview(tool_data, responses);
+					responses.add(DocumentMessage::EndTransaction);
+				}
+
+				tool_data.cleanup();
 				SplineToolFsmState::Ready
 			}
 			(SplineToolFsmState::Ready, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
@@ -690,15 +698,13 @@ mod test_spline_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use graphene_std::vector::Vector;
+	use graphene_std::vector::VectorGeometry;
 
-	fn assert_point_positions(vector: &Vector, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
+	fn assert_point_positions(vector: &VectorGeometry, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
 		let points_in_viewport: Vec<DVec2> = vector
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector.point_domain.position_from_id(point_id)?;
+			.anchor_points()
+			.filter_map(|point_id| {
+				let position = vector.position_from_id(point_id)?;
 				Some(layer_to_viewport.transform_point2(position))
 			})
 			.collect();
@@ -726,7 +732,7 @@ mod test_spline_tool {
 		let document = editor.active_document();
 		let vector = document.network_interface.compute_modified_vector(layer).expect("The spline should have a path");
 
-		assert_eq!(vector.point_domain.ids().len(), expected.len(), "Unexpected point count");
+		assert_eq!(vector.anchor_points().count(), expected.len(), "Unexpected point count");
 		assert_point_positions(&vector, document.metadata().transform_to_viewport(layer), expected, 1e-6);
 	}
 
@@ -763,8 +769,8 @@ mod test_spline_tool {
 		let first_vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify initial spline has correct number of points and segments
-		let initial_point_count = first_vector.point_domain.ids().len();
-		let initial_segment_count = first_vector.segment_domain.ids().len();
+		let initial_point_count = first_vector.anchor_points().count();
+		let initial_segment_count = first_vector.segment_ids().len();
 		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {initial_point_count}");
 		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {initial_segment_count}");
 
@@ -772,7 +778,7 @@ mod test_spline_tool {
 
 		let endpoints: Vec<(PointId, DVec2)> = first_vector
 			.anchor_endpoints()
-			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
+			.filter_map(|point_id| first_vector.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 
 		assert_eq!(endpoints.len(), 2, "Expected 2 endpoints in the initial spline");
@@ -797,8 +803,8 @@ mod test_spline_tool {
 			.expect("Vector not found for the extended spline layer");
 
 		// Verify extended spline has correct number of points and segments
-		let extended_point_count = extended_vector.point_domain.ids().len();
-		let extended_segment_count = extended_vector.segment_domain.ids().len();
+		let extended_point_count = extended_vector.anchor_points().count();
+		let extended_segment_count = extended_vector.segment_ids().len();
 
 		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {extended_point_count}");
 		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {extended_segment_count}");
@@ -989,8 +995,8 @@ mod test_spline_tool {
 		let vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify we have the correct number of points and segments
-		let point_count = vector.point_domain.ids().len();
-		let segment_count = vector.segment_domain.ids().len();
+		let point_count = vector.anchor_points().count();
+		let segment_count = vector.segment_ids().len();
 
 		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {point_count}");
 		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {segment_count}");
@@ -1132,8 +1138,9 @@ mod test_spline_tool {
 		editor.draw_spline(&ARCH).await;
 		let first = spline_layers(&editor)[0];
 
+		// Aborted before placing a point of its own, the extension is dropped
 		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, ARCH[2], ModifierKeys::empty()).await;
-		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(500., 200.), ModifierKeys::empty()).await;
+		editor.move_mouse(500., 200., ModifierKeys::empty(), MouseKeys::empty()).await;
 		editor.handle_message(SplineToolMessage::Abort).await;
 		assert_spline_points(&editor, first, &ARCH);
 
@@ -1143,5 +1150,42 @@ mod test_spline_tool {
 
 		let second = spline_layers(&editor).into_iter().find(|&layer| layer != first).expect("A second spline should have been drawn");
 		assert_spline_points(&editor, second, &[center, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn switching_tools_mid_spline_keeps_the_spline() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Spline).await;
+		for point in ARCH {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+		editor.move_mouse(500., 200., ModifierKeys::empty(), MouseKeys::empty()).await;
+
+		// The Select tool's own abort, which runs as it becomes active, would otherwise cancel the spline's open edit
+		editor.select_tool(ToolType::Select).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &ARCH);
+
+		// The finished spline is one step of history
+		editor.press(Key::KeyZ, ModifierKeys::CONTROL).await;
+		assert!(spline_layers(&editor).is_empty(), "Undo should remove the whole spline");
+	}
+
+	#[tokio::test]
+	async fn an_extension_is_kept_when_switching_tools() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_spline(&ARCH).await;
+		let first = spline_layers(&editor)[0];
+
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, ARCH[2], ModifierKeys::empty()).await;
+		let extension = DVec2::new(500., 200.);
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, extension, ModifierKeys::empty()).await;
+		editor.select_tool(ToolType::Rectangle).await;
+
+		assert_spline_points(&editor, first, &[ARCH[0], ARCH[1], ARCH[2], extension]);
 	}
 }

@@ -1,4 +1,4 @@
-use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
+use super::shape_utility::{ShapeToolModifierKey, drawn_flipped};
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -43,13 +43,13 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
+			self.number_of_points_dial.update_number_of_sides(view.document, view.input, responses, drag_start);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.point_radius_handle.update_inner_radius(view, snap_session, responses, drag_start);
 		}
 	}
 
@@ -132,13 +132,17 @@ impl Star {
 		let document = view.document;
 		let [center, lock_ratio, _] = modifier;
 
-		let points = extract_star_parameters(Some(layer), document)
-			.map(|(sides, _, _)| star_points(sides, INNER_RADIUS_WHILE_DRAWING))
-			.unwrap_or_default();
+		let sides = extract_star_parameters(Some(layer), document).map(|(sides, _, _)| sides);
+		let flipped = sides.is_some_and(|sides| drawn_flipped(sides, shape_tool_data.data.viewport_drag_start(document), view.input.mouse.position));
+		let points: Vec<DVec2> = sides
+			.map(|sides| star_points(sides, INNER_RADIUS_WHILE_DRAWING))
+			.unwrap_or_default()
+			.into_iter()
+			.map(|point| if flipped { -point } else { point })
+			.collect();
+
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(snap_session, view, center, lock_ratio, &points) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
-			update_radius_sign(end, start, layer, document, responses);
-
 			let dimensions = (start - end).abs();
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
@@ -152,6 +156,7 @@ impl Star {
 			};
 
 			let radius = radius / viewport_zoom(document);
+			let radius = if flipped { -radius } else { radius };
 
 			let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) else {
 				return;

@@ -11,6 +11,8 @@ pub const STACK_VERTICAL_GAP: i32 = 3;
 pub const LAYER_INDENT_OFFSET: i32 = 8;
 /// Horizontal grid width of a non-layer node in a chain.
 pub const NODE_CHAIN_WIDTH: i32 = 7;
+/// How quickly a dragged node glides into the grid cell it moves to, as the time it takes to cover all but 1/e (about 37%) of the remaining distance.
+pub const NODE_GLIDE_TIME_CONSTANT_MILLISECONDS: f64 = 30.;
 
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
@@ -134,11 +136,10 @@ pub const BRUSH_FLOW_DEFAULT: f64 = 100.;
 pub const EYEDROPPER_PREVIEW_AREA_RESOLUTION: u32 = 11;
 
 // GIZMOS
-pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
+pub const SPIRAL_END_HOVER_RADIUS: f64 = 8.;
 pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION: f64 = 1.2;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH: f64 = 10.;
-pub const ARC_SNAP_THRESHOLD: f64 = 5.;
 pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
@@ -178,6 +179,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// How far, in viewport pixels, the second press of a double-click can land from the first, and how far the first can travel before its release.
+pub const DOUBLE_CLICK_ALLOWED_TRAVEL: f64 = 4.;
 /// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
 pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
 

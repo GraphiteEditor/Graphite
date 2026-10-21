@@ -130,7 +130,7 @@ fn mirror_layer(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -
 			let curves_drawn: HashSet<[[i64; 2]; 4]> = drawn_curves.iter().map(rounded_curve).collect();
 			let role = |drawn: bool| if drawn { GeometryRole::Source } else { GeometryRole::Undrawn };
 
-			anchors.extend(vector.point_domain.iter().map(|(id, position)| {
+			anchors.extend(vector.anchors().map(|(id, position)| {
 				let position = to_document.transform_point2(position);
 				SceneAnchor {
 					position,

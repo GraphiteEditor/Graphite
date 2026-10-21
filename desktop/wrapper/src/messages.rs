@@ -79,7 +79,6 @@ pub enum DesktopWrapperMessage {
 	Input(InputMessage),
 	IngestFile { path: PathBuf, content: Vec<u8>, action: IngestAction },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
-	PollNodeGraphEvaluation,
 	UpdateMaximized { maximized: bool },
 	UpdateFullscreen { fullscreen: bool },
 	LoadPersistedState { state: PersistedState },

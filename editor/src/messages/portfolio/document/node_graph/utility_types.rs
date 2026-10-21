@@ -79,6 +79,9 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
+	/// Whether the node is a redirect dot, which is a Passthrough node drawn as a small dot bending the wire running through it.
+	#[serde(rename = "isRedirectDot")]
+	pub is_redirect_dot: bool,
 	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
@@ -189,8 +192,17 @@ pub struct ContextMenuInformation {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphErrorDiagnostic {
+	/// The node the error is shown beside, which it follows as the node glides into place.
+	#[serde(rename = "nodeId")]
+	pub node_id: NodeId,
 	pub position: (i32, i32),
 	pub error: String,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeEvaluationError {
+	pub node_path: Vec<NodeId>,
+	pub message: String,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

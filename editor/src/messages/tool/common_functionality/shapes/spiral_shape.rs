@@ -38,9 +38,9 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, _drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, _drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.turns_handle.is_dragging() {
-			self.turns_handle.update_number_of_turns(document, input, responses);
+			self.turns_handle.update_number_of_turns(view, snap_session, responses);
 		}
 	}
 

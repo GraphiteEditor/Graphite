@@ -16,8 +16,11 @@
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 
+	// A node without parameters has nothing to show, so its section stays collapsed with its arrow grayed out, like the Layers panel's
+	$: expandable = widgetData.layout.length > 0;
+
 	// Whether the section is expanded is owned by the backend (persisted per node), so just reflect it here
-	$: expanded = widgetData.expanded;
+	$: expanded = widgetData.expanded && expandable;
 
 	// The sections of the chain feeding one of this node's inputs, which follow its own rows and are shown beneath them
 	$: chainSections = widgetData.layout.flatMap((layoutGroup) => ("NodeSection" in layoutGroup && layoutGroup.NodeSection.outputWire ? [layoutGroup.NodeSection] : []));
@@ -30,6 +33,8 @@
 
 	// Like the Layers panel's expand arrows, a modifier key applies the toggle recursively to the sections nested within
 	function toggleExpandedWithModifiers(e: MouseEvent) {
+		if (!expandable) return;
+
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		editor.toggleNodeInspectorSectionExpanded(widgetData.id, e.altKey || accel);
 	}
@@ -45,42 +50,46 @@
 		"output-wire": Boolean(widgetData.outputWire),
 		"output-wire-list": Boolean(widgetData.outputWire?.isList),
 		"node-reference": widgetData.nodeReference,
+		"content-wire": Boolean(widgetData.contentWire),
+		"content-wire-list": Boolean(widgetData.contentWire?.isList),
+		"content-wire-continues": widgetData.contentWireContinues,
 		collapsed: !expanded,
 	}}
 	styles={{
 		"--chain-wire-color": widgetData.chainWire && `var(--color-data-${widgetData.chainWire.dataType.toLowerCase()}-dim)`,
 		"--output-wire-color": widgetData.outputWire && `var(--color-data-${widgetData.outputWire.dataType.toLowerCase()}-dim)`,
+		"--content-wire-color": widgetData.contentWire && `var(--color-data-${widgetData.contentWire.dataType.toLowerCase()}-dim)`,
 	}}
 	data-inspector-reorderable-section={reorderable ? "" : undefined}
 	data-node-id={reorderable ? String(widgetData.id) : undefined}
 >
 	{#if widgetData.nodeReference}
+		{#if widgetData.contentWireContinues}
+			<div class="content-wire-continuation"></div>
+		{/if}
 		{#each widgetData.layout as layoutGroup}
 			{#if "Row" in layoutGroup}
 				<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
 			{/if}
 		{/each}
 	{:else}
-		<button
-			class="header"
-			class:expanded
-			data-tooltip-label={widgetData.name}
-			data-tooltip-description={widgetData.description}
-			data-inspector-reorder-handle={reorderable ? "" : undefined}
-			on:click|stopPropagation={toggleExpandedWithModifiers}
-		>
+		<button class="header" class:expanded class:expandable data-inspector-reorder-handle={reorderable ? "" : undefined} on:click|stopPropagation={toggleExpandedWithModifiers}>
 			<div
-				class="expand-arrow"
-				data-tooltip-label={expanded ? "Collapse (All)" : "Expand (All)"}
-				data-tooltip-description={expanded
-					? "Hide this node's parameters. (To also collapse every node nested within, perform the shortcut shown.)"
-					: "Show this node's parameters. (To also expand every node nested within, perform the shortcut shown.)"}
-				data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
-			></div>
-			{#if widgetData.icon}
-				<IconLabel icon={widgetData.icon} />
-			{/if}
-			<TextLabel bold={true}>{widgetData.name}</TextLabel>
+				class="icon-slot"
+				data-tooltip-label={!expandable ? undefined : expanded ? "Collapse (All)" : "Expand (All)"}
+				data-tooltip-description={!expandable
+					? undefined
+					: expanded
+						? "Hide this node's parameters. (To also collapse every node nested within, perform the shortcut shown.)"
+						: "Show this node's parameters. (To also expand every node nested within, perform the shortcut shown.)"}
+				data-tooltip-shortcut={expandable && $tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
+			>
+				{#if widgetData.icon}
+					<IconLabel icon={widgetData.icon} />
+				{/if}
+				<div class="expand-arrow"></div>
+			</div>
+			<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description}>{widgetData.name}</TextLabel>
 			<IconButton
 				icon="Trash"
 				tooltipDescription="Delete this node from the layer chain."
@@ -107,14 +116,17 @@
 				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 				size={24}
 				action={(e) => {
-					editor.toggleNodeVisibilityLayerPanel(widgetData.id);
+					editor.toggleNodeVisibilityInspector(widgetData.id);
 					e?.stopPropagation();
 				}}
 				class={widgetData.visible ? "show-only-on-hover" : ""}
 			/>
+			{#if reorderable}
+				<div class="drag-grip" data-tooltip-description="Drag to reorder this node." on:click|stopPropagation={() => undefined} role="presentation"></div>
+			{/if}
 		</button>
 		{#if expanded}
-			<LayoutCol class="body" data-block-hover-transfer>
+			<LayoutCol class="body" data-block-hover-transfer data-section-contents>
 				{#each widgetData.layout as layoutGroup}
 					{#if "Row" in layoutGroup}
 						<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
@@ -124,7 +136,7 @@
 				{/each}
 			</LayoutCol>
 			{#if chainSections.length > 0}
-				<LayoutCol class="chain-sections">
+				<LayoutCol class="chain-sections" data-section-contents>
 					{#each chainSections as chainSection}
 						<svelte:self widgetData={chainSection} {layoutTarget} />
 					{/each}
@@ -136,11 +148,32 @@
 
 <style lang="scss">
 	.node-section {
+		--section-outline: var(--color-2-mildblack);
+		// Where the icon is centered, and the wire running down through the sections: 4px inside the 1px outline, plus half the 16px icon
+		--wire-center: calc(1px + 4px + 16px / 2);
+		// Between neighboring sections, which the wires joining them cross
+		--section-gap: 8px;
 		flex: 0 0 auto;
 		margin: 0 4px;
 
 		+ .node-section {
-			margin-top: 4px;
+			margin-top: var(--section-gap);
+		}
+
+		// Hovered over its header or parameters (but not a section nested among them, which reacts instead), its outline lightens and its icon becomes the expand arrow.
+		// The chain shown below doesn't count, so passing between its sections leaves this one alone.
+		&:has(> .header:hover, > .body:hover):not(:has(.node-section:hover)) {
+			--section-outline: var(--color-4-dimgray);
+
+			> .header .icon-slot {
+				.icon-label {
+					display: none;
+				}
+
+				.expand-arrow {
+					display: flex;
+				}
+			}
 		}
 
 		// A section showing the chain feeding one of its inputs, which it frames below its rows, with a wire rising from them through its body into that input
@@ -148,15 +181,15 @@
 			--chain-wire-corner-radius: 4px;
 			--chain-wire-width: 2px;
 			--chain-section-indent: 8px;
-			// Within the body's border, the wire's centerline rises in line with the indented chain sections' expand arrows
-			--chain-wire-x: calc(var(--chain-section-indent) + 12px - 1px);
+			// Within the body's border, the wire's centerline rises in line with the indented chain sections' icons
+			--chain-wire-x: calc(var(--chain-section-indent) + var(--wire-center) - 1px);
 
 			// Like in the graph, a list's wire is a 1px line, 2px gap, and 1px line
 			&.chain-wire-list {
 				--chain-wire-width: 4px;
 			}
 
-			// The body continues down into the frame around the chain's sections
+			// The body continues down into the frame around the chain's sections, the first right beneath its rows
 			> .body {
 				position: relative;
 				border-bottom: none;
@@ -171,9 +204,9 @@
 
 			// The chain's sections, indented on the left and sharing the right edge, with the wire to the body crossing the gap atop the first
 			> .chain-sections {
-				padding: 4px 0 calc(var(--chain-section-indent) - 1px) calc(var(--chain-section-indent) - 1px);
+				padding: 0 0 calc(var(--chain-section-indent) - 1px) calc(var(--chain-section-indent) - 1px);
 				background: var(--color-3-darkgray);
-				border: 1px solid var(--color-2-mildblack);
+				border: 1px solid var(--section-outline);
 				border-top: none;
 				border-radius: 0 0 4px 4px;
 
@@ -183,9 +216,9 @@
 					margin-right: -1px;
 				}
 
-				// Keeps the frame below as thick as beside
-				> .node-section.collapsed:last-child > .header {
-					margin-bottom: 0;
+				// With no gap above the first to cross, the body's wire meets it directly
+				> .node-section:first-child::before {
+					display: none;
 				}
 			}
 
@@ -230,33 +263,95 @@
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
-				left: calc(12px - var(--output-wire-width) / 2);
-				top: -4px;
+				left: calc(var(--wire-center) - var(--output-wire-width) / 2);
+				top: calc(-1 * var(--section-gap));
 				width: var(--output-wire-width);
-				height: 4px;
+				height: var(--section-gap);
 				border-left: 1px solid var(--output-wire-color);
 				border-right: 1px solid var(--output-wire-color);
 				pointer-events: none;
 			}
 		}
 
-		// A collapsed section keeps its header's bottom margin, which the wire from the section below crosses too
-		&.collapsed + .node-section.output-wire::before {
-			top: calc(-4px - 4px);
-			height: calc(4px + 4px);
-		}
-
-		// The layer whose stack feeds the bottom of a chain, only referred to by a button like the Data panel's, its 16px icon centered on the wire reaching down to it
+		// A layer only referred to by a button like the Data panel's, its 16px icon centered on the wire reaching it
 		&.node-reference {
-			// As wide as its contents, unlike the Inspector's buttons that share their row
-			.text-button {
-				flex-basis: auto;
-				padding-left: calc(12px - 16px / 2);
+			// Only as tall as the button, so it's spaced from the sections around it like they are from each other
+			> .widget-span.row {
+				--row-height: 24px;
 			}
 
-			// Down to the 24px button centered in its 32px row
+			// As wide as its contents, unlike the Inspector's buttons that share their row, and flush within an outline like the sections'
+			.text-button {
+				flex-basis: auto;
+				padding-left: calc(var(--wire-center) - 16px / 2);
+				--button-background-color: none;
+				box-shadow: inset 0 0 0 1px var(--section-outline);
+
+				&:hover:not(.disabled) {
+					--button-background-color: var(--color-5-dullgray);
+					--section-outline: var(--color-4-dimgray);
+				}
+			}
+		}
+
+		// Layers taking the wire rising from the section below into their content, indented so it turns in from the left at the middle of their buttons
+		&.content-wire {
+			--content-wire-width: 2px;
+			--content-wire-indent: 20px;
+			position: relative;
+			padding-left: var(--content-wire-indent);
+
+			&.content-wire-list {
+				--content-wire-width: 4px;
+			}
+
+			// Outer and inner 1px lines, rising from the bottom and turning toward the buttons, like the wire into a shown chain's input
+			&::before,
+			&::after {
+				content: "";
+				position: absolute;
+				box-sizing: border-box;
+				right: calc(100% - var(--content-wire-indent));
+				bottom: 0;
+				border-left: 1px solid var(--content-wire-color);
+				border-top: 1px solid var(--content-wire-color);
+				pointer-events: none;
+			}
+
+			&::after {
+				left: calc(var(--wire-center) - var(--content-wire-width) / 2);
+				top: calc(50% - var(--content-wire-width) / 2);
+				border-top-left-radius: 4px;
+			}
+
 			&::before {
-				height: calc(4px + (32px - 24px) / 2);
+				left: calc(var(--wire-center) + var(--content-wire-width) / 2 - 1px);
+				top: calc(50% + var(--content-wire-width) / 2 - 1px);
+				border-top-left-radius: max(0px, 4px - var(--content-wire-width) + 1px);
+			}
+
+			// Also continuing straight up past the turn into the bottom of the buttons above, beneath the turn, which hides where it crosses
+			&.content-wire-continues {
+				.content-wire-continuation {
+					position: absolute;
+					box-sizing: border-box;
+					left: calc(var(--wire-center) - var(--content-wire-width) / 2);
+					width: var(--content-wire-width);
+					top: calc(-1 * var(--section-gap));
+					bottom: 0;
+					border-left: 1px solid var(--content-wire-color);
+					border-right: 1px solid var(--content-wire-color);
+					pointer-events: none;
+				}
+
+				&::after {
+					background: var(--color-3-darkgray);
+					z-index: 1;
+				}
+
+				&::before {
+					z-index: 2;
+				}
 			}
 		}
 
@@ -265,32 +360,45 @@
 			align-items: center;
 			display: flex;
 			flex: 0 0 24px;
-			padding-left: 8px;
-			padding-right: 0;
-			margin-bottom: 4px;
+			padding: 0;
 			border: 0;
 			border-radius: 4px;
-			background: var(--color-2-mildblack);
+			background: none;
+			// The section's outline, continuing up around the header without changing its size
+			box-shadow: inset 0 0 0 1px var(--section-outline);
 
 			&.expanded {
 				border-radius: 4px 4px 0 0;
-				margin-bottom: 0;
+				// Open at the bottom, where the body's sides carry on
+				box-shadow:
+					inset 1px 0 0 var(--section-outline),
+					inset -1px 0 0 var(--section-outline),
+					inset 0 1px 0 var(--section-outline);
 
 				.expand-arrow::after {
 					transform: rotate(90deg);
 				}
 			}
 
-			&:hover {
-				background: var(--color-4-dimgray);
+			&.expandable:hover .expand-arrow::after {
+				background: var(--icon-expand-collapse-arrow-hover);
+			}
 
-				.expand-arrow::after {
-					background: var(--icon-expand-collapse-arrow-hover);
-				}
+			&:not(.expandable) .expand-arrow::after {
+				background: var(--icon-expand-collapse-arrow-disabled);
+			}
 
-				+ .body,
-				~ .chain-sections {
-					border-color: var(--color-4-dimgray);
+			// Centers the icon on the wire, swapping in the expand arrow while the section is hovered
+			.icon-slot {
+				flex: 0 0 24px;
+				height: 24px;
+				margin-left: calc(var(--wire-center) - 24px / 2);
+				display: flex;
+				align-items: center;
+				justify-content: center;
+
+				.expand-arrow {
+					display: none;
 				}
 			}
 
@@ -301,7 +409,6 @@
 				padding: 0;
 				position: relative;
 				flex: 0 0 auto;
-				display: flex;
 				align-items: center;
 				justify-content: center;
 
@@ -314,14 +421,26 @@
 				}
 			}
 
-			> .icon-label {
-				margin-left: 8px;
+			// Like a graph layer's grip
+			.drag-grip {
+				flex: 0 0 auto;
+				width: 8px;
+				height: 24px;
+				// Padding rather than margin, so the gaps count toward the tooltip's hover area
+				padding: 0 4px;
+				background-image: var(--icon-drag-grip);
+				background-position: calc(4px + 2px) 8px;
+				background-repeat: no-repeat;
+
+				&:hover {
+					background-image: var(--icon-drag-grip-hover);
+				}
 			}
 
 			// As wide as the name, with the buttons pushed to the end
 			.text-label {
 				height: 18px;
-				margin-left: 8px;
+				margin-left: 4px;
 				margin-right: auto;
 				flex: 0 1 auto;
 				overflow: hidden;
@@ -340,7 +459,9 @@
 			padding-top: 1px;
 			margin-top: -1px;
 			background: var(--color-3-darkgray);
-			border: 1px solid var(--color-2-mildblack);
+			border: 1px solid var(--section-outline);
+			// No line between it and the header, which shares its outline
+			border-top-color: transparent;
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 
@@ -397,15 +518,19 @@
 					}
 				}
 
-				// With no value widget after it, a chain toggle takes the rest of the row, only shrinking once that runs out
+				// A chain toggle is only as wide as its text, so the rest of the row isn't clickable, only shrinking once the row runs out
 				> .text-label.parameter-chain-toggle:first-of-type {
-					flex-grow: 1;
-					flex-shrink: 1;
+					flex: 0 1 auto;
 					min-width: 0;
 				}
 
 				> .parameter-expose-button + .text-label:first-of-type {
 					margin-left: 8px;
+				}
+
+				// A label alone in its row lines up with the parameter names that follow their expose buttons
+				> .text-label:only-child {
+					margin-left: calc(20px + 8px + 8px);
 				}
 
 				> .separator.horizontal.unrelated {

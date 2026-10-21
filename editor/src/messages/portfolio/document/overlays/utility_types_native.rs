@@ -18,7 +18,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
-use graphene_std::vector::{PointId, SegmentId, Vector};
+use graphene_std::vector::{PointId, SegmentId, Vector, VectorGeometry, no_paths, paths_from_list_row_attributes};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
@@ -379,7 +379,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
 		self.internal().outline_vector(vector, transform);
 	}
 
@@ -930,7 +930,7 @@ impl OverlayContextInternal {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 
@@ -1148,7 +1148,8 @@ impl OverlayContextInternal {
 			let transform: DAffine2 = text_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let Some(element) = text_list.element(index) else { continue };
-			for (_, bezier, start_id, end_id) in element.segment_iter() {
+			let paths = paths_from_list_row_attributes(text_list, index).unwrap_or_else(|| no_paths());
+			for (_, bezier, start_id, end_id) in element.segment_iter(paths) {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 

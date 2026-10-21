@@ -153,6 +153,44 @@ impl_glam_array! {
 	glam::Quat, glam::DQuat,
 }
 
+// kurbo path types: hash each element's verb and point coordinates via to_bits().
+#[cfg(feature = "std")]
+impl CacheHash for kurbo::Point {
+	#[inline]
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.x.cache_hash(state);
+		self.y.cache_hash(state);
+	}
+}
+
+#[cfg(feature = "std")]
+impl CacheHash for kurbo::PathEl {
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&core::mem::discriminant(self), state);
+		match self {
+			kurbo::PathEl::MoveTo(point) | kurbo::PathEl::LineTo(point) => point.cache_hash(state),
+			kurbo::PathEl::QuadTo(handle, point) => {
+				handle.cache_hash(state);
+				point.cache_hash(state);
+			}
+			kurbo::PathEl::CurveTo(handle_start, handle_end, point) => {
+				handle_start.cache_hash(state);
+				handle_end.cache_hash(state);
+				point.cache_hash(state);
+			}
+			kurbo::PathEl::ClosePath => {}
+		}
+	}
+}
+
+#[cfg(feature = "std")]
+impl CacheHash for kurbo::BezPath {
+	#[inline]
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		self.elements().cache_hash(state);
+	}
+}
+
 // Generic container impls.
 impl<T: CacheHash> CacheHash for Option<T> {
 	#[inline]
@@ -191,6 +229,17 @@ impl<T: CacheHash> CacheHash for Vec<T> {
 	#[inline]
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.as_slice().cache_hash(state);
+	}
+}
+
+#[cfg(feature = "std")]
+impl<T: CacheHash> CacheHash for std::collections::BTreeSet<T> {
+	#[inline]
+	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
+		core::hash::Hash::hash(&self.len(), state);
+		for item in self {
+			item.cache_hash(state);
+		}
 	}
 }
 

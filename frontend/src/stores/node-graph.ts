@@ -13,12 +13,15 @@ type NodeGraphStoreState = {
 	box: BoxSelection | undefined;
 	clickTargets: FrontendClickTargets | undefined;
 	contextMenuInformation: ContextMenuInformation | undefined;
-	error: NodeGraphErrorDiagnostic | undefined;
+	errors: NodeGraphErrorDiagnostic[];
 	layerWidths: Map<bigint, number>;
 	chainWidths: Map<bigint, number>;
 	hasLeftInputWire: Map<bigint, boolean>;
 	nodes: Map<bigint, FrontendNode>;
 	wirePathInProgress: WirePath | undefined;
+	wireInProgressDraggedFrom: [number, number] | undefined;
+	wireInProgressSnappedTo: [number, number] | undefined;
+	hoveredConnector: [number, number] | undefined;
 	nodeDescriptions: Map<string, string>;
 	nodeIcons: Map<string, IconName>;
 	nodeTypes: FrontendNodeType[];
@@ -32,12 +35,15 @@ const initialState: NodeGraphStoreState = {
 	box: undefined,
 	clickTargets: undefined,
 	contextMenuInformation: undefined,
-	error: undefined,
+	errors: [],
 	layerWidths: new Map(),
 	chainWidths: new Map(),
 	hasLeftInputWire: new Map(),
 	nodes: new Map(),
 	wirePathInProgress: undefined,
+	wireInProgressDraggedFrom: undefined,
+	wireInProgressSnappedTo: undefined,
+	hoveredConnector: undefined,
 	nodeDescriptions: new Map(),
 	nodeIcons: new Map(),
 	nodeTypes: [],
@@ -70,6 +76,15 @@ if (import.meta.hot) import.meta.hot.data.visibleNodesStore = visibleNodesStore;
 // Separate wires store so wire path updates (e.g. export connector movement during pan) don't trigger node re-renders
 const wiresStore: Writable<Map<bigint, Map<number, WirePath>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
 if (import.meta.hot) import.meta.hot.data.wiresStore = wiresStore;
+
+// Separate wire insertion preview store so the wires don't re-render with every node graph update
+const wireInsertionPreviewStore: Writable<[bigint, number] | undefined> = import.meta.hot?.data?.wireInsertionPreviewStore || writable(undefined);
+if (import.meta.hot) import.meta.hot.data.wireInsertionPreviewStore = wireInsertionPreviewStore;
+
+// Separate glide offsets store so the per-frame offsets of whatever is gliding into the place it moved to don't trigger full node re-renders
+export type GlideOffsets = { nodes: Map<bigint, [number, number]>; imports: [number, number]; exports: [number, number] };
+const glideOffsetsStore: Writable<GlideOffsets> = import.meta.hot?.data?.glideOffsetsStore || writable<GlideOffsets>({ nodes: new Map(), imports: [0, 0], exports: [0, 0] });
+if (import.meta.hot) import.meta.hot.data.glideOffsetsStore = glideOffsetsStore;
 
 export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
@@ -120,6 +135,17 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateWireInsertionPreview", (data) => {
+		wireInsertionPreviewStore.set(data.wire);
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateHoveredConnector", (data) => {
+		update((state) => {
+			state.hoveredConnector = data.center;
+			return state;
+		});
+	});
+
 	subscriptions.subscribeFrontendMessage("UpdateImportsExports", (data) => {
 		importsExportsStore.set(data);
 	});
@@ -150,9 +176,9 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics", (data) => {
 		update((state) => {
-			state.error = data.error;
+			state.errors = data.errors;
 			return state;
 		});
 	});
@@ -176,6 +202,10 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		if (!changed) return;
 
 		visibleNodesStore.set(newNodes);
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateGlideOffsets", (data) => {
+		glideOffsetsStore.set({ nodes: new Map(data.nodes), imports: data.imports, exports: data.exports });
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
@@ -220,14 +250,23 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateWirePathInProgress", (data) => {
+	subscriptions.subscribeFrontendMessage("ClearNodeThumbnails", (data) => {
 		update((state) => {
-			state.wirePathInProgress = data.wirePath;
+			data.ids.forEach((id) => state.thumbnails.delete(id));
 			return state;
 		});
 	});
 
-	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore };
+	subscriptions.subscribeFrontendMessage("UpdateWirePathInProgress", (data) => {
+		update((state) => {
+			state.wirePathInProgress = data.wirePath;
+			state.wireInProgressDraggedFrom = data.draggedFrom;
+			state.wireInProgressSnappedTo = data.snappedTo;
+			return state;
+		});
+	});
+
+	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore, wireInsertionPreviewStore, glideOffsetsStore };
 }
 
 export function destroyNodeGraphStore() {
@@ -240,17 +279,21 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
 	subscriptions.unsubscribeFrontendMessage("UpdateExportReorderIndex");
+	subscriptions.unsubscribeFrontendMessage("UpdateWireInsertionPreview");
+	subscriptions.unsubscribeFrontendMessage("UpdateHoveredConnector");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
 	subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphNodes");
-	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostic");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphErrorDiagnostics");
 	subscriptions.unsubscribeFrontendMessage("UpdateVisibleNodes");
+	subscriptions.unsubscribeFrontendMessage("UpdateGlideOffsets");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphWires");
 	subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphTransform");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnail");
+	subscriptions.unsubscribeFrontendMessage("ClearNodeThumbnails");
 	subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
 }
 

@@ -162,8 +162,9 @@ impl ToolMessageHandler {
 					}
 				};
 
-				send_abort_to_tool(old_tool, tool_type, true);
+				// The old tool goes first so it can finish its edit before the new tool's abort, which also leaves the new tool's hints and cursor showing
 				send_abort_to_tool(old_tool, old_tool, false);
+				send_abort_to_tool(old_tool, tool_type, true);
 
 				// Nothing a tool was snapping, or had woken, carries over to the next tool
 				self.snap_session.end_gesture();

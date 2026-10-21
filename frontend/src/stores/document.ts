@@ -3,7 +3,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { Layout, RenderStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
 
@@ -15,6 +15,7 @@ type DocumentStoreState = {
 	nodeGraphControlBarLayout: Layout;
 	graphViewOverlayOpen: boolean;
 	fadeArtwork: number;
+	renderStatus: RenderStatus;
 };
 const initialState: DocumentStoreState = {
 	toolOptionsLayout: [],
@@ -24,6 +25,7 @@ const initialState: DocumentStoreState = {
 	nodeGraphControlBarLayout: [],
 	graphViewOverlayOpen: false,
 	fadeArtwork: 100,
+	renderStatus: "Rendering",
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -97,6 +99,13 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateRenderStatus", (data) => {
+		update((state) => {
+			state.renderStatus = data.status;
+			return state;
+		});
+	});
+
 	return { subscribe };
 }
 
@@ -106,6 +115,7 @@ export function destroyDocumentStore() {
 
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
+	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
 	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
 	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
 	subscriptions.unsubscribeLayoutUpdate("ToolShelf");

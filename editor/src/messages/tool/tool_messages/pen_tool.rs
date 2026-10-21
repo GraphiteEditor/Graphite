@@ -22,7 +22,7 @@ use graphene_std::Color;
 use graphene_std::vector::misc::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::style::FillChoice;
-use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
+use graphene_std::vector::{PointId, SegmentId, VectorGeometry, VectorModificationType};
 use kurbo::{BezPath, CubicBez, PathSeg};
 
 #[derive(Default, ExtractField)]
@@ -531,7 +531,7 @@ impl PenToolData {
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
-	fn check_end_handle_type(&self, vector: &Vector) -> TargetHandle {
+	fn check_end_handle_type(&self, vector: &VectorGeometry) -> TargetHandle {
 		match (self.handle_end, self.prior_segment_endpoint, self.prior_segment, self.path_closed) {
 			(Some(_), _, _, false) => TargetHandle::PreviewInHandle,
 			(None, Some(point), Some(segment), false) | (Some(_), Some(point), Some(segment), true) => {
@@ -545,7 +545,7 @@ impl PenToolData {
 		}
 	}
 
-	fn check_grs_end_handle(&self, vector: &Vector) -> TargetHandle {
+	fn check_grs_end_handle(&self, vector: &VectorGeometry) -> TargetHandle {
 		let Some(point) = self.latest_point().map(|point| point.id) else { return TargetHandle::None };
 		let Some(segment) = self.prior_segment else { return TargetHandle::None };
 
@@ -556,7 +556,7 @@ impl PenToolData {
 		}
 	}
 
-	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector: &Vector) -> TargetHandle {
+	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector: &VectorGeometry) -> TargetHandle {
 		match handle_type {
 			TargetHandle::FuturePreviewOutHandle => self.check_end_handle_type(vector),
 			TargetHandle::PreviewInHandle => match (self.path_closed, self.prior_segment_endpoint, self.prior_segment) {
@@ -596,22 +596,28 @@ impl PenToolData {
 			}
 			TargetHandle::PriorInHandle(segment) => {
 				let relative_position = delta - anchor_pos;
-				let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::end(segment),
+					relative_position,
+				};
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 			TargetHandle::PriorOutHandle(segment) => {
 				let relative_position = delta - anchor_pos;
-				let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::primary(segment),
+					relative_position,
+				};
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 			TargetHandle::None => {}
 		}
 	}
 
-	fn target_handle_position(&self, handle_type: TargetHandle, vector: &Vector) -> Option<DVec2> {
+	fn target_handle_position(&self, handle_type: TargetHandle, vector: &VectorGeometry) -> Option<DVec2> {
 		match handle_type {
-			TargetHandle::PriorOutHandle(segment) => ManipulatorPointId::PrimaryHandle(segment).get_position(vector),
-			TargetHandle::PriorInHandle(segment) => ManipulatorPointId::EndHandle(segment).get_position(vector),
+			TargetHandle::PriorOutHandle(segment) => vector.position_of(ManipulatorPointId::PrimaryHandle(segment)),
+			TargetHandle::PriorInHandle(segment) => vector.position_of(ManipulatorPointId::EndHandle(segment)),
 			TargetHandle::PreviewInHandle => self.handle_end,
 			TargetHandle::FuturePreviewOutHandle => Some(self.next_handle_start),
 			TargetHandle::None => None,
@@ -663,7 +669,7 @@ impl PenToolData {
 			let into_merged = self.merging_from.map_or(DAffine2::IDENTITY, |previous| layer_to_document.inverse() * previous);
 
 			for point in &mut self.latest_points {
-				let Some(pos) = vector.point_domain.position_from_id(point.id) else { continue };
+				let Some(pos) = vector.position_from_id(point.id) else { continue };
 				point.handle_start = pos + into_merged.transform_vector2(point.handle_start - point.pos);
 				point.pos = pos;
 			}
@@ -671,7 +677,7 @@ impl PenToolData {
 	}
 
 	/// Re-anchors the in-progress preview segment on the current anchor after undo or redo moved it, using the re-evaluated layer transform.
-	fn resume_preview_from_current_anchor(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, vector: &Vector, responses: &mut VecDeque<Message>) {
+	fn resume_preview_from_current_anchor(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, vector: &VectorGeometry, responses: &mut VecDeque<Message>) {
 		// The segments meeting the current anchor are the ones whose handles the overlays show and the angle lock references
 		let connected_segments: Vec<SegmentId> = self
 			.latest_point()
@@ -757,9 +763,9 @@ impl PenToolData {
 		}
 	}
 
-	fn close_path_on_point(&mut self, vector: &Vector, document: &DocumentMessageHandler, id: PointId, transform: &DAffine2) -> bool {
+	fn close_path_on_point(&mut self, vector: &VectorGeometry, document: &DocumentMessageHandler, id: PointId, transform: &DAffine2) -> bool {
 		for id in vector.anchor_points().filter(|&point| point != id) {
-			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(pos) = vector.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 
@@ -815,7 +821,7 @@ impl PenToolData {
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
 		for id in vector.anchor_points().filter(|&point| point != start) {
-			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(pos) = vector.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 			if transformed_distance_between_squared < snap_point_tolerance_squared {
@@ -839,12 +845,12 @@ impl PenToolData {
 			&& let Some((handles, handle1_pos)) = match self.get_opposite_handle_type(TargetHandle::PreviewInHandle, &vector) {
 				TargetHandle::PriorOutHandle(segment) => {
 					let handles = [HandleId::end(id), HandleId::primary(segment)];
-					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector);
+					let handle1_pos = vector.position_of(handles[1].to_manipulator_point());
 					handle1_pos.map(|pos| (handles, pos))
 				}
 				TargetHandle::PriorInHandle(segment) => {
 					let handles = [HandleId::end(id), HandleId::end(segment)];
-					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector);
+					let handle1_pos = vector.position_of(handles[1].to_manipulator_point());
 					handle1_pos.map(|pos| (handles, pos))
 				}
 				_ => None,
@@ -872,7 +878,7 @@ impl PenToolData {
 				[HandleId::primary(last_segment), HandleId::primary(id)]
 			};
 
-			if let Some(h1) = handles[0].to_manipulator_point().get_position(&vector) {
+			if let Some(h1) = vector.position_of(handles[0].to_manipulator_point()) {
 				let colinear = is_almost_colinear(last_point.pos, h1, last_point.handle_start);
 				responses.add(GraphOperationMessage::Vector {
 					layer,
@@ -894,7 +900,7 @@ impl PenToolData {
 	}
 
 	/// Snaps the slide of the anchor and its handles while Space is held, and returns how far they move in layer space.
-	fn space_anchor_handle_snap(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, mouse: DVec2, vector: &Vector) -> Option<DVec2> {
+	fn space_anchor_handle_snap(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, mouse: DVec2, vector: &VectorGeometry) -> Option<DVec2> {
 		let reference_handle = if self.path_closed { TargetHandle::PreviewInHandle } else { TargetHandle::FuturePreviewOutHandle };
 		let reference_position = transform.transform_point2(self.target_handle_position(reference_handle, vector)?);
 
@@ -996,7 +1002,7 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle(self.handle_mode))
 	}
 
-	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector: &Vector) {
+	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector: &VectorGeometry) {
 		if self.handle_end.is_none()
 			&& let Some(latest_pt) = self.latest_point_mut()
 		{
@@ -1122,7 +1128,7 @@ impl PenToolData {
 	}
 
 	/// Makes the opposite handle equidistant or locks its length.
-	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector: &Vector) {
+	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector: &VectorGeometry) {
 		let opposite_handle_type = self.get_opposite_handle_type(self.handle_type, vector);
 		match self.handle_mode {
 			HandleMode::ColinearEquidistant => {
@@ -1159,7 +1165,7 @@ impl PenToolData {
 		}
 	}
 
-	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector: &Vector) {
+	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector: &VectorGeometry) {
 		let Some(handle) = self.target_handle_position(self.handle_type, vector) else { return };
 
 		if (anchor_pos - handle).length() < 1e-6 && self.modifiers.lock_angle {
@@ -1193,7 +1199,7 @@ impl PenToolData {
 		if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
 			let transform = document.metadata().document_to_viewport * transform;
 			for point in vector.anchor_points() {
-				let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
+				let Some(pos) = vector.position_from_id(point) else { continue };
 				let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 				let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 				if transformed_distance_between_squared < snap_point_tolerance_squared {
@@ -1367,7 +1373,7 @@ impl PenToolData {
 
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
-		let vector: Option<Vector> = document.network_interface.compute_modified_vector(layer);
+		let vector: Option<VectorGeometry> = document.network_interface.compute_modified_vector(layer);
 		let (handle_start, in_segment) = if let Some(vector) = &vector
 			&& vector.connected_count(point) <= 1
 		{
@@ -1437,8 +1443,8 @@ impl PenToolData {
 		}
 	}
 
-	fn set_lock_angle(&mut self, vector: &Vector, anchor: PointId, segment: Option<SegmentId>) {
-		let anchor_position = vector.point_domain.position_from_id(anchor);
+	fn set_lock_angle(&mut self, vector: &VectorGeometry, anchor: PointId, segment: Option<SegmentId>) {
+		let anchor_position = vector.position_from_id(anchor);
 
 		let Some((anchor_position, segment)) = anchor_position.zip(segment) else {
 			self.handle_mode = HandleMode::Free;
@@ -1825,7 +1831,7 @@ impl Fsm for PenToolFsmState {
 						&& let Some(mut vector) = document.network_interface.compute_modified_vector(layer)
 					{
 						let closest_point = vector.anchor_points().filter(|&id| id != start).find(|&id| {
-							vector.point_domain.position_from_id(id).is_some_and(|pos| {
+							vector.position_from_id(id).is_some_and(|pos| {
 								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
 							})
@@ -1843,10 +1849,8 @@ impl Fsm for PenToolFsmState {
 							for path in closed_paths {
 								let segments = path.edges.iter().filter_map(|edge| {
 									vector
-										.segment_domain
-										.iter()
-										.find(|(id, _, _, _)| id == &edge.id)
-										.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+										.segment_with_pool_endpoints(edge.id)
+										.map(|(segment, start, end)| if start == edge.start { (segment, start, end) } else { (segment.reverse(), end, start) })
 								});
 								if let Some(bezpath) = vector.bezpath_from_segments_ignore_discontinuities(segments) {
 									fill_region.extend(bezpath.elements().iter().copied());
@@ -1972,7 +1976,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				let vector = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer));
-				let anchor_exists = |point: &LastPoint| vector.as_ref().is_some_and(|vector| vector.point_domain.position_from_id(point.id).is_some());
+				let anchor_exists = |point: &LastPoint| vector.as_ref().is_some_and(|vector| vector.position_from_id(point.id).is_some());
 
 				// Rewind past the anchors the reverted path no longer contains, remembering them so redo can advance back through them
 				while tool_data.point_index > 0 && !tool_data.latest_point().is_some_and(anchor_exists) {
@@ -1998,7 +2002,7 @@ impl Fsm for PenToolFsmState {
 				};
 
 				// Advance only through the remembered anchors the re-applied step actually brought back
-				let anchor_exists = |point: &LastPoint| vector.point_domain.position_from_id(point.id).is_some();
+				let anchor_exists = |point: &LastPoint| vector.position_from_id(point.id).is_some();
 				let mut advanced = false;
 				while tool_data.latest_points.get(tool_data.point_index + 1).is_some_and(anchor_exists) {
 					tool_data.point_index += 1;
@@ -2240,7 +2244,7 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Confirm) => {
 				// Confirm to end path
 				if let Some((vector, layer)) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)).zip(layer) {
-					let single_point_in_layer = vector.point_domain.ids().len() == 1;
+					let single_point_in_layer = vector.anchor_points().count() == 1;
 					tool_data.finish_placing_handle(snap_session, view, transform, responses);
 					let latest_points = tool_data.point_index == 0;
 
@@ -2292,7 +2296,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Abort) => {
 				let should_delete_layer = if let Some(vector) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
-					vector.point_domain.ids().len() == 1
+					vector.anchor_points().count() == 1
 				} else {
 					false
 				};
@@ -2398,10 +2402,10 @@ mod test_pen_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::misc::ManipulatorPointId;
-	use graphene_std::vector::{PointId, SegmentId, Vector};
+	use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
 
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
-	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, Vector)> {
+	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, VectorGeometry)> {
 		let document = editor.active_document();
 		let path_identifier = DefinitionIdentifier::Network("Path".into());
 		let mut path_layers = document
@@ -2417,8 +2421,8 @@ mod test_pen_tool {
 
 	fn assert_path_shape(editor: &EditorTestUtils, points: usize, segments: usize) {
 		let (_, vector) = drawn_path(editor).expect("Expected a drawn path");
-		assert_eq!(vector.point_domain.ids().len(), points, "Unexpected point count");
-		assert_eq!(vector.segment_domain.ids().len(), segments, "Unexpected segment count");
+		assert_eq!(vector.anchor_points().count(), points, "Unexpected point count");
+		assert_eq!(vector.segment_ids().len(), segments, "Unexpected segment count");
 	}
 
 	/// Asserts the path's anchors sit at the given viewport positions, in placement order, and that each segment joins consecutive anchors.
@@ -2426,17 +2430,17 @@ mod test_pen_tool {
 		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 
-		let anchor_ids = vector.point_domain.ids();
+		let anchor_ids = vector.anchor_points().collect::<Vec<_>>();
 		assert_eq!(anchor_ids.len(), expected.len(), "Unexpected point count");
 		for (index, (&id, &expected_position)) in anchor_ids.iter().zip(expected).enumerate() {
-			let position = layer_to_viewport.transform_point2(vector.point_domain.position_from_id(id).unwrap());
+			let position = layer_to_viewport.transform_point2(vector.position_from_id(id).unwrap());
 			assert!(
 				position.distance(expected_position) < 1e-6,
 				"Anchor {index} is at {position:?} but was expected at {expected_position:?}"
 			);
 		}
 
-		let segment_ids = vector.segment_domain.ids();
+		let segment_ids = vector.segment_ids();
 		assert_eq!(segment_ids.len(), expected.len().saturating_sub(1), "Unexpected segment count");
 		for (index, &segment) in segment_ids.iter().enumerate() {
 			assert_eq!(vector.segment_start_from_id(segment), Some(anchor_ids[index]), "Segment {index} does not start at anchor {index}");
@@ -2643,7 +2647,7 @@ mod test_pen_tool {
 	fn anchor_positions(editor: &EditorTestUtils) -> Vec<DVec2> {
 		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
-		vector.point_domain.positions().iter().map(|&position| layer_to_viewport.transform_point2(position)).collect()
+		vector.anchor_positions().into_iter().map(|position| layer_to_viewport.transform_point2(position)).collect()
 	}
 
 	async fn set_space_held(editor: &mut EditorTestUtils, held: bool) {
@@ -2759,8 +2763,8 @@ mod test_pen_tool {
 
 		// The last segment runs from C back to A rather than to a new anchor beside it
 		let (_, vector) = drawn_path(&editor).expect("Expected a drawn path");
-		let anchors = vector.point_domain.ids();
-		let closing = vector.segment_domain.ids()[2];
+		let anchors: Vec<_> = vector.anchor_points().collect();
+		let closing = vector.segment_ids()[2];
 		assert_eq!(vector.segment_start_from_id(closing), Some(anchors[2]));
 		assert_eq!(vector.segment_end_from_id(closing), Some(anchors[0]));
 		assert!(anchor_positions(&editor)[0].distance(A) < 1e-6);
@@ -2851,16 +2855,13 @@ mod test_pen_tool {
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 
 		let handles = vector
-			.segment_domain
-			.ids()
-			.iter()
-			.flat_map(|&segment| [ManipulatorPointId::PrimaryHandle(segment), ManipulatorPointId::EndHandle(segment)])
-			.filter_map(|handle| handle.get_position(&vector));
+			.segment_ids()
+			.into_iter()
+			.flat_map(|segment| [ManipulatorPointId::PrimaryHandle(segment), ManipulatorPointId::EndHandle(segment)])
+			.filter_map(|handle| vector.position_of(handle));
 		let mut positions: Vec<DVec2> = vector
-			.point_domain
-			.positions()
-			.iter()
-			.copied()
+			.anchor_positions()
+			.into_iter()
 			.chain(handles)
 			.map(|position| layer_to_viewport.transform_point2(position))
 			.collect();
@@ -2937,7 +2938,7 @@ mod test_pen_tool {
 
 		let document = editor.active_document();
 		let vector = document.network_interface.compute_modified_vector(layer).expect("The second path should have a vector");
-		let first = document.metadata().transform_to_viewport(layer).transform_point2(vector.point_domain.positions()[0]);
+		let first = document.metadata().transform_to_viewport(layer).transform_point2(vector.anchor_positions()[0]);
 
 		// Its next anchor has a handle dragged out of it
 		let (anchor, handle) = (DVec2::new(260., 240.), DVec2::new(300., 270.));
@@ -2958,42 +2959,34 @@ mod test_pen_tool {
 		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 		let leaves_the_anchor = |&segment: &SegmentId| {
-			let start = vector.segment_start_from_id(segment).and_then(|point| vector.point_domain.position_from_id(point));
+			let start = vector.segment_start_from_id(segment).and_then(|point| vector.position_from_id(point));
 			start.is_some_and(|start| layer_to_viewport.transform_point2(start).distance(anchor) < 1e-6)
 		};
 		let joining = vector
-			.segment_domain
-			.ids()
+			.segment_ids()
 			.iter()
 			.copied()
 			.find(|segment| leaves_the_anchor(segment))
 			.expect("A segment should leave the anchor");
-		let leaving = ManipulatorPointId::PrimaryHandle(joining).get_position(&vector).expect("The joining segment should have a handle");
+		let leaving = vector.position_of(ManipulatorPointId::PrimaryHandle(joining)).expect("The joining segment should have a handle");
 		let leaving = layer_to_viewport.transform_point2(leaving);
 		assert!(leaving.distance(handle) < 1e-6, "the joining segment's handle is at {leaving}");
 	}
 
 	/// Finds the point ID whose viewport position is within tolerance of `target`.
-	fn get_anchor_near(vector: &Vector, layer_to_viewport: DAffine2, target: DVec2) -> PointId {
+	fn get_anchor_near(vector: &VectorGeometry, layer_to_viewport: DAffine2, target: DVec2) -> PointId {
 		vector
-			.point_domain
-			.ids()
-			.iter()
-			.copied()
-			.find(|&id| {
-				let pos = vector.point_domain.position_from_id(id).unwrap();
-				layer_to_viewport.transform_point2(pos).distance(target) < 1e-6
-			})
+			.anchors()
+			.find(|&(_id, pos)| layer_to_viewport.transform_point2(pos).distance(target) < 1e-6)
+			.map(|(id, _pos)| id)
 			.unwrap_or_else(|| panic!("No anchor found near {target}"))
 	}
 
 	/// Finds the segment that connects two given point IDs (in either direction).
-	fn get_segment_between(vector: &Vector, point_a: PointId, point_b: PointId) -> SegmentId {
+	fn get_segment_between(vector: &VectorGeometry, point_a: PointId, point_b: PointId) -> SegmentId {
 		vector
-			.segment_domain
-			.ids()
-			.iter()
-			.copied()
+			.segment_ids()
+			.into_iter()
 			.find(|&segment| {
 				let start = vector.segment_start_from_id(segment);
 				let end = vector.segment_end_from_id(segment);
@@ -3003,11 +2996,11 @@ mod test_pen_tool {
 	}
 
 	/// Finds the handle position on `segment` that corresponds to `point`.
-	fn get_handle_at(vector: &Vector, segment: SegmentId, point: PointId) -> Option<DVec2> {
+	fn get_handle_at(vector: &VectorGeometry, segment: SegmentId, point: PointId) -> Option<DVec2> {
 		if vector.segment_start_from_id(segment) == Some(point) {
-			ManipulatorPointId::PrimaryHandle(segment).get_position(vector)
+			vector.position_of(ManipulatorPointId::PrimaryHandle(segment))
 		} else {
-			ManipulatorPointId::EndHandle(segment).get_position(vector)
+			vector.position_of(ManipulatorPointId::EndHandle(segment))
 		}
 	}
 
@@ -3038,10 +3031,41 @@ mod test_pen_tool {
 
 		// The incoming handle stays opposite the outgoing one, which was dragged out from the anchor before it moved
 		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
-		let segment = vector.segment_domain.ids()[0];
-		let incoming = ManipulatorPointId::EndHandle(segment).get_position(&vector).expect("The segment should have an incoming handle");
+		let segment = vector.segment_ids()[0];
+		let incoming = vector.position_of(ManipulatorPointId::EndHandle(segment)).expect("The segment should have an incoming handle");
 		let incoming = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(incoming);
 		assert!(incoming.distance(corner + anchor - handle) < 1e-6, "the incoming handle is at {incoming}");
+	}
+
+	#[tokio::test]
+	async fn a_handle_grabbed_with_g_follows_the_pointer_when_zoomed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+		let zoom = editor.active_document().metadata().document_to_viewport.matrix2.x_axis.length();
+		assert!((zoom - 1.).abs() > 0.1, "the view should be zoomed, not at {zoom}");
+
+		// The second anchor's outgoing handle is dragged out, then grabbed and moved by as much as the pointer
+		let (start, anchor, handle) = (DVec2::new(100., 300.), DVec2::new(250., 220.), DVec2::new(330., 230.));
+		click_pen(&mut editor, start).await;
+		editor.move_mouse(anchor.x, anchor.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(anchor.x, anchor.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+
+		let (grip, travel) = (DVec2::new(500., 150.), DVec2::new(40., 70.));
+		editor.move_mouse(grip.x, grip.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.press(Key::KeyG, ModifierKeys::empty()).await;
+		editor.move_mouse(grip.x + travel.x, grip.y + travel.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		// The next segment starts with the moved handle
+		click_pen(&mut editor, DVec2::new(450., 400.)).await;
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let segment = vector.segment_ids()[1];
+		let outgoing = vector.position_of(ManipulatorPointId::PrimaryHandle(segment)).expect("The segment should have an outgoing handle");
+		let outgoing = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(outgoing);
+		assert!(outgoing.distance(handle + travel) < 1e-6, "the handle is at {outgoing} rather than {}", handle + travel);
 	}
 
 	#[tokio::test]

@@ -1,6 +1,5 @@
 import { get } from "svelte/store";
 import type { DialogStore } from "/src/stores/dialog";
-import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
@@ -39,8 +38,9 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	// But on web, we want to not redirect paste
 	if (import.meta.env.MODE !== "native" && key === "KeyV" && accelKey) return false;
 
-	// Don't redirect user input from text entry into HTML elements
-	if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
+	// Don't redirect user input from text entry into HTML elements, except the keys that end the Text tool's editing in the backend
+	const endsTextToolEditing = e.target === textToolInteractiveInputElement && (key === "Escape" || (accelKey && ["Enter", "NumpadEnter"].includes(key)));
+	if (targetIsTextField(e.target || undefined) && !endsTextToolEditing) return false;
 
 	// Don't redirect if a MenuList is open
 	if (window.document.querySelector("[data-floating-menu-content]")) return false;
@@ -112,18 +112,17 @@ function isObserveOnly(e: MouseEvent): boolean {
 }
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
+export function onPointerMove(e: PointerEvent, editor: EditorWrapper) {
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 	if (isObserveOnly(e)) return;
 
-	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
+	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
 	// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
 	// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
 	// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
-	const inGraphOverlay = get(documentStore).graphViewOverlayOpen;
-	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
+	if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);

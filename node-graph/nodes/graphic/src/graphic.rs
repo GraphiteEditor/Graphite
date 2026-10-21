@@ -1,7 +1,7 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
@@ -15,7 +15,7 @@ use vector_types::{Gradient, ReferencePoint};
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
 #[node_macro::node(category("General"), icon("NodeRemoveAtIndex"), name("Remove at Index"))]
-pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
+fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
 	#[implementations(
@@ -49,7 +49,7 @@ pub fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 /// Returns the item at the specified index in a list, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
 #[node_macro::node(category("General"), icon("NodeItemAtIndex"), name("Item at Index"))]
-pub fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
+fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to take the item from.
 	#[implementations(
@@ -383,7 +383,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 }
 
 #[node_macro::node(category("General"), icon("NodeMap"))]
-async fn map<Item: AnyHash + Send + Sync + CacheHash>(
+fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		List<String>,
@@ -417,22 +417,22 @@ async fn map<Item: AnyHash + Send + Sync + CacheHash>(
 		Context -> List<Artboard>,
 	)]
 	mapped: impl Node<Context<'static>, Output = List<Item>>,
-) -> List<Item> {
+) -> Result<List<Item>, Interrupt> {
 	let mut rows = List::new();
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
-		let list = mapped.eval(owned_ctx.into_context()).await;
+		let list = mapped.eval(owned_ctx.into_context())?;
 
 		rows.extend(list);
 	}
 
-	rows
+	Ok(rows)
 }
 
 #[node_macro::node(category("General"), icon("NodeMirror"))]
-async fn mirror<T: BoundingBox + 'n + Send + Clone>(
+fn mirror<T: BoundingBox + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Graphic,
@@ -459,7 +459,7 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
 	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let RenderBoundingBox::Rectangle(bounding_box) = content.element().bounding_box(item_transform, false) else {
+	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
 		return List::new_from_item(content);
 	};
 
@@ -503,7 +503,7 @@ async fn mirror<T: BoundingBox + 'n + Send + Clone>(
 /// editor tools (e.g. selection, click target routing) trace data back to its owning layer regardless of whether
 /// the layer is at the root document network or nested inside a custom subgraph.
 #[node_macro::node(name("Path of Subgraph"), category(""))]
-pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
+fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath> {
 	let node_path = node_path.into_element().0;
 	let len = node_path.len();
 	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
@@ -516,7 +516,7 @@ pub fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeId
 /// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted input adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
 #[node_macro::node(category("Attributes: Write"), icon("NodeWriteAttribute"))]
-async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
+fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The list to set the named attribute on (one value per item).
 	#[implementations(
@@ -541,18 +541,18 @@ async fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	/// The attribute name (key) to write or replace.
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
-	value: impl Node<'n, Context<'static>, Output = Item<AttributeValueDyn>>,
-) -> List<T> {
+	value: impl Node<Context<'static>, Output = Item<AttributeValueDyn>>,
+) -> Result<List<T>, Interrupt> {
 	let name = name.into_element();
 
 	let mut content = content;
 	for index in 0..content.len() {
 		let row = content.clone_item(index).expect("index is within bounds");
 		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(row)).with_index(index);
-		let v = value.eval(owned_ctx.into_context()).await.into_element();
+		let v = value.eval(owned_ctx.into_context())?.into_element();
 		content.set_attribute_value_dyn(&name, index, v);
 	}
-	content
+	Ok(content)
 }
 
 /// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
@@ -813,7 +813,7 @@ fn read_attribute_raster(
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
 #[node_macro::node(category("General"), icon("NodeExtend"))]
-pub async fn extend<T: 'n + Send + Clone>(
+fn extend<T: Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
 	#[implementations(
@@ -863,7 +863,7 @@ pub async fn extend<T: 'n + Send + Clone>(
 /// Performs an obsolete function as part of a migration from an older document format.
 /// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
-pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
+fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
@@ -890,7 +890,7 @@ pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"), icon("NodeIntoGroup"))]
-pub async fn into_group<T: Into<Graphic> + 'n>(
+fn into_group<T: Into<Graphic>>(
 	_: impl Ctx,
 	#[implementations(
 		List<Graphic>,
@@ -912,13 +912,13 @@ pub async fn into_group<T: Into<Graphic> + 'n>(
 /// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
 #[node_macro::node(category("General"), icon("NodeAsGraphic"))]
-pub async fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
+fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"), icon("NodeFlattenGraphic"))]
-pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
+fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
@@ -963,7 +963,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten:
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"), icon("NodeFlattenVector"))]
-pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
+pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	let mut output: List<Vector> = content.clone().into_flattened_list();
 
 	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
@@ -995,19 +995,19 @@ pub async fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector>
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"), icon("NodeFlattenRaster"))]
-pub async fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
+fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"), icon("NodeFlattenColor"))]
-pub async fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
+fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"), icon("NodeFlattenGradient"))]
-pub async fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
+fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
 

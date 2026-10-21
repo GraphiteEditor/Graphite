@@ -7,7 +7,7 @@ use crate::test_utils::EditorTestUtils;
 use document_container::{AnyContainer, AsyncContainer};
 
 fn dispatch(editor: &mut EditorTestUtils, message: impl Into<Message>) -> Vec<FrontendMessage> {
-	editor.editor.handle_message(message)
+	editor.dispatch(message)
 }
 
 fn portfolio(editor: &EditorTestUtils) -> &PortfolioMessageHandler {
