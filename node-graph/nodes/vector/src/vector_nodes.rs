@@ -30,8 +30,8 @@ use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::algorithms::weld::WeldExt;
 use vector_types::vector::misc::{
-	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, PointSpacingType, RowsOrColumns, Tangent, WeldMethod, bezpath_from_manipulator_groups,
-	dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, PointSpacingType, RowsOrColumns, Tangent, UnweldMethod, WeldMethod,
+	bezpath_from_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
@@ -799,6 +799,26 @@ fn weld<V: MapVectorItems + Send + Sync + 'static>(
 				edit_item_geometry(&mut content, |vector, paths| vector.weld_flow_ends(paths, transform, distance));
 			}
 		}
+
+		content
+	})
+}
+
+/// Separates path flows or segments where they meet, giving each its own copies of the points they share.
+#[node_macro::node(category("Vector: Modifier"), icon("NodeUnweld"), path(core_types::vector))]
+fn unweld<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The vector with path flows to separate.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+	/// Which points are split: every anchor so each segment stands alone, every point path flows share, or only those where a path flow ends.
+	method: Item<UnweldMethod>,
+) -> Item<V> {
+	let method = *method.element();
+
+	V::map_vector_items(content, |content| {
+		let mut content = content;
+		edit_item_geometry(&mut content, |vector, paths| vector.unweld(paths, method));
 
 		content
 	})
@@ -2295,74 +2315,6 @@ fn cut_path<V: MapVectorItems + Send>(
 			*content.element_mut() = result_vector;
 			content.set_attribute(ATTR_PATHS, result_paths);
 		}
-
-		content
-	})
-}
-
-/// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeCutSegments"), path(core_types::vector))]
-fn cut_segments<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
-	V::map_vector_items(content, |content| {
-		let mut content = content;
-		// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
-		edit_item_geometry(&mut content, |vector, paths| {
-			let mut working = WorkingVector::flatten(vector, paths);
-
-			let points_count = working.point_ids.len();
-			let segments_count = working.segment_ids.len();
-
-			let mut point_usages = vec![0_usize; points_count];
-
-			// Count how many times each point is used as an endpoint of the segments
-			let start_points = working.segment_start.clone();
-			let end_points = working.segment_end.clone();
-			for (&start, &end) in start_points.iter().zip(end_points.iter()) {
-				point_usages[start] += 1;
-				point_usages[end] += 1;
-			}
-
-			let mut new_point_ids = Vec::new();
-			let mut new_point_positions = Vec::new();
-			let mut offset_sum: usize = 0;
-			let mut points_with_new_offsets = Vec::with_capacity(points_count);
-
-			// Build the new anchor list with the original points, but with duplications based on their extra usages by the segments
-			for (index, (&point_id, &point)) in working.point_ids.iter().zip(&working.point_positions).enumerate() {
-				// Ensure at least one usage to preserve free-floating points not connected to any segments
-				let usage_count = point_usages[index].max(1);
-
-				new_point_ids.push(point_id);
-				new_point_positions.push(point);
-
-				for i in 1..usage_count {
-					new_point_ids.push(point_id.generate_from_hash(i as u64));
-					new_point_positions.push(point);
-				}
-
-				points_with_new_offsets.push(offset_sum);
-				offset_sum += usage_count;
-			}
-
-			// Reconcile the segments with the new points
-			working.point_ids = new_point_ids;
-			working.point_positions = new_point_positions;
-			for original_segment_index in 0..segments_count {
-				let original_point_start_index = start_points[original_segment_index];
-				let original_point_end_index = end_points[original_segment_index];
-
-				point_usages[original_point_start_index] -= 1;
-				point_usages[original_point_end_index] -= 1;
-
-				let start_usage = points_with_new_offsets[original_point_start_index] + point_usages[original_point_start_index];
-				let end_usage = points_with_new_offsets[original_point_end_index] + point_usages[original_point_end_index];
-
-				working.segment_start[original_segment_index] = start_usage;
-				working.segment_end[original_segment_index] = end_usage;
-			}
-
-			working.reweave(vector, paths);
-		});
 
 		content
 	})
@@ -4703,5 +4655,91 @@ mod test {
 			pathseg_abs_diff_eq(rounded[0].segments().next().unwrap(), line.segments().next().unwrap(), 1e-9),
 			"a subpath too short to have corners should stay where it was"
 		);
+	}
+
+	/// Two halves of a diamond drawn top to bottom and welded at both ends.
+	fn welded_diamond() -> Item<Vector> {
+		let mut vector = Vector::default();
+		for position in [DVec2::new(0., 0.), DVec2::new(-10., 10.), DVec2::new(0., 20.), DVec2::new(10., 10.)] {
+			vector.0.push(Item::new_from_element(position));
+		}
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
+		push_path(&mut paths, CurveType::Linear, [0, 3, 2], []);
+
+		Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+	}
+
+	// The welded diamond reads as one closed contour, and once unwelded as two open paths
+	#[test]
+	fn unwelded_paths_are_read_one_at_a_time() {
+		let diamond = welded_diamond();
+		let unwelded = super::unweld((), diamond.clone(), item(UnweldMethod::SharedPoints));
+
+		assert!(*super::path_is_closed((), diamond.clone(), item(0)).element());
+		assert!(!*super::path_is_closed((), unwelded.clone(), item(0)).element());
+
+		assert_eq!(super::separate_subpaths((), diamond.clone()).len(), 1);
+		assert_eq!(super::separate_subpaths((), unwelded.clone()).len(), 2);
+		assert_eq!(super::separate_subpaths((), super::unweld((), diamond.clone(), item(UnweldMethod::All))).len(), 4);
+
+		// Halfway along the whole contour is the diamond's far tip, while halfway along the first path alone is its left corner
+		let halfway = super::evaluate_path((), diamond, item(0.5), item(false), item(false));
+		assert!(halfway.position.element().distance(DVec2::new(0., 20.)) < 1e-3, "{:?}", halfway.position);
+		let halfway = super::evaluate_path((), unwelded, item(0.5), item(false), item(false));
+		assert!(halfway.position.element().distance(DVec2::new(-10., 10.)) < 1e-3, "{:?}", halfway.position);
+	}
+
+	// Sampling the welded diamond goes once around its closed contour, and once unwelded, along each open path on its own
+	#[test]
+	fn unwelded_paths_are_sampled_one_at_a_time() {
+		let sample = |content: Item<Vector>| super::sample_polyline((), content, item(PointSpacingType::Quantity), item(100.), item(5), item(0.), item(0.), item(false));
+		let polylines = |sampled: Item<Vector>| sampled.element().stroke_bezpath_iter(item_paths(&sampled)).collect::<Vec<_>>();
+
+		let welded = polylines(sample(welded_diamond()));
+		assert!(matches!(welded.as_slice(), [polyline] if polyline.elements().last() == Some(&PathEl::ClosePath)));
+
+		// Each half runs from the top tip to the bottom tip by way of its own side corner
+		let unwelded = polylines(sample(super::unweld((), welded_diamond(), item(UnweldMethod::SharedPoints))));
+		assert_eq!(unwelded.len(), 2);
+		for (polyline, side_corner) in unwelded.iter().zip([DVec2::new(-10., 10.), DVec2::new(10., 10.)]) {
+			let points: Vec<DVec2> = polyline.elements().iter().filter_map(|element| element.end_point()).map(point_to_dvec2).collect();
+			assert_eq!(points.len(), 5);
+			assert!(
+				points[0].distance(DVec2::ZERO) < 1e-3 && points[2].distance(side_corner) < 1e-3 && points[4].distance(DVec2::new(0., 20.)) < 1e-3,
+				"{points:?}"
+			);
+		}
+	}
+
+	// Morphing reads the welded diamond as one closed contour and the unwelded one as two open paths, both as the control path and as the shapes morphed
+	#[test]
+	fn unwelded_paths_are_morphed_one_at_a_time() {
+		let unwelded = || super::unweld((), welded_diamond(), item(UnweldMethod::SharedPoints));
+
+		// Halfway along the whole contour is the diamond's far tip, while halfway along the first path alone is its left corner
+		let squares = || embed_vectors([(); 3].map(|_| vector_item_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))).into_iter().collect());
+		let morph_along = |path: Item<Vector>| super::morph((), squares(), item(0.5), item(false), item(InterpolationDistribution::Objects), path);
+		let position = |morphed: Item<Vector>| morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM).translation;
+		assert!(position(morph_along(welded_diamond())).distance(DVec2::new(0., 20.)) < 1e-3);
+		assert!(position(morph_along(unwelded())).distance(DVec2::new(-10., 10.)) < 1e-3);
+
+		// Midway between two copies of the diamond, the welded one stays one closed contour and the unwelded one two open paths
+		let morph_between = |diamond: Item<Vector>| {
+			super::morph(
+				(),
+				embed_vectors([diamond.clone(), diamond].into_iter().collect()),
+				item(0.5),
+				item(false),
+				item(InterpolationDistribution::Objects),
+				Item::default(),
+			)
+		};
+		let closed = |morphed: Item<Vector>| {
+			let subpaths = morphed.element().stroke_bezpath_iter(item_paths(&morphed));
+			subpaths.map(|subpath| subpath.elements().last() == Some(&PathEl::ClosePath)).collect::<Vec<_>>()
+		};
+		assert_eq!(closed(morph_between(welded_diamond())), [true]);
+		assert_eq!(closed(morph_between(unwelded())), [false, false]);
 	}
 }

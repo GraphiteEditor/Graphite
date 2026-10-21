@@ -801,11 +801,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::vector_nodes::SplitPathNode", "graphene_core::vector::SplitPathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::cut_segments::IDENTIFIER,
+		node: graphene_std::vector::unweld::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::SplitSegmentsNode",
 			"graphene_core::vector::SplitSegmentsNode",
 			"graphene_core::vector::CutSegmentsNode",
+			"core_types::vector::CutSegmentsNode",
 		],
 	},
 	NodeReplacement {
@@ -2820,6 +2821,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		reset_default_display_name(document, node_id, network_path, "Spatial Merge by Distance");
 	}
 
+	// Cut Segments became Unweld, keeping its content and taking the All method that splits every anchor as it did
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::unweld::IDENTIFIER) && inputs_count == 1 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		node_template.inputs = vec![
+			node.inputs[0].clone(),
+			NodeInput::value(TaggedValue::UnweldMethod(graphene_std::vector::misc::UnweldMethod::All), false),
+		];
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		reset_default_display_name(document, node_id, network_path, "Cut Segments");
+		reset_default_display_name(document, node_id, network_path, "Split Segments");
+	}
+
 	if reference == DefinitionIdentifier::Network("Sample Points".into()) && inputs_count == 5 {
 		let mut node_template = resolve_network_node_type("Sample Polyline")?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -4418,4 +4431,70 @@ mod tests {
 		}
 	}
 
+	// Cut Segments nodes open as Unweld nodes splitting every anchor, still wired to the node feeding them
+	#[test]
+	fn cut_segments_nodes_open_as_unweld_nodes() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::capture_logged_errors;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::vector::misc::UnweldMethod;
+
+		let unweld = graphene_std::vector::unweld::IDENTIFIER;
+		let definition = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(unweld.clone())).expect("the Unweld definition should exist");
+		let rectangle = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)).expect("the Rectangle definition should exist");
+
+		// The current Cut Segments node and its oldest form, which stored their titles and single content input
+		let content = definition.default_node_template().inputs[0].clone();
+		let legacy_node = |identifier: &'static str, display_name: &str| NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
+			inputs: vec![content.clone()],
+			display_name: display_name.to_string(),
+			input_metadata: vec![("Content", "").into()],
+			..Default::default()
+		};
+		let (upstream, cut_segments, split_segments) = (NodeId(1), NodeId(2), NodeId(3));
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(upstream, rectangle.default_node_template(), &[]);
+		document
+			.network_interface
+			.insert_node(cut_segments, legacy_node("core_types::vector::CutSegmentsNode", "Cut Segments"), &[]);
+		document
+			.network_interface
+			.insert_node(split_segments, legacy_node("graphene_core::vector::vector_nodes::SplitSegmentsNode", "Split Segments"), &[]);
+		document.network_interface.set_input(&InputConnector::node_at_index(cut_segments, 0), NodeInput::node(upstream, 0), &[]);
+
+		let serialized = document.serialize_document();
+		assert!(!serialized.contains("UnweldNode"), "the saved document should name only the old node identifiers");
+
+		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), false));
+		let mut opened = opened.expect("the document should open");
+		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+
+		let definition_inputs: Vec<(String, String)> = definition
+			.node_template
+			.input_metadata
+			.iter()
+			.map(|metadata| (metadata.persistent_metadata.input_name.clone(), metadata.persistent_metadata.input_description.clone()))
+			.collect();
+		for node_id in [cut_segments, split_segments] {
+			let interface = &opened.network_interface;
+			let node = interface.document_node(&node_id, &[]).expect("the node should still exist");
+			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(unweld.clone()), "node {node_id}");
+			assert_eq!(
+				node.inputs.get(1).and_then(|input| input.as_value()),
+				Some(&TaggedValue::UnweldMethod(UnweldMethod::All)),
+				"node {node_id}"
+			);
+			assert_eq!(interface.display_name(&node_id, &[]), "Unweld", "node {node_id}");
+
+			let inputs: Vec<(String, String)> = (0..node.inputs.len()).map(|index| interface.displayed_input_name_and_description(&node_id, index, &[])).collect();
+			assert_eq!(inputs, definition_inputs, "node {node_id}");
+		}
+
+		// The wire from the upstream node survives in both directions
+		let cut_segments_content = opened.network_interface.document_node(&cut_segments, &[]).map(|node| node.inputs[0].clone());
+		assert!(matches!(cut_segments_content, Some(NodeInput::Node { node_id, output_index: 0, .. }) if node_id == upstream));
+		let outward_wires = opened.network_interface.outward_wires(&[]).and_then(|wires| wires.get(&OutputConnector::node(upstream, 0)).cloned());
+		assert_eq!(outward_wires.as_deref(), Some([InputConnector::node_at_index(cut_segments, 0)].as_slice()));
+	}
 }

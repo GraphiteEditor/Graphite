@@ -149,6 +149,21 @@ pub enum WeldMethod {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+pub enum UnweldMethod {
+	/// Every anchor is split, so each segment stands alone.
+	All,
+	/// Every point that more than one path flow uses is split, so each path flow becomes a path of its own.
+	#[default]
+	SharedPoints,
+	/// Only the shared points where a path flow ends are split, so path flows passing through a shared point stay joined.
+	FlowEnds,
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
 pub enum ExtrudeJoiningAlgorithm {
 	All,
 	#[default]
@@ -625,6 +640,7 @@ graphene_hash::impl_via_hash!(
 	GridType,
 	ArcType,
 	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	SpiralType,

@@ -582,6 +582,7 @@ tagged_value! {
 	RowsOrColumns(vector::misc::RowsOrColumns),
 	#[serde(alias = "MergeByDistanceAlgorithm")]
 	WeldMethod(vector::misc::WeldMethod),
+	UnweldMethod(vector::misc::UnweldMethod),
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),

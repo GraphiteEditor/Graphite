@@ -87,7 +87,7 @@ impl Vector {
 }
 
 /// The largest ID in the pool's point ID sequence, which a pool has once it holds point IDs at all.
-fn largest_point_id(pool: &List<DVec2>) -> Option<PointId> {
+pub(crate) fn largest_point_id(pool: &List<DVec2>) -> Option<PointId> {
 	let ids = pool.iter_attribute_values::<PointId>(ATTR_ID)?;
 
 	// An ID attribute that names nothing yet counts as a sequence at zero, which documents saved with edits to such geometry rely on

@@ -1,7 +1,9 @@
 use crate::vector::flatten::WorkingVector;
-use crate::vector::path::{CurveType, Path, continues_previous_path, curve_types_of};
+use crate::vector::misc::UnweldMethod;
+use crate::vector::path::{CurveType, Path, continues_previous_path, curve_types_of, push_paths};
+use crate::vector::vector_types::largest_point_id;
 use crate::vector::{PointId, SegmentId, Vector};
-use core_types::list::List;
+use core_types::list::{ATTR_ID, List};
 use glam::{DAffine2, DVec2};
 use petgraph::graph::{EdgeIndex, NodeIndex, UnGraph};
 use petgraph::prelude::UnGraphMap;
@@ -16,6 +18,8 @@ pub trait WeldExt {
 	fn weld_all(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64);
 	/// Joins the ends of open path flows lying within the distance of each other, measured after the transform, and leaves every other anchor where it is.
 	fn weld_flow_ends(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64);
+	/// Gives every segment, or every path flow, its own copies of the points it shares, by the method chosen.
+	fn unweld(&mut self, paths: &mut List<Path>, method: UnweldMethod);
 }
 
 impl WeldExt for Vector {
@@ -391,6 +395,141 @@ impl WeldExt for Vector {
 			*paths = std::mem::take(paths).into_iter().zip(kept_paths).filter_map(|(path, kept)| kept.then_some(path)).collect();
 		}
 	}
+
+	// A path flow stored in several curve types counts as one and keeps any point it meets more than once, in O(points + references)
+	fn unweld(&mut self, paths: &mut List<Path>, method: UnweldMethod) {
+		if method == UnweldMethod::All {
+			separate_segments(self, paths);
+			return;
+		}
+		let point_count = self.0.len();
+
+		// Each stored path's path flow, and whether that flow is open with two ends of its own
+		let flows = path_flows(paths);
+		let mut flow_of = vec![0; paths.len()];
+		let mut open = vec![false; flows.len()];
+		for (index, flow) in flows.iter().enumerate() {
+			if let Some(stored) = flow_of.get_mut(flow.clone()) {
+				stored.fill(index);
+			}
+			open[index] = path_flow_ends(paths, flow).is_some_and(|(start, end)| start != end);
+		}
+		let is_end = |path: usize, reference: usize, reference_count: usize| {
+			let index = flow_of[path];
+			open[index] && ((path == flows[index].start && reference == 0) || (path + 1 == flows[index].end && reference + 1 == reference_count))
+		};
+
+		// The first path flow to use each point, and under Flow Ends, which flows pass through it and which ends there first
+		let flow_ends_only = method == UnweldMethod::FlowEnds;
+		let mut first_through = vec![None; point_count];
+		let mut first_ending = if flow_ends_only { vec![None; point_count] } else { Vec::new() };
+		let mut passes_through = FxHashSet::default();
+		for (path, stored) in paths.iter_element_values().enumerate() {
+			let references = stored.0.iter_element_values().as_slice();
+			for (reference, &point) in references.iter().enumerate() {
+				let Some(point) = usize::try_from(point).ok().filter(|&point| point < point_count) else {
+					continue;
+				};
+				let holder = flow_of[path];
+
+				if !flow_ends_only {
+					first_through[point].get_or_insert(holder);
+				} else if is_end(path, reference, references.len()) {
+					first_ending[point].get_or_insert(holder);
+				} else {
+					first_through[point].get_or_insert(holder);
+					passes_through.insert((point, holder));
+				}
+			}
+		}
+
+		// Each path flow other than a point's keeper takes its own copy, and a copied anchor takes the next ID.
+		// Under Flow Ends, a flow keeps every point it passes through, and a point only ends meet stays with the first flow to end there.
+		let keeps = |point: usize, holder: usize, end: bool| {
+			if flow_ends_only {
+				!end || passes_through.contains(&(point, holder)) || (first_through[point].is_none() && first_ending[point] == Some(holder))
+			} else {
+				first_through[point] == Some(holder)
+			}
+		};
+		let mut latest_id = largest_point_id(&self.0);
+		let mut copies: FxHashMap<(usize, usize), i64> = FxHashMap::default();
+		for (path, stored) in paths.iter_element_values_mut().enumerate() {
+			let reference_count = stored.0.len();
+			for (reference, point) in stored.0.iter_element_values_mut().enumerate() {
+				let Some(original) = usize::try_from(*point).ok().filter(|&point| point < point_count) else {
+					continue;
+				};
+				let holder = flow_of[path];
+				if keeps(original, holder, flow_ends_only && is_end(path, reference, reference_count)) {
+					continue;
+				}
+
+				*point = *copies.entry((original, holder)).or_insert_with(|| {
+					let copy = self.0.len();
+					let Some(item) = self.0.clone_item(original) else { return original as i64 };
+					self.0.push(item);
+
+					let named = self.0.attribute::<PointId>(ATTR_ID, original).is_some_and(|id| *id != PointId::UNNAMED);
+					if named && let Some(latest) = &mut latest_id {
+						self.0.set_attribute(ATTR_ID, copy, latest.next_id());
+					}
+
+					copy as i64
+				});
+			}
+		}
+	}
+}
+
+/// Rebuilds the paths as one per segment, each taking its own copy of any point an earlier segment used, in O(points + references).
+/// Every anchor becomes an end, which drops what only an anchor between two segments carries, like smoothness.
+fn separate_segments(vector: &mut Vector, paths: &mut List<Path>) {
+	let point_count = vector.0.len();
+	let in_pool = |reference: i64| usize::try_from(reference).ok().filter(|&point| point < point_count);
+
+	let mut used = vec![false; point_count];
+	let mut latest_id = largest_point_id(&vector.0);
+	let mut separate_point = |pool: &mut List<DVec2>, reference: i64| {
+		let point = in_pool(reference)?;
+		if !std::mem::replace(&mut used[point], true) {
+			return u32::try_from(point).ok();
+		}
+
+		let copy = pool.len();
+		pool.push(pool.clone_item(point)?);
+		if pool.attribute::<PointId>(ATTR_ID, point).is_some_and(|id| *id != PointId::UNNAMED)
+			&& let Some(latest) = &mut latest_id
+		{
+			pool.set_attribute(ATTR_ID, copy, latest.next_id());
+		}
+		u32::try_from(copy).ok()
+	};
+
+	let mut segments = Vec::new();
+	for (path, curve_type) in paths.iter_element_values().zip(curve_types_of(paths)) {
+		let references = path.0.iter_element_values().as_slice();
+		let ids = path.0.iter_attribute_values::<SegmentId>(ATTR_ID).map(|ids| ids.as_slice()).unwrap_or_default();
+		let stride = curve_type.stride();
+
+		for span in 0..path.segment_count(curve_type) {
+			let Some(span_references) = references.get(span * stride..=span * stride + stride) else {
+				continue;
+			};
+
+			// A span naming a point outside the pool is left out before it copies any of its points
+			if !span_references.iter().all(|&reference| in_pool(reference).is_some()) {
+				continue;
+			}
+			let Some(separated) = span_references.iter().map(|&reference| separate_point(&mut vector.0, reference)).collect::<Option<Vec<u32>>>() else {
+				continue;
+			};
+			segments.push((curve_type, separated, ids.get(span * stride).copied().into_iter().collect()));
+		}
+	}
+
+	*paths = List::new();
+	push_paths(paths, segments);
 }
 
 /// The path flows, each a range of stored paths: a path, with those after it that only carry it on in another curve type.
@@ -692,5 +831,170 @@ mod tests {
 		assert!(near(vector.0.element(3), (10.05, 0.)));
 		assert!(near(vector.0.element(2), (10.05, 5.)));
 		assert_eq!(vector.0.len(), 6);
+	}
+
+	fn diamond() -> (Vector, List<Path>) {
+		let vector = pool(&[(0., 0.), (-10., 10.), (0., 20.), (10., 10.)]);
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
+		push_path(&mut paths, CurveType::Linear, [0, 3, 2], []);
+		(vector, paths)
+	}
+
+	// Two halves of a diamond welded at both ends come apart into two open paths, each copied anchor named next in sequence
+	#[test]
+	fn unwelding_shared_points_gives_each_path_its_own_points() {
+		let (mut vector, mut paths) = diamond();
+
+		vector.unweld(&mut paths, UnweldMethod::SharedPoints);
+
+		assert_eq!(references(&paths), [vec![0, 1, 2], vec![4, 3, 5]]);
+		assert_eq!(point_ids(&vector), [1, 2, 3, 4, 5, 6]);
+		assert!(near(vector.0.element(4), (0., 0.)) && near(vector.0.element(5), (0., 20.)));
+		assert!(contours(vector.0.len(), &paths).iter().all(|contour| !contour.closed));
+	}
+
+	// A shape mixing lines and curves is stored as a path per curve type, which still count as one path flow
+	#[test]
+	fn unwelding_leaves_a_path_flow_in_several_curve_types_whole() {
+		let mut bezpath = kurbo::BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.curve_to((15., 5.), (15., 10.), (10., 15.));
+		bezpath.close_path();
+		let (mut vector, mut paths) = Vector::from_bezpath(&bezpath);
+		assert_eq!(paths.len(), 3);
+		let before = references(&paths);
+
+		vector.unweld(&mut paths, UnweldMethod::SharedPoints);
+
+		assert_eq!(references(&paths), before);
+		assert_eq!(contours(vector.0.len(), &paths).len(), 1);
+	}
+
+	// Splitting only flow ends leaves two flows crossing at a shared anchor joined there, and parts a third flow ending on it
+	#[test]
+	fn unwelding_flow_ends_keeps_crossings() {
+		let positions = [(-10., 0.), (10., 0.), (0., -10.), (0., 10.), (0., 0.), (10., 10.)];
+		let crossing = || {
+			let mut paths = List::new();
+			push_path(&mut paths, CurveType::Linear, [0, 4, 1], []);
+			push_path(&mut paths, CurveType::Linear, [2, 4, 3], []);
+			push_path(&mut paths, CurveType::Linear, [5, 4], []);
+			(pool(&positions), paths)
+		};
+
+		let (mut vector, mut paths) = crossing();
+		vector.unweld(&mut paths, UnweldMethod::FlowEnds);
+		assert_eq!(references(&paths), [vec![0, 4, 1], vec![2, 4, 3], vec![5, 6]]);
+
+		let (mut vector, mut paths) = crossing();
+		vector.unweld(&mut paths, UnweldMethod::SharedPoints);
+		assert_eq!(references(&paths), [vec![0, 4, 1], vec![2, 6, 3], vec![5, 7]]);
+	}
+
+	// Splitting every anchor turns a closed triangle into three segments, each keeping the ID that named it
+	#[test]
+	fn unwelding_all_separates_every_segment() {
+		let mut vector = pool(&[(0., 0.), (10., 0.), (0., 10.)]);
+		let mut paths = List::new();
+		let mut segment_id = SegmentId::ZERO;
+		let ids = [(); 3].map(|_| segment_id.next_id());
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2, 0], ids);
+
+		vector.unweld(&mut paths, UnweldMethod::All);
+
+		assert_eq!(references(&paths), [vec![0, 1], vec![3, 2], vec![4, 5]]);
+		let segment_ids: Vec<u64> = vector.segment_iter(&paths).map(|(id, ..)| id.inner()).collect();
+		assert_eq!(segment_ids, [1, 2, 3]);
+		assert_eq!(contours(vector.0.len(), &paths).len(), 3);
+	}
+
+	// Welding flow ends at the smallest distance puts back what unwelding flow ends split apart where only flow ends met
+	#[test]
+	fn welding_flow_ends_undoes_unwelding() {
+		let (mut vector, mut paths) = diamond();
+
+		vector.unweld(&mut paths, UnweldMethod::FlowEnds);
+		assert_eq!(references(&paths), [vec![0, 1, 2], vec![4, 3, 5]]);
+		assert_eq!(vector.0.len(), 6);
+		assert!(contours(vector.0.len(), &paths).iter().all(|contour| !contour.closed));
+
+		vector.weld_flow_ends(&mut paths, DAffine2::IDENTITY, 0.0001);
+
+		let (original, original_paths) = diamond();
+		assert_eq!(references(&paths), references(&original_paths));
+		assert_eq!(vector.0.len(), original.0.len());
+		assert!(contours(vector.0.len(), &paths).iter().all(|contour| contour.closed));
+	}
+
+	// A closed path takes one copy of the point it closes on for both of its references to it, so it stays closed
+	#[test]
+	fn unwelding_a_closed_path_keeps_it_closed() {
+		let mut vector = pool(&[(0., 0.), (-10., 10.), (0., 20.), (10., -10.), (20., 0.)]);
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
+		push_path(&mut paths, CurveType::Linear, [0, 3, 4, 0], []);
+
+		vector.unweld(&mut paths, UnweldMethod::SharedPoints);
+
+		assert_eq!(references(&paths), [vec![0, 1, 2], vec![5, 3, 4, 5]]);
+		let closed: Vec<bool> = contours(vector.0.len(), &paths).iter().map(|contour| contour.closed).collect();
+		assert_eq!(closed, [false, true]);
+	}
+
+	// A copied anchor takes the next ID while a copied handle stays unnamed, like every handle
+	#[test]
+	fn unwelding_leaves_copied_handles_unnamed() {
+		let mut vector = Vector::default();
+		let mut point_id = PointId::ZERO;
+		for (x, y, is_anchor) in [(0., 0., true), (0., 10., false), (10., 10., false), (10., 0., true)] {
+			let id = if is_anchor { point_id.next_id() } else { PointId::UNNAMED };
+			vector.0.push(Item::new_from_element(DVec2::new(x, y)).with_attribute(ATTR_ID, id));
+		}
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Cubic, [0, 1, 2, 3], []);
+		push_path(&mut paths, CurveType::Cubic, [3, 2, 1, 0], []);
+
+		vector.unweld(&mut paths, UnweldMethod::SharedPoints);
+
+		assert_eq!(references(&paths), [vec![0, 1, 2, 3], vec![4, 5, 6, 7]]);
+		let unnamed = PointId::UNNAMED.inner();
+		assert_eq!(point_ids(&vector), [1, unnamed, unnamed, 2, 3, unnamed, unnamed, 4]);
+	}
+
+	// Splitting only flow ends keeps a point with a flow that passes through it before ending there, parting the other flow ending there
+	#[test]
+	fn unwelding_flow_ends_keeps_an_end_with_the_flow_passing_through_it() {
+		let positions = [(0., 0.), (10., 0.), (20., 0.), (20., 10.), (10., -10.)];
+		let ending_on_itself = || {
+			let mut paths = List::new();
+			push_path(&mut paths, CurveType::Linear, [4, 1], []);
+			push_path(&mut paths, CurveType::Linear, [0, 1, 2, 3, 1], []);
+			(pool(&positions), paths)
+		};
+
+		let (mut vector, mut paths) = ending_on_itself();
+		vector.unweld(&mut paths, UnweldMethod::FlowEnds);
+		assert_eq!(references(&paths), [vec![4, 5], vec![0, 1, 2, 3, 1]]);
+
+		// Splitting every shared point instead keeps it with the path stored first
+		let (mut vector, mut paths) = ending_on_itself();
+		vector.unweld(&mut paths, UnweldMethod::SharedPoints);
+		assert_eq!(references(&paths), [vec![4, 1], vec![0, 5, 2, 3, 5]]);
+	}
+
+	// A segment naming a point outside the pool is left out without copying the points it shares
+	#[test]
+	fn unwelding_all_leaves_out_a_segment_outside_the_pool() {
+		let mut vector = pool(&[(0., 0.), (10., 0.)]);
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1], []);
+		push_path(&mut paths, CurveType::Linear, [1, 99], []);
+
+		vector.unweld(&mut paths, UnweldMethod::All);
+
+		assert_eq!(references(&paths), [vec![0, 1]]);
+		assert_eq!(vector.0.len(), 2);
 	}
 }
