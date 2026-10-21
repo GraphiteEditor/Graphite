@@ -234,6 +234,35 @@ pub fn continues_previous_path(paths: &List<Path>, index: usize) -> bool {
 	previous_last > 0 && path.0.element(0) == previous.0.element(previous_last) && curve_type_at(paths, index) != curve_type_at(paths, previous_index)
 }
 
+/// The path flows, each a range of stored paths: a path, with those after it that only carry it on in another curve type.
+pub(crate) fn path_flows(paths: &List<Path>) -> Vec<std::ops::Range<usize>> {
+	let mut flows: Vec<std::ops::Range<usize>> = Vec::new();
+	for index in 0..paths.len() {
+		match flows.last_mut() {
+			Some(flow) if continues_previous_path(paths, index) => flow.end = index + 1,
+			_ => flows.push(index..index + 1),
+		}
+	}
+
+	flows
+}
+
+/// Reverses every path flow so every path runs the other way, swapping the order of a flow's stored paths so each still sets out where the one before it ends.
+pub fn reverse_path_flows(paths: &mut List<Path>) {
+	let flows = path_flows(paths);
+	let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
+
+	for (path, &curve_type) in paths.iter_element_values_mut().zip(&curve_types) {
+		let segment_count = path.segment_count(curve_type);
+		path.reverse_spans(curve_type, 0..segment_count);
+	}
+
+	if flows.iter().any(|flow| flow.len() > 1) {
+		let reordered: List<Path> = flows.into_iter().flat_map(|flow| flow.rev()).filter_map(|index| paths.clone_item(index)).collect();
+		*paths = reordered;
+	}
+}
+
 /// The IDs a weave gives the anchors and spans it adds, each bezpath's continuing on from the latest taken before it.
 #[derive(Default)]
 struct WovenNames {
@@ -573,6 +602,28 @@ mod tests {
 		ragged.reverse_spans(CurveType::Cubic, 0..2);
 
 		assert_eq!(ragged.0.iter_element_values().copied().collect::<Vec<_>>(), vec![2, 13, 12, 0, 11, 10, 4, 14]);
+	}
+
+	// Every path turns around with its span IDs, and a flow drawn as a line then a curve swaps its two stored paths so it stays one flow
+	#[test]
+	fn reversing_path_flows() {
+		let mut segment_id = SegmentId::ZERO;
+		let ids: Vec<SegmentId> = (0..5).map(|_| segment_id.next_id()).collect();
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1], [ids[0]]);
+		push_path(&mut paths, CurveType::Cubic, [1, 2, 3, 4], [ids[1]]);
+		push_path(&mut paths, CurveType::Linear, [5, 6, 7, 5], [ids[2], ids[3], ids[4]]);
+
+		reverse_path_flows(&mut paths);
+
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references, [vec![4, 3, 2, 1], vec![1, 0], vec![5, 7, 6, 5]]);
+		assert_eq!(curve_types_of(&paths).collect::<Vec<_>>(), [CurveType::Cubic, CurveType::Linear, CurveType::Linear]);
+		assert!(continues_previous_path(&paths, 1));
+
+		let id_at = |path: usize, reference: usize| paths.element(path).and_then(|path| path.0.attribute::<SegmentId>(ATTR_ID, reference).copied());
+		assert_eq!([id_at(0, 0), id_at(1, 0)], [Some(ids[1]), Some(ids[0])]);
+		assert_eq!([id_at(2, 0), id_at(2, 1), id_at(2, 2)], [Some(ids[4]), Some(ids[3]), Some(ids[2])]);
 	}
 
 	// A reference naming a point the pool does not have drops its segment instead of panicking

@@ -1,6 +1,6 @@
 use crate::vector::flatten::WorkingVector;
 use crate::vector::misc::UnweldMethod;
-use crate::vector::path::{CurveType, Path, continues_previous_path, curve_types_of, push_paths};
+use crate::vector::path::{CurveType, Path, curve_types_of, path_flows, push_paths};
 use crate::vector::vector_types::largest_point_id;
 use crate::vector::{PointId, SegmentId, Vector};
 use core_types::list::{ATTR_ID, List};
@@ -534,19 +534,6 @@ fn separate_segments(vector: &mut Vector, paths: &mut List<Path>) {
 
 	*paths = List::new();
 	push_paths(paths, segments);
-}
-
-/// The path flows, each a range of stored paths: a path, with those after it that only carry it on in another curve type.
-fn path_flows(paths: &List<Path>) -> Vec<Range<usize>> {
-	let mut flows: Vec<Range<usize>> = Vec::new();
-	for index in 0..paths.len() {
-		match flows.last_mut() {
-			Some(flow) if continues_previous_path(paths, index) => flow.end = index + 1,
-			_ => flows.push(index..index + 1),
-		}
-	}
-
-	flows
 }
 
 /// The pool points a path flow begins and ends at.

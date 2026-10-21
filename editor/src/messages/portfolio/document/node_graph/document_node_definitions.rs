@@ -356,9 +356,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(16), 0)],
 					nodes: [
-						// 0: Separate Subpaths (split path into individual subpaths)
+						// 0: Separate Paths (split the vector into its individual paths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_subpaths::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_paths::IDENTIFIER),
 							inputs: vec![NodeInput::import(generic!(T), 4)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
 							..Default::default()
