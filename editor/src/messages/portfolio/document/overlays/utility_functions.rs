@@ -1,5 +1,8 @@
-use super::utility_types::{DrawHandles, OverlayContext};
-use crate::consts::{HIDE_HANDLE_DISTANCE, SNAP_POINT_TOLERANCE};
+use super::utility_types::{DrawHandles, OverlayContext, Pivot};
+use crate::consts::{
+	COLOR_OVERLAY_BLUE, HIDE_HANDLE_DISTANCE, PATH_DIRECTION_ARC_LENGTH_ACCURACY, PATH_DIRECTION_ARROW_SPACING, PATH_DIRECTION_CHEVRON_SIZE, PATH_DIRECTION_HARPOON_OFFSET, PATH_END_MARKER_DISTANCE,
+	PATH_END_MARKER_SIZE, PATH_FLOW_JOIN_TICK_LENGTH, PATH_FLOW_JOIN_TICK_THICKNESS, PATH_INDEX_LABEL_OFFSET, PATH_MARKERS_MIN_LENGTH, SNAP_POINT_TOLERANCE,
+};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 pub use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
@@ -7,9 +10,10 @@ use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerSta
 use crate::messages::tool::common_functionality::utility_functions::closest_open_path_endpoint;
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
-use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, point_to_dvec2, segment_to_handles};
+use graphene_std::vector::algorithms::util::pathseg_tangent;
+use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, PathSegPoints, pathseg_points, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
-use kurbo::{Affine, ParamCurve, PathSeg};
+use kurbo::{Affine, ParamCurve, ParamCurveArclen, ParamCurveArea, PathSeg, Rect, Shape};
 use std::collections::HashMap;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -148,6 +152,8 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			}
 		}
 
+		path_direction_overlays(&vector, transform, false, overlay_context);
+
 		let is_selected = |point: ManipulatorPointId| selected_shape_state.is_point_selected(point);
 
 		if display_handles {
@@ -222,6 +228,8 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
+		path_direction_overlays(&vector, transform, true, overlay_context);
+
 		for id in vector.anchor_endpoints() {
 			if hovered.is_some_and(|(hovered_layer, hovered_id, _)| hovered_layer == layer && hovered_id == id) {
 				continue;
@@ -237,6 +245,195 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		overlay_context.hover_manipulator_anchor(transform.transform_point2(position), is_selected(layer, id));
 	}
+}
+
+/// Marks how each path of a layer runs, as the overlay settings choose: chevrons at its start and end and along it, its index, and ticks where its path flows join.
+/// With `open_paths_only`, closed paths go unmarked, for tools that only show the anchors at open ends.
+fn path_direction_overlays(vector: &VectorGeometry, transform: DAffine2, open_paths_only: bool, overlay_context: &mut OverlayContext) {
+	let settings = overlay_context.visibility_settings;
+	let (show_ends, show_index, show_direction) = (settings.path_ends(), settings.path_index(), settings.path_direction());
+	if !(show_ends || show_index || show_direction) {
+		return;
+	}
+
+	let to_viewport = Affine::new(transform.to_cols_array());
+	let viewport_size: DVec2 = overlay_context.viewport.size().into();
+	let arrow_view = Rect::new(0., 0., viewport_size.x, viewport_size.y).inflate(PATH_DIRECTION_CHEVRON_SIZE, PATH_DIRECTION_CHEVRON_SIZE);
+
+	// Enumerated before filtering so each index is the one Separate Paths gives that path
+	for (index, contour) in vector.oriented_contours().into_iter().enumerate() {
+		if open_paths_only && contour.closed {
+			continue;
+		}
+
+		let segments: Vec<PathSeg> = contour.segments.iter().map(|&segment| to_viewport * segment).collect();
+		if segments.iter().map(|&segment| control_polygon_length(segment)).sum::<f64>() < PATH_MARKERS_MIN_LENGTH {
+			continue;
+		}
+		// Zero-length segments point nowhere, so the markers at each end go on the outermost segments that do
+		let has_direction = |segment: &&PathSeg| end_directions(**segment).is_some();
+		let Some(&first) = segments.iter().find(has_direction) else { continue };
+		let Some(&last) = segments.iter().rfind(has_direction) else { continue };
+		let Some((departure, _)) = end_directions(first) else { continue };
+		let start = point_to_dvec2(first.start());
+
+		// Arrows spread evenly over the stretch clear of the end markers, as harpoons barbed on the right of travel so their side shows the winding direction
+		if show_direction {
+			// O(segments + arrows in view) arc lengths per frame
+			let lengths: Vec<f64> = segments.iter().map(|segment| segment.arclen(PATH_DIRECTION_ARC_LENGTH_ACCURACY)).collect();
+			let total_length: f64 = lengths.iter().sum();
+
+			let end_clearance = if show_ends { PATH_END_MARKER_DISTANCE + PATH_END_MARKER_SIZE } else { 0. };
+			let (arrows_start, arrows_end) = (end_clearance, total_length - end_clearance);
+			let arrows_length = arrows_end - arrows_start;
+
+			if arrows_length.is_finite() && arrows_length >= PATH_DIRECTION_ARROW_SPACING / 2. {
+				let arrow_count = (arrows_length / PATH_DIRECTION_ARROW_SPACING).round().max(1.);
+				let spacing = arrows_length / arrow_count;
+
+				let mut pieces_in_view = Vec::new();
+				let mut walked = 0.;
+				for (&segment, &length) in segments.iter().zip(&lengths) {
+					collect_pieces_in_view(segment, walked, length, arrow_view, spacing, &mut pieces_in_view);
+					walked += length;
+				}
+
+				for (piece, piece_start, piece_length) in pieces_in_view {
+					// The first of the arrows, centered in each interval of `spacing` along their stretch, that falls on this piece
+					let mut next_arrow = arrows_start + (((piece_start - arrows_start) / spacing - 0.5).ceil().max(0.) + 0.5) * spacing;
+
+					while next_arrow < (piece_start + piece_length).min(arrows_end) {
+						// With the viewport's Y axis pointing down, the perpendicular is on the right of travel
+						if let Some((point, direction)) = point_along(piece, next_arrow - piece_start) {
+							draw_chevron(overlay_context, point, direction, PATH_DIRECTION_CHEVRON_SIZE, Some(direction.perp()));
+						}
+						next_arrow += spacing;
+					}
+				}
+			}
+		}
+
+		// A chevron just after the start anchor and a bar just before the end, which on a closed path is where it arrives back at its start
+		if show_ends {
+			if let Some((point, direction)) = point_along(first, PATH_END_MARKER_DISTANCE) {
+				draw_chevron(overlay_context, point, direction, PATH_END_MARKER_SIZE, None);
+			}
+
+			if let Some((point, direction)) = point_along(last.reverse(), PATH_END_MARKER_DISTANCE) {
+				let across = direction.perp() * PATH_END_MARKER_SIZE / 2.;
+				overlay_context.line(point - across, point + across, None, None);
+			}
+
+			// A tick across the path at each anchor where it crosses from one path flow into another
+			for &join in &contour.flow_joins {
+				let arriving = join.checked_sub(1).map_or(segments.last(), |previous| segments.get(previous));
+				let (Some(&arriving), Some(&departing)) = (arriving, segments.get(join)) else { continue };
+				let (Some((_, into_join)), Some((out_of_join, _))) = (end_directions(arriving), end_directions(departing)) else {
+					continue;
+				};
+
+				let along = direction_or(into_join + out_of_join, out_of_join);
+				let across = along.perp() * PATH_FLOW_JOIN_TICK_LENGTH / 2.;
+				let point = point_to_dvec2(departing.start());
+				overlay_context.line(point - across, point + across, None, Some(PATH_FLOW_JOIN_TICK_THICKNESS));
+			}
+		}
+
+		// The index sits off the start, opposite the segments leaving it, where it covers the least of the path
+		if show_index {
+			let arrival = end_directions(last).filter(|_| contour.closed).map(|(_, arrival)| arrival);
+			let spokes = arrival.map_or(departure, |arrival| departure - arrival);
+
+			// Where the path runs straight through its start, the label goes outside the loop
+			let clockwise = segments.iter().map(|segment| segment.signed_area()).sum::<f64>() > 0.;
+			let outside = if clockwise { -departure.perp() } else { departure.perp() };
+			let away = direction_or(-spokes, outside);
+			let label_transform = DAffine2::from_translation(start + away * PATH_INDEX_LABEL_OFFSET);
+			overlay_context.text(&index.to_string(), COLOR_OVERLAY_BLUE, None, label_transform, 0., [Pivot::Middle, Pivot::Middle]);
+		}
+	}
+}
+
+/// Collects the parts of a segment that `view` overlaps, each with where it starts along the path and its length, halving any part that crosses the edge of `view` until it's shorter than `min_length`.
+/// Costs O(log(length / min_length)) arc lengths per crossing of that edge.
+fn collect_pieces_in_view(piece: PathSeg, start: f64, length: f64, view: Rect, min_length: f64, pieces: &mut Vec<(PathSeg, f64, f64)>) {
+	let bounds = piece.bounding_box();
+	if !bounds.overlaps(view) {
+		return;
+	}
+
+	if length < min_length || view.contains_rect(bounds) {
+		pieces.push((piece, start, length));
+		return;
+	}
+
+	let (first_half, second_half) = piece.subdivide();
+	let first_length = first_half.arclen(PATH_DIRECTION_ARC_LENGTH_ACCURACY);
+	collect_pieces_in_view(first_half, start, first_length, view, min_length, pieces);
+	collect_pieces_in_view(second_half, start + first_length, length - first_length, view, min_length, pieces);
+}
+
+/// Draws a right-angled `>` chevron `size` across, centered on `center` and pointing in `direction`.
+/// Given a `barb_side`, it instead draws a one-sided `|\` harpoon: a shaft set off from the path toward that side, with a barb reaching further in.
+fn draw_chevron(overlay_context: &mut OverlayContext, center: DVec2, direction: DVec2, size: f64, barb_side: Option<DVec2>) {
+	let tip = center + direction * size / 4.;
+	let back = center - direction * size / 4.;
+
+	match barb_side {
+		Some(side) => {
+			let (tip, back) = (tip + side * PATH_DIRECTION_HARPOON_OFFSET, back + side * PATH_DIRECTION_HARPOON_OFFSET);
+			let barb_end = back + side * size / 2.;
+
+			// The shaft matches the barb's length
+			let shaft_end = tip - direction * tip.distance(barb_end);
+
+			overlay_context.line(shaft_end, tip, None, None);
+			overlay_context.line(barb_end, tip, None, None);
+		}
+		None => {
+			let spread = direction.perp() * size / 2.;
+			overlay_context.line(back + spread, tip, None, None);
+			overlay_context.line(back - spread, tip, None, None);
+		}
+	}
+}
+
+/// The point a distance along a segment from its start, or its end if the segment is shorter, with the unit direction the segment runs there.
+fn point_along(segment: PathSeg, distance: f64) -> Option<(DVec2, DVec2)> {
+	let t = segment.inv_arclen(distance, PATH_DIRECTION_ARC_LENGTH_ACCURACY);
+	let direction = pathseg_tangent(segment, t).try_normalize().or_else(|| end_directions(segment).map(|(departure, _)| departure))?;
+
+	Some((point_to_dvec2(segment.eval(t)), direction))
+}
+
+/// The unit directions a segment sets out in and arrives from, read from its control points so a handle resting on its anchor still gives one.
+fn end_directions(segment: PathSeg) -> Option<(DVec2, DVec2)> {
+	let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(segment);
+	let distinct = |point: &DVec2, end: DVec2| point.distance_squared(end) > f64::EPSILON;
+
+	let departure = [p1, p2, Some(p3)].into_iter().flatten().find(|point| distinct(point, p0))? - p0;
+	let arrival = p3 - [p2, p1, Some(p0)].into_iter().flatten().find(|point| distinct(point, p3))?;
+
+	Some((departure.try_normalize()?, arrival.try_normalize()?))
+}
+
+/// The unit direction of a vector, or the fallback when the vector is too short to point anywhere reliably.
+fn direction_or(vector: DVec2, fallback: DVec2) -> DVec2 {
+	if vector.length_squared() > 1e-6 { vector.normalize() } else { fallback }
+}
+
+/// The length of a segment's control polygon, which is never shorter than the segment itself.
+fn control_polygon_length(segment: PathSeg) -> f64 {
+	let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(segment);
+
+	let mut previous = p0;
+	let mut length = 0.;
+	for point in [p1, p2, Some(p3)].into_iter().flatten() {
+		length += previous.distance(point);
+		previous = point;
+	}
+
+	length
 }
 
 pub fn hex_to_rgba_u8(hex: &str) -> [u8; 4] {

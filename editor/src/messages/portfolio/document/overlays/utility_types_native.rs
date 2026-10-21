@@ -60,6 +60,9 @@ pub enum OverlaysType {
 	Path,
 	Anchors,
 	Handles,
+	PathEnds,
+	PathIndex,
+	PathDirection,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -81,6 +84,9 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub path_ends: bool,
+	pub path_index: bool,
+	pub path_direction: bool,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -101,6 +107,9 @@ impl Default for OverlaysVisibilitySettings {
 			path: true,
 			anchors: true,
 			handles: true,
+			path_ends: true,
+			path_index: false,
+			path_direction: false,
 		}
 	}
 }
@@ -161,6 +170,18 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn path_ends(&self) -> bool {
+		self.all && self.anchors && self.path_ends
+	}
+
+	pub fn path_index(&self) -> bool {
+		self.all && self.anchors && self.path_index
+	}
+
+	pub fn path_direction(&self) -> bool {
+		self.all && self.anchors && self.path_direction
 	}
 }
 

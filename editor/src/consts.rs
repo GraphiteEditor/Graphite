@@ -114,6 +114,23 @@ pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
+// PATH DIRECTION OVERLAYS
+// Paths shorter than this on screen get no direction markers
+pub const PATH_MARKERS_MIN_LENGTH: f64 = 24.;
+// From an end anchor's center to the middle of the marker beside it
+pub const PATH_END_MARKER_DISTANCE: f64 = 7.;
+pub const PATH_END_MARKER_SIZE: f64 = 9.;
+// Between arrows, stretched or squeezed slightly so a whole number of them fit evenly along each path
+pub const PATH_DIRECTION_ARROW_SPACING: f64 = 15.625;
+pub const PATH_DIRECTION_CHEVRON_SIZE: f64 = 8.;
+// How far to the right of the path its harpoons' shafts sit, apart from the path itself
+pub const PATH_DIRECTION_HARPOON_OFFSET: f64 = 3.;
+// In viewport pixels, far finer than the arrows need to sit evenly
+pub const PATH_DIRECTION_ARC_LENGTH_ACCURACY: f64 = 0.1;
+pub const PATH_INDEX_LABEL_OFFSET: f64 = 14.;
+pub const PATH_FLOW_JOIN_TICK_LENGTH: f64 = 18.;
+pub const PATH_FLOW_JOIN_TICK_THICKNESS: f64 = 2.;
+
 // GRADIENT TOOL
 pub const GRADIENT_MIDPOINT_DIAMOND_RADIUS: f64 = 4.;
 pub const GRADIENT_MIDPOINT_MIN: f64 = 0.01;

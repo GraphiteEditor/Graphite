@@ -1,3 +1,4 @@
+use super::contour::{OrientedContour, oriented_contours};
 use super::geometry_cache::SetVectorPaths;
 use super::misc::{HandleId, ManipulatorGroup, ManipulatorPointId};
 use super::path::{Path, paths_from_item_attributes};
@@ -137,6 +138,10 @@ impl VectorGeometry {
 
 	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = BezPath> {
 		self.vector.stroke_bezpath_iter(&self.paths)
+	}
+
+	pub fn oriented_contours(&self) -> Vec<OrientedContour> {
+		oriented_contours(&self.vector.0, &self.paths)
 	}
 
 	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
