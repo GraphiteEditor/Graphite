@@ -2062,6 +2062,46 @@ fn a_dot_in_a_layers_chain_is_left_out_of_what_is_listed_for_it() {
 	assert_eq!(stack_layer, None);
 }
 
+#[test]
+fn a_node_dragged_over_exactly_one_wire_previews_being_inserted_onto_it() {
+	use crate::messages::portfolio::document::node_graph::NodeGraphMessageHandler;
+
+	let (source, consumer, dragged) = (NodeId(1), NodeId(2), NodeId(3));
+	let mut network_interface = NodeNetworkInterface::default();
+	network_interface.insert_node(source, plain_node(1), &[]);
+	network_interface.insert_node(consumer, plain_node(1), &[]);
+	let mut dragged_template = plain_node(1);
+	dragged_template.inputs = vec![NodeInput::value(TaggedValue::None, true)];
+	network_interface.insert_node(dragged, dragged_template, &[]);
+	network_interface.set_absolute_position(&source, IVec2::new(0, 0), &[]);
+	network_interface.set_absolute_position(&consumer, IVec2::new(20, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(consumer, 0), NodeInput::node(source, 0), &[]);
+	network_interface
+		.selected_nodes_mut(&[])
+		.expect("the document network has a selection")
+		.set_selected_nodes(vec![dragged]);
+
+	// Level with the wire between the other two
+	network_interface.set_absolute_position(&dragged, IVec2::new(8, 0), &[]);
+	assert_eq!(
+		NodeGraphMessageHandler::wire_to_insert_on(&mut network_interface, GraphWireStyle::Direct, &[]),
+		Some((dragged, 0, InputConnector::node_at_index(consumer, 0))),
+		"the wire it overlaps is the one a drop would insert it onto"
+	);
+
+	network_interface.set_absolute_position(&dragged, IVec2::new(8, 10), &[]);
+	assert_eq!(
+		NodeGraphMessageHandler::wire_to_insert_on(&mut network_interface, GraphWireStyle::Direct, &[]),
+		None,
+		"clear of every wire it previews nothing"
+	);
+
+	// With a node already taking its output, a drop would not insert it
+	network_interface.set_absolute_position(&dragged, IVec2::new(8, 0), &[]);
+	network_interface.set_input(&InputConnector::node_at_index(source, 0), NodeInput::node(dragged, 0), &[]);
+	assert_eq!(NodeGraphMessageHandler::wire_to_insert_on(&mut network_interface, GraphWireStyle::Direct, &[]), None);
+}
+
 fn passthrough_definition() -> DefinitionIdentifier {
 	DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER)
 }

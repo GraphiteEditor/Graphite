@@ -27,6 +27,7 @@
 	const nodeGraphImportsExports = nodeGraph.importsExportsStore;
 	const visibleNodes = nodeGraph.visibleNodesStore;
 	const nodeGraphWires = nodeGraph.wiresStore;
+	const wireInsertionPreview = nodeGraph.wireInsertionPreviewStore;
 	const documentState = getContext<DocumentStore>("document");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
@@ -217,6 +218,11 @@
 	function borderMask(boxes: { x: number; y: number; width: number; height: number }[], nodeWidth: number, nodeHeight: number): string {
 		const rectangles = boxes.map((box) => `M${box.x},${box.y} L${box.x + box.width},${box.y} L${box.x + box.width},${box.y + box.height} L${box.x},${box.y + box.height}z`);
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
+	}
+
+	// Whether the wire feeding an input is the one a dragged node would be inserted onto if dropped now
+	function isInsertionPreview(preview: [bigint, number] | undefined, nodeId: bigint, inputIndex: number): boolean {
+		return preview !== undefined && preview[0] === nodeId && preview[1] === inputIndex;
 	}
 
 	function nodeNameTooltipLabel(node: FrontendNode): string {
@@ -472,10 +478,10 @@
 	<!-- Thick vertical layer connection wires -->
 	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<svg>
-			{#each $nodeGraphWires.values() as map}
-				{#each map.values() as { pathString, centerPathString, dataType, thick, dashed }}
+			{#each $nodeGraphWires.entries() as [nodeId, map]}
+				{#each map.entries() as [inputIndex, { pathString, centerPathString, dataType, thick, dashed }]}
 					{#if thick}
-						<g class:dashed>
+						<g class:dashed class:undimmed={isInsertionPreview($wireInsertionPreview, nodeId, inputIndex)}>
 							<path
 								d={pathString}
 								style:--data-line-width="8px"
@@ -840,10 +846,10 @@
 		<!-- Node connection wires -->
 		<div class="wires">
 			<svg>
-				{#each $nodeGraphWires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed, isList }}
+				{#each $nodeGraphWires.entries() as [nodeId, map]}
+					{#each map.entries() as [inputIndex, { pathString, dataType, thick, dashed, isList }]}
 						{#if !thick}
-							<g class:dashed>
+							<g class:dashed class:undimmed={isInsertionPreview($wireInsertionPreview, nodeId, inputIndex)}>
 								{#if isList}
 									<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
 									<path
@@ -1261,10 +1267,12 @@
 					stroke: var(--data-color-dim);
 					stroke-width: var(--data-line-width);
 					stroke-dasharray: var(--data-dasharray);
+					transition: stroke 0.1s;
 				}
 
-				// The previewed node's temporary wire stands out in the bright data color
-				.dashed path {
+				// The previewed node's temporary wire stands out in the bright data color, as does the wire a dragged node would be dropped onto
+				.dashed path,
+				.undimmed path {
 					stroke: var(--data-color);
 				}
 			}

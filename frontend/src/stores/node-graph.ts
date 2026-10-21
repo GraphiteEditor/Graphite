@@ -71,6 +71,10 @@ if (import.meta.hot) import.meta.hot.data.visibleNodesStore = visibleNodesStore;
 const wiresStore: Writable<Map<bigint, Map<number, WirePath>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
 if (import.meta.hot) import.meta.hot.data.wiresStore = wiresStore;
 
+// Separate wire insertion preview store so the wires don't re-render with every node graph update
+const wireInsertionPreviewStore: Writable<[bigint, number] | undefined> = import.meta.hot?.data?.wireInsertionPreviewStore || writable(undefined);
+if (import.meta.hot) import.meta.hot.data.wireInsertionPreviewStore = wireInsertionPreviewStore;
+
 export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
 
@@ -118,6 +122,10 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 			state.reorderExportIndex = data.exportIndex;
 			return state;
 		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateWireInsertionPreview", (data) => {
+		wireInsertionPreviewStore.set(data.wire);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateImportsExports", (data) => {
@@ -227,7 +235,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore };
+	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore, wireInsertionPreviewStore };
 }
 
 export function destroyNodeGraphStore() {
@@ -240,6 +248,7 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
 	subscriptions.unsubscribeFrontendMessage("UpdateExportReorderIndex");
+	subscriptions.unsubscribeFrontendMessage("UpdateWireInsertionPreview");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportsExports");
 	subscriptions.unsubscribeFrontendMessage("UpdateInSelectedNetwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateLayerWidths");

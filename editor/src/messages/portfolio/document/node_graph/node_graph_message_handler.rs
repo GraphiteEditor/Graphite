@@ -76,6 +76,8 @@ pub struct NodeGraphMessageHandler {
 	pub drag_start: Option<(DragStart, bool)>,
 	// Store the selected chain nodes on drag start so they can be reconnected if shaken
 	pub drag_start_chain_nodes: Vec<NodeId>,
+	/// The wire a dragged node would be inserted onto if dropped now, which the frontend shows undimmed.
+	wire_insertion_preview: Option<InputConnector>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
 	pub box_selection_start: Option<(DVec2, bool)>,
@@ -932,6 +934,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.drag_start = None;
 						self.select_if_not_dragged = None;
 						self.nodes_added_in_drag = false;
+						self.clear_wire_insertion_preview(responses);
 						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
@@ -1423,6 +1426,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true });
 					if graph_delta != IVec2::ZERO {
 						self.node_has_moved_in_drag = true;
+
+						// Queued after the shift so it reads where the node has come to rest
+						responses.add(NodeGraphMessage::UpdateWireInsertionPreview);
 					}
 
 					self.update_node_graph_hints(responses);
@@ -1618,104 +1624,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
-					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
-						log::error!("Could not get selected nodes in PointerUp");
-						return;
-					};
 					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
-					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
-						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
-						let has_primary_output_connection = network_interface.outward_wires(selection_network_path).is_some_and(|outward_wires| {
-							outward_wires
-								.get(&OutputConnector::primary_output(selected_node_id))
-								.is_some_and(|outward_wires| !outward_wires.is_empty())
+					if !self.begin_dragging
+						&& let Some((selected_node_id, insert_node_input_index, overlapping_wire)) = Self::wire_to_insert_on(network_interface, preferences.graph_wire_style, selection_network_path)
+					{
+						responses.add(NodeGraphMessage::InsertNodeBetween {
+							node_id: selected_node_id,
+							input_connector: overlapping_wire,
+							insert_node_input_index,
 						});
-						if !has_primary_output_connection {
-							let Some(network) = network_interface.nested_network(selection_network_path) else {
-								return;
-							};
-							let Some(selected_node) = network.nodes.get(&selected_node_id) else {
-								return;
-							};
-							// Check that the first visible input is disconnected
-							let selected_node_input_connect_index = selected_node
-								.inputs
-								.iter()
-								.enumerate()
-								.find(|input| input.1.is_exposed())
-								.filter(|input| input.1.as_value().is_some())
-								.map(|input| input.0);
-							if let Some(selected_node_input_connect_index) = selected_node_input_connect_index {
-								let Some(node_bbox) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
-									log::error!("Could not get bounding box for node: {selected_node_id}");
-									return;
-								};
-								let mut wires_to_check = network_interface.node_graph_input_connectors(selection_network_path).into_iter().collect::<HashSet<_>>();
-								// Prevent inserting on a link that is connected upstream to the selected node
-								for upstream_node in network_interface.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow) {
-									for input_index in 0..network_interface.number_of_inputs(&upstream_node, selection_network_path) {
-										wires_to_check.remove(&InputConnector::node_at_index(upstream_node, input_index));
-									}
-								}
-
-								let overlapping_wires = wires_to_check
-									.into_iter()
-									.filter_map(|input| {
-										// Prevent inserting a layer into a chain
-										if network_interface.is_layer(&selected_node_id, selection_network_path)
-											&& input.node_id().is_some_and(|input_node_id| network_interface.is_chain(&input_node_id, selection_network_path))
-										{
-											return None;
-										}
-
-										let (wire, _center_line, is_stack) = network_interface.vector_wire_from_input(&input, preferences.graph_wire_style, selection_network_path)?;
-
-										let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
-										let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
-
-										let intersect = wire
-											.segments()
-											.any(|segment| node_bbox.segments().filter_map(|segment| segment.as_line()).any(|line| !segment.intersect_line(line).is_empty()));
-
-										(intersect || inside).then_some((input, is_stack))
-									})
-									.collect::<Vec<_>>();
-
-								// Prioritize vertical thick lines and cancel if there are multiple potential wires
-								let mut node_wires = Vec::new();
-								let mut stack_wires = Vec::new();
-								for (overlapping_wire_input, is_stack) in overlapping_wires {
-									if is_stack {
-										stack_wires.push(overlapping_wire_input)
-									} else {
-										node_wires.push(overlapping_wire_input)
-									}
-								}
-
-								let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
-									if stack_wires.len() == 1 {
-										stack_wires.first()
-									} else if stack_wires.is_empty() && node_wires.len() == 1 {
-										node_wires.first()
-									} else {
-										None
-									}
-								} else if node_wires.len() == 1 {
-									node_wires.first()
-								} else {
-									None
-								};
-								if let Some(overlapping_wire) = overlapping_wire {
-									responses.add(NodeGraphMessage::InsertNodeBetween {
-										node_id: selected_node_id,
-										input_connector: *overlapping_wire,
-										insert_node_input_index: selected_node_input_connect_index,
-									});
-									responses.add(NodeGraphMessage::RunDocumentGraph);
-									responses.add(NodeGraphMessage::SendGraph);
-								}
-							}
-						}
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+						responses.add(NodeGraphMessage::SendGraph);
 					}
 					self.select_if_not_dragged = None;
 				}
@@ -1739,6 +1658,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.drag_start = None;
 				self.begin_dragging = false;
 				self.nodes_added_in_drag = false;
+				self.clear_wire_insertion_preview(responses);
 				self.box_selection_start = None;
 
 				self.end_wire_in_progress(network_interface, selection_network_path, responses);
@@ -1906,6 +1826,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				// A dot left with nothing to carry, like one fed by a shaken generator, goes along with its wire
 				responses.add(NodeGraphMessage::RemoveOrphanedDots);
+				// Freed of its output wire, the node may now fit onto the wire beneath it
+				responses.add(NodeGraphMessage::UpdateWireInsertionPreview);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -2386,6 +2308,25 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(InspectorMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
 			}
+			NodeGraphMessage::UpdateWireInsertionPreview => {
+				// Only a drag in progress inserts anything on drop, and one that hasn't started moving yet inserts nothing
+				let target = if self.drag_start.is_some() && !self.begin_dragging {
+					Self::wire_to_insert_on(network_interface, preferences.graph_wire_style, selection_network_path).map(|(_, _, input_connector)| input_connector)
+				} else {
+					None
+				};
+				if target == self.wire_insertion_preview {
+					return;
+				}
+
+				self.wire_insertion_preview = target;
+				let wire = target.map(|input_connector| match input_connector {
+					InputConnector::Node { node_id, input_index } => (node_id, input_index),
+					// Wires into exports are keyed under the max node ID, as in the wires sent to the frontend
+					InputConnector::Export(export_index) => (NodeId(u64::MAX), export_index),
+				});
+				responses.add(FrontendMessage::UpdateWireInsertionPreview { wire });
+			}
 			NodeGraphMessage::UpdateBoxSelection => {
 				if let Some((box_selection_start, _)) = self.box_selection_start {
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
@@ -2649,6 +2590,13 @@ impl NodeGraphMessageHandler {
 		self.update_node_graph_hints(responses);
 	}
 
+	/// Stops highlighting the wire a dragged node would be inserted onto.
+	fn clear_wire_insertion_preview(&mut self, responses: &mut VecDeque<Message>) {
+		if self.wire_insertion_preview.take().is_some() {
+			responses.add(FrontendMessage::UpdateWireInsertionPreview { wire: None });
+		}
+	}
+
 	/// Cancels dragging an import or export to reorder it, leaving it where it was.
 	pub fn abort_import_export_reorder(&mut self, responses: &mut VecDeque<Message>) {
 		self.reordering_import = None;
@@ -2668,6 +2616,7 @@ impl NodeGraphMessageHandler {
 			responses.add(DocumentMessage::AbortTransaction);
 			self.update_node_graph_hints(responses);
 		}
+		self.clear_wire_insertion_preview(responses);
 		if self.context_menu.take().is_some() {
 			responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 		}
@@ -2854,6 +2803,85 @@ impl NodeGraphMessageHandler {
 		}
 
 		common
+	}
+
+	/// The wire a single dragged node would be inserted onto if dropped where it is, with the node and the index of its input the wire would feed.
+	/// A node is only inserted when it's alone in the selection, has nothing wired out of its primary output, has a free first exposed input, and overlaps exactly one fitting wire.
+	// O(wires), since each wire's path is intersected with the node's bounds
+	pub(crate) fn wire_to_insert_on(network_interface: &mut NodeNetworkInterface, graph_wire_style: GraphWireStyle, selection_network_path: &[NodeId]) -> Option<(NodeId, usize, InputConnector)> {
+		let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path)?;
+		let [selected_node_id] = *selected_nodes.selected_nodes_ref().as_slice() else { return None };
+
+		let has_primary_output_connection = network_interface.outward_wires(selection_network_path).is_some_and(|outward_wires| {
+			outward_wires
+				.get(&OutputConnector::primary_output(selected_node_id))
+				.is_some_and(|outward_wires| !outward_wires.is_empty())
+		});
+		if has_primary_output_connection {
+			return None;
+		}
+
+		// The input it's spliced in by has to be disconnected
+		let insert_node_input_index = network_interface
+			.first_exposed_input(&selected_node_id, selection_network_path)
+			.filter(|input| network_interface.input_from_connector(input, selection_network_path).is_some_and(|input| input.as_value().is_some()))?
+			.input_index();
+
+		let Some(node_bbox) = network_interface.node_bounding_box(&selected_node_id, selection_network_path) else {
+			log::error!("Could not get bounding box for node: {selected_node_id}");
+			return None;
+		};
+		let node_bbox = kurbo::Rect::new(node_bbox[0].x, node_bbox[0].y, node_bbox[1].x, node_bbox[1].y).to_path(DEFAULT_ACCURACY);
+
+		let mut wires_to_check = network_interface.node_graph_input_connectors(selection_network_path).into_iter().collect::<HashSet<_>>();
+		// Prevent inserting on a link that is connected upstream to the selected node
+		for upstream_node in network_interface.upstream_flow_back_from_nodes(vec![selected_node_id], selection_network_path, network_interface::FlowType::UpstreamFlow) {
+			for input_index in 0..network_interface.number_of_inputs(&upstream_node, selection_network_path) {
+				wires_to_check.remove(&InputConnector::node_at_index(upstream_node, input_index));
+			}
+		}
+
+		let overlapping_wires = wires_to_check
+			.into_iter()
+			.filter_map(|input| {
+				// Prevent inserting a layer into a chain
+				if network_interface.is_layer(&selected_node_id, selection_network_path)
+					&& input.node_id().is_some_and(|input_node_id| network_interface.is_chain(&input_node_id, selection_network_path))
+				{
+					return None;
+				}
+
+				let (wire, _center_line, is_stack) = network_interface.vector_wire_from_input(&input, graph_wire_style, selection_network_path)?;
+
+				let inside = bezpath_is_inside_bezpath(&wire, &node_bbox, None, None);
+				let intersect = wire
+					.segments()
+					.any(|segment| node_bbox.segments().filter_map(|segment| segment.as_line()).any(|line| !segment.intersect_line(line).is_empty()));
+
+				(intersect || inside).then_some((input, is_stack))
+			})
+			.collect::<Vec<_>>();
+
+		// Prioritize vertical thick lines and cancel if there are multiple potential wires
+		let (stack_wires, node_wires): (Vec<_>, Vec<_>) = overlapping_wires.into_iter().partition(|(_, is_stack)| *is_stack);
+		let stack_wires = stack_wires.into_iter().map(|(input, _)| input).collect::<Vec<_>>();
+		let node_wires = node_wires.into_iter().map(|(input, _)| input).collect::<Vec<_>>();
+
+		let overlapping_wire = if network_interface.is_layer(&selected_node_id, selection_network_path) {
+			if stack_wires.len() == 1 {
+				stack_wires.first()
+			} else if stack_wires.is_empty() && node_wires.len() == 1 {
+				node_wires.first()
+			} else {
+				None
+			}
+		} else if node_wires.len() == 1 {
+			node_wires.first()
+		} else {
+			None
+		};
+
+		overlapping_wire.map(|input| (selected_node_id, insert_node_input_index, *input))
 	}
 
 	/// Duplicates the selected nodes and selects the copies, returning whether there were any to duplicate, since a lone dot has no copy.
@@ -3623,6 +3651,7 @@ impl Default for NodeGraphMessageHandler {
 			shift_without_push: false,
 			box_selection_start: None,
 			drag_start_chain_nodes: Vec::new(),
+			wire_insertion_preview: None,
 			selection_before_pointer_down: Vec::new(),
 			disconnecting: None,
 			initial_disconnecting: false,
