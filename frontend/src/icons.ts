@@ -320,6 +320,7 @@ import NodeRepeatRadial from "/../branding/assets/16x16-nodes/node-repeat-radial
 import NodeRepeat from "/../branding/assets/16x16-nodes/node-repeat.svg";
 import NodeReplaceTransform from "/../branding/assets/16x16-nodes/node-replace-transform.svg";
 import NodeResetTransform from "/../branding/assets/16x16-nodes/node-reset-transform.svg";
+import NodeReversePaths from "/../branding/assets/16x16-nodes/node-reverse-paths.svg";
 import NodeReverse from "/../branding/assets/16x16-nodes/node-reverse.svg";
 import NodeRgbaToColor from "/../branding/assets/16x16-nodes/node-rgba-to-color.svg";
 import NodeRoot from "/../branding/assets/16x16-nodes/node-root.svg";
@@ -602,6 +603,7 @@ export const ICON_16X16_NODES = {
 	NodeReplaceTransform: { svg: NodeReplaceTransform, size: 16 },
 	NodeResetTransform: { svg: NodeResetTransform, size: 16 },
 	NodeReverse: { svg: NodeReverse, size: 16 },
+	NodeReversePaths: { svg: NodeReversePaths, size: 16 },
 	NodeRgbaToColor: { svg: NodeRgbaToColor, size: 16 },
 	NodeRoot: { svg: NodeRoot, size: 16 },
 	NodeRound: { svg: NodeRound, size: 16 },

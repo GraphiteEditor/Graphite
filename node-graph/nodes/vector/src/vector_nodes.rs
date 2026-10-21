@@ -36,7 +36,7 @@ use vector_types::vector::misc::{
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
 	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes,
-	push_path, shared_paths_from_item_attributes, span_endpoints, spans,
+	push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
 /// Appends one point to the working form, returning the index that names it.
@@ -3668,6 +3668,20 @@ fn close_paths<V: MapVectorItems + Send + Sync + 'static>(
 ) -> Item<V> {
 	V::map_vector_items(content, |mut item| {
 		edit_item_geometry(&mut item, |vector, paths| vector.close_subpaths(paths));
+		item
+	})
+}
+
+/// Reverses the direction every path runs in.
+#[node_macro::node(category("Vector: Modifier"), icon("NodeReversePaths"), path(core_types::vector))]
+fn reverse_paths<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The vector with paths to reverse.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+) -> Item<V> {
+	V::map_vector_items(content, |mut item| {
+		edit_item_geometry(&mut item, |_, paths| reverse_path_flows(paths));
 		item
 	})
 }
