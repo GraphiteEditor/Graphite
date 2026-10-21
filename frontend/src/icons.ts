@@ -147,7 +147,7 @@ import NodeChannelsToImage from "/../branding/assets/16x16-nodes/node-channels-t
 import NodeCircle from "/../branding/assets/16x16-nodes/node-circle.svg";
 import NodeClamp from "/../branding/assets/16x16-nodes/node-clamp.svg";
 import NodeClippingMask from "/../branding/assets/16x16-nodes/node-clipping-mask.svg";
-import NodeClosePath from "/../branding/assets/16x16-nodes/node-close-path.svg";
+import NodeClosePaths from "/../branding/assets/16x16-nodes/node-close-paths.svg";
 import NodeColorBalance from "/../branding/assets/16x16-nodes/node-color-balance.svg";
 import NodeColorLookup from "/../branding/assets/16x16-nodes/node-color-lookup.svg";
 import NodeColorOverlay from "/../branding/assets/16x16-nodes/node-color-overlay.svg";
@@ -329,7 +329,7 @@ import NodeSampleImage from "/../branding/assets/16x16-nodes/node-sample-image.s
 import NodeSamplePolyline from "/../branding/assets/16x16-nodes/node-sample-polyline.svg";
 import NodeScatterPoints from "/../branding/assets/16x16-nodes/node-scatter-points.svg";
 import NodeSelectiveColor from "/../branding/assets/16x16-nodes/node-selective-color.svg";
-import NodeSeparateSubpaths from "/../branding/assets/16x16-nodes/node-separate-subpaths.svg";
+import NodeSeparatePaths from "/../branding/assets/16x16-nodes/node-separate-paths.svg";
 import NodeSerialize from "/../branding/assets/16x16-nodes/node-serialize.svg";
 import NodeShift from "/../branding/assets/16x16-nodes/node-shift.svg";
 import NodeShuffle from "/../branding/assets/16x16-nodes/node-shuffle.svg";
@@ -428,7 +428,7 @@ export const ICON_16X16_NODES = {
 	NodeCircle: { svg: NodeCircle, size: 16 },
 	NodeClamp: { svg: NodeClamp, size: 16 },
 	NodeClippingMask: { svg: NodeClippingMask, size: 16 },
-	NodeClosePath: { svg: NodeClosePath, size: 16 },
+	NodeClosePaths: { svg: NodeClosePaths, size: 16 },
 	NodeColorBalance: { svg: NodeColorBalance, size: 16 },
 	NodeColorLookup: { svg: NodeColorLookup, size: 16 },
 	NodeColorOverlay: { svg: NodeColorOverlay, size: 16 },
@@ -610,7 +610,7 @@ export const ICON_16X16_NODES = {
 	NodeSamplePolyline: { svg: NodeSamplePolyline, size: 16 },
 	NodeScatterPoints: { svg: NodeScatterPoints, size: 16 },
 	NodeSelectiveColor: { svg: NodeSelectiveColor, size: 16 },
-	NodeSeparateSubpaths: { svg: NodeSeparateSubpaths, size: 16 },
+	NodeSeparatePaths: { svg: NodeSeparatePaths, size: 16 },
 	NodeSerialize: { svg: NodeSerialize, size: 16 },
 	NodeShift: { svg: NodeShift, size: 16 },
 	NodeShuffle: { svg: NodeShuffle, size: 16 },

@@ -789,8 +789,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::CentroidNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::close_path::IDENTIFIER,
-		aliases: &["graphene_core::vector::ClosePathNode"],
+		node: graphene_std::vector::close_paths::IDENTIFIER,
+		aliases: &["graphene_core::vector::ClosePathNode", "core_types::vector::ClosePathNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::list_length::IDENTIFIER,
@@ -954,8 +954,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::separate_subpaths::IDENTIFIER,
-		aliases: &["graphene_core::vector::SeparateSubpathsNode"],
+		node: graphene_std::vector::separate_paths::IDENTIFIER,
+		aliases: &["graphene_core::vector::SeparateSubpathsNode", "core_types::vector::SeparateSubpathsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::solidify_stroke::IDENTIFIER,
@@ -2833,6 +2833,29 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		reset_default_display_name(document, node_id, network_path, "Split Segments");
 	}
 
+	// Separate Subpaths and Close Path became Separate Paths and Close Paths, whose inputs take their current names and descriptions
+	let pluralized = [
+		(graphene_std::vector::separate_paths::IDENTIFIER, "Separate Subpaths"),
+		(graphene_std::vector::close_paths::IDENTIFIER, "Close Path"),
+	];
+	if let Some((_, old_default_name)) = pluralized.iter().find(|(identifier, _)| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let stored = document
+			.network_interface
+			.persistent_input_metadata(node_id, 0, network_path)
+			.map(|metadata| (metadata.input_name.clone(), metadata.input_description.clone()));
+		let current = node_template
+			.input_metadata
+			.first()
+			.map(|metadata| (metadata.persistent_metadata.input_name.clone(), metadata.persistent_metadata.input_description.clone()));
+		if stored != current {
+			node_template.inputs = node.inputs.clone();
+			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		}
+
+		reset_default_display_name(document, node_id, network_path, old_default_name);
+	}
+
 	if reference == DefinitionIdentifier::Network("Sample Points".into()) && inputs_count == 5 {
 		let mut node_template = resolve_network_node_type("Sample Polyline")?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -4496,5 +4519,76 @@ mod tests {
 		assert!(matches!(cut_segments_content, Some(NodeInput::Node { node_id, output_index: 0, .. }) if node_id == upstream));
 		let outward_wires = opened.network_interface.outward_wires(&[]).and_then(|wires| wires.get(&OutputConnector::node(upstream, 0)).cloned());
 		assert_eq!(outward_wires.as_deref(), Some([InputConnector::node_at_index(cut_segments, 0)].as_slice()));
+	}
+
+	// Separate Subpaths and Close Path nodes open under their plural names and current input descriptions, still wired to the node feeding them
+	#[test]
+	fn renamed_path_nodes_open_under_their_new_names() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::capture_logged_errors;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let rectangle = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)).expect("the Rectangle definition should exist");
+		let renames = [
+			(
+				graphene_std::vector::separate_paths::IDENTIFIER,
+				"SeparatePathsNode",
+				"Separate Paths",
+				["core_types::vector::SeparateSubpathsNode", "graphene_core::vector::SeparateSubpathsNode"],
+				"Separate Subpaths",
+				"Content",
+			),
+			(
+				graphene_std::vector::close_paths::IDENTIFIER,
+				"ClosePathsNode",
+				"Close Paths",
+				["core_types::vector::ClosePathNode", "graphene_core::vector::ClosePathNode"],
+				"Close Path",
+				"Source",
+			),
+		];
+
+		for (identifier, identifier_name, title, [current_identifier, oldest_identifier], old_title, input_name) in renames {
+			let definition = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier.clone())).expect("the renamed node's definition should exist");
+
+			// The node under its current identifier and its oldest one, both storing their old title
+			let legacy_node = |old_identifier: &'static str| NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(old_identifier)),
+				inputs: definition.default_node_template().inputs,
+				display_name: old_title.to_string(),
+				input_metadata: vec![(input_name, "").into()],
+				..Default::default()
+			};
+			let (upstream, current, oldest) = (NodeId(1), NodeId(2), NodeId(3));
+			let mut document = DocumentMessageHandler::default();
+			document.network_interface.insert_node(upstream, rectangle.default_node_template(), &[]);
+			document.network_interface.insert_node(current, legacy_node(current_identifier), &[]);
+			document.network_interface.insert_node(oldest, legacy_node(oldest_identifier), &[]);
+			document.network_interface.set_input(&InputConnector::node_at_index(current, 0), NodeInput::node(upstream, 0), &[]);
+
+			let serialized = document.serialize_document();
+			assert!(!serialized.contains(identifier_name), "the saved document should name only the old {title} identifiers");
+
+			let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), false));
+			let opened = opened.expect("the document should open");
+			assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+
+			for node_id in [current, oldest] {
+				let interface = &opened.network_interface;
+				let node = interface.document_node(&node_id, &[]).expect("the node should still exist");
+				assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(identifier.clone()), "{title} node {node_id}");
+				assert_eq!(interface.display_name(&node_id, &[]), title, "{title} node {node_id}");
+
+				let expected = definition
+					.node_template
+					.input_metadata
+					.first()
+					.map(|metadata| (metadata.persistent_metadata.input_name.clone(), metadata.persistent_metadata.input_description.clone()));
+				assert_eq!(Some(interface.displayed_input_name_and_description(&node_id, 0, &[])), expected, "{title} node {node_id}");
+			}
+
+			let current_content = opened.network_interface.document_node(&current, &[]).map(|node| node.inputs[0].clone());
+			assert!(matches!(current_content, Some(NodeInput::Node { node_id, output_index: 0, .. }) if node_id == upstream), "{title}");
+		}
 	}
 }

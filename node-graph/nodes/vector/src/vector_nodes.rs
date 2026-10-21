@@ -1893,13 +1893,19 @@ fn solidify_stroke<V: SolidifyStroke + Send>(_: impl Ctx, #[implementations(Grap
 	V::solidify_strokes(content)
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSeparateSubpaths"), path(core_types::vector))]
-fn separate_subpaths<V: ExpandVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+/// Splits the vector into separate items, one per path.
+#[node_macro::node(category("Vector: Modifier"), icon("NodeSeparatePaths"), path(core_types::vector))]
+fn separate_paths<V: ExpandVectorItems + Send>(
+	_: impl Ctx,
+	/// The vector with paths to separate.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+) -> List<V> {
 	V::expand_vector_items(content, |content| {
 		let content_paths = shared_paths_from_item_attributes(&content);
 		let bezpaths = content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>();
 
-		// Pass the original element through unchanged when it has no subpaths, so its attributes
+		// Pass the original element through unchanged when it has no paths, so its attributes
 		// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
 		if bezpaths.is_empty() {
 			return List::new_from_item(content);
@@ -3652,9 +3658,15 @@ fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 	})
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeClosePath"), path(core_types::vector))]
-fn close_path<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>) -> Item<V> {
-	V::map_vector_items(source, |mut item| {
+/// Closes every open path with a straight segment from its end back to its start.
+#[node_macro::node(category("Vector: Modifier"), icon("NodeClosePaths"), path(core_types::vector))]
+fn close_paths<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The vector with paths to close.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+) -> Item<V> {
+	V::map_vector_items(content, |mut item| {
 		edit_item_geometry(&mut item, |vector, paths| vector.close_subpaths(paths));
 		item
 	})
@@ -4679,9 +4691,9 @@ mod test {
 		assert!(*super::path_is_closed((), diamond.clone(), item(0)).element());
 		assert!(!*super::path_is_closed((), unwelded.clone(), item(0)).element());
 
-		assert_eq!(super::separate_subpaths((), diamond.clone()).len(), 1);
-		assert_eq!(super::separate_subpaths((), unwelded.clone()).len(), 2);
-		assert_eq!(super::separate_subpaths((), super::unweld((), diamond.clone(), item(UnweldMethod::All))).len(), 4);
+		assert_eq!(super::separate_paths((), diamond.clone()).len(), 1);
+		assert_eq!(super::separate_paths((), unwelded.clone()).len(), 2);
+		assert_eq!(super::separate_paths((), super::unweld((), diamond.clone(), item(UnweldMethod::All))).len(), 4);
 
 		// Halfway along the whole contour is the diamond's far tip, while halfway along the first path alone is its left corner
 		let halfway = super::evaluate_path((), diamond, item(0.5), item(false), item(false));
