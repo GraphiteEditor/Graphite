@@ -329,6 +329,9 @@ pub enum FrontendMessage {
 		id: NodeId,
 		value: String,
 	},
+	ClearNodeThumbnails {
+		ids: Vec<NodeId>,
+	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<DocumentInfo>,

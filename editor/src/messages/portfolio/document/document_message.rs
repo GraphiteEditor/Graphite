@@ -208,6 +208,11 @@ pub enum DocumentMessage {
 	SetLayersPanelHoveredLayer {
 		id: Option<NodeId>,
 	},
+	/// The layers with a row in view in the Layers panel, and among them those it lacks the details of, which it's sent.
+	SetLayersPanelView {
+		layers: Vec<NodeId>,
+		layers_missing_details: Vec<NodeId>,
+	},
 	SetNodePinned {
 		node_id: NodeId,
 		pinned: bool,
