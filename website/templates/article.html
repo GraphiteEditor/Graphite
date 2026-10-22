@@ -5,7 +5,7 @@
 {%- set meta_title = page.title -%}
 {%- set meta_image = page.extra.banner_png | safe -%}
 {%- set meta_article_type = true -%}
-{%- set meta_description = page.extra.summary | default(value = page.content | striptags | safe | linebreaksbr | replace(from = "<br>", to = " ") | replace(from = "  ", to = " ") | trim | truncate(length = 200)) -%}
+{%- set meta_description = page.description | default(value = page.content | striptags | safe | linebreaksbr | replace(from = "<br>", to = " ") | replace(from = "  ", to = " ") | trim | truncate(length = 200)) -%}
 {%- set css = ["/template/article.css", "/layout/reading-material.css"] -%}
 {%- endblock head -%}
 
@@ -14,7 +14,12 @@
 	<div class="block">
 		<div class="details">
 			<h1 class="headline">{{ page.title }}</h1>
-			<span class="publication">By {{ page.extra.author }}. {{ page.date | date(format = "%B %d, %Y", timezone="America/Los_Angeles") }}.</span>
+			<span class="publication">
+				{% if page.authors %} 
+					By {{ page.authors | join(sep=", ") }}. 
+				{% endif %}
+				<time datetime="{{ page.date | date(format='%Y-%m-%d') }}"> {{ page.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}</time>.
+			</span>
 			<img class="banner" src="{{ page.extra.banner | safe }}" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" />
 		</div>
 		<article>
@@ -42,7 +47,7 @@
 		{% endif %}
 	</div>
 </section>
-{%- if not page.summary -%}
+{%- if not page.description -%}
 {{ throw(message = "------------------------------------------------------------> ARTICLE HAS NO SUMMARY! After the first paragraph (or two short ones), a `<!-- more -->` comment must be inserted in the markdown. Otherwise the blog page would be missing its preview text." | safe) }}
 {%- endif -%}
 {%- endblock content -%}
