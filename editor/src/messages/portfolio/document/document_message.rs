@@ -227,6 +227,9 @@ pub enum DocumentMessage {
 		visible: bool,
 		overlays_type: Option<OverlaysType>,
 	},
+	SetCurvatureCombScale {
+		scale: f64,
+	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
 	},

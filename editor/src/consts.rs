@@ -115,7 +115,7 @@ pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
 // PATH DIRECTION OVERLAYS
-// Paths shorter than this on screen get no direction markers
+// Paths shorter than this on screen get no markers
 pub const PATH_MARKERS_MIN_LENGTH: f64 = 24.;
 // From an end anchor's center to the middle of the marker beside it
 pub const PATH_END_MARKER_DISTANCE: f64 = 7.;
@@ -133,6 +133,18 @@ pub const POINT_INDEX_LABEL_OFFSET: f64 = 12.;
 pub const INDEX_LABEL_GAP: f64 = 8.;
 pub const PATH_FLOW_JOIN_TICK_LENGTH: f64 = 18.;
 pub const PATH_FLOW_JOIN_TICK_THICKNESS: f64 = 2.;
+
+// CURVATURE COMB OVERLAY
+// A tooth's length in document pixels is the curvature times this scale, in square document pixels
+pub const CURVATURE_COMB_MIN_SCALE: f64 = 100.;
+pub const CURVATURE_COMB_MAX_SCALE: f64 = 10_000.;
+// Midway along its slider, at the geometric mean of the minimum and maximum
+pub const CURVATURE_COMB_DEFAULT_SCALE: f64 = 1000.;
+// In viewport pixels along each segment, until a segment reaches its maximum teeth
+pub const CURVATURE_COMB_TOOTH_SPACING: f64 = 6.;
+pub const CURVATURE_COMB_MAX_TEETH_PER_SEGMENT: f64 = 128.;
+// In viewport pixels, past which the teeth near a cusp would only streak across the screen
+pub const CURVATURE_COMB_MAX_TOOTH_LENGTH: f64 = 2000.;
 
 // GRADIENT TOOL
 pub const GRADIENT_MIDPOINT_DIAMOND_RADIUS: f64 = 4.;

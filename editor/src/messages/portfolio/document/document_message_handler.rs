@@ -8,7 +8,8 @@ use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, Selected
 use super::{CursorMoveError, DocumentHistory};
 use crate::application::{Environment, GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
-	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, CURVATURE_COMB_DEFAULT_SCALE, CURVATURE_COMB_MAX_SCALE, CURVATURE_COMB_MIN_SCALE, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION,
+	GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 };
 use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -44,12 +45,12 @@ use graph_craft::list;
 use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
-use graphene_std::raster::BlendMode;
+use graphene_std::raster::{BlendMode, Color};
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::style::{GradientStops, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -1582,10 +1583,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::PathEnds => visibility_settings.path_ends = visible,
 					OverlaysType::PathIndex => visibility_settings.path_index = visible,
 					OverlaysType::PathDirection => visibility_settings.path_direction = visible,
+					OverlaysType::CurvatureComb => {
+						visibility_settings.curvature_comb = visible;
+						responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					}
 				}
 
 				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::SetCurvatureCombScale { scale } => {
+				if !scale.is_nan() {
+					self.overlays_visibility_settings.curvature_comb_scale = scale.clamp(CURVATURE_COMB_MIN_SCALE, CURVATURE_COMB_MAX_SCALE);
+				}
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
@@ -3565,7 +3577,7 @@ impl DocumentMessageHandler {
 		"
 		.trim();
 
-		let left = [
+		let mut left = vec![
 			vec![TextLabel::new("General").widget_instance()],
 			checkbox("Artboard Name", OverlaysType::ArtboardName, settings.artboard_name, false, ""),
 			checkbox("G/R/S Measurement", OverlaysType::TransformMeasurement, settings.transform_measurement, false, ""),
@@ -3577,7 +3589,18 @@ impl DocumentMessageHandler {
 			checkbox("Point Index", OverlaysType::PointIndex, settings.point_index, !settings.anchors, ""),
 			checkbox("Path Index", OverlaysType::PathIndex, settings.path_index, !settings.anchors, ""),
 			checkbox("Path Direction", OverlaysType::PathDirection, settings.path_direction, !settings.anchors, ""),
+			checkbox("Curvature Comb", OverlaysType::CurvatureComb, settings.curvature_comb, !settings.anchors, ""),
 		];
+		if settings.curvature_comb {
+			left.push(indented_ratio_slider(
+				settings.curvature_comb_scale,
+				[CURVATURE_COMB_MIN_SCALE, CURVATURE_COMB_MAX_SCALE],
+				CURVATURE_COMB_DEFAULT_SCALE,
+				!settings.anchors,
+				|scale| DocumentMessage::SetCurvatureCombScale { scale }.into(),
+			));
+		}
+
 		let right = [
 			vec![TextLabel::new("Select Tool").widget_instance()],
 			checkbox("Quick Measurement", OverlaysType::QuickMeasurement, settings.quick_measurement, false, ""),
@@ -4118,6 +4141,34 @@ fn side_by_side(left: &[Vec<WidgetInstance>], right: &[Vec<WidgetInstance>]) -> 
 			vec![left_cell, right_cell]
 		})
 		.collect()
+}
+
+/// A slider indented to line up with the checkbox labels above it, where even steps scale `value` by equal ratios from `min` to `max`.
+/// Double-clicking it returns to `default`.
+fn indented_ratio_slider(value: f64, [min, max]: [f64; 2], default: f64, disabled: bool, message: impl Fn(f64) -> Message + 'static + Send + Sync) -> Vec<WidgetInstance> {
+	let ratio = max / min;
+	let position = (value / min).ln() / ratio.ln();
+
+	vec![
+		// Indented past the checkbox and its gap to line up with the label text
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		SliderInput::new(GradientStops::default())
+			.range_slider(true)
+			.markers(vec![SliderMarker::new(position, 0.5, Color::WHITE)])
+			.show_midpoints(false)
+			.allow_insert(false)
+			.allow_delete(false)
+			.allow_reorder(false)
+			.disabled(disabled)
+			.on_update(move |update: &SliderInputUpdate| match update {
+				SliderInputUpdate::MoveMarker { index: 0, position } => message(min * ratio.powf(*position)),
+				SliderInputUpdate::ResetMarker { index: 0 } => message(default),
+				_ => Message::NoOp,
+			})
+			.widget_instance(),
+	]
 }
 
 /// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.
