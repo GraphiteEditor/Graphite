@@ -2086,18 +2086,23 @@ fn collect_vector_items_metadata<'a>(
 			let source_paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 			let item_relative_transform = reference_inverse * transform;
 
-			// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes)
-			let mut click_targets_unwrapped = Vec::new();
-			match item.attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET) {
-				Some(override_path) => extend_targets_from_bezpaths(&mut click_targets_unwrapped, appearance, split_bezpath_contours(override_path), item_relative_transform),
-				None => extend_targets_from_vector(&mut click_targets_unwrapped, appearance, source, source_paths, item_relative_transform),
-			}
-			accumulated_click_targets.entry(element_id).or_default().extend(click_targets_unwrapped.into_iter().map(Arc::new));
-
 			// Outlines always use source geometry so the visual outline reflects actual letterforms
 			let mut outlines_unwrapped = Vec::new();
 			extend_targets_from_vector(&mut outlines_unwrapped, appearance, source, source_paths, item_relative_transform);
-			accumulated_outlines.entry(element_id).or_default().extend(outlines_unwrapped.into_iter().map(Arc::new));
+			let outlines: Vec<Arc<ClickTarget>> = outlines_unwrapped.into_iter().map(Arc::new).collect();
+
+			// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes), otherwise the click targets are the outlines
+			let click_targets = match item.attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET) {
+				Some(override_path) => {
+					let mut click_targets_unwrapped = Vec::new();
+					extend_targets_from_bezpaths(&mut click_targets_unwrapped, appearance, split_bezpath_contours(override_path), item_relative_transform);
+					click_targets_unwrapped.into_iter().map(Arc::new).collect()
+				}
+				None => outlines.clone(),
+			};
+
+			accumulated_click_targets.entry(element_id).or_default().extend(click_targets);
+			accumulated_outlines.entry(element_id).or_default().extend(outlines);
 
 			// Source geometry (not the click-target override) so editing tools work on letterforms.
 			// Recorded together with `vector_data` from the same (first) item so stroke geometry stays consistent with the paint.
@@ -2273,14 +2278,15 @@ fn extend_targets_from_bezpaths(targets: &mut Vec<ClickTarget>, appearance: Opti
 	}
 
 	if !bezpaths.is_empty() {
-		let mut combined_path = BezPath::new();
-		for bezpath in bezpaths {
-			combined_path.extend(bezpath);
+		// Sized up front and transformed before the target exists, so its bounds and cache are set up once
+		let mut combined_elements = Vec::with_capacity(bezpaths.iter().map(|bezpath| bezpath.elements().len()).sum());
+		for bezpath in &bezpaths {
+			combined_elements.extend_from_slice(bezpath.elements());
 		}
+		let mut combined_path = BezPath::from_vec(combined_elements);
+		combined_path.apply_affine(Affine::new(transform.to_cols_array()));
 
-		let mut click_target = ClickTarget::new_with_path(combined_path, stroke_width);
-		click_target.apply_transform(transform);
-		targets.push(click_target);
+		targets.push(ClickTarget::new_with_path(combined_path, stroke_width));
 	}
 }
 
@@ -2302,10 +2308,17 @@ fn split_bezpath_contours(bezpath: &BezPath) -> Vec<BezPath> {
 
 fn extend_free_point_targets<'a>(vector: &'a Vector, geometry_paths: &List<Path>, transform: DAffine2) -> impl Iterator<Item = ClickTarget> + 'a {
 	// A pool point that no path references is a free point, since handles and anchors are all referenced
-	let connectivity = vector.connectivity(geometry_paths);
+	let mut referenced = vec![false; vector.point_count()];
+	for path in geometry_paths.iter_element_values() {
+		for point in path.references() {
+			if let Some(slot) = referenced.get_mut(point as usize) {
+				*slot = true;
+			}
+		}
+	}
 
 	(0..vector.point_count() as u32).filter_map(move |point_index| {
-		if connectivity.is_referenced(point_index) {
+		if referenced[point_index as usize] {
 			return None;
 		}
 
