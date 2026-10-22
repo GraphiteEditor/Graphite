@@ -114,6 +114,7 @@ impl LayoutHolder for FreehandTool {
 		widgets.push(
 			IconButton::new("SwapHorizontal", 16)
 				.tooltip_label("Swap Fill/Stroke Colors")
+				.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 				.on_update(|_| {
 					FreehandToolMessage::UpdateOptions {
 						options: FreehandOptionsUpdate::SwapFillAndStroke,

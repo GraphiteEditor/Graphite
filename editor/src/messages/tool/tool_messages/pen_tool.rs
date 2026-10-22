@@ -177,6 +177,7 @@ impl LayoutHolder for PenTool {
 		widgets.push(
 			IconButton::new("SwapHorizontal", 16)
 				.tooltip_label("Swap Fill/Stroke Colors")
+				.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 				.on_update(|_| {
 					PenToolMessage::UpdateOptions {
 						options: PenOptionsUpdate::SwapFillAndStroke,

@@ -452,6 +452,7 @@ impl LayoutHolder for ShapeTool {
 			widgets.push(
 				IconButton::new("SwapHorizontal", 16)
 					.tooltip_label("Swap Fill/Stroke Colors")
+					.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 					.on_update(|_| {
 						ShapeToolMessage::UpdateOptions {
 							options: ShapeOptionsUpdate::SwapFillAndStroke,

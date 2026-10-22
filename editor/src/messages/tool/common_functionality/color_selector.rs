@@ -548,23 +548,38 @@ pub fn swap_fill_and_stroke(drawing: &mut DrawingToolState, document: &DocumentM
 	let new_fill = drawing.stroke.fill_choice.clone();
 	let new_stroke = drawing.fill.fill_choice.as_ref().map(|c| c.as_solid().map_or(FillChoice::None, FillChoice::Solid));
 	let (new_fill_tracks, new_stroke_tracks) = (drawing.stroke.tracks_working_color, drawing.fill.tracks_working_color);
+	let (new_fill_enabled, new_stroke_enabled) = (drawing.stroke.enabled, drawing.fill.enabled);
 
 	drawing.fill.fill_choice = new_fill.clone();
 	drawing.stroke.fill_choice = new_stroke.clone();
 	drawing.fill.tracks_working_color = new_fill_tracks;
 	drawing.stroke.tracks_working_color = new_stroke_tracks;
+	drawing.fill.enabled = new_fill_enabled;
+	drawing.stroke.enabled = new_stroke_enabled;
 
 	if has_paintable_selection(document) {
-		// Apply to layers only when we have a concrete value (`None` means mixed, no single value to broadcast).
-		if drawing.fill.is_active()
-			&& let Some(choice) = new_fill
-		{
-			graph_modification_utils::set_fill_for_selected_layers(choice, document, responses);
+		match new_fill_enabled {
+			Some(true) => {
+				if let Some(choice) = new_fill {
+					graph_modification_utils::set_fill_for_selected_layers(choice, document, responses);
+				}
+			}
+			Some(false) => {
+				graph_modification_utils::remove_fill_for_selected_layers(document, responses);
+			}
+			None => {}
 		}
-		if drawing.stroke.is_active()
-			&& let Some(choice) = new_stroke
-		{
-			graph_modification_utils::set_stroke_color_for_selected_layers(choice.as_solid(), drawing.effective_line_weight(), document, responses);
+
+		match new_stroke_enabled {
+			Some(true) => {
+				if let Some(choice) = new_stroke {
+					graph_modification_utils::set_stroke_color_for_selected_layers(choice.as_solid(), drawing.effective_line_weight(), document, responses);
+				}
+			}
+			Some(false) => {
+				graph_modification_utils::remove_stroke_for_selected_layers(document, responses);
+			}
+			None => {}
 		}
 	}
 }

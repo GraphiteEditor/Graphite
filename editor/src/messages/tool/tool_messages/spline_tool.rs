@@ -121,6 +121,7 @@ impl LayoutHolder for SplineTool {
 		widgets.push(
 			IconButton::new("SwapHorizontal", 16)
 				.tooltip_label("Swap Fill/Stroke Colors")
+				.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 				.on_update(|_| {
 					SplineToolMessage::UpdateOptions {
 						options: SplineOptionsUpdate::SwapFillAndStroke,

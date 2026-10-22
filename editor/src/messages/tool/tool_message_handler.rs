@@ -338,6 +338,33 @@ impl ToolMessageHandler {
 
 				document_data.update_working_colors(responses); // TODO: Make this an event
 			}
+			ToolMessage::SwapFillAndStroke => {
+				let active_tool = self.tool_state.tool_data.active_tool_type;
+				match active_tool {
+					ToolType::Select => responses.add(SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::SwapFillAndStroke,
+					}),
+					ToolType::Shape => responses.add(ShapeToolMessage::UpdateOptions {
+						options: ShapeOptionsUpdate::SwapFillAndStroke,
+					}),
+					ToolType::Pen => responses.add(PenToolMessage::UpdateOptions {
+						options: PenOptionsUpdate::SwapFillAndStroke,
+					}),
+					ToolType::Freehand => responses.add(FreehandToolMessage::UpdateOptions {
+						options: FreehandOptionsUpdate::SwapFillAndStroke,
+					}),
+					ToolType::Spline => responses.add(SplineToolMessage::UpdateOptions {
+						options: SplineOptionsUpdate::SwapFillAndStroke,
+					}),
+					_ => {
+						if super::common_functionality::color_selector::has_paintable_selection(document) {
+							responses.add(SelectToolMessage::SelectOptions {
+								options: SelectOptionsUpdate::SwapFillAndStroke,
+							});
+						}
+					}
+				}
+			}
 
 			// Sub-messages
 			tool_message => {
@@ -431,6 +458,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			SelectRandomWorkingColor,
 			ResetColors,
 			SwapColors,
+			SwapFillAndStroke,
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list.extend(self.transform_layer_handler.actions());
