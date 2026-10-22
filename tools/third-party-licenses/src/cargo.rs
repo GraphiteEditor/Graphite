@@ -85,17 +85,22 @@ fn parse(parsed: Output) -> Vec<LicenseEntry> {
 }
 
 fn run() -> Result<Output, Error> {
+	let temp_file_path = std::env::temp_dir().join(format!("graphite-cargo-about-{}.json", std::process::id()));
+
 	let output = Command::new("cargo")
-		.args(["about", "generate", "--format", "json", "--locked"])
+		.args(["about", "generate", "--format", "json", "--locked", "-o"])
+		.arg(&temp_file_path)
 		.current_dir(env!("CARGO_WORKSPACE_DIR"))
 		.output()
 		.map_err(|e| Error::Io(e, "Failed to run cargo about generate".into()))?;
 
 	if !output.status.success() {
+		let _ = fs::remove_file(&temp_file_path);
 		return Err(Error::Command(format!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr))));
 	}
 
-	let stdout = String::from_utf8(output.stdout).map_err(|e| Error::Utf8(e, "cargo about generate returned invalid UTF-8".into()))?;
+	let file_content = fs::read_to_string(&temp_file_path).map_err(|e| Error::Io(e, format!("Failed to read cargo about output from {}", temp_file_path.display())))?;
+	let _ = fs::remove_file(&temp_file_path);
 
-	serde_json::from_str(&stdout).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON".into()))
+	serde_json::from_str(&file_content).map_err(|e| Error::Json(e, "Failed to parse cargo about generate JSON".into()))
 }
