@@ -584,6 +584,16 @@ pub fn swap_fill_and_stroke(drawing: &mut DrawingToolState, document: &DocumentM
 	}
 }
 
+/// Swaps fill and stroke on the active selection directly without an active drawing tool.
+pub fn swap_fill_and_stroke_on_selected_layers(global: &DocumentToolData, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	if !has_paintable_selection(document) {
+		return;
+	}
+	let mut drawing = DrawingToolState::new(true);
+	sync_drawing_state(&mut drawing, true, true, global, document);
+	swap_fill_and_stroke(&mut drawing, document, responses);
+}
+
 /// Updates the cache and returns `true` if the current selection differs from the last-synced one. Cache stays sorted to keep comparisons cheap.
 pub fn selection_changed_since_last_sync(last_synced: &mut Vec<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> bool {
 	let mut current: Vec<LayerNodeIdentifier> = document.network_interface.selected_nodes().selected_layers_except_artboards(&document.network_interface).collect();

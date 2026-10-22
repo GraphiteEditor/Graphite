@@ -629,6 +629,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 				swap_fill_and_stroke(&mut self.options.drawing, context.document, responses);
 				// Persist the new swap state as the current shape mode's default
 				self.options.shape_colors_swapped.insert(self.tool_data.current_shape, self.options.drawing.colors_swapped);
+				if !has_paintable_selection(context.document) {
+					if let Some(enabled) = self.options.drawing.fill.enabled {
+						self.options.shape_fill_defaults.insert(self.tool_data.current_shape, enabled);
+					}
+					if let Some(enabled) = self.options.drawing.stroke.enabled {
+						self.options.shape_stroke_defaults.insert(self.tool_data.current_shape, enabled);
+					}
+				}
 			}
 			ShapeOptionsUpdate::WorkingColorsChanged => {
 				apply_working_colors(&mut self.options.drawing, context.global_tool_data, context.document);

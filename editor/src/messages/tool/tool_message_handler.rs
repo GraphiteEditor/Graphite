@@ -357,11 +357,11 @@ impl ToolMessageHandler {
 						options: SplineOptionsUpdate::SwapFillAndStroke,
 					}),
 					_ => {
-						if super::common_functionality::color_selector::has_paintable_selection(document) {
-							responses.add(SelectToolMessage::SelectOptions {
-								options: SelectOptionsUpdate::SwapFillAndStroke,
-							});
-						}
+						super::common_functionality::color_selector::swap_fill_and_stroke_on_selected_layers(
+							&self.tool_state.document_tool_data,
+							document,
+							responses,
+						);
 					}
 				}
 			}
