@@ -877,11 +877,14 @@ fn error_traced_through(indices: &[usize]) -> NodeError {
 fn a_trace_leads_to_the_node_that_raised_the_error() {
 	let executor = DynamicExecutor::new(bounding_box_network(TaggedValue::TypeDefault(item!(Vector)))).unwrap();
 
-	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[])), Some(NodeId(1)));
-	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0])), Some(NodeId(0)));
-	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0, 0])), None, "a value node has no inputs");
-	assert_eq!(executor.find_origin(NodeId(0), &error_traced_through(&[])), Some(NodeId(0)));
-	assert_eq!(executor.find_origin(NodeId(0), &error_traced_through(&[0])), None, "an upstream trace starts at its parent's origin");
+	assert!(executor.trace_error(executor.output(), &error_traced_through(&[])).is_empty());
+	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0])), [NodeId(0)]);
+	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0, 0])), [NodeId(0)], "a value node has no inputs");
+	assert!(executor.trace_error(NodeId(0), &error_traced_through(&[])).is_empty());
+	assert!(
+		executor.trace_error(NodeId(0), &error_traced_through(&[0])).is_empty(),
+		"an upstream trace starts at its parent's origin"
+	);
 }
 
 #[test]
@@ -896,7 +899,7 @@ fn a_trace_steps_over_the_index_of_a_promotion_adapter() {
 	})
 	.unwrap();
 
-	assert_eq!(executor.find_origin(executor.output(), &error_traced_through(&[0, 0])), Some(NodeId(0)));
+	assert_eq!(*executor.trace_error(executor.output(), &error_traced_through(&[0, 0])), [NodeId(0)]);
 }
 
 #[test]
@@ -941,11 +944,11 @@ fn chained_fallbacks_both_reach_the_root() {
 		panic!("Both nodes fall back, so the root should too")
 	};
 	let error = &boxed.1;
-	assert_eq!(executor.find_origin(executor.output(), error), Some(NodeId(3)));
+	assert!(executor.trace_error(executor.output(), error).is_empty());
 	let [upstream] = error.upstream() else {
 		panic!("The second node's error should carry the first node's error")
 	};
-	assert_eq!(executor.find_origin(NodeId(3), upstream), Some(NodeId(2)));
+	assert_eq!(*executor.trace_error(NodeId(3), upstream), [NodeId(2)]);
 }
 
 #[test]
@@ -967,11 +970,11 @@ fn an_error_after_a_fallback_keeps_both() {
 	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
 		panic!("The failing node should stop the frame")
 	};
-	assert_eq!(executor.find_origin(executor.output(), &error), Some(NodeId(3)));
+	assert!(executor.trace_error(executor.output(), &error).is_empty());
 	let [upstream] = error.upstream() else {
 		panic!("The failing node's error should carry the fallback before it")
 	};
-	assert_eq!(executor.find_origin(NodeId(3), upstream), Some(NodeId(2)));
+	assert_eq!(*executor.trace_error(NodeId(3), upstream), [NodeId(2)]);
 }
 
 #[test]
@@ -993,7 +996,7 @@ fn a_node_error_names_the_node_that_raised_it() {
 	let Ok(Poll::Error(error)) = (&executor).execute(context) else {
 		panic!("The failing node should stop the frame")
 	};
-	let origin = executor.find_origin(executor.output(), &error);
+	let origin = executor.trace_error(executor.output(), &error).last().copied();
 	assert_eq!(origin, Some(NodeId(2)), "The error should name the failing node, not the root that forwarded it");
 	let paths: Vec<_> = executor
 		.tree()

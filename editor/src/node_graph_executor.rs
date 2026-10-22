@@ -48,12 +48,28 @@ pub struct ExecutionResponse {
 pub enum ExecutionResult {
 	Pending,
 	Value(TaggedValue),
-	Fallback(TaggedValue, EvaluationError),
-	Error(EvaluationError),
+	Fallback(TaggedValue, EvaluationErrors),
+	Error(EvaluationErrors),
 	Panic(Box<dyn Any + Send>),
 }
 
-pub type EvaluationError = Box<[(Arc<dyn std::error::Error + Send + Sync>, Box<[NodeId]>)]>;
+#[derive(Debug)]
+pub struct EvaluationErrors(Box<[(Arc<dyn std::error::Error + Send + Sync>, NodeErrorTrace)]>);
+pub type NodeErrorTrace = Box<[NodePaths]>;
+pub type NodePaths = Box<[Box<[NodeId]>]>;
+
+impl EvaluationErrors {
+	fn iter(&self) -> impl Iterator<Item = (&(dyn std::error::Error + Send + Sync), &NodeErrorTrace)> {
+		self.0.iter().map(|(error, trace)| (&**error, trace))
+	}
+}
+
+impl std::fmt::Display for EvaluationErrors {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let messages: Vec<_> = self.iter().map(|(error, _)| error.to_string()).collect();
+		write!(f, "{}", messages.join("\n"))
+	}
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
@@ -462,13 +478,24 @@ impl NodeGraphExecutor {
 					// A pending graph keeps the last frame, and the errors shown with it
 					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
 						let errors = match &result {
-							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => errors
-								.iter()
-								.map(|(error, node_path)| NodeEvaluationError {
-									node_path: node_path.to_vec(),
-									message: error.to_string(),
-								})
-								.collect(),
+							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
+								let in_document = |path: &&[NodeId]| path.split_last().is_some_and(|(node, network)| document.network_interface.document_node(node, network).is_some());
+								errors
+									.iter()
+									.flat_map(|(error, trace)| {
+										let paths = trace
+											.iter()
+											.rev()
+											.map(|paths| paths.iter().map(|path| &**path).filter(in_document).collect::<Vec<_>>())
+											.find(|paths| !paths.is_empty())
+											.unwrap_or_default();
+										paths.into_iter().map(|node_path| NodeEvaluationError {
+											node_path: node_path.to_vec(),
+											message: error.to_string(),
+										})
+									})
+									.collect()
+							}
 							ExecutionResult::Pending | ExecutionResult::Value(_) | ExecutionResult::Panic(_) => Vec::new(),
 						};
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
@@ -477,7 +504,7 @@ impl NodeGraphExecutor {
 					let node_graph_output = match result {
 						ExecutionResult::Pending => Ok(None),
 						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(Some(value)),
-						ExecutionResult::Error(errors) => Err(errors.iter().map(|(error, _)| error.to_string()).collect::<Vec<_>>().join("\n")),
+						ExecutionResult::Error(errors) => Err(errors.to_string()),
 						ExecutionResult::Panic(payload) => {
 							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
 							Err(format!("Panicked: {}", message.unwrap_or("no message")))
