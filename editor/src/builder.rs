@@ -2,7 +2,7 @@ use crate::application::{Editor, Environment};
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
 use crate::node_graph_executor::{NodeGraphExecutor, NodeRuntime};
-use crate::task::{Spawn, Spawner};
+use crate::task::{Clock, Scheduling, Spawn, Spawner};
 use document_container::store::DocumentStore;
 use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::ResourceStorage;
@@ -96,6 +96,8 @@ impl Builder<ReadyEditorBuilder, ReadyRuntimeBuilder, Spawner, u64> {
 		let RuntimeBuilder {
 			wake: runtime_wake,
 			mut application_io,
+			scheduling,
+			clock,
 		} = runtime;
 
 		graphene_std::uuid::set_uuid_seed(random_seed);
@@ -107,7 +109,8 @@ impl Builder<ReadyEditorBuilder, ReadyRuntimeBuilder, Spawner, u64> {
 
 		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
 		node_runtime.replace_application_io(application_io);
-		node_runtime.replace_task_executor(spawner, runtime_wake);
+		node_runtime.replace_task_executor(spawner, runtime_wake, clock);
+		node_runtime.set_scheduling(scheduling);
 
 		(Editor { dispatcher }, node_runtime)
 	}
@@ -184,17 +187,18 @@ impl<W, E, R> EditorBuilder<W, E, R, ()> {
 pub struct RuntimeBuilder<W = (), A = ()> {
 	wake: W,
 	application_io: A,
+	clock: Arc<dyn Clock>,
+	scheduling: Scheduling,
 }
 
 impl RuntimeBuilder {
-	pub fn new() -> Self {
-		Self { wake: (), application_io: () }
-	}
-}
-
-impl Default for RuntimeBuilder {
-	fn default() -> Self {
-		Self::new()
+	pub fn new(clock: Arc<dyn Clock>) -> Self {
+		Self {
+			wake: (),
+			application_io: (),
+			clock,
+			scheduling: Scheduling::default(),
+		}
 	}
 }
 
@@ -204,12 +208,25 @@ impl<A> RuntimeBuilder<(), A> {
 		RuntimeBuilder {
 			wake: Arc::new(wake),
 			application_io: self.application_io,
+			clock: self.clock,
+			scheduling: self.scheduling,
 		}
 	}
 }
 
 impl<W> RuntimeBuilder<W, ()> {
 	pub fn with_application_io(self, application_io: PlatformApplicationIo) -> RuntimeBuilder<W, PlatformApplicationIo> {
-		RuntimeBuilder { wake: self.wake, application_io }
+		RuntimeBuilder {
+			wake: self.wake,
+			application_io,
+			clock: self.clock,
+			scheduling: self.scheduling,
+		}
+	}
+}
+
+impl<W, A> RuntimeBuilder<W, A> {
+	pub fn with_scheduling(self, scheduling: Scheduling) -> Self {
+		Self { scheduling, ..self }
 	}
 }
