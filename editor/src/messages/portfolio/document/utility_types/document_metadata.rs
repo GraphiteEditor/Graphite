@@ -15,8 +15,8 @@ use graphene_std::vector::{Vector, VectorGeometry, no_paths, paths_from_item_att
 use kurbo::BezPath;
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, OnceLock};
 
 // ================
 // DocumentMetadata
@@ -30,10 +30,15 @@ pub struct DocumentMetadata {
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
+	/// Each layer's own click targets in its space, which for a group leaves out its child layers (see [`Self::click_targets`]).
 	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
 	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
 	/// nodes with an `editor:click_target` override still outline the precise geometry.
 	pub outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
+	/// Layers whose targets include those of their child layers.
+	pub group_layers: HashSet<LayerNodeIdentifier>,
+	/// Each group's targets composed with its descendants' into its space.
+	composed_targets: HashMap<LayerNodeIdentifier, ComposedTargets>,
 	/// Per-layer text frame from item 0's `editor:text_frame` attribute (`DAffine2` mapping the (0, 0)-(1, 1) unit square onto the frame).
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
@@ -53,6 +58,13 @@ pub struct DocumentMetadata {
 	pub generation: u64,
 }
 
+/// A group's click targets and outlines composed with its descendants', each built on first query after a change.
+#[derive(Debug, Clone, Default)]
+struct ComposedTargets {
+	click_targets: OnceLock<Vec<Arc<ClickTarget>>>,
+	outlines: OnceLock<Vec<Arc<ClickTarget>>>,
+}
+
 // =================================
 // DocumentMetadata: Layer iterators
 // =================================
@@ -66,8 +78,13 @@ impl DocumentMetadata {
 		self.structure.contains_key(&layer)
 	}
 
+	/// The layer's click targets in its space, including all descendants' for a group.
 	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
-		self.click_targets.get(&layer).map(|x| x.as_slice())
+		let own = self.click_targets.get(&layer).map(Vec::as_slice);
+		match self.composed_targets.get(&layer) {
+			Some(composed) => Some(composed.click_targets.get_or_init(|| self.compose_group_targets(layer, own, |child| self.click_targets(child)))),
+			None => own,
+		}
 	}
 
 	/// Access the [`NodeRelations`] of a layer.
@@ -153,6 +170,7 @@ impl DocumentMetadata {
 		// Drawing from one counter for every document keeps a number from ever standing for two states, including across the swaps that undo and redo make
 		static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
 		self.generation = NEXT_GENERATION.fetch_add(1, Ordering::Relaxed);
+		self.reset_composed_targets();
 	}
 
 	pub fn transform_to_viewport_with_first_transform_node_if_group(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
@@ -194,10 +212,67 @@ impl DocumentMetadata {
 // ===============================
 
 impl DocumentMetadata {
-	/// Outline targets if present, otherwise click targets. Used for bounding boxes and outline
-	/// drawing so layers with an `editor:click_target` override report precise geometry bounds.
-	fn visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+	/// The layer's own outline targets if present, otherwise its own click targets, excluding a group's descendants.
+	fn own_visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
 		self.outlines.get(&layer).or_else(|| self.click_targets.get(&layer)).map(|v| v.as_slice())
+	}
+
+	/// Outline targets if present, otherwise click targets, including all descendants' for a group. Used for outline
+	/// drawing so layers with an `editor:click_target` override show their precise geometry.
+	fn visual_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+		let own = self.own_visual_targets(layer);
+		match self.composed_targets.get(&layer) {
+			Some(composed) => Some(composed.outlines.get_or_init(|| self.compose_group_targets(layer, own, |child| self.visual_targets(child)))),
+			None => own,
+		}
+	}
+
+	/// A group's own targets followed by each child layer's (from `child_targets`), placed into the group's space.
+	fn compose_group_targets<'a>(
+		&'a self,
+		group: LayerNodeIdentifier,
+		own: Option<&[Arc<ClickTarget>]>,
+		child_targets: impl Fn(LayerNodeIdentifier) -> Option<&'a [Arc<ClickTarget>]>,
+	) -> Vec<Arc<ClickTarget>> {
+		let mut targets = own.unwrap_or_default().to_vec();
+
+		for (child, child_to_group) in self.children_in_group_space(group) {
+			let Some(child_targets) = child_targets(child) else { continue };
+
+			targets.extend(child_targets.iter().map(|target| {
+				let mut target = (**target).clone();
+				target.apply_transform(child_to_group);
+				Arc::new(target)
+			}));
+		}
+
+		targets
+	}
+
+	/// Each child layer of `group` with the transform from its space into the group's, or none if the group's transform is singular.
+	fn children_in_group_space(&self, group: LayerNodeIdentifier) -> impl Iterator<Item = (LayerNodeIdentifier, DAffine2)> + '_ {
+		let group_to_viewport = self.transform_to_viewport(group);
+		let viewport_to_group = (group_to_viewport.matrix2.determinant() != 0.).then(|| group_to_viewport.inverse());
+
+		viewport_to_group
+			.into_iter()
+			.flat_map(move |viewport_to_group| group.children(self).map(move |child| (child, viewport_to_group * self.transform_to_viewport(child))))
+	}
+
+	/// Forgets every group's composed targets, after the layers' targets, transforms, or structure change.
+	pub fn reset_composed_targets(&mut self) {
+		self.composed_targets = self.group_layers.iter().map(|&group| (group, ComposedTargets::default())).collect();
+	}
+
+	/// Whether `hit` accepts a click target of the layer or of any descendant, each passed with its own layer's transform to document space.
+	/// Unlike [`Self::click_targets`], this copies no targets into the group's space.
+	pub fn any_click_target_hit(&self, layer: LayerNodeIdentifier, hit: &mut impl FnMut(&ClickTarget, DAffine2) -> bool) -> bool {
+		let own_hit = self.click_targets.get(&layer).is_some_and(|targets| {
+			let layer_to_document = self.transform_to_document(layer);
+			targets.iter().any(|target| hit(target, layer_to_document))
+		});
+
+		own_hit || (self.group_layers.contains(&layer) && layer.children(self).any(|child| self.any_click_target_hit(child, hit)))
 	}
 
 	/// Whether to treat this layer as a text layer for tool UI. Checks the surfaced `editor:text_frame`
@@ -208,9 +283,21 @@ impl DocumentMetadata {
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.visual_targets(layer)?
-			.iter()
+		let own_bounds = self
+			.own_visual_targets(layer)
+			.into_iter()
+			.flatten()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
+			.reduce(Quad::combine_bounds);
+
+		if !self.group_layers.contains(&layer) {
+			return own_bounds;
+		}
+
+		// Each descendant is bounded in its own space, without composing copies of its targets
+		self.children_in_group_space(layer)
+			.filter_map(|(child, child_to_layer)| self.bounding_box_with_transform(child, transform * child_to_layer))
+			.chain(own_bounds)
 			.reduce(Quad::combine_bounds)
 	}
 

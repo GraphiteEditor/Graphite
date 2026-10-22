@@ -697,10 +697,13 @@ pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
+	/// A layer's own click targets in its space, which for a group leaves out its child layers.
 	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
 	/// nodes with an `editor:click_target` override still outline the precise geometry.
 	pub outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+	/// Layers whose targets include those of their child layers.
+	pub group_layers: HashSet<NodeId>,
 	/// Per-layer text frame from item 0's `editor:text_frame` attribute.
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<NodeId, DAffine2>,
@@ -731,6 +734,7 @@ impl RenderMetadata {
 			first_element_source_id,
 			click_targets,
 			outlines,
+			group_layers,
 			text_frames,
 			clip_targets,
 			vector_data,
@@ -742,6 +746,7 @@ impl RenderMetadata {
 		first_element_source_id.extend(other.first_element_source_id.iter());
 		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
 		outlines.extend(other.outlines.iter().map(|(k, v)| (*k, v.clone())));
+		group_layers.extend(other.group_layers.iter());
 		text_frames.extend(other.text_frames.iter());
 		clip_targets.extend(other.clip_targets.iter());
 		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
@@ -999,15 +1004,17 @@ fn collect_graphic_items_metadata<'a>(
 	}
 
 	if let Some(element_id) = element_id {
-		let mut all_upstream_click_targets = Vec::new();
-		let mut all_upstream_outlines = Vec::new();
+		let mut own_click_targets = Vec::new();
+		let mut own_outlines = Vec::new();
 
-		for item in items {
-			collect_graphic_item_targets(item, inherited_appearance, &mut all_upstream_click_targets, &mut all_upstream_outlines);
+		// Tagged items are child layers with targets of their own, which the editor composes into the group when queried
+		for item in items.filter(|item| item.layer().is_none()) {
+			collect_graphic_item_targets(item, inherited_appearance, &mut own_click_targets, &mut own_outlines);
 		}
 
-		metadata.click_targets.insert(element_id, all_upstream_click_targets.into_iter().map(|x| x.into()).collect());
-		metadata.outlines.insert(element_id, all_upstream_outlines.into_iter().map(|x| x.into()).collect());
+		metadata.click_targets.insert(element_id, own_click_targets.into_iter().map(|x| x.into()).collect());
+		metadata.outlines.insert(element_id, own_outlines.into_iter().map(|x| x.into()).collect());
+		metadata.group_layers.insert(element_id);
 	}
 }
 
