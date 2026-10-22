@@ -669,20 +669,23 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
-	// The output a framed variant collects into. A map kernel pushes one item per frame slot and a `Destructure` struct appends its
-	// fields to its mapped struct. An expander kernel, returning `List<U>`, has its lists concatenated since nested lists aren't supported.
-	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
+	// The output a framed variant collects into. A map kernel gathers one item per frame slot into a `Vec` that becomes its list at the end,
+	// which needs no `Clone` element, and a `Destructure` struct appends its fields to its mapped struct.
+	// An expander kernel, returning `List<U>`, has its lists concatenated since nested lists aren't supported.
+	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
 		match (parsed.output_element.as_ref(), peel_list(&output)) {
 			(Some(element_ty), _) => (
 				quote!(#core_types::list::List<#element_ty>),
-				quote!(#core_types::list::List::with_capacity(__frame_length)),
+				quote!(Vec::with_capacity(__frame_length)),
 				quote!(__output.push(__result);),
+				quote!(__output.into_iter().collect::<#core_types::list::List<#element_ty>>()),
 				quote!(#core_types::list::List::new()),
 			),
 			(None, Some(_)) => (
 				quote!(#output),
 				quote!(#core_types::list::List::new()),
 				quote!(__output.extend(__result);),
+				quote!(__output),
 				quote!(#core_types::list::List::new()),
 			),
 			(None, None) => {
@@ -691,6 +694,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote!(#destructure::Mapped),
 					quote!(#destructure::mapped_with_capacity(__frame_length)),
 					quote!(#core_types::registry::Destructure::push_into(__result, &mut __output);),
+					quote!(__output),
 					quote!(#destructure::mapped_with_capacity(0)),
 				)
 			}
@@ -727,7 +731,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			false => quote!(__input.clone()),
 		};
 
-		let (mapped_output_type, initial_output, collect_result, empty_output) = framed_output();
+		let (mapped_output_type, initial_output, collect_result, finished_output, empty_output) = framed_output();
 
 		let slot_call = lift_slot(quote!(self::#fn_name(__slot_context #(, &self.#data_field_names)* #(, #per_slot_args)*)));
 		quote! {
@@ -751,7 +755,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#collect_result
 					}
 
-					Ok(__output)
+					Ok(#finished_output)
 				};
 				__cell.run(__kernel)
 			}
@@ -793,7 +797,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect();
 
-		let (list_content_output_type, initial_output, collect_result, empty_output) = framed_output();
+		let (list_content_output_type, initial_output, collect_result, finished_output, empty_output) = framed_output();
 
 		let empty_param_check = (!ranked_names.is_empty()).then(|| {
 			quote! {
@@ -826,7 +830,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#collect_result
 					}
 
-					Ok(__output)
+					Ok(#finished_output)
 				};
 				__cell.run(__kernel)
 			}

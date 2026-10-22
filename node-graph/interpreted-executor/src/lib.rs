@@ -1,3 +1,6 @@
+// Auto-trait checks for the registry's node types walk deep into wgpu types, beyond the default limit of 128
+#![recursion_limit = "256"]
+
 pub mod dynamic_executor;
 pub mod node_registry;
 pub mod util;
