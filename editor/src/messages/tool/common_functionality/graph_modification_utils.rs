@@ -1066,6 +1066,86 @@ pub fn remove_stroke_for_selected_layers(document: &DocumentMessageHandler, resp
 	responses.add(NodeGraphMessage::SendGraph);
 }
 
+/// Swaps the fill and stroke independently for each selected non-artboard layer.
+pub fn swap_fill_and_stroke_for_selected_layers(default_weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	let mut deleted_any_nodes = false;
+
+	for layer in paintable_selected_layers(document) {
+		let fill_id = get_fill_id(layer, &document.network_interface);
+		let layer_fill = fill_id.and_then(|node_id| {
+			let fill_node = document.network_interface.document_network().nodes.get(&node_id)?;
+			match fill_node.input(graphene_std::vector::fill::PaintInput)?.as_value()? {
+				TaggedValue::Color(color) => Some(FillChoice::Solid(*color)),
+				TaggedValue::GradientRamp(ramp) => Some(FillChoice::Gradient(ramp.clone())),
+				value if value.is_no_paint() => Some(FillChoice::None),
+				_ => None,
+			}
+		});
+
+		let stroke_id = get_stroke_id(layer, &document.network_interface);
+		let layer_stroke = stroke_id.map(|_| {
+			let color = get_stroke_color(layer, &document.network_interface).flatten();
+			let width = get_stroke_width(layer, &document.network_interface);
+			(color, width)
+		});
+
+		// 1. Swap stroke to fill: the new fill receives the old stroke's color
+		match layer_stroke {
+			Some((Some(color), _)) => {
+				responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(color) });
+			}
+			Some((None, _)) => {
+				responses.add(GraphOperationMessage::FillColorSet { layer, color: None });
+			}
+			None => {
+				if let Some(node_id) = fill_id {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![node_id],
+						delete_children: true,
+					});
+					deleted_any_nodes = true;
+				}
+			}
+		}
+
+		// 2. Swap fill to stroke: the new stroke receives the old fill's color (solid only)
+		match layer_fill {
+			Some(fill_choice) => {
+				let solid_color = fill_choice.as_solid();
+				let weight = layer_stroke.and_then(|(_, w)| w).unwrap_or(default_weight);
+				if let Some(node_id) = stroke_id {
+					responses.add(NodeGraphMessage::SetInputValue {
+						node_id,
+						input_index: graphene_std::vector::stroke::PaintInput::INDEX,
+						value: solid_color.map_or_else(TaggedValue::no_paint, TaggedValue::Color).into(),
+					});
+				} else {
+					let stroke = graphene_std::vector::style::Stroke::new(weight);
+					responses.add(GraphOperationMessage::StrokeSet {
+						layer,
+						color: solid_color,
+						stroke,
+					});
+				}
+			}
+			None => {
+				if let Some(node_id) = stroke_id {
+					responses.add(NodeGraphMessage::DeleteNodes {
+						node_ids: vec![node_id],
+						delete_children: true,
+					});
+					deleted_any_nodes = true;
+				}
+			}
+		}
+	}
+
+	if deleted_any_nodes {
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(NodeGraphMessage::SendGraph);
+	}
+}
+
 /// Reads the given parameter from its proto node on the first selected non-artboard layer that has one.
 /// Used by tool control bars to mirror per-shape parameters (sides, arc type, turns, etc.) from the selection
 /// into the control bar's input widget state without each call site re-implementing the layer iteration.

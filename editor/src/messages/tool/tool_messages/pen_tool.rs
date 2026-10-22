@@ -147,6 +147,9 @@ impl ToolMetadata for PenTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Pen
 	}
+	fn default_line_weight(&self) -> Option<f64> {
+		Some(self.options.drawing.default_line_weight)
+	}
 }
 
 impl ToolEditTarget for PenTool {

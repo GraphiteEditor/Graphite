@@ -221,6 +221,9 @@ pub trait ToolMetadata {
 		String::new()
 	}
 	fn tool_type(&self) -> ToolType;
+	fn default_line_weight(&self) -> Option<f64> {
+		None
+	}
 }
 
 /// Required of every tool, so the Layers panel can outline the node the tool edits in each selected layer.

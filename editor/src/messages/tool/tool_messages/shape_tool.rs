@@ -734,6 +734,9 @@ impl ToolMetadata for ShapeTool {
 	fn tool_type(&self) -> ToolType {
 		ToolType::Shape
 	}
+	fn default_line_weight(&self) -> Option<f64> {
+		Some(self.options.drawing.default_line_weight)
+	}
 }
 
 impl ToolEditTarget for ShapeTool {

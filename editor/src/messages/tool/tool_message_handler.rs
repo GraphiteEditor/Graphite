@@ -357,8 +357,15 @@ impl ToolMessageHandler {
 						options: SplineOptionsUpdate::SwapFillAndStroke,
 					}),
 					_ => {
+						let default_weight = self
+							.tool_state
+							.tool_data
+							.tools
+							.get(&ToolType::Select)
+							.and_then(|t| t.default_line_weight())
+							.unwrap_or(crate::consts::DEFAULT_STROKE_WIDTH);
 						super::common_functionality::color_selector::swap_fill_and_stroke_on_selected_layers(
-							&self.tool_state.document_tool_data,
+							default_weight,
 							document,
 							responses,
 						);
