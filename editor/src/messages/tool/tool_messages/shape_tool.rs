@@ -292,13 +292,13 @@ fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetInstance {
 }
 
 fn create_grid_type_widget(grid_type: GridType) -> WidgetInstance {
-	let entries = RadioEntryData::list_from_choice_type(|grid_type| {
+	let entries = MenuListEntry::sections_from_choice_type(|grid_type| {
 		ShapeToolMessage::UpdateOptions {
 			options: ShapeOptionsUpdate::GridType(grid_type),
 		}
 		.into()
 	});
-	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_instance()
+	DropdownInput::new(entries).selected_index(Some(grid_type as u32)).widget_instance()
 }
 
 /// Mirrors the per-shape parameters (and `shape_type` itself) from the first selected non-artboard layer into the
@@ -378,7 +378,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 			}
 		}
 		ShapeType::Grid => {
-			if let Some(&TaggedValue::GridType(grid_type)) = layer_view.parameter_value(grid::GridTypeInput)
+			if let Some(&TaggedValue::GridType(grid_type)) = layer_view.parameter_value(grid::LatticeInput)
 				&& options.grid_type != grid_type
 			{
 				options.grid_type = grid_type;
@@ -662,7 +662,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::GridType(grid_type) => {
 				self.options.grid_type = grid_type;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, grid::GridTypeInput, TaggedValue::GridType(grid_type), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, grid::LatticeInput, TaggedValue::GridType(grid_type), responses);
 			}
 			ShapeOptionsUpdate::ArrowShaftWidth(shaft_width) => {
 				self.options.arrow_shaft_width = shaft_width;

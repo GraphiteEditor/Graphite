@@ -24,7 +24,8 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
+	WeldMethod,
 };
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
@@ -233,6 +234,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<DomainWarpType>,
 		List<RealTimeMode>,
 		List<GridType>,
+		List<GridTopology>,
 		List<ArcType>,
 		List<SpiralType>,
 		List<TextAlign>,
@@ -288,6 +290,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<DomainWarpType>,
 		Item<RealTimeMode>,
 		Item<GridType>,
+		Item<GridTopology>,
 		Item<ArcType>,
 		Item<SpiralType>,
 		Item<TextAlign>,
@@ -1006,6 +1009,7 @@ impl_table_item_layout_for_choice_enum!(
 	DomainWarpType,
 	RealTimeMode,
 	GridType,
+	GridTopology,
 	ArcType,
 	SpiralType,
 	TextAlign,
@@ -1180,6 +1184,7 @@ macro_rules! known_item_types {
 			DomainWarpType,
 			RealTimeMode,
 			GridType,
+			GridTopology,
 			ArcType,
 			SpiralType,
 			TextAlign,
