@@ -1072,13 +1072,15 @@ pub fn swap_fill_and_stroke_for_selected_layers(default_weight: f64, document: &
 
 	for layer in paintable_selected_layers(document) {
 		let fill_id = get_fill_id(layer, &document.network_interface);
-		let layer_fill = fill_id.and_then(|node_id| {
-			let fill_node = document.network_interface.document_network().nodes.get(&node_id)?;
-			match fill_node.input(graphene_std::vector::fill::PaintInput)?.as_value()? {
-				TaggedValue::Color(color) => Some(FillChoice::Solid(*color)),
-				TaggedValue::GradientRamp(ramp) => Some(FillChoice::Gradient(ramp.clone())),
-				value if value.is_no_paint() => Some(FillChoice::None),
-				_ => None,
+		let layer_fill = fill_id.map(|node_id| {
+			let Some(fill_node) = document.network_interface.document_network().nodes.get(&node_id) else {
+				return FillChoice::None;
+			};
+			match fill_node.input(graphene_std::vector::fill::PaintInput).and_then(|input| input.as_value()) {
+				Some(TaggedValue::Color(color)) => FillChoice::Solid(*color),
+				Some(TaggedValue::GradientRamp(ramp)) => FillChoice::Gradient(ramp.clone()),
+				Some(value) if value.is_no_paint() => FillChoice::None,
+				_ => FillChoice::None,
 			}
 		});
 
