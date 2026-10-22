@@ -21,6 +21,12 @@ fn bezpath_bounding_box_with_transform(bezpath: &BezPath, transform: DAffine2) -
 		.map(|rect| [DVec2::new(rect.min_x(), rect.min_y()), DVec2::new(rect.max_x(), rect.max_y())])
 }
 
+/// The control point hull of the path, a loose bound that is linear to compute, or None if the path is empty.
+fn control_box_bounds(bezpath: &BezPath) -> BoundingBox {
+	let control_box = bezpath.control_box();
+	(!bezpath.elements().is_empty()).then(|| [DVec2::new(control_box.min_x(), control_box.min_y()), DVec2::new(control_box.max_x(), control_box.max_y())])
+}
+
 /// The explicitly closed contours of the path, which together form its fillable region.
 fn closed_contours(bezpath: &BezPath) -> BezPath {
 	let elements = bezpath.elements();
@@ -163,13 +169,10 @@ impl PartialEq for ClickTarget {
 
 impl ClickTarget {
 	pub fn new_with_path(path: BezPath, stroke_width: f64) -> Self {
-		// The control-point hull serves as the loose bounding box
-		let control_box = path.control_box();
-		let bounding_box = (!path.elements().is_empty()).then(|| [DVec2::new(control_box.min_x(), control_box.min_y()), DVec2::new(control_box.max_x(), control_box.max_y())]);
 		Self {
+			bounding_box: control_box_bounds(&path),
 			target_type: ClickTargetType::Path(path),
 			stroke_width,
-			bounding_box,
 			bounding_box_cache: Default::default(),
 		}
 	}
@@ -194,6 +197,7 @@ impl ClickTarget {
 		&self.target_type
 	}
 
+	/// Loose bounds (the control point hull) in the target's own space. Use [`Self::bounding_box_with_transform`] for tight bounds.
 	pub fn bounding_box(&self) -> BoundingBox {
 		self.bounding_box
 	}
@@ -243,13 +247,16 @@ impl ClickTarget {
 				point.apply_transform(affine_transform);
 			}
 		}
+
+		// Clones share the rotation cache, which no longer describes this target's path
+		self.bounding_box_cache = Default::default();
 		self.update_bbox();
 	}
 
 	fn update_bbox(&mut self) {
 		match self.target_type {
 			ClickTargetType::Path(ref path) => {
-				self.bounding_box = bezpath_bounding_box_with_transform(path, DAffine2::IDENTITY);
+				self.bounding_box = control_box_bounds(path);
 			}
 			ClickTargetType::FreePoint(ref point) => {
 				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
