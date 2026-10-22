@@ -764,35 +764,32 @@ impl Vector {
 		self.0 = std::mem::take(&mut self.0).into_iter().zip(kept).filter_map(|(point, kept)| kept.then_some(point)).collect();
 	}
 
-	/// Appends another vector's points and paths, remapping IDs that collide with this vector's.
-	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64) {
+	/// Appends another vector's points and paths, renaming the IDs this vector already uses, and records the appended IDs in `taken_ids`.
+	/// `taken_ids` must hold this vector's IDs, as [`TakenIds::of`] gives them.
+	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64, taken_ids: &mut TakenIds) {
 		let offset = self.0.len() as u32;
 
-		// Remap colliding stable IDs so both sides stay addressable after the merge
-		let own_point_ids: std::collections::HashSet<_> = self.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().copied().collect();
-		let own_segment_ids: std::collections::HashSet<_> = paths
-			.iter_element_values()
-			.filter_map(|path| path.0.iter_attribute_values::<SegmentId>(ATTR_ID))
-			.flatten()
-			.copied()
-			.collect();
-
+		// Remap colliding stable IDs so both sides stay addressable after the merge.
+		// Appended IDs are only checked against the IDs taken before this call.
+		let mut appended_point_ids = Vec::new();
 		for index in 0..additional.0.len() {
 			let Some(&position) = additional.0.element(index) else { continue };
 			let mut item = Item::new_from_element(transform_of_additional.transform_point2(position));
 
 			if let Some(&id) = additional.0.attribute::<PointId>(ATTR_ID, index) {
-				let id = if id != PointId::UNNAMED && own_point_ids.contains(&id) {
+				let id = if id != PointId::UNNAMED && taken_ids.points.contains(&id) {
 					id.generate_from_hash(collision_hash_seed)
 				} else {
 					id
 				};
 				item.set_attribute(ATTR_ID, id);
+				appended_point_ids.push(id);
 			}
 
 			self.0.push(item);
 		}
 
+		let mut appended_segment_ids = Vec::new();
 		for index in 0..additional_paths.len() {
 			let Some(mut item) = additional_paths.clone_item(index) else { continue };
 
@@ -802,14 +799,18 @@ impl Vector {
 			}
 			if let Some(ids) = path.0.iter_attribute_values_mut::<SegmentId>(ATTR_ID) {
 				for id in ids {
-					if *id != SegmentId::ZERO && own_segment_ids.contains(id) {
+					if *id != SegmentId::ZERO && taken_ids.segments.contains(id) {
 						*id = id.generate_from_hash(collision_hash_seed);
 					}
+					appended_segment_ids.push(*id);
 				}
 			}
 
 			paths.push(item);
 		}
+
+		taken_ids.points.extend(appended_point_ids);
+		taken_ids.segments.extend(appended_segment_ids);
 	}
 
 	/// Rewrites every stable ID deterministically from the given hash, so instanced copies stay distinct.
@@ -828,6 +829,28 @@ impl Vector {
 				}
 			}
 		}
+	}
+}
+
+/// The stable IDs a vector uses, carried across [`Vector::concat`] calls so merging many vectors stays linear.
+#[derive(Clone, Debug, Default)]
+pub struct TakenIds {
+	points: rustc_hash::FxHashSet<PointId>,
+	segments: rustc_hash::FxHashSet<SegmentId>,
+}
+
+impl TakenIds {
+	/// The IDs used by `vector`'s points and `paths`' segments.
+	pub fn of(vector: &Vector, paths: &List<Path>) -> Self {
+		let points = vector.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().copied().collect();
+		let segments = paths
+			.iter_element_values()
+			.filter_map(|path| path.0.iter_attribute_values::<SegmentId>(ATTR_ID))
+			.flatten()
+			.copied()
+			.collect();
+
+		Self { points, segments }
 	}
 }
 
@@ -1003,8 +1026,9 @@ mod tests {
 		let (mut vector, mut paths) = (lone_anchor(DVec2::ZERO), List::new());
 		assert_eq!(vector.point_id_at(0), Some(PointId::ZERO));
 
-		vector.concat(&mut paths, &lone_anchor(DVec2::X), &List::new(), DAffine2::IDENTITY, 7);
-		vector.concat(&mut paths, &lone_anchor(DVec2::Y), &List::new(), DAffine2::IDENTITY, 8);
+		let mut taken_ids = TakenIds::of(&vector, &paths);
+		vector.concat(&mut paths, &lone_anchor(DVec2::X), &List::new(), DAffine2::IDENTITY, 7, &mut taken_ids);
+		vector.concat(&mut paths, &lone_anchor(DVec2::Y), &List::new(), DAffine2::IDENTITY, 8, &mut taken_ids);
 
 		assert_eq!(vector.point_id_at(0), Some(PointId::ZERO));
 		assert_eq!(vector.point_id_at(1), Some(PointId::ZERO.generate_from_hash(7)));
@@ -1019,7 +1043,8 @@ mod tests {
 		assert_eq!(vector.point_id_at(1), Some(PointId::UNNAMED));
 		assert_eq!(vector.point_id_at(2), Some(PointId::UNNAMED));
 
-		vector.concat(&mut paths, &lone_anchor(DVec2::new(5., 5.)), &List::new(), DAffine2::IDENTITY, 1);
+		let mut taken_ids = TakenIds::of(&vector, &paths);
+		vector.concat(&mut paths, &lone_anchor(DVec2::new(5., 5.)), &List::new(), DAffine2::IDENTITY, 1, &mut taken_ids);
 
 		let index = vector.index_of_point_id(PointId::ZERO).unwrap();
 		assert_eq!(vector.position(index as usize), Some(DVec2::new(5., 5.)));

@@ -35,8 +35,8 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
-	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes,
-	push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
+	CurveType, Path, PointId, SegmentId, TakenIds, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes,
+	paths_from_list_row_attributes, push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
 /// Appends one point to the working form, returning the index that names it.
@@ -1976,6 +1976,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let mut primary_source = None;
 	let mut output = Vector::default();
 	let mut output_paths = List::new();
+	let mut taken_ids = TakenIds::default();
 
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
@@ -1989,7 +1990,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		let collision_hash_seed = hasher.finish();
 
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-		output.concat(&mut output_paths, element, &element_paths, source_transform, collision_hash_seed);
+		output.concat(&mut output_paths, element, &element_paths, source_transform, collision_hash_seed, &mut taken_ids);
 
 		primary_source = Some((index, source_transform));
 	}
