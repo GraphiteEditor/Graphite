@@ -990,7 +990,7 @@ impl OverlayContext {
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {
-				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+				self.manipulator_anchor(transform.transform_point2(point.position), false, color);
 			}
 			ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 		});

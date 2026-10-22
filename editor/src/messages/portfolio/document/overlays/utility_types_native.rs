@@ -1032,7 +1032,7 @@ impl OverlayContextInternal {
 		for target_type in target_types {
 			match target_type.borrow() {
 				ClickTargetType::FreePoint(point) => {
-					self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+					self.manipulator_anchor(transform.transform_point2(point.position), false, color);
 				}
 				ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 			}
