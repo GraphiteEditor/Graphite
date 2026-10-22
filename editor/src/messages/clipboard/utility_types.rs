@@ -1,17 +1,15 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainNodeCopy, NodeTemplate};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use glam::DAffine2;
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
 use graph_craft::document::NodeId;
-use graphene_std::vector::Vector;
+use graphene_std::vector::VectorModification;
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ClipboardContentRaw {
 	Text(String),
-	Svg(String),
-	Image { data: Vec<u8>, width: u32, height: u32 },
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -22,13 +20,15 @@ pub enum ClipboardContent {
 	Image { data: Vec<u8>, width: u32, height: u32 },
 }
 
-pub type ClipboardVectorEntry = (LayerNodeIdentifier, Vector, DAffine2);
+pub type ClipboardVectorEntry = (LayerNodeIdentifier, VectorModification, DAffine2);
 
 /// An entry in the `graphite:` clipboard payload.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ClipboardItem {
 	Layer(ClipboardLayer),
 	Nodes(Vec<(NodeId, NodeTemplate)>),
+	/// Nodes copied from layers' chains, ordered by their layer's place in the Layers panel, then from the layer outward.
+	ChainNodes(Vec<ChainNodeCopy>),
 	Vector(Vec<ClipboardVectorEntry>),
 	Resource(ClipboardResource),
 }

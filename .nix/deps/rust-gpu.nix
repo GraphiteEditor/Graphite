@@ -1,7 +1,7 @@
 { pkgs, ... }:
 
 let
-  toolchain = pkgs.rust-bin.nightly."2026-04-11".default.override {
+  toolchain = pkgs.rust-bin.nightly."2026-07-03".default.override {
     extensions = [
       "rust-src"
       "rust-analyzer"
@@ -31,12 +31,12 @@ let
     }).buildRustPackage
       (finalAttrs: {
         pname = "rustc_codegen_spirv";
-        version = "0.10.0-alpha.1";
+        version = "0.10.0";
         src = pkgs.fetchCrate {
           inherit (finalAttrs) pname version;
-          sha256 = "sha256-zJEpExkPgYzwo7fR4ge4GxJNj7H5yo4bJ4eTOw36+7c=";
+          sha256 = "sha256-QluNI2TdJI0j2CBOeAbB9DfOv+8LqzWk7siZyT1WWLU=";
         };
-        cargoHash = "sha256-J1rtbfGqrL2NJ7Bu2pYfDwCdUmnECB/kzxrpYluA0kY=";
+        cargoHash = "sha256-vvviUccnip+j60Ml1vqLNJ49KyEF40VLUoV1TMALHMs=";
         cargoBuildFlags = [
           "-p"
           "rustc_codegen_spirv"

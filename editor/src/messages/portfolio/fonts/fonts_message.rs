@@ -10,6 +10,7 @@ pub enum FontsMessage {
 	CatalogLoaded {
 		catalog: FontCatalog,
 	},
+	CatalogLoadFailed,
 	ResourceResolved {
 		font: Font,
 		hash: ResourceHash,

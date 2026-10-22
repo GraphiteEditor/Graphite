@@ -30,8 +30,8 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::node(category("Debug"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Debug"), icon("NodeSampleImage"))]
+fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	let image_frame_transform: DAffine2 = image_frame.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 	let footprint = ctx.footprint();
@@ -94,8 +94,8 @@ pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
-#[node_macro::node(category("Raster: Channels"))]
-pub fn combine_channels(
+#[node_macro::node(category("Raster: Channels"), icon("NodeChannelsToImage"), name("Channels to Image"))]
+fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
 	#[expose] red: Item<Raster<CPU>>,
@@ -149,8 +149,8 @@ pub fn combine_channels(
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
-#[node_macro::node(category("Raster"))]
-pub fn mask(
+#[node_macro::node(category("Raster"), icon("NodeMask"))]
+fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
 	image: Item<Raster<CPU>>,
@@ -196,7 +196,7 @@ pub fn mask(
 }
 
 #[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
+fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
 	let bounds = *bounds.element();
 
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -239,8 +239,8 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 	Item::from_parts(Raster::new_cpu(new_image), attributes)
 }
 
-#[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Debug"), icon("NodeEmptyImage"))]
+fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
 	let transform = transform.into_element();
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
@@ -250,57 +250,57 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
-#[node_macro::node(category(""))]
-pub fn image<'a: 'n>(_: impl Ctx, resource: Item<Resource>) -> Item<Raster<CPU>> {
+/// Displays an image from a file.
+///
+/// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
+#[node_macro::node(category("Raster"), icon("NodeImage"))]
+fn image(
+	_: impl Ctx,
+	_primary: (),
+	/// The image file to display.
+	#[widget(ParsedWidgetOverride::Custom = "image_file")]
+	resource: Item<Resource>,
+) -> Item<Raster<CPU>> {
 	let resource = resource.into_element();
-	let image_data = resource.as_ref();
+	let Some(image) = Image::from_encoded(resource.as_ref()) else { return Item::default() };
 
-	let Some(image) = ::image::load_from_memory(image_data).ok() else {
-		return Item::default();
-	};
-	let image = image.to_rgba32f();
-	let image = Image {
-		data: image.chunks(4).map(|pixel| Color::from_gamma_srgb_channels(pixel[0], pixel[1], pixel[2], pixel[3])).collect(),
-		width: image.width(),
-		height: image.height(),
-		..Default::default()
-	};
 	Item::new_from_element(Raster::new_cpu(image))
 }
 
 /// Generates customizable procedural noise patterns.
-#[node_macro::node(category("Raster: Pattern"))]
+#[node_macro::node(category("Raster: Pattern"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
-pub fn noise_pattern(
+fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	#[default(true)] clip: Item<bool>,
-	seed: Item<u32>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
+	#[hard(0..)] seed: Item<i64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_scale")]
 	#[default(10.)]
 	scale: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: Item<NoiseType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_noise_type")] noise_type: Item<NoiseType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_amplitude")]
 	#[default(100.)]
 	domain_warp_amplitude: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: Item<FractalType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_type")] fractal_type: Item<FractalType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_octaves")]
 	#[default(3)]
-	fractal_octaves: Item<u32>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
+	#[hard(1..10)]
+	fractal_octaves: Item<i64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_lacunarity")]
 	#[default(2.)]
 	fractal_lacunarity: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_gain")]
 	#[default(0.5)]
 	fractal_gain: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_ping_pong_strength")]
 	#[default(2.)]
 	fractal_ping_pong_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: Item<f64>,
 ) -> Item<Raster<CPU>> {
@@ -434,8 +434,8 @@ pub fn noise_pattern(
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
-#[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Raster: Pattern"), icon("NodeMandelbrot"))]
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 

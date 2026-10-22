@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::color_selector::{
 };
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, find_spline, merge_layers, merge_points};
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration, SnappedPoint};
+use crate::messages::tool::common_functionality::snap_session::{Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, should_extend};
 use graph_craft::document::{NodeId, NodeInput};
@@ -90,6 +90,12 @@ impl ToolMetadata for SplineTool {
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Spline
+	}
+}
+
+impl ToolEditTarget for SplineTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::path()
 	}
 }
 
@@ -173,7 +179,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Spli
 		}
 
 		let ToolMessage::Spline(SplineToolMessage::UpdateOptions { options }) = message else {
+			let was_drawing = self.fsm_state == SplineToolFsmState::Drawing;
 			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
+
+			// However the drawing ends, its snapping gesture ends with it
+			if was_drawing && self.fsm_state != SplineToolFsmState::Drawing {
+				context.snap_session.end_gesture();
+				responses.add(OverlaysMessage::Draw);
+			}
 			return;
 		};
 		match options {
@@ -263,7 +276,8 @@ struct SplineToolData {
 	merge_layers: HashSet<LayerNodeIdentifier>,
 	/// The endpoint IDs to merge with the spline's start/end endpoint after spline drawing is finished.
 	merge_endpoints: Vec<(EndpointPosition, PointId)>,
-	snap_manager: SnapManager,
+	/// Where the pointer was pressed to start the spline, and where that press landed, both in viewport space.
+	press: Option<(DVec2, DVec2)>,
 	auto_panning: AutoPanning,
 	/// Viewport-space start position for newly created layers, used to compute local-space
 	/// positions before the deferred TransformSet has been reflected in metadata.
@@ -276,18 +290,35 @@ impl SplineToolData {
 		self.new_layer_viewport_start = None;
 		self.merge_layers = HashSet::new();
 		self.merge_endpoints = Vec::new();
+		self.press = None;
 		self.preview_point = None;
 		self.preview_segment = None;
 		self.extend = false;
 		self.points = Vec::new();
 	}
 
-	/// Get the snapped point while ignoring current layer
-	fn snapped_point(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> SnappedPoint {
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-		let ignore = if let Some(layer) = self.current_layer { vec![layer] } else { vec![] };
-		let snap_data = SnapData::ignore(document, input, viewport, &ignore);
-		self.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default())
+	/// Snaps the rest of the drawing to everything but the spline being drawn.
+	fn begin_snapping_gesture(&self, snap_session: &mut SnapSession, view: SnapView, responses: &mut VecDeque<Message>) {
+		let moving = Moving {
+			layers: self.current_layer.into_iter().collect(),
+			..Default::default()
+		};
+		snap_session.begin_gesture(view, moving);
+
+		responses.add(OverlaysMessage::Draw);
+	}
+
+	/// Snaps the pointer and returns where it lands in viewport space, which stays where the press landed until the pointer moves.
+	fn snapped_point(&mut self, snap_session: &mut SnapSession, view: SnapView) -> DVec2 {
+		let pointer = view.input.mouse.position;
+		self.press = self.press.filter(|&(pressed_at, _)| pressed_at == pointer);
+		if let Some((_, landed)) = self.press {
+			return landed;
+		}
+
+		let document_to_viewport = view.document.metadata().document_to_viewport;
+		let free = document_to_viewport.inverse().transform_point2(pointer);
+		document_to_viewport.transform_point2(snap_session.snap_point(view, free, PointOptions::default()))
 	}
 }
 
@@ -305,11 +336,14 @@ impl Fsm for SplineToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
+			document_id,
 			input,
 			viewport,
 			shape_editor,
+			snap_session,
 			..
 		} = tool_action_data;
+		let view = SnapView::new(document, *document_id, input);
 
 		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
@@ -317,7 +351,6 @@ impl Fsm for SplineToolFsmState {
 			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
 				let pointer = (self == SplineToolFsmState::Ready).then_some(input.mouse.position);
 				open_path_endpoint_overlays(document, shape_editor, pointer, &mut overlay_context);
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}
 			(SplineToolFsmState::MergingEndpoints, SplineToolMessage::MergeEndpoints) => {
@@ -351,13 +384,13 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Ready, SplineToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
-				tool_data.snap_manager.cleanup(responses);
 				tool_data.cleanup();
 				tool_data.weight = tool_options.drawing.effective_line_weight();
 
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+				// The spline starts on whatever the pointer was shown snapping to before the press
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let viewport_vec = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				let layers = LayerNodeIdentifier::ROOT_PARENT
 					.descendants(document.metadata())
@@ -373,6 +406,7 @@ impl Fsm for SplineToolFsmState {
 						tool_data.extend = true;
 
 						extend_spline(tool_data, true, responses);
+						tool_data.begin_snapping_gesture(snap_session, view, responses);
 
 						return SplineToolFsmState::Drawing;
 					} else {
@@ -380,6 +414,9 @@ impl Fsm for SplineToolFsmState {
 						tool_data.merge_endpoints.push((EndpointPosition::Start, point));
 					}
 				}
+
+				// A release without a move places the first point where the press landed
+				tool_data.press = Some((input.mouse.position, viewport_vec));
 
 				let selected_nodes = document.network_interface.selected_nodes();
 				let mut selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&document.network_interface);
@@ -394,6 +431,7 @@ impl Fsm for SplineToolFsmState {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let position = transform.inverse().transform_point2(input.mouse.position);
 					tool_data.next_point = position;
+					tool_data.begin_snapping_gesture(snap_session, view, responses);
 
 					return SplineToolFsmState::Drawing;
 				}
@@ -414,6 +452,7 @@ impl Fsm for SplineToolFsmState {
 				tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 				tool_data.current_layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(viewport_vec);
+				tool_data.begin_snapping_gesture(snap_session, view, responses);
 
 				// Position the layer at the initial mouse position via Transform
 				responses.add(DeferMessage::AfterGraphRun {
@@ -432,10 +471,9 @@ impl Fsm for SplineToolFsmState {
 					return SplineToolFsmState::Ready;
 				};
 
-				// Convert snapped document-space position to layer-local space
-				let snapped_document = tool_data.snapped_point(document, input, viewport).snapped_point_document;
+				// Convert the snapped position to layer-local space
+				let viewport_pos = tool_data.snapped_point(snap_session, view);
 				let document_to_viewport = document.metadata().document_to_viewport;
-				let viewport_pos = document_to_viewport.transform_point2(snapped_document);
 
 				// For newly created layers, the deferred TransformSet may not yet be reflected
 				// in the metadata, so compute local position from the known viewport start.
@@ -467,12 +505,11 @@ impl Fsm for SplineToolFsmState {
 				// Endpoints snapping - closest_point returns local-space positions
 				if let Some((_, _, point)) = join_point {
 					tool_data.next_point = point;
-					tool_data.snap_manager.clear_indicator();
+					snap_session.forget();
 				} else {
-					// Convert snapped document-space position to layer-local space
-					let snapped_point = tool_data.snapped_point(document, input, viewport);
+					// Convert the snapped position to layer-local space
+					let viewport_pos = tool_data.snapped_point(snap_session, view);
 					let document_to_viewport = document.metadata().document_to_viewport;
-					let viewport_pos = document_to_viewport.transform_point2(snapped_point.snapped_point_document);
 
 					// For newly created layers, the deferred TransformSet may not yet be reflected
 					// in the metadata, so compute local position from the known viewport start.
@@ -482,7 +519,6 @@ impl Fsm for SplineToolFsmState {
 						let transform = document.metadata().transform_to_viewport(layer);
 						transform.inverse().transform_point2(viewport_pos)
 					};
-					tool_data.snap_manager.update_indicator(snapped_point);
 				}
 
 				extend_spline(tool_data, true, responses);
@@ -494,7 +530,10 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Drawing
 			}
 			(_, SplineToolMessage::PointerMove) => {
-				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+				// Show where a press would start the spline
+				let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				snap_session.snap_point(view, pointer, PointOptions::default());
+
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -526,8 +565,22 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::MergingEndpoints
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Abort) => {
-				responses.add(DocumentMessage::AbortTransaction);
+				// Switching tools keeps the spline drawn so far, like the Pen tool, but leaves its ends unjoined as the tool won't be active to finish them
+				if tool_data.points.len() <= 1 {
+					responses.add(DocumentMessage::AbortTransaction);
+				} else {
+					delete_preview(tool_data, responses);
+					responses.add(DocumentMessage::EndTransaction);
+				}
+
+				tool_data.cleanup();
 				SplineToolFsmState::Ready
+			}
+			(SplineToolFsmState::Ready, SplineToolMessage::Confirm | SplineToolMessage::Abort) => {
+				// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
+				snap_session.sleep_all();
+				responses.add(OverlaysMessage::Draw);
+				self
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
 				responses.add(SplineToolMessage::UpdateOptions {
@@ -541,14 +594,18 @@ impl Fsm for SplineToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			SplineToolFsmState::Ready => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
-				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
-			])]),
+			SplineToolFsmState::Ready => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Draw Spline"),
+					HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+				]),
+				snapping_hints(),
+			]),
 			SplineToolFsmState::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Extend Spline")]),
 				HintGroup(vec![HintInfo::keys([Key::Enter], "End Spline")]),
+				snapping_hints(),
 			]),
 			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};
@@ -636,19 +693,18 @@ fn delete_preview(tool_data: &mut SplineToolData, responses: &mut VecDeque<Messa
 #[cfg(test)]
 mod test_spline_tool {
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::tool::common_functionality::snap_session::WAKE_DWELL_ON_APPROACH;
 	use crate::messages::tool::tool_messages::spline_tool::find_spline;
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use graphene_std::vector::Vector;
+	use graphene_std::vector::VectorGeometry;
 
-	fn assert_point_positions(vector: &Vector, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
+	fn assert_point_positions(vector: &VectorGeometry, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
 		let points_in_viewport: Vec<DVec2> = vector
-			.point_domain
-			.ids()
-			.iter()
-			.filter_map(|&point_id| {
-				let position = vector.point_domain.position_from_id(point_id)?;
+			.anchor_points()
+			.filter_map(|point_id| {
+				let position = vector.position_from_id(point_id)?;
 				Some(layer_to_viewport.transform_point2(position))
 			})
 			.collect();
@@ -663,6 +719,27 @@ mod test_spline_tool {
 				"Point {i} position mismatch: expected {expected_point:?}, got {actual_point:?} (distance: {distance})"
 			);
 		}
+	}
+
+	/// The layers drawn by the Spline tool.
+	fn spline_layers(editor: &EditorTestUtils) -> Vec<LayerNodeIdentifier> {
+		let document = editor.active_document();
+		document.metadata().all_layers().filter(|&layer| find_spline(document, layer).is_some()).collect()
+	}
+
+	/// Asserts a spline's points sit at the given viewport positions to within a millionth of a pixel, in the order they were placed.
+	fn assert_spline_points(editor: &EditorTestUtils, layer: LayerNodeIdentifier, expected: &[DVec2]) {
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("The spline should have a path");
+
+		assert_eq!(vector.anchor_points().count(), expected.len(), "Unexpected point count");
+		assert_point_positions(&vector, document.metadata().transform_to_viewport(layer), expected, 1e-6);
+	}
+
+	/// The center of a layer's bounding box in the viewport.
+	fn bounding_box_center(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> DVec2 {
+		let [min, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("The layer should have bounds");
+		(min + max) / 2.
 	}
 
 	#[tokio::test]
@@ -692,8 +769,8 @@ mod test_spline_tool {
 		let first_vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify initial spline has correct number of points and segments
-		let initial_point_count = first_vector.point_domain.ids().len();
-		let initial_segment_count = first_vector.segment_domain.ids().len();
+		let initial_point_count = first_vector.anchor_points().count();
+		let initial_segment_count = first_vector.segment_ids().len();
 		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {initial_point_count}");
 		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {initial_segment_count}");
 
@@ -701,7 +778,7 @@ mod test_spline_tool {
 
 		let endpoints: Vec<(PointId, DVec2)> = first_vector
 			.anchor_endpoints()
-			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
+			.filter_map(|point_id| first_vector.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 
 		assert_eq!(endpoints.len(), 2, "Expected 2 endpoints in the initial spline");
@@ -726,8 +803,8 @@ mod test_spline_tool {
 			.expect("Vector not found for the extended spline layer");
 
 		// Verify extended spline has correct number of points and segments
-		let extended_point_count = extended_vector.point_domain.ids().len();
-		let extended_segment_count = extended_vector.segment_domain.ids().len();
+		let extended_point_count = extended_vector.anchor_points().count();
+		let extended_segment_count = extended_vector.segment_ids().len();
 
 		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {extended_point_count}");
 		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {extended_segment_count}");
@@ -762,11 +839,6 @@ mod test_spline_tool {
 
 		// Finish the spline
 		editor.handle_message(SplineToolMessage::Confirm).await;
-
-		// Evaluate the graph to ensure everything is processed
-		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {e}");
-		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -803,11 +875,6 @@ mod test_spline_tool {
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
 
-		// Evaluating the graph to ensure everything is processed
-		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {e}");
-		}
-
 		// Get the layer and vector data
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
@@ -840,11 +907,6 @@ mod test_spline_tool {
 		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150., 100.), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
-
-		// Evaluating the graph to ensure everything is processed
-		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {e}");
-		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -881,9 +943,6 @@ mod test_spline_tool {
 		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, DVec2::new(150., 100.), ModifierKeys::empty()).await;
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
-		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {e}");
-		}
 
 		// Get the layer and vector data
 		let document = editor.active_document();
@@ -936,8 +995,8 @@ mod test_spline_tool {
 		let vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify we have the correct number of points and segments
-		let point_count = vector.point_domain.ids().len();
-		let segment_count = vector.segment_domain.ids().len();
+		let point_count = vector.anchor_points().count();
+		let segment_count = vector.segment_ids().len();
 
 		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {point_count}");
 		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {segment_count}");
@@ -945,5 +1004,188 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
 		assert_point_positions(&vector, layer_to_viewport, &spline_points, 1e-10);
+	}
+
+	/// A spline through three points, the middle one well above the other two.
+	const ARCH: [DVec2; 3] = [DVec2::new(100., 300.), DVec2::new(250., 150.), DVec2::new(400., 300.)];
+
+	#[tokio::test]
+	async fn a_spline_pressed_near_the_corner_of_another_layer_starts_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// The corner of an ellipse's bounding box, which unlike an anchor is nothing a spline joins to
+		editor.draw_ellipse(300., 200., 500., 320.).await;
+		let corner = DVec2::new(300., 200.);
+
+		let points = [corner + DVec2::new(4., 3.), DVec2::new(150., 100.), DVec2::new(100., 250.)];
+		editor.draw_spline(&points).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &[corner, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn a_spline_pressed_while_a_snap_is_held_starts_where_that_snap_was_shown() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_ellipse(300., 200., 500., 320.).await;
+		let corner = DVec2::new(300., 200.);
+
+		// The pointer comes within reach of the corner, then strays to where only a snap already engaged holds on
+		editor.select_tool(ToolType::Spline).await;
+		editor.move_mouse(306., 204., ModifierKeys::empty(), MouseKeys::empty()).await;
+		let points = [corner + DVec2::new(9., 5.), DVec2::new(150., 100.), DVec2::new(100., 250.)];
+		editor.draw_spline(&points).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &[corner, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn a_spline_starts_where_its_press_was_shown_after_resting_there_wakes_a_nearer_snap() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// The corner of an ellipse's bounding box, which a spline doesn't join to, sits six pixels left of a rectangle's side, kept apart by drawing them with snapping off
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.draw_rect(206., 160., 300., 300.).await;
+		editor.draw_ellipse(100., 100., 200., 200.).await;
+		editor.active_document_mut().snapping_state.snapping_enabled = true;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		editor.select_tool(ToolType::Spline).await;
+
+		// The pointer rests on the side beside the corner, where a press is shown starting on the corner, for long enough to wake its box
+		let (corner, pointer) = (DVec2::new(200., 200.), DVec2::new(206., 200.));
+		editor.handle_message(InputPreprocessorMessage::CurrentTime { timestamp: 1000 }).await;
+		editor.move_mouse(pointer.x, pointer.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor
+			.handle_message(InputPreprocessorMessage::CurrentTime {
+				timestamp: 1000 + WAKE_DWELL_ON_APPROACH,
+			})
+			.await;
+		editor.handle_message(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame)).await;
+
+		// The woken corner's level line crosses the side right under the pointer, but the spline starts where the press was shown
+		editor.left_mousedown(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		let later_points = [DVec2::new(150., 400.), DVec2::new(100., 450.)];
+		for point in later_points {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &[corner, later_points[0], later_points[1]]);
+	}
+
+	#[tokio::test]
+	async fn a_later_point_placed_near_the_middle_of_an_edge_of_another_layer_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// The middle of a rectangle's top edge, which unlike its corners is nothing a spline joins to
+		editor.draw_rect(100., 200., 300., 400.).await;
+		let middle = DVec2::new(200., 200.);
+
+		let points = [DVec2::new(60., 80.), middle + DVec2::new(3., -4.), DVec2::new(420., 120.)];
+		editor.draw_spline(&points).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &[points[0], middle, points[2]]);
+	}
+
+	#[tokio::test]
+	async fn a_spline_being_extended_does_not_snap_to_its_own_points() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_spline(&ARCH).await;
+
+		// Continued from its end, a point goes beside its middle point, out of reach of joining it but within reach of snapping to it
+		let beside_the_middle = ARCH[1] + DVec2::new(6., 2.);
+		let continuation = [ARCH[2], beside_the_middle, DVec2::new(550., 150.)];
+		editor.draw_spline(&continuation).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &[ARCH[0], ARCH[1], ARCH[2], beside_the_middle, continuation[2]]);
+	}
+
+	#[tokio::test]
+	async fn a_finished_spline_is_snapped_to_by_the_next_one() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_spline(&ARCH).await;
+		let first = spline_layers(&editor)[0];
+
+		// The center of the first spline's bounding box, far from the points a spline joins to
+		let center = bounding_box_center(&editor, first);
+		let points = [center + DVec2::new(4., -3.), DVec2::new(600., 80.), DVec2::new(650., 400.)];
+		editor.draw_spline(&points).await;
+
+		let second = spline_layers(&editor).into_iter().find(|&layer| layer != first).expect("A second spline should have been drawn");
+		assert_spline_points(&editor, second, &[center, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn after_an_extension_is_aborted_the_next_spline_snaps_to_the_spline_it_was_extending() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_spline(&ARCH).await;
+		let first = spline_layers(&editor)[0];
+
+		// Aborted before placing a point of its own, the extension is dropped
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, ARCH[2], ModifierKeys::empty()).await;
+		editor.move_mouse(500., 200., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.handle_message(SplineToolMessage::Abort).await;
+		assert_spline_points(&editor, first, &ARCH);
+
+		let center = bounding_box_center(&editor, first);
+		let points = [center + DVec2::new(4., -3.), DVec2::new(600., 80.), DVec2::new(650., 400.)];
+		editor.draw_spline(&points).await;
+
+		let second = spline_layers(&editor).into_iter().find(|&layer| layer != first).expect("A second spline should have been drawn");
+		assert_spline_points(&editor, second, &[center, points[1], points[2]]);
+	}
+
+	#[tokio::test]
+	async fn switching_tools_mid_spline_keeps_the_spline() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Spline).await;
+		for point in ARCH {
+			editor.click_tool(ToolType::Spline, MouseKeys::LEFT, point, ModifierKeys::empty()).await;
+		}
+		editor.move_mouse(500., 200., ModifierKeys::empty(), MouseKeys::empty()).await;
+
+		// The Select tool's own abort, which runs as it becomes active, would otherwise cancel the spline's open edit
+		editor.select_tool(ToolType::Select).await;
+
+		let splines = spline_layers(&editor);
+		assert_eq!(splines.len(), 1);
+		assert_spline_points(&editor, splines[0], &ARCH);
+
+		// The finished spline is one step of history
+		editor.press(Key::KeyZ, ModifierKeys::CONTROL).await;
+		assert!(spline_layers(&editor).is_empty(), "Undo should remove the whole spline");
+	}
+
+	#[tokio::test]
+	async fn an_extension_is_kept_when_switching_tools() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_spline(&ARCH).await;
+		let first = spline_layers(&editor)[0];
+
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, ARCH[2], ModifierKeys::empty()).await;
+		let extension = DVec2::new(500., 200.);
+		editor.click_tool(ToolType::Spline, MouseKeys::LEFT, extension, ModifierKeys::empty()).await;
+		editor.select_tool(ToolType::Rectangle).await;
+
+		assert_spline_points(&editor, first, &[ARCH[0], ARCH[1], ARCH[2], extension]);
 	}
 }

@@ -22,7 +22,7 @@ mod editor_commands {
 	use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 	use editor::messages::portfolio::utility_types::PanelGroupId;
 	use editor::messages::prelude::*;
-	use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
+	use editor::messages::tool::tool_messages::tool_prelude::{DroppedFile, WidgetId};
 	use graph_craft::document::NodeId;
 	use graphene_std::raster::color::Color;
 	use graphene_std::vector::style::FillChoice;
@@ -53,30 +53,6 @@ mod editor_commands {
 
 	fn auto_save_all_documents() -> Message {
 		PortfolioMessage::AutoSaveAllDocuments.into()
-	}
-
-	fn add_primary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryImport.into()]),
-		}
-	}
-
-	fn add_secondary_import() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryImport.into()]),
-		}
-	}
-
-	fn add_primary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddPrimaryExport.into()]),
-		}
-	}
-
-	fn add_secondary_export() -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddSecondaryExport.into()]),
-		}
 	}
 
 	fn app_window_direct_input(enabled: bool) -> Message {
@@ -176,6 +152,35 @@ mod editor_commands {
 		LayoutMessage::WidgetValueDragDrop { layout_target, widget_id }.into()
 	}
 
+	/// Hand a file dropped on a UI widget to the widget's file drop callback
+	fn widget_value_file_drop(layout_target: LayoutTarget, widget_id: u64, name: String, mime_type: String, data: Vec<u8>) -> Message {
+		let widget_id = WidgetId(widget_id);
+		let file = DroppedFile { name, mime_type, data };
+		LayoutMessage::WidgetValueFileDrop { layout_target, widget_id, file }.into()
+	}
+
+	/// Tokenizes a math expression widget's text as it is typed, for the reply to color and typeset it, and offers names to finish
+	/// the one at the caret, where the caret is given. Unless they're `asked` for, names are offered only once part of one is typed.
+	fn analyze_math_expression(layout_target: LayoutTarget, widget_id: u64, source: String, caret: Option<u32>, asked: bool) -> Message {
+		LayoutMessage::AnalyzeMathExpression {
+			layout_target,
+			widget_id: WidgetId(widget_id),
+			source,
+			caret,
+			asked,
+		}
+		.into()
+	}
+
+	/// Evaluates math typed in a math expression widget's number popover, for the reply to write its value in place of the number.
+	fn evaluate_math_expression(widget_id: u64, source: String) -> Message {
+		LayoutMessage::EvaluateMathExpression {
+			widget_id: WidgetId(widget_id),
+			source,
+		}
+		.into()
+	}
+
 	/// Closes out the current transaction (drag-end / text-commit end), so emits during a slider drag collapse into one history step instead of N
 	fn end_transaction() -> Message {
 		DocumentMessage::EndTransaction.into()
@@ -188,14 +193,6 @@ mod editor_commands {
 			return Message::NoOp;
 		};
 		PreferencesMessage::Load { preferences }.into()
-	}
-
-	fn load_document_content(document_id: u64, document: String) -> Message {
-		PersistentStateMessage::LoadDocument {
-			document_id: DocumentId(document_id),
-			document,
-		}
-		.into()
 	}
 
 	fn select_document(document_id: u64) -> Message {
@@ -211,14 +208,6 @@ mod editor_commands {
 		DialogMessage::RequestNewDocumentDialog.into()
 	}
 
-	fn open_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::OpenFile { path: PathBuf::from(path), content }.into()
-	}
-
-	fn import_file(path: String, content: Vec<u8>) -> Message {
-		PortfolioMessage::ImportFile { path: PathBuf::from(path), content }.into()
-	}
-
 	fn trigger_auto_save(document_id: u64) -> Message {
 		PortfolioMessage::AutoSaveDocument { document_id: DocumentId(document_id) }.into()
 	}
@@ -232,7 +221,7 @@ mod editor_commands {
 	}
 
 	fn reorder_panel_group_tab(group: u64, old_index: usize, new_index: usize) -> Message {
-		PortfolioMessage::ReorderPanelGroupTab {
+		WorkspaceMessage::ReorderPanelGroupTab {
 			group: PanelGroupId(group),
 			old_index,
 			new_index,
@@ -241,7 +230,7 @@ mod editor_commands {
 	}
 
 	fn move_all_panel_tabs(source_group: u64, target_group: u64, insert_index: usize) -> Message {
-		PortfolioMessage::MoveAllPanelTabs {
+		WorkspaceMessage::MoveAllPanelTabs {
 			source_group: PanelGroupId(source_group),
 			target_group: PanelGroupId(target_group),
 			insert_index,
@@ -250,7 +239,7 @@ mod editor_commands {
 	}
 
 	fn move_panel_tab(source_group: u64, target_group: u64, insert_index: usize) -> Message {
-		PortfolioMessage::MovePanelTab {
+		WorkspaceMessage::MovePanelTab {
 			source_group: PanelGroupId(source_group),
 			target_group: PanelGroupId(target_group),
 			insert_index,
@@ -259,7 +248,7 @@ mod editor_commands {
 	}
 
 	fn set_panel_group_active_tab(group: u64, tab_index: usize) -> Message {
-		PortfolioMessage::SetPanelGroupActiveTab {
+		WorkspaceMessage::SetPanelGroupActiveTab {
 			group: PanelGroupId(group),
 			tab_index,
 		}
@@ -267,7 +256,7 @@ mod editor_commands {
 	}
 
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
-		PortfolioMessage::SplitPanelGroup {
+		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),
 			direction,
 			tabs,
@@ -278,7 +267,7 @@ mod editor_commands {
 
 	fn set_panel_group_sizes(split_path: Vec<u32>, sizes: Vec<f64>) -> Message {
 		let split_path = split_path.into_iter().map(|i| i as usize).collect();
-		PortfolioMessage::SetPanelGroupSizes { split_path, sizes }.into()
+		WorkspaceMessage::SetPanelGroupSizes { split_path, sizes }.into()
 	}
 
 	fn close_document_with_confirmation(document_id: u64) -> Message {
@@ -508,6 +497,44 @@ mod editor_commands {
 		DocumentMessage::SelectLayer { id: NodeId(id), ctrl, shift }.into()
 	}
 
+	/// Outline in the viewport the layer under the pointer in the Layers panel, or nothing once the pointer leaves it.
+	fn set_layers_panel_hovered_layer(id: Option<u64>) -> Message {
+		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
+	}
+
+	/// Tell the backend which layers have a row in view in the Layers panel, and which of those the panel lacks the details of.
+	fn set_layers_panel_view(layers: Vec<u64>, layers_missing_details: Vec<u64>) -> Message {
+		DocumentMessage::SetLayersPanelView {
+			layers: layers.into_iter().map(NodeId).collect(),
+			layers_missing_details: layers_missing_details.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Select exactly the given nodes.
+	fn select_nodes(ids: Vec<u64>) -> Message {
+		NodeGraphMessage::SelectedNodesSet {
+			nodes: ids.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
+	/// Select a node in the document network and open the node graph centered on it.
+	fn show_node_in_graph(node_id: u64) -> Message {
+		DocumentMessage::ShowNodeInGraph { node_id: NodeId(node_id) }.into()
+	}
+
+	/// Modify the selection based on the node clicked in the chain feeding a layer, with the same <kbd>Ctrl</kbd> and <kbd>Shift</kbd> behavior as selecting layers.
+	fn select_chain_node(layer: u64, node_id: u64, ctrl: bool, shift: bool) -> Message {
+		DocumentMessage::SelectChainNode {
+			layer: NodeId(layer),
+			node_id: NodeId(node_id),
+			ctrl,
+			shift,
+		}
+		.into()
+	}
+
 	/// Deselect all layers
 	fn deselect_all_layers() -> Message {
 		DocumentMessage::DeselectAllLayers.into()
@@ -527,11 +554,33 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Reorder a draggable Properties panel section to the given index among its peers.
-	fn reorder_properties_section(node_id: u64, insert_index: usize) -> Message {
-		DocumentMessage::ReorderPropertiesSection {
+	/// Move nodes together into a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn move_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::MoveChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+		}
+		.into()
+	}
+
+	/// Insert and select copies of nodes together in a layer's chain (their own or another) at the given gap among its reorderable nodes, where gap 0 is beside the layer.
+	fn duplicate_chain_nodes(node_ids: Vec<u64>, layer: u64, insert_index: usize) -> Message {
+		DocumentMessage::DuplicateChainNodes {
+			node_ids: node_ids.into_iter().map(NodeId).collect(),
+			layer: NodeId(layer),
+			insert_index,
+			select_copies: true,
+		}
+		.into()
+	}
+
+	/// Reorder a draggable Inspector section to the given index among its peers, or for a layer's chain node, insert a copy there instead.
+	fn reorder_inspector_section(node_id: u64, insert_index: usize, duplicate: bool) -> Message {
+		DocumentMessage::ReorderInspectorSection {
 			node_id: NodeId(node_id),
 			insert_index,
+			duplicate,
 		}
 		.into()
 	}
@@ -547,7 +596,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name for the layer
+	/// Set the name for the layer in the document network, as listed in the Layers panel
 	fn set_layer_name(id: u64, name: String) -> Message {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		NodeGraphMessage::SetDisplayName {
@@ -557,6 +606,11 @@ mod editor_commands {
 			skip_adding_history_step: false,
 		}
 		.into()
+	}
+
+	/// Set the name for a layer in the network shown by the node graph, which may be a subgraph
+	fn set_layer_name_in_graph(id: u64, name: String) -> Message {
+		DocumentMessage::SetLayerNameInGraph { node_id: NodeId(id), name }.into()
 	}
 
 	/// Translates document (in viewport coords)
@@ -605,6 +659,41 @@ mod editor_commands {
 		ClipboardMessage::ReadSelection { content, cut }.into()
 	}
 
+	/// The pixels of an export that `TriggerExportImage` had the frontend rasterize, which the editor encodes and saves as the chosen file type
+	fn save_rasterized_export(name: String, file_type: FileType, width: u32, height: u32, data: Vec<u8>) -> Message {
+		PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data }.into()
+	}
+
+	/// A file headed for a known action, picked in the dialog that `TriggerBrowse` opened
+	fn ingest_picked(name: String, mime_type: String, data: Vec<u8>, action: IngestAction) -> Message {
+		IngestMessage::Ingest {
+			data,
+			action,
+			mime_type,
+			path: Some(PathBuf::from(name)),
+		}
+		.into()
+	}
+
+	/// A file dropped on a panel or pasted, placed by the drop position or the layer slot it landed in
+	fn ingest_file(name: Option<String>, mime_type: String, data: Vec<u8>, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<u32>) -> Message {
+		let action = match (insert_parent_id.zip(insert_index), mouse_x.zip(mouse_y)) {
+			(Some((parent, insert_index)), _) => IngestAction::DropOnLayers {
+				parent: LayerNodeIdentifier::new_unchecked(NodeId(parent)),
+				insert_index,
+			},
+			(None, Some(mouse)) => IngestAction::DropOnCanvas { mouse },
+			(None, None) => IngestAction::Paste,
+		};
+		IngestMessage::Ingest {
+			data,
+			action,
+			mime_type,
+			path: name.map(PathBuf::from),
+		}
+		.into()
+	}
+
 	/// Paste from a serialized JSON representation
 	fn paste_text(data: String) -> Message {
 		ClipboardMessage::ReadClipboard {
@@ -613,59 +702,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Pastes an image
-	fn paste_image(
-		name: Option<String>,
-		image_data: Vec<u8>,
-		width: u32,
-		height: u32,
-		mouse_x: Option<f64>,
-		mouse_y: Option<f64>,
-		insert_parent_id: Option<u64>,
-		insert_index: Option<usize>,
-	) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-		let image = graphene_std::raster::Image::from_image_data(&image_data, width, height);
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertImage {
-			name,
-			image,
-			mouse,
-			parent_and_insert_index,
-		}
-		.into()
-	}
-
-	/// Pastes an SVG given its string representation
-	fn paste_svg(name: Option<String>, svg: String, mouse_x: Option<f64>, mouse_y: Option<f64>, insert_parent_id: Option<u64>, insert_index: Option<usize>) -> Message {
-		let mouse = mouse_x.and_then(|x| mouse_y.map(|y| (x, y)));
-
-		let parent_and_insert_index = if let (Some(insert_parent_id), Some(insert_index)) = (insert_parent_id, insert_index) {
-			let insert_parent_id = NodeId(insert_parent_id);
-			let parent = LayerNodeIdentifier::new_unchecked(insert_parent_id);
-			Some((parent, insert_index))
-		} else {
-			None
-		};
-
-		PortfolioMessage::InsertSvg {
-			name,
-			svg,
-			mouse,
-			parent_and_insert_index,
-		}
-		.into()
-	}
-
-	/// Toggle visibility of a layer or node given its node ID
+	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel
 	fn toggle_node_visibility_layer_panel(id: u64) -> Message {
 		NodeGraphMessage::ToggleVisibility {
 			node_id: NodeId(id),
@@ -674,14 +711,24 @@ mod editor_commands {
 		.into()
 	}
 
+	/// Toggle visibility of a node shown in the Inspector, which may be in a subgraph
+	fn toggle_node_visibility_inspector(id: u64) -> Message {
+		DocumentMessage::ToggleNodeVisibility { node_id: NodeId(id) }.into()
+	}
+
 	/// Pin or unpin a node given its node ID
 	fn set_node_pinned(id: u64, pinned: bool) -> Message {
 		DocumentMessage::SetNodePinned { node_id: NodeId(id), pinned }.into()
 	}
 
-	/// Collapse or expand a node's section in the Properties panel
-	fn toggle_node_properties_section_expanded(id: u64) -> Message {
-		DocumentMessage::ToggleNodePropertiesSectionExpanded { node_id: NodeId(id) }.into()
+	/// Collapse or expand a node's section in the Inspector, or recursively every section in its layer's chain
+	fn toggle_node_inspector_section_expanded(id: u64, recursive: bool) -> Message {
+		DocumentMessage::ToggleNodeInspectorSectionExpanded { node_id: NodeId(id), recursive }.into()
+	}
+
+	/// Expand or collapse a layer's chain into a row per node in the Layers panel
+	fn toggle_layer_chain_expanded(id: u64) -> Message {
+		DocumentMessage::ToggleLayerChainExpanded { layer_id: NodeId(id) }.into()
 	}
 
 	/// Delete a layer or node given its node ID
@@ -714,7 +761,7 @@ mod editor_commands {
 		DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer }.into()
 	}
 
-	/// Set the name of an import or export
+	/// Set the name of an import.
 	fn set_import_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
@@ -723,13 +770,109 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name of an export
+	/// Set the name of an export.
 	fn set_export_name(index: usize, name: String) -> Message {
 		NodeGraphMessage::SetImportExportName {
 			name,
 			index: ImportOrExport::Export(index),
 		}
 		.into()
+	}
+
+	/// Set the description of an import.
+	fn set_import_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Import(index),
+		}
+		.into()
+	}
+
+	/// Set the description of an export.
+	fn set_export_description(index: usize, description: String) -> Message {
+		NodeGraphMessage::SetImportExportDescription {
+			description,
+			index: ImportOrExport::Export(index),
+		}
+		.into()
+	}
+
+	/// Remove an import, or hide it if it's the primary import.
+	fn remove_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Remove an export, or hide it if it's the primary export.
+	fn remove_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::RemoveImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
+	}
+
+	/// Move an import to the front so it becomes the primary import.
+	fn make_import_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move an export to the front so it becomes the primary export.
+	fn make_export_primary(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: index, end_index: 0 }.into()]),
+		}
+	}
+
+	/// Move the primary import to the first secondary import, leaving the primary empty.
+	fn make_import_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderImport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Move the primary export to the first secondary export, leaving the primary empty.
+	fn make_export_secondary() -> Message {
+		Message::Batched {
+			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::ReorderExport { start_index: 0, end_index: 1 }.into()]),
+		}
+	}
+
+	/// Show an import on its subgraph node as an input connector, or else as a parameter in the Inspector.
+	fn set_import_exposed(index: usize, exposed: bool) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::ExposeEncapsulatingInput { input_index: index, exposed }.into(),
+			]),
+		}
+	}
+
+	/// Disconnect every wire an import feeds.
+	fn disconnect_import(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Import(index) }.into(),
+			]),
+		}
+	}
+
+	/// Disconnect the wire feeding an export.
+	fn disconnect_export(index: usize) -> Message {
+		Message::Batched {
+			messages: Box::new([
+				DocumentMessage::AddTransaction.into(),
+				NodeGraphMessage::DisconnectImportExport { index: ImportOrExport::Export(index) }.into(),
+			]),
+		}
 	}
 }
 
@@ -766,6 +909,8 @@ macro_rules! editor_proxy_types {
 }
 
 editor_proxy_types! {
+	FileType = editor::messages::frontend::utility_types::FileType;
+	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;

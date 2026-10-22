@@ -33,40 +33,13 @@ export async function rasterizeSVGCanvas(svg: string, width: number, height: num
 	return canvas;
 }
 
-// Rasterize the string of an SVG document at a given width and height and turn it into the blob data of an image file matching the given MIME type
-export async function rasterizeSVG(svg: string, width: number, height: number, mime: string, backgroundColor?: string): Promise<Blob> {
-	if (!width || !height) throw new Error("Width and height must be nonzero when given to rasterizeSVG()");
-
-	const canvas = await rasterizeSVGCanvas(svg, width, height, backgroundColor);
-
-	// Convert the canvas to an image of the correct MIME type
-	const blob = await new Promise<Blob | undefined>((resolve) => {
-		canvas.toBlob((blob) => {
-			resolve(blob || undefined);
-		}, mime);
-	});
-
-	if (!blob) throw new Error("Converting canvas to blob data failed in rasterizeSVG()");
-
-	return blob;
-}
-
-/// Convert an image source (e.g. PNG document) into pixel data, a width, and a height
-export async function extractPixelData(imageData: ImageBitmapSource): Promise<ImageData> {
-	const canvasContext = await imageToCanvasContext(imageData);
-	const width = canvasContext.canvas.width;
-	const height = canvasContext.canvas.height;
-
-	return canvasContext.getImageData(0, 0, width, height);
-}
-
 export async function imageToCanvasContext(imageData: ImageBitmapSource): Promise<CanvasRenderingContext2D> {
 	// Special handling to rasterize an SVG file
 	let svgImageData;
 	if (imageData instanceof File && imageData.type === "image/svg+xml") {
 		const svgSource = await imageData.text();
-		const svgElement = new DOMParser().parseFromString(svgSource, "image/svg+xml").querySelector("svg");
-		if (!svgElement) throw new Error("Error reading SVG file");
+		const svgElement = new DOMParser().parseFromString(svgSource, "image/svg+xml").documentElement;
+		if (!(svgElement instanceof SVGSVGElement)) throw new Error("Error reading SVG file");
 
 		let bounds = svgElement.viewBox.baseVal;
 

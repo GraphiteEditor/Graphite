@@ -3,6 +3,7 @@ use super::intersection::{bezpath_intersections, filtered_all_segment_intersecti
 use super::poisson_disk::poisson_disk_sample;
 use super::util::pathseg_tangent;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
+use core_types::FallibleVec2Operations;
 use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};
@@ -194,30 +195,6 @@ pub fn pathseg_compute_lookup_table(segment: PathSeg, steps: Option<usize>, eucl
 		let t = eval_pathseg(segment, tvalue);
 		point_to_dvec2(segment.eval(t))
 	})
-}
-
-/// Find the `t`-value(s) such that the normal(s) at `t` pass through the specified point.
-pub fn pathseg_normals_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
-	// We solve deriv(t) dot (self(t) - point) = 0.
-	let (mut x, mut y) = pathseg_to_parametric_polynomial(segment);
-	let x = x.coefficients_mut();
-	let y = y.coefficients_mut();
-	x[0] -= point.x;
-	y[0] -= point.y;
-	let poly = polycool::Poly::new([
-		x[0] * x[1] + y[0] * y[1],
-		x[1] * x[1] + y[1] * y[1] + 2. * (x[0] * x[2] + y[0] * y[2]),
-		3. * (x[2] * x[1] + y[2] * y[1]) + 3. * (x[0] * x[3] + y[0] * y[3]),
-		4. * (x[3] * x[1] + y[3] * y[1]) + 2. * (x[2] * x[2] + y[2] * y[2]),
-		5. * (x[3] * x[2] + y[3] * y[2]),
-		3. * (x[3] * x[3] + y[3] * y[3]),
-	]);
-	poly.roots_between(0., 1., 1e-8).to_vec()
-}
-
-/// Find the `t`-value(s) such that the tangent(s) at `t` pass through the given point.
-pub fn pathseg_tangents_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
-	segment.to_cubic().tangents_to_point(point).to_vec()
 }
 
 /// Return the subsegment for the given [TValue] range. Returns None if parametric value of `t1` is greater than `t2`.
@@ -450,27 +427,21 @@ pub fn miter_line_join(bezpath1: &BezPath, bezpath2: &BezPath, miter_limit: Opti
 	let in_segment = bezpath1.segments().last()?;
 	let out_segment = bezpath2.segments().next()?;
 
-	let in_tangent = pathseg_tangent(in_segment, 1.);
-	let out_tangent = pathseg_tangent(out_segment, 0.);
+	let in_tangent_normalized = pathseg_tangent(in_segment, 1.).try_normalize()?;
+	let out_tangent_normalized = pathseg_tangent(out_segment, 0.).try_normalize()?;
 
-	if in_tangent == DVec2::ZERO || out_tangent == DVec2::ZERO {
-		// Avoid panic from normalizing zero vectors
-		// TODO: Besides returning None, is there a more appropriate way to handle this?
-		return None;
-	}
-
-	let angle = (in_tangent * -1.).angle_to(out_tangent).abs();
+	let angle = (in_tangent_normalized * -1.).try_angle_to(out_tangent_normalized)?.abs();
 
 	if angle.to_degrees() < miter_limit {
 		return None;
 	}
 
 	let p1 = in_segment.end();
-	let p2 = point_to_dvec2(p1) + in_tangent.normalize();
+	let p2 = point_to_dvec2(p1) + in_tangent_normalized;
 	let line1 = Line::new(p1, dvec2_to_point(p2));
 
 	let p1 = out_segment.start();
-	let p2 = point_to_dvec2(p1) + out_tangent.normalize();
+	let p2 = point_to_dvec2(p1) + out_tangent_normalized;
 	let line2 = Line::new(p1, dvec2_to_point(p2));
 
 	// If we don't find the intersection point to draw the miter join, we instead default to a bevel join.
@@ -512,12 +483,21 @@ pub fn round_line_join(bezpath1: &BezPath, bezpath2: &BezPath, center: DVec2) ->
 	let center_to_left = left - center;
 
 	let in_segment = bezpath1.segments().last();
-	let in_tangent = in_segment.map(|in_segment| pathseg_tangent(in_segment, 1.));
+	let in_tangent = in_segment.and_then(|in_segment| pathseg_tangent(in_segment, 1.).try_normalize());
 
-	let mut angle = center_to_right.angle_to(center_to_left) / 2.;
+	let mut angle = center_to_right.try_angle_to(center_to_left).map_or_else(
+		|| {
+			warn!("round line join with zero length vectors");
+			0.
+		},
+		|angle| angle / 2.,
+	);
 	let mut arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 
-	if in_tangent.map(|in_tangent| (arc_point - left).angle_to(in_tangent).abs()).unwrap_or_default() > FRAC_PI_2 {
+	if in_tangent
+		.and_then(|in_tangent| (arc_point - left).try_angle_to(in_tangent))
+		.is_some_and(|angle| angle.abs() > FRAC_PI_2)
+	{
 		angle = angle - PI * (if angle < 0. { -1. } else { 1. });
 		arc_point = center + DMat2::from_angle(angle).mul_vec2(center_to_right);
 	}

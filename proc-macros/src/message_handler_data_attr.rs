@@ -29,76 +29,76 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 		if segment.ident != "MessageHandler" {
 			return Err(syn::Error::new(segment.ident.span(), "Expected MessageHandler trait"));
 		}
-		if let syn::PathArguments::AngleBracketed(args) = &segment.arguments {
-			if args.args.len() >= 2 {
-				// Extract the message type (M) and context struct type (C) from the trait params
-				let message_type = &args.args[0];
-				let data_type = &args.args[1];
+		if let syn::PathArguments::AngleBracketed(args) = &segment.arguments
+			&& args.args.len() >= 2
+		{
+			// Extract the message type (M) and context struct type (C) from the trait params
+			let message_type = &args.args[0];
+			let data_type = &args.args[1];
 
-				let impl_item = match data_type {
-					syn::GenericArgument::Type(t) => {
-						match t {
-							syn::Type::Path(type_path) if !type_path.path.segments.is_empty() => {
-								// Get just the base identifier (ToolMessageData) without generics
-								let type_name = &type_path.path.segments.first().unwrap().ident;
+			let impl_item = match data_type {
+				syn::GenericArgument::Type(t) => {
+					match t {
+						syn::Type::Path(type_path) if !type_path.path.segments.is_empty() => {
+							// Get just the base identifier (ToolMessageData) without generics
+							let type_name = &type_path.path.segments.first().unwrap().ident;
 
-								let handler_data_line_number = type_name.span().start().line;
+							let handler_data_line_number = type_name.span().start().line;
 
-								quote! {
-									#input_item
-									impl #message_type {
-										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#type_name)), #type_name::field_types(), #type_name::path(), #type_name::line_number())
-										}
-										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
-
-										}
-									}
-								}
-							}
-							syn::Type::Tuple(_) => quote! {
+							quote! {
 								#input_item
 								impl #message_type {
-										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
-										}
+									pub fn message_handler_data_str() -> MessageData {
+										MessageData::new(format!("{}", stringify!(#type_name)), #type_name::field_types(), #type_name::path(), #type_name::line_number())
 									}
-							},
-							syn::Type::Reference(type_reference) => {
-								let message_type = call_site_ident(format!("{input_type}Message"));
-								let type_ident = match &*type_reference.elem {
-									syn::Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
-									_ => return Err(syn::Error::new(type_reference.elem.span(), "Expected type path")),
-								};
+									pub fn message_handler_str() -> MessageData {
+										MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
 
-								let type_line_number = type_ident.span().start().line;
-
-								let tr = clean_rust_type_syntax(type_reference.to_token_stream().to_string());
-								quote! {
-									#input_item
-									impl #message_type {
-										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}", #tr), #type_ident::field_types(), #type_ident::path(), #type_ident::line_number())
-										}
-
-										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
-
-										}
 									}
 								}
 							}
-							_ => return Err(syn::Error::new(t.span(), "Unsupported type format")),
 						}
-					}
+						syn::Type::Tuple(_) => quote! {
+							#input_item
+							impl #message_type {
+									pub fn message_handler_str() -> MessageData {
+										MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
+									}
+								}
+						},
+						syn::Type::Reference(type_reference) => {
+							let message_type = call_site_ident(format!("{input_type}Message"));
+							let type_ident = match &*type_reference.elem {
+								syn::Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
+								_ => return Err(syn::Error::new(type_reference.elem.span(), "Expected type path")),
+							};
 
-					_ => quote! {
-						#input_item
-					},
-				};
-				return Ok(impl_item);
-			}
+							let type_line_number = type_ident.span().start().line;
+
+							let tr = clean_rust_type_syntax(type_reference.to_token_stream().to_string());
+							quote! {
+								#input_item
+								impl #message_type {
+									pub fn message_handler_data_str() -> MessageData {
+										MessageData::new(format!("{}", #tr), #type_ident::field_types(), #type_ident::path(), #type_ident::line_number())
+									}
+
+									pub fn message_handler_str() -> MessageData {
+										MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
+
+									}
+								}
+							}
+						}
+						_ => return Err(syn::Error::new(t.span(), "Unsupported type format")),
+					}
+				}
+
+				_ => quote! {
+					#input_item
+				},
+			};
+			return Ok(impl_item);
 		}
 	}
 	Ok(input_item)

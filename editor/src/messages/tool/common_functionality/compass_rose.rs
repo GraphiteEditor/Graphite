@@ -1,6 +1,7 @@
 use crate::consts::{COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER};
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
+use graphene_std::FallibleVec2Operations;
 use std::f64::consts::FRAC_PI_2;
 
 #[derive(Clone, Default, Debug)]
@@ -56,7 +57,9 @@ impl CompassRose {
 			return CompassRoseState::None;
 		}
 
-		let angle = (mouse - self.compass_center).angle_to(DVec2::from_angle(angle)).abs();
+		let Some(angle) = (mouse - self.compass_center).try_angle_to(DVec2::from_angle(angle)).map(f64::abs) else {
+			return CompassRoseState::None;
+		};
 		let resolved_angle = (FRAC_PI_2 - angle).abs();
 		let angular_width = COMPASS_ROSE_ARROW_CLICK_TARGET_ANGLE.to_radians();
 

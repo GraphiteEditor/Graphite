@@ -16,7 +16,7 @@ pub use crate::messages::dialog::new_document_dialog::{NewDocumentDialogMessage,
 pub use crate::messages::dialog::preferences_dialog::{PreferencesDialogMessage, PreferencesDialogMessageContext, PreferencesDialogMessageDiscriminant, PreferencesDialogMessageHandler};
 pub use crate::messages::dialog::{DialogMessage, DialogMessageContext, DialogMessageDiscriminant, DialogMessageHandler};
 pub use crate::messages::frontend::{FrontendMessage, FrontendMessageDiscriminant};
-pub use crate::messages::future::{FutureMessage, FutureMessageContext, FutureMessageDiscriminant, FutureMessageHandler, MessageFuture, MessageSpawner, Wake};
+pub use crate::messages::future::{FutureMessage, FutureMessageDiscriminant, FutureMessageHandler, MessageFuture, Wake};
 pub use crate::messages::input_mapper::key_mapping::{KeyMappingMessage, KeyMappingMessageContext, KeyMappingMessageDiscriminant, KeyMappingMessageHandler};
 pub use crate::messages::input_mapper::{InputMapperMessage, InputMapperMessageContext, InputMapperMessageDiscriminant, InputMapperMessageHandler};
 pub use crate::messages::input_preprocessor::{InputPreprocessorMessage, InputPreprocessorMessageContext, InputPreprocessorMessageDiscriminant, InputPreprocessorMessageHandler};
@@ -25,14 +25,17 @@ pub use crate::messages::menu_bar::{MenuBarMessage, MenuBarMessageDiscriminant, 
 pub use crate::messages::network::{NetworkMessage, NetworkMessageContext, NetworkMessageDiscriminant, NetworkMessageHandler};
 pub use crate::messages::portfolio::document::data_panel::{DataPanelMessage, DataPanelMessageDiscriminant};
 pub use crate::messages::portfolio::document::graph_operation::{GraphOperationMessage, GraphOperationMessageContext, GraphOperationMessageDiscriminant, GraphOperationMessageHandler};
+pub use crate::messages::portfolio::document::inspector::{InspectorMessage, InspectorMessageDiscriminant, InspectorMessageHandler};
 pub use crate::messages::portfolio::document::navigation::{NavigationMessage, NavigationMessageContext, NavigationMessageDiscriminant, NavigationMessageHandler};
 pub use crate::messages::portfolio::document::node_graph::{NodeGraphMessage, NodeGraphMessageDiscriminant, NodeGraphMessageHandler};
 pub use crate::messages::portfolio::document::overlays::{OverlaysMessage, OverlaysMessageContext, OverlaysMessageDiscriminant, OverlaysMessageHandler};
-pub use crate::messages::portfolio::document::properties_panel::{PropertiesPanelMessage, PropertiesPanelMessageDiscriminant, PropertiesPanelMessageHandler};
 pub use crate::messages::portfolio::document::resource::{ResourceMessage, ResourceMessageContext, ResourceMessageDiscriminant, ResourceMessageHandler};
 pub use crate::messages::portfolio::document::{DocumentMessage, DocumentMessageContext, DocumentMessageDiscriminant, DocumentMessageHandler};
+pub use crate::messages::portfolio::failed_documents::{FailedDocumentsMessage, FailedDocumentsMessageContext, FailedDocumentsMessageDiscriminant, FailedDocumentsMessageHandler};
 pub use crate::messages::portfolio::fonts::{FontsMessage, FontsMessageContext, FontsMessageDiscriminant, FontsMessageHandler};
+pub use crate::messages::portfolio::ingest::{IngestMessage, IngestMessageContext, IngestMessageDiscriminant, IngestMessageHandler};
 pub use crate::messages::portfolio::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageDiscriminant, PersistentStateMessageHandler};
+pub use crate::messages::portfolio::workspace::{WorkspaceMessage, WorkspaceMessageContext, WorkspaceMessageDiscriminant, WorkspaceMessageHandler};
 pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageContext, PortfolioMessageDiscriminant, PortfolioMessageHandler};
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::resource_storage::{ResourceStorageMessage, ResourceStorageMessageContext, ResourceStorageMessageDiscriminant, ResourceStorageMessageHandler};
@@ -58,6 +61,7 @@ pub use crate::messages::tool::tool_messages::text_tool::{TextToolMessage, TextT
 
 // Helper/miscellaneous
 pub use crate::messages::portfolio::document::utility_types::misc::DocumentId;
+pub use graphene_std::core_types::FallibleVec2Operations;
 pub use graphite_proc_macros::*;
 pub use std::collections::{HashMap, HashSet, VecDeque};
 

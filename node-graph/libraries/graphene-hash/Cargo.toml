@@ -5,14 +5,21 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
 
+[lints]
+workspace = true
+
 [features]
 default = ["std"]
-std = []
+std = ["dep:kurbo"]
 derive = ["graphene-hash-derive"]
 
 [dependencies]
 graphene-hash-derive = { path = "derive", optional = true }
 glam = { workspace = true }
+kurbo = { workspace = true, optional = true }

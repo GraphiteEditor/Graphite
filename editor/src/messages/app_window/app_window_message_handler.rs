@@ -86,8 +86,8 @@ pub enum AppWindowPlatform {
 	Linux,
 }
 
-impl From<&Environment> for AppWindowPlatform {
-	fn from(environment: &Environment) -> Self {
+impl From<Environment> for AppWindowPlatform {
+	fn from(environment: Environment) -> Self {
 		match (environment.platform, environment.host) {
 			(Platform::Web, _) => AppWindowPlatform::Web,
 			(Platform::Desktop, Host::Linux) => AppWindowPlatform::Linux,

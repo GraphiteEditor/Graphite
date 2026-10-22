@@ -4,16 +4,25 @@
 //! metadata survives the conversion. The end-to-end save/reopen pipeline is covered separately in
 //! [`round_trip_tests`](super::round_trip_tests).
 
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
-use document_graph_storage::{NodeMetadataSource, PeerId, Registry};
+use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
-use super::test_support::{load_demo, node_paths};
+use super::test_support::{load_demo, load_demo_with_output_descriptions, node_paths, open_demo};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
+use crate::messages::portfolio::document::utility_types::network_interface::NodeLocator;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
+use crate::messages::portfolio::document_storage_io::load_legacy_document;
+use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::NodeId;
 use graphene_std::vector::style::RenderMode;
+
+/// Storage drops output descriptions that are all empty, which means the same as having none.
+fn normalize_output_descriptions(output_descriptions: Vec<String>) -> Vec<String> {
+	if output_descriptions.iter().all(String::is_empty) { Vec::new() } else { output_descriptions }
+}
 
 /// Loads a demo artwork, round-trips its `NodeNetwork + NodeNetworkInterface metadata` through
 /// `Registry`, and asserts every node's `ui::*` attributes survive unchanged.
@@ -21,14 +30,14 @@ use graphene_std::vector::style::RenderMode;
 /// Uses one demo (rather than the full set) because this is an exhaustive per-node check.
 #[test]
 fn editor_metadata_round_trip_against_demo() {
-	let document = load_demo("changing-seasons.graphite");
+	let document = load_demo_with_output_descriptions("changing-seasons.graphite");
 	let interface = &document.network_interface;
 	let source = StorageMetadataView::new(interface);
 
 	let network = interface.document_network().clone();
 
 	let conversion = Registry::convert_from_runtime(&network, &source, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
-	let declarations = conversion.declarations().expect("rebuild declarations");
+	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 
 	let (_converted_network, entries) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime_with_metadata failed");
@@ -39,6 +48,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let mut checked_any_position = false;
 	let mut checked_any_layer = false;
 	let mut checked_any_input_metadata = false;
+	let mut checked_any_output_description = false;
 
 	for (network_path, local_id) in node_paths(interface) {
 		let expected_position = source.position(&network_path, local_id);
@@ -47,6 +57,7 @@ fn editor_metadata_round_trip_against_demo() {
 		let expected_locked = source.locked(&network_path, local_id);
 		let expected_pinned = source.pinned(&network_path, local_id);
 		let expected_output_names = source.output_names(&network_path, local_id);
+		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(&network_path, local_id));
 
 		// Use the node's input count as the slot-by-slot iteration bound for the per-input metadata checks.
 		let input_count = interface.document_node(&local_id, &network_path).map(|node| node.inputs.len()).unwrap_or(0);
@@ -56,22 +67,6 @@ fn editor_metadata_round_trip_against_demo() {
 				|| source.widget_override(&network_path, local_id, i).is_some()
 				|| !source.input_data(&network_path, local_id, i).is_empty()
 		});
-
-		let any_metadata = expected_position.is_some()
-			|| expected_is_layer
-			|| expected_display.as_deref().is_some_and(|s| !s.is_empty())
-			|| expected_locked
-			|| expected_pinned
-			|| any_input_metadata_present
-			|| !expected_output_names.is_empty();
-
-		if !any_metadata {
-			assert!(
-				!entries_by_address.contains_key(&(network_path.clone(), local_id)),
-				"node {local_id:?} in network {network_path:?} has no editor metadata but produced an entry"
-			);
-			continue;
-		}
 
 		let entry = entries_by_address
 			.get(&(network_path.clone(), local_id))
@@ -89,6 +84,10 @@ fn editor_metadata_round_trip_against_demo() {
 		assert_eq!(entry.locked, expected_locked, "locked mismatch for node {local_id:?} in network {network_path:?}");
 		assert_eq!(entry.pinned, expected_pinned, "pinned mismatch for node {local_id:?} in network {network_path:?}");
 		assert_eq!(entry.output_names, expected_output_names, "output_names mismatch for node {local_id:?} in network {network_path:?}");
+		assert_eq!(
+			entry.output_descriptions, expected_output_descriptions,
+			"output_descriptions mismatch for node {local_id:?} in network {network_path:?}"
+		);
 
 		// Per-input metadata: the entry's `input_metadata` has one slot per input, each matching the trait's
 		// per-field view (same "empty string ↔ None" normalization as `display_name`).
@@ -131,6 +130,9 @@ fn editor_metadata_round_trip_against_demo() {
 		if any_input_metadata_present {
 			checked_any_input_metadata = true;
 		}
+		if !expected_output_descriptions.is_empty() {
+			checked_any_output_description = true;
+		}
 	}
 
 	// Sanity: a real artwork should exercise at least these two shapes; otherwise the test is
@@ -140,6 +142,7 @@ fn editor_metadata_round_trip_against_demo() {
 	// Demo artworks always have some custom widget overrides / input names; if not, the
 	// per-input round-trip isn't actually being exercised here.
 	assert!(checked_any_input_metadata, "demo artwork produced no per-input metadata: fixture is wrong or extraction is broken");
+	assert!(checked_any_output_description, "no output descriptions were round-tripped: fixture is wrong or extraction is broken");
 }
 
 /// Full editor-side round-trip: original interface → Registry → (NodeNetwork, Vec<entry>) →
@@ -147,13 +150,13 @@ fn editor_metadata_round_trip_against_demo() {
 /// the original when read through `StorageMetadataView`.
 #[test]
 fn editor_interface_rebuild_round_trip() {
-	let document = load_demo("changing-seasons.graphite");
+	let document = load_demo_with_output_descriptions("changing-seasons.graphite");
 	let original = &document.network_interface;
 	let original_view = StorageMetadataView::new(original);
 
 	let network = original.document_network().clone();
 	let conversion = Registry::convert_from_runtime(&network, &original_view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
-	let declarations = conversion.declarations().expect("rebuild declarations");
+	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
 
@@ -229,6 +232,11 @@ fn editor_interface_rebuild_round_trip() {
 			original_view.output_names(&network_path, local_id),
 			"output_names mismatch for node {local_id:?} in network {network_path:?}"
 		);
+		assert_eq!(
+			normalize_output_descriptions(rebuilt_view.output_descriptions(&network_path, local_id)),
+			normalize_output_descriptions(original_view.output_descriptions(&network_path, local_id)),
+			"output_descriptions mismatch for node {local_id:?} in network {network_path:?}"
+		);
 	}
 
 	// Symmetric: every node in the original must also exist in the rebuilt interface.
@@ -262,6 +270,127 @@ fn editor_interface_rebuild_round_trip() {
 	assert!(checked_any_reference, "demo artwork produced no reference metadata: fixture is wrong or extraction is broken");
 }
 
+/// The rebuild pins every node to the identity storage named it, rather than leaving it to be
+/// re-derived. Re-converting under a different peer is the sharp test: a location hash mixes the peer
+/// in, so it would produce an entirely different set of IDs.
+#[test]
+fn rebuilt_interface_keeps_storage_identities() {
+	let document = load_demo("changing-seasons.graphite");
+	let view = StorageMetadataView::new(&document.network_interface);
+
+	let network = document.network_interface.document_network().clone();
+	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
+	let declarations = conversion.declarations;
+	let registry = conversion.registry;
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+
+	let reconverted_network = rebuilt.document_network().clone();
+	let reconverted = Registry::convert_from_runtime(&reconverted_network, &StorageMetadataView::new(&rebuilt), &Default::default(), PeerId(9)).expect("re-convert from_runtime failed");
+
+	let stored_ids: BTreeSet<_> = registry.node_instances.keys().copied().collect();
+	let reconverted_ids: BTreeSet<_> = reconverted.registry.node_instances.keys().copied().collect();
+
+	assert!(!stored_ids.is_empty(), "demo artwork produced no nodes: fixture is wrong");
+	assert_eq!(reconverted_ids, stored_ids, "re-converting the rebuilt interface under a different peer changed the node identities");
+}
+
+/// Migrating an opened document must leave the recorded-delta buffer empty.
+#[test]
+fn migrating_a_document_records_no_changes() {
+	let mut document = load_demo("painted-dreams.graphite");
+	document.network_interface.discard_deltas();
+
+	crate::messages::portfolio::document_migration::document_migration_upgrades(&mut document, false);
+
+	let recorded = document.network_interface.take_deltas();
+	assert!(recorded.is_empty(), "migration left {} recorded changes behind", recorded.len());
+}
+
+/// The first Merge node in a document, as its network path and ID.
+fn first_merge(document: &DocumentMessageHandler) -> (Vec<NodeId>, NodeId) {
+	let merge = Some(DefinitionIdentifier::Network("Merge".into()));
+	node_paths(&document.network_interface)
+		.into_iter()
+		.find(|(network_path, node_id)| document.network_interface.reference(node_id, network_path) == merge)
+		.expect("the demo artwork should have a Merge node")
+}
+
+/// Opening a document fills in the output descriptions of a node saved before its definition had any.
+#[test]
+fn opening_a_document_fills_output_descriptions_a_node_was_saved_without() {
+	let mut document = open_demo("changing-seasons.graphite");
+	let (network_path, node_id) = first_merge(&document);
+
+	// Saved as it would have been before Merge's definition described its output
+	let mut node = document.network_interface.node_mut(NodeLocator::new(node_id, &network_path)).expect("the Merge node should exist");
+	node.set_output_descriptions(Vec::new());
+
+	let content = document.serialize_document();
+	let reopened = load_legacy_document(content, &HashMapResourceStorage::new(), false).expect("the saved document should open");
+
+	let definition_description = resolve_document_node_type(&DefinitionIdentifier::Network("Merge".into()))
+		.and_then(|definition| definition.node_template.output_descriptions.first().cloned())
+		.filter(|description| !description.is_empty())
+		.expect("Merge's definition should describe its output");
+	assert_eq!(
+		reopened.network_interface.output_description(&node_id, 0, &network_path),
+		definition_description,
+		"the Merge node should be given its definition's output description"
+	);
+}
+
+/// An output description that was emptied stays empty when the document is saved and opened again, rather than being filled from the definition.
+#[test]
+fn an_emptied_output_description_stays_empty_after_reopening() {
+	let mut document = open_demo("changing-seasons.graphite");
+	let (network_path, node_id) = first_merge(&document);
+
+	let mut node = document.network_interface.node_mut(NodeLocator::new(node_id, &network_path)).expect("the Merge node should exist");
+	node.set_output_descriptions(vec![String::new()]);
+
+	let content = document.serialize_document();
+	let reopened = load_legacy_document(content, &HashMapResourceStorage::new(), false).expect("the saved document should open");
+	assert_eq!(
+		reopened.network_interface.output_description(&node_id, 0, &network_path),
+		"",
+		"the emptied description should stay empty"
+	);
+}
+
+/// The pinned display order is document state, so it survives a registry round trip. It names nodes and
+/// the stored form uses storage IDs, so this also checks the references resolve back to the right
+/// runtime nodes.
+#[test]
+fn pinned_order_round_trips_through_the_registry() {
+	let mut document = load_demo("changing-seasons.graphite");
+
+	let pinned: Vec<_> = document.network_interface.document_network().nodes.keys().copied().take(3).collect();
+	assert_eq!(pinned.len(), 3, "demo artwork should have at least three nodes: fixture is wrong");
+
+	{
+		let interface = &mut document.network_interface;
+		let Some(mut network) = interface.network_mut(&[]) else {
+			panic!("the document network should resolve")
+		};
+		network.set_pinned_order(pinned.clone());
+	}
+
+	let network = document.network_interface.document_network().clone();
+	let view = StorageMetadataView::new(&document.network_interface);
+	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
+	let declarations = conversion.declarations;
+	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime failed");
+	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
+
+	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");
+	assert_eq!(
+		rebuilt_metadata.persistent_metadata.pinned_node_order, pinned,
+		"the pinned display order did not survive the registry round trip"
+	);
+}
+
 /// Per-peer view settings (`ui::doc::*`) survive the `session.json` round-trip: serialize them into
 /// the view map, then apply it onto a fresh handler and confirm each field matches.
 #[test]
@@ -288,26 +417,14 @@ fn document_settings_round_trip() {
 	let mut restored = DocumentMessageHandler::default();
 	restored.apply_stored_document_settings(&view_settings);
 
-	assert_eq!(serde_json::to_value(restored.render_mode).unwrap(), serde_json::to_value(document.render_mode).unwrap(), "render_mode");
+	assert_eq!(to_value(&restored.render_mode).unwrap(), to_value(&document.render_mode).unwrap(), "render_mode");
+	assert_eq!(to_value(&restored.rulers_visible).unwrap(), to_value(&document.rulers_visible).unwrap(), "rulers_visible");
+	assert_eq!(to_value(&restored.document_ptz).unwrap(), to_value(&document.document_ptz).unwrap(), "document_ptz");
 	assert_eq!(
-		serde_json::to_value(restored.rulers_visible).unwrap(),
-		serde_json::to_value(document.rulers_visible).unwrap(),
-		"rulers_visible"
-	);
-	assert_eq!(
-		serde_json::to_value(restored.document_ptz).unwrap(),
-		serde_json::to_value(document.document_ptz).unwrap(),
-		"document_ptz"
-	);
-	assert_eq!(
-		serde_json::to_value(restored.overlays_visibility_settings).unwrap(),
-		serde_json::to_value(document.overlays_visibility_settings).unwrap(),
+		to_value(&restored.overlays_visibility_settings).unwrap(),
+		to_value(&document.overlays_visibility_settings).unwrap(),
 		"overlays"
 	);
-	assert_eq!(
-		serde_json::to_value(restored.snapping_state).unwrap(),
-		serde_json::to_value(document.snapping_state).unwrap(),
-		"snapping_state"
-	);
-	assert_eq!(serde_json::to_value(restored.collapsed).unwrap(), serde_json::to_value(document.collapsed).unwrap(), "collapsed");
+	assert_eq!(to_value(&restored.snapping_state).unwrap(), to_value(&document.snapping_state).unwrap(), "snapping_state");
+	assert_eq!(to_value(&restored.collapsed).unwrap(), to_value(&document.collapsed).unwrap(), "collapsed");
 }

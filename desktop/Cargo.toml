@@ -5,8 +5,14 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "graphite"
@@ -44,6 +50,7 @@ rfd = { workspace = true }
 open = { workspace = true }
 lzma-rust2 = { workspace = true }
 serde = { workspace = true }
+url = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 clap = { workspace = true, features = ["derive"] }
 interprocess = "2.4.2"

@@ -1,4 +1,4 @@
-use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
+use super::shape_utility::{ShapeToolModifierKey, drawn_flipped};
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -8,7 +8,8 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::number_of
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::point_radius_handle::{PointRadiusHandle, PointRadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, star_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, extract_star_parameters, star_outline, star_points};
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use core::f64;
 use graph_craft::document::NodeInput;
@@ -42,13 +43,13 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.number_of_points_dial.is_dragging() {
-			self.number_of_points_dial.update_number_of_sides(document, input, responses, drag_start);
+			self.number_of_points_dial.update_number_of_sides(view.document, view.input, responses, drag_start);
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.point_radius_handle.update_inner_radius(view, snap_session, responses, drag_start);
 		}
 	}
 
@@ -102,6 +103,9 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 	}
 }
 
+/// The inner radius of a star being drawn, as a fraction of its outer radius.
+const INNER_RADIUS_WHILE_DRAWING: f64 = 0.5;
+
 #[derive(Default)]
 pub struct Star;
 
@@ -111,41 +115,48 @@ impl Star {
 		let node_type = resolve_document_node_type(&identifier).expect("Star node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::U32(vertices), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.5), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.25), false)),
+			Some(NodeInput::value(TaggedValue::Integer(vertices as i64), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.5), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.25), false)),
 		])
 	}
 
 	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
+		view: SnapView,
+		snap_session: &mut SnapSession,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let document = view.document;
 		let [center, lock_ratio, _] = modifier;
 
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
-			// TODO: We need to determine how to allow the polygon node to make irregular shapes
-			update_radius_sign(end, start, layer, document, responses);
+		let sides = extract_star_parameters(Some(layer), document).map(|(sides, _, _)| sides);
+		let flipped = sides.is_some_and(|sides| drawn_flipped(sides, shape_tool_data.data.viewport_drag_start(document), view.input.mouse.position));
+		let points: Vec<DVec2> = sides
+			.map(|sides| star_points(sides, INNER_RADIUS_WHILE_DRAWING))
+			.unwrap_or_default()
+			.into_iter()
+			.map(|point| if flipped { -point } else { point })
+			.collect();
 
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(snap_session, view, center, lock_ratio, &points) {
+			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			let dimensions = (start - end).abs();
 
 			// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
 			let mut aspect = DVec2::ONE;
-			let radius: f64;
-			if dimensions.x > dimensions.y {
+			let radius = if dimensions.x > dimensions.y {
 				aspect.x = dimensions.x / dimensions.y;
-				radius = dimensions.y / 2.;
+				dimensions.y / 2.
 			} else {
 				aspect.y = dimensions.y / dimensions.x;
-				radius = dimensions.x / 2.;
-			}
+				dimensions.x / 2.
+			};
 
 			let radius = radius / viewport_zoom(document);
+			let radius = if flipped { -radius } else { radius };
 
 			let Some(node_id) = graph_modification_utils::get_star_id(layer, &document.network_interface) else {
 				return;
@@ -153,12 +164,12 @@ impl Star {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::star::Radius1Input),
-				input: NodeInput::value(TaggedValue::F64(radius), false),
+				input: NodeInput::value(TaggedValue::Number(radius), false),
 			});
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::star::Radius2Input),
-				input: NodeInput::value(TaggedValue::F64(radius / 2.), false),
+				input: NodeInput::value(TaggedValue::Number(radius * INNER_RADIUS_WHILE_DRAWING), false),
 			});
 
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), aspect));

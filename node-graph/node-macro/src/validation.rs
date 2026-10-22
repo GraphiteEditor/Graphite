@@ -1,5 +1,5 @@
-use crate::parsing::{Implementation, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField};
-use proc_macro_error2::emit_error;
+use crate::parsing::{Implementation, NodeOutputTier, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload, output_tier};
+use proc_macro_error2::{abort_if_dirty, emit_error};
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{GenericParam, Type};
@@ -8,17 +8,21 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 	let validators: &[fn(&ParsedNodeFn)] = &[
 		// Add more validators here as needed
 		validate_implementations_for_generics,
+		validate_implementations_row_counts,
 		validate_primary_input_expose,
 		validate_min_max,
 		validate_range_slider_bounds,
 		validate_no_item_parameters,
 		validate_element_wise,
 		validate_ranked_inputs,
+		validate_async,
 	];
 
 	for validator in validators {
 		validator(parsed);
 	}
+
+	abort_if_dirty();
 
 	Ok(())
 }
@@ -74,6 +78,7 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 	if parsed.attributes.skip_impl {
 		return;
 	}
+	let output = output_payload(&parsed.output_type);
 
 	let Some((_, primary)) = parsed.primary_input_field() else { return };
 	let Some(RegularParsedField { ty, implementations, .. }) = primary.ty.regular() else {
@@ -87,7 +92,7 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 			|| primary.ty.list_element().is_some()
 			|| outer_wrapper_is(ty, "ListDyn")
 			|| implementations.iter().any(|ty| outer_wrapper_is(ty, "List") || outer_wrapper_is(ty, "ListDyn"));
-		if outer_wrapper_is(&parsed.output_type, "Item") && !primary_reduces_or_generates {
+		if outer_wrapper_is(&output, "Item") && !primary_reduces_or_generates {
 			emit_error!(
 				parsed.output_type.span(),
 				"Returning `Item<T>` requires the primary input to be `Item<T>` (element-wise), `List<T>`/`ListDyn` (aggregation), or `()` (generator)"
@@ -107,10 +112,12 @@ fn validate_element_wise(parsed: &ParsedNodeFn) {
 		);
 	}
 
-	if !outer_wrapper_is(&parsed.output_type, "Item") && !outer_wrapper_is(&parsed.output_type, "List") {
+	let output_type = &output;
+	let ranked = outer_wrapper_is(output_type, "Item") || outer_wrapper_is(output_type, "List");
+	if !ranked && (outer_wrapper_is(output_type, "ListDyn") || is_unit_type(output_type) || contains_generic_param(output_type, &parsed.fn_generics)) {
 		emit_error!(
-			parsed.output_type.span(),
-			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, or `List<U>` for an expander"
+			output_type.span(),
+			"An element-wise node (declared by its `Item<T>` primary input) must return `Item<U>`, `List<U>` for an expander, or a struct deriving `Destructure`"
 		);
 	}
 }
@@ -126,7 +133,8 @@ fn validate_ranked_inputs(parsed: &ParsedNodeFn) {
 
 fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
 	let mut violations = Vec::new();
-	if parsed.attributes.skip_impl {
+	// A `Destructure` derive's extractor takes the struct itself rather than an `Item` or `List`
+	if parsed.attributes.skip_impl || parsed.attributes.destructure_extractor {
 		return violations;
 	}
 
@@ -221,6 +229,47 @@ fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, Str
 	}
 
 	violations
+}
+
+/// Implementations rows pair positionally, so every parameter list must hold the same number of rows.
+fn validate_implementations_row_counts(parsed: &ParsedNodeFn) {
+	for (span, message) in implementations_row_count_violations(parsed) {
+		emit_error!(span, "{}", message);
+	}
+}
+
+fn implementations_row_count_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
+	if parsed.attributes.skip_impl {
+		return Vec::new();
+	}
+
+	let field_rows = parsed.fields.iter().filter(|field| !field.is_data_field).map(|field| {
+		let rows = match &field.ty {
+			ParsedFieldType::Node(NodeParsedField { implementations, .. }) => implementations.len(),
+			value => value.regular().expect("a non-node field is a value field").implementations.len(),
+		};
+		(&field.pat_ident, rows)
+	});
+	// An `impl Ctx` input gets one synthesized `Context` row, so the ctx input only counts when written out with more
+	let ctx_rows = (&parsed.input.pat_ident, parsed.input.implementations.len());
+	let rows_per_input: Vec<_> = std::iter::once(ctx_rows).filter(|(_, rows)| *rows > 1).chain(field_rows).collect();
+	let Some(&(longest, most_rows)) = rows_per_input.iter().max_by_key(|(_, rows)| *rows) else {
+		return Vec::new();
+	};
+
+	rows_per_input
+		.iter()
+		.filter(|(_, rows)| *rows != 0 && *rows != most_rows)
+		.map(|(pat_ident, rows)| {
+			(
+				pat_ident.span(),
+				format!(
+					"The #[implementations(...)] of `{}` lists {rows} rows while `{}` lists {most_rows}, but rows pair positionally so every list needs the same count",
+					pat_ident.ident, longest.ident
+				),
+			)
+		})
+		.collect()
 }
 
 /// Returns whether the type is exactly one of the function's generic parameters, like `T`.
@@ -396,6 +445,18 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 				}
 			}
 		}
+	}
+}
+
+fn validate_async(parsed: &ParsedNodeFn) {
+	if parsed.is_async && matches!(output_tier(&parsed.output_type), NodeOutputTier::Interrupt | NodeOutputTier::Poll) {
+		emit_error!(parsed.output_type.span(), "An async node cannot return `Result<T, Interrupt>` or `Poll<T>`");
+	}
+	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		emit_error!(parsed.fn_name.span(), "An async node cannot take `impl Node` inputs");
+	}
+	if parsed.attributes.placeholder.is_some() && !parsed.is_async {
+		emit_error!(parsed.fn_name.span(), "Only an async node can have a `placeholder`");
 	}
 }
 
@@ -601,5 +662,32 @@ mod tests {
 			),
 		);
 		assert_eq!(data_field_messages, Vec::<String>::new());
+	}
+
+	fn row_count_violations(input: TokenStream) -> Vec<String> {
+		let parsed = parse_node_fn(quote::quote!(category("Test")), input).expect("The test node fn should parse");
+		implementations_row_count_violations(&parsed).into_iter().map(|(_, message)| message).collect()
+	}
+
+	#[test]
+	fn parameters_without_an_implementations_list_pass_beside_any_length() {
+		let messages = row_count_violations(quote::quote!(
+			fn tag<T>(_: impl Ctx, #[implementations(List<Graphic>, List<Vector>)] list: List<T>, value: impl Node<Context, Output = Item<f64>>, label: Item<String>) -> List<T> {
+				list
+			}
+		));
+		assert_eq!(messages, Vec::<String>::new());
+	}
+
+	#[test]
+	fn mismatched_implementations_row_counts_are_rejected() {
+		let messages = row_count_violations(quote::quote!(
+			fn triple<A, B, C>(_: impl Ctx, #[implementations(f64, u32, DVec2)] a: Item<A>, #[implementations(f64, u32)] b: Item<B>, #[implementations(f64)] c: Item<C>) -> Item<A> {
+				a
+			}
+		));
+		assert_eq!(messages.len(), 2, "{messages:?}");
+		assert!(messages[0].contains("of `b` lists 2 rows while `a` lists 3"), "{messages:?}");
+		assert!(messages[1].contains("of `c` lists 1 rows while `a` lists 3"), "{messages:?}");
 	}
 }

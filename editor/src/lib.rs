@@ -11,11 +11,15 @@ mod macros;
 extern crate log;
 
 pub mod application;
+pub mod builder;
 pub mod consts;
 pub mod dispatcher;
 pub mod messages;
 pub mod node_graph_executor;
+pub mod task;
 #[cfg(test)]
 pub mod test_utils;
 pub mod utility_traits;
 pub mod utility_types;
+
+pub use document_container::store as document_store;

@@ -1,0 +1,21 @@
+// Draw a rectangle with the Rectangle tool
+
+{ "type": "resize", "size": [1600, 1000] }
+
+// Open a new document
+{ "type": "press", "key": "Control+KeyN" }
+{ "type": "waitIdle" }
+{ "type": "click", "at": [802, 588] }
+{ "type": "waitIdle" }
+
+// Pick the tool, which the hints bar describes
+{ "type": "press", "key": "KeyM" }
+{ "type": "waitIdle" }
+{ "type": "expect", "text": "Draw Rectangle" }
+
+// Draw, then check the new layer and its width and height
+{ "type": "drag", "from": [200, 150], "to": [500, 350], "space": "viewport", "filmstrip": { "path": "scenarios/draw-rectangle.png", "frames": 4, "region": "viewport" } }
+{ "type": "waitIdle" }
+{ "type": "expect", "data": "layer", "count": 2 }
+{ "type": "expect", "value": "500.26", "count": 1 }
+{ "type": "expect", "value": "333.51", "count": 1 }

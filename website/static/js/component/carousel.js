@@ -147,11 +147,11 @@ function slideDirection(carousel, direction, smooth, clamped = false) {
  * @param {boolean} smooth
  */
 function slideTo(carousel, index, smooth) {
-	const activeDot = carousel.carouselContainer.querySelector("[data-carousel-dot].active");
+	const activeDot = Array.from(carousel.dots).find((dot) => dot.classList.contains("active"));
 	activeDot?.classList.remove("active");
 	carousel.dots[index].classList.add("active");
 
-	const activeDescription = carousel.carouselContainer.querySelector("[data-carousel-description].active");
+	const activeDescription = Array.from(carousel.descriptions).find((description) => description.classList.contains("active"));
 	if (activeDescription) {
 		activeDescription.classList.remove("active");
 		carousel.descriptions[index].classList.add("active");
@@ -190,9 +190,9 @@ function getVideosForSlide(carousel, index) {
 	const tornRightElement = tornRightImages[offsetIndex];
 
 	return {
-		main: mainElement instanceof HTMLVideoElement ? mainElement : null,
-		tornLeft: tornLeftElement instanceof HTMLVideoElement ? tornLeftElement : null,
-		tornRight: tornRightElement instanceof HTMLVideoElement ? tornRightElement : null,
+		main: mainElement instanceof HTMLVideoElement ? mainElement : undefined,
+		tornLeft: tornLeftElement instanceof HTMLVideoElement ? tornLeftElement : undefined,
+		tornRight: tornRightElement instanceof HTMLVideoElement ? tornRightElement : undefined,
 	};
 }
 
@@ -283,7 +283,7 @@ function manageVideoPlayback(carousel, currentIndex) {
 /**
  * Set up monitoring to play/pause torn edge videos based on transition state
  * @param {Carousel} carousel
- * @param {{ main: HTMLVideoElement | null, tornLeft: HTMLVideoElement | null, tornRight: HTMLVideoElement | null }} videos
+ * @param {{ main: HTMLVideoElement | undefined, tornLeft: HTMLVideoElement | undefined, tornRight: HTMLVideoElement | undefined }} videos
  */
 function updateVideoSyncForTransitions(carousel, videos) {
 	if (!videos.main) return;
@@ -411,8 +411,7 @@ function currentClosestImageIndex(carousel) {
  * @param {Carousel} carousel
  */
 function currentActiveDotIndex(carousel) {
-	const activeDot = carousel.carouselContainer.querySelector("[data-carousel-dot].active");
-	return activeDot ? Array.from(carousel.dots).indexOf(activeDot) : -1;
+	return Array.from(carousel.dots).findIndex((dot) => dot.classList.contains("active"));
 }
 
 /**

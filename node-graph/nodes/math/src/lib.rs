@@ -1,98 +1,348 @@
-use core_types::Context;
+use core_types::FallibleVec2Operations;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
-use core_types::registry::types::{Fraction, Percentage, PixelSize};
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
-use glam::{DAffine2, DVec2};
+use core_types::{Context, Interrupt};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
-use math_parser::value::{Number, Value};
+use math_parser::lexer::Constant;
+use math_parser::matrix::{Affine2, Linear2, Matrix};
+use math_parser::object::Object;
+use math_parser::reducer::classify_reducer;
+use math_parser::value::{Value, Vector2, Vector3};
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Mul, Rem, Sub};
+use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
-/// The struct that stores the context for the maths parser.
-/// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.
-struct MathNodeContext {
-	a: f64,
-	b: f64,
+/// A parsed source and its tree, which an invalid source lacks.
+type ParsedSource = Option<(String, Option<Arc<ast::Node>>)>;
+
+/// The last expression a node parsed, reused while its source stays the same, so a list of thousands of items or a run of
+/// frames parses once. An invalid source is remembered too, so it is logged once rather than per item.
+#[derive(Debug, Clone, Default)]
+pub struct ParseCache(Arc<Mutex<ParsedSource>>);
+
+impl ParseCache {
+	/// The parse tree of `source`, or `None` for an invalid math expression.
+	fn parse(&self, source: &str) -> Option<Arc<ast::Node>> {
+		// A lock poisoned by a panic elsewhere still guards a usable cache
+		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
+		if let Some((cached_source, tree)) = cached.as_ref()
+			&& cached_source == source
+		{
+			return tree.clone();
+		}
+
+		let tree = match ast::Node::try_parse_from_str(source) {
+			Ok(tree) => Some(Arc::new(tree)),
+			Err(error) => {
+				warn!("Invalid math expression: `{source}`\n{error}");
+				None
+			}
+		};
+		*cached = Some((source.to_string(), tree.clone()));
+		tree
+	}
 }
 
-impl ValueProvider for MathNodeContext {
-	fn get_value(&self, name: &str) -> Option<Value> {
-		if name.eq_ignore_ascii_case("a") {
-			Some(Value::from_f64(self.a))
-		} else if name.eq_ignore_ascii_case("b") {
-			Some(Value::from_f64(self.b))
-		} else {
+/// Evaluates a parsed expression with the given variable bindings, logging and returning `None` on failure.
+fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Option<Object> {
+	match expression.eval(&EvalContext::new(provider, NothingMap)) {
+		Ok(object) => Some(object),
+		Err(error) => {
+			warn!("Expression evaluation error: {error:?}");
 			None
 		}
 	}
 }
 
-/// Calculates a mathematical expression with input values "A" and "B".
-#[node_macro::node(category("Math: Arithmetic"), properties("math_properties"))]
-fn math<T: num_traits::float::Float>(
+/// Converts a node item type to and from the objects, values or matrices, the expression evaluator runs on.
+trait ExpressionValue: Copy + Default {
+	fn into_object(self) -> Object;
+	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool or a matrix read as a Number.
+	fn from_object(object: &Object) -> Option<Self>;
+	/// Gathers a list of this type as the items of its sort.
+	fn items(items: impl Iterator<Item = Self>) -> Items;
+}
+
+/// The items of the "Math f(…)" node's list, of one sort throughout, bound positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
+enum Items {
+	Values(Vec<Value>),
+	Matrices(Vec<Matrix>),
+}
+
+impl Items {
+	fn len(&self) -> usize {
+		match self {
+			Self::Values(values) => values.len(),
+			Self::Matrices(matrices) => matrices.len(),
+		}
+	}
+}
+
+/// A node item type that is a value in the expression language, so a list of them binds positionally.
+trait ExpressionItem: Copy + Default {
+	/// Binds this value into the expression language, exactly for an integer.
+	fn into_value(self) -> Value;
+	fn from_value(value: &Value) -> Option<Self>;
+}
+
+impl<T: ExpressionItem> ExpressionValue for T {
+	fn into_object(self) -> Object {
+		Object::Value(self.into_value())
+	}
+	fn from_object(object: &Object) -> Option<Self> {
+		T::from_value(object.as_value()?)
+	}
+	fn items(items: impl Iterator<Item = Self>) -> Items {
+		Items::Values(items.map(T::into_value).collect())
+	}
+}
+
+/// The value's real part alone, the only part a scalar type has, keeping an integer's exact storage.
+fn real_part(value: &Value) -> Value {
+	if value.as_real().is_some() { *value } else { Value::from_f64(value.as_particle3().w) }
+}
+
+impl ExpressionItem for f64 {
+	fn into_value(self) -> Value {
+		Value::from_f64(self)
+	}
+	fn from_value(value: &Value) -> Option<Self> {
+		real_part(value).as_real()
+	}
+}
+
+/// Reads an expression's result into the node's output type, warning and falling back to the type's default when it does not fit.
+fn output<T: ExpressionValue>(result: Option<Object>) -> T {
+	result
+		.and_then(|object| {
+			let output = T::from_object(&object);
+			if output.is_none() {
+				warn!("The expression's result {object} does not fit the output type");
+			}
+			output
+		})
+		.unwrap_or_default()
+}
+
+impl ExpressionItem for i64 {
+	fn into_value(self) -> Value {
+		Value::from_i64(self)
+	}
+
+	// A fractional result snaps to the nearest whole number (the graph's one Number to Integer rule)
+	fn from_value(value: &Value) -> Option<Self> {
+		real_part(value).as_i64()
+	}
+}
+
+impl ExpressionItem for bool {
+	fn into_value(self) -> Value {
+		Value::from_bool(self)
+	}
+
+	// A truth value is exactly 0 or 1 in the expression language, so any other real part does not fit
+	fn from_value(value: &Value) -> Option<Self> {
+		real_part(value).as_bool()
+	}
+}
+
+impl ExpressionItem for DVec2 {
+	fn into_value(self) -> Value {
+		Value::from(Vector2(self.to_array()))
+	}
+
+	// Projects onto the plane, dropping the real and `k` parts
+	fn from_value(value: &Value) -> Option<Self> {
+		let Vector3([x, y, _]) = value.as_particle3().vector;
+		Some(DVec2::new(x, y))
+	}
+}
+
+/// A transform as the `i, j` block with its translation.
+fn transform_matrix(transform: DAffine2) -> Matrix {
+	Matrix::from(Affine2 {
+		linear: Linear2(transform.matrix2.to_cols_array_2d()),
+		translation: transform.translation.to_array(),
+	})
+}
+
+impl ExpressionValue for DAffine2 {
+	fn into_object(self) -> Object {
+		Object::from(transform_matrix(self))
+	}
+
+	// A map of the plane leaving the weight and `z` alone, which no other matrix fits
+	fn from_object(object: &Object) -> Option<Self> {
+		let Affine2 {
+			linear: Linear2(columns),
+			translation,
+		} = object.as_matrix()?.as_affine2()?;
+		Some(DAffine2::from_mat2_translation(DMat2::from_cols_array_2d(&columns), DVec2::from_array(translation)))
+	}
+
+	fn items(items: impl Iterator<Item = Self>) -> Items {
+		Items::Matrices(items.map(transform_matrix).collect())
+	}
+}
+
+/// Supplies the value of `x`, or the matrix of `X`, for the "Math f(x)" node's expression.
+struct SingleVariableMathContext {
+	x: Object,
+}
+
+impl ValueProvider for SingleVariableMathContext {
+	fn get_value(&self, name: &str) -> Option<Value> {
+		// Bound by exact spelling, per the language's rule that a binding shadows the builtin of exactly its spelling
+		(name == "x").then(|| self.x.as_value().copied()).flatten()
+	}
+
+	fn get_matrix(&self, name: &str) -> Option<Matrix> {
+		(name == "X").then(|| self.x.as_matrix().copied()).flatten()
+	}
+}
+
+/// Evaluates a math expression written in terms of the single variable `x`, which carries the input value, or `X` when the input is a Transform.
+///
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
+#[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"), icon("NodeMathFx"))]
+fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
-	/// The value of "A" when calculating the expression.
-	#[implementations(f64, f32)]
-	operand_a: Item<T>,
-	/// A math expression that may incorporate "A" and/or "B", such as `sqrt(A + B) - B^2`.
-	#[default("A + B")]
-	expression: Item<String>,
-	/// The value of "B" when calculating the expression.
-	#[implementations(f64, f32)]
-	#[default(1.)]
-	operand_b: Item<T>,
-) -> Item<T> {
-	let (operand_a, attributes) = operand_a.into_parts();
-	let (expression, operand_b) = (expression.element(), *operand_b.element());
+	/// The value passed into the expression as `x`.
+	#[implementations(
+		f64, f64, f64, f64, f64, i64, i64, i64, i64, i64, bool, bool, bool, bool, bool, DVec2, DVec2, DVec2, DVec2, DVec2, DAffine2, DAffine2, DAffine2, DAffine2, DAffine2
+	)]
+	value: Item<T>,
+	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`, or of `X` for a Transform.
+	#[name("f(x) =")]
+	#[default("x")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression")]
+	fx: Item<String>,
+	/// The type the result is read as.
+	#[implementations(
+		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+	)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
+	#[data] parsed: ParseCache,
+) -> Item<U> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
 
-	let node = match ast::Node::try_parse_from_str(expression) {
-		Ok(expr) => expr,
-		Err(e) => {
-			warn!("Invalid expression: `{expression}`\n{e}");
-			return Item::from_parts(T::from(0.).unwrap(), attributes);
-		}
-	};
-	let context = EvalContext::new(
-		MathNodeContext {
-			a: operand_a.to_f64().unwrap(),
-			b: operand_b.to_f64().unwrap(),
-		},
-		NothingMap,
-	);
+	let (value, attributes) = value.into_parts();
 
-	let value = match node.eval(&context) {
-		Ok(value) => value,
-		Err(e) => {
-			warn!("Expression evaluation error: {e:?}");
-			return Item::from_parts(T::from(0.).unwrap(), attributes);
-		}
-	};
+	let x = value.into_object();
 
-	let Value::Number(num) = value;
-	let result = match num {
-		Number::Real(val) => T::from(val).unwrap(),
-		Number::Complex(c) => T::from(c.re).unwrap(),
-	};
+	// The default `x` passes any input through, including a Transform, which an expression names `X`
+	let source = if x.as_matrix().is_some() && fx.element().trim() == "x" { "X" } else { fx.element() };
+	let result = output(parsed.parse(source).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
 
 	Item::from_parts(result, attributes)
 }
 
+/// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on, or `A`, `B`, `C` for matrices.
+struct PositionalMathContext {
+	items: Items,
+}
+
+/// The position a single-letter name of the given case binds, `a` or `A` being the first.
+fn position(name: &str, is_letter_case: fn(&char) -> bool) -> Option<usize> {
+	let mut characters = name.chars();
+	let letter = characters.next()?;
+	(characters.next().is_none() && is_letter_case(&letter)).then(|| (letter.to_ascii_lowercase() as u8 - b'a') as usize)
+}
+
+impl ValueProvider for PositionalMathContext {
+	fn get_value(&self, name: &str) -> Option<Value> {
+		let Items::Values(items) = &self.items else { return None };
+
+		// A wired item shadows the constant spelled by its letter (`e` as the fifth item, `i` as the ninth), which stay reachable
+		// as `\e` and `\i`; an unwired letter reads as its default of 0, except that a constant's letter stays the constant
+		match items.get(position(name, char::is_ascii_lowercase)?) {
+			Some(item) => Some(*item),
+			None if Constant::from_name(name).is_some() => None,
+			None => Some(Value::from_i64(0)),
+		}
+	}
+
+	fn get_matrix(&self, name: &str) -> Option<Matrix> {
+		let Items::Matrices(items) = &self.items else { return None };
+
+		// Likewise `I` as the ninth item shadows the identity, and an unwired letter reads as a Transform's default, the identity
+		Some(items.get(position(name, char::is_ascii_uppercase)?).copied().unwrap_or(Matrix::IDENTITY))
+	}
+}
+
+/// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
+///
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
+#[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"), icon("NodeMathF"))]
+fn math_f<T: ExpressionValue, U: ExpressionValue>(
+	_: impl Ctx,
+	/// The items the expression reads.
+	#[implementations(
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+	)]
+	values: List<T>,
+	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
+	#[name("f(…) =")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression_or_reducer")]
+	f: Item<String>,
+	/// The type the result is read as.
+	#[implementations(
+		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+	)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
+	#[data] parsed: ParseCache,
+) -> Item<U> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
+	let expression = f.element();
+	let bindings = PositionalMathContext {
+		items: T::items(values.iter_element_values().copied()),
+	};
+
+	// A lone operator or variadic function name applies across all items rather than parsing as an expression
+	if let Some(reducer) = classify_reducer(expression, &bindings) {
+		let result = match &bindings.items {
+			Items::Values(values) => reducer.evaluate(values).map(Object::Value),
+			Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
+		};
+		let Some(result) = result else {
+			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
+			return Item::new_from_element(U::default());
+		};
+		return Item::new_from_element(output(Some(result)));
+	}
+
+	let result = output(parsed.parse(expression).and_then(|expression| evaluate_expression(&expression, bindings)));
+	Item::new_from_element(result)
+}
+
 /// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeAdd"))]
 fn add<A: Add<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the addition operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	augend: Item<A>,
 	/// The right-hand side of the addition operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	addend: Item<B>,
 ) -> Item<<A as Add<B>>::Output> {
 	let (augend, attributes) = augend.into_parts();
@@ -101,14 +351,14 @@ fn add<A: Add<B>, B>(
 }
 
 /// The subtraction operation (`-`) calculates the difference between two scalar numbers or vec2s.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeSubtract"))]
 fn subtract<A: Sub<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the subtraction operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	minuend: Item<A>,
 	/// The right-hand side of the subtraction operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	subtrahend: Item<B>,
 ) -> Item<<A as Sub<B>>::Output> {
 	let (minuend, attributes) = minuend.into_parts();
@@ -117,15 +367,15 @@ fn subtract<A: Sub<B>, B>(
 }
 
 /// The multiplication operation (`×`) calculates the product of two scalar numbers, vec2s, or transforms.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeMultiply"))]
 fn multiply<A: Mul<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2, DAffine2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, DAffine2)]
 	multiplier: Item<A>,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64, DAffine2)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, DAffine2)]
 	multiplicand: Item<B>,
 ) -> Item<<A as Mul<B>>::Output> {
 	let (multiplier, attributes) = multiplier.into_parts();
@@ -143,15 +393,9 @@ impl SafeDivide for f64 {
 		if denominator == 0. { 0. } else { self / denominator }
 	}
 }
-impl SafeDivide for f32 {
-	type Output = f32;
-	fn safe_divide(self, denominator: f32) -> f32 {
-		if denominator == 0. { 0. } else { self / denominator }
-	}
-}
-impl SafeDivide for u32 {
-	type Output = u32;
-	fn safe_divide(self, denominator: u32) -> u32 {
+impl SafeDivide for i64 {
+	type Output = i64;
+	fn safe_divide(self, denominator: i64) -> i64 {
 		self.checked_div(denominator).unwrap_or(0)
 	}
 }
@@ -177,15 +421,15 @@ impl SafeDivide<DVec2> for f64 {
 /// The division operation (`÷`) calculates the quotient of two scalar numbers or vec2s.
 ///
 /// Produces 0 for any division by 0. With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeDivide"))]
 fn divide<A: SafeDivide<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the division operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	denominator: Item<B>,
 ) -> Item<<A as SafeDivide<B>>::Output> {
 	let (numerator, attributes) = numerator.into_parts();
@@ -201,11 +445,6 @@ impl Componentwise for f64 {
 		f(self)
 	}
 }
-impl Componentwise for f32 {
-	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
-		f(self as f64) as f32
-	}
-}
 impl Componentwise for DVec2 {
 	fn componentwise(self, f: impl Fn(f64) -> f64) -> Self {
 		DVec2::new(f(self.x), f(self.y))
@@ -215,11 +454,11 @@ impl Componentwise for DVec2 {
 /// The reciprocal operation (`1/x`) calculates the multiplicative inverse of a number.
 ///
 /// Produces 0 if the input is 0. With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeReciprocal"))]
 fn reciprocal<T: Componentwise>(
 	_: impl Ctx,
 	/// The number for which the reciprocal is calculated.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -230,15 +469,15 @@ fn reciprocal<T: Componentwise>(
 /// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vec2s.
 ///
 /// The sign of the result shares the sign of the numerator unless *Always Positive* is enabled.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeModulo"))]
 fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy>(
 	_: impl Ctx,
 	/// The left-hand side of the modulo operation.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the modulo operation.
 	#[default(2.)]
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	modulus: Item<B>,
 	/// Ensures the result is always positive, even if the numerator is negative.
 	#[default(true)]
@@ -261,16 +500,20 @@ impl Exponent for f64 {
 		self.powf(power)
 	}
 }
-impl Exponent for f32 {
-	type Output = f32;
-	fn power(self, power: f32) -> f32 {
-		self.powf(power)
-	}
-}
-impl Exponent for u32 {
-	type Output = u32;
-	fn power(self, power: u32) -> u32 {
-		self.pow(power)
+impl Exponent for i64 {
+	type Output = i64;
+	// Only ±1 stay representable once the exponent is negative or too large, so everything else falls to 0
+	fn power(self, power: i64) -> i64 {
+		if let Ok(power) = u32::try_from(power) {
+			return self.checked_pow(power).unwrap_or(0);
+		}
+
+		match self {
+			1 => 1,
+			-1 if power % 2 == 0 => 1,
+			-1 => -1,
+			_ => 0,
+		}
 	}
 }
 impl Exponent for DVec2 {
@@ -295,14 +538,14 @@ impl Exponent<DVec2> for f64 {
 /// The exponent operation (`^`) calculates the result of raising a number to a power.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeExponent"))]
 fn exponent<A: Exponent<B>, B>(
 	_: impl Ctx,
 	/// The base number that is raised to the power.
-	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	base: Item<A>,
 	/// The power to which the base number is raised.
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	#[default(2.)]
 	power: Item<B>,
 ) -> Item<<A as Exponent<B>>::Output> {
@@ -333,12 +576,6 @@ impl NthRoot for f64 {
 		scalar_nth_root(self, degree)
 	}
 }
-impl NthRoot for f32 {
-	type Output = f32;
-	fn nth_root(self, degree: f32) -> f32 {
-		scalar_nth_root(self as f64, degree as f64) as f32
-	}
-}
 impl NthRoot for DVec2 {
 	type Output = DVec2;
 	fn nth_root(self, degree: DVec2) -> DVec2 {
@@ -361,17 +598,17 @@ impl NthRoot<DVec2> for f64 {
 /// The `n`th root operation (`√`) calculates the inverse of exponentiation. Square root inverts squaring, cube root inverts cubing, and so on.
 ///
 /// This is equivalent to raising the number to the power of `1/n`. With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeRoot"))]
 fn root<A: NthRoot<B>, B>(
 	_: impl Ctx,
 	/// The number inside the radical for which the `n`th root is calculated.
 	#[default(2.)]
-	#[implementations(f64, f32, DVec2, DVec2, f64)]
+	#[implementations(f64, DVec2, DVec2, f64)]
 	radicand: Item<A>,
 	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	/// Degrees 0 or less are invalid and will produce an output of 0.
 	#[default(2.)]
-	#[implementations(f64, f32, f64, DVec2, DVec2)]
+	#[implementations(f64, f64, DVec2, DVec2)]
 	degree: Item<B>,
 ) -> Item<<A as NthRoot<B>>::Output> {
 	let (radicand, attributes) = radicand.into_parts();
@@ -401,18 +638,6 @@ impl Logarithm for f64 {
 		scalar_logarithm(self, base)
 	}
 }
-impl Logarithm for f32 {
-	type Output = f32;
-	fn logarithm(self, base: f32) -> f32 {
-		// The f32 representation of e widens inexactly, so match it against e at f32 precision and substitute the exact f64 e
-		let base = if (base - std::f32::consts::E).abs() < f32::EPSILON * 10. {
-			std::f64::consts::E
-		} else {
-			base as f64
-		};
-		scalar_logarithm(self as f64, base) as f32
-	}
-}
 impl Logarithm for DVec2 {
 	type Output = DVec2;
 	fn logarithm(self, base: DVec2) -> DVec2 {
@@ -435,15 +660,15 @@ impl Logarithm<DVec2> for f64 {
 /// The logarithmic function (`log`) calculates the logarithm of a number with a specified base. If the natural logarithm function (`ln`) is desired, set the base to "e".
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Arithmetic"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeLogarithm"))]
 fn logarithm<A: Logarithm<B>, B>(
 	_: impl Ctx,
 	/// The number for which the logarithm is calculated.
-	#[implementations(f64, f32, DVec2, DVec2, f64)]
+	#[implementations(f64, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
 	#[default(2.)]
-	#[implementations(f64, f32, f64, DVec2, DVec2)]
+	#[implementations(f64, f64, DVec2, DVec2)]
 	base: Item<B>,
 ) -> Item<<A as Logarithm<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -454,11 +679,11 @@ fn logarithm<A: Logarithm<B>, B>(
 /// The sine trigonometric function (`sin`) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeSine"))]
 fn sine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
@@ -473,11 +698,11 @@ fn sine<T: Componentwise>(
 /// The cosine trigonometric function (`cos`) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeCosine"))]
 fn cosine<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
@@ -492,11 +717,11 @@ fn cosine<T: Componentwise>(
 /// The tangent trigonometric function (`tan`) calculates the ratio of the angle's opposite side length to its adjacent side length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"))]
+#[node_macro::node(category("Math: Trig"), icon("NodeTangent"))]
 fn tangent<T: Componentwise>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	theta: Item<T>,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: Item<bool>,
@@ -509,35 +734,37 @@ fn tangent<T: Componentwise>(
 }
 
 /// The inverse sine trigonometric function (`asin`) calculates the angle whose sine is the input value.
-#[node_macro::node(category("Math: Trig"))]
-fn sine_inverse<T: num_traits::float::Float>(
+#[node_macro::node(category("Math: Trig"), icon("NodeSineInverse"))]
+fn sine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
-	#[implementations(f64, f32)]
-	value: Item<T>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	#[range]
+	#[hard(-1..1)]
+	value: Item<f64>,
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(T::from(-1.).unwrap(), T::from(1.).unwrap()).asin();
+	let angle = value.asin();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
 
 /// The inverse cosine trigonometric function (`acos`) calculates the angle whose cosine is the input value.
-#[node_macro::node(category("Math: Trig"))]
-fn cosine_inverse<T: num_traits::float::Float>(
+#[node_macro::node(category("Math: Trig"), icon("NodeCosineInverse"))]
+fn cosine_inverse(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated. Must be in the domain `[-1, 1]` (it will be clamped to -1 or 1 otherwise).
-	#[implementations(f64, f32)]
-	value: Item<T>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	#[range]
+	#[hard(-1..1)]
+	value: Item<f64>,
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 
-	let angle = value.clamp(T::from(-1.).unwrap(), T::from(1.).unwrap()).acos();
+	let angle = value.acos();
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -546,14 +773,15 @@ fn cosine_inverse<T: num_traits::float::Float>(
 /// `atan`: the angle whose tangent is the input scalar number.
 /// `atan2`: the angle of a ray from the origin to the input vec2.
 ///
-/// The resulting angle is always in the range `[-90°, 90°]` or, in radians, `[-π/2, π/2]`.
-#[node_macro::node(category("Math: Trig"))]
+/// The resulting `atan` angle is always in the range `[-90°, 90°]` or, in radians, `[-π/2, π/2]`.
+/// The resulting `atan2` angle is always in the range `[-180°, 180°]` or, in radians, `[-π, π]`.
+#[node_macro::node(category("Math: Trig"), icon("NodeTangentInverse"))]
 fn tangent_inverse<T: TangentInverse>(
 	_: impl Ctx,
 	/// The given value for which the angle is calculated.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: Item<bool>,
 ) -> Item<T::Output> {
 	let (value, attributes) = value.into_parts();
@@ -564,12 +792,6 @@ fn tangent_inverse<T: TangentInverse>(
 pub trait TangentInverse {
 	type Output: num_traits::float::Float;
 	fn atan(self, radians: bool) -> Self::Output;
-}
-impl TangentInverse for f32 {
-	type Output = f32;
-	fn atan(self, radians: bool) -> Self::Output {
-		if radians { self.atan() } else { self.atan().to_degrees() }
-	}
 }
 impl TangentInverse for f64 {
 	type Output = f64;
@@ -587,36 +809,31 @@ impl TangentInverse for DVec2 {
 /// Linearly maps an input value from one range to another. The ranges may be reversed.
 ///
 /// For example, 0.5 in the input range `[0, 1]` would map to 0 in the output range `[-180, 180]`.
-#[node_macro::node(category("Math: Numeric"))]
-fn remap<U: num_traits::float::Float>(
+#[node_macro::node(category("Math: Numeric"), icon("NodeRemap"))]
+fn remap(
 	_: impl Ctx,
 	/// The value to be mapped between ranges.
-	#[implementations(f64, f32)]
-	value: Item<U>,
+	value: Item<f64>,
 	/// The lower bound of the input range.
-	#[implementations(f64, f32)]
-	input_min: Item<U>,
+	input_min: Item<f64>,
 	/// The upper bound of the input range.
-	#[implementations(f64, f32)]
 	#[default(1.)]
-	input_max: Item<U>,
+	input_max: Item<f64>,
 	/// The lower bound of the output range.
-	#[implementations(f64, f32)]
-	output_min: Item<U>,
+	output_min: Item<f64>,
 	/// The upper bound of the output range.
-	#[implementations(f64, f32)]
 	#[default(1.)]
-	output_max: Item<U>,
+	output_max: Item<f64>,
 	/// Whether to constrain the result within the output range instead of extrapolating beyond its bounds.
 	clamped: Item<bool>,
-) -> Item<U> {
+) -> Item<f64> {
 	let (value, attributes) = value.into_parts();
 	let (input_min, input_max, output_min, output_max) = (*input_min.element(), *input_max.element(), *output_min.element(), *output_max.element());
 
 	let input_range = input_max - input_min;
 
 	// Handle division by zero
-	if input_range.abs() < U::epsilon() {
+	if input_range.abs() < f64::EPSILON {
 		return Item::from_parts(output_min, attributes);
 	}
 
@@ -647,11 +864,6 @@ impl Lerp for f64 {
 		self * (1. - factor) + end * factor
 	}
 }
-impl Lerp for f32 {
-	fn lerp(self, end: Self, factor: f64) -> Self {
-		(self as f64 * (1. - factor) + end as f64 * factor) as f32
-	}
-}
 impl Lerp for DVec2 {
 	fn lerp(self, end: Self, factor: f64) -> Self {
 		self * (1. - factor) + end * factor
@@ -661,15 +873,15 @@ impl Lerp for DVec2 {
 /// Linearly interpolates between the start and end values, where a factor of 0 gives the start value, 1 gives the end value, and 0.5 gives their midpoint.
 ///
 /// With vec2 inputs, this traces the straight line path between the two points.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeLerp"))]
 fn lerp<T: Lerp>(
 	_: impl Ctx,
 	/// The value produced when the factor is 0.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	start: Item<T>,
 	/// The value produced when the factor is 1.
 	#[default(1.)]
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	end: Item<T>,
 	/// The mix between the start (at 0) and end (at 1) values.
 	#[default(0.5)]
@@ -693,19 +905,20 @@ fn lerp<T: Lerp>(
 }
 
 /// The random function (`rand`) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeRandom"))]
 fn random(
 	_: impl Ctx,
 	_primary: (),
 	/// Seed to determine the unique variation of which number is generated.
-	seed: Item<u64>,
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// The smaller end of the range within which the random number is generated.
 	min: Item<f64>,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
 	max: Item<f64>,
 ) -> Item<f64> {
-	let mut rng = rand::rngs::StdRng::seed_from_u64(*seed.element());
+	let mut rng = rand::rngs::StdRng::seed_from_u64(*seed.element() as u64);
 	let result = rng.random::<f64>();
 	let (min, max) = (*min.element(), *max.element());
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
@@ -713,34 +926,34 @@ fn random(
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs.
-#[node_macro::node(name("As u32"), category("Type Assertion"))]
-fn as_u32(_: impl Ctx, value: Item<u32>) -> Item<u32> {
+/// Converts a `Number` to the `Integer` type, which may be the required type for certain node inputs.
+#[node_macro::node(category("Type Assertion"), icon("NodeAsInteger"))]
+fn as_integer(_: impl Ctx, value: Item<i64>) -> Item<i64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As u64"), category("Type Assertion"))]
-fn as_u64(_: impl Ctx, value: Item<u64>) -> Item<u64> {
+/// Converts an `Integer` or `Bool` to the `Number` type, which may be the required type for certain node inputs. A `Bool` becomes 0 (false) or 1 (true).
+#[node_macro::node(category("Type Assertion"), icon("NodeAsNumber"))]
+fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
-/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs.
-#[node_macro::node(name("As f64"), category("Type Assertion"))]
-fn as_f64(_: impl Ctx, value: Item<f64>) -> Item<f64> {
+/// Passes a true or false value through as the type `Bool`, which may be the required type for certain node inputs.
+#[node_macro::node(category("Type Assertion"), icon("NodeAsBool"))]
+fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
 }
 
 /// The rounding function (`round`) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeRound"))]
 fn round<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded to the nearest whole number.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -751,11 +964,11 @@ fn round<T: Componentwise>(
 /// The floor function (`floor`) rounds down an input value to the nearest whole number, unless the input number is already whole.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeFloor"))]
 fn floor<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded down.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -766,11 +979,11 @@ fn floor<T: Componentwise>(
 /// The ceiling function (`ceil`) rounds up an input value to the nearest whole number, unless the input number is already whole.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeCeiling"))]
 fn ceiling<T: Componentwise>(
 	_: impl Ctx,
 	/// The number to be rounded up.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -786,17 +999,7 @@ impl AbsoluteValue for DVec2 {
 		DVec2::new(self.x.abs(), self.y.abs())
 	}
 }
-impl AbsoluteValue for f32 {
-	fn abs(self) -> Self {
-		self.abs()
-	}
-}
 impl AbsoluteValue for f64 {
-	fn abs(self) -> Self {
-		self.abs()
-	}
-}
-impl AbsoluteValue for i32 {
 	fn abs(self) -> Self {
 		self.abs()
 	}
@@ -810,11 +1013,11 @@ impl AbsoluteValue for i64 {
 /// The absolute value function (`abs`) removes the negative sign from an input value, if present.
 ///
 /// With a vec2 input, this applies separately to the X and Y components. For the overall length of a vec2, see the "Magnitude" node instead.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeAbsoluteValue"))]
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, f32, i32, i64, DVec2)]
+	#[implementations(f64, i64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -825,11 +1028,11 @@ fn absolute_value<T: AbsoluteValue>(
 /// The sign function (`sign`) reports whether an input value is positive (1), negative (-1), or zero (0).
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeSign"))]
 fn sign<T: Componentwise>(
 	_: impl Ctx,
 	/// The number whose sign is checked.
-	#[implementations(f64, f32, DVec2)]
+	#[implementations(f64, DVec2)]
 	value: Item<T>,
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
@@ -860,21 +1063,12 @@ impl MinMax for f64 {
 		if self > other { self } else { other }
 	}
 }
-impl MinMax for f32 {
-	type Output = f32;
-	fn minimum(self, other: f32) -> f32 {
+impl MinMax for i64 {
+	type Output = i64;
+	fn minimum(self, other: i64) -> i64 {
 		if self < other { self } else { other }
 	}
-	fn maximum(self, other: f32) -> f32 {
-		if self > other { self } else { other }
-	}
-}
-impl MinMax for u32 {
-	type Output = u32;
-	fn minimum(self, other: u32) -> u32 {
-		if self < other { self } else { other }
-	}
-	fn maximum(self, other: u32) -> u32 {
+	fn maximum(self, other: i64) -> i64 {
 		if self > other { self } else { other }
 	}
 }
@@ -918,14 +1112,14 @@ impl MinMax<DVec2> for f64 {
 /// The minimum function (`min`) picks the smaller of two numbers.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMin"))]
 fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -936,14 +1130,14 @@ fn min<A: MinMax<B>, B>(
 /// The maximum function (`max`) picks the larger of two numbers.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMax"))]
 fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -954,17 +1148,17 @@ fn max<A: MinMax<B>, B>(
 /// The clamp function (`clamp`) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
 ///
 /// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeClamp"))]
 fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
 	_: impl Ctx,
 	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, f32, u32, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
 	value: Item<A>,
 	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	min: Item<B>,
 	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, f32, u32, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
 	#[default(1)]
 	max: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output>
@@ -979,94 +1173,49 @@ where
 }
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
-#[node_macro::node(category("Math: Numeric"))]
-fn greatest_common_divisor<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(
+#[node_macro::node(category("Math: Numeric"), icon("NodeGreatestCommonDivisor"))]
+fn greatest_common_divisor(
 	_: impl Ctx,
 	/// One of the two numbers for which the GCD is calculated.
-	#[implementations(u32, u64, i32)]
-	value: Item<T>,
+	value: Item<i64>,
 	/// The other of the two numbers for which the GCD is calculated.
-	#[implementations(u32, u64, i32)]
-	other_value: Item<T>,
-) -> Item<T> {
+	other_value: Item<i64>,
+) -> Item<i64> {
 	let (value, attributes) = value.into_parts();
 	let other_value = *other_value.element();
 
-	let result = if value == T::zero() {
-		other_value
-	} else if other_value == T::zero() {
-		value
-	} else {
-		binary_gcd(value, other_value)
-	};
+	let gcd = math_parser::constants::gcd(value.unsigned_abs() as u128, other_value.unsigned_abs() as u128);
 
-	Item::from_parts(result, attributes)
+	// A result too large for the output type (like the GCD of `i64::MIN` and 0) saturates at the type's maximum
+	Item::from_parts(i64::try_from(gcd).unwrap_or(i64::MAX), attributes)
 }
 
 /// The least common multiple (LCM) calculates the smallest positive integer that is a multiple of both of the two input numbers.
-#[node_macro::node(category("Math: Numeric"))]
-fn least_common_multiple<T: num_traits::ToPrimitive + num_traits::FromPrimitive + num_traits::identities::Zero>(
+#[node_macro::node(category("Math: Numeric"), icon("NodeLeastCommonMultiple"))]
+fn least_common_multiple(
 	_: impl Ctx,
 	/// One of the two numbers for which the LCM is calculated.
-	#[implementations(u32, u64, i32)]
-	value: Item<T>,
+	value: Item<i64>,
 	/// The other of the two numbers for which the LCM is calculated.
-	#[implementations(u32, u64, i32)]
-	other_value: Item<T>,
-) -> Item<T> {
+	other_value: Item<i64>,
+) -> Item<i64> {
 	let (value, attributes) = value.into_parts();
+	let other_value = *other_value.element();
 
-	let value = value.to_i128().unwrap();
-	let other_value = other_value.element().to_i128().unwrap();
+	let lcm = math_parser::constants::lcm(value.unsigned_abs() as u128, other_value.unsigned_abs() as u128);
 
-	if value == 0 || other_value == 0 {
-		return Item::from_parts(T::zero(), attributes);
-	}
-	let gcd = binary_gcd(value, other_value);
-
-	Item::from_parts(T::from_i128((value * other_value).abs() / gcd).unwrap(), attributes)
-}
-
-fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops::SubAssign>(mut a: T, mut b: T) -> T {
-	if a == T::zero() {
-		return b;
-	}
-	if b == T::zero() {
-		return a;
-	}
-
-	let mut shift = 0;
-	while (a | b) & T::one() == T::zero() {
-		a >>= 1;
-		b >>= 1;
-		shift += 1;
-	}
-
-	while a & T::one() == T::zero() {
-		a >>= 1;
-	}
-
-	while b != T::zero() {
-		while b & T::one() == T::zero() {
-			b >>= 1;
-		}
-		if a > b {
-			std::mem::swap(&mut a, &mut b);
-		}
-		b -= a;
-	}
-
-	a << shift
+	// A result too large for the output type saturates at the type's maximum rather than overflowing
+	Item::from_parts(i64::try_from(lcm).unwrap_or(i64::MAX), attributes)
 }
 
 /// Adds together all the numbers in the input list, producing their total.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeSum"))]
 fn sum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().sum())
 }
 
 /// Averages all the numbers in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeAverage"))]
 fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	let count = values.len();
 	let average = if count == 0 { 0. } else { values.iter_element_values().sum::<f64>() / count as f64 };
@@ -1075,39 +1224,51 @@ fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
 }
 
 /// Gives the smallest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMinimum"))]
 fn minimum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().copied().reduce(f64::min).unwrap_or_default())
 }
 
 /// Gives the largest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"))]
+#[node_macro::node(category("Math: Numeric"), icon("NodeMaximum"))]
 fn maximum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().copied().reduce(f64::max).unwrap_or_default())
 }
 
 /// Outputs true if at least one value in the input list is true. An empty list gives false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeAny"))]
 fn any(_: impl Ctx, values: List<bool>) -> Item<bool> {
 	Item::new_from_element(values.iter_element_values().any(|&value| value))
 }
 
 /// Outputs true only if every value in the input list is true. An empty list gives true.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeAll"))]
 fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 	Item::new_from_element(values.iter_element_values().all(|&value| value))
 }
 
+/// Outputs true if the value is anything other than zero. A vector counts as zero only when every component is zero.
+#[node_macro::node(category("Math: Logic"), icon("NodeIsNonzero"))]
+fn is_nonzero<T: Default + std::cmp::PartialEq>(
+	_: impl Ctx,
+	/// The value compared against zero.
+	#[implementations(f64, i64, DVec2)]
+	value: Item<T>,
+) -> Item<bool> {
+	let (value, attributes) = value.into_parts();
+	Item::from_parts(value != T::default(), attributes)
+}
+
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
 /// If enabled with *Or Equal*, the less-than-or-equal operation (`<=`) is used instead.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLessThan"))]
 fn less_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, i64)]
 	value: Item<T>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, i64)]
 	other_value: Item<T>,
 	/// Uses the less-than-or-equal operation (`<=`) instead of the less-than operation (`<`).
 	or_equal: Item<bool>,
@@ -1121,14 +1282,14 @@ fn less_than<T: std::cmp::PartialOrd<T>>(
 
 /// The greater-than operation (`>`) compares two values and returns true if the first value is greater than the second, or false if it is not.
 /// If enabled with *Or Equal*, the greater-than-or-equal operation (`>=`) is used instead.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeGreaterThan"))]
 fn greater_than<T: std::cmp::PartialOrd<T>>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, i64)]
 	value: Item<T>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, f32, u32)]
+	#[implementations(f64, i64)]
 	other_value: Item<T>,
 	/// Uses the greater-than-or-equal operation (`>=`) instead of the greater-than operation (`>`).
 	or_equal: Item<bool>,
@@ -1141,14 +1302,14 @@ fn greater_than<T: std::cmp::PartialOrd<T>>(
 }
 
 /// The equality operation (`==`, `XNOR`) compares two values and returns true if they are equal, or false if they are not.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeEquals"))]
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	value: Item<T>,
 	/// The other of the two values to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
 	let value = value.into_element();
@@ -1157,14 +1318,14 @@ fn equals<T: std::cmp::PartialEq<T>>(
 }
 
 /// The inequality operation (`!=`, `XOR`) compares two values and returns true if they are not equal, or false if they are.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeNotEquals"))]
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	value: Item<T>,
 	/// The other of the two values to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, bool, String)]
+	#[implementations(f64, i64, DVec2, bool, String)]
 	other_value: Item<T>,
 ) -> Item<bool> {
 	let value = value.into_element();
@@ -1173,7 +1334,7 @@ fn not_equals<T: std::cmp::PartialEq<T>>(
 }
 
 /// The logical OR operation (`||`) returns true if either of the two inputs are true, or false if both are false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLogicalOr"))]
 fn logical_or(
 	_: impl Ctx,
 	/// One of the two boolean values, either of which may be true for the node to output true.
@@ -1188,7 +1349,7 @@ fn logical_or(
 }
 
 /// The logical AND operation (`&&`) returns true if both of the two inputs are true, or false if any are false.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLogicalAnd"))]
 fn logical_and(
 	_: impl Ctx,
 	/// One of the two boolean values, both of which must be true for the node to output true.
@@ -1203,7 +1364,7 @@ fn logical_and(
 }
 
 /// The logical NOT operation (`!`) reverses true and false value of the input.
-#[node_macro::node(category("Math: Logic"))]
+#[node_macro::node(category("Math: Logic"), icon("NodeLogicalNot"))]
 fn logical_not(
 	_: impl Ctx,
 	/// The boolean value to be reversed.
@@ -1215,18 +1376,16 @@ fn logical_not(
 }
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
-#[node_macro::node(category("Math: Logic"))]
-async fn switch<T: 'n + Send>(
+#[node_macro::node(category("Math: Logic"), icon("NodeSwitch"))]
+fn switch<T: Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	condition: Item<bool>,
 	#[expose]
 	#[implementations(
 		Context -> Item<String>,
 		Context -> Item<bool>,
-		Context -> Item<f32>,
 		Context -> Item<f64>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<DVec2>,
 		Context -> Item<DAffine2>,
 		Context -> Item<Vector>,
@@ -1238,10 +1397,8 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
-		Context -> Item<Bundle<f32>>,
 		Context -> Item<Bundle<f64>>,
-		Context -> Item<Bundle<u32>>,
-		Context -> Item<Bundle<u64>>,
+		Context -> Item<Bundle<i64>>,
 		Context -> Item<Bundle<DVec2>>,
 		Context -> Item<Bundle<DAffine2>>,
 		Context -> Item<Bundle<Vector>>,
@@ -1257,10 +1414,8 @@ async fn switch<T: 'n + Send>(
 	#[implementations(
 		Context -> Item<String>,
 		Context -> Item<bool>,
-		Context -> Item<f32>,
 		Context -> Item<f64>,
-		Context -> Item<u32>,
-		Context -> Item<u64>,
+		Context -> Item<i64>,
 		Context -> Item<DVec2>,
 		Context -> Item<DAffine2>,
 		Context -> Item<Vector>,
@@ -1272,10 +1427,8 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Artboard>,
 		Context -> Item<Bundle<String>>,
 		Context -> Item<Bundle<bool>>,
-		Context -> Item<Bundle<f32>>,
 		Context -> Item<Bundle<f64>>,
-		Context -> Item<Bundle<u32>>,
-		Context -> Item<Bundle<u64>>,
+		Context -> Item<Bundle<i64>>,
 		Context -> Item<Bundle<DVec2>>,
 		Context -> Item<Bundle<DAffine2>>,
 		Context -> Item<Bundle<Vector>>,
@@ -1287,98 +1440,151 @@ async fn switch<T: 'n + Send>(
 		Context -> Item<Bundle<Artboard>>,
 	)]
 	if_false: impl Node<Context<'static>, Output = Item<T>>,
-) -> Item<T> {
+) -> Result<Item<T>, Interrupt> {
 	let ctx = OwnedContextImpl::from(ctx).into_context();
 
-	if *condition.element() { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
+	if *condition.element() { if_true.eval(ctx) } else { if_false.eval(ctx) }
 }
 
-/// Constructs a bool value which may be set to true or false.
-#[node_macro::node(category("Value"))]
+/// Constructs a `Bool` value which may be set to true or false.
+#[node_macro::node(category("Value"), icon("NodeBoolValue"))]
 fn bool_value(_: impl Ctx, _primary: (), #[name("Bool")] bool_value: Item<bool>) -> Item<bool> {
 	bool_value
 }
 
 /// Constructs a number value which may be set to any real number.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeNumberValue"))]
 fn number_value(_: impl Ctx, _primary: (), number: Item<f64>) -> Item<f64> {
 	number
 }
 
 /// Constructs a number value which may be set to any value from 0% to 100% by dragging the slider.
-#[node_macro::node(category("Value"))]
-fn percentage_value(_: impl Ctx, _primary: (), percentage: Item<Percentage>) -> Item<f64> {
+#[node_macro::node(category("Value"), icon("NodePercentageValue"))]
+fn percentage_value(
+	_: impl Ctx,
+	_primary: (),
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	percentage: Item<f64>,
+) -> Item<f64> {
 	percentage
 }
 
 /// Constructs a vec2 value, a two-dimensional quantity which may be set to any XY pair.
-#[node_macro::node(category("Value"), name("Vec2 Value"))]
+#[node_macro::node(category("Value"), icon("NodeVec2Value"), name("Vec2 Value"))]
 fn vec2_value(_: impl Ctx, _primary: (), #[name("Vec2")] vec2: Item<DVec2>) -> Item<DVec2> {
 	vec2
 }
 
 /// Constructs a color value which may be set to any color.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeColorValue"))]
 fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Item<Color>) -> Item<Color> {
 	color
 }
 
 /// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
-#[node_macro::node(category("Color"), name("RGBA to Color"))]
-fn rgba_to_color(_: impl Ctx, _primary: (), red: Item<Fraction>, green: Item<Fraction>, blue: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
-	let red = (*red.element() as f32).clamp(0., 1.);
-	let green = (*green.element() as f32).clamp(0., 1.);
-	let blue = (*blue.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+#[node_macro::node(category("Color"), icon("NodeRgbaToColor"), name("RGBA to Color"))]
+fn rgba_to_color(
+	_: impl Ctx,
+	_primary: (),
+	#[range]
+	#[hard(0..1)]
+	red: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	green: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	blue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
+) -> Item<Color> {
+	let red = *red.element() as f32;
+	let green = *green.element() as f32;
+	let blue = *blue.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	// RGB user inputs are interpreted as sRGB display values; lift to linear-light for the internal `Color`
 	Item::new_from_element(Color::from_gamma_srgb_channels(red, green, blue, alpha))
 }
 
 /// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
-#[node_macro::node(category("Color"), name("HSVA to Color"))]
-fn hsva_to_color(_: impl Ctx, _primary: (), hue: Item<Fraction>, #[default(1.)] saturation: Item<Fraction>, #[default(1.)] value: Item<Fraction>, #[default(1.)] alpha: Item<Fraction>) -> Item<Color> {
+#[node_macro::node(category("Color"), icon("NodeHsvaToColor"), name("HSVA to Color"))]
+fn hsva_to_color(
+	_: impl Ctx,
+	_primary: (),
+	// Hue is periodic, so a value past either end wraps around instead of clamping
+	#[range]
+	#[soft(0..1)]
+	hue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	saturation: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	value: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
+) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
-	let saturation = (*saturation.element() as f32).clamp(0., 1.);
-	let value = (*value.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+	let saturation = *saturation.element() as f32;
+	let value = *value.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	Item::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
 }
 
 /// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
-#[node_macro::node(category("Color"), name("HSLA to Color"))]
+#[node_macro::node(category("Color"), icon("NodeHslaToColor"), name("HSLA to Color"))]
 fn hsla_to_color(
 	_: impl Ctx,
 	_primary: (),
-	hue: Item<Fraction>,
-	#[default(1.)] saturation: Item<Fraction>,
-	#[default(0.5)] lightness: Item<Fraction>,
-	#[default(1.)] alpha: Item<Fraction>,
+	#[range]
+	#[soft(0..1)]
+	hue: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	saturation: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(0.5)]
+	lightness: Item<f64>,
+	#[range]
+	#[hard(0..1)]
+	#[default(1.)]
+	alpha: Item<f64>,
 ) -> Item<Color> {
 	let hue = (*hue.element() as f32) - (*hue.element() as f32).floor();
-	let saturation = (*saturation.element() as f32).clamp(0., 1.);
-	let lightness = (*lightness.element() as f32).clamp(0., 1.);
-	let alpha = (*alpha.element() as f32).clamp(0., 1.);
+	let saturation = *saturation.element() as f32;
+	let lightness = *lightness.element() as f32;
+	let alpha = *alpha.element() as f32;
 
 	Item::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
 
 /// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
-#[node_macro::node(category("Color"), name("String to Color"))]
+#[node_macro::node(category("Color"), icon("NodeStringToColor"), name("String to Color"))]
 fn string_to_color(_: impl Ctx, string: Item<String>) -> Item<Color> {
 	let color = core_types::misc::parse_css_color(string.element()).unwrap_or_default();
 	Item::new_from_element(color)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeGradientValue"))]
 fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>) -> Item<Gradient> {
 	gradient
 }
 
 /// Sets the form (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientForm"))]
 fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
@@ -1386,7 +1592,7 @@ fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vect
 }
 
 /// Sets how each gradient in the input list extends past its endpoints: Pad, Reflect, Repeat, or Clear.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientSpread"))]
 fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<vector_types::GradientSpread>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_SPREAD, *gradient_spread.element());
@@ -1394,7 +1600,7 @@ fn gradient_spread(_: impl Ctx, gradient: Item<Gradient>, gradient_spread: Item<
 }
 
 /// Sets the color space in which each gradient in the input list interpolates between its stops.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientSpace"))]
 fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_types::GradientSpace>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_SPACE, *space.element());
@@ -1402,7 +1608,7 @@ fn gradient_space(_: impl Ctx, gradient: Item<Gradient>, space: Item<vector_type
 }
 
 /// Sets the path each gradient in the input list interpolates along, deciding whether it jumps, turns corners, or flows smoothly through its stops.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientInterpolation"))]
 fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, interpolation: Item<vector_types::GradientInterpolation>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_INTERPOLATION, *interpolation.element());
@@ -1410,7 +1616,7 @@ fn gradient_interpolation(_: impl Ctx, gradient: Item<Gradient>, interpolation: 
 }
 
 /// Sets whether each gradient in the input list treats its stops as a cycle, interpolating from the last stop back around to the first.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientCyclic"))]
 fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_CYCLIC, *cyclic.element());
@@ -1418,7 +1624,7 @@ fn gradient_cyclic(_: impl Ctx, gradient: Item<Gradient>, cyclic: Item<bool>) ->
 }
 
 /// Sets which way around the hue wheel each gradient in the input list interpolates, for polar color spaces.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientHueDirection"))]
 fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: Item<vector_types::GradientHueDirection>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	gradient.set_attribute(core_types::ATTR_GRADIENT_HUE_DIRECTION, *hue_direction.element());
@@ -1428,7 +1634,7 @@ fn gradient_hue_direction(_: impl Ctx, gradient: Item<Gradient>, hue_direction: 
 /// Sets the position of each of a gradient's stops, a factor from 0 to 1 along the gradient.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each stop to its default evenly spaced position.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientPositions"))]
 fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	let positions: Vec<f64> = positions.iter_element_values().copied().collect();
@@ -1441,7 +1647,7 @@ fn gradient_positions(_: impl Ctx, gradient: Item<Gradient>, positions: List<f64
 /// Non-cyclic gradients have no interval following the last stop, meaning the midpoint is ignored in that position.
 ///
 /// A list shorter than the stop count repeats its last value, a longer list is truncated, and an empty list sets each midpoint to its default of 0.5.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientMidpoints"))]
 fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64>) -> Item<Gradient> {
 	let mut gradient = gradient;
 	let midpoints: Vec<f64> = midpoints.iter_element_values().copied().collect();
@@ -1450,7 +1656,7 @@ fn gradient_midpoints(_: impl Ctx, gradient: Item<Gradient>, midpoints: List<f64
 }
 
 /// Reverses the order of each gradient's stops, moving the color at the start of the ramp to the end and vice versa.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientReverse"))]
 fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
 	let settings = vector_types::GradientSettings::from(&gradient);
 	let mut gradient = gradient;
@@ -1462,7 +1668,7 @@ fn gradient_reverse(_: impl Ctx, gradient: Item<Gradient>) -> Item<Gradient> {
 /// Shifts every stop along each gradient's ramp, sliding the colors within the gradient without moving the gradient itself.
 ///
 /// The fraction is measured against the whole ramp. A cyclic gradient spins, wrapping past the end back around to the start so 1 is a full turn that lands where it began. A gradient that isn't cyclic has no loop to spin around, so its stops slide off the end and keep going, leaving the visible ramp to blend between whichever colors still span it.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientShift"))]
 fn gradient_shift(
 	_: impl Ctx,
 	gradient: Item<Gradient>,
@@ -1481,7 +1687,7 @@ fn gradient_shift(
 /// The factor multiplies every stop's distance from the pivot, so 2 spreads the ramp over twice its span while 0.5 packs it into half. A negative factor mirrors the stops across the pivot, reversing the order of the colors.
 ///
 /// The pivot is the one point that stays put, measured against the whole ramp from 0 at the start to 1 at the end.
-#[node_macro::node(category("Gradient"))]
+#[node_macro::node(category("Gradient"), icon("NodeGradientStretch"))]
 fn gradient_stretch(
 	_: impl Ctx,
 	gradient: Item<Gradient>,
@@ -1500,7 +1706,7 @@ fn gradient_stretch(
 }
 
 /// Evaluates the color at the specified position along the gradient, given a position from 0 (left) to 1 (right). Positions beyond that range follow the gradient's `gradient_spread` attribute: Pad (default), Reflect, Repeat, or Clear. Colors between stops interpolate in the gradient's `gradient_space` color space.
-#[node_macro::node(category("Color"))]
+#[node_macro::node(category("Color"), icon("NodeEvaluateGradient"))]
 fn evaluate_gradient(
 	_: impl Ctx,
 	_primary: (),
@@ -1515,20 +1721,28 @@ fn evaluate_gradient(
 }
 
 /// Constructs a footprint value which may be set to any transformation of a unit square describing a render area, and a render resolution at least 1x1 integer pixels.
-#[node_macro::node(category("Value"))]
-fn footprint_value(_: impl Ctx, _primary: (), transform: Item<DAffine2>, #[default(100., 100.)] resolution: Item<PixelSize>) -> Item<Footprint> {
+#[node_macro::node(category("Value"), icon("NodeFootprintValue"))]
+fn footprint_value(
+	_: impl Ctx,
+	_primary: (),
+	transform: Item<DAffine2>,
+	#[unit(" px")]
+	#[hard(1..)]
+	#[default(100., 100.)]
+	resolution: Item<DVec2>,
+) -> Item<Footprint> {
 	Item::new_from_element(Footprint {
 		transform: *transform.element(),
-		resolution: resolution.element().max(DVec2::ONE).as_uvec2(),
+		resolution: resolution.element().as_uvec2(),
 		..Default::default()
 	})
 }
 
 /// Composes a vec2 from its X and Y components.
 ///
-/// The inverse of this node is **Split Vec2**, which decomposes a vec2 back into its X and Y components.
-#[node_macro::node(category("Math: Vec2"), name("Combine Vec2"))]
-fn combine_vec2(
+/// The inverse of this node is **Vec2 to Numbers**, which decomposes a vec2 back into its X and Y components.
+#[node_macro::node(category("Math: Vec2"), icon("NodeNumbersToVec2"), name("Numbers to Vec2"))]
+fn numbers_to_vec2(
 	_: impl Ctx,
 	_primary: (),
 	/// The X component of the vec2.
@@ -1541,12 +1755,34 @@ fn combine_vec2(
 	Item::new_from_element(DVec2::new(*x.element(), *y.element()))
 }
 
+/// The X and Y components of a vec2, split into separate node outputs.
+#[derive(Debug, Clone, PartialEq, dyn_any::DynAny, node_macro::Destructure)]
+pub struct Vec2Components {
+	/// The X component of the vec2.
+	pub x: Item<f64>,
+	/// The Y component of the vec2.
+	pub y: Item<f64>,
+}
+
+/// Decomposes the X and Y components of a vec2.
+///
+/// The inverse of this node is **Numbers to Vec2**, which composes a vec2 from its X and Y components.
+#[node_macro::node(category("Math: Vec2"), icon("NodeVec2ToNumbers"), name("Vec2 to Numbers"))]
+fn vec2_to_numbers(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Components {
+	let (vec2, attributes) = vec2.into_parts();
+
+	Vec2Components {
+		x: Item::from_parts(vec2.x, attributes.clone()),
+		y: Item::from_parts(vec2.y, attributes),
+	}
+}
+
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.
 ///
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).
 /// The output ranges from the positive to negative product of their lengths based on when they are pointing in the same or opposite directions.
 /// If either vec2 has zero length, the output is 0.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeDotProduct"))]
 fn dot_product(
 	_: impl Ctx,
 	/// An operand of the dot product operation.
@@ -1572,7 +1808,7 @@ fn dot_product(
 /// The cross product operation (`×`) calculates the signed area of the parallelogram formed by a vec2 pair.
 ///
 /// The sign gives the rotation direction from the first vec2 to the second: positive for clockwise, negative for counterclockwise, and 0 when both are parallel, as drawn in the viewport.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeCrossProduct"))]
 fn cross_product(
 	_: impl Ctx,
 	/// The vec2 on the left-hand side of the cross product operation.
@@ -1589,7 +1825,7 @@ fn cross_product(
 /// Calculates the angle swept between two vec2s.
 ///
 /// The angle ranges from -180° to 180° (or -π to π radians) and its sign gives the sweep direction from the "Direction From" input to the "Direction To" input: positive for clockwise, negative for counterclockwise, as drawn in the viewport and matching the direction convention of the Transform node's rotation.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeAngleBetween"))]
 fn angle_between(
 	_: impl Ctx,
 	/// The direction the angle is measured from.
@@ -1607,7 +1843,10 @@ fn angle_between(
 		return Item::from_parts(0., attributes);
 	}
 
-	let angle = direction_from.angle_to(direction_to);
+	let angle = direction_from.try_angle_to(direction_to).unwrap_or_else(|| {
+		warn!("Angle to could not be computed");
+		0.
+	});
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -1627,7 +1866,7 @@ impl ToPosition for DAffine2 {
 }
 
 /// Calculates the angle needed for a rightward-facing object placed at the "Position From" point to turn so it points toward the "Position To" point.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeAngleTo"))]
 fn angle_to<T: ToPosition, U: ToPosition>(
 	_: impl Ctx,
 	/// The position from which the angle is measured.
@@ -1651,7 +1890,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 }
 
 /// The magnitude operator (`‖x‖`) calculates the length of a vec2, which is the distance from the base to the tip of the arrow it represents.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeMagnitude"))]
 fn magnitude(_: impl Ctx, vec2: Item<DVec2>) -> Item<f64> {
 	let (vec2, attributes) = vec2.into_parts();
 
@@ -1659,7 +1898,7 @@ fn magnitude(_: impl Ctx, vec2: Item<DVec2>) -> Item<f64> {
 }
 
 /// Measures the distance between two points, which is the length of the straight line segment connecting them.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeDistance"))]
 fn distance(
 	_: impl Ctx,
 	/// The point the distance is measured from.
@@ -1675,7 +1914,7 @@ fn distance(
 /// Scales the input vec2 to unit length while preserving its direction. This is equivalent to dividing the input vec2 by its own magnitude.
 ///
 /// Returns 0 when the input vec2 has zero length.
-#[node_macro::node(category("Math: Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeNormalize"))]
 fn normalize(_: impl Ctx, vec2: Item<DVec2>) -> Item<DVec2> {
 	let (vec2, attributes) = vec2.into_parts();
 
@@ -1826,14 +2065,71 @@ mod test {
 	}
 
 	#[test]
-	pub fn logarithm_f32_base_e_and_near_e() {
+	fn integer_lane_keeps_integers_and_rounds_fractions() {
+		let integer = |value: i64, expression: &str| {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(0_i64),
+			)
+			.into_element()
+		};
+		assert_eq!(integer(3, "x * 2"), 6);
+		assert_eq!(integer(3, "x / 2"), 2, "1.5 rounds away from zero");
+		assert_eq!(integer(-3, "x / 2"), -2, "-1.5 rounds away from zero");
+		assert_eq!(integer(3, "x * 1.1 / 1.1"), 3, "float noise snaps back to the whole number");
+
+		let items: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			logarithm((), Item::new_from_element(8_f32), Item::new_from_element(std::f32::consts::E)).into_element(),
-			8_f64.ln() as f32
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			2,
+			"7/3 rounds to 2"
+		);
+	}
+
+	#[test]
+	fn output_type_witness_picks_the_output_rung() {
+		// The witness input's type, not the input value's, decides how the result is read
+		assert_eq!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(2.5),
+				Item::new_from_element("x * 2".to_string()),
+				Item::new_from_element(0_i64)
+			)
+			.into_element(),
+			5
+		);
+		assert!(
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(3_i64),
+				Item::new_from_element("x > 2".to_string()),
+				Item::new_from_element(false)
+			)
+			.into_element()
 		);
 		assert_eq!(
-			logarithm((), Item::new_from_element(8_f32), Item::new_from_element(2.7_f32)).into_element(),
-			8_f64.log(2.7_f32 as f64) as f32
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(true),
+				Item::new_from_element("x / 2".to_string()),
+				Item::new_from_element(0.)
+			)
+			.into_element(),
+			0.5
+		);
+
+		let items: List<f64> = [1., 2.].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			2,
+			"1.5 rounds to 2"
 		);
 	}
 
@@ -1847,32 +2143,192 @@ mod test {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("2 + 2".to_string()), Item::new_from_element(0.));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("2 + 2".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 4.);
 	}
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("(5 * 3) + (10 / 2)".to_string()), Item::new_from_element(0.));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("(5 * 3) + (10 / 2)".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 20.);
 	}
 
 	#[test]
-	fn test_default_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("0".to_string()), Item::new_from_element(0.));
-		assert_eq!(result.into_element(), 0.);
+	fn test_variable_binding() {
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(7.),
+			Item::new_from_element("x * 2".to_string()),
+			Item::new_from_element(0.),
+		);
+		assert_eq!(result.into_element(), 14.);
 	}
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math((), Item::new_from_element(0.), Item::new_from_element("invalid".to_string()), Item::new_from_element(0.));
+		let result = math_fx(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(0.),
+			Item::new_from_element("invalid".to_string()),
+			Item::new_from_element(0.),
+		);
 		assert_eq!(result.into_element(), 0.);
 	}
 
 	#[test]
+	fn expressions_parse_once_per_source() {
+		let cache = ParseCache::default();
+		let first = cache.parse("x * 2").unwrap();
+		assert!(Arc::ptr_eq(&first, &cache.parse("x * 2").unwrap()));
+		assert!(!Arc::ptr_eq(&first, &cache.parse("x * 3").unwrap()));
+		assert!(cache.parse("invalid(").is_none());
+	}
+
+	#[test]
+	fn test_boolean_items() {
+		// Booleans read as exactly 0 and 1, and logical results convert back
+		let as_bool = Item::new_from_element(false);
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone()).into_element());
+		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone()).into_element());
+
+		// A result that is not exactly 0 or 1 cannot be a truth value, so it reads as false
+		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).into_element());
+
+		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).into_element());
+		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).into_element());
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).into_element());
+	}
+
+	#[test]
+	fn test_transform_items() {
+		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> U {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(output_type),
+			)
+			.into_element()
+		}
+		let shear = DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::new(5., 4.));
+
+		// A Transform binds as `X`, and a matrix result reads back as one, so the default `x` passes it through
+		assert_eq!(fx(shear, "x", shear), shear);
+		assert_eq!(fx(shear, "X (2i + 2j)", DVec2::ZERO), DVec2::new(8., 6.));
+		assert_eq!(fx(shear, "X^-1 X", shear), DAffine2::IDENTITY);
+		assert_eq!(fx(shear, "linear(X) + 1i", DAffine2::IDENTITY), DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::X));
+		assert_eq!(fx(2., "rotation(pi/2) + x i", DAffine2::IDENTITY).translation, DVec2::new(2., 0.));
+		assert_eq!(fx(shear, "det(X)", 0.), 1.);
+
+		// A value, or a matrix touching the weight, is no Transform, so the output falls back to its default
+		assert_eq!(fx(shear, "X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		assert_eq!(fx(shear, "[1;i] + X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
+
+		// A Transform list binds as `A`, `B`, `C`, and a lone operator composes, averages, or counts across it
+		let scale = DAffine2::from_scale(DVec2::splat(2.));
+		fn f<U: ExpressionValue>(items: [DAffine2; 2], expression: &str, output_type: U) -> U {
+			let items: List<DAffine2> = items.into_iter().map(Item::new_from_element).collect();
+			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).into_element()
+		}
+		assert_eq!(f([shear, scale], "A B", DAffine2::IDENTITY), shear * scale);
+		assert_eq!(f([shear, scale], "A C", DAffine2::IDENTITY), shear);
+		assert_eq!(f([shear, scale], "*", DAffine2::IDENTITY), shear * scale);
+		assert_eq!(f([shear, scale], "/", DAffine2::IDENTITY), shear * scale.inverse());
+		assert_eq!(f([shear, scale], "mean", DAffine2::IDENTITY).translation, DVec2::new(2.5, 2.));
+		assert_eq!(f([shear, scale], "count", 0.), 2.);
+		assert_eq!(f([shear, scale], "det(A)", 0.), 1.);
+		assert_eq!(f([shear, scale], "min", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		assert_eq!(f([shear, scale], "a", DAffine2::IDENTITY), DAffine2::IDENTITY);
+
+		// A sum of Transforms doubles the weight row, so it reads as no Transform and the output falls back to its default
+		assert_eq!(f([shear, scale], "+", DAffine2::IDENTITY), DAffine2::IDENTITY);
+	}
+
+	#[test]
+	fn test_vec2_items() {
+		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> U {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(output_type),
+			)
+			.into_element()
+		}
+		fn f<U: ExpressionValue>(expression: &str, output_type: U) -> U {
+			let items: List<DVec2> = [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect();
+			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).into_element()
+		}
+
+		assert_eq!(fx(DVec2::new(3., 4.), "2x + i", DVec2::ZERO), DVec2::new(7., 8.));
+		assert_eq!(fx(DVec2::new(3., 4.), "perp(x)", DVec2::ZERO), DVec2::new(-4., 3.));
+		assert_eq!(fx(DVec2::new(3., 4.), "|x|", 0.), 5.);
+		assert_eq!(fx(2., "x i + j", DVec2::ZERO), DVec2::new(2., 1.));
+
+		assert_eq!(DVec2::from_value(&Value::from_f64(2.5)), Some(DVec2::ZERO));
+		assert_eq!(fx(DVec2::new(3., 4.), "x + 1", DVec2::ZERO), DVec2::new(3., 4.));
+		assert_eq!(DVec2::from_value(&Value::from(Vector3([1., 2., 3.]))), Some(DVec2::new(1., 2.)));
+		assert_eq!(fx(DVec2::new(3., 4.), "x + 2.6", 0.), 2.6);
+		assert_eq!(fx(DVec2::new(3., 4.), "x + 2.6", 0_i64), 3);
+		assert!(fx(DVec2::new(3., 4.), "x + 1", false));
+
+		assert_eq!(f("+", DVec2::ZERO), DVec2::new(4., 7.));
+		assert_eq!(f("min", DVec2::ZERO), DVec2::new(1., 2.));
+		assert_eq!(f("a - b", DVec2::ZERO), DVec2::new(-2., 3.));
+		assert_eq!(f("dot(a, b)", 0.), 13.);
+	}
+
+	#[test]
+	fn test_is_nonzero() {
+		assert!(!is_nonzero((), Item::new_from_element(0.)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(0.5)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(-3_i64)).into_element());
+		assert!(!is_nonzero((), Item::new_from_element(DVec2::ZERO)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(DVec2::new(0., 1.))).into_element());
+
+		// Negative zero is zero, while NaN, being unequal to zero, is nonzero
+		assert!(!is_nonzero((), Item::new_from_element(-0.)).into_element());
+		assert!(is_nonzero((), Item::new_from_element(f64::NAN)).into_element());
+	}
+
+	#[test]
+	fn test_positional_and_reducer_expressions() {
+		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
+
+		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
+		let as_number = Item::new_from_element(0.);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone()).into_element(),
+			10.
+		);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone()).into_element(),
+			1.
+		);
+		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).into_element(), 12.);
+	}
+
+	#[test]
 	pub fn foo() {
-		let fnn = FnNode::new(|(a, b)| (b, a));
-		assert_eq!(fnn.eval((1u32, 2u32)), (2, 1));
+		let fnn = FnNode::new(|&(a, b): &(u32, u32)| (b, a));
+		assert_eq!(fnn.eval(&(1u32, 2u32)).value(), Some((2, 1)));
 	}
 
 	#[test]

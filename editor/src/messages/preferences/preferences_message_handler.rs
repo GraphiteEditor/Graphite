@@ -94,6 +94,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				});
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 				responses.add(ToolMessage::RefreshToolShelf);
+				responses.add(PortfolioMessage::StorageUpdated);
 			}
 			PreferencesMessage::ResetToDefaults => {
 				responses.add(PreferencesMessage::Load { preferences: Self::default() });
@@ -144,6 +145,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::SaveAsGdd { enabled } => {
 				self.save_as_gdd = enabled;
+				responses.add(PortfolioMessage::StorageUpdated);
 			}
 			PreferencesMessage::ToggleShowStoragePreferences => {
 				self.show_storage_preferences = !self.show_storage_preferences;

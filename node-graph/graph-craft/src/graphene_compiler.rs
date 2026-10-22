@@ -1,5 +1,5 @@
 use crate::document::NodeNetwork;
-use crate::proto::{LocalFuture, ProtoNetwork};
+use crate::proto::ProtoNetwork;
 use std::error::Error;
 
 pub struct Compiler {}
@@ -13,7 +13,7 @@ impl Compiler {
 		for id in node_ids {
 			network.flatten(id);
 		}
-		network.remove_redundant_passthrough_nodes();
+		network.remove_all_passthrough_nodes();
 		// network.remove_dead_nodes(0);
 		let proto_networks = network.into_proto_networks();
 
@@ -33,5 +33,5 @@ impl Compiler {
 }
 
 pub trait Executor<I, O> {
-	fn execute(&self, input: I) -> LocalFuture<'_, Result<O, Box<dyn Error>>>;
+	fn execute(&self, input: I) -> Result<O, Box<dyn Error>>;
 }

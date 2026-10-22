@@ -1,6 +1,7 @@
 pub mod auto_panning;
 pub mod color_selector;
 pub mod compass_rose;
+pub mod edit_target;
 pub mod gizmos;
 pub mod graph_modification_utils;
 pub mod layer_origin_cross;
@@ -9,7 +10,7 @@ pub mod pivot;
 pub mod resize;
 pub mod shape_editor;
 pub mod shapes;
-pub mod snapping;
+pub mod snap_session;
 pub mod stroke_options;
 pub mod transformation_cage;
 pub mod utility_functions;

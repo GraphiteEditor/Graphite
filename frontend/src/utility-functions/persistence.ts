@@ -1,4 +1,3 @@
-import type { MessageBody } from "/src/subscriptions-router";
 import type { DocumentInfo, EditorWrapper, PersistedState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 const PERSISTENCE_DB = "graphite";
@@ -33,39 +32,9 @@ function reorderDocuments(documents: DocumentInfo[], orderedIds: bigint[]): Docu
 	return reordered;
 }
 
-// ====================================
-// State-based persistence (new format)
-// ====================================
-
-export async function writePersistedDocument(autoSaveDocument: MessageBody<"TriggerPersistenceWriteDocument">) {
-	const { documentId, document } = autoSaveDocument;
-
-	// Update content in the documents store
-	await databaseUpdate<Record<string, string>>("documents", (old) => {
-		const documents = old || {};
-		documents[String(documentId)] = document;
-		return documents;
-	});
-}
-
-export async function readPersistedDocument(documentId: bigint, editor: EditorWrapper) {
-	const documentContents = await databaseGet<Record<string, string>>("documents");
-	if (!documentContents) return;
-
-	const content = documentContents[String(documentId)];
-	if (content === undefined) return;
-
-	editor.loadDocumentContent(documentId, content);
-}
-
-export async function deletePersistedDocument(id: string) {
-	// Remove content from the documents store
-	await databaseUpdate<Record<string, string>>("documents", (old) => {
-		const documents = old || {};
-		delete documents[id];
-		return documents;
-	});
-}
+// =======================
+// State-based persistence
+// =======================
 
 export async function writePersistedState(state: PersistedState) {
 	// Keep state ordered and normalized before writing.
@@ -74,16 +43,14 @@ export async function writePersistedState(state: PersistedState) {
 		state.documents.map((entry) => entry.id),
 	);
 	await databaseSet("state", state);
-	await garbageCollectDocuments();
 }
 
 export async function readPersistedState(editor: EditorWrapper) {
 	await migrateToNewFormat();
-	await garbageCollectDocuments();
+	await migrateDocumentsToStore();
 
 	const state = await databaseGet<PersistedState>("state");
-	if (!state) return;
-	editor.loadPersistedState(state);
+	editor.loadPersistedState(state ?? emptyPersistedState());
 }
 
 export async function saveEditorPreferences(preferences: unknown) {
@@ -95,35 +62,79 @@ export async function loadEditorPreferences(editor: EditorWrapper) {
 	editor.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 }
 
-// Remove orphaned entries from the "documents" content store that have no corresponding entry in "state"
-async function garbageCollectDocuments() {
-	const state = await databaseGet<PersistedState>("state");
-	const documentContents = await databaseGet<Record<string, string>>("documents");
-	if (!documentContents) return;
+// =========================
+// Migration from old format
+// =========================
 
-	const validIds = new Set(state ? state.documents.map((doc) => String(doc.id)) : []);
-	let changed = false;
+// TODO: Eventually remove this document upgrade code
+async function migrateDocumentsToStore() {
+	const documents = await databaseGet<Record<string, string>>("documents");
+	if (!documents || Object.keys(documents).length === 0) return;
 
-	Object.keys(documentContents).forEach((key) => {
-		if (!validIds.has(key)) {
-			delete documentContents[key];
-			changed = true;
+	const root = await navigator.storage.getDirectory();
+	const store = await root.getDirectoryHandle("documents", { create: true });
+	for (const [id, content] of Object.entries(documents)) {
+		const directory = await store.getDirectoryHandle(BigInt(id).toString(16).padStart(16, "0"), { create: true });
+		if (!(await fileExists(directory, "legacy.graphite")) && !(await fileExists(directory, "manifest.json"))) {
+			const file = await directory.getFileHandle("legacy.graphite", { create: true });
+			const writable = await file.createWritable();
+			await writable.write(content);
+			await writable.close();
 		}
-	});
+		await markDocumentMigrated(id, content);
+	}
+}
 
-	if (changed) await databaseSet("documents", documentContents);
+async function fileExists(directory: FileSystemDirectoryHandle, name: string): Promise<boolean> {
+	try {
+		await directory.getFileHandle(name);
+		return true;
+	} catch (error) {
+		if (error instanceof DOMException && error.name === "NotFoundError") return false;
+		throw error;
+	}
+}
+
+// TODO: Eventually remove this document upgrade code
+async function markDocumentMigrated(id: string, content: string) {
+	const db = await databaseOpen();
+	await new Promise<void>((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const backupsRequest = store.get("documents_migrated");
+		backupsRequest.onsuccess = () => {
+			const backups: Record<string, string> = backupsRequest.result || {};
+			backups[id] = content;
+			store.put(backups, "documents_migrated");
+			const documentsRequest = store.get("documents");
+			documentsRequest.onsuccess = () => {
+				const remaining: Record<string, string> = documentsRequest.result || {};
+				delete remaining[id];
+				store.put(remaining, "documents");
+			};
+		};
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
+}
+
+async function wipeStoredDocuments() {
+	try {
+		const root = await navigator.storage.getDirectory();
+		await root.removeEntry("documents", { recursive: true });
+	} catch {
+		// Nothing stored, or OPFS is unavailable
+	}
 }
 
 export async function wipeDocuments() {
 	await databaseDelete("state");
 	await databaseDelete("documents");
+	await databaseDelete("documents_migrated");
+	await wipeStoredDocuments();
 
 	await wipeOldFormat();
 }
-
-// =========================
-// Migration from old format
-// =========================
 
 // TODO: Eventually remove this document upgrade code
 async function wipeOldFormat() {
@@ -249,21 +260,6 @@ async function databaseDelete(key: string): Promise<void> {
 	return new Promise((resolve, reject) => {
 		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
 		transaction.objectStore(PERSISTENCE_STORE).delete(key);
-		transaction.oncomplete = () => resolve();
-		transaction.onerror = () => reject(transaction.error);
-	});
-}
-
-async function databaseUpdate<T>(key: string, updater: (existing: T | undefined) => T): Promise<void> {
-	const db = await databaseOpen();
-	return new Promise((resolve, reject) => {
-		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
-		const store = transaction.objectStore(PERSISTENCE_STORE);
-		const getRequest = store.get(key);
-		getRequest.onsuccess = () => {
-			const existing: T | undefined = getRequest.result;
-			store.put(updater(existing), key);
-		};
 		transaction.oncomplete = () => resolve();
 		transaction.onerror = () => reject(transaction.error);
 	});

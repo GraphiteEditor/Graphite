@@ -5,8 +5,14 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [features]
 default = ["wgpu"]
@@ -24,7 +30,6 @@ document-container = { workspace = true, features = ["zip", "xz"] }
 
 # Workspace dependencies
 log = { workspace = true }
-futures = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }

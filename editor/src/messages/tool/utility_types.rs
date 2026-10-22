@@ -1,6 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::common_functionality::shape_editor::ShapeState;
+use super::common_functionality::snap_session::SnapSession;
 use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::broadcast::event::EventMessage;
@@ -11,6 +12,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::color::SRGBA8;
@@ -26,13 +28,14 @@ pub struct ToolActionMessageContext<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
 	pub shape_editor: &'a mut ShapeState,
+	pub snap_session: &'a mut SnapSession,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
-pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata + ToolEditTarget {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata + ToolEditTarget {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
@@ -218,6 +221,12 @@ pub trait ToolMetadata {
 		String::new()
 	}
 	fn tool_type(&self) -> ToolType;
+}
+
+/// Required of every tool, so the Layers panel can outline the node the tool edits in each selected layer.
+pub trait ToolEditTarget {
+	/// What the tool edits in its current state, which may change between its modes and interactions.
+	fn edit_target(&self) -> EditTarget;
 }
 
 pub struct ToolData {
@@ -547,7 +556,7 @@ impl HintData {
 				}
 
 				for shortcut in &hint.key_groups {
-					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Shortcut(shortcut.clone()))).widget_instance());
+					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Keys(shortcut.clone()))).widget_instance());
 				}
 				if let Some(mouse_movement) = hint.mouse {
 					let mouse_movement = LabeledShortcut(vec![LabeledKeyOrMouseMotion::MouseMotion(mouse_movement)]);
@@ -589,10 +598,10 @@ pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
 	#[serde(rename = "keyGroups")]
-	pub key_groups: Vec<LabeledShortcut>,
+	pub key_groups: Vec<KeysGroup>,
 	/// `None` means that the regular `key_groups` should be used for all platforms, `Some` is an override for a Mac-only input hint.
 	#[serde(rename = "keyGroupsMac")]
-	pub key_groups_mac: Option<Vec<LabeledShortcut>>,
+	pub key_groups_mac: Option<Vec<KeysGroup>>,
 	/// An optional `MouseMotion` that can indicate the mouse action, like which mouse button is used and whether a drag occurs.
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,
@@ -612,7 +621,7 @@ impl HintInfo {
 	pub fn keys(keys: impl IntoIterator<Item = Key>, label: impl Into<Cow<'static, str>>) -> Self {
 		let keys = keys.into_iter().collect();
 		Self {
-			key_groups: vec![KeysGroup(keys).into()],
+			key_groups: vec![KeysGroup(keys)],
 			key_groups_mac: None,
 			mouse: None,
 			label: label.into(),
@@ -626,7 +635,7 @@ impl HintInfo {
 	/// - The four arrow keys can be used to nudge a layer in different directions
 	/// - The G, R, and S keys can be used to enter GRS transformation mode
 	pub fn multi_keys(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, label: impl Into<Cow<'static, str>>) -> Self {
-		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
+		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect())).collect();
 		Self {
 			key_groups,
 			key_groups_mac: None,
@@ -662,7 +671,7 @@ impl HintInfo {
 	pub fn keys_and_mouse(keys: impl IntoIterator<Item = Key>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
 		let keys = keys.into_iter().collect();
 		Self {
-			key_groups: vec![KeysGroup(keys).into()],
+			key_groups: vec![KeysGroup(keys)],
 			key_groups_mac: None,
 			mouse: Some(mouse_motion),
 			label: label.into(),
@@ -672,7 +681,7 @@ impl HintInfo {
 	}
 
 	pub fn multi_keys_and_mouse(multi_keys: impl IntoIterator<Item = impl IntoIterator<Item = Key>>, mouse_motion: MouseMotion, label: impl Into<Cow<'static, str>>) -> Self {
-		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect()).into()).collect();
+		let key_groups = multi_keys.into_iter().map(|keys| KeysGroup(keys.into_iter().collect())).collect();
 		Self {
 			key_groups,
 			key_groups_mac: None,
@@ -700,7 +709,7 @@ impl HintInfo {
 
 	pub fn add_mac_keys(mut self, keys: impl IntoIterator<Item = Key>) -> Self {
 		let mac_keys = keys.into_iter().collect();
-		self.key_groups_mac = Some(vec![KeysGroup(mac_keys).into()]);
+		self.key_groups_mac = Some(vec![KeysGroup(mac_keys)]);
 		self
 	}
 }

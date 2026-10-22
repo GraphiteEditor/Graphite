@@ -9,13 +9,13 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::Image;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::style::{FillChoice, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin, initial_gradient_transform_for_bounding_box};
 use graphene_std::vector::{Gradient, GradientForm, GradientRamp, GradientSettings, PointId, SegmentId, VectorModificationType};
 use graphene_std::{NodeParameter, ParameterRef};
 use std::collections::VecDeque;
+use std::sync::Arc;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
 pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -> Option<NodeId> {
@@ -164,52 +164,60 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.
-pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
+pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpoint: PointId, responses: &mut VecDeque<Message>) {
 	let transform = document.metadata().transform_to_document(layer);
 	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 
-	let segment = vector.segment_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let segment = vector.segment_iter().find(|(_, _, start, end)| *end == second_endpoint || *start == second_endpoint);
 	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
 		log::error!("Could not get the segment for second_endpoint.");
 		return;
 	};
 
 	let mut handles = [None; 2];
-	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector).unwrap();
+	if let Some(handle_position) = vector.position_of(ManipulatorPointId::PrimaryHandle(segment)) {
+		let anchor_position = vector.position_of(ManipulatorPointId::Anchor(segment_start_point)).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[0] = Some(anchor_to_handle);
 	}
-	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector).unwrap();
+	if let Some(handle_position) = vector.position_of(ManipulatorPointId::EndHandle(segment)) {
+		let anchor_position = vector.position_of(ManipulatorPointId::Anchor(segment_end_point)).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[1] = Some(anchor_to_handle);
 	}
 
-	if segment_start_point == second_endpont {
-		core::mem::swap(&mut segment_start_point, &mut segment_end_point);
-		handles.reverse();
+	// The segment keeps its direction, with whichever end sat on the merged-away point moving to the point it merges into
+	if segment_start_point == second_endpoint {
+		segment_start_point = first_endpoint;
+	} else {
+		segment_end_point = first_endpoint;
 	}
 
-	let modification_type = VectorModificationType::RemovePoint { id: second_endpont };
+	let modification_type = VectorModificationType::RemovePoint { id: second_endpoint };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 	let modification_type = VectorModificationType::RemoveSegment { id: segment };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-	let points = [segment_start_point, first_endpoint];
+	let points = [segment_start_point, segment_end_point];
 	let id = SegmentId::generate();
 	let modification_type = VectorModificationType::InsertSegment { id, points, handles };
 	responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+	// The replacement takes over as the beginning of the path that the removed segment began
+	if vector.path_beginnings().contains(&segment) {
+		let modification_type = VectorModificationType::SetPathBreak { segment: id, breaks: true };
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	}
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image: Image<Color>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(data: Arc<[u8]>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
-	responses.add(GraphOperationMessage::NewBitmapLayer { id, image, parent, insert_index });
+	responses.add(GraphOperationMessage::NewBitmapLayer { id, data, parent, insert_index });
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
@@ -225,6 +233,28 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, center: bool, id: N
 		center,
 	});
 	LayerNodeIdentifier::new_unchecked(id)
+}
+
+/// Create the locked, solid white "Background" layer that an infinite canvas document begins with, at the given index of the root stack.
+pub fn new_background_layer(insert_index: usize, responses: &mut VecDeque<Message>) {
+	let node_id = NodeId::new();
+
+	responses.add(GraphOperationMessage::NewColorFillLayer {
+		node_id,
+		color: Color::WHITE,
+		parent: LayerNodeIdentifier::ROOT_PARENT,
+		insert_index,
+	});
+	responses.add(NodeGraphMessage::SetDisplayNameImpl {
+		node_id,
+		network_path: Vec::new(),
+		alias: "Background".to_string(),
+	});
+	responses.add(NodeGraphMessage::SetLocked {
+		node_id,
+		network_path: Vec::new(),
+		locked: true,
+	});
 }
 
 pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
@@ -302,8 +332,8 @@ pub struct ReplaceablePaintChain {
 
 /// The whole-expanse paint on a 'Merge' layer that a paint tool may take over, or `None`
 /// when the layer isn't one or its chain holds anything the tools didn't put there.
-/// The walk stops at the first node the rest of the graph also draws from, since repainting through it would change
-/// what those other consumers see, and it passes through 'Transform' nodes so a swap keeps the layer's placement.
+/// Nodes from the first one the rest of the graph also draws from are detached rather than deleted, so those other
+/// consumers see no change, and the walk passes through 'Transform' nodes so a swap keeps the layer's placement.
 pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<ReplaceablePaintChain> {
 	if !network_interface.is_merge(&layer.to_node(), &[]) {
 		return None;
@@ -322,17 +352,17 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 	let mut input = InputConnector::layer_secondary_input(layer.to_node());
 	// Trails the walk over the 'Transform' nodes that survive, then holds still once the paint to clear away begins
 	let mut attachment_input = input;
+	// Everything upstream of a shared node is shared too, so it's kept, though it must still be paint for the layer to count as blank
+	let mut shared = false;
 
 	while let Some(upstream) = network_interface.upstream_output_connector(&input, &[]) {
 		let node_id = upstream.node_id()?;
 
 		// Arriving here means this layer consumes the node, so a further consumer makes it shared
-		let shared = network_interface
-			.with_outward_wires(&[], |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id)).is_some_and(|inputs| inputs.len() > 1))
-			.unwrap_or(true);
-		if shared {
-			break;
-		}
+		shared = shared
+			|| network_interface
+				.with_outward_wires(&[], |outward_wires| outward_wires.get(&OutputConnector::primary_output(node_id)).is_some_and(|inputs| inputs.len() > 1))
+				.unwrap_or(true);
 
 		let Some(DefinitionIdentifier::ProtoNode(identifier)) = network_interface.reference(&node_id, &[]) else {
 			return None;
@@ -340,7 +370,7 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 
 		if identifier == graphene_std::transform_nodes::transform::IDENTIFIER {
 			input = InputConnector::primary_input(node_id);
-			if nodes.is_empty() {
+			if nodes.is_empty() && !shared {
 				attachment_input = input;
 			}
 			continue;
@@ -351,7 +381,9 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 			return None;
 		}
 
-		nodes.push(node_id);
+		if !shared {
+			nodes.push(node_id);
+		}
 
 		if generator {
 			break;
@@ -428,7 +460,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 
 		if positions_pending && reference == positions_reference {
 			positions_pending = false;
-			if let Some(TaggedValue::F64Array(positions)) = node
+			if let Some(TaggedValue::Numbers(positions)) = node
 				.and_then(|node| node.input(graphene_std::math_nodes::gradient_positions::PositionsInput))
 				.and_then(|input| input.as_value())
 			{
@@ -436,7 +468,7 @@ pub fn get_gradient_stops(layer: LayerNodeIdentifier, network_interface: &NodeNe
 			}
 		} else if midpoints_pending && reference == midpoints_reference {
 			midpoints_pending = false;
-			if let Some(TaggedValue::F64Array(midpoints)) = node
+			if let Some(TaggedValue::Numbers(midpoints)) = node
 				.and_then(|node| node.input(graphene_std::math_nodes::gradient_midpoints::MidpointsInput))
 				.and_then(|input| input.as_value())
 			{
@@ -517,7 +549,7 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	let TaggedValue::Bool(true) = inputs.get(1)?.as_value()? else {
 		return None;
 	};
-	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
+	let TaggedValue::Number(opacity) = inputs.get(2)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)
@@ -537,7 +569,7 @@ pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let TaggedValue::Bool(true) = inputs.get(3)?.as_value()? else {
 		return None;
 	};
-	let TaggedValue::F64(fill) = inputs.get(4)?.as_value()? else {
+	let TaggedValue::Number(fill) = inputs.get(4)?.as_value()? else {
 		return None;
 	};
 	Some(*fill)
@@ -606,24 +638,26 @@ pub fn get_text<'a>(
 		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
 		_ => Font::default(),
 	};
-	let Some(&TaggedValue::F64(font_size)) = parameters.value(text::SizeInput) else { return None };
-	let Some(&TaggedValue::F64(line_height_ratio)) = parameters.value(text::LineHeightInput) else {
+	let Some(&TaggedValue::Number(font_size)) = parameters.value(text::SizeInput) else { return None };
+	let Some(&TaggedValue::Number(line_height_ratio)) = parameters.value(text::LineHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(letter_spacing)) = parameters.value(text::LetterSpacingInput) else {
+	let Some(&TaggedValue::Number(letter_spacing)) = parameters.value(text::LetterSpacingInput) else {
 		return None;
 	};
 	let Some(&TaggedValue::Bool(has_max_width)) = parameters.value(text::HasMaxWidthInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_width)) = parameters.value(text::MaxWidthInput) else { return None };
+	let Some(&TaggedValue::Number(max_width)) = parameters.value(text::MaxWidthInput) else {
+		return None;
+	};
 	let Some(&TaggedValue::Bool(has_max_height)) = parameters.value(text::HasMaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(max_height)) = parameters.value(text::MaxHeightInput) else {
+	let Some(&TaggedValue::Number(max_height)) = parameters.value(text::MaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::F64(letter_tilt)) = parameters.value(text::LetterTiltInput) else {
+	let Some(&TaggedValue::Number(letter_tilt)) = parameters.value(text::LetterTiltInput) else {
 		return None;
 	};
 	let Some(&TaggedValue::TextAlign(align)) = parameters.value(text::AlignInput) else { return None };
@@ -641,7 +675,7 @@ pub fn get_text<'a>(
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	if let TaggedValue::F64(width) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)? {
+	if let TaggedValue::Number(width) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)? {
 		Some(*width)
 	} else {
 		None
@@ -679,7 +713,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		_ => StrokeJoin::default(),
 	};
 	let miter_limit = match parameters.value(stroke::MiterLimitInput) {
-		Some(TaggedValue::F64(value)) => *value,
+		Some(TaggedValue::Number(value)) => *value,
 		_ => 4.,
 	};
 	let paint_order = get_stroke_paint_order(layer, network_interface);
@@ -688,7 +722,7 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		_ => Vec::new(),
 	};
 	let dash_offset = match parameters.value(stroke::DashOffsetInput) {
-		Some(TaggedValue::F64(value)) => *value,
+		Some(TaggedValue::Number(value)) => *value,
 		_ => 0.,
 	};
 
@@ -778,7 +812,7 @@ pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMes
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: graphene_std::vector::stroke::WeightInput::INDEX,
-				value: TaggedValue::F64(weight).into(),
+				value: TaggedValue::Number(weight).into(),
 			});
 		} else if weight > 0. {
 			let color = Some(Color::BLACK);

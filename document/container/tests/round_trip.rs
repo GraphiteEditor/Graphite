@@ -176,3 +176,15 @@ fn folder_backend_write_sized_fills_via_mmap() {
 	let read_back = backend.read("resources/sized").unwrap();
 	assert_eq!(read_back.as_slice(), payload);
 }
+
+#[test]
+fn memory_backend_clones_share_the_store() {
+	let backend = MemoryBackend::new();
+	let clone = backend.clone();
+
+	backend.write("file", b"through the original").unwrap();
+	assert_eq!(clone.read("file").unwrap().as_slice(), b"through the original");
+
+	clone.remove("file").unwrap();
+	assert!(!backend.exists("file"));
+}

@@ -1,13 +1,12 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 
-use core_types::context::ContextDependencies;
 use core_types::uuid::NodeId;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 
-use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry};
+use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry, from_value};
 
 /// Helper function to verify a NodeNetwork can be compiled successfully.
 /// Note: This only works for complete networks with all inputs resolved.
@@ -20,12 +19,10 @@ fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
 
 /// Convert a runtime network to a storage `Registry`, returning the declarations alongside it.
 /// Proto-node declaration content is no longer stored in the registry (it lives in a byte store);
-/// these tests have no byte store, so they keep the extracted bytes in hand and rebuild a
-/// `Declarations` map for the back-conversion.
+/// these tests have no byte store, so they keep the extracted `Declarations` in hand for the back-conversion.
 fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations) {
 	let conversion = Registry::convert_from_runtime(network, &crate::NoMetadata, &Default::default(), PeerId(0)).expect("Failed to convert NodeNetwork to Registry");
-	let declarations = conversion.declarations().expect("rebuild declarations");
-	(conversion.registry, declarations)
+	(conversion.registry, conversion.declarations)
 }
 
 /// A one-node network whose single node references `id` via a `TaggedValue::Resource` input, so
@@ -246,11 +243,6 @@ fn test_nested_network_flattening() {
 #[test]
 fn test_metadata_preservation() {
 	// Create a network with nodes that have non-default metadata
-	let context_features = ContextDependencies {
-		extract: core_types::context::ContextFeatures::FOOTPRINT | core_types::context::ContextFeatures::REAL_TIME,
-		..Default::default()
-	};
-
 	let network = NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
 		nodes: [
@@ -260,7 +252,6 @@ fn test_metadata_preservation() {
 					inputs: vec![NodeInput::import(concrete!(f64), 0), NodeInput::import(Type::Generic(Cow::Borrowed("T")), 1)],
 					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("test::NodeWithMetadata")),
 					call_argument: concrete!(String),
-					context_features,
 					visible: false,           // Non-default value
 					skip_deduplication: true, // Non-default value
 					..Default::default()
@@ -293,9 +284,6 @@ fn test_metadata_preservation() {
 	let orig_node_1 = network.nodes.get(&NodeId(1)).unwrap();
 	let conv_node_1 = converted.nodes.get(&NodeId(1)).unwrap();
 	assert_eq!(orig_node_1.call_argument, conv_node_1.call_argument, "call_argument for node 1 should be preserved");
-
-	// Verify context_features is preserved
-	assert_eq!(orig_node_0.context_features, conv_node_0.context_features, "context_features should be preserved");
 
 	// Verify visible is preserved
 	assert_eq!(orig_node_0.visible, conv_node_0.visible, "visible should be preserved");
@@ -353,11 +341,6 @@ fn test_demo_artwork_round_trip() {
 			assert_eq!(
 				orig_node.call_argument, conv_node.call_argument,
 				"{}: call_argument should be preserved for node {:?}",
-				artwork_name, node_id
-			);
-			assert_eq!(
-				orig_node.context_features, conv_node.context_features,
-				"{}: context_features should be preserved for node {:?}",
 				artwork_name, node_id
 			);
 			assert_eq!(orig_node.visible, conv_node.visible, "{}: visible should be preserved for node {:?}", artwork_name, node_id);
@@ -477,7 +460,7 @@ fn test_ui_metadata_round_trip() {
 	);
 
 	let conversion = Registry::convert_from_runtime(&network, &metadata, &Default::default(), PeerId(0)).expect("Failed to convert to Registry with metadata");
-	let declarations = conversion.declarations().expect("rebuild declarations");
+	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 
 	let (converted, entries) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back with metadata");
@@ -532,7 +515,7 @@ fn resources_round_trip_through_from_runtime() {
 	assert_eq!(entry.sources.len(), 2, "both sources carried through");
 
 	// The chain iterates in priority order; decode bodies back to DataSource to compare.
-	let decoded: Vec<DataSource> = entry.sources.iter().map(|(_, v)| serde_json::from_value(v.source.clone()).expect("source body decodes")).collect();
+	let decoded: Vec<DataSource> = entry.sources.iter().map(|(_, v)| from_value(&v.source).expect("source body decodes")).collect();
 	assert_eq!(decoded, vec![DataSource::Embedded, DataSource::Url("https://example.com/img.png".parse().unwrap())]);
 
 	// All source keys carry the document peer.
@@ -611,10 +594,9 @@ fn unreferenced_runtime_resource_is_not_snapshotted() {
 	assert!(!registry.resources.contains_key(&orphan), "the unreferenced (orphan) resource must not be snapshotted");
 }
 
-/// A node-input `TaggedValue::F64` must survive the storage round-trip bit-exact. Inputs are stored as a
-/// self-describing `serde_json::Value` (encoded with the registry's MessagePack codec), so this guards
-/// against any precision loss in the f64 -> serde_json::Number -> f64 path for a value with a full
-/// 17-significant-digit mantissa.
+/// A node-input `TaggedValue::Number` must survive the storage round-trip bit-exact. Inputs are stored
+/// type-erased as a `Value`, so this guards against any precision loss in the f64
+/// -> Value -> f64 path for a value with a full 17-significant-digit mantissa.
 #[test]
 fn node_input_f64_round_trips_bit_exact() {
 	use graph_craft::document::value::TaggedValue;
@@ -625,7 +607,7 @@ fn node_input_f64_round_trips_bit_exact() {
 		nodes: [(
 			NodeId(0),
 			DocumentNode {
-				inputs: vec![NodeInput::value(TaggedValue::F64(precise), false)],
+				inputs: vec![NodeInput::value(TaggedValue::Number(precise), false)],
 				implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::identity::IdentityNode")),
 				..Default::default()
 			},
@@ -642,8 +624,8 @@ fn node_input_f64_round_trips_bit_exact() {
 	let NodeInput::Value { tagged_value, .. } = input else {
 		panic!("expected a value input, got {input:?}")
 	};
-	let TaggedValue::F64(actual) = &**tagged_value else {
-		panic!("expected F64, got {:?}", tagged_value)
+	let TaggedValue::Number(actual) = &**tagged_value else {
+		panic!("expected Number, got {:?}", tagged_value)
 	};
 
 	assert_eq!(actual.to_bits(), precise.to_bits(), "f64 node input drifted: {actual} != {precise}");
@@ -653,7 +635,6 @@ fn node_input_f64_round_trips_bit_exact() {
 /// Conversion must reject this rather than silently collapse them and drop a node.
 #[test]
 fn duplicate_runtime_node_id_is_rejected() {
-	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
@@ -661,7 +642,7 @@ fn duplicate_runtime_node_id_is_rejected() {
 
 	// Force both root-network nodes onto the same runtime ID.
 	for node in registry.node_instances.values_mut() {
-		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, serde_json::json!(7), TimeStamp::ORIGIN);
+		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, crate::Value::Int(7), TimeStamp::ORIGIN);
 	}
 
 	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");
@@ -720,7 +701,6 @@ fn scope_injections_round_trip() {
 /// network) must error rather than emit an injection pointing at a nonexistent runtime node.
 #[test]
 fn dangling_scope_injection_is_rejected() {
-	use crate::AttributesWrite;
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
@@ -760,7 +740,11 @@ fn cyclic_network_reference_is_rejected() {
 	registry.node_instances.insert(
 		crate::NodeId(0),
 		Node {
+			presence: Default::default(),
+			network_timestamp: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(child_network_id),
+			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
 			attributes: crate::Attributes::default(),
 			network: crate::ROOT_NETWORK,
@@ -769,7 +753,11 @@ fn cyclic_network_reference_is_rejected() {
 	registry.node_instances.insert(
 		crate::NodeId(1),
 		Node {
+			presence: Default::default(),
+			network_timestamp: Default::default(),
+			inputs_timestamp: Default::default(),
 			implementation: Implementation::Network(crate::ROOT_NETWORK),
+			implementation_timestamp: Default::default(),
 			inputs: Vec::new(),
 			attributes: crate::Attributes::default(),
 			network: child_network_id,

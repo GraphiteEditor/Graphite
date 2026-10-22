@@ -166,14 +166,14 @@ fn diff_resource_entry(id: ResourceId, from: &ResourceEntry, to: &ResourceEntry,
 		deltas.push(RegistryDelta::SetResourceHash { id, hash: to.hash });
 	}
 
-	for (key, _) in &from.sources {
+	for (key, _) in from.live_sources() {
 		if to.source(key).is_none() {
 			deltas.push(RegistryDelta::RemoveSource { id, key: *key });
 		}
 	}
 
 	// Compare source bodies only; the per-source timestamp is derived from the diff, not part of it.
-	for (key, to_source) in &to.sources {
+	for (key, to_source) in to.live_sources() {
 		if from.source(key).is_none_or(|from_source| from_source.source != to_source.source) {
 			deltas.push(RegistryDelta::AddSource {
 				id,
@@ -196,15 +196,15 @@ fn nodes_have_same_implementation(a: &Node, b: &Node) -> bool {
 fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) -> Vec<AttributeDelta> {
 	let mut deltas = Vec::new();
 
-	for key in from.keys() {
-		if !to.contains_key(key) {
+	for (key, _) in from.live() {
+		if to.get(key).is_none_or(|value| value.deleted) {
 			deltas.push(AttributeDelta { key: key.clone(), value: None });
 		}
 	}
 
 	// Compare by `value` only; the per-entry `timestamp` is derived from the diff, not part of it.
-	for (key, to_value) in to {
-		if from.get(key).is_none_or(|from_value| from_value.value != to_value.value) {
+	for (key, to_value) in to.live() {
+		if from.get(key).is_none_or(|from_value| from_value.deleted || from_value.value != to_value.value) {
 			deltas.push(AttributeDelta {
 				key: key.clone(),
 				value: Some(to_value.value.clone()),
@@ -218,7 +218,7 @@ fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) ->
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::{Attributes, ExportSlot, Network, Node, NodeInput, TimeStamp};
+	use crate::{Attributes, ExportSlot, Network, Node, NodeInput, TimeStamp, Value};
 
 	#[test]
 	fn test_compute_deltas_empty() {
@@ -298,17 +298,13 @@ mod tests {
 
 	#[test]
 	fn test_compute_deltas_change_network_attribute() {
-		use crate::{AttributesWrite, TimeStamp};
+		use crate::TimeStamp;
 
 		let mut from = Registry::default();
 		from.networks.insert(NetworkId(0), Network::default());
 
 		let mut to = from.clone();
-		to.networks
-			.get_mut(&NetworkId(0))
-			.unwrap()
-			.attributes
-			.set("ui::nav::width", serde_json::json!(640.0), TimeStamp::ORIGIN);
+		to.networks.get_mut(&NetworkId(0)).unwrap().attributes.set("ui::nav::width", Value::Float(640.), TimeStamp::ORIGIN);
 
 		let deltas = compute_deltas(&from, &to);
 		assert_eq!(deltas.len(), 1, "a changed per-network attribute must emit one delta");
@@ -341,9 +337,10 @@ mod tests {
 		let stamp = |counter: u64| TimeStamp { counter, peer: crate::PeerId(0) };
 		node.attributes.insert(
 			"test".to_string(),
-			crate::Value {
-				value: serde_json::json!("old"),
+			crate::AttributeValue {
+				value: Value::Str("old".into()),
 				timestamp: stamp(0),
+				deleted: false,
 			},
 		);
 		from.node_instances.insert(NodeId(42), node);
@@ -351,9 +348,10 @@ mod tests {
 		let mut to = from.clone();
 		to.node_instances.get_mut(&NodeId(42)).unwrap().attributes.insert(
 			"test".to_string(),
-			crate::Value {
-				value: serde_json::json!("new"),
+			crate::AttributeValue {
+				value: Value::Str("new".into()),
 				timestamp: stamp(1),
+				deleted: false,
 			},
 		);
 
@@ -376,9 +374,10 @@ mod tests {
 		let mut to = from.clone();
 		to.attributes.insert(
 			"doc::test_attribute".to_string(),
-			crate::Value {
-				value: serde_json::json!("value"),
+			crate::AttributeValue {
+				value: Value::Str("value".into()),
 				timestamp: stamp(1),
+				deleted: false,
 			},
 		);
 

@@ -109,6 +109,11 @@
 			.floating-menu-content > :last-child:not(:has(:not(.checkbox-input))) {
 				margin-bottom: -8px;
 			}
+
+			// Keeps fields from resizing the popover as their values change length
+			.floating-menu-content > .widget-span > .field-input {
+				min-width: 80px;
+			}
 		}
 
 		&.direction-top .floating-menu {

@@ -1,5 +1,6 @@
 use super::PointId;
 use super::algorithms::consts::MAX_COINCIDENT_POINT_DISTANCE;
+use super::path::Path;
 use crate::vector::{SegmentId, Vector};
 use core_types::list::{Item, List};
 use dyn_any::DynAny;
@@ -101,25 +102,6 @@ impl From<String> for BoxCorners {
 	}
 }
 
-pub trait AsU64 {
-	fn as_u64(&self) -> u64;
-}
-impl AsU64 for u32 {
-	fn as_u64(&self) -> u64 {
-		*self as u64
-	}
-}
-impl AsU64 for u64 {
-	fn as_u64(&self) -> u64 {
-		*self
-	}
-}
-impl AsU64 for f64 {
-	fn as_u64(&self) -> u64 {
-		*self as u64
-	}
-}
-
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -150,10 +132,31 @@ pub enum ArcType {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
-pub enum MergeByDistanceAlgorithm {
+pub enum WeldMethod {
+	/// Any points within the distance of each other join.
 	#[default]
-	Spatial,
-	Topological,
+	#[cfg_attr(feature = "serde", serde(alias = "Spatial"))]
+	All,
+	/// Each segment shorter than the distance collapses, joining its two ends.
+	#[cfg_attr(feature = "serde", serde(alias = "Topological"))]
+	Connected,
+	/// Only the ends of open path flows join, leaving every other anchor where it is.
+	FlowEnds,
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum UnweldMethod {
+	/// Every anchor is split, so each segment stands alone.
+	All,
+	/// Every point that more than one path flow uses is split, so each path flow becomes a path of its own.
+	#[default]
+	SharedPoints,
+	/// Only the shared points where a path flow ends are split, so path flows passing through a shared point stay joined.
+	FlowEnds,
 }
 
 #[repr(C)]
@@ -432,37 +435,39 @@ pub enum ManipulatorPointId {
 impl ManipulatorPointId {
 	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
 	#[must_use]
-	#[track_caller]
-	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
+	pub fn get_position(&self, vector: &Vector, paths: &List<Path>) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
-			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).start()),
-			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).end()),
+			ManipulatorPointId::Anchor(id) => vector.index_of_point_id(*id).and_then(|index| vector.position(index as usize)),
+			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(paths, *id).and_then(|segment| segment_to_handles(&segment).start()),
+			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(paths, *id).and_then(|segment| segment_to_handles(&segment).end()),
 		}
 	}
 
-	pub fn get_anchor_position(&self, vector: &Vector) -> Option<DVec2> {
+	pub fn get_anchor_position(&self, vector: &Vector, paths: &List<Path>) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
-			_ => self.get_position(vector),
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self
+				.get_anchor(vector, paths)
+				.and_then(|id| vector.index_of_point_id(id))
+				.and_then(|index| vector.position(index as usize)),
+			_ => self.get_position(vector, paths),
 		}
 	}
 
 	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
 	#[must_use]
-	pub fn get_handle_pair(self, vector: &Vector) -> Option<[HandleId; 2]> {
+	pub fn get_handle_pair(self, vector: &Vector, paths: &List<Path>) -> Option<[HandleId; 2]> {
 		match self {
-			ManipulatorPointId::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
+			ManipulatorPointId::Anchor(point) => vector.all_connected(paths, point).take(2).collect::<Vec<_>>().try_into().ok(),
 			ManipulatorPointId::PrimaryHandle(segment) => {
-				let point = vector.segment_domain.segment_start_from_id(segment)?;
+				let point = vector.segment_start_from_id(paths, segment)?;
 				let current = HandleId::primary(segment);
-				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
+				let other = vector.all_connected(paths, point).find(|&value| value != current);
 				other.map(|other| [current, other])
 			}
 			ManipulatorPointId::EndHandle(segment) => {
-				let point = vector.segment_domain.segment_end_from_id(segment)?;
+				let point = vector.segment_end_from_id(paths, segment)?;
 				let current = HandleId::end(segment);
-				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
+				let other = vector.all_connected(paths, point).find(|&value| value != current);
 				other.map(|other| [current, other])
 			}
 		}
@@ -471,22 +476,22 @@ impl ManipulatorPointId {
 	/// Finds all the connected handles of a point.
 	/// For an anchor it is all the connected handles.
 	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
-	pub fn get_all_connected_handles(self, vector: &Vector) -> Option<Vec<HandleId>> {
+	pub fn get_all_connected_handles(self, vector: &Vector, paths: &List<Path>) -> Option<Vec<HandleId>> {
 		match self {
 			ManipulatorPointId::Anchor(point) => {
-				let connected = vector.all_connected(point).collect::<Vec<_>>();
+				let connected = vector.all_connected(paths, point).collect::<Vec<_>>();
 				Some(connected)
 			}
 			ManipulatorPointId::PrimaryHandle(segment) => {
-				let point = vector.segment_domain.segment_start_from_id(segment)?;
+				let point = vector.segment_start_from_id(paths, segment)?;
 				let current = HandleId::primary(segment);
-				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				let connected = vector.all_connected(paths, point).filter(|&value| value != current).collect::<Vec<_>>();
 				Some(connected)
 			}
 			ManipulatorPointId::EndHandle(segment) => {
-				let point = vector.segment_domain.segment_end_from_id(segment)?;
+				let point = vector.segment_end_from_id(paths, segment)?;
 				let current = HandleId::end(segment);
-				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				let connected = vector.all_connected(paths, point).filter(|&value| value != current).collect::<Vec<_>>();
 				Some(connected)
 			}
 		}
@@ -494,11 +499,11 @@ impl ManipulatorPointId {
 
 	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
 	#[must_use]
-	pub fn get_anchor(self, vector: &Vector) -> Option<PointId> {
+	pub fn get_anchor(self, vector: &Vector, paths: &List<Path>) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
-			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
-			ManipulatorPointId::EndHandle(segment) => vector.segment_end_from_id(segment),
+			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(paths, segment),
+			ManipulatorPointId::EndHandle(segment) => vector.segment_end_from_id(paths, segment),
 		}
 	}
 
@@ -580,12 +585,12 @@ impl HandleId {
 	}
 
 	/// Calculate the magnitude of the handle from the anchor.
-	pub fn length(self, vector: &Vector) -> f64 {
-		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector) else {
+	pub fn length(self, vector: &Vector, paths: &List<Path>) -> f64 {
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector, paths) else {
 			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
 			return 0.;
 		};
-		let handle_position = self.to_manipulator_point().get_position(vector);
+		let handle_position = self.to_manipulator_point().get_position(vector, paths);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
@@ -634,7 +639,8 @@ graphene_hash::impl_via_hash!(
 	RowsOrColumns,
 	GridType,
 	ArcType,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	SpiralType,

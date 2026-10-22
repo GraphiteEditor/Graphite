@@ -2,7 +2,7 @@ use graphite_editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use graphite_editor::messages::prelude::*;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, SaveFileDialogContext};
 
 pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: DesktopWrapperMessage) {
 	match message {
@@ -10,19 +10,19 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(*message);
 		}
 		DesktopWrapperMessage::Wake => {
-			dispatcher.queue_editor_message(EditorMessage::Future(FutureMessage::Wake));
+			dispatcher.queue_editor_message(EditorMessage::Wake);
 		}
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}
-		DesktopWrapperMessage::FileDialogResult { path, content, context } => match context {
-			OpenFileDialogContext::Open => {
-				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenFile { path, content });
-			}
-			OpenFileDialogContext::Import => {
-				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportFile { path, content });
-			}
-		},
+		DesktopWrapperMessage::IngestFile { path, content, action } => {
+			dispatcher.queue_editor_message(IngestMessage::Ingest {
+				data: content,
+				action,
+				mime_type: String::new(),
+				path: Some(path),
+			});
+		}
 		DesktopWrapperMessage::SaveFileDialogResult { path, context } => match context {
 			SaveFileDialogContext::Document { document_id, content } => {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path: path.clone(), content });
@@ -35,25 +35,12 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
 		},
-		DesktopWrapperMessage::OpenFile { path, content } => {
-			let message = PortfolioMessage::OpenFile { path, content };
-			dispatcher.queue_editor_message(message);
-		}
-		DesktopWrapperMessage::ImportFile { path, content } => {
-			let message = PortfolioMessage::ImportFile { path, content };
-			dispatcher.queue_editor_message(message);
-		}
-		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),
 		DesktopWrapperMessage::UpdateMaximized { maximized } => {
 			let message = FrontendMessage::UpdateMaximized { maximized };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::UpdateFullscreen { fullscreen } => {
 			let message = FrontendMessage::UpdateFullscreen { fullscreen };
-			dispatcher.queue_editor_message(message);
-		}
-		DesktopWrapperMessage::LoadDocumentContent { id, document } => {
-			let message = PersistentStateMessage::LoadDocument { document_id: id, document };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::LoadPersistedState { state } => {

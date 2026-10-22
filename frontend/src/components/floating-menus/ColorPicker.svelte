@@ -42,7 +42,7 @@
 			editor.openColorPicker(colorOrGradient, allowNone, disabled);
 			// Auto-select the hex color code text input. Deferred so the layout has time to render after the picker opens.
 			setTimeout(() => {
-				const hexInput = self?.div()?.querySelector(".text-input input");
+				const hexInput = self?.div()?.querySelector("[data-text-input] [data-input-element]");
 				if (hexInput instanceof HTMLInputElement) hexInput.select();
 			}, 0);
 		} else if (!isOpen && lastOpen) {
@@ -113,6 +113,11 @@
 				> .text-label {
 					// TODO: Use a table or grid layout for this width to match the widest label. Hard-coding it won't work when we add translation/localization.
 					flex: 0 0 34px;
+				}
+
+				// Fields sharing a row split it evenly, whatever their values
+				> .field-input {
+					flex: 1 1 0;
 				}
 			}
 		}

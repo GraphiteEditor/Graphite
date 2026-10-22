@@ -3,7 +3,8 @@
 	import ColorPicker from "/src/components/floating-menus/ColorPicker.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import { contrastingOutlineFactor, fillChoiceColor, fillChoiceGradient } from "/src/utility-functions/colors";
-	import type { FillChoice, GradientSample, MenuDirection, ActionShortcut, SRGBA8 } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import { widgetSizingStyles } from "/src/utility-functions/widgets";
+	import type { FillChoice, GradientSample, MenuDirection, ActionShortcut, SRGBA8, WidgetSizing } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const dispatch = createEventDispatcher<{ value: FillChoice<SRGBA8>; startHistoryTransaction: undefined }>();
 
@@ -20,9 +21,7 @@
 	export let mixed = false;
 	// Styling
 	export let narrow = false;
-	// Sizing
-	export let minWidth = 0;
-	export let maxWidth = 0;
+	export let sizing: Partial<WidgetSizing> | undefined = undefined;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -41,15 +40,12 @@
 <LayoutCol
 	class="color-input"
 	classes={{ open, disabled, narrow, none, transparency, outlined, mixed, "direction-top": menuDirection === "Top" }}
-	styles={{
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
-	}}
+	styles={widgetSizingStyles(sizing)}
 	{tooltipLabel}
 	{tooltipDescription}
 	{tooltipShortcut}
 >
-	<button style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
+	<button style:--outline-amount={outlineFactor} on:click={() => (open = true)} data-floating-menu-spawner>
 		{#if swatchSamples.length > 0}
 			<svg class="swatch" xmlns="http://www.w3.org/2000/svg">
 				<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">

@@ -6,7 +6,6 @@ use no_std_types::blending::BlendMode;
 use no_std_types::color::{Color, Pixel};
 #[cfg(not(feature = "std"))]
 use no_std_types::list::ShaderItem as Item;
-use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
@@ -63,7 +62,7 @@ mod blend_std {
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
-#[node_macro::node(category("Raster"), cfg(feature = "std"))]
+#[node_macro::node(category("Raster"), icon("NodeMix"), cfg(feature = "std"))]
 fn mix<T: Blend<Color> + Send>(
 	_: impl Ctx,
 	#[implementations(
@@ -82,18 +81,23 @@ fn mix<T: Blend<Color> + Send>(
 	#[gpu_image]
 	under: Item<T>,
 	blend_mode: Item<BlendMode>,
-	#[default(100.)] opacity: Item<PercentageF32>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	opacity: Item<f64>,
 ) -> Item<T> {
 	let mut over = over;
 	let blend_mode = blend_mode.into_element();
-	let opacity = opacity.into_element();
+	let opacity = (opacity.into_element() / 100.) as f32;
 
-	let blended = over.element().blend(under.element(), |a, b| blend_colors(a, b, blend_mode, opacity / 100.));
+	let blended = over.element().blend(under.element(), |a, b| blend_colors(a, b, blend_mode, opacity));
 	*over.element_mut() = blended;
 	over
 }
 
-#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+// TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeColorOverlay"), shader_node(PerPixelAdjust))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -105,14 +109,16 @@ fn color_overlay<T: Adjust<Color>>(
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
 	blend_mode: Item<BlendMode>,
-	#[default(100.)] opacity: Item<PercentageF32>,
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	opacity: Item<f64>,
 ) -> Item<T> {
 	let mut image = image;
 	let color = color.into_element();
 	let blend_mode = blend_mode.into_element();
-	let opacity = opacity.into_element();
-
-	let opacity = (opacity / 100.).clamp(0., 1.);
+	let opacity = (opacity.into_element() / 100.) as f32;
 
 	image.element_mut().adjust(|pixel| {
 		let overlay = apply_blend_mode(color, *pixel, blend_mode);
@@ -131,8 +137,8 @@ mod test {
 	use raster_types::Image;
 	use raster_types::Raster;
 
-	#[tokio::test]
-	async fn color_overlay_multiply() {
+	#[test]
+	fn color_overlay_multiply() {
 		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
 		let image = Image::new(1, 1, image_color);
 

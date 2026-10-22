@@ -4,8 +4,14 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [features]
 default = ["gpu"]
@@ -24,6 +30,7 @@ interpreted-executor = { workspace = true }
 graphene-std = { workspace = true } # NOTE: `core-types` should not be added here because `graphene-std` re-exports its contents
 preprocessor = { workspace = true }
 math-parser = { workspace = true }
+snapping = { workspace = true }
 
 # Workspace dependencies
 js-sys = { workspace = true }
@@ -46,7 +53,6 @@ once_cell = { workspace = true }
 web-sys = { workspace = true }
 vello = { workspace = true }
 base64 = { workspace = true }
-spin = { workspace = true }
 image = { workspace = true }
 color = { workspace = true }
 zip = { workspace = true }
@@ -61,9 +67,6 @@ wasm-bindgen = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true }
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies

@@ -1,4 +1,3 @@
-import { extractPixelData } from "/src/utility-functions/rasterization";
 import { stripIndents } from "/src/utility-functions/strip-indents";
 import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -24,6 +23,13 @@ export function readAtCaret(cut: boolean): string | undefined {
 		}
 
 		return selectedText;
+	}
+
+	// A field that handles copying itself, like one displaying its text in other glyphs, gives the text it would put on the clipboard
+	if (element instanceof HTMLElement && element.isContentEditable) {
+		const clipboardData = new DataTransfer();
+		const handled = !element.dispatchEvent(new ClipboardEvent(cut ? "cut" : "copy", { clipboardData, bubbles: true, cancelable: true }));
+		if (handled) return clipboardData.getData("text/plain") || undefined;
 	}
 
 	const selection = window.getSelection();
@@ -64,6 +70,10 @@ export function insertAtCaret(text: string) {
 		const newPos = start + text.length;
 		element.selectionStart = element.selectionEnd = newPos;
 	} else if (element instanceof HTMLElement && element.isContentEditable) {
+		// A field that applies its own edits, like one displaying its text in other glyphs, takes the text as it would a paste
+		const handled = !element.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", data: text, bubbles: true, cancelable: true }));
+		if (handled) return;
+
 		const selection = window.getSelection();
 		if (!selection || selection.rangeCount === 0) return;
 
@@ -114,28 +124,9 @@ export async function triggerClipboardRead(editor: EditorWrapper) {
 				// Read an image from the clipboard and pass it to the editor to be loaded
 				const imageType = item.types.find((type) => type.startsWith("image/"));
 
-				// Import the actual SVG content if it's an SVG
-				if (imageType?.includes("svg")) {
-					const blob = await item.getType("text/plain");
-					const reader = new FileReader();
-					reader.onload = () => {
-						if (typeof reader.result === "string") editor.pasteSvg(undefined, reader.result);
-					};
-					reader.readAsText(blob);
-					return true;
-				}
-
-				// Import the bitmap image if it's an image
 				if (imageType) {
 					const blob = await item.getType(imageType);
-					const reader = new FileReader();
-					reader.onload = async () => {
-						if (reader.result instanceof ArrayBuffer) {
-							const imageData = await extractPixelData(new Blob([reader.result], { type: imageType }));
-							editor.pasteImage(undefined, new Uint8Array(imageData.data), imageData.width, imageData.height);
-						}
-					};
-					reader.readAsArrayBuffer(blob);
+					editor.ingestFile(undefined, imageType, new Uint8Array(await blob.arrayBuffer()));
 					return true;
 				}
 

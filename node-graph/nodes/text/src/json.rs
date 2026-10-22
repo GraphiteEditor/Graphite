@@ -9,7 +9,7 @@ use crate::unescape_string;
 // ===========
 
 /// Reformats a JSON string with control over indentation, line breaking, and spacing. Trailing commas are tolerated. Otherwise-invalid JSON input is returned unchanged.
-#[node_macro::node(name("Format JSON"), category("Text: JSON"))]
+#[node_macro::node(name("Format JSON"), category("Text: JSON"), icon("NodeFormatJson"))]
 fn format_json(
 	_: impl Ctx,
 	/// The JSON string to reformat.
@@ -28,7 +28,8 @@ fn format_json(
 	///
 	/// This is not a maximum line length guarantee. Deep nesting and long keys or values may exceed this length.
 	#[default(120)]
-	break_length: Item<u32>,
+	#[hard(0..)]
+	break_length: Item<i64>,
 	/// Always break a container (array or object) across lines if it holds another container, even if it would fit within the break length. (Requires *Multi-Line* to take effect.)
 	#[default(true)]
 	break_nested: Item<bool>,
@@ -190,7 +191,7 @@ fn format_value(value: &serde_json::Value, depth: usize, indent: &str, colon: &s
 /// This is useful in conjunction with the nodes:
 /// • **String to Number**: convert numeric query results to numbers.
 /// • **String Value** → **Equals**: convert "true", "false", or "null" query results to bools.
-#[node_macro::node(name("Query JSON"), category("Text: JSON"))]
+#[node_macro::node(name("Query JSON"), category("Text: JSON"), icon("NodeQueryJson"))]
 fn query_json(
 	_: impl Ctx,
 	/// The JSON string to extract a value from.
@@ -238,7 +239,7 @@ fn query_json(
 /// • **Index Elements**: access the `N`th query result.
 /// • **String to Number**: convert numeric query results to numbers.
 /// • **String Value** → **Equals**: convert "true", "false", or "null" query results to bools.
-#[node_macro::node(name("Query JSON All"), category("Text: JSON"))]
+#[node_macro::node(name("Query JSON All"), category("Text: JSON"), icon("NodeQueryJsonAll"))]
 fn query_json_all(
 	_: impl Ctx,
 	/// The JSON string to extract values from.

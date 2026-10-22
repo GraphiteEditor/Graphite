@@ -1,83 +1,82 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
-use crate::application::{Editor, generate_uuid};
-use crate::consts::{DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION};
+use super::utility_types::PanelType;
+use crate::application::{Environment, generate_uuid};
+use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
-use crate::messages::frontend::utility_types::{DocumentInfo, FileFilter, PersistedState};
-use crate::messages::input_mapper::utility_types::keyboard::Key;
-use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
+use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
+use crate::messages::input_mapper::utility_types::keyboard::{Key, KeysGroup, LabeledShortcut};
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
-use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
-use crate::messages::portfolio::document_migration::*;
-use crate::messages::portfolio::document_storage_io::{build_or_open_working_copy, compare_storage_against_runtime, open_gdd_document};
-use crate::messages::portfolio::utility_types::FileContent;
+use crate::messages::portfolio::document_storage_io::{
+	DocumentStoreHandle, attach_container, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, open_storage, remove_stored_document,
+};
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::resource_storage::ResourcesHandle;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
+use document_container::AsyncContainer;
+use document_format::GddV1;
+use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
-use graphene_std::Color;
-use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use std::vec;
 
 #[derive(ExtractField)]
 pub struct PortfolioMessageContext<'a> {
+	pub environment: Environment,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
-#[derive(Debug, Default, ExtractField)]
+#[derive(Debug, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
-	unloaded_documents: HashMap<DocumentId, DocumentInfo>,
-	/// Pairs of `(info, raw serialized content)` for autosaved documents that failed to deserialize.
-	/// The info entries are folded back into `persisted_state_snapshot` so their on-disk autosave files survive garbage collection.
-	// TODO: Eventually remove this document upgrade code
-	failed_to_load_documents: HashMap<DocumentId, (DocumentInfo, String)>,
-	/// In-flight count of autosaved-document loads from the initial startup batch; the batched failure dialog fires when this hits 0.
-	// TODO: Eventually remove this document upgrade code
-	pending_initial_autosave_loads: usize,
-	/// Background eager loads whose trailing `SelectDocument` should be suppressed to keep focus on the user's active doc.
-	// TODO: Eventually remove this document upgrade code
-	pending_eager_loads: HashSet<DocumentId>,
+	loading_documents: HashMap<DocumentId, DocumentInfo>,
 	document_ids: VecDeque<DocumentId>,
 	pub(crate) active_document_id: Option<DocumentId>,
+	failed_documents: FailedDocumentsMessageHandler,
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
+	ingest: IngestMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
-	pub workspace_panel_layout: WorkspacePanelLayout,
-	working_copy_root: Option<PathBuf>,
-	/// Number of document not fully loaded. While non-zero, resource GC is skipped.
+	pub workspace: WorkspaceMessageHandler,
+	document_store: DocumentStoreHandle,
 	pending_opens: usize,
+	restore_select: Option<DocumentId>,
+	store_unavailable: bool,
 }
 
 #[message_handler_data]
 impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, context: PortfolioMessageContext) {
 		let PortfolioMessageContext {
+			environment,
 			ipp,
 			preferences,
 			animation,
 			current_tool,
+			tool_edit_target,
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
@@ -92,18 +91,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				{
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
+						tool_edit_target,
 						preferences,
 						viewport,
 						resource_storage,
-						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
-						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
-						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
+						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
+						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
+						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
 					};
-					document.process_message(message, responses, document_inputs)
+					document.process_message(message, responses, document_inputs);
+					refresh_transaction_edited_nodes(document, true, responses);
 				}
 			}
 			PortfolioMessage::PersistentState(message) => {
@@ -112,22 +114,40 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				self.persistent_state.process_message(message, responses, context);
 			}
+			PortfolioMessage::FailedDocuments(message) => {
+				let context = FailedDocumentsMessageContext { document_store: &self.document_store };
+				self.failed_documents.process_message(message, responses, context);
+			}
 			PortfolioMessage::Fonts(message) => {
-				let context = FontsMessageContext { resource_storage };
+				let context = FontsMessageContext {
+					resource_storage,
+					current_time: ipp.time,
+				};
 				self.fonts.process_message(message, responses, context);
+			}
+			PortfolioMessage::Ingest(message) => {
+				let context = IngestMessageContext {
+					document_open: self.active_document().is_some(),
+				};
+				self.ingest.process_message(message, responses, context);
+			}
+			PortfolioMessage::Workspace(message) => {
+				let context = WorkspaceMessageContext {
+					has_active_document: self.active_document_id.is_some(),
+					has_no_documents: self.document_ids.is_empty(),
+				};
+				self.workspace.process_message(message, responses, context);
 			}
 
 			// Messages
 			PortfolioMessage::Init => {
+				// Tell frontend to load persistent preferences
+				responses.add(FrontendMessage::TriggerLoadPreferences);
+
 				responses.add(PersistentStateMessage::ReadState);
 
 				// Initialize the frontend with environment information
-				responses.add(FrontendMessage::UpdatePlatform {
-					platform: Editor::environment().into(),
-				});
-
-				// Tell frontend to load persistent preferences
-				responses.add(FrontendMessage::TriggerLoadPreferences);
+				responses.add(FrontendMessage::UpdatePlatform { platform: environment.into() });
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -139,26 +159,28 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(MenuBarMessage::SendLayout);
 
 				// Send the initial workspace panel layout to the frontend
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+				responses.add(WorkspaceMessage::UpdatePanelsLayout);
 
 				// Request status bar info layout
 				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
-				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
+				// Send shortcuts for widgets created in the frontend which need shortcut tooltips, labeled here since they bypass the layout system
+				let shortcut = |keys: &[Key]| Some(ActionShortcut::Shortcut(LabeledShortcut::new(KeysGroup(keys.to_vec()), environment)));
 				responses.add(FrontendMessage::SendShortcutFullscreen {
-					shortcut: action_shortcut_manual!(Key::F11),
-					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
+					shortcut: shortcut(&[Key::F11]),
+					shortcut_mac: shortcut(&[Key::Control, Key::Command, Key::KeyF]),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
-					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Alt, Key::MouseLeft]),
 				});
 				responses.add(FrontendMessage::SendShortcutShiftClick {
-					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Shift, Key::MouseLeft]),
 				});
 
 				// Send the information for tooltips and categories for each node/input.
 				responses.add(FrontendMessage::SendUIMetadata {
 					node_descriptions: document_node_definitions::collect_node_descriptions(),
+					node_icons: document_node_definitions::collect_node_icons(),
 					node_types: document_node_definitions::collect_node_types(),
 				});
 			}
@@ -166,34 +188,35 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
+						tool_edit_target,
 						preferences,
 						viewport,
 						resource_storage,
-						data_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Data) && !self.workspace_panel_layout.focus_document,
-						layers_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
-						properties_panel_open: self.workspace_panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace_panel_layout.focus_document,
+						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
+						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
+						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
 					};
-					document.process_message(message, responses, document_inputs)
+					document.process_message(message, responses, document_inputs);
+					refresh_transaction_edited_nodes(document, self.active_document_id == Some(document_id), responses);
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
 				if let Some(document_id) = self.active_document_id
-					&& let Some(document) = self.active_document_mut()
+					&& self.documents.contains_key(&document_id)
 				{
-					document.set_auto_save_state(true);
 					responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 				}
 			}
 			PortfolioMessage::AutoSaveAllDocuments => {
 				for document_id in self.document_ids.iter() {
-					if let Some(document) = self.documents.get_mut(document_id)
+					if let Some(document) = self.documents.get(document_id)
 						&& !document.is_auto_saved()
 					{
-						document.set_auto_save_state(true);
 						responses.add(PortfolioMessage::AutoSaveDocument { document_id: *document_id });
 					}
 				}
@@ -201,15 +224,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PortfolioMessage::GarbageCollectResources);
 			}
 			PortfolioMessage::AutoSaveDocument { document_id } => {
-				let validate = preferences.validate_storage_round_trip;
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
+				let Some(container) = document.container.clone() else { return };
 
-				document.commit_storage_snapshot(&resource_storage.resources_mut(), validate);
-
-				responses.add(PersistentStateMessage::WriteDocument {
-					document_id,
-					document: document.serialize_document(),
-				});
+				match container.write_non_blocking(legacy_path(), document.serialize_document().as_bytes()) {
+					Ok(()) => {
+						document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+						document.set_auto_save_state(true);
+					}
+					Err(error) => {
+						document.set_auto_save_state(false);
+						log::error!("Autosave of {document_id:?} failed: {error}");
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Autosave is not working".to_string(),
+							description: format!("Save your documents manually to avoid losing changes.\n\n{error}"),
+						});
+					}
+				}
 				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
@@ -223,14 +254,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(ToolMessage::DeactivateTools);
 
 					// Clear relevant UI layouts if there are no documents
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
 					HintData::clear_layout(responses);
 				}
 
-				for document_id in &self.document_ids {
-					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
+				for document_id in self.document_ids.iter().copied().collect::<Vec<_>>() {
+					responses.add(remove_stored_document(self.document_store.clone(), document_id));
 				}
 
 				responses.add(PortfolioMessage::DestroyAllDocuments);
@@ -247,15 +278,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Is this the last document?
 				if self.document_ids.len() == 1 && self.document_ids[0] == document_id {
 					// Clear UI layouts that assume the existence of a document
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
 					HintData::clear_layout(responses);
 				}
 
-				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
+				// Actually delete the document (delay to delete document is required to let the document and Inspector messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
-				responses.add(PersistentStateMessage::DeleteDocument { document_id });
+				responses.add(remove_stored_document(self.document_store.clone(), document_id));
 
 				// Send the new list of document tab names
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -283,8 +314,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::DeleteDocument { document_id } => {
 				let document_index = self.document_index(document_id);
 				self.documents.remove(&document_id);
-				self.unloaded_documents.remove(&document_id);
+				self.loading_documents.remove(&document_id);
 				self.document_ids.remove(document_index);
+				if self.restore_select == Some(document_id) {
+					self.restore_select = None;
+				}
 
 				if self.document_ids.is_empty() {
 					self.active_document_id = None;
@@ -300,46 +334,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
-			PortfolioMessage::DocumentStorageMounted { document_id, reopened, gdd } => {
-				let Some(document) = self.documents.get_mut(&document_id) else {
-					// Document was closed before its working copy finished mounting.
-					return;
-				};
-				document.set_storage(gdd);
-				if !reopened {
-					document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
-					document.retire_storage_interaction();
-				}
-			}
 			PortfolioMessage::DestroyAllDocuments => {
 				// Empty the list of internal document data
 				self.documents.clear();
-				self.unloaded_documents.clear();
+				self.loading_documents.clear();
 				self.document_ids.clear();
 				self.active_document_id = None;
+				self.restore_select = None;
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::GarbageCollectResources => {
-				if !self.persistent_state.loaded() {
-					// We don't know what can be safely garbage collected
-					return;
-				}
-				if self.pending_opens > 0 {
-					// A document not fully loaded, skip garbage collection.
+				// The resources of documents that are not loaded yet are unknown, so GC waits for every load and for a successful store listing.
+				if !self.persistent_state.loaded() || self.pending_opens > 0 || !self.loading_documents.is_empty() || self.store_unavailable {
 					return;
 				}
 
 				let mut used_resources = HashSet::new();
-				for (id, info) in self.unloaded_documents.iter() {
-					if let Some(resources) = &info.resources {
-						used_resources.extend(resources.iter());
-					} else {
-						responses.add(PersistentStateMessage::ReadDocument { document_id: *id });
-						return;
-					}
-				}
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
@@ -366,13 +378,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::LoadPersistedState { state } => {
 				if let Some(layout) = state.workspace_layout {
-					self.workspace_panel_layout = layout;
-					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
+					self.workspace.panel_layout = layout;
+					responses.add(WorkspaceMessage::UpdatePanelsLayout);
 
 					// Refill panels whose content was lost when the layout load remounted their frontend components
-					for group_id in self.workspace_panel_layout.root.all_group_ids() {
-						if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
-							self.refresh_panel_content(panel_type, responses);
+					for group_id in self.workspace.panel_layout.root.all_group_ids() {
+						if let Some(panel_type) = self.workspace.panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
+							WorkspaceMessageHandler::refresh_panel_content(panel_type, self.active_document_id.is_some(), self.document_ids.is_empty(), responses);
 						}
 					}
 				}
@@ -383,150 +395,97 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					workspace_layout: _,
 				} = state;
 
-				// TODO: Eventually remove this document upgrade code
-				let mut newly_unloaded_ids = Vec::new();
-
 				for info in documents {
 					if !self.document_ids.contains(&info.id) {
 						self.document_ids.push_back(info.id);
-					}
-					if !self.documents.contains_key(&info.id) && !self.unloaded_documents.contains_key(&info.id) {
-						// TODO: Eventually remove this document upgrade code
-						newly_unloaded_ids.push(info.id);
-
-						self.unloaded_documents.insert(info.id, info);
+						self.loading_documents.insert(info.id, info);
 					}
 				}
+				self.restore_select = current_document;
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				responses.add(list_stored_documents(self.document_store.clone()));
+			}
+			PortfolioMessage::StoredDocumentsListed { document_ids } => {
+				let Some(stored) = document_ids else {
+					self.store_unavailable = true;
+					Self::storage_error("The stored documents could not be listed, so they cannot be opened.".to_string(), responses);
+					return;
+				};
+				let stored: HashSet<_> = stored.into_iter().collect();
 
-				let select_document_id = current_document.filter(|id| self.document_ids.contains(id)).or_else(|| self.document_ids.front().copied());
-
-				// Eagerly load every autosaved doc on startup so deserialization failures can be reported in one batched dialog at the end.
-				// The active doc's read is deferred to the `SelectDocument` below, but is still counted.
-				// TODO: Eventually remove this document upgrade code
-				self.pending_initial_autosave_loads = self.pending_initial_autosave_loads.saturating_add(newly_unloaded_ids.len());
-
-				// TODO: Eventually remove this document upgrade code
-				for document_id in &newly_unloaded_ids {
-					if Some(*document_id) != select_document_id {
-						self.pending_eager_loads.insert(*document_id);
-						responses.add(PersistentStateMessage::ReadDocument { document_id: *document_id });
+				// Session entries without stored content are dropped; stored documents the session does not know are appended.
+				self.document_ids.retain(|id| stored.contains(id) || self.documents.contains_key(id));
+				self.loading_documents.retain(|id, _| stored.contains(id));
+				for document_id in stored {
+					if !self.document_ids.contains(&document_id) {
+						self.document_ids.push_back(document_id);
+						self.loading_documents.insert(
+							document_id,
+							DocumentInfo {
+								id: document_id,
+								name: String::new(),
+								path: None,
+								is_saved: false,
+							},
+						);
 					}
 				}
 
-				if let Some(document_id) = select_document_id {
-					responses.add(PortfolioMessage::SelectDocument { document_id });
+				for document_id in self.loading_documents.keys().copied().collect::<Vec<_>>() {
+					self.pending_opens += 1;
+					responses.add(load_stored_document(
+						self.document_store.clone(),
+						document_id,
+						resource_storage.resources_mut(),
+						reset_node_definitions_on_open,
+						!preferences.save_as_gdd,
+					));
 				}
-				// TODO: Eventually remove this document upgrade code
-				else if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
-					responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
-				}
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			PortfolioMessage::LoadDocumentContent {
+			PortfolioMessage::StoredDocumentLoaded {
 				document_id,
-				document_serialized_content,
+				document,
+				gdd,
+				declarations,
 			} => {
-				let Some(info) = self.unloaded_documents.remove(&document_id) else {
-					log::error!("Tried to load content for non existent document");
+				self.pending_opens = self.pending_opens.saturating_sub(1);
+				let Some(info) = self.loading_documents.remove(&document_id) else {
+					// Closed while loading.
+					responses.add(remove_stored_document(self.document_store.clone(), document_id));
 					return;
 				};
 
-				responses.add(PortfolioMessage::LoadDocument {
-					document_id,
-					document_name: Some(info.name),
-					document_path: info.path,
-					document_is_auto_saved: true,
-					document_is_saved: info.is_saved,
-					document_serialized_content,
-				});
-
-				// Suppress auto-select for startup eager loads to keep focus on the user's active doc
-				// TODO: Eventually remove this document upgrade code
-				// TODO: (But keep the inner logic unconditionally, just remove the condition)
-				if !self.pending_eager_loads.remove(&document_id) {
-					responses.add(PortfolioMessage::SelectDocument { document_id });
-				}
-			}
-			// TODO: Eventually remove this document upgrade code
-			PortfolioMessage::ShowFailedToLoadDocumentsDialog => {
-				if self.failed_to_load_documents.is_empty() {
-					return;
-				}
-				let failed_document_names = self.failed_to_load_documents.values().map(|(info, _)| display_name_with_fallback(info)).collect();
-				let dialog = simple_dialogs::FailedToLoadDocumentsDialog { failed_document_names };
-				dialog.send_dialog_to_frontend(responses);
-			}
-			// TODO: Eventually remove this document upgrade code
-			PortfolioMessage::DiscardFailedToLoadDocuments => {
-				let failed = std::mem::take(&mut self.failed_to_load_documents);
-				for document_id in failed.keys() {
-					self.document_ids.retain(|id| id != document_id);
-					responses.add(PersistentStateMessage::DeleteDocument { document_id: *document_id });
-				}
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-				responses.add(PersistentStateMessage::WriteState);
-			}
-			// TODO: Eventually remove this document upgrade code
-			PortfolioMessage::DownloadFailedToLoadDocuments => {
-				if self.failed_to_load_documents.is_empty() {
-					return;
-				}
-
-				let mut used_names: HashMap<String, u32> = HashMap::new();
-				let files: Vec<(String, Vec<u8>)> = self
-					.failed_to_load_documents
-					.values()
-					.map(|(info, content)| {
-						let stem = sanitize_filename_stem(&info.name).unwrap_or_else(|| format!("document-{:x}", info.id.0));
-						let base = format!("{stem}.{FILE_EXTENSION}");
-						let unique = match used_names.get(&base).copied() {
-							None => {
-								used_names.insert(base.clone(), 1);
-								base
-							}
-							Some(n) => {
-								used_names.insert(base.clone(), n + 1);
-								format!("{stem} ({n}).{FILE_EXTENSION}")
-							}
+				match document.map(|boxed| *boxed) {
+					Some(mut document) => {
+						// The legacy file carries no name, so a document the session does not know gets a fresh one.
+						document.name = if info.name.trim().is_empty() {
+							self.generate_new_document_name(Some(document_id))
+						} else {
+							info.name
 						};
-						(unique, content.as_bytes().to_vec())
-					})
-					.collect();
-
-				const FOLDER_NAME: &str = "Graphite Recovered Documents";
-
-				if files.len() == 1 {
-					let (filename, content) = files.into_iter().next().expect("just checked there's one entry");
-					responses.add(FrontendMessage::TriggerSaveFile {
-						name: filename,
-						folder: None,
-						filters: vec![FileFilter {
-							name: "Graphite Document".into(),
-							extensions: vec![FILE_EXTENSION.into()],
-						}],
-						content: serde_bytes::ByteBuf::from(content),
-					});
-				} else {
-					match build_recovery_zip(&files) {
-						Ok(zip_bytes) => responses.add(FrontendMessage::TriggerSaveFile {
-							name: format!("{FOLDER_NAME}.zip"),
-							folder: None,
-							filters: vec![FileFilter {
-								name: "Zip Archive".into(),
-								extensions: vec!["zip".into()],
-							}],
-							content: serde_bytes::ByteBuf::from(zip_bytes),
-						}),
-						Err(e) => {
-							log::error!("Failed to build recovery zip: {e}");
-							responses.add(DialogMessage::DisplayDialogError {
-								title: "Failed to download".to_string(),
-								description: format!("Could not bundle the failed documents for download.\n\n{e}"),
-							});
+						document.path = info.path;
+						document.set_save_state(info.is_saved);
+						self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+						self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+					}
+					None => {
+						self.document_ids.retain(|id| *id != document_id);
+						self.failed_documents.record_failure(document_id, info);
+						if self.active_document_id == Some(document_id) {
+							self.active_document_id = None;
 						}
 					}
 				}
+
+				if self.active_document().is_none() {
+					self.select_after_load(responses);
+				}
+				if self.pending_opens == 0 {
+					responses.add(FailedDocumentsMessage::ShowFailedToLoadDocumentsDialog);
+				}
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
@@ -540,114 +499,104 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
+				self.load_document(new_document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
-			PortfolioMessage::MoveAllPanelTabs {
-				source_group,
-				target_group,
-				insert_index,
+			PortfolioMessage::OpenLegacyDocumentFile {
+				document_name,
+				document_path,
+				document_serialized_content,
 			} => {
-				if source_group == target_group {
+				let mut document = match load_legacy_document(document_serialized_content, &resource_storage.resources_mut(), reset_node_definitions_on_open) {
+					Ok(document) => document,
+					Err(error) => {
+						log::error!("{error}");
+						let document_name = opened_document_name(document_name, document_path.as_deref());
+						simple_dialogs::FailedToOpenDocumentDialog { document_name }.send_dialog_to_frontend(responses);
+						return;
+					}
+				};
+				let document_id = DocumentId(generate_uuid());
+				document.set_save_state(true);
+				document.name = self.resolve_document_name(opened_document_name(document_name, document_path.as_deref()), None);
+				document.path = document_path;
+
+				self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
+				responses.add(AppWindowMessage::Focus);
+			}
+			PortfolioMessage::OpenDocumentFile {
+				document_name,
+				document_path,
+				content,
+			} => {
+				let document_id = DocumentId(generate_uuid());
+
+				// Suppress resource GC until the open completes
+				self.pending_opens += 1;
+
+				responses.add(open_document_file(
+					self.document_store.clone(),
+					document_id,
+					document_name,
+					document_path,
+					content,
+					resource_storage.resources_mut(),
+					reset_node_definitions_on_open,
+					!preferences.save_as_gdd,
+				));
+			}
+			PortfolioMessage::DocumentFileLoaded {
+				document_id,
+				document_name,
+				document_path,
+				document,
+				gdd,
+				declarations,
+			} => {
+				self.pending_opens = self.pending_opens.saturating_sub(1);
+
+				let Some(mut document) = document.map(|boxed| *boxed) else {
+					let document_name = opened_document_name(document_name, document_path.as_deref());
+					simple_dialogs::FailedToOpenDocumentDialog { document_name }.send_dialog_to_frontend(responses);
+					responses.add(remove_stored_document(self.document_store.clone(), document_id));
 					return;
-				}
+				};
+				document.set_save_state(true);
+				document.name = self.resolve_document_name(opened_document_name(document_name, document_path.as_deref()), None);
+				document.path = document_path;
 
-				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
-				let tabs: Vec<PanelType> = source_state.tabs.clone();
-				let source_active_tab_index = source_state.active_tab_index;
-				if tabs.is_empty() {
-					return;
-				}
-
-				// Validate that the target group exists before modifying the source
-				if self.workspace_panel_layout.panel_group(target_group).is_none() {
-					log::error!("Target panel group {target_group:?} not found");
-					return;
-				}
-
-				// Destroy layouts for all moved tabs and the displaced target tab
-				for &panel_type in &tabs {
-					Self::destroy_panel_layouts(panel_type, responses);
-				}
-				if let Some(old_target_panel) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
-					Self::destroy_panel_layouts(old_target_panel, responses);
-				}
-
-				// Clear the source group
-				if let Some(source) = self.workspace_panel_layout.panel_group_mut(source_group) {
-					source.tabs.clear();
-					source.active_tab_index = 0;
-				}
-
-				// Insert all tabs into the target group, preserving which tab was active in the source
-				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
-					let index = insert_index.min(target.tabs.len());
-					target.tabs.splice(index..index, tabs.iter().copied());
-					target.active_tab_index = index + source_active_tab_index.min(tabs.len().saturating_sub(1));
-				}
-
-				self.workspace_panel_layout.prune();
-
-				responses.add(MenuBarMessage::SendLayout);
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-
-				// Refresh the new active tab
-				if let Some(panel_type) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
-					self.refresh_panel_content(panel_type, responses);
+				self.load_document(document, document_id, resource_storage.resources_mut(), !preferences.save_as_gdd, responses);
+				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
+			}
+			PortfolioMessage::StorageUpdated => {
+				for (&document_id, document) in &mut self.documents {
+					match (preferences.save_as_gdd, document.storage().is_some(), document.container.clone()) {
+						(true, false, Some(container)) => responses.add(open_storage(container, document_id, resource_storage.resources_mut())),
+						(false, true, _) => document.clear_storage(),
+						_ => {}
+					}
 				}
 			}
-			PortfolioMessage::MovePanelTab {
-				source_group,
-				target_group,
-				insert_index,
+			PortfolioMessage::StorageAttached {
+				document_id,
+				container,
+				gdd,
+				declarations,
 			} => {
-				if source_group == target_group {
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					// Closed while its storage was opening.
+					responses.add(remove_stored_document(self.document_store.clone(), document_id));
 					return;
-				}
-
-				let Some(source_state) = self.workspace_panel_layout.panel_group(source_group) else { return };
-				let Some(panel_type) = source_state.active_panel_type() else { return };
-
-				// Validate that the target group exists before modifying the source
-				if self.workspace_panel_layout.panel_group(target_group).is_none() {
-					log::error!("Target panel group {target_group:?} not found");
+				};
+				let Some(container) = container else {
+					Self::storage_error("The document's storage could not be opened, so it will not be autosaved.".to_string(), responses);
 					return;
-				}
-
-				// Destroy layouts for the moved panel (so backend and frontend start in sync when it remounts)
-				// and for the panel that was previously active in the target panel group (it will be displaced by the incoming tab)
-				Self::destroy_panel_layouts(panel_type, responses);
-				if let Some(old_target_panel) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
-					Self::destroy_panel_layouts(old_target_panel, responses);
-				}
-
-				// Remove from source panel group
-				if let Some(source) = self.workspace_panel_layout.panel_group_mut(source_group) {
-					source.tabs.retain(|&t| t != panel_type);
-					source.active_tab_index = source.active_tab_index.min(source.tabs.len().saturating_sub(1));
-				}
-
-				// Insert into target panel group
-				if let Some(target) = self.workspace_panel_layout.panel_group_mut(target_group) {
-					let index = insert_index.min(target.tabs.len());
-					target.tabs.insert(index, panel_type);
-					target.active_tab_index = index;
-				}
-
-				// Remove empty panel groups from the tree
-				self.workspace_panel_layout.prune();
-
-				responses.add(MenuBarMessage::SendLayout);
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-
-				// Refresh the moved panel's content in its new location
-				self.refresh_panel_content(panel_type, responses);
-
-				// Refresh the source panel group's newly active tab (if any remain) so it's not left stale
-				if let Some(new_source_active) = self.workspace_panel_layout.panel_group(source_group).and_then(|g| g.active_panel_type()) {
-					Self::destroy_panel_layouts(new_source_active, responses);
-					self.refresh_panel_content(new_source_active, responses);
-				}
+				};
+				document.container = Some(container);
+				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+				self.save_if_needed(document_id, responses);
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {
@@ -658,423 +607,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
 				}
 			}
-			PortfolioMessage::Open => {
-				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerOpen {
-					filters: vec![
-						FileFilter {
-							name: "Graphite Document".into(),
-							extensions: vec![FILE_EXTENSION.into(), GDD_FILE_EXTENSION.into()],
-						},
-						FileFilter {
-							name: "Image".into(),
-							extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
-						},
-					],
-				});
-			}
-			PortfolioMessage::Import => {
-				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				// TODO: Also offer the Graphite document filter once importing Graphite documents as nodes is supported
-				responses.add(FrontendMessage::TriggerImport {
-					filters: vec![FileFilter {
-						name: "Image".into(),
-						extensions: vec!["svg".into(), "png".into(), "jpg".into(), "jpeg".into(), "bmp".into(), "gif".into()],
-					}],
-				});
-			}
-			PortfolioMessage::OpenFile { path, content } => {
-				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
-				match Self::read_file(&path, content) {
-					FileContent::Document(content) => {
-						let document_path = if path.is_absolute() { Some(path) } else { None };
-						responses.add(PortfolioMessage::OpenDocumentFile {
-							document_name: name,
-							document_path,
-							document_serialized_content: content,
-						});
-					}
-					FileContent::GddDocument(content) => {
-						let document_path = if path.is_absolute() { Some(path) } else { None };
-						responses.add(PortfolioMessage::OpenGddDocument {
-							document_name: name,
-							document_path,
-							content,
-						});
-					}
-					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::OpenSvg { name, svg });
-					}
-					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::OpenImage { name, image });
-					}
-					FileContent::Unsupported => {
-						// TODO: Show a more thoughtfully designed error message to the user
-						responses.add(DialogMessage::DisplayDialogError {
-							title: "Unsupported format".into(),
-							description: "This file cannot be opened because it is not a supported image file type.".into(),
-						})
-					}
+			PortfolioMessage::PrevDocument => {
+				if let Some(active_document_id) = self.active_document_id {
+					let len = self.document_ids.len();
+					let current_index = self.document_index(active_document_id);
+					let prev_index = (current_index + len - 1) % len;
+					let prev_id = self.document_ids[prev_index];
+					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
-			}
-			PortfolioMessage::ImportFile { path, content } => {
-				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
-				match Self::read_file(&path, content) {
-					FileContent::Document(content) => {
-						// TODO: Consider importing a document as a node into the current document
-						// For now treat importing a document as opening it
-						responses.add(PortfolioMessage::OpenDocumentFile {
-							document_name: name,
-							document_path: Some(path),
-							document_serialized_content: content,
-						});
-					}
-					FileContent::GddDocument(content) => {
-						responses.add(PortfolioMessage::OpenGddDocument {
-							document_name: name,
-							document_path: Some(path),
-							content,
-						});
-					}
-					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::InsertSvg {
-							name,
-							svg,
-							mouse: None,
-							parent_and_insert_index: None,
-						});
-					}
-					FileContent::Image(image) => {
-						responses.add(PortfolioMessage::InsertImage {
-							name,
-							image,
-							mouse: None,
-							parent_and_insert_index: None,
-						});
-					}
-					FileContent::Unsupported => {
-						// TODO: Show a more thoughtfully designed error message to the user
-						responses.add(DialogMessage::DisplayDialogError {
-							title: "Unsupported format".into(),
-							description: "This file cannot be imported because it is not a supported image file type.".into(),
-						})
-					}
-				}
-			}
-			PortfolioMessage::OpenDocumentFile {
-				document_name,
-				document_path,
-				document_serialized_content,
-			} => {
-				let document_id = DocumentId(generate_uuid());
-				responses.add(PortfolioMessage::LoadDocument {
-					document_id,
-					document_name,
-					document_path,
-					document_is_auto_saved: false,
-					document_is_saved: true,
-					document_serialized_content,
-				});
-				responses.add(PortfolioMessage::SelectDocument { document_id });
-			}
-			PortfolioMessage::OpenGddDocument {
-				document_name,
-				document_path,
-				content,
-			} => {
-				let document_id = DocumentId(generate_uuid());
-
-				// Suppress resource GC until the open completes
-				self.pending_opens += 1;
-
-				responses.add(open_gdd_document(
-					self.working_copy_root.clone(),
-					document_id,
-					document_name,
-					document_path,
-					content,
-					resource_storage.resources_mut(),
-					preferences.validate_storage_round_trip,
-				));
-			}
-			PortfolioMessage::GddDocumentLoaded {
-				document_id,
-				document_name,
-				document_path,
-				document,
-			} => {
-				self.pending_opens = self.pending_opens.saturating_sub(1);
-
-				let Some(mut document) = document.map(|boxed| *boxed) else {
-					let name = document_name
-						.filter(|name| !name.trim().is_empty())
-						.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
-						.unwrap_or_default();
-					simple_dialogs::FailedToOpenDocumentDialog { document_name: name }.send_dialog_to_frontend(responses);
-					return;
-				};
-				document.finalize_storage_load();
-				document.set_save_state(true);
-
-				let name = document_name
-					.filter(|name| !name.trim().is_empty())
-					.or_else(|| document_path.as_ref().and_then(|path| path.file_stem()).map(|stem| stem.to_string_lossy().into_owned()))
-					.unwrap_or_else(|| DEFAULT_DOCUMENT_NAME.to_string());
-				document.name = self.resolve_document_name(name, None);
-				document.path = document_path;
-
-				// The working copy is already mounted (we opened the .gdd), so skip the async re-mount.
-				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
-				responses.add(PortfolioMessage::SelectDocument { document_id });
-			}
-			PortfolioMessage::GddUndoRedoRebuilt { document_id, had_oracle, interface } => {
-				let Some(document) = self.documents.get_mut(&document_id) else {
-					// Document was closed before its undo/redo rebuild completed; drop the payload.
-					return;
-				};
-				let Some(interface) = interface.map(|boxed| *boxed) else {
-					// The rebuild failed and already logged; leave the live document untouched.
-					return;
-				};
-
-				document.apply_gdd_cursor_rebuild(interface, had_oracle, preferences.validate_storage_round_trip, responses);
-			}
-			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
-				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
-				responses.add(MenuBarMessage::SendLayout);
-			}
-			PortfolioMessage::LoadDocument {
-				document_id,
-				document_name,
-				document_path,
-				document_is_auto_saved,
-				document_is_saved,
-				document_serialized_content,
-			} => {
-				// Upgrade the document being opened to use fresh copies of all nodes
-				let reset_node_definitions_on_open = reset_node_definitions_on_open || document_migration_reset_node_definition(&document_serialized_content);
-				// Upgrade the document being opened with string replacements on the original JSON
-				let document_serialized_content = document_migration_string_preprocessing(document_serialized_content);
-				// Upgrade resources from being referend by hash to beeing referened by ID
-				let (document_serialized_content, resource_hash_to_id_migration_map) = document_migration_replace_resources_referenced_by_hash(document_serialized_content);
-
-				// Deserialize the document
-				let document = DocumentMessageHandler::deserialize_document(&document_serialized_content);
-
-				// Display an error to the user if the document could not be opened
-				let mut document = match document {
-					Ok(document) => document,
-					Err(e) => {
-						log::error!("{e}");
-						// TODO: Eventually remove this document upgrade code
-						// TODO: (Only the `if` branch, the `else` branch's manual-open dialog stays)
-						if document_is_auto_saved {
-							let name = document_name.unwrap_or_default();
-							let info = DocumentInfo {
-								id: document_id,
-								name,
-								resources: None,
-								path: document_path,
-								is_saved: document_is_saved,
-							};
-							self.document_ids.retain(|id| id != &document_id);
-							self.failed_to_load_documents.insert(document_id, (info, document_serialized_content));
-
-							if self.active_document_id == Some(document_id) {
-								self.active_document_id = None;
-								if let Some(next_id) = self.document_ids.front().copied() {
-									responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
-								}
-							}
-
-							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-							self.tick_autosave_load_progress(responses, true);
-						} else {
-							let name = document_name
-								.filter(|n| !n.trim().is_empty())
-								.or_else(|| document_path.as_ref().and_then(|p| p.file_stem()).map(|s| s.to_string_lossy().into_owned()))
-								.unwrap_or_default();
-							let dialog = simple_dialogs::FailedToOpenDocumentDialog { document_name: name };
-							dialog.send_dialog_to_frontend(responses);
-						}
-
-						return;
-					}
-				};
-
-				// Upgrade the document's nodes to be compatible with the latest version
-				document_migration_upgrades(&mut document, reset_node_definitions_on_open);
-
-				// Load the document's embedded resources into the resource storage
-				std::mem::take(&mut document.resources.embedded).into_iter().for_each(|(hash, resource)| {
-					let data: Arc<[u8]> = Arc::from(resource.as_ref());
-					if ResourceHash::from(data.as_ref()) != hash {
-						log::error!("Resource hash mismatch for resource with hash {hash}");
-						return;
-					}
-					responses.add(ResourceStorageMessage::Store { data });
-
-					// TODO: Eventually remove this document upgrade code
-					// Register any resources that were previously referenced by hash
-					if let Some(id) = resource_hash_to_id_migration_map.get(&hash)
-						&& !document.resources.registry.contains(id)
-					{
-						document.resources.registry.resolve(id, hash);
-						document.resources.registry.push_source_back(id, DataSource::Embedded);
-					}
-				});
-
-				// Ensure each node has the metadata for its inputs
-				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
-					document.network_interface.validate_input_metadata(node_id, node, &path);
-					document.network_interface.validate_output_names(node_id, node, &path);
-				}
-
-				// Ensure layers are positioned as stacks if they are upstream siblings of another layer
-				document.network_interface.load_structure();
-				let all_layers = LayerNodeIdentifier::ROOT_PARENT.descendants(document.network_interface.document_metadata()).collect::<Vec<_>>();
-				for layer in all_layers {
-					let Some((downstream_node, input_index)) = document
-						.network_interface
-						.outward_wires(&[])
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::primary_output(layer.to_node())))
-						.and_then(|outward_wires| outward_wires.first())
-						.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
-					else {
-						continue;
-					};
-
-					// If the downstream node is a layer and the input is the first input and the current layer is not in a stack
-					if input_index == 0 && document.network_interface.is_layer(&downstream_node, &[]) && !document.network_interface.is_stack(&layer.to_node(), &[]) {
-						// Ensure the layer is horizontally aligned with the downstream layer to prevent changing the layout of old files
-						let (Some(layer_position), Some(downstream_position)) =
-							(document.network_interface.position(&layer.to_node(), &[]), document.network_interface.position(&downstream_node, &[]))
-						else {
-							log::error!("Could not get position for layer {:?} or downstream node {} when opening file", layer.to_node(), downstream_node);
-							continue;
-						};
-
-						if layer_position.x == downstream_position.x {
-							document.network_interface.set_stack_position_calculated_offset(&layer.to_node(), &downstream_node, &[]);
-						}
-					}
-				}
-
-				// Set the save state of the document based on what's given to us by the caller to this message
-				document.set_auto_save_state(document_is_auto_saved);
-				document.set_save_state(document_is_saved);
-
-				let document_name_from_path = document_path.as_ref().and_then(|path| {
-					if path.extension().is_some_and(|extension| extension == FILE_EXTENSION || extension == GDD_FILE_EXTENSION) {
-						path.file_stem().map(|stem| stem.to_string_lossy().to_string())
-					} else {
-						None
-					}
-				});
-
-				let candidate_name = match (document_name, document_path, document_name_from_path) {
-					(Some(name), _, None) => name,
-					(_, Some(path), Some(name)) => {
-						document.path = Some(path);
-						name
-					}
-					(_, _, Some(name)) => name,
-					_ => String::new(),
-				};
-				document.name = self.resolve_document_name(candidate_name, None);
-
-				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, resource_storage, preferences.validate_storage_round_trip, responses);
-
-				responses.add(AppWindowMessage::Focus);
-
-				// TODO: Eventually remove this document upgrade code
-				if document_is_auto_saved {
-					self.tick_autosave_load_progress(responses, false);
-				}
-			}
-			PortfolioMessage::OpenImage { name, image } => {
-				// `NewDocumentWithName`'s handler routes empty/None-equivalent names through `resolve_document_name` which assigns the next available "Untitled Document {N}".
-				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or_default(),
-				});
-
-				responses.add(DocumentMessage::InsertImage {
-					name,
-					image,
-					mouse: None,
-					parent_and_insert_index: None,
-					place_at_origin: true,
-				});
-
-				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						DocumentMessage::WrapContentInArtboard {
-							place_artboard_at_origin: true,
-							artboard_canvas: None,
-						}
-						.into(),
-					],
-				});
-				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-				});
-			}
-			PortfolioMessage::OpenSvg { name, svg } => {
-				responses.add(PortfolioMessage::NewDocumentWithName {
-					name: name.clone().unwrap_or_default(),
-				});
-
-				// Parse the SVG to extract its declared canvas origin and dimensions from the viewBox attribute.
-				// This preserves the full canvas rather than measuring only the tighter rendered content bounding box.
-				let artboard_canvas = usvg::roxmltree::Document::parse(&svg)
-					.ok()
-					.and_then(|doc| {
-						let vb = doc.root_element().attribute("viewBox")?;
-						let nums: Vec<f64> = vb
-							.split(|c: char| c.is_ascii_whitespace() || c == ',')
-							.filter(|s| !s.is_empty())
-							.filter_map(|s| s.parse().ok())
-							.collect();
-						if nums.len() >= 4 {
-							Some((
-								glam::IVec2::new(nums[0].round() as i32, nums[1].round() as i32),
-								glam::IVec2::new(nums[2].round() as i32, nums[3].round() as i32),
-							))
-						} else {
-							None
-						}
-					})
-					.or_else(|| {
-						// Fall back to the viewport size when there is no viewBox attribute
-						usvg::Tree::from_str(&svg, &usvg::Options::default()).ok().map(|tree| {
-							let size = tree.size();
-							(glam::IVec2::ZERO, glam::IVec2::new(size.width().round() as i32, size.height().round() as i32))
-						})
-					});
-
-				responses.add(DocumentMessage::InsertSvg {
-					name,
-					svg,
-					mouse: None,
-					parent_and_insert_index: None,
-					place_at_origin: true,
-				});
-
-				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
-				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						DocumentMessage::WrapContentInArtboard {
-							place_artboard_at_origin: true,
-							artboard_canvas,
-						}
-						.into(),
-					],
-				});
-				responses.add(DeferMessage::AfterNavigationReady {
-					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-				});
 			}
 			PortfolioMessage::CenterLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
@@ -1181,51 +721,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
-			PortfolioMessage::InsertImage {
-				name,
-				image,
-				mouse,
-				parent_and_insert_index,
-			} => {
-				if self.document_ids.is_empty() {
-					responses.add(PortfolioMessage::OpenImage { name, image });
-				} else {
-					responses.add(DocumentMessage::InsertImage {
-						name,
-						image,
-						mouse,
-						parent_and_insert_index,
-						place_at_origin: false,
-					});
-				}
-			}
-			PortfolioMessage::InsertSvg {
-				name,
-				svg,
-				mouse,
-				parent_and_insert_index,
-			} => {
-				if self.document_ids.is_empty() {
-					responses.add(PortfolioMessage::OpenSvg { name, svg });
-				} else {
-					responses.add(DocumentMessage::InsertSvg {
-						name,
-						svg,
-						mouse,
-						parent_and_insert_index,
-						place_at_origin: false,
-					});
-				}
-			}
-			PortfolioMessage::PrevDocument => {
-				if let Some(active_document_id) = self.active_document_id {
-					let len = self.document_ids.len();
-					let current_index = self.document_index(active_document_id);
-					let prev_index = (current_index + len - 1) % len;
-					let prev_id = self.document_ids[prev_index];
-					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
-				}
-			}
 			PortfolioMessage::ReorderDocument { document_id, new_index } => {
 				let new_index = new_index.min(self.document_ids.len().saturating_sub(1));
 				let Some(current_index) = self.document_ids.iter().position(|&id| id == document_id) else {
@@ -1244,25 +739,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
-			PortfolioMessage::ReorderPanelGroupTab { group, old_index, new_index } => {
-				let Some(group_state) = self.workspace_panel_layout.panel_group_mut(group) else { return };
-
-				if old_index < group_state.tabs.len() && new_index < group_state.tabs.len() && old_index != new_index {
-					let tab = group_state.tabs.remove(old_index);
-					group_state.tabs.insert(new_index, tab);
-
-					// Keep the active tab following the reorder
-					if group_state.active_tab_index == old_index {
-						group_state.active_tab_index = new_index;
-					} else if old_index < group_state.active_tab_index && new_index >= group_state.active_tab_index {
-						group_state.active_tab_index = group_state.active_tab_index.saturating_sub(1);
-					} else if old_index > group_state.active_tab_index && new_index <= group_state.active_tab_index {
-						group_state.active_tab_index += 1;
-					}
-
-					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				}
-			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
@@ -1277,12 +753,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							ShortcutLabel::new(action_shortcut!(DialogMessageDiscriminant::RequestNewDocumentDialog)).widget_instance(),
 						],
 						vec![
-							TextButton::new("Open Document")
-								.icon("Folder")
-								.flush(true)
-								.on_commit(|_| PortfolioMessage::Open.into())
-								.widget_instance(),
-							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::Open)).widget_instance(),
+							TextButton::new("Open Document").icon("Folder").flush(true).on_commit(|_| IngestMessage::Open.into()).widget_instance(),
+							ShortcutLabel::new(action_shortcut!(IngestMessageDiscriminant::Open)).widget_instance(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
@@ -1323,76 +795,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					layout_target: LayoutTarget::StatusBarInfo,
 				});
 			}
-			PortfolioMessage::SetPanelGroupActiveTab { group, tab_index } => {
-				let Some(group_state) = self.workspace_panel_layout.panel_group(group) else { return };
-				if tab_index < group_state.tabs.len() && tab_index != group_state.active_tab_index {
-					// Destroy layouts for the old and new panels so the backend's diffing state is in sync with the frontend's fresh mount
-					if let Some(old_panel_type) = group_state.active_panel_type() {
-						Self::destroy_panel_layouts(old_panel_type, responses);
-					}
-					let new_panel_type = group_state.tabs[tab_index];
-					Self::destroy_panel_layouts(new_panel_type, responses);
-
-					// Update the active tab index for the panel
-					if let Some(group_state) = self.workspace_panel_layout.panel_group_mut(group) {
-						group_state.active_tab_index = tab_index;
-					}
-
-					// Send the layout update first so the frontend mounts the new panel component before it receives content
-					responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-
-					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group).and_then(|g| g.active_panel_type()) {
-						self.refresh_panel_content(panel_type, responses);
-					}
-				}
-			}
-			PortfolioMessage::SplitPanelGroup {
-				target_group,
-				direction,
-				tabs,
-				active_tab_index,
-			} => {
-				// Destroy layouts for the dragged tabs and the target group's active panel (it may get remounted by the frontend)
-				for &panel_type in &tabs {
-					Self::destroy_panel_layouts(panel_type, responses);
-				}
-				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
-					Self::destroy_panel_layouts(target_active, responses);
-				}
-
-				// Preserve the source panel's visual weight at its new location
-				let source_slot_size = self.workspace_panel_layout.find_source_slot_size(&tabs);
-
-				// Remove the dragged tabs from their current panel groups (without pruning, so the target group survives)
-				for &panel_type in &tabs {
-					self.remove_panel_from_layout(panel_type);
-				}
-
-				// Create the new panel group adjacent to the target, then prune empty groups
-				let Some(new_id) = self.workspace_panel_layout.split_panel_group(target_group, direction, tabs.clone(), active_tab_index, source_slot_size) else {
-					log::error!("Failed to insert split adjacent to panel group {target_group:?}");
-					return;
-				};
-				self.workspace_panel_layout.prune();
-
-				responses.add(MenuBarMessage::SendLayout);
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-
-				// Refresh the new panel group's active tab
-				if let Some(panel_type) = self.workspace_panel_layout.panel_group(new_id).and_then(|g| g.active_panel_type()) {
-					self.refresh_panel_content(panel_type, responses);
-				}
-
-				// Refresh the target group's active panel since its component may have been remounted
-				if let Some(target_active) = self.workspace_panel_layout.panel_group(target_group).and_then(|g| g.active_panel_type()) {
-					self.refresh_panel_content(target_active, responses);
-				}
-			}
-			PortfolioMessage::RenameDocument { new_name } => {
-				let resolved_name = self.resolve_document_name(new_name, self.active_document_id);
-				responses.add(DocumentMessage::RenameDocument { new_name: resolved_name });
-			}
 			PortfolioMessage::SelectDocument { document_id } => {
+				// The document we are leaving won't get the pointer up that ends a wire drag in its graph, so abort the drag there before switching
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+					&& document.end_node_graph_wire_in_progress(responses)
+				{
+					responses.add(DocumentMessage::AbortTransaction);
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+					return;
+				}
+
+				// The document we are leaving won't get the frames that settle what glides in its graph, so it settles at once
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+				{
+					document.node_graph_handler.stop_gliding(&document.network_interface, responses);
+				}
+
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {
@@ -1405,18 +825,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					node_graph_open = document.is_graph_overlay_open();
 				}
 
-				if self.unloaded_documents.contains_key(&document_id) {
-					let already_selected = self.active_document_id == Some(document_id);
-
+				if self.loading_documents.contains_key(&document_id) {
 					self.active_document_id = Some(document_id);
+					self.restore_select = Some(document_id);
 					responses.add(MenuBarMessage::SendLayout);
 					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 					responses.add(FrontendMessage::UpdateActiveDocument { document_id });
-
-					if !already_selected {
-						responses.add(PersistentStateMessage::ReadDocument { document_id });
-					}
-
 					return;
 				}
 
@@ -1427,6 +841,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Set the new active document ID
 				self.active_document_id = Some(document_id);
+				self.restore_select = None;
 
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
@@ -1455,8 +870,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.is_loaded = true;
 					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 				}
+			}
+			PortfolioMessage::RenameDocument { new_name } => {
+				let resolved_name = self.resolve_document_name(new_name, self.active_document_id);
+				responses.add(DocumentMessage::RenameDocument { new_name: resolved_name });
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				name,
@@ -1486,6 +905,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
+			PortfolioMessage::SaveRasterizedExport { name, file_type, width, height, data } => match file_type.encode(width, height, data) {
+				Ok(content) => responses.add(FrontendMessage::TriggerSaveFile {
+					name,
+					folder: None,
+					filters: vec![file_type.file_filter()],
+					content: content.into(),
+				}),
+				Err(description) => responses.add(DialogMessage::DisplayDialogError {
+					title: "Unable to export document".to_string(),
+					description,
+				}),
+			},
 			PortfolioMessage::SubmitActiveGraphRender => {
 				if let Some(document_id) = self.active_document_id {
 					responses.add(PortfolioMessage::SubmitGraphRender { document_id, ignore_hash: false });
@@ -1574,46 +1005,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
-			PortfolioMessage::ToggleFocusDocument => {
-				self.workspace_panel_layout.focus_document = !self.workspace_panel_layout.focus_document;
+			PortfolioMessage::PollNodeGraphEvaluation => {
+				let Some(document_id) = self.active_document_id else { return };
+				let Some(active_document) = self.documents.get_mut(&document_id) else { return };
 
-				// Destroy or refresh non-document panel layouts based on focus mode
-				for &panel_type in PanelType::non_document_panels() {
-					if self.workspace_panel_layout.is_panel_present(panel_type) {
-						if self.workspace_panel_layout.focus_document {
-							Self::destroy_panel_layouts(panel_type, responses);
-						} else {
-							self.refresh_panel_content(panel_type, responses);
-						}
+				let dropped_thumbnails = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
+
+				// The runtime keeps the thumbnails of only the active document, rendering them all anew when another becomes active
+				if !dropped_thumbnails.is_empty() {
+					for (_, document) in self.documents.iter_mut().filter(|(id, _)| **id != document_id) {
+						document.layers_in_view.forget_thumbnails_in_background(&dropped_thumbnails);
 					}
 				}
-
+			}
+			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
+				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-			}
-			PortfolioMessage::TogglePropertiesPanelOpen => {
-				if self.workspace_panel_layout.focus_document {
-					return;
-				}
-
-				let panel_type = PanelType::Properties;
-				self.toggle_dockable_panel(panel_type, responses);
-			}
-			PortfolioMessage::ToggleLayersPanelOpen => {
-				if self.workspace_panel_layout.focus_document {
-					return;
-				}
-
-				let panel_type = PanelType::Layers;
-				self.toggle_dockable_panel(panel_type, responses);
-			}
-			PortfolioMessage::ToggleDataPanelOpen => {
-				if self.workspace_panel_layout.focus_document {
-					return;
-				}
-
-				let panel_type = PanelType::Data;
-				self.toggle_dockable_panel(panel_type, responses);
 			}
 			PortfolioMessage::ToggleRulers => {
 				if let Some(document) = self.active_document_mut() {
@@ -1627,54 +1034,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document) = self.active_document() {
 					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
 				}
-			}
-			PortfolioMessage::UpdateWorkspacePanelLayout => {
-				let panel_layout = match self.workspace_panel_layout.focus_document {
-					true => self.workspace_panel_layout.document_only_layout(),
-					false => self.workspace_panel_layout.clone(),
-				};
-				responses.add(FrontendMessage::UpdateWorkspacePanelLayout { panel_layout });
-				responses.add(PersistentStateMessage::WriteState);
-			}
-			PortfolioMessage::ResetWorkspaceLayout => {
-				// Destroy layouts for all currently visible non-document panels
-				for &panel_type in PanelType::non_document_panels() {
-					if self.workspace_panel_layout.is_panel_present(panel_type) {
-						Self::destroy_panel_layouts(panel_type, responses);
-					}
-				}
-
-				// Replace layout with the default and recalculate sizes
-				self.workspace_panel_layout = WorkspacePanelLayout::default();
-				self.workspace_panel_layout.recalculate_default_sizes();
-
-				// Refresh all visible panels since the layout has been completely replaced
-				for group_id in self.workspace_panel_layout.root.all_group_ids() {
-					if let Some(panel_type) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
-						self.refresh_panel_content(panel_type, responses);
-					}
-				}
-
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-				responses.add(MenuBarMessage::SendLayout);
-			}
-			PortfolioMessage::SetPanelGroupSizes { split_path, sizes } => {
-				// Walk the tree to the target split node using the path
-				let mut node = &mut self.workspace_panel_layout.root;
-				for &index in &split_path {
-					let PanelLayoutSubdivision::Split { children } = node else { return };
-					let Some(child) = children.get_mut(index) else { return };
-					node = &mut child.subdivision;
-				}
-
-				// Apply the new sizes to the split's children
-				if let PanelLayoutSubdivision::Split { children } = node {
-					for (child, &size) in children.iter_mut().zip(sizes.iter()) {
-						child.size = size;
-					}
-				}
-
-				responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
 				// Send the list of document tab names
@@ -1693,10 +1052,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 	}
 
 	fn actions(&self) -> ActionList {
-		let mut common = actions!(PortfolioMessageDiscriminant;
-			Open,
-			ToggleFocusDocument,
-		);
+		let mut common = self.workspace.actions();
+		common.extend(actions!(IngestMessageDiscriminant; Open));
 
 		// Extend with actions that require an active document
 		if let Some(document) = self.active_document() {
@@ -1708,17 +1065,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				ToggleRulers,
 				NextDocument,
 				PrevDocument,
-				Import,
 			));
-		}
-
-		// Extend with actions that are disabled when focusing the document
-		if !self.workspace_panel_layout.focus_document {
-			common.extend(actions!(PortfolioMessageDiscriminant;
-				TogglePropertiesPanelOpen,
-				ToggleLayersPanelOpen,
-				ToggleDataPanelOpen,
-			));
+			common.extend(actions!(IngestMessageDiscriminant; Import));
 		}
 
 		common
@@ -1726,12 +1074,30 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 }
 
 impl PortfolioMessageHandler {
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self { executor, ..Default::default() }
+	pub fn new(executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
+		Self {
+			documents: Default::default(),
+			loading_documents: Default::default(),
+			document_ids: Default::default(),
+			active_document_id: Default::default(),
+			failed_documents: Default::default(),
+			persistent_state: Default::default(),
+			fonts: Default::default(),
+			ingest: Default::default(),
+			executor,
+			selection_mode: Default::default(),
+			reset_node_definitions_on_open: Default::default(),
+			workspace: Default::default(),
+			document_store: DocumentStoreHandle::new(document_store),
+			pending_opens: Default::default(),
+			restore_select: Default::default(),
+			store_unavailable: Default::default(),
+		}
 	}
 
-	pub fn set_working_copy_root(&mut self, root: Option<PathBuf>) {
-		self.working_copy_root = root;
+	#[cfg(test)]
+	pub(crate) fn document_store(&self) -> DocumentStoreHandle {
+		self.document_store.clone()
 	}
 
 	pub fn document(&self, document_id: DocumentId) -> Option<&DocumentMessageHandler> {
@@ -1764,18 +1130,10 @@ impl PortfolioMessageHandler {
 	}
 
 	pub fn persisted_state_snapshot(&self) -> PersistedState {
-		let mut documents = self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect::<Vec<_>>();
-
-		// Keep failed-to-load docs referenced in `state.documents` so their autosave files survive `garbage_collect_document_files`
-		// TODO: Eventually remove this document upgrade code
-		for (info, _) in self.failed_to_load_documents.values() {
-			documents.push(info.clone());
-		}
-
 		PersistedState {
-			documents,
+			documents: self.document_ids.iter().filter_map(|id| self.document_details(*id)).collect(),
 			current_document: self.active_document_id,
-			workspace_layout: Some(self.workspace_panel_layout.clone()),
+			workspace_layout: Some(self.workspace.panel_layout.clone()),
 		}
 	}
 
@@ -1812,64 +1170,18 @@ impl PortfolioMessageHandler {
 		if new_number == 1 { untitled.to_string() } else { format!("{untitled} {new_number}") }
 	}
 
-	// TODO: Eventually remove this document upgrade code
-	fn tick_autosave_load_progress(&mut self, responses: &mut VecDeque<Message>, failed: bool) {
-		if self.pending_initial_autosave_loads > 0 {
-			self.pending_initial_autosave_loads -= 1;
-			if self.pending_initial_autosave_loads == 0 && !self.failed_to_load_documents.is_empty() {
-				responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
-			}
-		} else if failed {
-			responses.add(PortfolioMessage::ShowFailedToLoadDocumentsDialog);
-		}
-	}
-
-	fn read_file(path: &PathBuf, content: Vec<u8>) -> FileContent {
-		let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_lowercase();
-		match extension.as_str() {
-			FILE_EXTENSION => match String::from_utf8(content) {
-				Ok(content) => FileContent::Document(content),
-				Err(_) => FileContent::Unsupported,
-			},
-			GDD_FILE_EXTENSION => FileContent::GddDocument(content),
-			"svg" => match String::from_utf8(content) {
-				Ok(content) => FileContent::Svg(content),
-				Err(_) => FileContent::Unsupported,
-			},
-			_ => {
-				let format = image::guess_format(&content).unwrap_or_else(|_| image::ImageFormat::from_path(path).unwrap_or(image::ImageFormat::Png));
-				match image::load_from_memory_with_format(&content, format) {
-					Ok(image) => {
-						// TODO: Handle Image formats with more than 8 bits per channel
-						let image_data = image.to_rgba8();
-						let image = Image::<Color>::from_image_data(image_data.as_raw(), image.width(), image.height());
-						FileContent::Image(image)
-					}
-					Err(_) => FileContent::Unsupported,
-				}
-			}
-		}
-	}
-
-	fn load_document(
-		&mut self,
-		mut new_document: DocumentMessageHandler,
-		document_id: DocumentId,
-		resource_storage: &ResourceStorageMessageHandler,
-		validate: bool,
-		responses: &mut VecDeque<Message>,
-	) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, resources: ResourcesHandle, legacy_only: bool, responses: &mut VecDeque<Message>) {
 		let is_new_document = !self.document_ids.contains(&document_id);
 		if is_new_document {
 			self.document_ids.push_back(document_id);
 		}
-		self.unloaded_documents.remove(&document_id);
+		self.loading_documents.remove(&document_id);
 		new_document.update_layers_panel_control_bar_widgets(
-			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+			self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 			responses,
 		);
 		new_document.update_layers_panel_bottom_bar_widgets(
-			self.workspace_panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace_panel_layout.focus_document,
+			self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 			responses,
 		);
 
@@ -1886,65 +1198,60 @@ impl PortfolioMessageHandler {
 			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		}
 
-		// Mount the per-document `Gdd` working copy asynchronously.
-		//
-		// Only mount for legacy loads: a `.gdd` open already mounted its working copy
-		// and remounting would overwrite it and drop that history state.
-		if self.documents.get(&document_id).and_then(|document| document.storage()).is_none() {
-			let legacy_network = self
-				.documents
-				.get(&document_id)
-				.map(|document| document.network_interface.document_network().clone())
-				.unwrap_or_default();
-
-			responses.add(Self::mount_document_storage(
-				self.working_copy_root.clone(),
-				document_id,
-				legacy_network,
-				resource_storage.resources(),
-				validate,
-			));
+		if self.documents[&document_id].container.is_none() {
+			responses.add(attach_container(self.document_store.clone(), document_id, resources, legacy_only));
+		} else {
+			self.save_if_needed(document_id, responses);
 		}
 	}
 
-	/// With a configured root the working copy lives at `<root>/<id_hex>`; without one it is in-memory.
-	///
-	/// On a *reopen* (existing working copy), the freshly-read `.gdd` is converted back to a runtime
-	/// network and compared against `legacy_network` before
-	/// the working copy attaches. It validates the `.gdd` *read* path.
-	fn mount_document_storage(
-		working_copy_root: Option<std::path::PathBuf>,
+	/// Installs the storage session and stages the current network so a session that fell behind the legacy
+	/// document catches up. Identical content stages nothing.
+	fn attach_storage(
+		&mut self,
 		document_id: DocumentId,
-		legacy_network: graph_craft::document::NodeNetwork,
-		byte_store: Box<dyn graph_craft::application_io::resource::LoadResource>,
-		validate: bool,
-	) -> Message {
-		let path = working_copy_root.map(|root| root.join(format!("{:016x}", document_id.0)));
-		let editor_version = crate::application::GRAPHITE_GIT_COMMIT_HASH.to_string();
-		let peer = document_graph_storage::PeerId(generate_uuid());
-
-		let future = async move {
-			let (gdd, reopened) = match build_or_open_working_copy(path.as_deref(), peer, document_id.0, editor_version).await {
-				Ok(result) => result,
-				Err(error) => {
-					log::error!("Failed to mount document storage for {document_id:?}: {error}");
-					return Message::NoOp;
-				}
-			};
-
-			if validate && reopened {
-				compare_storage_against_runtime(&gdd, &legacy_network, byte_store.as_ref(), document_id).await;
-			}
-
-			Message::Portfolio(PortfolioMessage::DocumentStorageMounted {
-				document_id,
-				reopened,
-				gdd: Some(gdd),
-			})
-		};
-		future.into()
+		gdd: Option<Box<GddV1>>,
+		declarations: Declarations,
+		resource_storage: &ResourceStorageMessageHandler,
+		preferences: &PreferencesMessageHandler,
+	) {
+		let (Some(document), Some(gdd)) = (self.documents.get_mut(&document_id), gdd) else { return };
+		document.set_storage(*gdd, declarations);
+		document.require_whole_document_stage();
+		document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+		document.retire_storage_interaction();
 	}
 
+	fn save_if_needed(&self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
+		if let Some(document) = self.documents.get(&document_id)
+			&& document.container.is_some()
+			&& !document.is_auto_saved()
+		{
+			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+		}
+	}
+
+	/// Selects the restored document once it is loaded, or the first document when it failed or the session named none.
+	fn select_after_load(&mut self, responses: &mut VecDeque<Message>) {
+		let target = self.restore_select.filter(|id| self.document_ids.contains(id)).or_else(|| self.document_ids.front().copied());
+		let Some(target) = target else {
+			self.restore_select = None;
+			return;
+		};
+		if self.documents.contains_key(&target) {
+			self.restore_select = None;
+			responses.add(PortfolioMessage::SelectDocument { document_id: target });
+		} else {
+			self.restore_select = Some(target);
+		}
+	}
+
+	fn storage_error(description: String, responses: &mut VecDeque<Message>) {
+		responses.add(DialogMessage::DisplayDialogError {
+			title: "Document storage failed".to_string(),
+			description,
+		});
+	}
 	/// Returns an iterator over the open documents in order.
 	pub fn ordered_document_iterator(&self) -> impl Iterator<Item = &DocumentMessageHandler> {
 		self.document_ids.iter().filter_map(|id| self.document(*id))
@@ -1954,30 +1261,6 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let Some(document_id) = self.active_document_id else {
-			return Err("No active document".to_string());
-		};
-		let Some(active_document) = self.documents.get_mut(&document_id) else {
-			return Err("No active document".to_string());
-		};
-
-		let result = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
-		if result.is_err() {
-			let error = r#"
-				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
-				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document cannot render in its current state.</tspan>
-					<tspan x="50%" dy="24">Undo to go back, if available, or check for error details</tspan>
-					<tspan x="50%" dy="24">by clicking the <tspan font-style="italic">Node Graph</tspan> button up at the top right.</tspan>
-				/text>"#
-				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-				.to_string();
-			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
-		}
-		result
-	}
-
 	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {
 		if let Some(document) = self.documents.get(&document_id) {
 			Some(DocumentInfo {
@@ -1985,10 +1268,9 @@ impl PortfolioMessageHandler {
 				name: document.name.clone(),
 				path: document.path.clone(),
 				is_saved: document.is_saved(),
-				resources: Some(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()).collect::<Vec<_>>().into_boxed_slice()),
 			})
 		} else {
-			self.unloaded_documents.get(&document_id).cloned()
+			self.loading_documents.get(&document_id).cloned()
 		}
 	}
 
@@ -1997,7 +1279,7 @@ impl PortfolioMessageHandler {
 	/// so the Data panel can introspect nodes inside subgraphs. An empty `Vec` signals "nothing to inspect".
 	pub fn node_to_inspect(&self) -> Vec<NodeId> {
 		// Skip if the Data panel is not open
-		if !self.workspace_panel_layout.is_panel_visible(PanelType::Data) || self.workspace_panel_layout.focus_document {
+		if !self.workspace.panel_layout.is_panel_visible(PanelType::Data) || self.workspace.panel_layout.focus_document {
 			return Vec::new();
 		}
 
@@ -2018,157 +1300,18 @@ impl PortfolioMessageHandler {
 		path.push(*node_id);
 		path
 	}
+}
 
-	/// Remove a dockable panel type from whichever panel group currently contains it. Does not prune empty groups.
-	fn remove_panel_from_layout(&mut self, panel_type: PanelType) {
-		// Save the panel's current position so it can be restored there later
-		self.workspace_panel_layout.save_panel_position(panel_type);
-
-		if let Some(group_id) = self.workspace_panel_layout.find_panel(panel_type)
-			&& let Some(group) = self.workspace_panel_layout.panel_group_mut(group_id)
-		{
-			group.tabs.retain(|&t| t != panel_type);
-			group.active_tab_index = group.active_tab_index.min(group.tabs.len().saturating_sub(1));
-		}
-	}
-
-	/// Toggle a dockable panel on or off. When toggling off, refresh the newly active tab in its panel group (if any).
-	fn toggle_dockable_panel(&mut self, panel_type: PanelType, responses: &mut VecDeque<Message>) {
-		if let Some(group_id) = self.workspace_panel_layout.find_panel(panel_type) {
-			// Panel is present, remove it
-			let was_visible = self.workspace_panel_layout.panel_group(group_id).is_some_and(|g| g.is_visible(panel_type));
-			Self::destroy_panel_layouts(panel_type, responses);
-			self.remove_panel_from_layout(panel_type);
-			self.workspace_panel_layout.prune();
-
-			// If the removed panel was the active tab, refresh whichever panel is now active in that panel group
-			if was_visible && let Some(new_active) = self.workspace_panel_layout.panel_group(group_id).and_then(|g| g.active_panel_type()) {
-				Self::destroy_panel_layouts(new_active, responses);
-				self.refresh_panel_content(new_active, responses);
-			}
-		} else {
-			// Panel is not present, restore it to its default position in the layout tree
-			self.workspace_panel_layout.restore_panel(panel_type);
-			self.workspace_panel_layout.prune();
-			self.refresh_panel_content(panel_type, responses);
-		}
-
-		responses.add(MenuBarMessage::SendLayout);
-		responses.add(PortfolioMessage::UpdateWorkspacePanelLayout);
-	}
-
-	/// Destroy the stored layout for a panel that is no longer the active tab.
-	/// This resets the backend's diffing state so it won't try to send updates to a frontend component that has been unmounted.
-	fn destroy_panel_layouts(panel_type: PanelType, responses: &mut VecDeque<Message>) {
-		let targets: &[LayoutTarget] = match panel_type {
-			PanelType::Properties => &[LayoutTarget::PropertiesPanel],
-			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelControlRightBar, LayoutTarget::LayersPanelBottomBar],
-			PanelType::Data => &[LayoutTarget::DataPanel],
-			PanelType::Document | PanelType::Welcome => return,
-		};
-
-		for &layout_target in targets {
-			responses.add(LayoutMessage::DestroyLayout { layout_target });
-		}
-	}
-
-	/// Trigger a content refresh for a panel that just became the active tab.
-	fn refresh_panel_content(&self, panel_type: PanelType, responses: &mut VecDeque<Message>) {
-		responses.add(NodeGraphMessage::RunDocumentGraph);
-
-		match panel_type {
-			PanelType::Properties => {
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
-			PanelType::Layers => {
-				if self.active_document_id.is_some() {
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
-					});
-				}
-			}
-			PanelType::Data => {
-				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
-			}
-			PanelType::Document | PanelType::Welcome => {
-				// Re-send the welcome screen buttons layout to repopulate after a remount
-				if self.document_ids.is_empty() {
-					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
-				}
-			}
-		}
+/// Lets the Layers panel brighten the nodes an edit in progress, like a drag, has written to so far.
+fn refresh_transaction_edited_nodes(document: &mut DocumentMessageHandler, is_active: bool, responses: &mut VecDeque<Message>) {
+	if document.network_interface.update_transaction_edited_nodes() && is_active {
+		responses.add(NodeGraphMessage::UpdateLayerPanel);
 	}
 }
 
-// TODO: Eventually remove this document upgrade code
-fn display_name_with_fallback(info: &DocumentInfo) -> String {
-	if info.name.trim().is_empty() {
-		format!("Untitled Document ({:x})", info.id.0)
-	} else {
-		info.name.clone()
-	}
-}
-
-/// Returns `None` if the name has no safe filename characters left or matches a Windows reserved device name, so callers fall back to an ID-based stem.
-// TODO: Eventually remove this document upgrade code
-fn sanitize_filename_stem(name: &str) -> Option<String> {
-	let replaced: String = name
-		.chars()
-		.map(|c| {
-			if matches!(c, '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|') || c.is_control() {
-				'_'
-			} else {
-				c
-			}
-		})
-		.collect();
-
-	// Trim dots to avoid `.` / `..` resolving against the parent directory, and to dodge Windows' trailing-dot/space quirks
-	let trimmed = replaced.trim().trim_matches('.').trim();
-	if trimmed.is_empty() {
-		return None;
-	}
-
-	// Windows rejects these regardless of extension; superscript digits are normalized equivalently by some path APIs
-	let first_segment = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
-	if matches!(
-		first_segment.as_str(),
-		"CON"
-			| "PRN" | "AUX"
-			| "NUL" | "COM1"
-			| "COM2" | "COM3"
-			| "COM4" | "COM5"
-			| "COM6" | "COM7"
-			| "COM8" | "COM9"
-			| "COM¹" | "COM²"
-			| "COM³" | "LPT1"
-			| "LPT2" | "LPT3"
-			| "LPT4" | "LPT5"
-			| "LPT6" | "LPT7"
-			| "LPT8" | "LPT9"
-			| "LPT¹" | "LPT²"
-			| "LPT³"
-	) {
-		return None;
-	}
-
-	Some(trimmed.to_string())
-}
-
-// TODO: Eventually remove this document upgrade code
-fn build_recovery_zip(entries: &[(String, Vec<u8>)]) -> Result<Vec<u8>, String> {
-	use std::io::{Cursor, Write};
-	use zip::write::{SimpleFileOptions, ZipWriter};
-
-	let mut buffer = Cursor::new(Vec::<u8>::new());
-	let mut writer = ZipWriter::new(&mut buffer);
-	let options: SimpleFileOptions = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored).unix_permissions(0o644);
-
-	for (filename, content) in entries {
-		writer.start_file(filename, options).map_err(|e| format!("start_file: {e}"))?;
-		writer.write_all(content).map_err(|e| format!("write_all: {e}"))?;
-	}
-
-	writer.finish().map_err(|e| format!("finish: {e}"))?;
-	Ok(buffer.into_inner())
+/// The name an opened file gets: the given name, else the file stem of its path, else empty so the portfolio generates one.
+fn opened_document_name(name: Option<String>, path: Option<&Path>) -> String {
+	name.filter(|name| !name.trim().is_empty())
+		.or_else(|| path.and_then(Path::file_stem).map(|stem| stem.to_string_lossy().into_owned()))
+		.unwrap_or_default()
 }

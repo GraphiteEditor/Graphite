@@ -5,6 +5,7 @@ use quote::{format_ident, quote};
 pub struct CrateIdent {
 	gcore: syn::Result<TokenStream>,
 	gcore_shaders: syn::Result<TokenStream>,
+	graphene_core: syn::Result<TokenStream>,
 	raster_types: syn::Result<TokenStream>,
 	wgpu_executor: syn::Result<TokenStream>,
 }
@@ -16,6 +17,10 @@ impl CrateIdent {
 
 	pub fn gcore_shaders(&self) -> syn::Result<&TokenStream> {
 		self.gcore_shaders.as_ref().map_err(Clone::clone)
+	}
+
+	pub fn graphene_core(&self) -> syn::Result<&TokenStream> {
+		self.graphene_core.as_ref().map_err(Clone::clone)
 	}
 
 	pub fn raster_types(&self) -> syn::Result<&TokenStream> {
@@ -40,11 +45,17 @@ impl Default for CrateIdent {
 
 		let gcore = find_crate("core-types");
 		let gcore_shaders = find_crate("no-std-types").or_else(|eshaders| gcore.clone().map_err(|ecore| syn::Error::new(Span::call_site(), format!("{ecore}\n\nFallback: {eshaders}"))));
+		let graphene_core = find_crate("graphene-core").or_else(|ecore| {
+			find_crate("graphene-std")
+				.map(|gstd| quote!(#gstd::graphene_core))
+				.map_err(|estd| syn::Error::new(Span::call_site(), format!("{ecore}\n\nFallback: {estd}")))
+		});
 		let raster_types = find_crate("raster-types");
 		let wgpu_executor = find_crate("wgpu-executor");
 		Self {
 			gcore,
 			gcore_shaders,
+			graphene_core,
 			raster_types,
 			wgpu_executor,
 		}

@@ -7,9 +7,6 @@ macro_rules! concrete {
 	($type:ty) => {
 		$crate::Type::Concrete($crate::descriptor!($type))
 	};
-	($type:ty, $name:ty) => {
-		$crate::Type::Concrete($crate::descriptor!($type, $name))
-	};
 }
 
 #[macro_export]
@@ -18,16 +15,6 @@ macro_rules! descriptor {
 		$crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
-			alias: None,
-			size: std::mem::size_of::<$type>(),
-			align: std::mem::align_of::<$type>(),
-		}
-	};
-	($type:ty, $name:ty) => {
-		$crate::TypeDescriptor {
-			id: Some(std::any::TypeId::of::<$type>()),
-			name: $crate::Cow::Borrowed(std::any::type_name::<$type>()),
-			alias: Some($crate::Cow::Borrowed(stringify!($name))),
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
 		}
@@ -40,7 +27,6 @@ macro_rules! concrete_with_name {
 		$crate::Type::Concrete($crate::TypeDescriptor {
 			id: Some(std::any::TypeId::of::<$type>()),
 			name: $crate::Cow::Borrowed($name),
-			alias: None,
 			size: std::mem::size_of::<$type>(),
 			align: std::mem::align_of::<$type>(),
 		})
@@ -53,7 +39,6 @@ macro_rules! generic {
 }
 
 /// Constructs the [`Type`] of an `Item` holding the given element type, e.g. `item!(f64)` is the type of an `Item<f64>`.
-/// The two-argument form tags the element descriptor with an alias, preserving the source spelling for widget dispatch.
 #[macro_export]
 macro_rules! item {
 	(Item<$inner:ty>) => {
@@ -61,9 +46,6 @@ macro_rules! item {
 	};
 	($element:ty) => {
 		$crate::Type::Item(Box::new($crate::concrete!($element)))
-	};
-	($element:ty, $alias:ty) => {
-		$crate::Type::Item(Box::new($crate::concrete!($element, $alias)))
 	};
 }
 
@@ -78,28 +60,6 @@ macro_rules! list {
 	};
 }
 
-// The `List<...>`/`Item<...>` rules must appear before the generic `$type:ty` rules, and in each macro that sees the literal tokens,
-// because a type captured as `ty` becomes opaque to any inner macro's ranked pattern
-#[macro_export]
-macro_rules! future {
-	(List<$inner:ty>) => {
-		$crate::Type::Future(Box::new($crate::list!($inner)))
-	};
-	(List<$inner:ty>, $name:ty) => {
-		$crate::Type::Future(Box::new($crate::list!($inner)))
-	};
-	(Item<$inner:ty>) => {
-		$crate::Type::Future(Box::new($crate::item!($inner)))
-	};
-	(Item<$inner:ty>, $name:ty) => {
-		$crate::Type::Future(Box::new($crate::item!($inner, $name)))
-	};
-	($type:ty) => {{ $crate::Type::Future(Box::new(concrete!($type))) }};
-	($type:ty, $name:ty) => {
-		$crate::Type::Future(Box::new(concrete!($type, $name)))
-	};
-}
-
 #[macro_export]
 macro_rules! fn_type {
 	(List<$inner:ty>) => {
@@ -111,53 +71,14 @@ macro_rules! fn_type {
 	($type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!(())), Box::new(concrete!($type)))
 	};
-	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
-	};
 	($in_type:ty, List<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::list!($inner)))
-	};
-	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner, $inner)))
 	};
 	($in_type:ty, Item<$inner:ty>) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::item!($inner)))
 	};
-	($in_type:ty, $type:ty, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type, $outname)))
-	};
 	($in_type:ty, $type:ty) => {
 		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(concrete!($type)))
-	};
-}
-#[macro_export]
-macro_rules! fn_type_fut {
-	(List<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
-	};
-	(Item<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
-	};
-	($type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!(())), Box::new(future!($type)))
-	};
-	($in_type:ty, List<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
-	};
-	($in_type:ty, List<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::list!($inner)))))
-	};
-	($in_type:ty, Item<$inner:ty>, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner, $inner)))))
-	};
-	($in_type:ty, Item<$inner:ty>) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new($crate::Type::Future(Box::new($crate::item!($inner)))))
-	};
-	($in_type:ty, $type:ty, alias: $outname:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type, $outname)))
-	};
-	($in_type:ty, $type:ty) => {
-		$crate::Type::Fn(Box::new(concrete!($in_type)), Box::new(future!($type)))
 	};
 }
 
@@ -188,14 +109,12 @@ impl NodeIOTypes {
 		let tds1 = TypeDescriptor {
 			id: None,
 			name: Cow::Borrowed("()"),
-			alias: None,
 			size: 0,
 			align: 0,
 		};
 		let tds2 = TypeDescriptor {
 			id: None,
 			name: Cow::Borrowed("()"),
-			alias: None,
 			size: 0,
 			align: 0,
 		};
@@ -267,8 +186,6 @@ pub struct TypeDescriptor {
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub id: Option<TypeId>,
 	pub name: Cow<'static, str>,
-	#[cfg_attr(feature = "serde", serde(default, skip_serializing_if = "Option::is_none"))]
-	pub alias: Option<Cow<'static, str>>,
 	#[cfg_attr(feature = "serde", serde(skip))]
 	pub size: usize,
 	#[cfg_attr(feature = "serde", serde(skip))]
@@ -318,8 +235,6 @@ pub enum Type {
 	Concrete(TypeDescriptor),
 	/// Runtime type information for a function. Given some input, gives some output.
 	Fn(Box<Type>, Box<Type>),
-	/// Represents a future which promises to return the inner type.
-	Future(Box<Type>),
 	/// Represents a recursive [Type] allowing nested levels of types to represent the type of an Item<T>.
 	Item(Box<Type>),
 	/// Represents a list of this recursive [Type] allowing nested levels of types to represent the type of a List<T>.
@@ -385,7 +300,6 @@ impl Type {
 		Self::Concrete(TypeDescriptor {
 			id: Some(TypeId::of::<T::Static>()),
 			name: Cow::Borrowed(std::any::type_name::<T::Static>()),
-			alias: None,
 			size: size_of::<T>(),
 			align: align_of::<T>(),
 		})
@@ -396,7 +310,6 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.size),
 			Self::Fn(_, _) => None,
-			Self::Future(_) => None,
 			Self::Item(_) => None,
 			Self::List(_) => None,
 		}
@@ -407,7 +320,6 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(ty) => Some(ty.align),
 			Self::Fn(_, _) => None,
-			Self::Future(_) => None,
 			Self::Item(_) => None,
 			Self::List(_) => None,
 		}
@@ -418,7 +330,6 @@ impl Type {
 			Self::Generic(_) => self,
 			Self::Concrete(_) => self,
 			Self::Fn(_, output) => output.nested_type(),
-			Self::Future(output) => output.nested_type(),
 			Self::Item(_) => self,
 			Self::List(_) => self,
 		}
@@ -432,7 +343,6 @@ impl Type {
 			Self::Generic(_) => None,
 			Self::Concrete(_) => None,
 			Self::Fn(_, output) => output.replace_nested(f),
-			Self::Future(output) => output.replace_nested(f),
 			Self::Item(_) => None,
 			Self::List(_) => None,
 		}
@@ -443,7 +353,6 @@ impl Type {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
-			Type::Future(ty) => ty.identifier_name(),
 			Type::Item(element) => element.identifier_name(),
 			Type::List(element) => format!("{}[]", element.identifier_name()),
 		}
@@ -478,7 +387,6 @@ impl Type {
 			let element = Type::Concrete(TypeDescriptor {
 				id: None,
 				name: Cow::Owned(element_name.to_string()),
-				alias: None,
 				size: 0,
 				align: 0,
 			});
@@ -496,7 +404,6 @@ impl Type {
 				Type::Concrete(descriptor)
 			}
 			Type::Fn(input, output) => Type::Fn(Box::new(input.normalize_rank()), Box::new(output.normalize_rank())),
-			Type::Future(inner) => Type::Future(Box::new(inner.normalize_rank())),
 			Type::Item(element) => Type::Item(Box::new(element.normalize_rank())),
 			Type::List(element) => Type::List(Box::new(element.normalize_rank())),
 			Type::Generic(_) => self,
@@ -522,7 +429,11 @@ pub fn make_type_user_readable(ty: &str) -> String {
 		.replace("DVec2", "Vec2")
 		.replace("IVec2", "Vec2")
 		.replace("UVec2", "Vec2")
-		.replace("&str", "String");
+		.replace("&str", "String")
+		// The numeric ladder's rung names label its wires
+		.replace("f64", "Number")
+		.replace("i64", "Integer")
+		.replace("bool", "Bool");
 
 	rewrite_ranked_type_wrappers(&ty)
 }
@@ -613,7 +524,6 @@ impl std::fmt::Display for Type {
 			Type::Generic(name) => write!(f, "{}", make_type_user_readable(name)),
 			Type::Concrete(ty) => write!(f, "{ty}"),
 			Type::Fn(_, return_value) => write!(f, "{return_value}"),
-			Type::Future(ty) => write!(f, "{ty}"),
 			Type::Item(element) => write!(f, "{element}"),
 			Type::List(element) => write!(f, "{element}[]"),
 		}

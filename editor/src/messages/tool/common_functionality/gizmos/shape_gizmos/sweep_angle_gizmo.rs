@@ -1,4 +1,4 @@
-use crate::consts::{ARC_SNAP_THRESHOLD, GIZMO_HIDE_THRESHOLD};
+use crate::consts::GIZMO_HIDE_THRESHOLD;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -6,13 +6,14 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::DocumentMessageHandler;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded, pointer_travel_per_radian};
+use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use std::collections::VecDeque;
-use std::f64::consts::FRAC_PI_4;
+use std::f64::consts::PI;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub enum SweepAngleGizmoState {
@@ -40,7 +41,7 @@ pub struct SweepAngleGizmo {
 	position_before_rotation: DVec2,
 	previous_mouse_position: DVec2,
 	total_angle_delta: f64,
-	snap_angles: Vec<f64>,
+	snap_angles: Vec<ValueCandidate>,
 	handle_state: SweepAngleGizmoState,
 }
 
@@ -169,12 +170,16 @@ impl SweepAngleGizmo {
 
 		let bold_radius = final_point.distance(center);
 
-		let angle = initial_vector.angle_to(final_vector).to_degrees();
-		let display_angle = viewport
-			.inverse()
-			.transform_point2(final_point)
-			.angle_to(viewport.inverse().transform_point2(initial_point))
-			.to_degrees();
+		let Some(angle) = initial_vector.try_angle_to(final_vector).map(f64::to_degrees) else {
+			warn!("Cannot take angle for sweep gizmo");
+			return;
+		};
+		let initial_point_layer = viewport.inverse().transform_point2(initial_point);
+		let final_point_layer = viewport.inverse().transform_point2(final_point);
+		let Some(display_angle) = final_point_layer.try_angle_to(initial_point_layer).map(f64::to_degrees) else {
+			warn!("Cannot take angle for sweep gizmo");
+			return;
+		};
 
 		let text = format!("{}°", format_rounded(display_angle, 2));
 		const FONT_SIZE: f64 = 12.;
@@ -188,18 +193,19 @@ impl SweepAngleGizmo {
 		overlay_context.arc_sweep_angle(offset_angle, angle, final_point, bold_radius, center, &text, transform);
 	}
 
-	pub fn update_arc(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn update_arc(&mut self, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
+		let SnapView { document, input, .. } = view;
 		let Some(layer) = self.layer else { return };
 		let Some((_, current_start_angle, current_sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
 			return;
 		};
 
 		let viewport = document.metadata().transform_to_viewport(layer);
-		let angle_delta = viewport
-			.inverse()
-			.transform_point2(self.previous_mouse_position)
-			.angle_to(viewport.inverse().transform_point2(input.mouse.position))
-			.to_degrees();
+		let layer_previous_mouse = viewport.inverse().transform_point2(self.previous_mouse_position);
+		let layer_mouse = viewport.inverse().transform_point2(input.mouse.position);
+		let Some(angle_delta) = layer_previous_mouse.try_angle_to(layer_mouse).map(f64::to_degrees) else {
+			return;
+		};
 		let angle = self.total_angle_delta + angle_delta;
 
 		let Some(node_id) = graph_modification_utils::get_arc_id(layer, &document.network_interface) else {
@@ -212,11 +218,10 @@ impl SweepAngleGizmo {
 			EndpointType::Start => {
 				// Dragging start changes both start and sweep
 
-				let sign = -angle.signum();
 				let mut total = angle;
 
 				let new_start_angle = self.initial_start_angle + total;
-				let new_sweep_angle = self.initial_sweep_angle + total.abs() * sign;
+				let new_sweep_angle = self.initial_sweep_angle - total;
 
 				match () {
 					// Clamp sweep angle to 360°
@@ -272,13 +277,14 @@ impl SweepAngleGizmo {
 						self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), input, responses);
 					}
 					_ => {
-						if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + total.abs() * sign) {
-							total += snapped_delta;
+						let free_sweep_angle = self.initial_sweep_angle - total;
+						total += free_sweep_angle - self.snap_sweep_angle(view, snap_session, free_sweep_angle);
+						if snap_session.caught() {
 							self.update_state(SweepAngleGizmoState::Snapped);
 						}
 
 						self.total_angle_delta = angle;
-						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle + total.abs() * sign, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle - total, input, responses);
 					}
 				}
 			}
@@ -313,8 +319,9 @@ impl SweepAngleGizmo {
 						self.apply_arc_update(node_id, self.initial_start_angle + angle_delta, self.initial_sweep_angle + angle_delta.abs() * sign, input, responses);
 					}
 					_ => {
-						if let Some(snapped_delta) = self.check_snapping(self.initial_sweep_angle + angle) {
-							total += snapped_delta;
+						let free_sweep_angle = self.initial_sweep_angle + angle;
+						total += self.snap_sweep_angle(view, snap_session, free_sweep_angle) - free_sweep_angle;
+						if snap_session.caught() {
 							self.update_state(SweepAngleGizmoState::Snapped);
 						}
 
@@ -333,33 +340,55 @@ impl SweepAngleGizmo {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::StartAngleInput),
-			input: NodeInput::value(TaggedValue::F64(start_angle), false),
+			input: NodeInput::value(TaggedValue::Number(start_angle), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::SweepAngleInput),
-			input: NodeInput::value(TaggedValue::F64(sweep_angle), false),
+			input: NodeInput::value(TaggedValue::Number(sweep_angle), false),
 		});
 
 		self.previous_mouse_position = input.mouse.position;
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	pub fn check_snapping(&self, new_sweep_angle: f64) -> Option<f64> {
-		self.snap_angles.iter().find(|angle| (**angle - new_sweep_angle).abs() <= ARC_SNAP_THRESHOLD).map(|angle| {
-			let delta = angle - new_sweep_angle;
-			if self.endpoint == EndpointType::End { delta } else { -delta }
-		})
+	/// Snaps a sweep angle in degrees to the multiples of 45°, judged by how far the pointer travels around the center on screen.
+	fn snap_sweep_angle(&self, view: SnapView, snap_session: &mut SnapSession, free_sweep_angle: f64) -> f64 {
+		let document = view.document;
+		let Some(layer) = self.layer else { return free_sweep_angle };
+		let Some((radius, start_angle, sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
+			return free_sweep_angle;
+		};
+
+		// The sweep follows the pointer's angle in the arc's own space, which a stretched arc spaces unevenly on screen
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		let on_screen_per_degree = pointer_travel_per_radian(layer_to_viewport, view.input.mouse.position) * PI / 180.;
+
+		// The dragged end turns about the center in the arc's own space, the start leaving the far end where it is as it shrinks the sweep
+		let layer_to_document = document.metadata().document_to_viewport.inverse() * layer_to_viewport;
+		let position_of = |sweep_angle_landed_on: f64| {
+			let end_angle = match self.endpoint {
+				EndpointType::Start => start_angle + sweep_angle - sweep_angle_landed_on,
+				_ => start_angle + sweep_angle_landed_on,
+			};
+			layer_to_document.transform_point2(radius * DVec2::from_angle(end_angle.to_radians()))
+		};
+
+		snap_session.snap_value(view, position_of, free_sweep_angle, on_screen_per_degree, &self.snap_angles)
 	}
 
-	pub fn calculate_snap_angles() -> Vec<f64> {
-		let mut snap_points = Vec::new();
-
-		for i in 0..=8 {
-			let snap_point = i as f64 * FRAC_PI_4;
-			snap_points.push(snap_point.to_degrees());
-		}
-
-		snap_points
+	/// The multiples of 45° from 0° to 360°, of which 90° and 270° are right angles.
+	pub fn calculate_snap_angles() -> Vec<ValueCandidate> {
+		(0..=8_u64)
+			.map(|step| {
+				let degrees = step * 45;
+				let kind = if degrees == 90 || degrees == 270 { Kind::RightAngle } else { Kind::AngleStep };
+				ValueCandidate {
+					value: degrees as f64,
+					kind,
+					identity: degrees,
+				}
+			})
+			.collect()
 	}
 
 	pub fn cleanup(&mut self) {

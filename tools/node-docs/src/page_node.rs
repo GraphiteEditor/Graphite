@@ -116,7 +116,7 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 		.fields
 		.iter()
 		.enumerate()
-		.filter(|&(index, field)| !field.hidden || index == 0)
+		.filter(|(_, field)| !field.internal)
 		.map(|(index, field)| {
 			// Parameter
 			let parameter = field.name;

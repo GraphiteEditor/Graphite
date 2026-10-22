@@ -8,7 +8,7 @@ pub use text_nodes::*;
 /// Produces a styled text string carrying all typographic attributes.
 ///
 /// Use the **Text to Vector** node to convert this into vector geometry if desired.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("Text"), icon("NodeText"))]
 fn text(
 	_: impl Ctx,
 	_primary: (),
@@ -29,6 +29,7 @@ fn text(
 	/// 0 means all lines overlap. 1 means all lines are spaced by just the font size. 1.2 is a common default for readable text. 2 means double-spaced text.
 	#[unit("x")]
 	#[hard(0..)]
+	#[soft(..2)]
 	#[step(0.1)]
 	#[default(1.2)]
 	line_height: Item<f64>,
@@ -85,10 +86,10 @@ fn text(
 		item.set_attribute(ATTR_LETTER_TILT, letter_tilt);
 	}
 	if has_max_width {
-		item.set_attribute(ATTR_MAX_WIDTH, Some(max_width));
+		item.set_attribute(ATTR_MAX_WIDTH, max_width);
 	}
 	if has_max_height {
-		item.set_attribute(ATTR_MAX_HEIGHT, Some(max_height));
+		item.set_attribute(ATTR_MAX_HEIGHT, max_height);
 	}
 	if align != TextAlign::default() {
 		item.set_attribute(ATTR_TEXT_ALIGN, align);
@@ -98,7 +99,7 @@ fn text(
 }
 
 /// Converts a styled text string into a vector compound path.
-#[node_macro::node(category("Text"), name("Text to Vector"))]
+#[node_macro::node(category("Text"), icon("NodeTextToVector"), name("Text to Vector"))]
 fn text_to_vector(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).
@@ -108,7 +109,7 @@ fn text_to_vector(
 }
 
 /// Splits a styled text string into a separate vector item for each of its glyphs (letterforms).
-#[node_macro::node(category("Text"), name("Text to Vector Glyphs"))]
+#[node_macro::node(category("Text"), icon("NodeTextToVectorGlyphs"), name("Text to Vector Glyphs"))]
 fn text_to_vector_glyphs(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).

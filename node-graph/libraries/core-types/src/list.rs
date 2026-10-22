@@ -6,6 +6,7 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DAffine2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
+use std::sync::Arc;
 
 // =================================================
 // Standard attribute keys used across the data flow
@@ -30,7 +31,7 @@ pub const ATTR_EDITOR_LAYER_PATH: &str = "editor:layer_path";
 /// (Boolean Operation, Rasterize, etc.), so the editor can still surface click targets for
 /// the original child layers after their content has been collapsed.
 pub const ATTR_EDITOR_MERGED_LAYERS: &str = "editor:merged_layers";
-/// Optional `Vector` that overrides the item's own geometry for click-target generation.
+/// Optional `BezPath` that overrides the item's own geometry for click-target generation.
 /// Used by the 'Text' node for per-glyph bounding-box rectangles so glyphs are selectable
 /// by clicking anywhere within their bounds, not just the filled letterform.
 pub const ATTR_EDITOR_CLICK_TARGET: &str = "editor:click_target";
@@ -105,6 +106,20 @@ pub const ATTR_DIAMETER: &str = "diameter";
 pub const ATTR_HARDNESS: &str = "hardness";
 /// Brush stroke item's per-pass paint coverage from `0.` to `1.` (`f64`).
 pub const ATTR_FLOW: &str = "flow";
+/// `List<Path>` of connected strokes woven through the point pool, on the item holding a `Vector`.
+/// Absent means the pool is a point cloud.
+pub const ATTR_PATHS: &str = "paths";
+/// Path's `CurveType` naming the stride its point references weave in, on the `List<Path>` item
+/// holding the path (implicit default `Linear`).
+pub const ATTR_CURVE_TYPE: &str = "curve_type";
+/// Point reference's `bool` tool state marking the tangent pair at this anchor occurrence as smooth,
+/// on the `List<i64>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
+/// colinear. Rendering derives continuity from actual tangent geometry and does not read this.
+pub const ATTR_SMOOTH: &str = "smooth";
+/// Item's stable ID for external addressing (modifications, tools, animation), opt-in because indices are
+/// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<i64>`
+/// inside a `Path` at the anchor reference the segment departs from.
+pub const ATTR_ID: &str = "id";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
@@ -113,10 +128,10 @@ pub const ATTR_FONT: &str = "font";
 pub const ATTR_LINE_HEIGHT: &str = "line_height";
 /// Text item's extra spacing between letters in document-space units (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_SPACING: &str = "letter_spacing";
-/// Text item's maximum line-wrap width in document-space units (`Option<f64>`, implicit default `None`).
+/// Text item's maximum line-wrap width in document-space units (`f64`, implicit default `0.`, which leaves the width unbounded).
 pub const ATTR_MAX_WIDTH: &str = "max_width";
 /// Text item's maximum block height in document-space units, past which lines are not drawn
-/// (`Option<f64>`, implicit default `None`).
+/// (`f64`, implicit default `0.`, which leaves the height unbounded).
 pub const ATTR_MAX_HEIGHT: &str = "max_height";
 /// Text item's faux-italic letter tilt angle in degrees (`f64`, implicit default `0.`).
 pub const ATTR_LETTER_TILT: &str = "letter_tilt";
@@ -185,7 +200,7 @@ fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
 }
 
 /// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).
-fn pad_with_implicit_default(key: &str, attribute: &mut Box<dyn AnyAttribute>, count: usize) {
+fn pad_with_implicit_default(key: &str, attribute: &mut dyn AnyAttribute, count: usize) {
 	match implicit_default_value(key) {
 		Some(default) => attribute.push_repeated(&*default, count),
 		None => {
@@ -193,6 +208,60 @@ fn pad_with_implicit_default(key: &str, attribute: &mut Box<dyn AnyAttribute>, c
 				attribute.push_default();
 			}
 		}
+	}
+}
+
+// ============
+// AttributeKey
+// ============
+
+/// An attribute's name. Short names are stored inline and longer ones shared, so copying an item's or a list's attributes allocates nothing for their names.
+#[derive(Clone)]
+enum AttributeKey {
+	Inline { length: u8, bytes: [u8; AttributeKey::INLINE_CAPACITY] },
+	Allocated(Arc<str>),
+}
+
+impl AttributeKey {
+	/// The longest name stored inline, which keeps a key the size of a `String`.
+	const INLINE_CAPACITY: usize = 22;
+
+	fn new(key: &str) -> Self {
+		let mut bytes = [0; Self::INLINE_CAPACITY];
+
+		match bytes.get_mut(..key.len()) {
+			Some(inline) => {
+				inline.copy_from_slice(key.as_bytes());
+				Self::Inline { length: key.len() as u8, bytes }
+			}
+			None => Self::Allocated(key.into()),
+		}
+	}
+
+	fn as_bytes(&self) -> &[u8] {
+		match self {
+			Self::Inline { length, bytes } => bytes.get(..*length as usize).unwrap_or_default(),
+			Self::Allocated(key) => key.as_bytes(),
+		}
+	}
+
+	fn as_str(&self) -> &str {
+		match self {
+			// The inline bytes are a whole `&str` copied in, so they always read back as one
+			Self::Inline { .. } => std::str::from_utf8(self.as_bytes()).unwrap_or_default(),
+			Self::Allocated(key) => key,
+		}
+	}
+
+	/// Whether this is the attribute named `key`.
+	fn is(&self, key: &str) -> bool {
+		self.as_bytes() == key.as_bytes()
+	}
+}
+
+impl PartialEq for AttributeKey {
+	fn eq(&self, other: &Self) -> bool {
+		self.as_bytes() == other.as_bytes()
 	}
 }
 
@@ -206,6 +275,9 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	/// Clones this value into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AnyAttributeValue>;
 
+	/// Clones this value into a new shared trait object.
+	fn clone_arc(&self) -> Arc<dyn AnyAttributeValue>;
+
 	/// Returns a shared reference to the underlying concrete type for downcasting.
 	fn as_any(&self) -> &dyn std::any::Any;
 
@@ -214,6 +286,9 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 
 	/// Consumes the box and returns the underlying concrete type for downcasting.
 	fn into_any(self: Box<Self>) -> Box<dyn std::any::Any>;
+
+	/// Converts the shared value into one that can be downcast to its concrete type.
+	fn into_any_arc(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync>;
 
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String;
@@ -226,13 +301,18 @@ pub trait AnyAttributeValue: std::any::Any + Send + Sync {
 	fn eq_dyn(&self, other: &dyn AnyAttributeValue) -> bool;
 
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
-	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute>;
+	fn into_attribute(self: Arc<Self>, key: &str, preceding_defaults: usize) -> Arc<dyn AnyAttribute>;
 }
 
 impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 'static> AnyAttributeValue for T {
 	/// Clones this value into a new boxed trait object.
 	fn clone_box(&self) -> Box<dyn AnyAttributeValue> {
 		Box::new(self.clone())
+	}
+
+	/// Clones this value into a new shared trait object.
+	fn clone_arc(&self) -> Arc<dyn AnyAttributeValue> {
+		Arc::new(self.clone())
 	}
 
 	/// Returns a shared reference to the underlying concrete type for downcasting.
@@ -250,6 +330,11 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 		self
 	}
 
+	/// Converts the shared value into one that can be downcast to its concrete type.
+	fn into_any_arc(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync> {
+		self
+	}
+
 	/// Returns a debug-formatted string representation of this value.
 	fn display_string(&self) -> String {
 		format!("{:?}", self)
@@ -257,7 +342,7 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 
 	/// Hashes this value into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
-		self.cache_hash(&mut DynHasher(state));
+		self.cache_hash(&mut DynHasher::new(state));
 	}
 
 	/// Compares this value to another for value-by-value equality (object-safe wrapper around `PartialEq`).
@@ -267,11 +352,12 @@ impl<T: Clone + Send + Sync + Default + Sized + Debug + PartialEq + CacheHash + 
 	}
 
 	/// Wraps this scalar value into a new attribute, preceded by `preceding_defaults` implicit defaults for `key`.
-	fn into_attribute(self: Box<Self>, key: &str, preceding_defaults: usize) -> Box<dyn AnyAttribute> {
-		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::with_capacity(preceding_defaults + 1)));
+	fn into_attribute(self: Arc<Self>, key: &str, preceding_defaults: usize) -> Arc<dyn AnyAttribute> {
+		let mut attribute = Attribute::<T>(Vec::with_capacity(preceding_defaults + 1));
 		pad_with_implicit_default(key, &mut attribute, preceding_defaults);
-		attribute.push(self);
-		attribute
+		attribute.0.push(Arc::unwrap_or_clone(self));
+
+		Arc::new(attribute)
 	}
 }
 
@@ -281,14 +367,23 @@ impl Clone for Box<dyn AnyAttributeValue> {
 	}
 }
 
+/// Gives write access to an attribute value, first copying it if clones of its item still share it.
+fn unshared_value(value: &mut Arc<dyn AnyAttributeValue>) -> &mut dyn AnyAttributeValue {
+	if Arc::get_mut(value).is_none() {
+		*value = (**value).clone_arc();
+	}
+
+	Arc::get_mut(value).expect("A value that was just copied has no other owner")
+}
+
 // ===================
 // TRAIT: AnyAttribute
 // ===================
 
 /// Enables type-erased storage for parallel attribute lists in a [`List`].
 pub trait AnyAttribute: std::any::Any + Send + Sync {
-	/// Clones this attribute into a new boxed trait object.
-	fn clone_box(&self) -> Box<dyn AnyAttribute>;
+	/// Clones this attribute into a new shared trait object.
+	fn clone_arc(&self) -> Arc<dyn AnyAttribute>;
 
 	/// Returns a shared reference to the underlying concrete type for downcasting.
 	fn as_any(&self) -> &dyn std::any::Any;
@@ -296,8 +391,11 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	/// Returns a mutable reference to the underlying concrete type for downcasting.
 	fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 
+	/// Converts the shared attribute into one that can be downcast to its concrete type.
+	fn into_any_arc(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync>;
+
 	/// Pushes a scalar attribute value onto the end of this attribute.
-	fn push(&mut self, value: Box<dyn AnyAttributeValue>);
+	fn push(&mut self, value: Arc<dyn AnyAttributeValue>);
 
 	/// Pushes a default value onto the end of this attribute.
 	fn push_default(&mut self);
@@ -311,7 +409,7 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>);
 
 	/// Creates a new attribute of the same type filled with `count` number of default values.
-	fn new_with_defaults(&self, count: usize) -> Box<dyn AnyAttribute>;
+	fn new_with_defaults(&self, count: usize) -> Arc<dyn AnyAttribute>;
 
 	/// Returns the number of elements in this attribute.
 	fn len(&self) -> usize;
@@ -322,7 +420,7 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	}
 
 	/// Appends all values from another attribute of the same type.
-	fn extend(&mut self, other: Box<dyn AnyAttribute>);
+	fn extend(&mut self, other: Arc<dyn AnyAttribute>);
 
 	/// Returns a shared reference to the value at the requested index.
 	fn get_any(&self, index: usize) -> Option<&dyn std::any::Any>;
@@ -330,11 +428,11 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	/// Returns a debug-formatted display string for the value at the requested index.
 	fn display_at(&self, index: usize) -> Option<String>;
 
-	/// Clones a single value from this attribute into a boxed scalar attribute value.
-	fn clone_value(&self, index: usize) -> Option<Box<dyn AnyAttributeValue>>;
+	/// Clones a single value from this attribute into a shared scalar attribute value.
+	fn clone_value(&self, index: usize) -> Option<Arc<dyn AnyAttributeValue>>;
 
-	/// Drains all values out of this attribute into a Vec of scalar attribute values.
-	fn drain(self: Box<Self>) -> Vec<Box<dyn AnyAttributeValue>>;
+	/// Turns this attribute into a Vec of scalar attribute values, moving them out unless clones of its list still share it.
+	fn drain(self: Arc<Self>) -> Vec<Arc<dyn AnyAttributeValue>>;
 
 	/// Hashes every value in this attribute into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher);
@@ -345,21 +443,69 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 }
 
 /// Adapts a `&mut dyn Hasher` so generic `CacheHash::cache_hash<H>` calls (which require `H: Sized + Hasher`) can
-/// drive a trait-object hasher. Forwards both `Hasher` methods to the inner `dyn Hasher`.
-struct DynHasher<'a>(&'a mut dyn core::hash::Hasher);
-impl core::hash::Hasher for DynHasher<'_> {
-	fn finish(&self) -> u64 {
-		self.0.finish()
+/// drive a trait-object hasher. Writes gather in a buffer that reaches the inner hasher whole, when the next write
+/// would not fit and when this is dropped, which spares a virtual call for every value hashed.
+struct DynHasher<'a> {
+	inner: &'a mut dyn core::hash::Hasher,
+	buffer: [u8; DynHasher::CAPACITY],
+	used: usize,
+}
+
+impl<'a> DynHasher<'a> {
+	const CAPACITY: usize = 128;
+
+	fn new(inner: &'a mut dyn core::hash::Hasher) -> Self {
+		Self {
+			inner,
+			buffer: [0; Self::CAPACITY],
+			used: 0,
+		}
 	}
-	fn write(&mut self, bytes: &[u8]) {
-		self.0.write(bytes)
+
+	fn flush(&mut self) {
+		if let Some(gathered) = self.buffer.get(..self.used).filter(|gathered| !gathered.is_empty()) {
+			self.inner.write(gathered);
+		}
+		self.used = 0;
 	}
 }
 
-impl Clone for Box<dyn AnyAttribute> {
-	fn clone(&self) -> Self {
-		(**self).clone_box()
+impl core::hash::Hasher for DynHasher<'_> {
+	/// Reads the inner hasher's state without the bytes still buffered, which only reach it once this hasher is dropped.
+	fn finish(&self) -> u64 {
+		debug_assert_eq!(self.used, 0, "The buffered bytes reach the inner hasher only once this hasher is dropped");
+		self.inner.finish()
 	}
+
+	fn write(&mut self, bytes: &[u8]) {
+		if bytes.len() > Self::CAPACITY - self.used {
+			self.flush();
+		}
+
+		// Anything too long for the buffer passes straight through, in order since the buffer was just emptied
+		match self.buffer.get_mut(self.used..self.used + bytes.len()) {
+			Some(space) => {
+				space.copy_from_slice(bytes);
+				self.used += bytes.len();
+			}
+			None => self.inner.write(bytes),
+		}
+	}
+}
+
+impl Drop for DynHasher<'_> {
+	fn drop(&mut self) {
+		self.flush();
+	}
+}
+
+/// Gives write access to an attribute, first copying it if clones of its list still share it.
+fn unshared(attribute: &mut Arc<dyn AnyAttribute>) -> &mut dyn AnyAttribute {
+	if Arc::get_mut(attribute).is_none() {
+		*attribute = (**attribute).clone_arc();
+	}
+
+	Arc::get_mut(attribute).expect("An attribute that was just copied has no other owner")
 }
 
 // ============
@@ -370,9 +516,9 @@ impl Clone for Box<dyn AnyAttribute> {
 pub struct Attribute<T>(pub Vec<T>);
 
 impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static> AnyAttribute for Attribute<T> {
-	/// Clones this attribute into a new boxed trait object.
-	fn clone_box(&self) -> Box<dyn AnyAttribute> {
-		Box::new(Attribute(self.0.clone()))
+	/// Clones this attribute into a new shared trait object.
+	fn clone_arc(&self) -> Arc<dyn AnyAttribute> {
+		Arc::new(Attribute(self.0.clone()))
 	}
 
 	/// Returns a shared reference to the underlying concrete type for downcasting.
@@ -385,14 +531,16 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		self
 	}
 
+	/// Converts the shared attribute into one that can be downcast to its concrete type.
+	fn into_any_arc(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync> {
+		self
+	}
+
 	/// Pushes an attribute value onto the end of this attribute's list, downcasting it to `T`.
 	/// Falls back to a default value if the type doesn't match, to maintain the attribute-length invariant.
-	fn push(&mut self, value: Box<dyn AnyAttributeValue>) {
-		if let Ok(value) = value.into_any().downcast::<T>() {
-			self.0.push(*value);
-		} else {
-			self.0.push(T::default());
-		}
+	fn push(&mut self, value: Arc<dyn AnyAttributeValue>) {
+		let value = value.into_any_arc().downcast::<T>().map(Arc::unwrap_or_clone).unwrap_or_default();
+		self.0.push(value);
 	}
 
 	/// Pushes a default `T` value onto the end of this attribute list.
@@ -421,8 +569,8 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	}
 
 	/// Creates a new attribute filled with `count` default `T` values.
-	fn new_with_defaults(&self, count: usize) -> Box<dyn AnyAttribute> {
-		Box::new(Attribute(vec![T::default(); count]))
+	fn new_with_defaults(&self, count: usize) -> Arc<dyn AnyAttribute> {
+		Arc::new(Attribute(vec![T::default(); count]))
 	}
 
 	/// Returns the number of elements in this attribute.
@@ -432,12 +580,13 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 
 	/// Appends all values from another attribute, downcasting it to the same `Attribute<T>` type.
 	/// Falls back to padding with defaults if the type doesn't match, to maintain the attribute-length invariant.
-	fn extend(&mut self, other: Box<dyn AnyAttribute>) {
+	fn extend(&mut self, other: Arc<dyn AnyAttribute>) {
 		let other_len = other.len();
-		if let Ok(other) = (other as Box<dyn std::any::Any>).downcast::<Self>() {
-			self.0.extend(other.0);
-		} else {
-			self.0.extend(std::iter::repeat_with(T::default).take(other_len));
+
+		match other.into_any_arc().downcast::<Self>().map(Arc::try_unwrap) {
+			Ok(Ok(other)) => self.0.extend(other.0),
+			Ok(Err(shared)) => self.0.extend_from_slice(&shared.0),
+			Err(_) => self.0.extend(std::iter::repeat_with(T::default).take(other_len)),
 		}
 	}
 
@@ -451,19 +600,24 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		self.0.get(index).map(|v| format!("{v:?}"))
 	}
 
-	/// Clones the value at the given index into a boxed scalar attribute value.
-	fn clone_value(&self, index: usize) -> Option<Box<dyn AnyAttributeValue>> {
-		self.0.get(index).map(|v| Box::new(v.clone()) as Box<dyn AnyAttributeValue>)
+	/// Clones the value at the given index into a shared scalar attribute value.
+	fn clone_value(&self, index: usize) -> Option<Arc<dyn AnyAttributeValue>> {
+		self.0.get(index).map(|v| Arc::new(v.clone()) as Arc<dyn AnyAttributeValue>)
 	}
 
-	/// Consumes this attribute and returns all values as a Vec of boxed scalar attribute values.
-	fn drain(self: Box<Self>) -> Vec<Box<dyn AnyAttributeValue>> {
-		self.0.into_iter().map(|v| Box::new(v) as Box<dyn AnyAttributeValue>).collect()
+	/// Returns all values as a Vec of shared scalar attribute values, moved out unless clones of the list still share them.
+	fn drain(self: Arc<Self>) -> Vec<Arc<dyn AnyAttributeValue>> {
+		let values = match Arc::try_unwrap(self) {
+			Ok(attribute) => attribute.0,
+			Err(shared) => shared.0.clone(),
+		};
+
+		values.into_iter().map(|v| Arc::new(v) as Arc<dyn AnyAttributeValue>).collect()
 	}
 
 	/// Hashes every value in this attribute into the given hasher (object-safe wrapper around `CacheHash`).
 	fn cache_hash_dyn(&self, state: &mut dyn core::hash::Hasher) {
-		self.0.cache_hash(&mut DynHasher(state));
+		self.0.cache_hash(&mut DynHasher::new(state));
 	}
 
 	/// Compares this attribute to another for value-by-value equality (object-safe wrapper around `PartialEq`).
@@ -521,75 +675,51 @@ unsafe impl StaticType for AttributeValueDyn {
 /// Type-erased view of a `List<T>` exposing only its attributes and item count, used as a node graph parameter type.
 /// Lets a node accept any `List<U>` source via the auto-inserted `Convert<ListDyn, ()>` without monomorphizing over `U`,
 /// for cases where the element type is irrelevant (such as nodes that read out a named attribute regardless of the carrier `List`).
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ListDyn {
-	attributes: Vec<(String, Box<dyn AnyAttribute>)>,
-	len: usize,
+	attributes: Attributes,
 }
 
 impl ListDyn {
 	/// Number of items in the underlying `List`.
 	pub fn len(&self) -> usize {
-		self.len
+		self.attributes.len
 	}
 
 	/// Whether the underlying `List` has zero items.
 	pub fn is_empty(&self) -> bool {
-		self.len == 0
+		self.attributes.len == 0
 	}
 
 	/// Returns a reference to the attribute value at the given key and item index, downcast to `U`, if present and matching.
 	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
-		self.attributes
-			.iter()
-			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<U>() } else { None })
+		self.attributes.get_value(key, index)
 	}
 }
 
 impl<T> From<List<T>> for ListDyn {
 	fn from(list: List<T>) -> Self {
-		Self {
-			attributes: list.attributes.attributes,
-			len: list.attributes.len,
-		}
-	}
-}
-
-impl Clone for ListDyn {
-	fn clone(&self) -> Self {
-		Self {
-			attributes: self.attributes.iter().map(|(key, attribute)| (key.clone(), attribute.clone_box())).collect(),
-			len: self.len,
-		}
+		Self { attributes: list.attributes }
 	}
 }
 
 impl Debug for ListDyn {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let keys: Vec<&str> = self.attributes.iter().map(|(k, _)| k.as_str()).collect();
-		f.debug_struct("ListDyn").field("keys", &keys).field("len", &self.len).finish()
+		let keys: Vec<&str> = self.attributes.keys().collect();
+		f.debug_struct("ListDyn").field("keys", &keys).field("len", &self.attributes.len).finish()
 	}
 }
 
 impl PartialEq for ListDyn {
 	fn eq(&self, other: &Self) -> bool {
-		self.len == other.len
-			&& self.attributes.len() == other.attributes.len()
-			&& self
-				.attributes
-				.iter()
-				.zip(&other.attributes)
-				.all(|((key_a, attribute_a), (key_b, attribute_b))| key_a == key_b && attribute_a.eq_dyn(&**attribute_b))
+		self.attributes.len == other.attributes.len && self.attributes.equals(&other.attributes)
 	}
 }
 
 impl CacheHash for ListDyn {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.len.cache_hash(state);
-		for (key, attribute) in &self.attributes {
-			key.cache_hash(state);
-			attribute.cache_hash_dyn(state);
-		}
+		self.attributes.len.cache_hash(state);
+		self.attributes.cache_hash_entries(state);
 	}
 }
 
@@ -597,32 +727,59 @@ unsafe impl StaticType for ListDyn {
 	type Static = Self;
 }
 
+// ======
+// Shared
+// ======
+
+/// A handle on an attribute value that an item also holds, for reading it without copying it. It is not an
+/// attribute value itself, so it cannot be stored back onto an item in place of the value it reads.
+pub struct Shared<T>(Arc<T>);
+
+impl<T> std::ops::Deref for Shared<T> {
+	type Target = T;
+
+	fn deref(&self) -> &T {
+		&self.0
+	}
+}
+
+impl<T> From<Arc<T>> for Shared<T> {
+	fn from(value: Arc<T>) -> Self {
+		Self(value)
+	}
+}
+
 // ===================
 // ItemAttributeValues
 // ===================
+
+/// An item's attribute values with their keys, in insertion order.
+type ValueEntries = Vec<(AttributeKey, Arc<dyn AnyAttributeValue>)>;
 
 /// Scalar attribute storage for a single item.
 ///
 /// A small ordered map of type-erased scalar attribute values, keyed by string name.
 /// Used for individual attribute values in an [`Item`].
 /// Linear search preserves insertion order and is likely faster than a HashMap for small attribute counts.
+/// Clones share the map and every value in it until one of them is written to.
 #[derive(Clone, Default)]
-pub struct ItemAttributeValues(Vec<(String, Box<dyn AnyAttributeValue>)>);
+pub struct ItemAttributeValues(Option<Arc<ValueEntries>>);
 
 impl Debug for ItemAttributeValues {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let keys: Vec<&str> = self.0.iter().map(|(k, _)| k.as_str()).collect();
+		let keys: Vec<&str> = self.keys().collect();
 		f.debug_struct("Attributes").field("keys", &keys).finish()
 	}
 }
 
 impl PartialEq for ItemAttributeValues {
 	fn eq(&self, other: &Self) -> bool {
-		self.0.len() == other.0.len()
-			&& self
-				.0
+		let (entries, other_entries) = (self.entries(), other.entries());
+
+		entries.len() == other_entries.len()
+			&& entries
 				.iter()
-				.zip(&other.0)
+				.zip(other_entries)
 				.all(|((self_key, self_value), (other_key, other_value))| self_key == other_key && self_value.eq_dyn(other_value.as_ref()))
 	}
 }
@@ -633,86 +790,121 @@ impl ItemAttributeValues {
 		Self::default()
 	}
 
+	fn from_entries(entries: ValueEntries) -> Self {
+		Self((!entries.is_empty()).then(|| Arc::new(entries)))
+	}
+
+	fn into_entries(self) -> ValueEntries {
+		self.0.map(Arc::unwrap_or_clone).unwrap_or_default()
+	}
+
+	fn entries(&self) -> &[(AttributeKey, Arc<dyn AnyAttributeValue>)] {
+		self.0.as_deref().map_or(&[], Vec::as_slice)
+	}
+
+	/// The entries for writing, which copies the map first if clones of the item still share it.
+	fn entries_mut(&mut self) -> &mut ValueEntries {
+		Arc::make_mut(self.0.get_or_insert_default())
+	}
+
+	fn position(&self, key: &str) -> Option<usize> {
+		self.entries().iter().position(|(existing_key, _)| existing_key.is(key))
+	}
+
 	/// Inserts an attribute with the given key and value, replacing any existing entry with the same key.
-	pub fn insert<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, value: T) {
-		let key = key.into();
+	pub fn insert<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl AsRef<str>, value: T) {
+		let key = key.as_ref();
+		let value: Arc<dyn AnyAttributeValue> = Arc::new(value);
 
-		for (existing_key, existing_value) in &mut self.0 {
-			if *existing_key == key {
-				*existing_value = Box::new(value);
-				return;
-			}
+		let position = self.position(key);
+		let entries = self.entries_mut();
+		match position.and_then(|position| entries.get_mut(position)) {
+			Some((_, existing_value)) => *existing_value = value,
+			None => entries.push((AttributeKey::new(key), value)),
 		}
-
-		self.0.push((key, Box::new(value)));
 	}
 
 	/// Gets a reference to the value of the attribute with the given key, if it exists and can be downcast to the requested type.
 	pub fn get<T: 'static>(&self, key: &str) -> Option<&T> {
-		// Explicit deref `(**value)` reaches `dyn AttributeValue` (which is !Sized and thus dispatches
-		// through the vtable to the concrete type) rather than resolving to the blanket
-		// `impl AttributeValue for Box<dyn AttributeValue>` which would return the wrong TypeId.
-		self.0
+		self.entries()
 			.iter()
-			.find_map(|(existing_key, value)| if existing_key == key { (**value).as_any().downcast_ref::<T>() } else { None })
+			.find_map(|(existing_key, value)| if existing_key.is(key) { (**value).as_any().downcast_ref::<T>() } else { None })
+	}
+
+	/// Gets a shared handle to the value of the attribute with the given key, if it exists and can be downcast to the requested type.
+	pub fn get_shared<T: Send + Sync + 'static>(&self, key: &str) -> Option<Shared<T>> {
+		let (_, value) = self.entries().iter().find(|(existing_key, _)| existing_key.is(key))?;
+
+		value.clone().into_any_arc().downcast::<T>().ok().map(Shared)
 	}
 
 	/// Gets a mutable reference to the value of the attribute with the given key, if it exists and can be downcast to the requested type.
 	pub fn get_mut<T: 'static>(&mut self, key: &str) -> Option<&mut T> {
-		self.0
-			.iter_mut()
-			.find_map(|(existing_key, value)| if existing_key == key { (**value).as_any_mut().downcast_mut::<T>() } else { None })
+		// Checked before anything is unshared, so a miss leaves the values shared
+		let position = self.entries().iter().position(|(existing_key, value)| existing_key.is(key) && (**value).as_any().is::<T>())?;
+		let (_, value) = self.entries_mut().get_mut(position)?;
+
+		unshared_value(value).as_any_mut().downcast_mut::<T>()
 	}
 
 	/// Gets a mutable reference to the value, inserting a default if it doesn't exist or has the wrong type.
 	pub fn get_or_insert_default_mut<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> &mut T {
-		let needs_insert = match self.0.iter().position(|(existing_key, _)| existing_key == key) {
-			Some(index) => {
-				if (*self.0[index].1).as_any().downcast_ref::<T>().is_some() {
-					false
-				} else {
-					self.0.remove(index);
-					true
-				}
-			}
-			None => true,
-		};
+		let position = self.position(key);
+		let has_type = position.and_then(|position| self.entries().get(position)).is_some_and(|(_, value)| (**value).as_any().is::<T>());
 
-		if needs_insert {
-			self.0.push((key.to_string(), Box::new(T::default())));
+		if !has_type {
+			let entries = self.entries_mut();
+			if let Some(position) = position {
+				entries.remove(position);
+			}
+			entries.push((AttributeKey::new(key), Arc::new(T::default())));
 		}
 
 		self.get_mut::<T>(key).expect("Attribute was just ensured to exist with correct type")
 	}
 
 	/// Removes and returns the value for the given key, if it exists and can be downcast to the requested type.
-	pub fn remove<T: 'static>(&mut self, key: &str) -> Option<T> {
-		let index = self.0.iter().position(|(existing_key, _)| existing_key == key)?;
-		let (_, value) = self.0.remove(index);
-		value.into_any().downcast::<T>().ok().map(|boxed| *boxed)
+	pub fn remove<T: Send + Sync + 'static>(&mut self, key: &str) -> Option<T> {
+		let position = self.position(key)?;
+		let (_, mut value) = self.entries_mut().remove(position);
+		if !(*value).as_any().is::<T>() {
+			return None;
+		}
+
+		// A value that clones of the item still share is copied, since it can only be moved out of its last owner
+		if Arc::get_mut(&mut value).is_none() {
+			value = (*value).clone_arc();
+		}
+		Arc::try_unwrap(value.into_any_arc().downcast::<T>().ok()?).ok()
 	}
 
 	/// Returns an iterator over the keys of all stored attributes, in insertion order.
 	pub fn keys(&self) -> impl Iterator<Item = &str> {
-		self.0.iter().map(|(key, _)| key.as_str())
+		self.entries().iter().map(|(key, _)| key.as_str())
 	}
 
 	/// Returns a type-erased reference to the value of the attribute with the given key, if it exists.
 	pub fn get_any(&self, key: &str) -> Option<&dyn std::any::Any> {
-		self.0.iter().find_map(|(existing_key, value)| if existing_key == key { Some((**value).as_any()) } else { None })
+		self.entries()
+			.iter()
+			.find_map(|(existing_key, value)| if existing_key.is(key) { Some((**value).as_any()) } else { None })
 	}
 
 	/// Returns an iterator over key and type-erased value pairs of all stored attributes, in insertion order.
 	pub fn iter_any(&self) -> impl Iterator<Item = (&str, &dyn std::any::Any)> {
-		self.0.iter().map(|(key, value)| (key.as_str(), (**value).as_any()))
+		self.entries().iter().map(|(key, value)| (key.as_str(), (**value).as_any()))
 	}
 
 	/// Returns a debug-formatted string representation of the attribute value for the given key, if it exists.
 	/// The `overrides` function can provide custom formatting for specific type.
 	pub fn display_value(&self, key: &str, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
-		self.0.iter().find_map(|(k, value)| {
-			if k == key {
-				if let Some(text) = overrides(value.as_any()) { Some(text) } else { Some(value.display_string()) }
+		self.entries().iter().find_map(|(k, value)| {
+			if k.is(key) {
+				if let Some(text) = overrides((**value).as_any()) {
+					Some(text)
+				} else {
+					Some(value.display_string())
+				}
 			} else {
 				None
 			}
@@ -721,32 +913,30 @@ impl ItemAttributeValues {
 
 	/// Moves the attribute at `from_key` to `to_key`.
 	/// Does nothing if `from_key` is absent, overwrites any existing `to_key`.
-	pub fn rename(&mut self, from_key: &str, to_key: impl Into<String>) {
-		let Some(pos) = self.0.iter().position(|(k, _)| k == from_key) else { return };
-		let (_, value) = self.0.remove(pos);
+	pub fn rename(&mut self, from_key: &str, to_key: impl AsRef<str>) {
+		let Some(position) = self.position(from_key) else { return };
+		let entries = self.entries_mut();
+		let (_, value) = entries.remove(position);
 
-		let to_key = to_key.into();
-		for (existing_key, existing_value) in &mut self.0 {
-			if *existing_key == to_key {
-				*existing_value = value;
-				return;
-			}
+		let to_key = to_key.as_ref();
+		match entries.iter_mut().find(|(existing_key, _)| existing_key.is(to_key)) {
+			Some((_, existing_value)) => *existing_value = value,
+			None => entries.push((AttributeKey::new(to_key), value)),
 		}
-		self.0.push((to_key, value));
 	}
 
 	/// Clones the attribute with `key` from `source`, replacing any existing attribute with the same key.
 	pub fn insert_cloned_from(&mut self, source: &Self, key: &str) {
-		let Some((_, value)) = source.0.iter().find(|(existing_key, _)| existing_key == key) else {
+		let Some((_, value)) = source.entries().iter().find(|(existing_key, _)| existing_key.is(key)) else {
 			return;
 		};
 
 		let value = value.clone();
 
-		if let Some((_, existing_value)) = self.0.iter_mut().find(|(existing_key, _)| existing_key == key) {
-			*existing_value = value;
-		} else {
-			self.0.push((key.to_string(), value));
+		let entries = self.entries_mut();
+		match entries.iter_mut().find(|(existing_key, _)| existing_key.is(key)) {
+			Some((_, existing_value)) => *existing_value = value,
+			None => entries.push((AttributeKey::new(key), value)),
 		}
 	}
 }
@@ -755,20 +945,94 @@ impl ItemAttributeValues {
 // Attributes
 // ==========
 
+/// One of a list's attributes with its key.
+type AttributeEntry = (AttributeKey, Arc<dyn AnyAttribute>);
+
+/// A list's attributes with their keys, in insertion order. A lone attribute is held inline, so the many small lists
+/// carrying just one need no collection of their own.
+#[derive(Clone, Default)]
+enum AttributeEntries {
+	#[default]
+	None,
+	One(AttributeEntry),
+	Many(Arc<Vec<AttributeEntry>>),
+}
+
+impl AttributeEntries {
+	fn as_slice(&self) -> &[AttributeEntry] {
+		match self {
+			Self::None => &[],
+			Self::One(entry) => std::slice::from_ref(entry),
+			Self::Many(entries) => entries,
+		}
+	}
+
+	/// The entries for writing in place, which copies the collection first if clones of the list still share it.
+	fn as_mut_slice(&mut self) -> &mut [AttributeEntry] {
+		match self {
+			Self::None => &mut [],
+			Self::One(entry) => std::slice::from_mut(entry),
+			Self::Many(entries) => Arc::make_mut(entries).as_mut_slice(),
+		}
+	}
+
+	fn is_empty(&self) -> bool {
+		self.as_slice().is_empty()
+	}
+
+	fn push(&mut self, entry: AttributeEntry) {
+		*self = match std::mem::take(self) {
+			Self::None => Self::One(entry),
+			Self::One(first) => {
+				let mut entries = Vec::with_capacity(4);
+				entries.extend([first, entry]);
+				Self::Many(Arc::new(entries))
+			}
+			Self::Many(mut entries) => {
+				Arc::make_mut(&mut entries).push(entry);
+				Self::Many(entries)
+			}
+		};
+	}
+
+	/// Takes out the entry at `position`, doing nothing when there is none there.
+	fn remove(&mut self, position: usize) {
+		*self = match std::mem::take(self) {
+			// What is left of one or two entries is nothing or a lone entry again, neither of which needs the collection
+			Self::Many(entries) if position < entries.len() && entries.len() <= 2 => entries.get(1 - position).cloned().map_or(Self::None, Self::One),
+			Self::Many(mut entries) if position < entries.len() => {
+				Arc::make_mut(&mut entries).remove(position);
+				Self::Many(entries)
+			}
+			Self::One(_) if position == 0 => Self::None,
+			unchanged => unchanged,
+		};
+	}
+
+	fn into_vec(self) -> Vec<AttributeEntry> {
+		match self {
+			Self::None => Vec::new(),
+			Self::One(entry) => vec![entry],
+			Self::Many(entries) => Arc::unwrap_or_clone(entries),
+		}
+	}
+}
+
 /// The storage data structure for attributes.
 ///
 /// A collection of type-erased parallel attributes, keyed by string name.
 /// All access goes through [`List`] and [`Item`] since internals are private.
+/// Clones share every attribute until one of them is written to.
 /// Invariant: every attribute in `attributes` has exactly `len` elements.
 #[derive(Clone, Default)]
 struct Attributes {
-	attributes: Vec<(String, Box<dyn AnyAttribute>)>,
+	attributes: AttributeEntries,
 	len: usize,
 }
 
 impl Debug for Attributes {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let keys: Vec<&str> = self.attributes.iter().map(|(k, _)| k.as_str()).collect();
+		let keys: Vec<&str> = self.keys().collect();
 		f.debug_struct("Attributes").field("keys", &keys).field("len", &self.len).finish()
 	}
 }
@@ -781,124 +1045,195 @@ impl Attributes {
 
 	/// Creates an empty attribute store with no attributes but a pre-set item count.
 	fn with_len(len: usize) -> Self {
-		Self { attributes: Vec::new(), len }
+		Self {
+			attributes: AttributeEntries::None,
+			len,
+		}
+	}
+
+	fn entries(&self) -> &[AttributeEntry] {
+		self.attributes.as_slice()
+	}
+
+	fn position(&self, key: &str) -> Option<usize> {
+		self.entries().iter().position(|(existing_key, _)| existing_key.is(key))
+	}
+
+	/// The position of the attribute for the given key, if it exists and holds values of type `T`.
+	fn typed_position<T: 'static>(&self, key: &str) -> Option<usize> {
+		self.entries()
+			.iter()
+			.position(|(existing_key, attribute)| existing_key.is(key) && (**attribute).as_any().is::<Attribute<T>>())
+	}
+
+	/// The values of the attribute at `position` for writing, if it holds values of type `T`.
+	fn values_mut<T: 'static>(&mut self, position: usize) -> Option<&mut Vec<T>> {
+		let (_, attribute) = self.attributes.as_mut_slice().get_mut(position)?;
+
+		unshared(attribute).as_any_mut().downcast_mut::<Attribute<T>>().map(|attribute| &mut attribute.0)
 	}
 
 	/// Pushes an item's scalar attributes into this attribute store.
 	/// Existing attributes that the item lacks receive a default value.
 	/// New attribute keys create a new attribute padded with defaults for all prior items.
 	fn push_item(&mut self, item: ItemAttributeValues) {
-		let mut item_entries = item.0;
+		let len = self.len;
+		self.len += 1;
+
+		if self.attributes.is_empty() && item.0.is_none() {
+			return;
+		}
+
+		let mut item_entries = item.into_entries();
 
 		// Push values into existing attributes, or the implicit default if the item lacks that attribute
-		for (attribute_key, attribute) in &mut self.attributes {
-			if let Some(position) = item_entries.iter().position(|(k, _)| k == attribute_key) {
-				let (_, value) = item_entries.swap_remove(position);
-				attribute.push(value);
-			} else {
-				pad_with_implicit_default(attribute_key, attribute, 1);
+		for (attribute_key, attribute) in self.attributes.as_mut_slice() {
+			let attribute = unshared(attribute);
+
+			match item_entries.iter().position(|(key, _)| key == attribute_key) {
+				Some(position) => attribute.push(item_entries.swap_remove(position).1),
+				None => pad_with_implicit_default(attribute_key.as_str(), attribute, 1),
 			}
 		}
 
 		// Create new attributes for any remaining item values, padded with implicit defaults for prior items
 		for (key, value) in item_entries {
-			self.attributes.push((key.clone(), value.into_attribute(&key, self.len)));
+			let attribute = value.into_attribute(key.as_str(), len);
+			self.attributes.push((key, attribute));
 		}
-
-		self.len += 1;
 	}
 
 	/// Appends all attribute data from another attribute store into this one.
 	/// Attributes present in only one side are padded with defaults for the other side's items.
 	fn extend(&mut self, other: Attributes) {
-		let other_len = other.len;
-		let mut other_entries = other.attributes;
+		let (len, other_len) = (self.len, other.len);
+		self.len += other_len;
+
+		// An empty store takes on the other's attributes whole, sharing them
+		if len == 0 && self.entries().is_empty() {
+			self.attributes = other.attributes;
+			return;
+		}
+		// Nothing to add or pad, so self's attributes can stay shared
+		if other.attributes.is_empty() && (other_len == 0 || self.attributes.is_empty()) {
+			return;
+		}
+
+		let mut other_entries = other.attributes.into_vec();
 
 		// Extend matching attributes, or pad self's attributes with implicit defaults for the other's item count
-		for (key, self_attribute) in &mut self.attributes {
-			if let Some(position) = other_entries.iter().position(|(k, _)| k == key) {
-				let (_, other_attribute) = other_entries.swap_remove(position);
-				self_attribute.extend(other_attribute);
-			} else {
-				pad_with_implicit_default(key, self_attribute, other_len);
+		for (key, self_attribute) in self.attributes.as_mut_slice() {
+			let self_attribute = unshared(self_attribute);
+
+			match other_entries.iter().position(|(other_key, _)| other_key == key) {
+				Some(position) => self_attribute.extend(other_entries.swap_remove(position).1),
+				None => pad_with_implicit_default(key.as_str(), self_attribute, other_len),
 			}
 		}
 
 		// Remaining other attributes are new, so we pad with implicit defaults for self's existing items
 		for (key, other_attribute) in other_entries {
 			let mut combined = other_attribute.new_with_defaults(0);
-			pad_with_implicit_default(&key, &mut combined, self.len);
-			combined.extend(other_attribute);
+			let writable = unshared(&mut combined);
+			pad_with_implicit_default(key.as_str(), writable, len);
+			writable.extend(other_attribute);
+
 			self.attributes.push((key, combined));
 		}
-
-		self.len += other_len;
 	}
 
 	/// Gets a reference to the value at the given index from the attribute for the given key.
 	fn get_value<T: 'static>(&self, key: &str, index: usize) -> Option<&T> {
-		self.attributes
+		self.entries()
 			.iter()
-			.find_map(|(k, attribute)| if k == key { attribute.get_any(index)?.downcast_ref::<T>() } else { None })
+			.find_map(|(k, attribute)| if k.is(key) { attribute.get_any(index)?.downcast_ref::<T>() } else { None })
 	}
 
 	/// Removes the entire attribute for the given key, if present.
 	fn remove_attribute(&mut self, key: &str) {
-		if let Some(position) = self.attributes.iter().position(|(k, _)| k == key) {
+		if let Some(position) = self.position(key) {
 			self.attributes.remove(position);
 		}
 	}
 
 	/// Creates a new attribute of type `T` filled with `key`'s implicit default for all existing items.
-	fn new_attribute_padded<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&self, key: &str) -> Box<dyn AnyAttribute> {
-		let mut attribute: Box<dyn AnyAttribute> = Box::new(Attribute::<T>(Vec::with_capacity(self.len)));
+	fn new_attribute_padded<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&self, key: &str) -> Arc<dyn AnyAttribute> {
+		let mut attribute = Attribute::<T>(Vec::with_capacity(self.len));
 		pad_with_implicit_default(key, &mut attribute, self.len);
-		attribute
+
+		Arc::new(attribute)
 	}
 
 	/// Finds or creates an attribute for the given key and type, returning its position.
 	/// If an attribute with the key exists but has the wrong type, it is removed and replaced with a new attribute of the correct type, padded with implicit defaults.
 	/// A newly created attribute is filled with `key`'s implicit default for all existing items.
 	fn find_or_create_attribute<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> usize {
-		match self.attributes.iter().position(|(k, _)| k == key) {
-			Some(position) => {
-				if (*self.attributes[position].1).as_any().downcast_ref::<Attribute<T>>().is_some() {
-					position
-				} else {
-					self.attributes.remove(position);
-					let attribute = self.new_attribute_padded::<T>(key);
-					self.attributes.push((key.to_string(), attribute));
-					self.attributes.len() - 1
-				}
-			}
-			None => {
-				let attribute = self.new_attribute_padded::<T>(key);
-				self.attributes.push((key.to_string(), attribute));
-				self.attributes.len() - 1
-			}
+		if let Some(position) = self.typed_position::<T>(key) {
+			return position;
 		}
+
+		let mistyped = self.position(key);
+		let attribute = self.new_attribute_padded::<T>(key);
+
+		if let Some(position) = mistyped {
+			self.attributes.remove(position);
+		}
+		self.attributes.push((AttributeKey::new(key), attribute));
+
+		self.entries().len() - 1
 	}
 
 	/// Gets a mutable reference to the value at the given index, creating the attribute if it doesn't exist or has the wrong type.
 	fn get_or_insert_default_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str, index: usize) -> &mut T {
 		let attribute_position = self.find_or_create_attribute::<T>(key);
-		let attribute = (*self.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
-		&mut attribute.0[index]
+		let values = self.values_mut::<T>(attribute_position).unwrap();
+		&mut values[index]
 	}
 
 	/// Sets the value at the given index in the attribute for the given key.
 	/// Creates the attribute with defaults if it doesn't exist.
-	fn set_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: T) {
-		let key = key.into();
-		let attribute_position = self.find_or_create_attribute::<T>(&key);
-		let attribute = (*self.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
-		attribute.0[index] = value;
+	fn set_value<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str, index: usize, value: T) {
+		let attribute_position = self.find_or_create_attribute::<T>(key);
+		let values = self.values_mut::<T>(attribute_position).unwrap();
+		values[index] = value;
+	}
+
+	/// Replaces the attribute for the given key with one value per item, keeping its place unless its type changes.
+	fn set_attribute_values<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str, values: Vec<T>) {
+		// An attribute changing type moves to the end, as it does when set one value at a time
+		let (existing, same_type) = (self.position(key), self.typed_position::<T>(key).is_some());
+
+		let attribute: Arc<dyn AnyAttribute> = Arc::new(Attribute(values));
+		if same_type && let Some((_, existing_attribute)) = existing.and_then(|position| self.attributes.as_mut_slice().get_mut(position)) {
+			*existing_attribute = attribute;
+			return;
+		}
+
+		if let Some(position) = existing {
+			self.attributes.remove(position);
+		}
+		self.attributes.push((AttributeKey::new(key), attribute));
+	}
+
+	/// Sets a single type-erased value at the given index of a list of `item_count` items, creating the attribute from the
+	/// value's type if the key holds none.
+	fn set_value_dyn(&mut self, key: &str, index: usize, value: Box<dyn AnyAttributeValue>, item_count: usize) {
+		let position = self.position(key);
+
+		if let Some((_, attribute)) = position.and_then(|position| self.attributes.as_mut_slice().get_mut(position)) {
+			unshared(attribute).set_at(index, value);
+		} else {
+			let mut new_attribute = Arc::<dyn AnyAttributeValue>::from(value).into_attribute(key, index);
+			let trailing_defaults = item_count.saturating_sub(new_attribute.len());
+			pad_with_implicit_default(key, unshared(&mut new_attribute), trailing_defaults);
+			self.attributes.push((AttributeKey::new(key), new_attribute));
+		}
 	}
 
 	/// Returns a debug-formatted string for the value at the given index in the attribute for the given key.
 	fn display_value(&self, key: &str, index: usize, overrides: fn(&dyn std::any::Any) -> Option<String>) -> Option<String> {
-		self.attributes.iter().find_map(|(k, attribute)| {
-			if k == key {
+		self.entries().iter().find_map(|(k, attribute)| {
+			if k.is(key) {
 				if let Some(value) = attribute.get_any(index)
 					&& let Some(text) = overrides(value)
 				{
@@ -913,19 +1248,19 @@ impl Attributes {
 
 	/// Returns a type-erased reference to the value at the given index in the attribute for the given key.
 	fn get_any_value(&self, key: &str, index: usize) -> Option<&dyn std::any::Any> {
-		self.attributes.iter().find_map(|(k, attribute)| if k == key { attribute.get_any(index) } else { None })
+		self.entries().iter().find_map(|(k, attribute)| if k.is(key) { attribute.get_any(index) } else { None })
 	}
 
 	/// Returns an iterator over the keys of all stored attributes (in insertion order).
 	fn keys(&self) -> impl Iterator<Item = &str> {
-		self.attributes.iter().map(|(key, _)| key.as_str())
+		self.entries().iter().map(|(key, _)| key.as_str())
 	}
 
 	/// Returns a typed slice of the attribute for the given key, if it exists and can be downcast to `Attribute<T>`.
 	fn get_attribute_slice<T: 'static>(&self, key: &str) -> Option<&[T]> {
-		self.attributes.iter().find_map(|(k, attribute)| {
-			if k == key {
-				attribute.as_any().downcast_ref::<Attribute<T>>().map(|c| c.0.as_slice())
+		self.entries().iter().find_map(|(k, attribute)| {
+			if k.is(key) {
+				(**attribute).as_any().downcast_ref::<Attribute<T>>().map(|c| c.0.as_slice())
 			} else {
 				None
 			}
@@ -934,46 +1269,56 @@ impl Attributes {
 
 	/// Returns a mutable typed slice of the attribute for the given key, if it exists and can be downcast to `Attribute<T>`.
 	fn get_attribute_slice_mut<T: 'static>(&mut self, key: &str) -> Option<&mut [T]> {
-		self.attributes.iter_mut().find_map(|(k, attribute)| {
-			if k == key {
-				attribute.as_any_mut().downcast_mut::<Attribute<T>>().map(|c| c.0.as_mut_slice())
-			} else {
-				None
-			}
-		})
+		// Checked before anything is unshared, so a miss leaves the attributes shared
+		let position = self.typed_position::<T>(key)?;
+
+		self.values_mut::<T>(position).map(Vec::as_mut_slice)
 	}
 
 	/// Returns a mutable typed slice of the attribute for the given key, creating a new attribute filled with defaults if it doesn't exist.
 	fn get_or_create_attribute_slice_mut<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> &mut [T] {
 		let position = self.find_or_create_attribute::<T>(key);
-		let attribute = (*self.attributes[position].1).as_any_mut().downcast_mut::<Attribute<T>>().unwrap();
-		&mut attribute.0
+		self.values_mut::<T>(position).unwrap()
 	}
 
 	/// Clones all attribute values at the given item index into a new scalar Attributes.
 	fn clone_item(&self, index: usize) -> ItemAttributeValues {
-		let mut attributes = ItemAttributeValues::new();
+		let entries = self.entries().iter().filter_map(|(key, attribute)| Some((key.clone(), attribute.clone_value(index)?)));
 
-		for (key, attribute) in &self.attributes {
-			if let Some(value) = attribute.clone_value(index) {
-				attributes.0.push((key.clone(), value));
-			}
-		}
-
-		attributes
+		ItemAttributeValues::from_entries(entries.collect())
 	}
 
 	/// Drains all attribute data into a Vec of per-item scalar Attributes.
 	fn into_item_vec(self) -> Vec<ItemAttributeValues> {
-		let mut items: Vec<ItemAttributeValues> = (0..self.len).map(|_| ItemAttributeValues::new()).collect();
+		let attributes = self.attributes.into_vec();
+		let mut items: Vec<Vec<_>> = (0..self.len).map(|_| Vec::with_capacity(attributes.len())).collect();
 
-		for (key, attribute) in self.attributes {
-			for (i, value) in attribute.drain().into_iter().enumerate() {
-				items[i].0.push((key.clone(), value));
+		for (key, attribute) in attributes {
+			for (item, value) in items.iter_mut().zip(attribute.drain()) {
+				item.push((key.clone(), value));
 			}
 		}
 
-		items
+		items.into_iter().map(ItemAttributeValues::from_entries).collect()
+	}
+
+	/// Whether both stores hold the same attributes in the same order with equal values.
+	fn equals(&self, other: &Self) -> bool {
+		let (entries, other_entries) = (self.entries(), other.entries());
+
+		entries.len() == other_entries.len()
+			&& entries
+				.iter()
+				.zip(other_entries)
+				.all(|((self_key, self_attribute), (other_key, other_attribute))| self_key == other_key && self_attribute.eq_dyn(other_attribute.as_ref()))
+	}
+
+	/// Hashes every attribute's key and values.
+	fn cache_hash_entries<H: core::hash::Hasher>(&self, state: &mut H) {
+		for (key, attribute) in self.entries() {
+			std::hash::Hash::hash(key.as_str(), state);
+			attribute.cache_hash_dyn(state);
+		}
 	}
 }
 
@@ -1012,6 +1357,15 @@ impl<T> List<T> {
 		Self {
 			element: vec![element],
 			attributes: Attributes::with_len(1),
+		}
+	}
+
+	/// Creates a list holding the given elements in order, with no attributes.
+	pub fn new_from_elements(elements: Vec<T>) -> Self {
+		let len = elements.len();
+		Self {
+			element: elements,
+			attributes: Attributes::with_len(len),
 		}
 	}
 
@@ -1071,7 +1425,7 @@ impl<T> List<T> {
 		self.attributes.get_attribute_slice::<U>(key).map(|s| s.iter())
 	}
 
-	/// Returns an iterator over mutable references to the values of a typed attribute attribute, or `None` if the attribute doesn't exist or has the wrong type.
+	/// Returns an iterator over mutable references to the values of a typed attribute, or `None` if the attribute doesn't exist or has the wrong type.
 	pub fn iter_attribute_values_mut<U: 'static>(&mut self, key: &str) -> Option<std::slice::IterMut<'_, U>> {
 		self.attributes.get_attribute_slice_mut::<U>(key).map(|s| s.iter_mut())
 	}
@@ -1122,22 +1476,26 @@ impl<T> List<T> {
 	}
 
 	/// Sets the attribute value at the given item index and key, creating the attribute with defaults if it doesn't exist.
-	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, index: usize, value: U) {
-		self.attributes.set_value(key, index, value);
+	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl AsRef<str>, index: usize, value: U) {
+		self.attributes.set_value(key.as_ref(), index, value);
+	}
+
+	/// Sets the attribute's value for every item at once from one value per item, replacing any values the key held (an empty list still gains the key).
+	/// Logs an error and leaves the list unchanged if the number of values differs from the number of items.
+	pub fn set_attribute_values<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl AsRef<str>, values: Vec<U>) {
+		let key = key.as_ref();
+		if values.len() != self.element.len() {
+			log::error!("Attribute '{key}' was given {} values for a list of {} items", values.len(), self.element.len());
+			return;
+		}
+
+		self.attributes.set_attribute_values(key, values);
 	}
 
 	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).
 	/// Falls back to default if the value's type doesn't match an existing attribute.
-	pub fn set_attribute_value_dyn(&mut self, key: impl Into<String>, index: usize, value: AttributeValueDyn) {
-		let key = key.into();
-		if let Some(position) = self.attributes.attributes.iter().position(|(k, _)| k == &key) {
-			self.attributes.attributes[position].1.set_at(index, value.0);
-		} else {
-			let mut new_attribute = value.0.into_attribute(&key, index);
-			let trailing_defaults = self.element.len().saturating_sub(new_attribute.len());
-			pad_with_implicit_default(&key, &mut new_attribute, trailing_defaults);
-			self.attributes.attributes.push((key, new_attribute));
-		}
+	pub fn set_attribute_value_dyn(&mut self, key: impl AsRef<str>, index: usize, value: AttributeValueDyn) {
+		self.attributes.set_value_dyn(key.as_ref(), index, value.0, self.element.len());
 	}
 
 	/// Removes the entire attribute for the given key, if present.
@@ -1169,9 +1527,7 @@ impl<T> List<T> {
 	/// This enables simultaneous mutable access to elements and a single attribute without borrowing conflicts.
 	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
 		let Self { element, attributes } = self;
-		let attribute_position = attributes.find_or_create_attribute::<U>(key);
-		let attribute = (*attributes.attributes[attribute_position].1).as_any_mut().downcast_mut::<Attribute<U>>().unwrap();
-		(element.as_mut_slice(), &mut attribute.0)
+		(element.as_mut_slice(), attributes.get_or_create_attribute_slice_mut::<U>(key))
 	}
 
 	// ==================
@@ -1200,8 +1556,8 @@ impl<T: BoundingBox> BoundingBox for List<T> {
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let mut combined_bounds = None;
 
-		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.bounding_box(transform * item_transform, include_stroke) {
+		for (index, item_transform) in self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate() {
+			match T::bounding_box_in_list(self, index, transform * item_transform, include_stroke, false) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => return RenderBoundingBox::Infinite,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -1222,8 +1578,8 @@ impl<T: BoundingBox> BoundingBox for List<T> {
 		let mut combined_bounds = None;
 		let mut any_infinite = false;
 
-		for (element, item_transform) in self.iter_element_values().zip(self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM)) {
-			match element.thumbnail_bounding_box(transform * item_transform, include_stroke) {
+		for (index, item_transform) in self.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM).enumerate() {
+			match T::bounding_box_in_list(self, index, transform * item_transform, include_stroke, true) {
 				RenderBoundingBox::None => continue,
 				RenderBoundingBox::Infinite => any_infinite = true,
 				RenderBoundingBox::Rectangle(bounds) => match combined_bounds {
@@ -1268,26 +1624,16 @@ impl<T: CacheHash> CacheHash for List<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
 		self.element.cache_hash(state);
 
-		// Hash every attribute attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
+		// Hash every attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
 		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
-		for (key, attribute) in &self.attributes.attributes {
-			std::hash::Hash::hash(key.as_str(), state);
-			attribute.cache_hash_dyn(state);
-		}
+		self.attributes.cache_hash_entries(state);
 	}
 }
 
 impl<T: PartialEq> PartialEq for List<T> {
 	fn eq(&self, other: &Self) -> bool {
 		// Attributes participate in equality so the `a == b` ⇒ `hash(a) == hash(b)` contract holds with `cache_hash`
-		self.element == other.element
-			&& self.attributes.attributes.len() == other.attributes.attributes.len()
-			&& self
-				.attributes
-				.attributes
-				.iter()
-				.zip(&other.attributes.attributes)
-				.all(|((self_key, self_attribute), (other_key, other_attribute))| self_key == other_key && self_attribute.eq_dyn(other_attribute.as_ref()))
+		self.element == other.element && self.attributes.equals(&other.attributes)
 	}
 }
 
@@ -1343,12 +1689,12 @@ impl<T: BoundingBox> BoundingBox for Item<T> {
 	/// Computes the element's bounding box, composing the item's transform attribute with the given transform.
 	fn bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
-		self.element().bounding_box(transform * item_transform, include_stroke)
+		T::bounding_box_in_item(self, transform * item_transform, include_stroke, false)
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		let item_transform: DAffine2 = self.attribute_cloned_or_default(ATTR_TRANSFORM);
-		self.element().thumbnail_bounding_box(transform * item_transform, include_stroke)
+		T::bounding_box_in_item(self, transform * item_transform, include_stroke, true)
 	}
 }
 
@@ -1363,7 +1709,7 @@ impl<T: CacheHash> CacheHash for Item<T> {
 		self.element.cache_hash(state);
 
 		// Hash every attribute (key + value) so attribute changes invalidate downstream caches, mirroring `List`
-		for (key, attribute) in &self.attributes.0 {
+		for (key, attribute) in self.attributes.entries() {
 			std::hash::Hash::hash(key.as_str(), state);
 			attribute.cache_hash_dyn(state);
 		}
@@ -1416,6 +1762,13 @@ impl<T> Item<T> {
 		self.attributes.get(key)
 	}
 
+	/// Returns a shared handle to the attribute value for the given key, if it exists and is of the requested type.
+	/// The handle goes on reading the value without copying it, whatever then happens to the item. Writing or removing
+	/// the item's value while a handle is held copies the value first, so a handle is best dropped before then.
+	pub fn attribute_shared<U: Send + Sync + 'static>(&self, key: &str) -> Option<Shared<U>> {
+		self.attributes.get_shared(key)
+	}
+
 	/// Returns the attribute value for the given key, or the provided default if absent or of a different type.
 	pub fn attribute_or<'a, U: 'static>(&'a self, key: &str, default: &'a U) -> &'a U {
 		self.attribute(key).unwrap_or(default)
@@ -1442,18 +1795,18 @@ impl<T> Item<T> {
 	}
 
 	/// Sets the attribute value for the given key, replacing any existing entry with the same key.
-	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl Into<String>, value: U) {
+	pub fn set_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: impl AsRef<str>, value: U) {
 		self.attributes.insert(key, value);
 	}
 
 	/// Sets the attribute value for the given key and returns the item, enabling builder-style chaining.
-	pub fn with_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(mut self, key: impl Into<String>, value: U) -> Self {
+	pub fn with_attribute<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(mut self, key: impl AsRef<str>, value: U) -> Self {
 		self.set_attribute(key, value);
 		self
 	}
 
 	/// Removes and returns the attribute value for the given key, if it exists and is of the requested type.
-	pub fn remove_attribute<U: 'static>(&mut self, key: &str) -> Option<U> {
+	pub fn remove_attribute<U: Send + Sync + 'static>(&mut self, key: &str) -> Option<U> {
 		self.attributes.remove(key)
 	}
 }
@@ -1562,5 +1915,209 @@ mod tests {
 		other.push(Item::new_from_element(()));
 		other.push(Item::new_from_element(()).with_attribute(ATTR_START, 5_u64));
 		assert_eq!(other.attribute_cloned_or_default::<u64>(ATTR_START, 0), 0);
+	}
+
+	// Whole-attribute writes replace an existing attribute in place and refuse a value count that doesn't match
+	#[test]
+	fn set_attribute_values_writes_every_item_at_once() {
+		let mut list = List::new_from_elements(vec![10_u32, 20, 30]);
+		list.set_attribute(ATTR_START, 0, 7_u64);
+		list.set_attribute_values(ATTR_END, vec![1_u64, 2, 3]);
+		list.set_attribute_values(ATTR_START, vec![4_u64, 5, 6]);
+
+		assert_eq!(list.len(), 3);
+		assert_eq!(list.attribute_keys().collect::<Vec<_>>(), [ATTR_START, ATTR_END]);
+		assert_eq!(list.iter_attribute_values::<u64>(ATTR_START).unwrap().copied().collect::<Vec<_>>(), [4, 5, 6]);
+
+		list.set_attribute_values(ATTR_END, vec![9_u64]);
+		assert_eq!(list.iter_attribute_values::<u64>(ATTR_END).unwrap().copied().collect::<Vec<_>>(), [1, 2, 3]);
+
+		// Changing an attribute's type moves it last, whichever way it is written
+		let mut one_at_a_time = list.clone();
+		for index in 0..3 {
+			one_at_a_time.set_attribute(ATTR_START, index, index as f64);
+		}
+		list.set_attribute_values(ATTR_START, vec![0., 1., 2.]);
+		assert_eq!(list.attribute_keys().collect::<Vec<_>>(), [ATTR_END, ATTR_START]);
+		assert_eq!(list, one_at_a_time);
+	}
+
+	fn hash_of<T: CacheHash>(value: &T) -> u64 {
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		value.cache_hash(&mut hasher);
+		core::hash::Hasher::finish(&hasher)
+	}
+
+	// Attribute values are hashed through a buffer, which must not let a change slip by wherever it falls
+	#[test]
+	fn attribute_values_all_reach_the_hash() {
+		let build = |changed: Option<usize>| {
+			let mut list = List::new_from_elements(vec![0_u8; 300]);
+			let mut values: Vec<u64> = (0..300).collect();
+			if let Some(index) = changed {
+				values[index] += 1;
+			}
+			list.set_attribute_values(ATTR_START, values);
+			list.set_attribute_values(ATTR_NAME, vec![String::from("a string long enough to pass straight through the buffer when repeated").repeat(3); 300]);
+			list
+		};
+
+		let hash = hash_of(&build(None));
+		assert_eq!(hash, hash_of(&build(None)));
+		for index in [0, 15, 16, 17, 127, 128, 299] {
+			assert_ne!(hash, hash_of(&build(Some(index))), "a change at {index} went unnoticed");
+		}
+	}
+
+	/// Keeps every byte it is given, in order, so a buffered stream can be checked against what went into it.
+	#[derive(Default)]
+	struct RecordingHasher(Vec<u8>);
+
+	impl core::hash::Hasher for RecordingHasher {
+		fn finish(&self) -> u64 {
+			0
+		}
+
+		fn write(&mut self, bytes: &[u8]) {
+			self.0.extend_from_slice(bytes);
+		}
+	}
+
+	// Writes of every length pass through the buffer whole and in order, also from a value hashing through a buffer of its own
+	#[test]
+	fn buffered_writes_reach_the_inner_hasher_in_order() {
+		use core::hash::Hasher;
+
+		let lengths = [3, 125, 1, 200, 0, 128, 64, 65, 300, 127, 2];
+		let pieces: Vec<Vec<u8>> = lengths.iter().enumerate().map(|(index, &length)| (0..length).map(|byte| (byte + index * 31) as u8).collect()).collect();
+
+		let mut recorder = RecordingHasher::default();
+		{
+			let mut outer = DynHasher::new(&mut recorder);
+			for (index, piece) in pieces.iter().enumerate() {
+				// Every third piece comes from a nested value, the way a list stored as an attribute value is hashed
+				if index % 3 == 2 {
+					DynHasher::new(&mut outer).write(piece);
+				} else {
+					outer.write(piece);
+				}
+			}
+		}
+
+		assert_eq!(recorder.0, pieces.concat());
+	}
+
+	// A cloned list shares each attribute with its source until one of the two writes to it
+	#[test]
+	fn list_clones_share_attributes_until_written() {
+		let mut original = List::new_from_elements(vec![1_u32, 2, 3]);
+		original.set_attribute_values(ATTR_START, vec![10_u64, 20, 30]);
+		original.set_attribute_values(ATTR_END, vec![1_u64, 2, 3]);
+		let values = |list: &List<u32>, key: &str| list.iter_attribute_values::<u64>(key).map(|values| values.as_slice().as_ptr());
+
+		let mut copy = original.clone();
+		assert_eq!(values(&original, ATTR_START), values(&copy, ATTR_START));
+		assert_eq!((&original, hash_of(&original)), (&copy, hash_of(&copy)));
+
+		copy.set_attribute(ATTR_START, 1, 99_u64);
+		assert_eq!(original.attribute::<u64>(ATTR_START, 1), Some(&20));
+		assert_eq!(copy.attribute::<u64>(ATTR_START, 1), Some(&99));
+		assert_ne!(original, copy);
+
+		// Only the attribute written to stops being shared
+		assert_ne!(values(&original, ATTR_START), values(&copy, ATTR_START));
+		assert_eq!(values(&original, ATTR_END), values(&copy, ATTR_END));
+	}
+
+	// A list reads the same however many attributes it has held, and a lone attribute is shared with clones like any other
+	#[test]
+	fn a_lone_attribute_reads_like_one_among_several() {
+		let mut lone = List::new_from_elements(vec![1_u32, 2, 3]);
+		lone.set_attribute_values(ATTR_START, vec![10_u64, 20, 30]);
+		let values = |list: &List<u32>, key: &str| list.iter_attribute_values::<u64>(key).map(|values| values.as_slice().as_ptr());
+
+		let mut copy = lone.clone();
+		assert_eq!(values(&lone, ATTR_START), values(&copy, ATTR_START));
+		copy.set_attribute(ATTR_START, 1, 99_u64);
+		assert_eq!((lone.attribute::<u64>(ATTR_START, 1), copy.attribute::<u64>(ATTR_START, 1)), (Some(&20), Some(&99)));
+		assert_ne!(values(&lone, ATTR_START), values(&copy, ATTR_START));
+
+		// A clone giving the lone attribute up or another type leaves the source as it was
+		let mut emptied = lone.clone();
+		emptied.remove_attribute(ATTR_START);
+		assert_eq!(emptied, List::new_from_elements(vec![1_u32, 2, 3]));
+		let mut retyped = lone.clone();
+		retyped.set_attribute_values(ATTR_START, vec![0.5_f64, 1.5, 2.5]);
+		assert_eq!(retyped.attribute::<f64>(ATTR_START, 2), Some(&2.5));
+		assert_eq!(lone.attribute::<u64>(ATTR_START, 2), Some(&30));
+
+		// Gaining a second attribute and losing it again leaves a list equal to one that never had it
+		let mut regrown = lone.clone();
+		regrown.set_attribute_values(ATTR_END, vec![1_u64, 2, 3]);
+		assert_eq!(regrown.attribute_keys().collect::<Vec<_>>(), [ATTR_START, ATTR_END]);
+		assert_eq!(values(&lone, ATTR_START), values(&regrown, ATTR_START));
+		regrown.remove_attribute(ATTR_END);
+		assert_eq!((&regrown, hash_of(&regrown)), (&lone, hash_of(&lone)));
+
+		regrown.remove_attribute(ATTR_START);
+		assert_eq!(regrown, List::new_from_elements(vec![1_u32, 2, 3]));
+		assert_eq!(lone.attribute::<u64>(ATTR_START, 2), Some(&30));
+	}
+
+	// A cloned item shares each attribute value with its source until one of the two writes to it or takes it out
+	#[test]
+	fn item_clones_share_values_until_written() {
+		let original = Item::new_from_element(()).with_attribute(ATTR_NAME, vec![1_u32, 2, 3]).with_attribute(ATTR_OPACITY, 0.5_f64);
+		let name = |item: &Item<()>| item.attribute::<Vec<u32>>(ATTR_NAME).map(|name| name.as_ptr());
+
+		let mut copy = original.clone();
+		assert_eq!(name(&original), name(&copy));
+		assert_eq!((&original, hash_of(&original)), (&copy, hash_of(&copy)));
+
+		copy.attribute_mut::<Vec<u32>>(ATTR_NAME).unwrap().push(4);
+		assert_eq!(original.attribute::<Vec<u32>>(ATTR_NAME), Some(&vec![1, 2, 3]));
+		assert_eq!(copy.attribute::<Vec<u32>>(ATTR_NAME), Some(&vec![1, 2, 3, 4]));
+
+		let mut emptied = original.clone();
+		assert_eq!(emptied.remove_attribute::<Vec<u32>>(ATTR_NAME), Some(vec![1, 2, 3]));
+		assert_eq!(emptied.attribute::<Vec<u32>>(ATTR_NAME), None);
+		assert_eq!(original.attribute::<Vec<u32>>(ATTR_NAME), Some(&vec![1, 2, 3]));
+	}
+
+	// Taking a shared list apart into items and building on them leaves the list it was cloned from as it was
+	#[test]
+	fn items_from_a_shared_list_leave_its_source_intact() {
+		let mut original = List::new_from_elements(vec![1_u32, 2]);
+		original.set_attribute_values(ATTR_START, vec![10_u64, 20]);
+		let starts = |list: &List<u32>| list.iter_attribute_values::<u64>(ATTR_START).unwrap().copied().collect::<Vec<_>>();
+
+		let raise = |mut item: Item<u32>| {
+			*item.attribute_mut_or_insert_default::<u64>(ATTR_START) += 1;
+			item
+		};
+		let mut rebuilt: List<u32> = original.clone().into_iter().map(raise).collect();
+		rebuilt.extend(original.clone());
+		rebuilt.push(Item::new_from_element(3));
+
+		assert_eq!(starts(&original), [10, 20]);
+		assert_eq!(starts(&rebuilt), [11, 21, 10, 20, 0]);
+	}
+
+	// Keys are stored inline up to a length limit and shared beyond it, which reads the same either way
+	#[test]
+	fn attribute_keys_of_any_length_read_back() {
+		let long_key = "a_user_defined_attribute_name_longer_than_the_inline_limit";
+		let keys = [long_key, ATTR_GRADIENT_HUE_DIRECTION, "", "name with spaces"];
+
+		let mut list = List::new_from_elements(vec![0_u8]);
+		for (value, key) in keys.into_iter().enumerate() {
+			list.set_attribute(key, 0, value as u64);
+		}
+
+		assert_eq!(list.attribute_keys().collect::<Vec<_>>(), keys);
+		for (value, key) in keys.into_iter().enumerate() {
+			assert_eq!(list.attribute::<u64>(key, 0), Some(&(value as u64)));
+		}
+		assert_eq!(list.attribute::<u64>("gradient_hue_directio", 0), None);
 	}
 }

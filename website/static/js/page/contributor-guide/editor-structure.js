@@ -1,10 +1,10 @@
 document.addEventListener("DOMContentLoaded", () => {
-	document.querySelectorAll(".tree-node").forEach((toggle) => {
+	document.querySelectorAll("[data-tree-node]").forEach((toggle) => {
 		toggle.addEventListener("click", (event) => {
 			// Prevent link click from also toggling parent
-			if (event.target instanceof HTMLElement && event.target.tagName === "A") return;
+			if (event.target instanceof HTMLElement && event.target.tagName.toLowerCase() === "a") return;
 
-			const nestedList = toggle.parentElement?.querySelector(".nested");
+			const nestedList = toggle.parentElement?.querySelector("[data-nested]");
 			if (nestedList) {
 				toggle.classList.toggle("expanded");
 				nestedList.classList.toggle("active");
@@ -13,6 +13,6 @@ document.addEventListener("DOMContentLoaded", () => {
 	});
 
 	// Expand the first level by default
-	const firstLevel = document.querySelector(".structure-outline > ul > li > .tree-node");
+	const firstLevel = document.querySelector("[data-structure-outline] [data-tree-node]");
 	if (firstLevel instanceof HTMLElement) firstLevel.click();
 });

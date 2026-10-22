@@ -22,10 +22,11 @@ use crate::input::InputState;
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
+use crate::spawner::TokioSpawner;
 use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Preferences};
-use crate::wrapper::{DesktopWrapper, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
+use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
@@ -77,29 +78,46 @@ impl App {
 
 		let exiting = Arc::new(AtomicBool::new(false));
 
-		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+
+		let async_runtime = tokio::runtime::Builder::new_multi_thread()
+			.thread_name("graphite-async")
+			.enable_all()
+			.build()
+			.expect("failed to construct tokio runtime");
+
+		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
+
+		let wake_scheduler = app_event_scheduler.clone();
+		let editor_wake = move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
+		};
+		let runtime_wake_sender = start_render_sender.clone();
+		let runtime_wake = move || {
+			let _ = runtime_wake_sender.try_send(());
+		};
+		let (desktop_wrapper, mut node_runtime) = DesktopWrapper::new(
+			rand::rng().random(),
+			Arc::new(resource_storage),
+			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
+			wgpu_context.clone(),
+			TokioSpawner::new(async_runtime.handle().clone()),
+			editor_wake,
+			runtime_wake,
+		);
+
+		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
-			let runtime = tokio::runtime::Runtime::new().unwrap();
 			loop {
-				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
-				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
+				let texture = async_runtime.block_on(node_runtime.run());
+				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
 				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
 				if exiting_clone.load(Ordering::Relaxed) {
 					break;
 				}
 			}
 		});
-
-		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
-
-		// Wake the winit event loop when an editor future completes.
-		let wake_scheduler = app_event_scheduler.clone();
-		let wake = Arc::new(move || {
-			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
-		});
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), Arc::new(resource_storage), dirs::app_autosave_documents_dir(), wgpu_context.clone(), wake);
 
 		Self {
 			render_state: None,
@@ -205,15 +223,15 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::OpenFileDialog { title, filters, multiple, context } => {
+			DesktopFrontendMessage::OpenFileDialog { title, options, action } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
-					for filter in filters {
+					for filter in options.filters {
 						dialog = dialog.add_filter(filter.name, &filter.extensions);
 					}
 
-					let handles = if multiple {
+					let handles = if options.multiple {
 						futures::executor::block_on(dialog.pick_files()).unwrap_or_default()
 					} else {
 						futures::executor::block_on(dialog.pick_file()).into_iter().collect()
@@ -223,7 +241,8 @@ impl App {
 						let path = handle.path().to_path_buf();
 						match fs::read(&path) {
 							Ok(content) => {
-								let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
+								let action = action.clone();
+								let message = DesktopWrapperMessage::IngestFile { path, content, action };
 								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 							}
 							Err(e) => tracing::error!("Failed to read file {}: {}", path.display(), e),
@@ -305,19 +324,6 @@ impl App {
 			}
 			DesktopFrontendMessage::PersistenceReadState => {
 				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
-			}
-			DesktopFrontendMessage::PersistenceReadDocument { id } => {
-				if let Some(document) = persist::read_document_content(&id) {
-					responses.push(DesktopWrapperMessage::LoadDocumentContent { id, document });
-				} else {
-					tracing::error!("Failed to read document content for {id:?}");
-				}
-			}
-			DesktopFrontendMessage::PersistenceWriteDocument { id, document_serialized_content } => {
-				persist::write_document_content(id, document_serialized_content);
-			}
-			DesktopFrontendMessage::PersistenceDeleteDocument { id } => {
-				persist::delete_document(&id);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
 				preferences::write(preferences);
@@ -442,19 +448,15 @@ impl App {
 				}
 			}
 			AppEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
-			AppEvent::NodeGraphExecutionResult(result) => match result {
-				NodeGraphExecutionResult::HasRun(texture) => {
-					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
-					if let Some(texture) = texture
-						&& let Some(render_state) = self.render_state.as_mut()
-						&& let Some(window) = self.window.as_ref()
-					{
-						render_state.bind_viewport_texture(texture);
-						window.request_redraw();
-					}
+			AppEvent::ViewportTexture(texture) => {
+				if let Some(texture) = texture
+					&& let Some(render_state) = self.render_state.as_mut()
+					&& let Some(window) = self.window.as_ref()
+				{
+					render_state.bind_viewport_texture(texture);
+					window.request_redraw();
 				}
-				NodeGraphExecutionResult::NotRun => {}
-			},
+			}
 			AppEvent::UiUpdate(texture) => {
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);
@@ -520,7 +522,11 @@ impl App {
 					for path in paths {
 						tracing::info!("Opening file: {}", path.display());
 						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
+							let message = DesktopWrapperMessage::IngestFile {
+								path,
+								content,
+								action: IngestAction::Open,
+							};
 							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 						} else {
 							tracing::error!("Failed to read file: {}", path.display());
@@ -651,13 +657,18 @@ impl ApplicationHandler for App {
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
 			},
-			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_file_paths() {
-				Ok(paths) => {
+			WindowEvent::DataTransferReceived { serial, ref value, .. } if self.pending_dnd_fetch == Some(serial) => match value.try_as_uris() {
+				Ok(uris) => {
 					self.pending_dnd_fetch = None;
+					let paths = uris.iter().filter_map(|uri| url::Url::parse(uri).ok()?.to_file_path().ok());
 					for path in paths {
 						match fs::read(&path) {
 							Ok(content) => {
-								let message = DesktopWrapperMessage::ImportFile { path, content };
+								let message = DesktopWrapperMessage::IngestFile {
+									path,
+									content,
+									action: IngestAction::Import,
+								};
 								self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 							}
 							Err(e) => {

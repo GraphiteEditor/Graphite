@@ -4,7 +4,6 @@
 
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
-use std::sync::Arc;
 
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
 use graphene_resource::ResourceFuture;
@@ -39,7 +38,7 @@ impl<L: Layout> Gdd<L> {
 	#[cfg(not(target_family = "wasm"))]
 	pub fn add_resource_from_path(&mut self, id: document_graph_storage::ResourceId, hash: ResourceHash, src: &Path) -> Result<(), Error> {
 		let dest_path = self.layout.resource_path(&hash);
-		if let AnyContainer::Folder(folder) = self.working.as_ref() {
+		if let AnyContainer::Folder(folder) = &self.working {
 			let full = folder.root().join(&dest_path);
 			if let Some(parent) = full.parent() {
 				std::fs::create_dir_all(parent).map_err(ContainerError::Io)?;
@@ -102,7 +101,7 @@ impl<L: Layout + Send + Sync> LoadResource for Gdd<L> {
 	}
 }
 
-pub struct ResourceProxy<T: Layout>(Arc<AnyContainer>, T);
+pub struct ResourceProxy<T: Layout>(AnyContainer, T);
 
 impl<L: Layout + Send + Sync> LoadResource for ResourceProxy<L> {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {

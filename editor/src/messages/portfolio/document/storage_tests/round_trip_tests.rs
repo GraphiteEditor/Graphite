@@ -1,13 +1,13 @@
 //! End-to-end storage round-trip tests: drive real edits through the editor, push the document
 //! through a fresh in-memory `Gdd` (stage → retire → persist), reopen from the same container, and
 //! assert the reopened document matches. Exercises the full persistence pipeline (conversion,
-//! MessagePack codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
+//! postcard codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
 //! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
 
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use document_graph_storage::{NodeMetadataSource, PeerId};
+use document_graph_storage::{NodeMetadataSource, PeerId, to_value};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 
 use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
@@ -15,6 +15,7 @@ use crate::messages::portfolio::document::document_message_handler::DocumentMess
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage};
+use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use crate::test_utils::test_prelude::*;
 use graphene_std::NodeParameter;
 use graphene_std::vector::style::RenderMode;
@@ -157,9 +158,7 @@ async fn edit_after_open_commits_cleanly() {
 	// reopened registry: the editor's .gdd-open path.
 	let byte_store = HashMapResourceStorage::new();
 	let source = editor.active_document();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let source_network = source.network_interface.document_network().clone();
 	let source_view = StorageMetadataView::new(&source.network_interface);
 	gdd.commit_from_runtime(&source_network, &source_view, &source.resources.registry, &byte_store)
@@ -175,7 +174,7 @@ async fn edit_after_open_commits_cleanly() {
 	{
 		let document = editor.active_document_mut();
 		document.network_interface = rebuilt;
-		document.set_storage(Some(reopened));
+		document.set_storage(reopened, declarations);
 		document.finalize_storage_load();
 	}
 
@@ -209,9 +208,7 @@ async fn edit_after_open_commits_cleanly() {
 #[tokio::test]
 async fn gdd_undo_redo_walks_interactions() {
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	// Commit the active document's current runtime state as one interaction.
 	async fn commit_interaction(gdd: &mut GddV1, document: &DocumentMessageHandler, byte_store: &HashMapResourceStorage) {
@@ -262,9 +259,7 @@ async fn gdd_undo_redo_walks_interactions() {
 #[tokio::test]
 async fn reopen_after_undo_restores_consistent_registry() {
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	async fn commit_interaction(gdd: &mut GddV1, document: &DocumentMessageHandler, byte_store: &HashMapResourceStorage) {
 		let network = document.network_interface.document_network().clone();
@@ -333,7 +328,7 @@ async fn live_undo_shadows_storage_cursor() {
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	// Capture the loaded state as the base interaction, then make a real edit (fires CommitTransaction).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let before_edit = editor.active_document().network_interface.document_network().clone();
@@ -372,9 +367,9 @@ async fn round_trip_document_settings() {
 
 	// The `ui::doc::*` view settings survived the persist/reopen cycle (in session.json, not the registry).
 	let settings = &round_trip.view_settings;
-	assert_eq!(settings.get(doc::RENDER_MODE), Some(&serde_json::to_value(RenderMode::Outline).unwrap()), "render_mode");
-	assert_eq!(settings.get(doc::RULERS_VISIBLE), Some(&serde_json::to_value(false).unwrap()), "rulers_visible");
-	assert_eq!(settings.get(doc::SNAPPING), Some(&serde_json::to_value(&document.snapping_state).unwrap()), "snapping_state");
+	assert_eq!(settings.get(doc::RENDER_MODE), Some(&to_value(&RenderMode::Outline).unwrap()), "render_mode");
+	assert_eq!(settings.get(doc::RULERS_VISIBLE), Some(&to_value(&false).unwrap()), "rulers_visible");
+	assert_eq!(settings.get(doc::SNAPPING), Some(&to_value(&document.snapping_state).unwrap()), "snapping_state");
 }
 
 /// The exported `.gdd` archive must carry `session.json` so view settings (notably the document PTZ)
@@ -386,15 +381,13 @@ async fn gdd_archive_round_trips_view_settings() {
 	use document_graph_storage::attr::session::doc;
 
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	// Stage a distinctive PTZ into the working copy's `view_settings`, as `commit_storage_snapshot` does.
 	let mut ptz = crate::messages::portfolio::document::utility_types::misc::PTZ::default();
 	ptz.pan = glam::DVec2::new(-960., -540.);
 	ptz.set_zoom(0.459);
-	let view_settings = std::collections::BTreeMap::from([(doc::PTZ.to_string(), serde_json::to_value(ptz).unwrap())]);
+	let view_settings = std::collections::BTreeMap::from([(doc::PTZ.to_string(), to_value(&ptz).unwrap())]);
 	gdd.set_view_settings(view_settings).expect("set_view_settings");
 
 	// Export to an in-memory archive, then reopen it from bytes into a fresh container.
@@ -409,7 +402,7 @@ async fn gdd_archive_round_trips_view_settings() {
 
 	assert_eq!(
 		reopened.view_settings().get(doc::PTZ),
-		Some(&serde_json::to_value(ptz).unwrap()),
+		Some(&to_value(&ptz).unwrap()),
 		"the document PTZ must survive a .gdd archive export/open (session.json travels in the archive)"
 	);
 }
@@ -436,9 +429,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	let expected_pan = editor.active_document().network_interface.node_graph_ptz(&[]).unwrap().pan;
 
 	// Commit the document into a fresh `Gdd`, collecting the per-network view state the editor persists.
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into())
-		.await
-		.expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let document = editor.active_document();
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);
@@ -471,14 +462,14 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 }
 
 /// Mirror the real "new document, draw a rect, press undo" flow: mount storage and capture the
-/// new-document base as the mount-time snapshot (as `DocumentStorageMounted` does), then draw a rect
+/// new-document base as the attach-time snapshot (as `StorageAttached` does), then draw a rect
 /// (one `CommitTransaction` interaction) and undo. The shadow must reproduce the legacy-restored interface.
 #[tokio::test]
 async fn live_undo_new_document_draw_rect() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	// Mount-time snapshot: capture the new-document graph as the base interaction.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
@@ -488,6 +479,15 @@ async fn live_undo_new_document_draw_rect() {
 
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &before_rect, "undo should restore the pre-rect network");
+}
+
+fn paste_named_image() -> IngestMessage {
+	IngestMessage::Ingest {
+		data: Image::new(2, 2, Color::WHITE).to_png(),
+		action: IngestAction::Paste,
+		mime_type: String::new(),
+		path: Some("pasted.png".into()),
+	}
 }
 
 /// Pasting an image is one user action and must be one undo step: the paste handler brackets the layer add,
@@ -503,15 +503,7 @@ async fn paste_image_with_name_is_one_undo_step() {
 
 	// Paste with a name so the handler emits the `SetDisplayName` sub-step that historically opened its
 	// own transaction. `create_raster_image` passes `name: None` and so wouldn't exercise this path.
-	let image = Image::new(2, 2, Color::WHITE);
-	editor
-		.handle_message(PortfolioMessage::InsertImage {
-			name: Some("pasted".into()),
-			image,
-			mouse: None,
-			parent_and_insert_index: None,
-		})
-		.await;
+	editor.handle_message(paste_named_image()).await;
 	assert_eq!(
 		editor.active_document().metadata().all_layers().count(),
 		layers_before + 1,
@@ -526,6 +518,36 @@ async fn paste_image_with_name_is_one_undo_step() {
 	);
 }
 
+/// Choosing "None" in the Image node's file picker leaves the empty-resource placeholder, which must still render.
+#[tokio::test]
+async fn image_node_with_no_file_still_evaluates() {
+	use graph_craft::application_io::resource::Resource;
+	use graph_craft::document::DocumentNodeImplementation;
+	use graph_craft::document::value::TaggedValue;
+	use graph_craft::item;
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.create_raster_image(Image::new(2, 2, Color::WHITE), None).await;
+
+	let image_node_id = editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::raster_nodes::std_nodes::image::IDENTIFIER))
+		.map(|(id, _)| *id)
+		.expect("the pasted image should be an Image node");
+	editor
+		.handle_message(NodeGraphMessage::SetInputValue {
+			node_id: image_node_id,
+			input_index: graphene_std::raster_nodes::std_nodes::image::ResourceInput::INDEX,
+			value: TaggedValue::TypeDefault(item!(Resource)).into(),
+		})
+		.await;
+}
+
 /// Undoing an image paste reverts the interaction's `AddResource` in the `Gdd` cursor while the runtime keeps
 /// the resource alive for legacy redo, so the cursor legitimately holds fewer resources than a fresh
 /// `from_runtime`. Drives the relaxed comparison: every resource the current network references must be in
@@ -535,18 +557,10 @@ async fn undo_image_paste_resources_subset_of_runtime() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 
-	let image = Image::new(2, 2, Color::WHITE);
-	editor
-		.handle_message(PortfolioMessage::InsertImage {
-			name: Some("pasted".into()),
-			image,
-			mouse: None,
-			parent_and_insert_index: None,
-		})
-		.await;
+	editor.handle_message(paste_named_image()).await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
 
@@ -575,22 +589,14 @@ async fn undo_twice_steps_cursor_two_interactions() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	let base = editor.active_document().network_interface.document_network().clone();
 
 	editor.draw_rect(0., 0., 100., 100.).await;
 	let after_rect = editor.active_document().network_interface.document_network().clone();
 
-	let image = Image::new(2, 2, Color::WHITE);
-	editor
-		.handle_message(PortfolioMessage::InsertImage {
-			name: Some("pasted".into()),
-			image,
-			mouse: None,
-			parent_and_insert_index: None,
-		})
-		.await;
+	editor.handle_message(paste_named_image()).await;
 
 	// First undo: removes the paste, back to the post-rectangle network. Cursor and legacy must agree.
 	editor.handle_message(DocumentMessage::Undo).await;
@@ -656,11 +662,9 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
-async fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
-	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into())
-		.await
-		.expect("create_in");
-	editor.active_document_mut().set_storage(Some(gdd));
+fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
+	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into()).expect("create_in");
+	editor.active_document_mut().set_storage(gdd, Default::default());
 	HashMapResourceStorage::new()
 }
 
@@ -675,13 +679,15 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	// Open a real demo artwork through the normal open path and let it render.
 	let content = std::fs::read_to_string("../demo-artwork/changing-seasons.graphite").expect("read demo artwork");
 	editor
-		.handle_message(PortfolioMessage::OpenFile {
-			path: "changing-seasons.graphite".into(),
-			content: content.bytes().collect(),
+		.handle_message(IngestMessage::Ingest {
+			data: content.into_bytes(),
+			action: IngestAction::Open,
+			mime_type: String::new(),
+			path: Some("changing-seasons.graphite".into()),
 		})
 		.await;
 
-	let byte_store = mount_in_memory_storage(&mut editor).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
 
 	// First autosave: captures the loaded document. `verify_storage_round_trip` panics on drift.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
@@ -708,6 +714,57 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+}
+
+/// Manual edits ride a saved document as a folded `VectorModification`, so opening the artworks carrying the most
+/// of them is what proves the stored format still reads and applies. Their Path nodes sit on pen-drawn layers, so
+/// each layer's geometry, curves included, comes from its stored modification alone.
+#[tokio::test]
+async fn demo_artwork_vector_modifications_still_apply() {
+	use graph_craft::document::value::TaggedValue;
+
+	for name in ["red-dress", "isometric-fountain", "valley-of-spires"] {
+		let mut editor = EditorTestUtils::create();
+
+		let data = std::fs::read(format!("../demo-artwork/{name}.graphite")).expect("read demo artwork");
+		editor
+			.handle_message(IngestMessage::Ingest {
+				data,
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some(format!("{name}.graphite").into()),
+			})
+			.await;
+
+		let document = editor.active_document();
+		let network = &document.network_interface;
+		let path_definition = DefinitionIdentifier::Network("Path".into());
+		let mut path_layers = 0;
+		let mut any_curve = false;
+
+		for layer in document.metadata().all_layers() {
+			let Some(path_node) = NodeGraphLayer::new(layer, network).upstream_visible_node_id_from_name_in_layer(&path_definition) else {
+				continue;
+			};
+			path_layers += 1;
+
+			let stored = network.document_network().nodes.get(&path_node).and_then(|node| node.inputs.get(1)).and_then(|input| input.as_value());
+			let Some(TaggedValue::VectorModification(modification)) = stored else {
+				panic!("{name} layer {layer:?} has a Path node without a stored modification");
+			};
+			assert!(!modification.is_empty(), "{name} layer {layer:?} stored a modification that changes nothing");
+
+			let upstream = document.metadata().vector_modify.get(&path_node).expect("the graph run should capture what reaches the Path node");
+			assert!(upstream.anchor_points().next().is_none(), "{name} layer {layer:?} has geometry upstream of its Path node");
+
+			let geometry = network.compute_modified_vector(layer).expect("a layer with a Path node should have a vector");
+			assert!(geometry.anchor_points().next().is_some(), "{name} layer {layer:?} surfaced no anchors from its stored modification");
+			any_curve |= geometry.segment_iter().any(|(_, segment, ..)| !matches!(segment, kurbo::PathSeg::Line(_)));
+		}
+
+		assert!(path_layers > 0, "{name} has no layers edited through a Path node");
+		assert!(any_curve, "{name} drew no curves from its stored modifications");
+	}
 }
 
 /// The document's single Fill node, as `(network_path, node_id)`.
@@ -749,7 +806,7 @@ async fn none_fill_survives_document_reopen() {
 	// Reopen through the editor's real open path, which runs the document migrations
 	let serialized = editor.active_document().serialize_document();
 	editor
-		.handle_message(PortfolioMessage::OpenDocumentFile {
+		.handle_message(PortfolioMessage::OpenLegacyDocumentFile {
 			document_name: None,
 			document_path: None,
 			document_serialized_content: serialized,
@@ -772,7 +829,7 @@ async fn legacy_four_input_fill_migrates_to_the_split_transform_shape() {
 
 	let mut editor = EditorTestUtils::create();
 	editor
-		.handle_message(PortfolioMessage::OpenDocumentFile {
+		.handle_message(PortfolioMessage::OpenLegacyDocumentFile {
 			document_name: None,
 			document_path: None,
 			document_serialized_content: LEGACY_DOCUMENT.to_string(),
@@ -830,7 +887,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 
 	let mut editor = EditorTestUtils::create();
 	editor
-		.handle_message(PortfolioMessage::OpenDocumentFile {
+		.handle_message(PortfolioMessage::OpenLegacyDocumentFile {
 			document_name: None,
 			document_path: None,
 			document_serialized_content: EIGHT_INPUT_DOCUMENT.to_string(),

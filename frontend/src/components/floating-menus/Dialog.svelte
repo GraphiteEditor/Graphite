@@ -16,7 +16,7 @@
 	let self: FloatingMenu | undefined;
 
 	onMount(() => {
-		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
+		// Focus the button which is marked as emphasized, or otherwise the first button, in the dialog
 		const button = self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]");
 		const emphasizedOrFirstButton = button instanceof HTMLButtonElement ? button : undefined;
 		emphasizedOrFirstButton?.focus();
@@ -129,10 +129,6 @@
 				.text-button {
 					justify-content: left;
 				}
-			}
-
-			.radio-input button {
-				flex-grow: 1;
 			}
 
 			.text-label.multiline {

@@ -1,4 +1,5 @@
 use super::color_traits::{Alpha, AlphaMut, Luminance, Pixel, RGB, RGBMut, Rec709Primaries, SRGB};
+use super::component_blend::{channel_range, luma_rec_601_rounded, set_luminosity, set_saturation};
 use super::discrete_srgb::{float_to_srgb_u8, srgb_u8_to_float};
 use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
@@ -382,7 +383,7 @@ impl Luminance for Color {
 	type LuminanceChannel = f32;
 	#[inline(always)]
 	fn luminance(&self) -> f32 {
-		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
+		self.luminance_rec_709()
 	}
 }
 
@@ -546,20 +547,6 @@ impl Color {
 		0.2126 * self.red + 0.7152 * self.green + 0.0722 * self.blue
 	}
 
-	/// Luma using Rec.601 SDTV coefficients.
-	#[inline(always)]
-	pub fn luminance_rec_601(&self) -> f32 {
-		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
-		0.299 * self.red + 0.587 * self.green + 0.114 * self.blue
-	}
-
-	/// Luma using rounded Rec.601 coefficients (`0.3 / 0.59 / 0.11`), as used by some legacy image processing.
-	#[inline(always)]
-	pub fn luminance_rec_601_rounded(&self) -> f32 {
-		// From https://en.wikipedia.org/wiki/Luma_(video)#Rec._601_luma_versus_Rec._709_luma_coefficients
-		0.3 * self.red + 0.59 * self.green + 0.11 * self.blue
-	}
-
 	/// Perceptual lightness (OkLab L) of the linear-light RGB, 0..1.
 	#[inline(always)]
 	pub fn lightness_oklab(&self) -> f32 {
@@ -583,13 +570,6 @@ impl Color {
 		}
 	}
 
-	/// Shift all RGB channels by the offset that moves Rec.601-rounded luma to `luminance`, clamping channels to 0..1. Approximate; channels above 1 are lost.
-	#[inline(always)]
-	pub fn with_luminance(&self, luminance: f32) -> Color {
-		let delta = luminance - self.luminance_rec_601_rounded();
-		self.map_rgb(|c| (c + delta).clamp(0., 1.))
-	}
-
 	/// The RGB chroma range, `max - min` across the three channels. Not the HSL/HSV saturation (use [`Self::to_hsla`] or [`Self::to_hsva`] for those).
 	#[inline(always)]
 	pub fn chroma_range(&self) -> f32 {
@@ -597,13 +577,6 @@ impl Color {
 		let min = (self.red).min(self.green).min(self.blue);
 
 		max - min
-	}
-
-	/// Replace HSL saturation with the given value, preserving hue, lightness, and alpha.
-	#[inline(always)]
-	pub fn with_saturation(&self, saturation: f32) -> Color {
-		let [hue, _, lightness, alpha] = self.to_hsla();
-		Color::from_hsla(hue, saturation, lightness, alpha)
 	}
 
 	/// Replace the alpha channel, leaving RGB unchanged.
@@ -798,34 +771,47 @@ impl Color {
 		if c_b == 0. { 1. } else { c_b / c_s }
 	}
 
-	/// Whole-color "Hue" blend: source hue with this color's saturation and Rec.601 luma, with `c_s`'s alpha.
+	/// Runs `blend` on this color's and `c_s`'s gamma-encoded channels, which the component blend modes are defined on, keeping `c_s`'s alpha.
+	#[inline(always)]
+	fn blend_gamma_rgb<F: Fn([f32; 3], [f32; 3]) -> [f32; 3]>(&self, c_s: Color, blend: F) -> Color {
+		// Light brighter than white is clipped, since the constructions are defined only across 0..1
+		let in_range = |color: &Color| {
+			let [red, green, blue, _] = color.to_gamma_srgb_channels();
+			[red.clamp(0., 1.), green.clamp(0., 1.), blue.clamp(0., 1.)]
+		};
+		let [r, g, b] = blend(in_range(self), in_range(&c_s));
+
+		Color::from_gamma_srgb_channels(r, g, b, c_s.alpha)
+	}
+
+	/// Whole-color "Hue" blend: source hue with this color's saturation and luma, with `c_s`'s alpha.
 	pub fn blend_hue(&self, c_s: Color) -> Color {
-		let sat_b = self.chroma_range();
-		let lum_b = self.luminance_rec_601();
-
-		c_s.with_saturation(sat_b).with_luminance(lum_b).with_alpha(c_s.alpha)
+		self.blend_gamma_rgb(c_s, |[r_b, g_b, b_b], [r_s, g_s, b_s]| {
+			let [r, g, b] = set_saturation(r_s, g_s, b_s, channel_range(r_b, g_b, b_b));
+			set_luminosity(r, g, b, luma_rec_601_rounded(r, g, b), luma_rec_601_rounded(r_b, g_b, b_b))
+		})
 	}
 
-	/// Whole-color "Saturation" blend: this color's hue/luma with source saturation, with `c_s`'s alpha.
+	/// Whole-color "Saturation" blend: this color's hue and luma with source saturation, with `c_s`'s alpha.
 	pub fn blend_saturation(&self, c_s: Color) -> Color {
-		let sat_s = c_s.chroma_range();
-		let lum_b = self.luminance_rec_601();
-
-		self.with_saturation(sat_s).with_luminance(lum_b).with_alpha(c_s.alpha)
+		self.blend_gamma_rgb(c_s, |[r_b, g_b, b_b], [r_s, g_s, b_s]| {
+			let [r, g, b] = set_saturation(r_b, g_b, b_b, channel_range(r_s, g_s, b_s));
+			set_luminosity(r, g, b, luma_rec_601_rounded(r, g, b), luma_rec_601_rounded(r_b, g_b, b_b))
+		})
 	}
 
-	/// Whole-color "Color" blend: source hue/saturation with this color's luma, with `c_s`'s alpha.
+	/// Whole-color "Color" blend: source hue and saturation with this color's luma, with `c_s`'s alpha.
 	pub fn blend_color(&self, c_s: Color) -> Color {
-		let lum_b = self.luminance_rec_601();
-
-		c_s.with_luminance(lum_b).with_alpha(c_s.alpha)
+		self.blend_gamma_rgb(c_s, |[r_b, g_b, b_b], [r_s, g_s, b_s]| {
+			set_luminosity(r_s, g_s, b_s, luma_rec_601_rounded(r_s, g_s, b_s), luma_rec_601_rounded(r_b, g_b, b_b))
+		})
 	}
 
-	/// Whole-color "Luminosity" blend: this color's hue/saturation with source luma, with `c_s`'s alpha.
+	/// Whole-color "Luminosity" blend: this color's hue and saturation with source luma, with `c_s`'s alpha.
 	pub fn blend_luminosity(&self, c_s: Color) -> Color {
-		let lum_s = c_s.luminance_rec_601();
-
-		self.with_luminance(lum_s).with_alpha(c_s.alpha)
+		self.blend_gamma_rgb(c_s, |[r_b, g_b, b_b], [r_s, g_s, b_s]| {
+			set_luminosity(r_b, g_b, b_b, luma_rec_601_rounded(r_b, g_b, b_b), luma_rec_601_rounded(r_s, g_s, b_s))
+		})
 	}
 
 	/// All four channels as `(red, green, blue, alpha)`.

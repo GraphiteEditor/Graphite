@@ -148,9 +148,17 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 63" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Item/list graph data flow ergonomics</span>
 		</div>
+		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 58" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
+			<span>Scalar/vector math evaluator</span>
+		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Stable document format</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 38" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
+			<span>Multiplayer collaborative editing</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
@@ -169,16 +177,20 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Desktop app <a href="/#desktop-first-and-web-ready">release candidates</a> RC2-6</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Physical measurement units</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Context menus throughout the editor</span>
 		</div>
 		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
+			<span>Timeline panel for animation curves</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
+			<span>Physical measurement units</span>
+		</div>
+		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Local fonts access</span>
+			<span>Access to local system fonts</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
@@ -187,10 +199,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 65" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Text-on-path tool support</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Timeline panel for animation curves</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
@@ -210,7 +218,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Simplified main properties panel</span>
+			<span>Simplified main Inspector</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 71" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
@@ -352,10 +360,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
 			<span>Tear-out panels as separate windows</span>
 		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 38" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Multiplayer collaborative editing</span>
-		</div>
 		<!-- LTS Releases -->
 		<div class="feature-icon heading" data-year="Future">
 			<h3>— LTS Releases —</h3>
@@ -442,7 +446,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 
 Coming late 2026, Graphite will expand its animation toolset beyond parametrically-driven motion to include traditional keyframe animation. The Timeline panel pictured below will let animators drive parameters using keyframes and curves through a traditional dopesheet interface.
 
-Node parameters can be set to a constant value in the Properties panel, exposed to the graph for procedural animation, or exposed to a channel in the upcoming Timeline panel for hand-authored keyframing.
+Node parameters can be set to a constant value in the Inspector, exposed to the graph for procedural animation, or exposed to a channel in the upcoming Timeline panel for hand-authored keyframing.
 
 The panel will enable users to scrub through time with the playhead and choose between timing with discrete frames or continuous seconds. A dedicated curves editing mode (not pictured) will enable fine-tuning parameters with a labeled Y-axis, while the dopesheet allows individual channels to be expanded to view and edit the shape and smoothness of curves inline.
 

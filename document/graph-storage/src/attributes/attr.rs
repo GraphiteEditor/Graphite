@@ -1,6 +1,5 @@
 pub mod node {
 	pub const CALL_ARGUMENT: &str = "call_argument";
-	pub const CONTEXT_FEATURES: &str = "context_features";
 	pub const VISIBLE: &str = "visible";
 	pub const SKIP_DEDUPLICATION: &str = "skip_deduplication";
 	pub const REFLECTION_METADATA: &str = "reflection_metadata";
@@ -25,6 +24,7 @@ pub mod node {
 		pub const LOCKED: &str = "ui::locked";
 		pub const PINNED: &str = "ui::pinned";
 		pub const OUTPUT_NAMES: &str = "ui::output_names";
+		pub const OUTPUT_DESCRIPTIONS: &str = "ui::output_descriptions";
 		pub const REFERENCE: &str = "ui::reference"; // TODO: Remove?
 	}
 }
@@ -32,7 +32,6 @@ pub mod node {
 pub mod session {
 	pub mod network {
 		pub const PREVIEWING: &str = "ui::previewing";
-
 		// TODO: Remove these graph ui nav-specific attributes
 		pub const NAV_PTZ: &str = "ui::nav::ptz";
 		pub const NAV_TRANSFORM: &str = "ui::nav::transform";
@@ -60,9 +59,15 @@ pub mod network {
 	/// serialized blob so its shape can evolve (e.g. dropping the `Type`) without a model change. The
 	/// node references use stable storage IDs, resolved back to runtime-local IDs on conversion.
 	pub const SCOPE_INJECTIONS: &str = "scope_injections";
+
+	/// Whole-vec LWW of the display order of the network's pinned nodes, as stable storage IDs.
+	/// Concurrent reorders do not merge, but the pinned set is already shared, and a shared set with
+	/// per-peer ordering would diverge with no way to reconcile.
+	pub const PINNED_ORDER: &str = "ui::pinned_order";
 }
 
 pub mod delta {
-	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta.
+	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta. Also set on
+	/// the last hot op of an interaction.
 	pub const INTERACTION_END: &str = "interaction_end";
 }

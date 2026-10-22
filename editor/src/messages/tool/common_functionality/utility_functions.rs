@@ -1,6 +1,5 @@
-use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
+use super::snap_session::{SnapSession, SnapView, anchor_positions};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
-use crate::consts::ROTATE_INCREMENT;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
@@ -15,7 +14,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
-use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
+use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModificationType};
 use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
@@ -50,7 +49,7 @@ fn closest_candidate_point(
 	goal: DVec2,
 	max_distance: f64,
 	layers: impl Iterator<Item = LayerNodeIdentifier>,
-	candidates: impl Fn(&Vector) -> Vec<PointId>,
+	candidates: impl Fn(&VectorGeometry) -> Vec<PointId>,
 ) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	let mut best = None;
 	let mut best_distance_squared = max_distance * max_distance;
@@ -64,7 +63,7 @@ fn closest_candidate_point(
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 		for id in candidates(&vector) {
-			let Some(point) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(point) = vector.position_from_id(id) else { continue };
 
 			let distance_squared = viewspace.transform_point2(point).distance_squared(goal);
 			if distance_squared < best_distance_squared {
@@ -93,16 +92,16 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 	Quad::from_box([DVec2::ZERO, far])
 }
 
-pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vector, prefer_handle_direction: bool) -> Option<f64> {
+pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &VectorGeometry, prefer_handle_direction: bool) -> Option<f64> {
 	let is_start = |point: PointId, segment: SegmentId| vector.segment_start_from_id(segment) == Some(point);
-	let anchor_position = vector.point_domain.position_from_id(anchor)?;
-	let end_handle = ManipulatorPointId::EndHandle(segment).get_position(vector);
-	let start_handle = ManipulatorPointId::PrimaryHandle(segment).get_position(vector);
+	let anchor_position = vector.position_from_id(anchor)?;
+	let end_handle = vector.position_of(ManipulatorPointId::EndHandle(segment));
+	let start_handle = vector.position_of(ManipulatorPointId::PrimaryHandle(segment));
 
 	let start_point = if is_start(anchor, segment) {
-		vector.segment_end_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
+		vector.segment_end_from_id(segment).and_then(|id| vector.position_from_id(id))
 	} else {
-		vector.segment_start_from_id(segment).and_then(|id| vector.point_domain.position_from_id(id))
+		vector.segment_start_from_id(segment).and_then(|id| vector.position_from_id(id))
 	};
 
 	let required_handle = if is_start(anchor, segment) {
@@ -117,12 +116,12 @@ pub fn calculate_segment_angle(anchor: PointId, segment: SegmentId, vector: &Vec
 			.or(start_point)
 	};
 
-	required_handle.map(|handle| -(handle - anchor_position).angle_to(DVec2::X))
+	required_handle.map(|handle| handle - anchor_position).and_then(|vector| DVec2::X.try_angle_to(vector))
 }
 
-pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
+pub fn adjust_handle_colinearity(handle: HandleId, anchor_position: DVec2, target_control_point: DVec2, vector: &VectorGeometry, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
 	let Some(other_handle) = vector.other_colinear_handle(handle) else { return };
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
+	let Some(handle_position) = vector.position_of(other_handle.to_manipulator_point()) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - target_control_point).try_normalize() else { return };
@@ -137,12 +136,12 @@ pub fn restore_previous_handle_position(
 	handle: HandleId,
 	original_c: DVec2,
 	anchor_position: DVec2,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	layer: LayerNodeIdentifier,
 	responses: &mut VecDeque<Message>,
 ) -> Option<HandleId> {
 	let other_handle = vector.other_colinear_handle(handle)?;
-	let handle_position = other_handle.to_manipulator_point().get_position(vector)?;
+	let handle_position = vector.position_of(other_handle.to_manipulator_point())?;
 	let direction = (anchor_position - original_c).try_normalize()?;
 
 	let old_relative_position = (handle_position - anchor_position).length() * direction;
@@ -156,8 +155,16 @@ pub fn restore_previous_handle_position(
 	Some(other_handle)
 }
 
-pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_point: DVec2, anchor_position: DVec2, vector: &Vector, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	let Some(handle_position) = other_handle.to_manipulator_point().get_position(vector) else {
+pub fn restore_g1_continuity(
+	handle: HandleId,
+	other_handle: HandleId,
+	control_point: DVec2,
+	anchor_position: DVec2,
+	vector: &VectorGeometry,
+	layer: LayerNodeIdentifier,
+	responses: &mut VecDeque<Message>,
+) {
+	let Some(handle_position) = vector.position_of(other_handle.to_manipulator_point()) else {
 		return;
 	};
 	let Some(direction) = (anchor_position - control_point).try_normalize() else { return };
@@ -174,7 +181,7 @@ pub fn restore_g1_continuity(handle: HandleId, other_handle: HandleId, control_p
 /// Check whether a point is visible in the current overlay mode.
 pub fn is_visible_point(
 	manipulator_point_id: ManipulatorPointId,
-	vector: &Vector,
+	vector: &VectorGeometry,
 	path_overlay_mode: PathOverlayMode,
 	frontier_handles_for_layer: Option<&HashMap<SegmentId, Vec<PointId>>>,
 	selected_segments: &[SegmentId],
@@ -191,14 +198,14 @@ pub fn is_visible_point(
 					}
 
 					// Either the segment is a part of selected segments or the opposite handle is a part of existing selection
-					let Some(handle_pair) = manipulator_point_id.get_handle_pair(vector) else { return false };
+					let Some(handle_pair) = vector.handle_pair_of(manipulator_point_id) else { return false };
 					let other_handle = handle_pair[1].to_manipulator_point();
 
 					// Return whether the list of selected points contain the other handle
 					selected_points.contains(&other_handle)
 				}
 				(PathOverlayMode::FrontierHandles, false) => {
-					let Some(anchor) = manipulator_point_id.get_anchor(vector) else {
+					let Some(anchor) = vector.anchor_of(manipulator_point_id) else {
 						warn!("No anchor for selected handle");
 						return false;
 					};
@@ -214,28 +221,68 @@ pub fn is_visible_point(
 	}
 }
 
+/// The most anchors of the dragged layers that snap along with the box around them, which are those nearest where the pointer took hold.
+const MAX_SNAPPING_ANCHORS: usize = 8;
+
+/// The most visible layers, counting those inside dragged groups, for which a drag snaps their anchors as well as the box around them.
+const MAX_LAYERS_WITH_SNAPPING_ANCHORS: usize = 8;
+
+/// Adds the anchors of the dragged layers nearest the grip to where a gesture's features start, in document space, skipping any already there.
+pub fn push_nearest_anchors(starts: &mut Vec<DVec2>, document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier], grip: DVec2) {
+	// Anchors far from the grip seldom decide where a drag lands, so only the nearest snap. O(n log n) in the anchors.
+	let mut anchors = dragged_anchors(document, layers);
+	anchors.sort_by(|a, b| a.distance_squared(grip).total_cmp(&b.distance_squared(grip)));
+
+	let mut pushed = 0;
+	for anchor in anchors {
+		if pushed >= MAX_SNAPPING_ANCHORS {
+			break;
+		}
+		if !starts.iter().any(|start| start.abs_diff_eq(anchor, 1e-6)) {
+			starts.push(anchor);
+			pushed += 1;
+		}
+	}
+}
+
+/// The anchors the dragged layers draw, in document space, when few enough layers are dragged for them to be worth snapping.
+fn dragged_anchors(document: &DocumentMessageHandler, layers: &[LayerNodeIdentifier]) -> Vec<DVec2> {
+	let metadata = document.metadata();
+	let with_everything_inside = layers.iter().flat_map(|&layer| std::iter::once(layer).chain(layer.descendants(metadata)));
+	let layers: Vec<_> = with_everything_inside
+		.filter(|&layer| !layer.has_children(metadata) && document.network_interface.is_layer_visible(layer))
+		.take(MAX_LAYERS_WITH_SNAPPING_ANCHORS + 1)
+		.collect();
+	if layers.len() > MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+		return Vec::new();
+	}
+
+	let mut anchors = Vec::new();
+	for layer in layers {
+		let to_document = metadata.transform_to_document_as_rendered(layer);
+		let drawn = metadata.layer_outline(layer).flat_map(anchor_positions).map(|position| to_document.transform_point2(position));
+		anchors.extend(drawn.filter(|position| position.is_finite()));
+	}
+	anchors
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn resize_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
-	snap_manager: &mut SnapManager,
-	snap_candidates: &mut Vec<SnapCandidatePoint>,
-	input: &InputPreprocessorMessageHandler,
-	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
 ) {
+	let document = view.document;
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let center = center.then_some(bounds.center_of_transformation);
-		let snap = Some(SizeSnapData {
-			manager: snap_manager,
-			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
-		});
-		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
+		let snap = Some(SizeSnapData { session: snap_session, view });
+		let (position, size) = movement.new_size(view.input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
 
 		let pivot_transform = DAffine2::from_translation(pivot);
@@ -257,29 +304,36 @@ pub fn resize_bounds(
 
 #[allow(clippy::too_many_arguments)]
 pub fn rotate_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	dragging_layers: &mut Vec<LayerNodeIdentifier>,
 	drag_start: DVec2,
-	mouse_position: DVec2,
 	snap_angle: bool,
 	tool: ToolType,
 ) {
-	let angle = {
+	let document = view.document;
+	let pointer_angle = || {
 		let start_offset = drag_start - bounds.center_of_transformation;
-		let end_offset = mouse_position - bounds.center_of_transformation;
-		start_offset.angle_to(end_offset)
+		let end_offset = view.input.mouse.position - bounds.center_of_transformation;
+		start_offset.try_angle_to(end_offset)
 	};
 
-	let snapped_angle = if snap_angle {
-		let snap_resolution = ROTATE_INCREMENT.to_radians();
-		(angle / snap_resolution).round() * snap_resolution
+	// A stepped angle comes from the pointer alone, with nothing snapped
+	let angle = if snap_angle {
+		snap_session.forget();
+		let snap_resolution = document.snapping_state.angle_step_radians();
+		pointer_angle().map(|angle| (angle / snap_resolution).round() * snap_resolution)
 	} else {
-		angle
+		bounds.snap_turn(view, snap_session).or_else(pointer_angle)
+	};
+	let Some(angle) = angle else {
+		warn!("Unable to rotate bounds due to zero offset");
+		return;
 	};
 
-	let delta = DAffine2::from_angle(snapped_angle);
+	let delta = DAffine2::from_angle(angle);
 
 	dragging_layers.retain(|layer| {
 		if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -304,14 +358,17 @@ pub fn rotate_bounds(
 }
 
 pub fn skew_bounds(
-	document: &DocumentMessageHandler,
+	view: SnapView,
+	snap_session: &mut SnapSession,
 	responses: &mut VecDeque<Message>,
 	bounds: &mut BoundingBoxManager,
 	free_movement: bool,
 	layers: &mut Vec<LayerNodeIdentifier>,
-	mouse_position: DVec2,
 	tool: ToolType,
 ) {
+	let document = view.document;
+	let mouse_position = bounds.snap_skew(view, snap_session, free_movement);
+
 	if let Some(movement) = &mut bounds.selected_edges {
 		let mut pivot = DVec2::ZERO;
 
@@ -366,6 +423,17 @@ pub fn transforming_transform_cage(
 
 		if let Some(bounds) = &mut bounding_box_manager {
 			bounds.original_bound_transform = bounds.transform;
+
+			// The resized layers' anchors nearest the grab snap along with the box, taken from where they are before the resize
+			if let Some(edges) = &mut bounds.selected_edges {
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let grab = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let mut anchors = Vec::new();
+				push_nearest_anchors(&mut anchors, document, layers_dragging, grab);
+
+				let document_to_cage = bounds.transform.inverse() * document_to_viewport;
+				edges.anchors = anchors.into_iter().map(|anchor| document_to_cage.transform_point2(anchor)).collect();
+			}
 
 			layers_dragging.retain(|layer| {
 				if *layer != LayerNodeIdentifier::ROOT_PARENT {
@@ -550,7 +618,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
 	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), 1)
-		&& modifications.as_ref() == &VectorModification::default()
+		&& modifications.is_empty()
 	{
 		return None;
 	}
@@ -609,5 +677,57 @@ pub fn nudge_resize_bounds(min: DVec2, max: DVec2, delta: DVec2, tilt: f64, resi
 		min: new_min,
 		max: new_max,
 		transform,
+	}
+}
+
+pub fn is_almost_colinear(point: DVec2, handle1: DVec2, handle2: DVec2) -> bool {
+	let to_handle1 = handle1 - point;
+	let to_handle2 = handle2 - point;
+	// Take the angle to the negated other handle in the range `[-π, +π]`.
+	let Some(angle) = to_handle1.try_angle_to(-to_handle2) else {
+		// If it is impossible to take an angle (one of the handles is zero length) return true since that counts also as colinear.
+		return true;
+	};
+	// An angle of zero means they are perfectly opposite.
+	angle.abs().abs() < 1e-6
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn hidden_layers_neither_offer_anchors_nor_count_toward_the_cutoff_for_snapping_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// One more rectangle than the cutoff allows, the last of which is then hidden
+		let mut layers = Vec::new();
+		let mut left = 100.;
+		for _ in 0..=MAX_LAYERS_WITH_SNAPPING_ANCHORS {
+			editor.draw_rect(left, 100., left + 60., 160.).await;
+			layers.push(editor.get_selected_layer().await.expect("the rectangle should be selected"));
+			left += 80.;
+		}
+		let hide = NodeGraphMessage::SetVisibility {
+			node_id: layers[MAX_LAYERS_WITH_SNAPPING_ANCHORS].to_node(),
+			network_path: Vec::new(),
+			visible: false,
+		};
+		editor.handle_message(hide).await;
+
+		let mut starts = Vec::new();
+		push_nearest_anchors(&mut starts, editor.active_document(), &layers, DVec2::new(100., 100.));
+		assert!(!starts.is_empty(), "the visible rectangles' anchors should snap");
+	}
+
+	#[test]
+	fn is_almost_colinear_test() {
+		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::X, DVec2::X));
+		assert!(!is_almost_colinear(DVec2::ZERO, DVec2::Y, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::NEG_X, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::ZERO, DVec2::X));
+		assert!(is_almost_colinear(DVec2::ZERO, DVec2::ZERO, DVec2::ZERO));
 	}
 }

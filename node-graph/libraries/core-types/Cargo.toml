@@ -5,8 +5,14 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 edition.workspace = true
+repository.workspace = true
+readme.workspace = true
+homepage.workspace = true
 rust-version.workspace = true
 publish.workspace = true
+
+[lints]
+workspace = true
 
 [features]
 default = ["serde"]
@@ -44,6 +50,7 @@ lyon_geom = { workspace = true }
 log = { workspace = true }
 base64 = { workspace = true }
 polycool = { workspace = true }
+futures = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
@@ -52,5 +59,4 @@ wasm-bindgen = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies
-tokio = { workspace = true }
 serde_json = { workspace = true }

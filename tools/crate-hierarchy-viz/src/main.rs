@@ -180,6 +180,9 @@ fn main() -> Result<()> {
 	let dot_content = generate_dot(&crates);
 	let svg_content = dot_to_svg(&dot_content)?;
 
+	// Mark the graph's root element for the website's script to find
+	let svg_content = svg_content.replacen("<svg", "<svg data-crate-hierarchy-graph=\"\"", 1);
+
 	fs::create_dir_all(&output_dir).with_context(|| format!("Failed to create directory {:?}", output_dir))?;
 	fs::write(&output_path, &svg_content).with_context(|| format!("Failed to write to {:?}", output_path))?;
 
@@ -249,6 +252,9 @@ fn dot_to_svg(dot: &str) -> Result<String> {
 	String::from_utf8(output.stdout).with_context(|| "SVG output was not valid UTF-8")
 }
 
+/// A Graphviz subgraph cluster: its id, its label, its fill color, and which crates belong to it.
+type Cluster = (&'static str, &'static str, &'static str, Box<dyn Fn(&CrateInfo) -> bool>);
+
 fn generate_dot(crates: &[CrateInfo]) -> String {
 	let mut out = String::new();
 	out.push_str("digraph CrateHierarchy {\n");
@@ -257,7 +263,7 @@ fn generate_dot(crates: &[CrateInfo]) -> String {
 	out.push_str("    edge [color=gray];\n\n");
 
 	// Define subgraph clusters
-	let clusters: &[(&str, &str, &str, Box<dyn Fn(&CrateInfo) -> bool>)] = &[
+	let clusters: &[Cluster] = &[
 		(
 			"cluster_core",
 			"Core Components",

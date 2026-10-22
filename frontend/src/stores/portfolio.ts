@@ -3,8 +3,8 @@ import { SvelteMap } from "svelte/reactivity";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import { acceptStringFromFilters, downloadFile, downloadFileBlob, upload } from "/src/utility-functions/files";
-import { rasterizeSVG } from "/src/utility-functions/rasterization";
+import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
+import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
 import { patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -29,17 +29,20 @@ const initialState: PortfolioStoreState = {
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
+// The layers (by ID string) the Layers panel has rows rendered for, whose details are the only ones it keeps
+let layersWithDetails = new Set<string>();
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
-export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
+export const inspectorLayout = makeLayoutStore("inspectorLayout");
 export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
 export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
-export const layersPanelControlBarRightLayout = makeLayoutStore("layersPanelControlBarRightLayout");
-export const layersPanelBottomBarLayout = makeLayoutStore("layersPanelBottomBarLayout");
+export const layersPanelBottomBarLeftLayout = makeLayoutStore("layersPanelBottomBarLeftLayout");
+export const layersPanelBottomBarRightLayout = makeLayoutStore("layersPanelBottomBarRightLayout");
 
 // Each panel layout has its own dedicated store so a layout update only re-renders that panel's consumers.
 // Putting them at module scope (not inside the component) lets them survive a Svelte remount during a
@@ -84,7 +87,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
-			editor.openFile(data.filename, await response.bytes());
+			editor.ingestPicked(data.filename, "", await response.bytes(), "Open");
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
@@ -93,14 +96,10 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		}
 	});
 
-	subscriptions.subscribeFrontendMessage("TriggerOpen", async ({ filters }) => {
-		const files = await upload(acceptStringFromFilters(filters), "data", true);
-		files.forEach((file) => editor.openFile(file.filename, file.content));
-	});
-
-	subscriptions.subscribeFrontendMessage("TriggerImport", async ({ filters }) => {
-		const data = await upload(acceptStringFromFilters(filters), "data");
-		editor.importFile(data.filename, data.content);
+	subscriptions.subscribeFrontendMessage("TriggerBrowse", async ({ options, action }) => {
+		const accept = acceptStringFromFilters(options.filters);
+		const files = options.multiple ? await upload(accept, "data", true) : [await upload(accept, "data")];
+		files.forEach((file) => editor.ingestPicked(file.filename, file.type, file.content, action));
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerSaveDocument", (data) => {
@@ -112,17 +111,15 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerExportImage", async (data) => {
-		const { svg, name, mime, size } = data;
+		const { svg, name, fileType, size } = data;
 
-		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
-		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
-
-		// Rasterize the SVG to an image file
+		// Rasterize the SVG and hand its pixels back to the editor for encoding
 		try {
-			const blob = await rasterizeSVG(svg, size[0], size[1], mime, backgroundColor);
+			const canvas = await rasterizeSVGCanvas(svg, size[0], size[1]);
+			const pixels = canvas.getContext("2d")?.getImageData(0, 0, canvas.width, canvas.height);
+			if (!pixels) return;
 
-			// Have the browser download the file to the user's disk
-			downloadFileBlob(name, blob);
+			editor.saveRasterizedExport(name, fileType, pixels.width, pixels.height, new Uint8Array(pixels.data.buffer));
 		} catch {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
@@ -141,9 +138,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(welcomeScreenButtonsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("PropertiesPanel", async (data) => {
+	subscriptions.subscribeLayoutUpdate("Inspector", async (data) => {
 		await tick();
-		patchLayoutStore(propertiesPanelLayout, data);
+		patchLayoutStore(inspectorLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
@@ -156,14 +153,14 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(layersPanelControlBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelControlBarRightLayout, data);
+		patchLayoutStore(layersPanelBottomBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelBottomBarLayout, data);
+		patchLayoutStore(layersPanelBottomBarRightLayout, data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
@@ -174,6 +171,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		// Details sent before their layer's row left view would otherwise be kept without the backend updating them
+		if (!layersWithDetails.has(String(data.data.id))) return;
+
 		update((state) => {
 			state.layerCache.set(String(data.data.id), data.data);
 			return state;
@@ -183,6 +183,17 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	return { subscribe };
 }
 
+// Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document
+export function retainLayerDetails(layerIds: Set<string>, otherDocument: boolean) {
+	layersWithDetails = layerIds;
+	update((state) => {
+		Array.from(state.layerCache.keys()).forEach((id) => {
+			if (otherDocument || !layerIds.has(id)) state.layerCache.delete(id);
+		});
+		return state;
+	});
+}
+
 export function destroyPortfolioStore() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
@@ -190,18 +201,17 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateOpenDocumentsList");
 	subscriptions.unsubscribeFrontendMessage("UpdateActiveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerFetchAndOpenDocument");
-	subscriptions.unsubscribeFrontendMessage("TriggerOpen");
-	subscriptions.unsubscribeFrontendMessage("TriggerImport");
+	subscriptions.unsubscribeFrontendMessage("TriggerBrowse");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveDocument");
 	subscriptions.unsubscribeFrontendMessage("TriggerSaveFile");
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
-	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+	subscriptions.unsubscribeLayoutUpdate("Inspector");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 }

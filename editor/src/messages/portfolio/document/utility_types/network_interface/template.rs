@@ -23,16 +23,16 @@ pub struct NodeTemplate {
 	pub visible: bool,
 	/// Prevents identical proto nodes from being deduplicated during compilation, e.g. for monitor nodes.
 	pub skip_deduplication: bool,
-	/// List of Extract and Inject annotations for the Context.
-	pub context_features: ContextDependencies,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed in italics.
 	pub display_name: String,
-	/// Metadata to override the properties panel widgets for each input. Kept the same length as `inputs`.
+	/// Metadata to override the Inspector widgets for each input. Kept the same length as `inputs`.
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
+	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
+	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI.
 	pub locked: bool,
-	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty.
+	/// Indicates that the node will be shown in the Inspector when it would otherwise be empty.
 	pub pinned: bool,
 	/// Whether the node is displayed as a left-to-right node or bottom-to-top layer, along with its position.
 	pub node_type_metadata: NodeTypePersistentMetadata,
@@ -58,10 +58,10 @@ impl Default for NodeTemplate {
 			implementation: NodeTemplateImplementation::default(),
 			visible: true,
 			skip_deduplication: false,
-			context_features: ContextDependencies::default(),
 			display_name: String::new(),
 			input_metadata: Vec::new(),
 			output_names: Vec::new(),
+			output_descriptions: Vec::new(),
 			locked: false,
 			pinned: false,
 			node_type_metadata: NodeTypePersistentMetadata::default(),
@@ -95,7 +95,7 @@ pub struct NodeNetworkTemplate {
 	///
 	/// [`DocumentNodeDefinition`]: crate::messages::portfolio::document::node_graph::document_node_definitions::DocumentNodeDefinition
 	pub reference: Option<String>,
-	/// The display order of pinned nodes in the Properties panel.
+	/// The display order of pinned nodes in the Inspector.
 	pub pinned_node_order: Vec<NodeId>,
 	pub previewing: Previewing,
 	pub navigation_metadata: NavigationMetadata,
@@ -103,6 +103,10 @@ pub struct NodeNetworkTemplate {
 
 impl NodeTemplate {
 	/// Joins a [`DocumentNode`] and its persistent metadata into the unified template shape. Missing nested metadata is filled with defaults.
+	///
+	/// A template names no node, so the storage identity is dropped here and left unset by
+	/// [`Self::into_parts`]: a node inserted from a template is addressed by its location until storage
+	/// names it.
 	pub fn from_parts(document_node: DocumentNode, persistent_node_metadata: DocumentNodePersistentMetadata) -> Self {
 		let DocumentNode {
 			inputs,
@@ -110,13 +114,15 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
+			context_dependencies: _,
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
+			storage_id: _,
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -154,10 +160,10 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -172,10 +178,10 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
 			display_name,
 			mut input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -192,13 +198,15 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
+			context_dependencies: None,
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {
+			storage_id: None,
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -283,12 +291,16 @@ impl NodeTemplateImplementation {
 /// Collects resource IDs referenced by a template and its nested networks.
 pub fn collect_template_resources(template: &NodeTemplate, out: &mut HashSet<ResourceId>) {
 	for input in &template.inputs {
-		collect_input_resource(input, out);
+		visit_input_resource(input, &mut |id| {
+			out.insert(id);
+		});
 	}
 
 	if let NodeTemplateImplementation::Network(network_template) = &template.implementation {
 		for export in &network_template.exports {
-			collect_input_resource(export, out);
+			visit_input_resource(export, &mut |id| {
+				out.insert(id);
+			});
 		}
 		for nested_template in network_template.nodes.values() {
 			collect_template_resources(nested_template, out);

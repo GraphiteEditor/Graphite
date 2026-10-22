@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 pub use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
-use crate::messages::tool::common_functionality::snapping::SnapData;
+use crate::messages::tool::common_functionality::snap_session::{SnapSession, SnapView};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -25,30 +25,21 @@ impl Arrow {
 		let node_type = resolve_document_node_type(&identifier).expect("Arrow node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)), // arrow_to
-			Some(NodeInput::value(TaggedValue::F64(shaft_width), false)),   // shaft_width
-			Some(NodeInput::value(TaggedValue::F64(head_width), false)),    // head_width
-			Some(NodeInput::value(TaggedValue::F64(head_length), false)),   // head_length
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),  // arrow_to
+			Some(NodeInput::value(TaggedValue::Number(shaft_width), false)), // shaft_width
+			Some(NodeInput::value(TaggedValue::Number(head_width), false)),  // head_width
+			Some(NodeInput::value(TaggedValue::Number(head_length), false)), // head_length
 		])
 	}
 
-	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		layer: LayerNodeIdentifier,
-		tool_data: &mut ShapeToolData,
-		modifier: ShapeToolModifierKey,
-		responses: &mut VecDeque<Message>,
-	) {
+	pub fn update_shape(view: SnapView, snap_session: &mut SnapSession, layer: LayerNodeIdentifier, tool_data: &mut ShapeToolData, modifier: ShapeToolModifierKey, responses: &mut VecDeque<Message>) {
+		let SnapView { document, input, .. } = view;
 		let [center, snap_angle, lock_angle] = modifier;
 
 		tool_data.line_data.drag_current = input.mouse.position;
 
 		let keyboard = &input.keyboard;
-		let ignore = [layer];
-		let snap_data = SnapData::ignore(document, input, viewport, &ignore);
-		let mut document_points = generate_line(tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+		let mut document_points = generate_line(tool_data, snap_session, view, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
 		if tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
 			document_points.swap(0, 1);

@@ -1,6 +1,6 @@
 use super::utility_types::keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
-use crate::application::Editor;
+use crate::application::Environment;
 use crate::messages::input_mapper::utility_types::keyboard::{self, Key};
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::prelude::*;
@@ -11,7 +11,7 @@ pub struct InputMapperMessageContext<'a> {
 	pub actions: ActionList,
 }
 
-#[derive(Debug, Default, ExtractField)]
+#[derive(Debug, ExtractField)]
 pub struct InputMapperMessageHandler {
 	mapping: Mapping,
 }
@@ -29,17 +29,22 @@ impl MessageHandler<InputMapperMessage, InputMapperMessageContext<'_>> for Input
 }
 
 impl InputMapperMessageHandler {
+	pub fn new(mapping: Mapping) -> Self {
+		Self { mapping }
+	}
+
 	pub fn set_mapping(&mut self, mapping: Mapping) {
 		self.mapping = mapping;
 	}
 
-	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant) -> Option<KeysGroup> {
+	pub fn action_input_mapping(&self, action_to_find: &MessageDiscriminant, environment: Environment) -> Option<KeysGroup> {
 		let all_key_mapping_entries = std::iter::empty()
 			.chain(self.mapping.key_up.iter())
 			.chain(self.mapping.key_down.iter())
 			.chain(self.mapping.key_up_no_repeat.iter())
 			.chain(self.mapping.key_down_no_repeat.iter())
 			.chain(self.mapping.double_click.iter())
+			.chain(self.mapping.double_tap.iter())
 			.chain(std::iter::once(&self.mapping.wheel_scroll))
 			.chain(std::iter::once(&self.mapping.pointer_move));
 		let all_mapping_entries = all_key_mapping_entries.flat_map(|entry| entry.0.iter());
@@ -48,7 +53,7 @@ impl InputMapperMessageHandler {
 		let found_actions = all_mapping_entries.filter(|entry| entry.action.to_discriminant() == *action_to_find);
 
 		// Get the `Key` for this platform's accelerator key
-		let platform_accel_key = if Editor::environment().is_mac() { Key::Command } else { Key::Control };
+		let platform_accel_key = if environment.is_mac() { Key::Command } else { Key::Control };
 
 		let entry_to_key = |entry: &MappingEntry| {
 			// Get the modifier keys for the entry (and convert them to Key)
@@ -69,6 +74,7 @@ impl InputMapperMessageHandler {
 			use InputMapperMessage as IMM;
 			match entry.input {
 				IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) => keys.push(key),
+				IMM::DoubleTap(key) => keys.extend([key, key]),
 				_ => (),
 			}
 

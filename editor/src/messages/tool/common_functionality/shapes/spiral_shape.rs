@@ -8,7 +8,7 @@ use crate::messages::tool::common_functionality::gizmos::shape_gizmos::spiral_tu
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, extract_spiral_parameters};
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::snap_session::{PointOptions, SnapSession, SnapView};
 use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
@@ -38,9 +38,9 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, _drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, _drag_start: DVec2, view: SnapView, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		if self.turns_handle.is_dragging() {
-			self.turns_handle.update_number_of_turns(document, input, responses);
+			self.turns_handle.update_number_of_turns(view, snap_session, responses);
 		}
 	}
 
@@ -105,33 +105,23 @@ impl Spiral {
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::SpiralType(spiral_type), false)),
-			Some(NodeInput::value(TaggedValue::F64(turns), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.), false)),
-			Some(NodeInput::value(TaggedValue::F64(inner_radius), false)),
-			Some(NodeInput::value(TaggedValue::F64(0.1), false)),
-			Some(NodeInput::value(TaggedValue::F64(90.), false)),
+			Some(NodeInput::value(TaggedValue::Number(turns), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.), false)),
+			Some(NodeInput::value(TaggedValue::Number(inner_radius), false)),
+			Some(NodeInput::value(TaggedValue::Number(0.1), false)),
+			Some(NodeInput::value(TaggedValue::Number(90.), false)),
 		])
 	}
 
-	pub fn update_shape(
-		document: &DocumentMessageHandler,
-		ipp: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-		layer: LayerNodeIdentifier,
-		shape_tool_data: &mut ShapeToolData,
-		responses: &mut VecDeque<Message>,
-	) {
+	pub fn update_shape(view: SnapView, snap_session: &mut SnapSession, layer: LayerNodeIdentifier, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
+		let SnapView { document, input: ipp, .. } = view;
 		let viewport_drag_start = shape_tool_data.data.viewport_drag_start(document);
 
-		let ignore = vec![layer];
-		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
-		let config = SnapTypeConfiguration::default();
-		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-		let snapped = shape_tool_data.data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
-		let snapped_viewport_point = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-		shape_tool_data.data.snap_manager.update_indicator(snapped);
+		let document_to_viewport = document.metadata().document_to_viewport;
+		let pointer = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+		let snapped_viewport_point = document_to_viewport.transform_point2(snap_session.snap_point(view, pointer, PointOptions::default()));
 
 		let dragged_distance = (viewport_drag_start - snapped_viewport_point).length() / viewport_zoom(document);
 
@@ -156,7 +146,7 @@ impl Spiral {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, OuterRadiusInput),
-			input: NodeInput::value(TaggedValue::F64(new_radius), false),
+			input: NodeInput::value(TaggedValue::Number(new_radius), false),
 		});
 	}
 
@@ -173,7 +163,7 @@ impl Spiral {
 			return;
 		};
 
-		let Some(&TaggedValue::F64(mut turns)) = parameters.value(TurnsInput) else {
+		let Some(&TaggedValue::Number(mut turns)) = parameters.value(TurnsInput) else {
 			return;
 		};
 
@@ -189,7 +179,7 @@ impl Spiral {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, TurnsInput),
-			input: NodeInput::value(TaggedValue::F64(turns), false),
+			input: NodeInput::value(TaggedValue::Number(turns), false),
 		});
 	}
 }

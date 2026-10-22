@@ -25,14 +25,15 @@ const initialState: TooltipStoreState = {
 	fullscreenShortcut: undefined,
 };
 
-type Listener = { eventName: keyof DocumentEventMap; action(event: Event): void };
+type Listener = { eventName: keyof DocumentEventMap; action(event: Event): void; capture?: boolean };
 const tooltipEventListeners: Listener[] = [
 	{ eventName: "mouseover", action: onMouseOver },
 	{ eventName: "mousemove", action: onMouseMove },
 	{ eventName: "mouseleave", action: onMouseLeave },
 	{ eventName: "mousedown", action: closeTooltip },
-	{ eventName: "keydown", action: closeTooltip },
-	{ eventName: "wheel", action: closeTooltip },
+	// Heard on the way down, since a floating menu or a field with its menu open stops these from bubbling up
+	{ eventName: "keydown", action: closeTooltip, capture: true },
+	{ eventName: "wheel", action: closeTooltip, capture: true },
 ];
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -69,7 +70,7 @@ export function createTooltipStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	tooltipEventListeners.forEach(({ eventName, action }) => document.addEventListener(eventName, action));
+	tooltipEventListeners.forEach(({ eventName, action, capture }) => document.addEventListener(eventName, action, { capture }));
 
 	return { subscribe };
 }
@@ -84,7 +85,7 @@ export function destroyTooltipStore() {
 	subscriptions.unsubscribeFrontendMessage("SendShortcutAltClick");
 	subscriptions.unsubscribeFrontendMessage("SendShortcutFullscreen");
 
-	tooltipEventListeners.forEach(({ eventName, action }) => document.removeEventListener(eventName, action));
+	tooltipEventListeners.forEach(({ eventName, action, capture }) => document.removeEventListener(eventName, action, { capture }));
 }
 
 // Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip

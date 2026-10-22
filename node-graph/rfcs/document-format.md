@@ -26,15 +26,22 @@ pub struct Registry {
     pub node_instances: HashMap<NodeId, Node>,                 // all nodes, flat
     pub networks: HashMap<NetworkId, Network>,                  // exports + per-network attrs
     pub resources: ResourceStore,                               // content-addressable resources (images, fonts, declarations)
-    pub peer_users: HashMap<PeerId, UserId>,                    // per-device → per-human identity
+    pub peer_users: HashMap<PeerId, PeerRegistration>,          // per-device -> per-user identity, LWW
     pub attributes: Attributes,                                 // document-level metadata
+    pub removed_nodes: HashMap<NodeId, Tombstone<Node>>,       // removed content and the removal's stamp
+    pub removed_networks: HashMap<NetworkId, Tombstone<Network>>,
+    pub removed_resources: HashMap<ResourceId, Tombstone<ResourceEntry>>,
 }
 
 pub struct Node {
-    pub implementation: Implementation,     // ProtoNode(ResourceId) or Network(net)
-    pub inputs: Vec<InputSlot>,
-    pub attributes: Attributes,
-    pub network: NetworkId,
+    presence: TimeStamp,                    // latest addition or write
+    network: NetworkId,
+    network_timestamp: TimeStamp,           // decides `network` between concurrent additions
+    implementation: Implementation,         // ProtoNode(ResourceId) or Network(net)
+    implementation_timestamp: TimeStamp,
+    inputs: Vec<InputSlot>,
+    inputs_timestamp: TimeStamp,            // when the list last changed shape
+    attributes: Attributes,
 }
 
 pub struct InputSlot {
@@ -44,7 +51,9 @@ pub struct InputSlot {
 }
 
 pub struct Network {
+    presence: TimeStamp,
     pub exports: Vec<ExportSlot>,
+    exports_timestamp: TimeStamp,           // when the list last changed shape
     pub attributes: Attributes,              // per-network ui::* (navigation, previewing)
 }
 
@@ -56,7 +65,7 @@ pub struct ExportSlot {
 pub const ROOT_NETWORK: NetworkId = NetworkId(0);
 ```
 
-`peer_users` records the append-only `PeerId → UserId` mapping written by each device's first contribution (see [Concurrency model](#concurrency-model-cmrdt)).
+`peer_users` records the latest `PeerId → UserId` mapping registered for each device (see [Concurrency model](#concurrency-model-cmrdt)).
 
 The renderable graph lives in `networks[&ROOT_NETWORK]`. By convention the renderer consumes slot 0 of its exports. The editor can pick a different slot via type-based heuristics or user choice.
 
@@ -72,15 +81,21 @@ Library import (how `.gdd` files reference each other and surface library nodes)
 All metadata that is not structural lives in a single `Attributes` bucket per node, per input, and at the document level. That covers node positions, display names, `call_argument` overrides, visibility, `context_features`, locked/pinned flags, input type hints, and reflection metadata.
 
 ```rs
-pub struct Value {
-    pub value: serde_json::Value,
+pub struct AttributeValue {
+    pub value: Value,
     pub timestamp: TimeStamp,
+    pub deleted: bool,                      // a tombstone, which readers see as absent
 }
 
-pub type Attributes = BTreeMap<String, Value>;
+pub struct Attributes {
+    entries: BTreeMap<String, AttributeValue>,
+    floor: TimeStamp,                       // the last whole-map write; a key the map lacks is deleted as of it
+}
 ```
 
 Keys carry a namespace where one applies, mostly the `ui::*` editor-metadata keys (`ui::position`, `ui::display_name`, and so on). Compute fields use bare keys (`call_argument`, `context_features`, `original_node_id`). Values are JSON, and the per-value `TimeStamp` drives LWW on concurrent edits.
+
+`Value` mirrors `serde_json::Value` (null, bool, integer, float, string, array, object). In JSON it serializes untagged, exactly like `serde_json::Value`; in binary codecs each variant carries a tag, so the type-erased leaves survive a codec that is not self-describing. Every other type-erased slot in the format (`NodeInput::Value`, resource source bodies, `RegistryDelta::Other`) uses the same type.
 
 Type-erasure exists for migrations: storage data can be transformed without keeping old Rust struct shapes alive just to deserialize them.
 
@@ -103,18 +118,19 @@ pub enum RegistryDelta {
     RegisterPeer            { peer: PeerId, user: UserId },             // self-inverse; see below
     // Resources (incl. proto-node declarations):
     SetResourceHash { id: ResourceId, hash: Option<ResourceHash> },     // LWW on the resolved hash
-    AddSource       { id: ResourceId, key: SourceKey, source: serde_json::Value },  // insert/LWW entry in the source chain
+    AddSource       { id: ResourceId, key: SourceKey, source: Value },  // insert/LWW entry in the source chain
     RemoveSource    { id: ResourceId, key: SourceKey },
     AddResource     { id: ResourceId, entry: ResourceEntry },           // whole-entry; reverse of RemoveResource
     RemoveResource  { id: ResourceId, snapshot: ResourceEntry },        // snapshot for O(1) reverse
     Merge           { extra_parents: Vec<Rev> },                        // joins divergent tips; registry no-op
-    Other(serde_json::Value),                                           // forward-compatible escape hatch
+    Meta,                                                              
+    Other(Value),                                                      // forward-compatible escape hatch
 }
 
 /// `value: None` is the removal case. Timestamp lives on the wrapping `Delta`.
 pub struct AttributeDelta {
     pub key: String,
-    pub value: Option<serde_json::Value>,
+    pub value: Option<Value>,
 }
 ```
 
@@ -129,7 +145,7 @@ pub struct Delta {
     pub author: PeerId,
     pub timestamp: TimeStamp,
     pub kind: RegistryDelta,
-    pub reverse: RegistryDelta,      // precomputed for undo; excluded from id
+    pub reverse: Vec<Prior>,         // what the op overwrote, stamps included; excluded from id
     pub attributes: Attributes,      // mutable local annotations; excluded from id
 }
 ```
@@ -141,6 +157,8 @@ Because `parent` is itself a `Rev`, an `id` transitively commits to the delta's 
 One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`. Slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
 `Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `interaction_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
+
+`HotOp.attributes` is the same bucket on a hot op, but shared: it travels with the op to every peer and is left behind at retirement. The same `interaction_end` key marks the last op of its author's interaction, so the retirer takes the author's ops through it as one unit. When the boundary comes after the last write was sent, a data-less `RegistryDelta::Meta` op carries the flag; retirement drops `Meta` ops. The retirer marks the unit's last retired delta with `Delta.attributes`' own `interaction_end`, so the boundary survives without the hot op.
 
 ## History as a tree
 
@@ -163,7 +181,7 @@ History has two tiers:
 - **Hot ops** are speculative, intended to be broadcast per-keystroke for live collaboration (broadcast transport is not yet implemented, so today they stay local). They carry only a Lamport timestamp, with no parents and no content-addressed `Rev`. They live in `Document.hot_log`, are GC'd at retirement, and are persisted as a sidecar for crash recovery. They may pass through non-compiling intermediate states.
 - **Retired commits** are `Delta`s produced by retirement. Every retired commit compiles in the retiring peer's local view. They are content-addressed, durable, browseable, and replayable.
 
-Retirement promotes a window of hot ops (those with timestamp at or before a cutoff) into retired deltas, re-applied with a single fresh retirement timestamp per field so LWW arms bump to `T_retire` and the original hot-op timestamps are discarded. Today retirement is one retired delta per hot op. The interfaces are in place for coarsening a window into fewer, semantically-equivalent commits (one per logical `(node, field)` group), but that grouping is not yet implemented.
+Retirement promotes a window of hot ops (those with timestamp at or before a cutoff) into retired deltas, each keeping the timestamp it was authored at, so retiring changes no field's stamp and a peer's concurrent write still orders against it the same way. Each hot op also carries its author's `HotSequence`, a gap-free count; the ops a peer knows are done with form its `RetiredMarks`, a per-author prefix plus runs for gaps still in flight, persisted in `session.json` so a late copy of a retired op is dropped rather than retired again. Today retirement is one retired delta per hot op. The interfaces are in place for coarsening a window into fewer, semantically-equivalent commits (one per logical `(node, field)` group), but that grouping is not yet implemented.
 
 In a collaborative session a leader-elected peer would own retirement. That election is designed to be gossip-based (the lowest `PeerId` among peers whose `retirement_tip` matches the session max) and best-effort, needing no quorum because content-addressed `Rev`s make concurrent retirements that converge dedupe by construction. The `retirement_tip` heartbeat field exists but is inert until broadcast transport lands. Today every session retires its own hot ops (see solo retirement below).
 
@@ -176,25 +194,25 @@ Solo retirement is the same mechanism with a session of one, so history compacti
 Undo/redo operate on the delta history rather than full-interface snapshots. A commit's undo behavior depends on whether it has been broadcast to other peers, tracked by `last_broadcast_rev: Option<Rev>` on `Document` (the latest commit shared with at least one peer, or `None`, and thus the entire history, during solo editing):
 
 - **Silent zone:** commits after `last_broadcast_rev`. No other peer has seen them, so they can be rewound in place.
-- **Published zone:** commits at or before `last_broadcast_rev`. Shared history is never rewound. Undoing one is a *new* forward commit applying the inverse with a fresh timestamp, so concurrent peers converge by LWW.
+- **Published zone:** commits at or before `last_broadcast_rev`, which another peer holds. Shared history is never rewound in place; undoing a published step is a collaboration operation on the shared head and lands with the transport.
 
-The silent zone is the implemented path (solo editing has no transport yet). The published-zone forward-undo lands with collaboration.
+The silent zone is the implemented path (solo editing has no transport yet).
 
 **Silent-zone cursor.** `head: Option<Rev>` is a movable pointer into the append-only DAG (`None` on an empty document with no commits yet). Undo/redo move it but never delete deltas (that would make redo impossible and discard branch history). The extra state is a redo stack `Vec<Rev>`, the checkpoints the user has undone past, because the DAG alone cannot say which child a `head` was undone *from*. New state persists in `session.json` alongside `head`, so redo survives reopen. A new edit while the redo stack is non-empty clears it (the undone-forward branch stays physically in the DAG but is no longer reachable via redo).
 
-**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
+**Interactions, not deltas.** One user action diffs into several deltas (one per changed field, slot, or attribute), so undo steps per *interaction* rather than per delta. The last delta of each interaction is tagged with the `interaction_end` attribute, and undo reverts deltas walking the first-parent chain until the parent is an `interaction_end` boundary, a merge, another user's delta, or the root. The starting `head` (the checkpoint) is pushed to the redo stack, and redo re-applies forward to it.
 
-**Force-apply.** Rewinding re-applies each delta's precomputed `reverse` (for redo, the forward `kind`). These carry the *original* timestamp, which would tie (and so lose) the LWW arms' strict `>` comparison, since the forward op already stamped each field at that timestamp. In the single-writer silent zone the rewind value is authoritative, so silent undo/redo apply in a **force** mode where LWW arms assign unconditionally and structural ops are idempotent. Undo and redo are symmetric (force-reverse, force-forward), so no clock advances and identities are unchanged.
+**Restore, not reverse ops.** A delta's `reverse` is a list of `Prior`s: the state of every slot the op wrote, as it was just before, stamps included (a whole node, network, or resource where the op added, removed, or landed on a tombstone; otherwise one field plus the entity's presence stamp). Undo writes these back as they were, bypassing LWW, so the registry is again exactly the fold of history up to the new `head`. An op applied at its own timestamp could not express that: it can only write a value or a tombstone at that timestamp, while the prior state may be an older stamp or no entry at all, and a stamp the history does not account for decides later concurrent writes differently on different peers. Redo re-applies the forward ops with plain LWW, which folds them in exactly as retirement did. Both are O(steps moved), no clock advances, and identities are unchanged. Undo only takes this user's own interactions and never one containing a merge, since restoring past another peer's write would rewind it.
 
-**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal *by value* (their LWW field timestamps can differ, since retirement re-stamps the snapshot at a fresh time), and undo/redo restore that equality by resyncing the snapshot to the rewound working registry.
+**Two registries.** Computing a correct `reverse` for an LWW field means reading the field's *pre-op* value. But staged edits apply to the live registry immediately (for responsiveness), so by retirement time it already holds the *post*-op value. `Document` therefore keeps two registries: a **working** registry (committed state plus live un-retired ops, what reads and the cursor see) and a **retired snapshot** (committed deltas only). Retirement computes reverses against, and forward-applies to, the snapshot, so the reverse captures the true prior value, and the working registry already reflects the ops and is left as-is. When there are no un-retired ops the two are equal, and undo/redo restore both; with ops still hot, the working registry is rebuilt as the rewound snapshot plus them.
 
 ## Concurrency model: CmRDT
 
-The format uses an operation-based CRDT. The transport layer delivers ops in causal order exactly once (TCP plus the parent links threading the `Delta` DAG). The storage layer assumes this and requires only that concurrent op pairs commute. It does not need idempotency, state-merge, or out-of-order replay.
+The format uses an operation-based CRDT. The transport layer delivers ops in causal order exactly once (TCP plus the parent links threading the `Delta` DAG). Every registry field, an entity's existence included, is last-writer-wins on the op's timestamp, so the same ops fold to the same registry in any order and replaying an op changes nothing; causal order matters only for the parent links of history.
 
 Graph-shape invariants (the graph remaining a DAG, the result compiling) are best-effort. Conflicts that produce a non-compiling graph surface as wiring or type errors rather than being masked by the CRDT.
 
-Identity is two-tier. `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping). `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes an append-only entry to `Registry.peer_users`. Causal delivery guarantees the registration arrives before any of that peer's other ops. The mapping is permanent (first write wins, a conflicting re-registration errors, and an identical one is a no-op), so `RegisterPeer` is its own reverse: replaying it during undo is a no-op rather than needing a distinct removal variant.
+Identity is two-tier. `PeerId` is per-device (stable per `(device, document)`, used for CRDT tiebreaking and `NodeId` scoping). `UserId` is per-human (stable across devices, used for identity display and undo-chain walking). Each device's first contribution emits `RegisterPeer { peer, user }`, which writes the peer's entry in `Registry.peer_users` along with its timestamp. Causal delivery guarantees the registration arrives before any of that peer's other ops. A device that changes person registers again, and the entry is last-writer-wins by timestamp, so every peer settles on the newest registration whatever order they arrive in. Registrations aren't undoable: `RegisterPeer` is its own reverse, so undo leaves the entry standing.
 
 ## Editor pipeline
 
@@ -264,8 +282,8 @@ Arrows mean "depends on". The editor uses `Session` from `document-graph-storage
 A document contains:
 
 - `manifest.json` is always JSON, the bootstrap file. It carries the magic identifier `"gdd"` (the `format` field), a single `u32` `format_version`, a `document_id`, the editor and stdlib versions, and the per-payload codec table (`codecs`). It deliberately omits per-peer state: the saving peer's `PeerId` and the history cursor live in the session payload, not the manifest, so they travel with the local view rather than the shared document.
-- `registry.{json,bin}` is the serialized `Registry`. The codec is fixed per payload and recorded in the manifest (JSON for inspectable, MessagePack for compact, and binary must be self-describing, as the codec rationale explains). Export reuses the working copy's recorded codecs rather than re-encoding.
-- `history.{jsonl,frames}` is the serialized retired delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed MessagePack frames, the prefix guarding against a torn final frame from a crash.
+- `registry.{json,bin}` is the serialized `Registry`. The codec is fixed per payload and recorded in the manifest (JSON for inspectable, postcard for compact, as the codec rationale explains). Export reuses the working copy's recorded codecs rather than re-encoding.
+- `history.{jsonl,frames}` is the serialized retired delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed postcard frames, the prefix guarding against a torn final frame from a crash.
 - `hot-log.{jsonl,frames}` is the un-retired hot ops, persisted as a sidecar for crash recovery and GC'd at retirement.
 - `session.{json,bin}` is per-peer local state: this peer's `PeerId`, the history cursor (`head_rev`), the redo stack, `last_broadcast_rev`, and view settings. It is local-view state, not part of the shared document.
 - `resources/<hash>` is embedded resource bytes, keyed by `ResourceHash`.
@@ -273,15 +291,15 @@ A document contains:
 The folder backend stores these as plain files on disk, and an archive codec packs the same named entries into a single file.
 
 ```
-            my-doc.gdd/
-            ├── manifest.json
-            ├── registry.json
-            ├── history.jsonl
-            ├── hot-log.jsonl
-            ├── session.json
-            └── resources/
-                ├── 7f3a...
-                └── 2c91...
+my-doc.gdd/
+├── manifest.json
+├── registry.json
+├── history.jsonl
+├── hot-log.jsonl
+├── session.json
+└── resources/
+    ├── 7f3a...
+    └── 2c91...
 ```
 
 The `Gdd` handle owns the loaded bytes and exposes them as zero-copy slices. On the folder backend, reads are direct mmap references, while loading from an archive decompresses once on open into an in-memory backend. The working copy is mutated continuously (autosave), and `export(dest, format, options, byte_store)` produces a separate artifact through an `ExportFormat` (`Folder`/`Zip`/`Xz`) without mutating the handle.
@@ -302,20 +320,20 @@ pub struct ResourceEntry {
 }
 
 pub struct SourceKey   { pub priority: Priority, pub peer: PeerId }  // fractional priority + peer tiebreak
-pub struct SourceValue { pub source: serde_json::Value, pub timestamp: TimeStamp }
+pub struct SourceValue { pub source: Value, pub timestamp: TimeStamp }
 ```
 
 A node references a resource by `ResourceId`. The entry maps it to a chain of `DataSource`s tried in order (`Embedded` bytes by hash, `FilePath`, `Url`, `Font`) plus the resolved `ResourceHash`. The chain is an **ordered LWW-element-set** keyed by `SourceKey`: each key carries a fractional `Priority` so a peer can insert between two sources without renumbering, and concurrent insertions at the same priority get distinct keys via the `PeerId` tiebreak. Distinct-key adds (the normal cross-peer case) therefore all survive. A same-key add versus remove resolves by LWW on the per-`Delta` timestamp rather than add-wins, so there are no tombstones, and causal delivery linearizes an add and its later removal. The `hash` is **LWW** (content-derived, so concurrent resolves agree by construction).
 
-Each `DataSource` is stored as `serde_json::Value` rather than a typed enum, with the same motivation as the `Attributes` bucket: type-erasure lets migrations restructure variants without keeping old enum shapes alive. `DataSource` stays typed at the runtime layer, and conversion happens at the serialization boundary. Unknown variants are a hard error on load.
+Each `DataSource` is stored as `Value` rather than a typed enum, with the same motivation as the `Attributes` bucket: type-erasure lets migrations restructure variants without keeping old enum shapes alive. `DataSource` stays typed at the runtime layer, and conversion happens at the serialization boundary. Unknown variants are a hard error on load.
 
-**Declarations as resources.** `Implementation::ProtoNode(ResourceId)` references a declaration resource. `from_runtime` serializes each `ProtoNode` through a self-describing `serde_json::Value` (MessagePack-encoded, via `encode_declaration`), hashes the bytes, derives the `ResourceId` from that hash, and registers a `DataSource::Embedded` entry, with the bytes going to the caller's byte store. (Deriving the ID from the hash is a deterministic bootstrap. A future stable well-known-ID table would let the ID denote the function.) `to_runtime` resolves declarations back via a `Declarations` map (`ResourceId` to `ProtoNode`) that the caller builds from its byte store. The self-describing form keeps `ProtoNode`'s serde aliases working so the on-disk shape stays migratable.
+**Declarations as resources.** `Implementation::ProtoNode(ResourceId)` references a declaration resource. `from_runtime` serializes each `ProtoNode` through the self-describing `Value`, stored postcard-encoded (via `encode_declaration`), hashes the bytes, derives the `ResourceId` from that hash, and registers a `DataSource::Embedded` entry, with the bytes going to the caller's byte store. (Deriving the ID from the hash is a deterministic bootstrap. A future stable well-known-ID table would let the ID denote the function.) `to_runtime` resolves declarations back via a `Declarations` map (`ResourceId` to `ProtoNode`) that the caller builds from its byte store. The self-describing form keeps `ProtoNode`'s serde aliases working so the on-disk shape stays migratable.
 
-A `NodeInput::Value` stores its `TaggedValue` as a self-describing `serde_json::Value` (the same type-erasure as `Attributes` and `DataSource`), so the `TaggedValue` serde aliases keep working and the on-disk shape stays migratable. Legacy documents with inline image `TaggedValue`s have those values extracted into resources at load time, and new saves never embed inline image blobs in `NodeInput::Value`.
+A `NodeInput::Value` stores its `TaggedValue` as a `Value` (the same type-erasure as `Attributes` and `DataSource`), so the `TaggedValue` serde aliases keep working and the on-disk shape stays migratable. Legacy documents with inline image `TaggedValue`s have those values extracted into resources at load time, and new saves never embed inline image blobs in `NodeInput::Value`.
 
 ## Migrations
 
-Migrations run on the type-erased `Registry`, after deserialization and before `to_runtime`. The pipeline reads the format version from the manifest, deserializes the registry with attributes as raw `serde_json::Value`, applies registered migrations scoped to the version range, and hands the result to `to_runtime`.
+Migrations run on the type-erased `Registry`, after deserialization and before `to_runtime`. The pipeline reads the format version from the manifest, deserializes the registry with attributes as raw `Value`, applies registered migrations scoped to the version range, and hands the result to `to_runtime`.
 
 Migrations live in a dedicated crate so they are usable both from the editor and from a CLI for batch upgrades. A single global format version is used initially, and per-library versioning is a future extension.
 
@@ -344,15 +362,15 @@ Because inputs are stamped, `NodeInput::Node` references are set directly via `C
 - **Timestamps.** `TimeStamp { counter: u64, peer: PeerId }` is a Lamport counter with a peer-ID tiebreak. Comparison is lexicographic (counter first, then peer). Wall-clock time is not used.
 - **NodeId identity.** Every new `AddNode` issues a peer-scoped ID, so concurrent creates cannot collide.
 - **Causal delivery.** `apply_delta` requires that every parent of the delta (its `parent` plus any `Merge` extra parents) is already in local history. The storage layer does not buffer, and out-of-order delivery is a transport concern. New peers initialize via snapshot transfer (`Registry` plus history) before streaming deltas.
-- **Removal.** Physical, with no tombstones. If a later op targets an absent node or network, the receiver searches its ancestry (from `head`, following all parents) for the delta that removed the entity, the one whose `reverse` is the matching `AddNode` or `AddNetwork`, and re-applies that reverse before applying the incoming op. `RemoveNode` and `RemoveNetwork` each carry a `snapshot` of the removed entity inside that reverse so the rebuild is O(1) and needs no further history walk. The snapshot is required because retirement recomputes an op's reverse *after* the hot op already applied the removal, when the live entity is gone. Removal is therefore non-durable under concurrent edits, since any concurrent reference to a removed node revives it.
-- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
-- **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an ordered LWW-element-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add or a remove at the same key is LWW on the per-`Delta` timestamp (no tombstones, so a same-key add/remove is order-sensitive only without causal delivery). Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs (`RemoveResource` snapshots the entry for O(1) reverse).
+- **Existence.** Last-writer-wins like any field. Each node, network and resource carries a `presence` stamp, its latest addition or write. A removal moves the entity into a tombstone map (`removed_nodes`, `removed_networks`, `removed_resources`) holding its content and the removal's stamp: an op stamped earlier lands on the tombstone, and an addition, write or reference stamped later revives the entity from it. A write to a node or network never seen lands on a placeholder tombstone that stays dead until its addition folds in, so ops land the same in any order and nothing is buffered; a single-field write to a resource never seen creates a live entry. `RemoveNode`, `RemoveNetwork` and `RemoveResource` carry the removed content, which folds in like any write, so a removal of an entity this peer never saw still lands.
+- **LWW primitives.** Per-input (`InputSlot.timestamp`), per-export-slot (`ExportSlot.timestamp`), and per-attribute-value (the `TimeStamp` in `Attributes`). The exported-nodes list is one such attribute value (the `exported_nodes` document attribute), so it inherits per-key LWW with no separate machinery. The timestamp driving every LWW arm comes from the wrapping `Delta`. A whole-map write (an addition) also stamps the map's floor, deleting every key it does not hold without a tombstone per key. A whole-list write (an addition, `SetNodeInputs`) likewise stamps the list's shape (`inputs_timestamp`, `exports_timestamp`): a slot past the end of a newer list is gone unless written after it. Slot attributes a list write carries over keep their own stamps and floor, so they only win where they already did. `AttributeDelta` carries `value: Option<_>` so a single shape covers both `Set` (`Some`) and `Remove` (`None`), and `Set` versus `Remove` has a defined winner.
+- **Resources.** A resource's `hash` is LWW (content-derived, so concurrent resolves agree). Its source chain is an ordered LWW-element-set keyed by `SourceKey` (fractional priority plus peer tiebreak): concurrent `AddSource`s at distinct keys all survive, and a re-add or a remove at the same key is LWW on the per-`Delta` timestamp, a removal leaving a `deleted` tombstone so either order resolves alike. Whole-resource `AddResource`/`RemoveResource` mirror the node/network add-remove pairs.
 
 The CRDT does not mask graph-shape conflicts. Concurrent same-slot `SetNetworkExport`s with different targets resolve by LWW, but the resulting wiring may be wrong, and downstream consumers see it as a compile or wiring error.
 
 ## History storage
 
-`History` is a `Vec<Delta>` in topological order (parents before children) with a `HashMap<Rev, usize>` index for lookup. The append order is canonical, which is what lets history serialize byte-identically across peers that absorbed the same delta set. `Document` adds a `head: Option<Rev>` (the local cursor, which advances only on local commits, `None` until the first commit) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`, and this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent, and a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
+`History` is a `Vec<Delta>` in topological order (parents before children) with a `HashMap<Rev, usize>` index for lookup. The append order is canonical, which is what lets history serialize byte-identically across peers that absorbed the same delta set. `Document` adds a `head: Option<Rev>` (the local cursor, `None` until the first commit) and a `hot_log: Vec<HotOp>` (in-flight unretired ops). Walking history follows each delta's `parent`, and this default first-parent walk reconstructs a single peer's local chain. Branches are siblings under a shared parent, and a `Merge` delta rejoins them, its extra parents naming the other tips it folds in.
 
 ## Editor metadata
 
@@ -364,9 +382,9 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 # Drawbacks
 
 - **Diffing two full `Registry`s on every autosave is O(N) in document size.** This is the interim cost of treating storage as a serialization layer derived from the runtime. It is currently triggered at autosave boundaries (`commit_storage_snapshot`) rather than per gesture, and addressed long-term by computing deltas directly on runtime mutations.
-- **Attributes as `serde_json::Value` carry per-value overhead.** This is mitigable with a typed fast path for hot keys without changing the design. They also force a self-describing codec, ruling out the most compact binary formats.
+- **Attributes as `Value` carry per-value overhead.** This is mitigable with a typed fast path for hot keys without changing the design.
 - **Single global format version is a sharp edge** when libraries diverge: a breaking change in one library bumps the version for documents that do not use it.
-- **`RemoveNode` is non-durable under concurrency.** Any concurrent reference to a removed node revives it from history.
+- **Removal yields to newer writes.** A write or reference stamped after a removal revives the entity from its tombstone, so a removal does not stick against a concurrent edit that happens to stamp later.
 
 # Rationale and alternatives
 
@@ -376,7 +394,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **Merkle `Rev` (parent in the hash) vs. a position-independent content id.** A `Rev` hashes `(parent, author, timestamp, kind)`, and since `parent` is itself a `Rev`, every `Rev` transitively commits to its whole ancestry. This is the Git commit-hash model: a Git commit folds its parent SHA, tree, author, committer, and message into its own SHA, so changing any ancestor rewrites every descendant hash. We keep that model for the same two reasons Git gets value from it. First, tamper-evidence: rehashing detects any rewrite of history (see [Deltas](#deltas)). Second, the chain doubles as the causal structure the CRDT already needs. We then diverge from Git in one deliberate place: a `Merge` is hashed over its sorted parent set alone, with author and timestamp excluded, so two peers merging the same tips mint the *identical* `Rev` and it dedups into one shared node. Git does the opposite (its merge commits carry author/time/message and so never converge), because Git reconciles through a human pushing and pulling rather than through automatic DAG convergence. The cost of parent-in-hash is the one Git also pays: reordering or rebasing an op rewrites every descendant `Rev`, so identity is not stable across [history linearization](#future-possibilities). A pure content-derived id (no parent) would survive reordering but would forfeit both convergence-by-construction and free tamper-evidence, so it is the wrong primary identity. The position-independent use case is better served by a separate, computed id (see the patch-id analogue under [Future possibilities](#future-possibilities)) rather than by weakening `Rev`.
 
-**Ad-hoc resurrection vs. tombstones.** Tombstones add a permanent footprint to the data model and a GC policy question. Resurrection reuses the history log already needed for undo as the recovery mechanism, keeping the live `Registry` lean. The cost is that `RemoveNode` is not durable under concurrent edits.
+**Tombstones vs. resurrection from history.** Reviving a removed entity from the history log keeps the live `Registry` lean, but a removal and a concurrent write then fold differently depending on which arrives first, and a reference anywhere revives what was removed. Tombstones cost a permanent entry per removed entity (collecting them is future work) and buy order-independence: every field, existence included, is last-writer-wins.
 
 **Type-erased attributes vs. typed metadata fields.** Migrations operate on attribute values without keeping old Rust struct shapes alive. The cost is per-value overhead, mitigable without changing the model.
 
@@ -384,7 +402,7 @@ Document-scoped editor settings (viewport view, render mode, overlay/ruler visib
 
 **`.gdd` vs. reusing `.graphite`.** A distinct extension makes migration unambiguous and prevents older Graphite versions from trying to open a new-format file.
 
-**One self-describing binary codec (MessagePack).** The persisted bodies (the registry, the history of deltas, and the `ProtoNode` declaration resources) serialize as their typed Rust shapes, but each carries type-erased `serde_json::Value` leaves: attribute values, `NodeInput::Value` payloads, and resource source bodies. Those leaves need a self-describing codec to deserialize and to keep the serde-alias migration path alive, which forces the same requirement on the whole payload. MessagePack provides that at a few percent size cost. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
+**One binary codec (postcard) with tagged type-erased leaves.** The persisted bodies (the registry, the history of deltas, and the `ProtoNode` declaration resources) serialize as their typed Rust shapes: varint variant indices, positional fields, no names. Each carries type-erased leaves (attribute values, `NodeInput::Value` payloads, resource source bodies) as `Value`, a tagged mirror of `serde_json::Value`, so the leaves stay self-describing and the serde-alias migration path (through `serde_json::Value`) stays alive without forcing a self-describing codec on the whole payload. Variant order is part of the format: reordering an enum changes its tags. Hash preimages (`NodeId`, `Rev`, node-path hashes) use the same codec: a fixed serializer emits one deterministic byte form per value, which is all `blake3` needs, so the codec doubles as the canonical hash encoding without a second format.
 
 **Source chain as a sorted `Vec` vs. `BTreeMap`.** `SourceKey` is a struct, so a `BTreeMap`-keyed chain cannot serialize to JSON (string keys only). A sorted `Vec` of pairs keeps the same ordering and per-key LWW semantics losslessly across every codec.
 

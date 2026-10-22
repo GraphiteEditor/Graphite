@@ -1,4 +1,3 @@
-import { extractPixelData } from "/src/utility-functions/rasterization";
 import type { EditorWrapper, FileFilter } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export function downloadFileURL(filename: string, url: string) {
@@ -85,20 +84,9 @@ export async function pasteFile(item: DataTransferItem, editor: EditorWrapper, m
 	const file = item.getAsFile();
 	if (!file) return;
 
-	if (file.type.startsWith("image/svg")) {
-		const svg = await file.text();
-		editor.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
-	} else if (file.type.startsWith("image/")) {
-		const imageData = await extractPixelData(file);
-		editor.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
-	} else {
-		// TODO: When we eventually have sub-documents, this should be changed to import the document as a node instead of opening it in a separate tab
-		editor.openFile(file.name, await file.bytes());
-	}
+	editor.ingestFile(file.name, file.type, await file.bytes(), mouse?.[0], mouse?.[1], insertParentId, insertIndex);
 }
 
 export function acceptStringFromFilters(filters: FileFilter[]): string {
-	const extensions = filters.flatMap((filter) => filter.extensions);
-	const imageMime = extensions.some((extension) => ["svg", "png", "jpg", "jpeg", "bmp", "gif", "webp", "avif", "tif", "tiff"].includes(extension)) ? ["image/*"] : [];
-	return [...imageMime, ...extensions.map((extension) => `.${extension}`)].join(",");
+	return filters.flatMap((filter) => [...filter.mimeTypes, ...filter.extensions.map((extension) => `.${extension}`)]).join(",");
 }

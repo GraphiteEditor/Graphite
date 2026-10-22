@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HotOp, Rev, TimeStamp};
+use document_graph_storage::{HotOp, Rev, TimeStamp, Value};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -47,7 +47,7 @@ impl<L: Layout> Gdd<L> {
 	/// declaration bytes. The working registry reflects the edit immediately, but nothing enters durable
 	/// retired history until [`retire_pending_interaction`](Self::retire_pending_interaction). Staging on
 	/// every edit while retiring only at interaction boundaries lets several edits coalesce into one retired
-	/// interaction.
+	/// interaction. Returns the decoded declarations the snapshot references, for the caller's cache.
 	///
 	/// # Errors
 	/// [`Error::Commit`] if the runtime diff is rejected by the session. On an [`Error::Container`] /
@@ -60,8 +60,8 @@ impl<L: Layout> Gdd<L> {
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<(), Error> {
-		let (hot_ops, declaration_bytes) = self.session.stage_from_runtime(network, metadata, resources)?;
+	) -> Result<document_graph_storage::Declarations, Error> {
+		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
 
 		for hot_op in &hot_ops {
 			self.append_hot_frame(hot_op)?;
@@ -70,6 +70,29 @@ impl<L: Layout> Gdd<L> {
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
 		// identical bytes on every commit is an idempotent no-op.
+		for bytes in conversion.declaration_bytes.values() {
+			byte_store.store(bytes);
+		}
+		Ok(conversion.declarations)
+	}
+
+	/// Stage ops the caller built from what the editor recorded, rather than deriving them by converting
+	/// the whole document and diffing it against the working registry.
+	///
+	/// Otherwise identical to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot): each op becomes a
+	/// hot frame, and the proto-node declaration bytes go to the byte store.
+	#[cfg(feature = "conversion")]
+	pub fn stage_constructed_ops(
+		&mut self,
+		ops: Vec<document_graph_storage::RegistryDelta>,
+		declaration_bytes: &document_graph_storage::from_runtime::DeclarationBytes,
+		byte_store: &dyn ResourceStorage,
+	) -> Result<(), Error> {
+		let hot_ops = self.session.stage_computed_ops(ops)?;
+
+		for hot_op in &hot_ops {
+			self.append_hot_frame(hot_op)?;
+		}
 		for bytes in declaration_bytes.values() {
 			byte_store.store(bytes);
 		}
@@ -111,7 +134,7 @@ impl<L: Layout> Gdd<L> {
 	/// advanced past what the working copy reflects, so the caller should treat the document as needing
 	/// re-persist (mirrors [`stage_runtime_snapshot`](Self::stage_runtime_snapshot)).
 	pub fn apply_hot_op(&mut self, op: HotOp) -> Result<(), Error> {
-		self.session.apply_hot_op(op.clone())?;
+		self.session.replay_hot_op(op.clone())?;
 		self.append_hot_frame(&op)?;
 		Ok(())
 	}
@@ -150,9 +173,11 @@ impl<L: Layout> Gdd<L> {
 	/// Unlike the per-interaction marker written inline at retire, this targets an already-written delta, so
 	/// the whole history file is rewritten in topological order. O(history) — fine for occasional user
 	/// labeling, not for per-interaction marking (which uses the inline path). No-op if `rev` is unknown.
-	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: serde_json::Value) -> Result<(), Error> {
+	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
 			self.rewrite_history()?;
+			// The annotation ticked the clock, which a reopen must not hand out again.
+			self.persist_session_state()?;
 		}
 		Ok(())
 	}
@@ -171,10 +196,14 @@ impl<L: Layout> Gdd<L> {
 	fn persist_session_state(&mut self) -> Result<(), Error> {
 		let state = SessionState {
 			peer_id: self.session.peer(),
+			user_id: self.session.user(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
+			last_hot_sequence: self.session.last_hot_sequence(),
+			retired_marks: self.session.retired_marks().clone(),
+			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};
@@ -182,18 +211,16 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Re-snapshot the materialized working registry to `registry.bin`. `Session::load` trusts the stored
-	/// registry to match the persisted `head`, so any cursor move (undo/redo) that rewinds the working
-	/// registry without retiring must re-persist it or a reopen would read a registry inconsistent with
-	/// `head`. Synchronous and hot-path-safe (`write_non_blocking`).
+	/// Re-snapshot the retired registry to `registry.bin`. `Session::load` trusts it to match the persisted `head`
+	/// and replays the hot log on top, so it must hold no hot op, and any cursor move must re-persist it.
 	fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
-		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.registry())?;
+		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.retired_registry())?;
 		Ok(())
 	}
 
 	/// Replace the per-peer view settings and persist them to `session.json`. Called by the editor when
 	/// the viewport or a document-level toggle changes; never enters the registry, history, or CRDT.
-	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, serde_json::Value>) -> Result<(), Error> {
+	pub fn set_view_settings(&mut self, view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>) -> Result<(), Error> {
 		self.view_settings = view_settings;
 		self.persist_session_state()
 	}
@@ -209,7 +236,7 @@ impl<L: Layout> Gdd<L> {
 	/// enters the registry, history, or CRDT.
 	pub fn set_network_view_settings(
 		&mut self,
-		network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, serde_json::Value>>,
+		network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 	) -> Result<(), Error> {
 		self.network_view_settings = network_view_settings;
 		self.persist_session_state()

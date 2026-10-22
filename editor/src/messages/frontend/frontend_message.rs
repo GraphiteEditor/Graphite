@@ -1,14 +1,16 @@
 use super::IconName;
-use super::utility_types::{MouseCursorIcon, PersistedState};
+use super::utility_types::{MouseCursorIcon, PersistedState, RenderStatus};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileFilter, RasterizedImage};
+use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, FileType, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
+use crate::messages::layout::utility_types::math_expression::MathExpressionCompletions;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::ingest::utility_types::IngestAction;
 use crate::messages::portfolio::utility_types::WorkspacePanelLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::eyedropper_tool::PrimarySecondary;
@@ -66,6 +68,8 @@ pub enum FrontendMessage {
 	SendUIMetadata {
 		#[serde(rename = "nodeDescriptions")]
 		node_descriptions: Vec<(String, String)>,
+		#[serde(rename = "nodeIcons")]
+		node_icons: Vec<(String, IconName)>,
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
@@ -87,11 +91,9 @@ pub enum FrontendMessage {
 		commit_date: String,
 	},
 	TriggerDisplayThirdPartyLicensesDialog,
-	TriggerOpen {
-		filters: Vec<FileFilter>,
-	},
-	TriggerImport {
-		filters: Vec<FileFilter>,
+	TriggerBrowse {
+		options: FileDialogOptions,
+		action: IngestAction,
 	},
 	TriggerSaveDocument {
 		document_id: DocumentId,
@@ -110,7 +112,8 @@ pub enum FrontendMessage {
 	TriggerExportImage {
 		svg: String,
 		name: String,
-		mime: String,
+		#[serde(rename = "fileType")]
+		file_type: FileType,
 		size: (f64, f64),
 	},
 	TriggerFetchAndOpenDocument {
@@ -118,21 +121,8 @@ pub enum FrontendMessage {
 		filename: String,
 	},
 	TriggerPersistenceReadState,
-	TriggerPersistenceReadDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
 	TriggerPersistenceWriteState {
 		state: PersistedState,
-	},
-	TriggerPersistenceDeleteDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-	},
-	TriggerPersistenceWriteDocument {
-		#[serde(rename = "documentId")]
-		document_id: DocumentId,
-		document: String,
 	},
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
@@ -220,6 +210,23 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>, // TODO: Align this with what's generated
 	},
+	/// The tokens of what a math expression widget holds, for it to color and typeset once they arrive, and the names offered to
+	/// finish the one at the caret, where they were asked for.
+	UpdateMathExpressionAnalysis {
+		#[serde(rename = "widgetId")]
+		widget_id: WidgetId,
+		source: String,
+		tokens: Vec<MathExpressionToken>,
+		tooltips: Vec<MathExpressionTooltip>,
+		completions: Option<MathExpressionCompletions>,
+	},
+	/// The value of math typed in a math expression widget's number popover, written as a number, or `None` where it isn't a finite real number.
+	UpdateMathExpressionEvaluation {
+		#[serde(rename = "widgetId")]
+		widget_id: WidgetId,
+		source: String,
+		result: Option<String>,
+	},
 	UpdateImportReorderIndex {
 		#[serde(rename = "importIndex")]
 		index: Option<usize>,
@@ -227,6 +234,20 @@ pub enum FrontendMessage {
 	UpdateExportReorderIndex {
 		#[serde(rename = "exportIndex")]
 		index: Option<usize>,
+	},
+	/// The wire a dragged node would be inserted onto if dropped now, keyed by the node and index of the input it feeds (the max node ID for an export).
+	UpdateWireInsertionPreview {
+		wire: Option<(NodeId, usize)>,
+	},
+	/// How far each node, and the imports and exports, gliding into the place it moved to is drawn from that place, in node graph space.
+	UpdateGlideOffsets {
+		nodes: Vec<(NodeId, (f64, f64))>,
+		imports: (f64, f64),
+		exports: (f64, f64),
+	},
+	/// The connector a press at the pointer would grab, by its center in node graph space.
+	UpdateHoveredConnector {
+		center: Option<(f64, f64)>,
 	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
@@ -238,6 +259,9 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentArtwork {
 		svg: String,
+	},
+	UpdateRenderStatus {
+		status: RenderStatus,
 	},
 	UpdateImageData {
 		image_data: Vec<RasterizedImage>,
@@ -284,8 +308,8 @@ pub enum FrontendMessage {
 	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
 	},
-	UpdateNodeGraphErrorDiagnostic {
-		error: Option<NodeGraphErrorDiagnostic>,
+	UpdateNodeGraphErrorDiagnostics {
+		errors: Vec<NodeGraphErrorDiagnostic>,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
@@ -305,6 +329,9 @@ pub enum FrontendMessage {
 		id: NodeId,
 		value: String,
 	},
+	ClearNodeThumbnails {
+		ids: Vec<NodeId>,
+	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<DocumentInfo>,
@@ -312,6 +339,12 @@ pub enum FrontendMessage {
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
+		/// Where the wire meets the connector it's dragged from, in node graph space.
+		#[serde(rename = "draggedFrom")]
+		dragged_from: Option<(f64, f64)>,
+		/// Where the wire's loose end meets a connector it has snapped onto, in node graph space.
+		#[serde(rename = "snappedTo")]
+		snapped_to: Option<(f64, f64)>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,

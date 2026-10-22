@@ -1,5 +1,4 @@
 use crate::math::bbox::AxisAlignedBbox;
-use core::f64;
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 
