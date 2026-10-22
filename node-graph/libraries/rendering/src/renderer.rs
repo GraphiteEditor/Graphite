@@ -2118,16 +2118,21 @@ fn collect_vector_items_metadata<'a>(
 			let source_paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 			let item_relative_transform = reference_inverse * transform;
 
-			// Outlines always use source geometry so the visual outline reflects actual letterforms
+			// Outlines trace the source geometry as drawn (actual letterforms, open paths left open)
 			let mut outlines_unwrapped = Vec::new();
-			extend_targets_from_vector(&mut outlines_unwrapped, appearance, item, item_relative_transform);
+			extend_targets_from_vector(&mut outlines_unwrapped, appearance, item, item_relative_transform, false);
 			let outlines: Vec<Arc<ClickTarget>> = outlines_unwrapped.into_iter().map(Arc::new).collect();
 
-			// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes), otherwise the click targets are the outlines
+			// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes), otherwise the click targets are the outlines, closed where filled
 			let click_targets = match item.attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET) {
 				Some(override_path) => {
 					let mut click_targets_unwrapped = Vec::new();
 					extend_targets_from_bezpaths(&mut click_targets_unwrapped, appearance, &split_bezpath_contours(override_path), item_relative_transform);
+					click_targets_unwrapped.into_iter().map(Arc::new).collect()
+				}
+				None if is_filled_for_hit_testing(appearance) => {
+					let mut click_targets_unwrapped = Vec::new();
+					extend_targets_from_vector(&mut click_targets_unwrapped, appearance, item, item_relative_transform, true);
 					click_targets_unwrapped.into_iter().map(Arc::new).collect()
 				}
 				None => outlines.clone(),
@@ -2192,16 +2197,16 @@ fn add_vector_item_click_targets(item: ItemRef<'_, Vector>, click_targets: &mut 
 	// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 	match item.attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET) {
 		Some(override_path) => extend_targets_from_bezpaths(click_targets, appearance, &split_bezpath_contours(override_path), transform),
-		None => extend_targets_from_vector(click_targets, appearance, item, transform),
+		None => extend_targets_from_vector(click_targets, appearance, item, transform, true),
 	}
 }
 
-/// Like [`add_vector_item_click_targets`] but on source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms.
+/// Like [`add_vector_item_click_targets`] but tracing the source geometry as drawn, without `editor:click_target` or closing open paths.
 fn add_vector_item_outline_targets(item: ItemRef<'_, Vector>, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let appearance = Appearance::cascade(item.attribute::<Appearance>(ATTR_APPEARANCE), inherited_appearance);
 
-	extend_targets_from_vector(outlines, appearance, item, transform);
+	extend_targets_from_vector(outlines, appearance, item, transform, false);
 }
 
 impl Render for List<Vector> {
@@ -2271,8 +2276,9 @@ impl Render for List<Vector> {
 /// Append one multi-contour target (nonzero fill rule, so holes like the inside of an "O" work correctly)
 /// plus one `FreePoint` per disconnected anchor, placed by the transform.
 /// The target's path is shared through the item's geometry cache with every copy drawing the same geometry.
-fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, item: ItemRef<'_, Vector>, transform: DAffine2) {
-	let target_path = item.target_path(is_filled_for_hit_testing(appearance));
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, item: ItemRef<'_, Vector>, transform: DAffine2, close_filled_contours: bool) {
+	// Click targets close a filled layer's open contours so a click anywhere on the fill hits it
+	let target_path = item.target_path(close_filled_contours && is_filled_for_hit_testing(appearance));
 	push_path_target(targets, appearance, target_path, &item.contours(), transform);
 
 	let Some(geometry) = item.element() else { return };
