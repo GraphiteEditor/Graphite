@@ -9,7 +9,7 @@ use core_types::color::Color;
 use core_types::color::SRGBA8;
 use core_types::consts::DEFAULT_FONT_SIZE;
 use core_types::list::ATTR_APPEARANCE;
-use core_types::list::ATTR_PATHS;
+use core_types::list::{ATTR_GEOMETRY_CACHE, ATTR_PATHS};
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::render_complexity::RenderComplexity;
@@ -29,7 +29,7 @@ use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::vector_types::vector::{Path, edit_item_geometry, edit_list_row_geometry, no_paths};
+use graphic_types::vector_types::vector::{GeometryCache, Path, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths};
 use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
 use num_traits::Zero;
@@ -106,6 +106,26 @@ impl<'a, T> ItemRef<'a, T> {
 	/// The last layer ID of the item's `editor:layer_path` tag, if any.
 	fn layer(self) -> Option<NodeId> {
 		self.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).and_then(|path| path.0.iter_element_values().next_back().copied())
+	}
+}
+
+/// Geometry derived from a vector item, extracted once per geometry when the item carries a geometry cache.
+impl<'a> ItemRef<'a, Vector> {
+	fn paths(self) -> &'a List<Path> {
+		self.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths())
+	}
+
+	fn contours(self) -> Arc<[BezPath]> {
+		let Some(vector) = self.element() else { return Arc::default() };
+		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
+			Some(cache) => cache.contours(vector, self.paths()),
+			None => contour_bezpaths(&vector.0, self.paths()).into(),
+		}
+	}
+
+	/// The item's geometry cache, for a copy of the item drawing the same geometry, or a fresh one if it has none.
+	fn geometry_cache(self) -> GeometryCache {
+		self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE).cloned().unwrap_or_default()
 	}
 }
 
@@ -1481,20 +1501,19 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 	let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
 	let element_transform = set_stroke_transform.map(|stroke_transform| item_transform * stroke_transform.inverse());
 	let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
-	let layer_bounds = vector.bounding_box(paths).unwrap_or_default();
-	let transformed_bounds = vector.bounding_box_with_transform(paths, applied_stroke_transform).unwrap_or_default();
-	let stroke_layer_bounds = vector
-		.stroke_inclusive_bounding_box_with_transform(paths, DAffine2::IDENTITY, stroke_params.as_ref())
-		.unwrap_or(layer_bounds);
+	let contours = item.contours();
+	let layer_bounds = contours_bounding_box(&contours, DAffine2::IDENTITY).unwrap_or_default();
+	let transformed_bounds = contours_bounding_box(&contours, applied_stroke_transform).unwrap_or_default();
+	let stroke_layer_bounds = contours_stroke_inclusive_bounding_box(&contours, DAffine2::IDENTITY, stroke_params.as_ref()).unwrap_or(layer_bounds);
 
 	let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 	let stroke_bounds_matrix = DAffine2::from_scale_angle_translation(stroke_layer_bounds[1] - stroke_layer_bounds[0], 0., stroke_layer_bounds[0]);
 
 	let mut path = String::new();
 
-	for mut bezpath in vector.stroke_bezpath_iter(paths) {
-		bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-		path.push_str(bezpath.to_svg().as_str());
+	let stroke_affine = Affine::new(applied_stroke_transform.to_cols_array());
+	for bezpath in contours.iter() {
+		path.push_str((stroke_affine * bezpath).to_svg().as_str());
 	}
 
 	let mask_type = if stroke_params.as_ref().map(|stroke| stroke.align) == Some(StrokeAlign::Inside) {
@@ -1503,7 +1522,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		MaskType::Mask
 	};
 
-	let path_is_closed = vector.stroke_bezpath_iter(paths).all(|path| matches!(path.elements().last(), Some(PathEl::ClosePath)));
+	let path_is_closed = contours.iter().all(|path| matches!(path.elements().last(), Some(PathEl::ClosePath)));
 	let can_draw_aligned_stroke = path_is_closed
 		&& stroke_params.as_ref().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered())
 		&& stroke_paint.is_some_and(|graphic| !graphic.is_guaranteed_fully_transparent());
@@ -1535,6 +1554,7 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 		// The wrapping SVG group (above) handles the user-set opacity.
 		let mut mask_item = Item::new_from_element(cloned_vector)
 			.with_attribute(ATTR_PATHS, paths.clone())
+			.with_attribute(ATTR_GEOMETRY_CACHE, item.geometry_cache())
 			.with_attribute(ATTR_TRANSFORM, item_transform);
 		let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
 		mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
@@ -1744,13 +1764,14 @@ fn render_vector_item_to_vello(
 			multiplied_transform
 		};
 	}
-	let layer_bounds = element.bounding_box(element_paths).unwrap_or_default();
+	let contours = item.contours();
+	let layer_bounds = contours_bounding_box(&contours, DAffine2::IDENTITY).unwrap_or_default();
 
-	let mut path = kurbo::BezPath::new();
-	for mut bezpath in element.stroke_bezpath_iter(element_paths) {
-		bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-		for element in bezpath {
-			path.push(element);
+	let mut path = kurbo::BezPath::from_vec(Vec::with_capacity(contours.iter().map(|bezpath| bezpath.elements().len()).sum()));
+	let stroke_affine = Affine::new(applied_stroke_transform.to_cols_array());
+	for bezpath in contours.iter() {
+		for &element in bezpath.elements() {
+			path.push(stroke_affine * element);
 		}
 	}
 
@@ -1766,9 +1787,8 @@ fn render_vector_item_to_vello(
 	// the function ignores the arg for Center align) and the `SrcIn`/`SrcOut` aligned-stroke branch further down.
 	let stroke = stroke_params.as_ref();
 	let stroke_fully_transparent = stroke_paint.is_none_or(|paint| paint.is_guaranteed_fully_transparent());
-	let can_draw_aligned_stroke = !stroke_fully_transparent
-		&& stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered())
-		&& element.stroke_bezpath_iter(element_paths).all(|p| matches!(p.elements().last(), Some(PathEl::ClosePath)));
+	let can_draw_aligned_stroke =
+		!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && contours.iter().all(|p| matches!(p.elements().last(), Some(PathEl::ClosePath)));
 
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 	let needs_blend_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
@@ -1978,12 +1998,13 @@ fn render_vector_item_to_vello(
 				// The outer opacity/blend layer (above) handles the user-set opacity.
 				let mut mask_item = Item::new_from_element(cloned_element)
 					.with_attribute(ATTR_PATHS, element_paths.clone())
+					.with_attribute(ATTR_GEOMETRY_CACHE, item.geometry_cache())
 					.with_attribute(ATTR_TRANSFORM, item_transform);
 				let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
 				mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
 				let vector_list = List::new_from_item(mask_item);
 
-				let bounds = element.bounding_box_with_transform(element_paths, multiplied_transform).unwrap_or(layer_bounds);
+				let bounds = contours_bounding_box(&contours, multiplied_transform).unwrap_or(layer_bounds);
 				// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
 				let inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true));
 				let (largest_scale, _) = singular_values(applied_stroke_transform);
@@ -2088,14 +2109,14 @@ fn collect_vector_items_metadata<'a>(
 
 			// Outlines always use source geometry so the visual outline reflects actual letterforms
 			let mut outlines_unwrapped = Vec::new();
-			extend_targets_from_vector(&mut outlines_unwrapped, appearance, source, source_paths, item_relative_transform);
+			extend_targets_from_vector(&mut outlines_unwrapped, appearance, item, item_relative_transform);
 			let outlines: Vec<Arc<ClickTarget>> = outlines_unwrapped.into_iter().map(Arc::new).collect();
 
 			// Use click-target override if the item provides one (e.g. 'Text' node's per-glyph bboxes), otherwise the click targets are the outlines
 			let click_targets = match item.attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET) {
 				Some(override_path) => {
 					let mut click_targets_unwrapped = Vec::new();
-					extend_targets_from_bezpaths(&mut click_targets_unwrapped, appearance, split_bezpath_contours(override_path), item_relative_transform);
+					extend_targets_from_bezpaths(&mut click_targets_unwrapped, appearance, &split_bezpath_contours(override_path), item_relative_transform);
 					click_targets_unwrapped.into_iter().map(Arc::new).collect()
 				}
 				None => outlines.clone(),
@@ -2154,26 +2175,22 @@ fn collect_vector_items_metadata<'a>(
 
 /// Collects one vector item's click target into the caller's list, baked through the item's transform.
 fn add_vector_item_click_targets(item: ItemRef<'_, Vector>, click_targets: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
-	let Some(source) = item.element() else { return };
-	let source_paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let appearance = Appearance::cascade(item.attribute::<Appearance>(ATTR_APPEARANCE), inherited_appearance);
 
 	// Use click-target override geometry if the item provides one (e.g. 'Text' node's per-glyph bounding boxes)
 	match item.attribute::<BezPath>(ATTR_EDITOR_CLICK_TARGET) {
-		Some(override_path) => extend_targets_from_bezpaths(click_targets, appearance, split_bezpath_contours(override_path), transform),
-		None => extend_targets_from_vector(click_targets, appearance, source, source_paths, transform),
+		Some(override_path) => extend_targets_from_bezpaths(click_targets, appearance, &split_bezpath_contours(override_path), transform),
+		None => extend_targets_from_vector(click_targets, appearance, item, transform),
 	}
 }
 
 /// Like [`add_vector_item_click_targets`] but on source geometry only, ignoring `editor:click_target`, so outlines reflect actual letterforms.
 fn add_vector_item_outline_targets(item: ItemRef<'_, Vector>, outlines: &mut Vec<ClickTarget>, inherited_appearance: Option<&Appearance>) {
-	let Some(source) = item.element() else { return };
-	let source_paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let appearance = Appearance::cascade(item.attribute::<Appearance>(ATTR_APPEARANCE), inherited_appearance);
 
-	extend_targets_from_vector(outlines, appearance, source, source_paths, transform);
+	extend_targets_from_vector(outlines, appearance, item, transform);
 }
 
 impl Render for List<Vector> {
@@ -2242,21 +2259,23 @@ impl Render for List<Vector> {
 
 /// Build one multi-contour `BezPath` (nonzero fill rule, so holes like the inside of an "O" work
 /// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
-fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, geometry: &Vector, geometry_paths: &List<Path>, transform: DAffine2) {
-	let bezpaths: Vec<BezPath> = geometry.stroke_bezpath_iter(geometry_paths).filter(|bezpath| !bezpath.elements().is_empty()).collect();
-	extend_targets_from_bezpaths(targets, appearance, bezpaths, transform);
+fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, item: ItemRef<'_, Vector>, transform: DAffine2) {
+	extend_targets_from_bezpaths(targets, appearance, &item.contours(), transform);
 
-	for click_target in extend_free_point_targets(geometry, geometry_paths, transform) {
+	let Some(geometry) = item.element() else { return };
+	for click_target in extend_free_point_targets(geometry, item.paths(), transform) {
 		targets.push(click_target);
 	}
 }
 
 /// The contour half of [`extend_targets_from_vector`], also serving `editor:click_target` overrides.
-fn extend_targets_from_bezpaths(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, mut bezpaths: Vec<BezPath>, transform: DAffine2) {
+fn extend_targets_from_bezpaths(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, bezpaths: &[BezPath], transform: DAffine2) {
 	// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing
 	let filled = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
 
-	let all_contours_closed = bezpaths.iter().all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
+	let is_closed = |bezpath: &BezPath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
+	let nonempty_bezpaths = || bezpaths.iter().filter(|bezpath| !bezpath.elements().is_empty());
+	let all_contours_closed = nonempty_bezpaths().all(is_closed);
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
@@ -2269,19 +2288,15 @@ fn extend_targets_from_bezpaths(targets: &mut Vec<ClickTarget>, appearance: Opti
 		}
 	});
 
-	if filled {
-		for bezpath in &mut bezpaths {
-			if !matches!(bezpath.elements().last(), Some(PathEl::ClosePath)) {
-				bezpath.close_path();
-			}
-		}
-	}
-
-	if !bezpaths.is_empty() {
-		// Sized up front and transformed before the target exists, so its bounds and cache are set up once
-		let mut combined_elements = Vec::with_capacity(bezpaths.iter().map(|bezpath| bezpath.elements().len()).sum());
-		for bezpath in &bezpaths {
+	if nonempty_bezpaths().next().is_some() {
+		// Sized up front and transformed before the target exists, so its bounds and cache are set up once.
+		// A filled target closes each open contour while copying, leaving the borrowed contours untouched.
+		let mut combined_elements = Vec::with_capacity(nonempty_bezpaths().map(|bezpath| bezpath.elements().len() + 1).sum());
+		for bezpath in nonempty_bezpaths() {
 			combined_elements.extend_from_slice(bezpath.elements());
+			if filled && !is_closed(bezpath) {
+				combined_elements.push(PathEl::ClosePath);
+			}
 		}
 		let mut combined_path = BezPath::from_vec(combined_elements);
 		combined_path.apply_affine(Affine::new(transform.to_cols_array()));

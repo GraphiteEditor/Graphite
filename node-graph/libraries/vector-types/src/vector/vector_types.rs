@@ -2,6 +2,7 @@ use super::addressing;
 use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use super::connectivity::Connectivity;
 use super::contour::{Contour, contour_bezpaths, contours};
+use super::geometry_cache::{GeometryCache, SetVectorPaths, set_paths_at};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use super::path::{
 	CurveType, Path, append_named_bezpaths, curve_type_at, curve_types_of, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes,
@@ -9,7 +10,7 @@ use super::path::{
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_ID, ATTR_PATHS, ATTR_SMOOTH, Item, List};
+use core_types::list::{ATTR_GEOMETRY_CACHE, ATTR_ID, ATTR_PATHS, ATTR_SMOOTH, Item, List};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -133,7 +134,7 @@ impl Vector {
 	pub fn item_from_bezpath(bezpath: &BezPath) -> Item<Self> {
 		let (vector, paths) = Self::from_bezpath(bezpath);
 
-		Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+		Item::new_from_element(vector).with_paths(paths)
 	}
 }
 
@@ -233,12 +234,7 @@ impl Vector {
 	}
 
 	fn bounding_box_with_transform_rect(&self, paths: &List<Path>, transform: DAffine2) -> Option<Rect> {
-		self.stroke_bezpath_iter(paths)
-			.map(|mut bezpath| {
-				bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-				bezpath.bounding_box()
-			})
-			.reduce(|r1, r2| r1.union(r2))
+		contours_bounding_rect(&contour_bezpaths(&self.0, paths), transform)
 	}
 
 	/// Tight bounding box in the supplied transform space, including the actual rendered stroke geometry
@@ -251,65 +247,7 @@ impl Vector {
 	/// stroke, so its AABB matches the unmasked centered stroke's. For open paths the renderer always
 	/// draws a centered `weight`-wide stroke regardless of the align attribute, so we mirror that here.
 	pub fn stroke_inclusive_bounding_box_with_transform(&self, paths: &List<Path>, transform: DAffine2, stroke: Option<&Stroke>) -> Option<[DVec2; 2]> {
-		let path_bounds = self.bounding_box_with_transform(paths, transform);
-
-		let Some(stroke) = stroke else { return path_bounds };
-		// Stroke alignment is only honored by the renderer when every contour is closed; open paths fall
-		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
-		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezpath_iter(paths).all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
-		let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
-		// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
-		if kurbo_width <= 0. {
-			return path_bounds;
-		}
-
-		let join = match stroke.join {
-			StrokeJoin::Miter => kurbo::Join::Miter,
-			StrokeJoin::Bevel => kurbo::Join::Bevel,
-			StrokeJoin::Round => kurbo::Join::Round,
-		};
-		let cap = match stroke.cap {
-			StrokeCap::Butt => kurbo::Cap::Butt,
-			StrokeCap::Round => kurbo::Cap::Round,
-			StrokeCap::Square => kurbo::Cap::Square,
-		};
-
-		let stroke_style = kurbo::Stroke::new(kurbo_width)
-			.with_caps(cap)
-			.with_join(join)
-			.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
-			.with_miter_limit(stroke.join_miter_limit);
-		let stroke_options = kurbo::StrokeOpts::default();
-		// Same tolerance as `solidify_stroke`, balanced between performance and curve accuracy
-		const STROKE_TOLERANCE: f64 = 0.25;
-
-		let stroke_local = Affine::new(stroke.transform.to_cols_array());
-		let stroke_local_inverse = (stroke.transform.matrix2.determinant() != 0.).then(|| Affine::new(stroke.transform.inverse().to_cols_array()));
-		let final_transform = Affine::new(transform.to_cols_array());
-
-		let stroke_bounds = self
-			.stroke_bezpath_iter(paths)
-			.map(|mut bezpath| {
-				// Match `solidify_stroke`'s pre/post-stroke transform pair so non-uniform `stroke.transform`
-				// (e.g. resisting layer scale) is applied while kurbo strokes, then undone before placing the
-				// stroked geometry back in the vector's local space
-				bezpath.apply_affine(stroke_local);
-				let mut stroked = kurbo::stroke(bezpath, &stroke_style, &stroke_options, STROKE_TOLERANCE);
-				if let Some(inverse) = stroke_local_inverse {
-					stroked.apply_affine(inverse);
-				}
-				stroked.apply_affine(final_transform);
-				stroked.bounding_box()
-			})
-			.reduce(|a, b| a.union(b))
-			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]);
-
-		// Union with the path bounds in case a degenerate contour (e.g. a single point) produced no stroke geometry
-		match (path_bounds, stroke_bounds) {
-			(Some([min_a, max_a]), Some([min_b, max_b])) => Some([min_a.min(min_b), max_a.max(max_b)]),
-			(Some(b), None) | (None, Some(b)) => Some(b),
-			(None, None) => None,
-		}
+		contours_stroke_inclusive_bounding_box(&contour_bezpaths(&self.0, paths), transform, stroke)
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
@@ -344,6 +282,85 @@ impl Vector {
 
 		// Non-zero fill rule
 		number != 0
+	}
+}
+
+/// The bounding box of already extracted contours, placed by `transform`.
+pub fn contours_bounding_box(contours: &[BezPath], transform: DAffine2) -> Option<[DVec2; 2]> {
+	contours_bounding_rect(contours, transform).map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+}
+
+fn contours_bounding_rect(contours: &[BezPath], transform: DAffine2) -> Option<Rect> {
+	// The identity needs no transformed copy of each contour
+	let bounds = |bezpath: &BezPath| {
+		if transform == DAffine2::IDENTITY {
+			bezpath.bounding_box()
+		} else {
+			(Affine::new(transform.to_cols_array()) * bezpath).bounding_box()
+		}
+	};
+	contours.iter().map(bounds).reduce(|r1, r2| r1.union(r2))
+}
+
+/// Like [`Vector::stroke_inclusive_bounding_box_with_transform`], for already extracted contours.
+pub fn contours_stroke_inclusive_bounding_box(contours: &[BezPath], transform: DAffine2, stroke: Option<&Stroke>) -> Option<[DVec2; 2]> {
+	let path_bounds = contours_bounding_box(contours, transform);
+
+	let Some(stroke) = stroke else { return path_bounds };
+	// Stroke alignment is only honored by the renderer when every contour is closed; open paths fall
+	// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
+	let aligned_renders = stroke.align != StrokeAlign::Center && contours.iter().all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
+	let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
+	// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
+	if kurbo_width <= 0. {
+		return path_bounds;
+	}
+
+	let join = match stroke.join {
+		StrokeJoin::Miter => kurbo::Join::Miter,
+		StrokeJoin::Bevel => kurbo::Join::Bevel,
+		StrokeJoin::Round => kurbo::Join::Round,
+	};
+	let cap = match stroke.cap {
+		StrokeCap::Butt => kurbo::Cap::Butt,
+		StrokeCap::Round => kurbo::Cap::Round,
+		StrokeCap::Square => kurbo::Cap::Square,
+	};
+
+	let stroke_style = kurbo::Stroke::new(kurbo_width)
+		.with_caps(cap)
+		.with_join(join)
+		.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
+		.with_miter_limit(stroke.join_miter_limit);
+	let stroke_options = kurbo::StrokeOpts::default();
+	// Same tolerance as `solidify_stroke`, balanced between performance and curve accuracy
+	const STROKE_TOLERANCE: f64 = 0.25;
+
+	let stroke_local = Affine::new(stroke.transform.to_cols_array());
+	let stroke_local_inverse = (stroke.transform.matrix2.determinant() != 0.).then(|| Affine::new(stroke.transform.inverse().to_cols_array()));
+	let final_transform = Affine::new(transform.to_cols_array());
+
+	let stroke_bounds = contours
+		.iter()
+		.map(|bezpath| {
+			// Match `solidify_stroke`'s pre/post-stroke transform pair so non-uniform `stroke.transform`
+			// (e.g. resisting layer scale) is applied while kurbo strokes, then undone before placing the
+			// stroked geometry back in the vector's local space
+			let mut stroked = kurbo::stroke(stroke_local * bezpath, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+			if let Some(inverse) = stroke_local_inverse {
+				stroked.apply_affine(inverse);
+			}
+			stroked.apply_affine(final_transform);
+			stroked.bounding_box()
+		})
+		.reduce(|a, b| a.union(b))
+		.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]);
+
+	// Union with the path bounds in case a degenerate contour (e.g. a single point) produced no stroke geometry
+	match (path_bounds, stroke_bounds) {
+		(Some([min_a, max_a]), Some([min_b, max_b])) => Some([min_a.min(min_b), max_a.max(max_b)]),
+		(Some(b), None) | (None, Some(b)) => Some(b),
+		(None, None) => None,
 	}
 }
 
@@ -859,6 +876,7 @@ pub fn edit_item_geometry<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vec
 	let mut paths = item.attribute_mut::<List<Path>>(ATTR_PATHS).map(std::mem::take).unwrap_or_default();
 	let result = edit(item.element_mut(), &mut paths);
 	*item.attribute_mut_or_insert_default::<List<Path>>(ATTR_PATHS) = paths;
+	item.set_attribute(ATTR_GEOMETRY_CACHE, GeometryCache::default());
 
 	result
 }
@@ -868,6 +886,7 @@ pub fn edit_item_points<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vecto
 	let paths = shared_paths_from_item_attributes(item);
 	let result = edit(item.element_mut(), &paths);
 	ensure_paths_attribute(item);
+	item.set_attribute(ATTR_GEOMETRY_CACHE, GeometryCache::default());
 
 	result
 }
@@ -884,7 +903,7 @@ pub fn ensure_paths_attribute(item: &mut Item<Vector>) {
 pub fn edit_list_row_geometry<R>(list: &mut List<Vector>, index: usize, edit: impl FnOnce(&mut Vector, &mut List<Path>) -> R) -> Option<R> {
 	let mut paths = list.attribute::<List<Path>>(ATTR_PATHS, index).cloned().unwrap_or_default();
 	let result = edit(list.element_mut(index)?, &mut paths);
-	list.set_attribute(ATTR_PATHS, index, paths);
+	set_paths_at(list, index, paths);
 
 	Some(result)
 }

@@ -112,6 +112,8 @@ pub const ATTR_PATHS: &str = "paths";
 /// Path's `CurveType` naming the stride its point references weave in, on the `List<Path>` item
 /// holding the path (implicit default `Linear`).
 pub const ATTR_CURVE_TYPE: &str = "curve_type";
+/// A vector item's cache of geometry derived from its point pool and paths, shared by the item's clones.
+pub const ATTR_GEOMETRY_CACHE: &str = "geometry_cache";
 /// Point reference's `bool` tool state marking the tangent pair at this anchor occurrence as smooth,
 /// on the `List<i64>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
 /// colinear. Rendering derives continuity from actual tangent geometry and does not read this.
@@ -570,7 +572,8 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 
 	/// Creates a new attribute filled with `count` default `T` values.
 	fn new_with_defaults(&self, count: usize) -> Arc<dyn AnyAttribute> {
-		Arc::new(Attribute(vec![T::default(); count]))
+		// A default per item, since clones of one would share state such as a cache between items
+		Arc::new(Attribute(std::iter::repeat_with(T::default).take(count).collect()))
 	}
 
 	/// Returns the number of elements in this attribute.
@@ -1395,6 +1398,17 @@ impl<T> List<T> {
 		self.attributes.keys()
 	}
 
+	/// A witness to this list's element storage, for telling later whether a list still holds these elements.
+	pub fn elements_witness(&self) -> ElementsWitness<T> {
+		ElementsWitness(Arc::downgrade(&self.element))
+	}
+
+	/// A witness to the storage of the attribute for `key`, or to its absence.
+	pub fn attribute_witness(&self, key: &str) -> AttributeWitness {
+		let attribute = self.attributes.position(key).map(|position| Arc::downgrade(&self.attributes.entries()[position].1));
+		AttributeWitness(attribute)
+	}
+
 	// ============================
 	// Attribute-oriented iteration
 	// ============================
@@ -1568,6 +1582,40 @@ impl<T: Clone> List<T> {
 	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
 		let Self { element, attributes } = self;
 		(Arc::make_mut(element).as_mut_slice(), attributes.get_or_create_attribute_slice_mut::<U>(key))
+	}
+}
+
+/// Identifies a list's element storage without keeping it alive.
+/// A write moves observed elements to new storage, so a list that matches still holds the elements the witness saw.
+pub struct ElementsWitness<T>(std::sync::Weak<Vec<T>>);
+
+impl<T> Clone for ElementsWitness<T> {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl<T> ElementsWitness<T> {
+	/// Whether `list` holds the very elements this witness saw, unchanged.
+	pub fn matches(&self, list: &List<T>) -> bool {
+		std::ptr::eq(self.0.as_ptr(), Arc::as_ptr(&list.element))
+	}
+}
+
+/// Identifies the storage of one of a list's attributes, or its absence, without keeping it alive.
+/// A write copies an observed attribute to new storage, so a list that matches still holds the values the witness saw.
+#[derive(Clone)]
+pub struct AttributeWitness(Option<std::sync::Weak<dyn AnyAttribute>>);
+
+impl AttributeWitness {
+	/// Whether `list` holds the very attribute for `key` this witness saw, unchanged (or still lacks it).
+	pub fn matches<T>(&self, list: &List<T>, key: &str) -> bool {
+		let current = list.attributes.position(key).map(|position| &list.attributes.entries()[position].1);
+		match (&self.0, current) {
+			(Some(witnessed), Some(current)) => std::ptr::addr_eq(witnessed.as_ptr(), Arc::as_ptr(current)),
+			(None, None) => true,
+			_ => false,
+		}
 	}
 }
 

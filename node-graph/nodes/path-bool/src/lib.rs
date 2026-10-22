@@ -5,7 +5,7 @@ use glam::DAffine2;
 use graphic_types::Appearance;
 use graphic_types::graphic::bake_paint_transforms;
 use graphic_types::vector_types::vector::algorithms::weld::WeldExt;
-use graphic_types::vector_types::vector::{Path, no_paths, paths_from_list_row_attributes};
+use graphic_types::vector_types::vector::{Path, SetVectorPaths, no_paths, paths_from_list_row_attributes, set_paths_at};
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -62,7 +62,7 @@ fn boolean_operation(
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
 		let mut result_paths = result_vector_list.attribute::<List<Path>>(ATTR_PATHS, 0).cloned().unwrap_or_default();
 		result_vector_list.element_mut(0).unwrap().weld_within_pieces(&mut result_paths, merge_transform, 0.0001);
-		result_vector_list.set_attribute(ATTR_PATHS, 0, result_paths);
+		set_paths_at(&mut result_vector_list, 0, result_paths);
 	}
 
 	result_vector_list.into_iter().next().unwrap_or_default()
@@ -168,7 +168,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		Ok(top) => top,
 		Err(e) => {
 			log::error!("Boolean operation failed while building topology: {e}");
-			row.set_attribute(ATTR_PATHS, List::<Path>::new());
+			row.set_paths(List::<Path>::new());
 			list.push(row);
 			return list;
 		}
@@ -177,7 +177,7 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	let mut result_paths = List::new();
 	let closed_contours = contours.contours().map(|contour| closed(contour.path.clone()));
 	row.element_mut().append_bezpaths(&mut result_paths, closed_contours);
-	row.set_attribute(ATTR_PATHS, result_paths);
+	row.set_paths(result_paths);
 
 	list.push(row);
 	list
