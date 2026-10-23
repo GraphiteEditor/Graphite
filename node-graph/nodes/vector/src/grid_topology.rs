@@ -1,10 +1,10 @@
-use core_types::list::{ATTR_ID, ATTR_PATHS, Item, List};
+use core_types::list::{ATTR_ID, Item, List};
 use glam::DVec2;
 use graphic_types::Vector;
 use rustc_hash::FxHashMap;
 use std::collections::VecDeque;
 use vector_types::vector::misc::{GridTopology, GridType};
-use vector_types::vector::{CurveType, Path, PointId, SegmentId, push_paths};
+use vector_types::vector::{CurveType, Path, PointId, SegmentId, SetVectorPaths, push_paths};
 
 /// A point's column and its height in half rows. Even columns sit at even heights, and isometric odd columns at the odd heights between them.
 type Coordinate = (i64, i64);
@@ -90,7 +90,7 @@ impl GridLayout {
 		let mut paths = List::<Path>::new();
 		push_paths(&mut paths, runs);
 
-		Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+		Item::new_from_element(vector).with_paths(paths)
 	}
 }
 

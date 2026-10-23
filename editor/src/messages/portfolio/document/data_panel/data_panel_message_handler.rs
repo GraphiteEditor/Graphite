@@ -11,7 +11,7 @@ use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::format_f64;
 use graphene_std::gradient::Gradient;
-use graphene_std::list::{Item, List, NodeIdPath};
+use graphene_std::list::{INTERNAL_ATTRIBUTE_PREFIX, Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
@@ -430,7 +430,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 			}
 		}
 
-		let attribute_keys: Vec<String> = self.attribute_keys().map(str::to_string).collect();
+		let attribute_keys: Vec<String> = self.attribute_keys().filter(|key| !key.starts_with(INTERNAL_ATTRIBUTE_PREFIX)).map(str::to_string).collect();
 
 		let mut rows = (0..self.len())
 			.map(|index| {

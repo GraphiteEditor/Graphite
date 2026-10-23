@@ -23,6 +23,7 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
+use vector_types::vector::SetVectorPaths;
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
@@ -35,8 +36,8 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
-	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes,
-	push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
+	CurveType, IdCollisionSet, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes,
+	paths_from_list_row_attributes, push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
 /// Appends one point to the working form, returning the index that names it.
@@ -667,12 +668,12 @@ fn round_corners<V: MapVectorItems + Send>(
 		let (mut result, mut result_paths) = (Vector::default(), List::new());
 		result.append_bezpaths(&mut result_paths, &rounded_subpaths);
 
-		attributes.insert(ATTR_PATHS, result_paths);
+		attributes.set_paths(result_paths);
 		Item::from_parts(result, attributes)
 	})
 }
 
-/// Rounds off the anchors where a subpath's direction turns, cutting back along both segments' curves, and leaves smooth joins as they are.
+///Rounds off the anchors where a subpath's direction turns, cutting back along both segments' curves, and leaves smooth joins as they are.
 /// Returns `None` when there's no corner to round.
 fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_length_limit: f64, min_angle_threshold: f64) -> Option<BezPath> {
 	let closed = matches!(subpath.elements().last(), Some(PathEl::ClosePath));
@@ -1422,7 +1423,7 @@ fn auto_tangents<V: MapVectorItems + Send>(
 		let smooth_anchors = smooth_segment_ends.into_iter().filter_map(|index| segment_ends.get(index).copied());
 		result.set_smooth_points(&mut result_paths, smooth_anchors, true);
 
-		attributes.insert(ATTR_PATHS, result_paths);
+		attributes.set_paths(result_paths);
 		Item::from_parts(result, attributes)
 	})
 }
@@ -1439,7 +1440,7 @@ fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic
 			.unwrap_or_default();
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -1475,7 +1476,7 @@ fn points_to_vector(
 		vector.0.push(Item::new_from_element(position).with_attribute(ATTR_ID, next_point.next_id()));
 	}
 
-	Item::new_from_element(vector).with_attribute(ATTR_PATHS, List::<Path>::new())
+	Item::new_from_element(vector).with_paths(List::<Path>::new())
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
@@ -1723,7 +1724,7 @@ fn offset_path<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, &offset_bezpaths);
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -1873,7 +1874,7 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				let stroke_paint = appearance.first_index_of(Cover::Stroke).and_then(|index| appearance.paint_at(index).cloned()).unwrap_or_default();
 				stroke_attributes.insert(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), stroke_paint));
 			}
-			stroke_attributes.insert(ATTR_PATHS, solidified_stroke_paths);
+			stroke_attributes.set_paths(solidified_stroke_paths);
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
@@ -1919,7 +1920,7 @@ fn separate_paths<V: ExpandVectorItems + Send>(
 				let (vector, paths) = Vector::from_bezpath(&bezpath);
 
 				let mut attributes = attributes.clone();
-				attributes.insert(ATTR_PATHS, paths);
+				attributes.set_paths(paths);
 				Item::from_parts(vector, attributes)
 			})
 			.collect()
@@ -1976,6 +1977,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let mut primary_source = None;
 	let mut output = Vector::default();
 	let mut output_paths = List::new();
+	let mut taken_ids = IdCollisionSet::default();
 
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
@@ -1989,7 +1991,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		let collision_hash_seed = hasher.finish();
 
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-		output.concat(&mut output_paths, element, &element_paths, source_transform, collision_hash_seed);
+		output.concat(&mut output_paths, element, &element_paths, source_transform, collision_hash_seed, &mut taken_ids);
 
 		primary_source = Some((index, source_transform));
 	}
@@ -2003,7 +2005,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
 		bake_paint_transforms(&mut attributes, source_transform);
 	}
-	attributes.insert(ATTR_PATHS, output_paths);
+	attributes.set_paths(output_paths);
 
 	// Preserve a reference to the original upstream `List<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
@@ -2092,7 +2094,7 @@ fn sample_polyline<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, &sample_bezpaths);
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -2137,7 +2139,7 @@ fn simplify<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, simplified_bezpaths);
 
 		*item.element_mut() = result;
-		item.set_attribute(ATTR_PATHS, result_paths);
+		item.set_paths(result_paths);
 		item
 	})
 }
@@ -2267,7 +2269,7 @@ fn decimate<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, &decimated_bezpaths);
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -2319,7 +2321,7 @@ fn cut_path<V: MapVectorItems + Send>(
 			result_vector.append_bezpaths(&mut result_paths, others.chain(split));
 
 			*content.element_mut() = result_vector;
-			content.set_attribute(ATTR_PATHS, result_paths);
+			content.set_paths(result_paths);
 		}
 
 		content
@@ -3333,7 +3335,7 @@ fn morph(
 	working.reweave(&mut vector, &mut paths);
 
 	let mut item = Item::new_from_element(vector);
-	item.set_attribute(ATTR_PATHS, paths);
+	item.set_paths(paths);
 	item.set_attribute(ATTR_TRANSFORM, lerped_transform);
 
 	// Propagate each blending/layer column only when the input carries it, so attribute presence stays determined by the graph rather than by runtime values

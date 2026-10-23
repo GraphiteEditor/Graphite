@@ -1,13 +1,13 @@
 use crate::grid_topology::Lattice;
-use core_types::list::{ATTR_PATHS, Item, List};
+use core_types::list::{Item, List};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
-use vector_types::vector::Path;
 use vector_types::vector::algorithms::shapes;
 use vector_types::vector::misc::SpiralType;
 use vector_types::vector::misc::{ArcType, BoxCorners, GridTopology, GridType};
+use vector_types::vector::{Path, SetVectorPaths};
 
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"), icon("NodeCircle"))]
@@ -111,7 +111,7 @@ fn ellipse(
 		ellipse.set_smooth(&mut paths, anchor, true);
 	}
 
-	Item::new_from_element(ellipse).with_attribute(ATTR_PATHS, paths)
+	Item::new_from_element(ellipse).with_paths(paths)
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
@@ -242,7 +242,7 @@ fn qr_code(
 	};
 
 	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
-		return Item::new_from_element(Vector::default()).with_attribute(ATTR_PATHS, List::<Path>::new());
+		return Item::new_from_element(Vector::default()).with_paths(List::<Path>::new());
 	};
 
 	let (mut vector, paths) = match individual_squares {
@@ -266,7 +266,7 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+	Item::new_from_element(vector).with_paths(paths)
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.

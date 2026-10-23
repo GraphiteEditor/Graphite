@@ -86,7 +86,7 @@ fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 
 /// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* `Bool` list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
 #[node_macro::node(category("General"), icon("NodeFilter"))]
-fn filter<T: Send + Sync + 'static>(
+fn filter<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to filter.
 	#[implementations(
@@ -119,7 +119,7 @@ fn filter<T: Send + Sync + 'static>(
 
 /// Reverses the order of the items in a list, so the last item comes first and the first comes last.
 #[node_macro::node(category("General"), icon("NodeReverse"))]
-fn reverse<T: Send + Sync + 'static>(
+fn reverse<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to reverse.
 	#[implementations(
@@ -144,7 +144,7 @@ fn reverse<T: Send + Sync + 'static>(
 
 /// Shifts the items in a list by a number of positions. With wrapping, items pushed off one end reappear at the other. Otherwise they are dropped, shortening the list.
 #[node_macro::node(category("General"), icon("NodeShift"))]
-fn shift<T: Send + Sync + 'static>(
+fn shift<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to shift.
 	#[implementations(
@@ -189,7 +189,7 @@ fn shift<T: Send + Sync + 'static>(
 
 /// Randomly reorders the items in a list. The same seed always produces the same ordering.
 #[node_macro::node(category("General"), icon("NodeShuffle"))]
-fn shuffle<T: Send + Sync + 'static>(
+fn shuffle<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list to have its items randomly reordered.
 	#[implementations(
@@ -261,7 +261,7 @@ fn list_indices(
 ///
 /// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
 #[node_macro::node(category("General"), icon("NodeListSlice"))]
-fn list_slice<T: Send + Sync + 'static>(
+fn list_slice<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to take a portion of.
 	#[implementations(
@@ -383,7 +383,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 }
 
 #[node_macro::node(category("General"), icon("NodeMap"))]
-fn map<Item: AnyHash + Send + Sync + CacheHash>(
+fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		List<String>,

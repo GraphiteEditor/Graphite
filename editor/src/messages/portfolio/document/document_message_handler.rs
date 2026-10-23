@@ -53,7 +53,6 @@ use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -1790,21 +1789,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.update_transforms(upstream_footprints, local_transforms, document_to_viewport);
 				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
-			DocumentMessage::UpdateClickTargets { click_targets } => {
+			DocumentMessage::UpdateClickTargets { click_targets, group_layers } => {
+				// Ensure that the layer is in the document network to prevent logging an error
+				let is_document_layer = |node_id: &NodeId| self.network_interface.document_network().nodes.contains_key(node_id) && self.network_interface.is_layer(node_id, &[]);
+
 				// TODO: Allow non layer nodes to have click targets
 				let layer_click_targets = click_targets
 					.into_iter()
-					.filter(|(node_id, _)|
-						// Ensure that the layer is in the document network to prevent logging an error
-						self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, click_targets)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, click_targets)
-						})
-					})
+					.filter(|(node_id, _)| is_document_layer(node_id))
+					.map(|(node_id, click_targets)| (LayerNodeIdentifier::new(node_id, &self.network_interface), click_targets))
 					.collect();
-				self.network_interface.update_click_targets(layer_click_targets);
+				let layer_groups = group_layers
+					.into_iter()
+					.filter(is_document_layer)
+					.map(|node_id| LayerNodeIdentifier::new(node_id, &self.network_interface))
+					.collect();
+				self.network_interface.update_click_targets(layer_click_targets, layer_groups);
 			}
 			DocumentMessage::UpdateOutlines { outlines } => {
 				let layer_outlines = outlines
@@ -2251,13 +2251,11 @@ impl DocumentMessageHandler {
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Path(path) => {
-					let mut path = path.clone();
+				ClickTargetType::Path(mut path) => {
 					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
 					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
-				ClickTargetType::FreePoint(point) => {
-					let mut point = *point;
+				ClickTargetType::FreePoint(mut point) => {
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
@@ -4124,9 +4122,8 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
-		.flatten()
-		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
+		.filter_map(|target| target.path_with_transform())
+		.flat_map(|(path, placement)| path.segments().map(move |bezier| Affine::new((transform * placement).to_cols_array()) * bezier));
 	BezPath::from_path_segments(segments)
 }
 
@@ -4148,17 +4145,17 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&[Arc<ClickTarget>]>, clip: bool, layer: LayerNodeIdentifier, path: BezPath, transform: DAffine2) -> XRayResult {
-		let get_clip = || path.segments();
-
-		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
+	fn check_layer_area_target(&mut self, clip: bool, layer: LayerNodeIdentifier, path: BezPath) -> XRayResult {
+		let metadata = self.network_interface.document_metadata();
+		let intersects = metadata.any_click_target_hit(layer, &mut |target, transform| target.intersect_path(|| path.segments(), transform));
 		let clicked = intersects;
 		let mut use_children = !clip || intersects;
 
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
+			let click_targets = metadata.click_targets(layer);
+			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), metadata.transform_to_document(layer));
 			let intersection = boolean_intersect(&path, &clip_path);
 			let subtracted = BezPath::from_path_segments(intersection.iter().flat_map(|p| p.segments()));
 			if subtracted.is_empty() {
@@ -4179,22 +4176,22 @@ impl<'a> ClickXRayIter<'a> {
 			return XRayResult { clicked: false, use_children: false };
 		}
 
-		let click_targets = self.network_interface.document_metadata().click_targets(layer);
-		let transform = self.network_interface.document_metadata().transform_to_document(layer);
+		let metadata = self.network_interface.document_metadata();
 		let target = &self.parent_targets.last().expect("In `check_layer()`: there should be a `target`").1;
-		let clip = self.network_interface.document_metadata().is_clip(layer.to_node());
+		let clip = metadata.is_clip(layer.to_node());
 
+		// A group is hit through its own or any descendant's targets, each tested in its own layer's space
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				let intersects = metadata.any_click_target_hit(layer, &mut |target, transform| target.intersect_point(*point, transform));
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,
 				}
 			}
-			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
-			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
+			XRayTarget::Quad(quad) => self.check_layer_area_target(clip, layer, quad_to_kurbo(*quad)),
+			XRayTarget::Path(path) => self.check_layer_area_target(clip, layer, path.clone()),
 		}
 	}
 }
