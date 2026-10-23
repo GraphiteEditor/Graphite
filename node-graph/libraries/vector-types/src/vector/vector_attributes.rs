@@ -561,26 +561,25 @@ impl Vector {
 	pub fn anchor_tangents(&self, paths: &List<Path>) -> Vec<Option<DVec2>> {
 		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
 
-		// What each point gathers: how many segment ends meet it, their tangents summed, the first of them, and whether any was degenerate
-		let mut gathered = vec![(0_u8, DVec2::ZERO, DVec2::ZERO, false); self.point_count()];
+		// Each point's segment ends, counted in all and leaving, their tangents summed, the first of them, and whether any was degenerate
+		let mut gathered = vec![(0_u8, 0_u8, DVec2::ZERO, DVec2::ZERO, false); self.point_count()];
 		for contour in contours(self.point_count(), paths) {
-			for part in &contour.parts {
-				let Some(path) = paths.element(part.path as usize) else { continue };
-				let Some(&curve_type) = curve_types.get(part.path as usize) else { continue };
+			for &part in &contour.parts {
+				let Some(path) = paths.element(part as usize) else { continue };
+				let Some(&curve_type) = curve_types.get(part as usize) else { continue };
 				let references = path.0.iter_element_values().as_slice();
-				let (stride, count) = (curve_type.stride(), path.segment_count(curve_type));
+				let stride = curve_type.stride();
 
-				for step in 0..count {
-					let span = if part.reversed { count - 1 - step } else { step };
+				for span in 0..path.segment_count(curve_type) {
 					let Some(segment) = path.segment(&self.0, curve_type, span) else { continue };
-					let (Some(&start), Some(&end)) = (references.get(span * stride), references.get(span * stride + stride)) else {
+					let (Some(&leaving), Some(&arriving)) = (references.get(span * stride), references.get(span * stride + stride)) else {
 						continue;
 					};
 
-					// The segment as the contour crosses it, leaving one anchor and arriving at the other
-					let (segment, leaving, arriving) = if part.reversed { (segment.reverse(), end, start) } else { (segment, start, end) };
 					for (point, at_start) in [(leaving, true), (arriving, false)] {
-						let Some((ends, sum, first, degenerate)) = gathered.get_mut(point as usize) else { continue };
+						let Some((ends, leaving, sum, first, degenerate)) = gathered.get_mut(point as usize) else {
+							continue;
+						};
 
 						match tangent_at_endpoint(segment, at_start).try_normalize() {
 							Some(tangent) if *ends == 0 => (*sum, *first) = (tangent, tangent),
@@ -588,6 +587,7 @@ impl Vector {
 							None => *degenerate = true,
 						}
 						*ends = ends.saturating_add(1);
+						*leaving = leaving.saturating_add(u8::from(at_start));
 					}
 				}
 			}
@@ -595,9 +595,10 @@ impl Vector {
 
 		// Tangents that cancel out mark a cusp doubling straight back, which keeps the first of its two directions
 		let cancels_out = |sum: DVec2| sum.length_squared() < (f64::EPSILON * 1e3).powi(2);
-		let resolve = |(ends, sum, first, degenerate): (u8, DVec2, DVec2, bool)| match ends {
+		let resolve = |(ends, leaving, sum, first, degenerate): (u8, u8, DVec2, DVec2, bool)| match ends {
 			_ if degenerate => None,
 			1 => Some(first),
+			2 if leaving != 1 => None,
 			2 if cancels_out(sum) => Some(first),
 			2 => sum.try_normalize(),
 			_ => None,
@@ -747,25 +748,18 @@ impl Vector {
 			let mut manipulators_list: Vec<ManipulatorGroup> = Vec::new();
 			let mut in_handle: Option<DVec2> = None;
 
-			for part in &contour.parts {
-				let Some(path) = paths.element(part.path as usize) else { continue };
-				let Some(&curve_type) = curve_types.get(part.path as usize) else { continue };
-				let (stride, count) = (curve_type.stride(), path.segment_count(curve_type));
+			for &part in &contour.parts {
+				let Some(path) = paths.element(part as usize) else { continue };
+				let Some(&curve_type) = curve_types.get(part as usize) else { continue };
+				let stride = curve_type.stride();
 
-				for step in 0..count {
-					let span = if part.reversed { count - 1 - step } else { step };
+				for span in 0..path.segment_count(curve_type) {
 					let Some(segment) = path.segment(&self.0, curve_type, span) else { continue };
-					let (Some(start), Some(end)) = (path.reference(span * stride), path.reference(span * stride + stride)) else {
-						continue;
-					};
+					let Some(anchor) = path.reference(span * stride) else { continue };
 
-					// A quadratic's one handle leaves its anchor whichever way the span is crossed
 					let handles = segment_to_handles(&segment);
-					let handles = if part.reversed { handles.reversed() } else { handles };
-					let anchor = if part.reversed { end } else { start };
-
 					manipulators_list.push(ManipulatorGroup {
-						anchor: point_to_dvec2(if part.reversed { segment.end() } else { segment.start() }),
+						anchor: point_to_dvec2(segment.start()),
 						in_handle,
 						out_handle: handles.start(),
 						id: id_at(anchor),
@@ -1053,44 +1047,48 @@ mod tests {
 		}
 	}
 
-	/// Two paths welded head to head, so the contour must cross the second one backward and still
-	/// emit anchors and geometry in travel order.
+	// Two paths meeting head to head stay two contours, each emitting its anchors and geometry in its stored direction
 	#[test]
-	fn contour_crosses_a_welded_path_backward() {
+	fn paths_meeting_head_to_head_stay_two_contours() {
 		use crate::vector::misc::bezpath_from_manipulator_groups;
 
 		let points = [DVec2::new(0., 0.), DVec2::new(10., 0.), DVec2::new(20., 0.)];
 		let (vector, paths) = build_vector(&points, &[(0, 1), (2, 1)]);
 
 		let contours = vector.stroke_bezpath_iter(&paths).collect::<Vec<_>>();
-		assert_eq!(contours.len(), 1, "the shared endpoint welds both paths into one contour");
+		assert_eq!(contours.len(), 2);
 
 		let groups: Vec<_> = vector.stroke_manipulator_groups(&paths).collect();
-		assert_eq!(groups.len(), 1);
-		let (manipulators, closed) = &groups[0];
-		assert!(!closed);
-		assert_eq!(manipulators.iter().map(|group| group.anchor).collect::<Vec<_>>(), points.to_vec());
-
-		assert_eq!(bezpath_from_manipulator_groups(manipulators, *closed).elements(), contours[0].elements());
+		let anchors: Vec<Vec<DVec2>> = groups.iter().map(|(manipulators, _)| manipulators.iter().map(|group| group.anchor).collect()).collect();
+		assert_eq!(anchors, [vec![points[0], points[1]], vec![points[2], points[1]]]);
+		for (index, (manipulators, closed)) in groups.iter().enumerate() {
+			assert_eq!(bezpath_from_manipulator_groups(manipulators, *closed).elements(), contours[index].elements());
+		}
 	}
 
-	// Where two paths weld tail to tail, the tangent follows the contour through the weld instead of the two stored directions
+	// The tangent follows the contour through a weld where two paths run the same way, and there is none where both leave or both arrive
 	#[test]
 	fn anchor_tangents_follow_the_contour_through_a_weld() {
 		let points = [DVec2::new(0., 0.), DVec2::new(-10., 10.), DVec2::new(0., 20.), DVec2::new(10., 10.)];
-		let (vector, mut paths) = build_vector(&points, &[]);
-		for references in [[0, 1, 2], [0, 3, 2]] {
-			paths.push(Item::new_from_element(Path::from_references(references)).with_attribute(ATTR_CURVE_TYPE, CurveType::Linear));
-		}
-
-		let tangents = vector.anchor_tangents(&paths);
+		let tangents = |halves: [[u32; 3]; 2]| {
+			let (vector, mut paths) = build_vector(&points, &[]);
+			for references in halves {
+				paths.push(Item::new_from_element(Path::from_references(references)).with_attribute(ATTR_CURVE_TYPE, CurveType::Linear));
+			}
+			vector.anchor_tangents(&paths)
+		};
 		let near = |tangent: Option<DVec2>, expected: DVec2| tangent.is_some_and(|tangent| tangent.distance(expected) < 1e-9);
 
 		// The contour runs down the left half and back up the right half
-		assert!(near(tangents[2], DVec2::X), "{:?}", tangents[2]);
-		assert!(near(tangents[0], DVec2::NEG_X), "{:?}", tangents[0]);
-		assert!(near(tangents[1], DVec2::Y), "{:?}", tangents[1]);
-		assert!(near(tangents[3], DVec2::NEG_Y), "{:?}", tangents[3]);
+		let around = tangents([[0, 1, 2], [2, 3, 0]]);
+		assert!(near(around[2], DVec2::X), "{:?}", around[2]);
+		assert!(near(around[0], DVec2::NEG_X), "{:?}", around[0]);
+		assert!(near(around[1], DVec2::Y), "{:?}", around[1]);
+		assert!(near(around[3], DVec2::NEG_Y), "{:?}", around[3]);
+
+		// Both halves running down leave the top together and arrive at the bottom together
+		let downward = tangents([[0, 1, 2], [0, 3, 2]]);
+		assert_eq!((downward[0], downward[2]), (None, None));
 	}
 
 	// An open end takes its one segment's direction and a closed loop's seam averages the two meeting there. A cusp keeps

@@ -675,48 +675,46 @@ impl Vector {
 			open = contours(self.point_count(), paths).into_iter().filter(|contour| !contour.closed).collect();
 		}
 
-		// A closing segment sits after the contour's last stored path, or before it when the contour crosses that path
-		// backward, since that is the neighbor the contour reads on into. Either way it is read from the contour's exit.
-		let closings: Vec<(usize, bool, [u32; 2])> = open
-			.into_iter()
-			.filter_map(|contour| {
-				let last = contour.parts.last()?;
-				Some(if last.reversed {
-					(last.path as usize, true, [contour.entry, contour.exit])
-				} else {
-					(last.path as usize + 1, false, [contour.exit, contour.entry])
-				})
-			})
-			.collect();
-		if closings.is_empty() {
-			return;
-		}
-
-		// Each closing segment's ID skips one after the latest, as the IDs of a newly appended bezpath do
+		// A closing segment carries on the contour's last stored path from its exit, even at a junction. A linear path takes
+		// it in as one more span, and any other is followed by a linear path that carries on its path flow.
+		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
 		let mut latest = largest_segment_id(paths);
-		let mut closing_paths = Vec::with_capacity(closings.len());
-		for (before, backward, references) in closings {
+		let mut closing_paths = Vec::new();
+		for contour in open {
+			let Some(&last) = contour.parts.last() else { continue };
+
+			// Each closing segment's ID skips one after the latest, as the IDs of a newly appended bezpath do
 			let id = latest.map_or(SegmentId::ZERO, |mut latest| latest.next_id()).next_id();
 			latest = Some(id);
 
-			let mut single = List::new();
-			push_path(&mut single, CurveType::Linear, references, [id]);
-			closing_paths.extend(single.into_iter().map(|path| (before, backward, path)));
+			if curve_types.get(last as usize) == Some(&CurveType::Linear)
+				&& let Some(path) = paths.element_mut(last as usize)
+			{
+				path.0.set_attribute(ATTR_ID, path.0.len().saturating_sub(1), id);
+				path.0.push(Item::new_from_element(i64::from(contour.entry)));
+			} else {
+				let mut single = List::new();
+				push_path(&mut single, CurveType::Linear, [contour.exit, contour.entry], [id]);
+				closing_paths.extend(single.into_iter().map(|path| (last as usize + 1, path)));
+			}
+		}
+		if closing_paths.is_empty() {
+			return;
 		}
 
-		// Two closing segments can share a place between two stored paths, where the one read on from the path before goes first
-		closing_paths.sort_by_key(|&(before, backward, _)| (before, backward));
+		// Contours come out in the order of their first stored paths, so their last ones can be out of order
+		closing_paths.sort_by_key(|&(after, _)| after);
 
-		// Rebuild the paths with each closing segment in its place, keeping every other path in its stored order
+		// Rebuild the paths with each closing path after the one it carries on, keeping every other path in its stored order
 		let mut closing_paths = closing_paths.into_iter().peekable();
 		let mut rebuilt = List::new();
 		for (index, path) in std::mem::take(paths).into_iter().enumerate() {
-			while let Some((_, _, closing)) = closing_paths.next_if(|&(before, ..)| before == index) {
+			while let Some((_, closing)) = closing_paths.next_if(|&(after, _)| after == index) {
 				rebuilt.push(closing);
 			}
 			rebuilt.push(path);
 		}
-		for (_, _, closing) in closing_paths {
+		for (_, closing) in closing_paths {
 			rebuilt.push(closing);
 		}
 
@@ -1118,11 +1116,11 @@ mod tests {
 		assert_eq!(paths.len(), 1);
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 2);
+		assert_eq!(paths.len(), 1);
 		assert!(vector.stroke_bezpath_iter(&paths).all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 2);
+		assert_eq!(paths.len(), 1);
 	}
 
 	// A crossbar between two junctions closes in one pass like the uprights it joins, and closing again adds nothing
@@ -1145,31 +1143,26 @@ mod tests {
 		assert!(contours.iter().all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		assert_eq!(paths.len(), 3);
 	}
 
-	// Two contours whose closing segments belong in the same place between two stored paths both close in one pass
+	// A curved path ending at a junction closes with a linear path stored after it, which carries on its path flow through the junction
 	#[test]
-	fn close_subpaths_closes_contours_meeting_between_the_same_paths() {
+	fn close_subpaths_carries_on_a_curved_path_flow() {
 		let mut vector = Vector::default();
-		for position in [(0., 0.), (10., 0.), (10., 10.), (20., 0.), (30., 0.), (30., 10.)] {
+		for position in [(0., 0.), (5., -5.), (15., -5.), (20., 0.), (20., 10.), (30., 0.)] {
 			vector.0.push(Item::new_from_element(DVec2::from(position)));
 		}
-
-		// The first contour runs along path 0, then backward along path 3, so its closing segment goes before path 3.
-		// The second runs along paths 1 and 2, so its closing segment goes after path 2, the same place.
 		let mut paths = List::new();
-		for references in [vec![0, 1], vec![3, 4], vec![4, 5], vec![2, 1]] {
-			push_path(&mut paths, CurveType::Linear, references, []);
-		}
+		push_path(&mut paths, CurveType::Cubic, [0, 1, 2, 3], []);
+		push_path(&mut paths, CurveType::Linear, [4, 3], []);
+		push_path(&mut paths, CurveType::Linear, [5, 3], []);
 
 		vector.close_subpaths(&mut paths);
-		let contours: Vec<_> = vector.stroke_bezpath_iter(&paths).collect();
-		assert_eq!(contours.len(), 2);
-		assert!(contours.iter().all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
-		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references, [vec![0, 1, 2, 3], vec![3, 0], vec![4, 3, 4], vec![5, 3, 5]]);
+		assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed));
 	}
 
 	// Paths ending at a junction close too, and closing them again adds nothing
@@ -1185,11 +1178,11 @@ mod tests {
 		}
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		assert_eq!(paths.len(), 3);
 		assert!(vector.stroke_bezpath_iter(&paths).all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		assert_eq!(paths.len(), 3);
 	}
 
 	// An end resting on its own start, within floating point noise, merges into it instead of adding a closing segment, while a wider gap still gets one
@@ -1210,11 +1203,35 @@ mod tests {
 				assert_eq!(references, [vec![0, 1, 2, 0]], "gap {gap}");
 				assert_eq!(vector.point_count(), 3, "gap {gap}");
 			} else {
-				assert_eq!(references, [vec![0, 1, 2, 3], vec![3, 0]], "gap {gap}");
+				assert_eq!(references, [vec![0, 1, 2, 3, 0]], "gap {gap}");
 				assert_eq!(vector.point_count(), 4, "gap {gap}");
 			}
 			assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed), "gap {gap}");
 		}
+	}
+
+	// Closing paths land after the curved paths they carry on even when contours end out of storage order, so one meeting junctions at both ends still closes
+	#[test]
+	fn close_subpaths_places_closing_paths_in_storage_order() {
+		let mut vector = Vector::default();
+		for index in 0..13 {
+			vector.0.push(Item::new_from_element(DVec2::new(index as f64, (index * index) as f64)));
+		}
+
+		// The first contour welds on path 2, so it ends after the second, which meets junctions at points 5 and 6
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1], []);
+		push_path(&mut paths, CurveType::Cubic, [5, 9, 10, 6], []);
+		push_path(&mut paths, CurveType::Cubic, [1, 2, 3, 4], []);
+		for references in [[7, 6], [8, 6], [11, 5], [12, 5]] {
+			push_path(&mut paths, CurveType::Linear, references, []);
+		}
+
+		vector.close_subpaths(&mut paths);
+
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references[..5], [vec![0, 1], vec![5, 9, 10, 6], vec![6, 5], vec![1, 2, 3, 4], vec![4, 0]]);
+		assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed));
 	}
 
 	// Paths ending where a merged end was still meet the closed path there, at the start it merged into

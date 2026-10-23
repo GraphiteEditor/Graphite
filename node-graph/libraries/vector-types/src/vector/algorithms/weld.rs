@@ -930,7 +930,7 @@ mod tests {
 		let (original, original_paths) = diamond();
 		assert_eq!(references(&paths), references(&original_paths));
 		assert_eq!(vector.0.len(), original.0.len());
-		assert!(contours(vector.0.len(), &paths).iter().all(|contour| contour.closed));
+		assert_eq!(contours(vector.0.len(), &paths), contours(original.0.len(), &original_paths));
 	}
 
 	// A closed path takes one copy of the point it closes on for both of its references to it, so it stays closed
