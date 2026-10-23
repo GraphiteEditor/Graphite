@@ -4,11 +4,20 @@ use serde_json::Value;
 
 use crate::unescape_string;
 
+/// Why a JSON node's input gives no result.
+#[derive(Debug, thiserror::Error)]
+pub enum JsonError {
+	#[error("The JSON is invalid: {0}")]
+	InvalidJson(#[from] serde_json::Error),
+	#[error("The JSON path `{0}` is invalid")]
+	InvalidPath(String),
+}
+
 // ===========
 // Format JSON
 // ===========
 
-/// Reformats a JSON string with control over indentation, line breaking, and spacing. Trailing commas are tolerated. Otherwise-invalid JSON input is returned unchanged.
+/// Reformats a JSON string with control over indentation, line breaking, and spacing. Trailing commas are tolerated, while otherwise-invalid JSON gives an error.
 #[node_macro::node(name("Format JSON"), category("String: JSON"), icon("NodeFormatJson"))]
 fn format_json(
 	_: impl Ctx,
@@ -33,17 +42,20 @@ fn format_json(
 	/// Always break a container (array or object) across lines if it holds another container, even if it would fit within the break length. (Requires *Multi-Line* to take effect.)
 	#[default(true)]
 	break_nested: Item<bool>,
-) -> Item<String> {
+) -> Result<Item<String>, JsonError> {
 	let mut json = json;
 	let (compact, multi_line, break_length, break_nested) = (*compact.element(), *multi_line.element(), *break_length.element(), *break_nested.element());
 	let indent = indent.element().clone();
 
 	let cleaned = strip_trailing_commas(json.element());
-	let Ok(value) = serde_json::from_str::<serde_json::Value>(&cleaned) else { return json };
+	if cleaned.trim().is_empty() {
+		return Ok(json);
+	}
+	let value = serde_json::from_str::<serde_json::Value>(&cleaned)?;
 	let indent = unescape_string(indent);
 	let colon = if compact { ":" } else { ": " };
 	let comma_space = if compact { "," } else { ", " };
-	let line_width = break_length as usize;
+	let line_width = usize::try_from(break_length).unwrap_or(usize::MAX);
 
 	let result = if multi_line {
 		format_value(&value, 0, &indent, colon, comma_space, compact, break_nested, line_width)
@@ -52,14 +64,14 @@ fn format_json(
 	};
 
 	*json.element_mut() = result;
-	json
+	Ok(json)
 }
 
-/// Strips trailing commas before `]` and `}` to accept JSON-with-trailing-commas input.
+/// Blanks out trailing commas before `]` and `}` to accept JSON-with-trailing-commas input.
 /// Respects string literals so commas inside strings are left untouched.
 fn strip_trailing_commas(json: &str) -> String {
 	let mut output = String::with_capacity(json.len());
-	let mut chars = json.chars().peekable();
+	let mut chars = json.chars();
 	let mut in_string = false;
 
 	while let Some(c) = chars.next() {
@@ -84,15 +96,9 @@ fn strip_trailing_commas(json: &str) -> String {
 				output.push(c);
 			}
 			',' => {
-				// Skip any whitespace after the comma
-				while chars.peek().is_some_and(|c| c.is_ascii_whitespace()) {
-					chars.next();
-				}
-
-				// Drop trailing commas (before `]` or `}`), but keep all others
-				if !chars.peek().is_some_and(|&c| c == ']' || c == '}') {
-					output.push(',');
-				}
+				// A trailing comma (before `]` or `}`) becomes a space, so error positions still point into the input
+				let trailing = chars.clone().find(|c| !c.is_ascii_whitespace()).is_some_and(|c| c == ']' || c == '}');
+				output.push(if trailing { ' ' } else { ',' });
 			}
 			_ => output.push(c),
 		}
@@ -210,25 +216,27 @@ fn query_json(
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
 	unquote_strings: Item<bool>,
-) -> Item<String> {
+) -> Result<Item<String>, JsonError> {
 	let mut json = json;
 	let path = path.element().clone();
 	let unquote_strings = *unquote_strings.element();
 
 	let cleaned = strip_trailing_commas(json.element());
+	let segments = parse_json_path(path.trim()).ok_or_else(|| JsonError::InvalidPath(path.trim().to_string()))?;
 
-	let result = match (serde_json::from_str::<Value>(&cleaned), parse_json_path(path.trim())) {
-		(Ok(value), Some(segments)) => {
-			let mut results = Vec::new();
-			resolve_all(&value, &segments, !unquote_strings, &mut results);
+	let result = if cleaned.trim().is_empty() {
+		String::new()
+	} else {
+		let value = serde_json::from_str::<Value>(&cleaned)?;
 
-			results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default()
-		}
-		_ => String::new(),
+		let mut results = Vec::new();
+		resolve_all(&value, &segments, !unquote_strings, &mut results);
+
+		results.into_iter().next().map(|(text, _ty)| text).unwrap_or_default()
 	};
 
 	*json.element_mut() = result;
-	json
+	Ok(json)
 }
 
 /// Extracts every matched value from a JSON string using a path expression (see that parameter's description for its syntax). A list of zero or more resultant strings is produced. The `[]` path accessor is used to read more than one value.
@@ -258,15 +266,18 @@ fn query_json_all(
 	/// Strips the surrounding double quotes from string values, returning the raw text. Other types are never wrapped in quotes.
 	#[default(true)]
 	unquote_strings: Item<bool>,
-) -> List<String> {
+) -> Result<List<String>, JsonError> {
 	let cleaned = strip_trailing_commas(json.element());
-	let Ok(value): Result<Value, _> = serde_json::from_str(&cleaned) else { return List::new() };
-	let Some(segments) = parse_json_path(path.element().trim()) else { return List::new() };
+	let segments = parse_json_path(path.element().trim()).ok_or_else(|| JsonError::InvalidPath(path.element().trim().to_string()))?;
+	if cleaned.trim().is_empty() {
+		return Ok(List::new());
+	}
+	let value: Value = serde_json::from_str(&cleaned)?;
 
 	let mut results = Vec::new();
 	resolve_all(&value, &segments, !*unquote_strings.element(), &mut results);
 
-	results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect()
+	Ok(results.into_iter().map(|(text, ty)| Item::new_from_element(text).with_attribute(ATTR_TYPE, ty.to_string())).collect())
 }
 
 /// A parsed segment of a JSON access path.
@@ -482,5 +493,26 @@ fn resolve_all(value: &serde_json::Value, segments: &[JsonPathSegment], quote_st
 			}
 		}
 		_ => {}
+	}
+}
+
+#[cfg(test)]
+mod test {
+	use super::*;
+
+	#[test]
+	fn an_error_after_a_trailing_comma_points_into_the_input() {
+		assert_eq!(strip_trailing_commas("[1, \"a,\",\n]"), "[1, \"a,\" \n]");
+
+		let error = serde_json::from_str::<Value>(&strip_trailing_commas("{\n\t\"a\": [1,],\n\t\"b\": x\n}")).unwrap_err();
+		assert_eq!((error.line(), error.column()), (3, 7));
+	}
+
+	#[test]
+	fn an_invalid_path_is_reported_without_json() {
+		let text = |text: &str| Item::new_from_element(text.to_string());
+		assert!(matches!(query_json((), text(""), text(".a["), Item::new_from_element(true)), Err(JsonError::InvalidPath(_))));
+		assert!(matches!(query_json_all((), text(""), text(".a["), Item::new_from_element(true)), Err(JsonError::InvalidPath(_))));
+		assert!(query_json_all((), text(""), text(""), Item::new_from_element(true)).unwrap().is_empty());
 	}
 }

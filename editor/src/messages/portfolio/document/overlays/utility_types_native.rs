@@ -1179,7 +1179,7 @@ impl OverlayContextInternal {
 		// Lay out the text once, taking its dimensions and vector paths from the same thread-local context pass
 		let (text_size, text_list) = TextContext::with_thread_local(|text_context| {
 			let text_size = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
-			let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
+			let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false).unwrap_or_default();
 			(text_size, text_list)
 		});
 		let text_width = text_size.x;

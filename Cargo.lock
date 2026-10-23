@@ -4289,6 +4289,7 @@ dependencies = [
  "node-macro",
  "smallvec",
  "text-nodes",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
@@ -6120,13 +6121,13 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "ipsum",
- "log",
  "node-macro",
  "parley",
  "rand",
  "serde",
  "serde_json",
  "skrifa",
+ "thiserror 2.0.18",
  "titlecase",
  "tsify",
  "unicode-segmentation",
