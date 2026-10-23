@@ -51,6 +51,7 @@ pub enum OverlaysType {
 	Path,
 	Anchors,
 	Handles,
+	PointIndex,
 	PathEnds,
 	PathIndex,
 	PathDirection,
@@ -74,6 +75,7 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub point_index: bool,
 	pub path_ends: bool,
 	pub path_index: bool,
 	pub path_direction: bool,
@@ -96,6 +98,7 @@ impl Default for OverlaysVisibilitySettings {
 			path: true,
 			anchors: true,
 			handles: true,
+			point_index: false,
 			path_ends: true,
 			path_index: false,
 			path_direction: false,
@@ -158,6 +161,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn point_index(&self) -> bool {
+		self.all && self.anchors && self.point_index
 	}
 
 	pub fn path_ends(&self) -> bool {

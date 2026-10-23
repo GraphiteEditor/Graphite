@@ -1578,6 +1578,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
+					OverlaysType::PointIndex => visibility_settings.point_index = visible,
 					OverlaysType::PathEnds => visibility_settings.path_ends = visible,
 					OverlaysType::PathIndex => visibility_settings.path_index = visible,
 					OverlaysType::PathDirection => visibility_settings.path_direction = visible,
@@ -3573,6 +3574,7 @@ impl DocumentMessageHandler {
 			checkbox("Path Ends", OverlaysType::PathEnds, settings.path_ends, !settings.anchors, path_ends_description),
 			checkbox("Anchors", OverlaysType::Anchors, settings.anchors, false, ""),
 			checkbox("Handles", OverlaysType::Handles, settings.handles, !settings.anchors, ""),
+			checkbox("Point Index", OverlaysType::PointIndex, settings.point_index, !settings.anchors, ""),
 			checkbox("Path Index", OverlaysType::PathIndex, settings.path_index, !settings.anchors, ""),
 			checkbox("Path Direction", OverlaysType::PathDirection, settings.path_direction, !settings.anchors, ""),
 		];

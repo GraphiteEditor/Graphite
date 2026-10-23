@@ -128,6 +128,9 @@ pub const PATH_DIRECTION_HARPOON_OFFSET: f64 = 3.;
 // In viewport pixels, far finer than the arrows need to sit evenly
 pub const PATH_DIRECTION_ARC_LENGTH_ACCURACY: f64 = 0.1;
 pub const PATH_INDEX_LABEL_OFFSET: f64 = 14.;
+pub const POINT_INDEX_LABEL_OFFSET: f64 = 12.;
+// Between a path's start anchor's point index and its path index, side by side
+pub const INDEX_LABEL_GAP: f64 = 8.;
 pub const PATH_FLOW_JOIN_TICK_LENGTH: f64 = 18.;
 pub const PATH_FLOW_JOIN_TICK_THICKNESS: f64 = 2.;
 
@@ -178,6 +181,7 @@ pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_GREEN_25: &str = "#63ce6340";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_RED_25: &str = "#ef545440";
+pub const COLOR_OVERLAY_MAGENTA: &str = "#ba57bc";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";

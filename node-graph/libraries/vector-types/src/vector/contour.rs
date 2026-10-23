@@ -222,6 +222,8 @@ pub fn contour_bezpaths(pool: &List<DVec2>, paths: &List<Path>) -> Vec<BezPath> 
 /// One contour's segments in the order and direction it runs along them.
 #[derive(Clone, Debug, PartialEq)]
 pub struct OrientedContour {
+	/// The pool point the contour sets out from.
+	pub entry: u32,
 	pub segments: Vec<PathSeg>,
 	/// Where in `segments` the contour crosses from one path flow into another. A closed contour lists 0 when it arrives back at its start from another flow.
 	pub flow_joins: Vec<usize>,
@@ -265,6 +267,7 @@ pub fn oriented_contours(pool: &List<DVec2>, paths: &List<Path>) -> Vec<Oriented
 			}
 
 			OrientedContour {
+				entry: contour.entry,
 				segments,
 				flow_joins,
 				closed: contour.closed,

@@ -1,7 +1,8 @@
 use super::utility_types::{DrawHandles, OverlayContext, Pivot};
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, HIDE_HANDLE_DISTANCE, PATH_DIRECTION_ARC_LENGTH_ACCURACY, PATH_DIRECTION_ARROW_SPACING, PATH_DIRECTION_CHEVRON_SIZE, PATH_DIRECTION_HARPOON_OFFSET, PATH_END_MARKER_DISTANCE,
-	PATH_END_MARKER_SIZE, PATH_FLOW_JOIN_TICK_LENGTH, PATH_FLOW_JOIN_TICK_THICKNESS, PATH_INDEX_LABEL_OFFSET, PATH_MARKERS_MIN_LENGTH, SNAP_POINT_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_MAGENTA, HIDE_HANDLE_DISTANCE, INDEX_LABEL_GAP, PATH_DIRECTION_ARC_LENGTH_ACCURACY, PATH_DIRECTION_ARROW_SPACING, PATH_DIRECTION_CHEVRON_SIZE,
+	PATH_DIRECTION_HARPOON_OFFSET, PATH_END_MARKER_DISTANCE, PATH_END_MARKER_SIZE, PATH_FLOW_JOIN_TICK_LENGTH, PATH_FLOW_JOIN_TICK_THICKNESS, PATH_INDEX_LABEL_OFFSET, PATH_MARKERS_MIN_LENGTH,
+	POINT_INDEX_LABEL_OFFSET, SNAP_POINT_TOLERANCE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -12,9 +13,9 @@ use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, PathSegPoints, pathseg_points, point_to_dvec2, segment_to_handles};
-use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
+use graphene_std::vector::{PointId, SegmentId, VectorGeometry, curve_type_at, handle_point, segment_id_of, span_endpoints, spans};
 use kurbo::{Affine, ParamCurve, ParamCurveArclen, ParamCurveArea, PathSeg, Rect, Shape};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
 
@@ -72,7 +73,22 @@ pub fn selected_segments_for_layer(vector: &VectorGeometry, state: &SelectedLaye
 	selected_segments
 }
 
-fn overlay_bezier_handles(segment: PathSeg, segment_id: SegmentId, transform: DAffine2, is_selected: impl Fn(ManipulatorPointId) -> bool, overlay_context: &mut OverlayContext) {
+/// A handle drawn by an overlay, in viewport space.
+#[derive(Clone, Copy)]
+struct DrawnHandle {
+	point: ManipulatorPointId,
+	position: DVec2,
+	/// The point its index label sits away from: its anchor, or the midpoint of both anchors for a quadratic's lone handle.
+	away_from: DVec2,
+}
+
+fn overlay_bezier_handles(
+	segment: PathSeg,
+	segment_id: SegmentId,
+	transform: DAffine2,
+	is_selected: impl Fn(ManipulatorPointId) -> bool,
+	overlay_context: &mut OverlayContext,
+) -> [Option<DrawnHandle>; 2] {
 	let segment = Affine::new(transform.to_cols_array()) * segment;
 	let segment_start = point_to_dvec2(segment.start());
 	let segment_end = point_to_dvec2(segment.end());
@@ -80,21 +96,39 @@ fn overlay_bezier_handles(segment: PathSeg, segment_id: SegmentId, transform: DA
 
 	match segment_to_handles(&segment) {
 		BezierHandles::Quadratic { handle } if not_under_anchor(handle, segment_start) && not_under_anchor(handle, segment_end) => {
+			let point = ManipulatorPointId::PrimaryHandle(segment_id);
 			overlay_context.line(handle, segment_start, None, None);
 			overlay_context.line(handle, segment_end, None, None);
-			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
+			overlay_context.manipulator_handle(handle, is_selected(point), None);
+
+			let away_from = segment_start.midpoint(segment_end);
+			[Some(DrawnHandle { point, position: handle, away_from }), None]
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
+			let mut drawn = [None, None];
 			if not_under_anchor(handle_start, segment_start) {
+				let point = ManipulatorPointId::PrimaryHandle(segment_id);
 				overlay_context.line(handle_start, segment_start, None, None);
-				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
+				overlay_context.manipulator_handle(handle_start, is_selected(point), None);
+				drawn[0] = Some(DrawnHandle {
+					point,
+					position: handle_start,
+					away_from: segment_start,
+				});
 			}
 			if not_under_anchor(handle_end, segment_end) {
+				let point = ManipulatorPointId::EndHandle(segment_id);
 				overlay_context.line(handle_end, segment_end, None, None);
-				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
+				overlay_context.manipulator_handle(handle_end, is_selected(point), None);
+				drawn[1] = Some(DrawnHandle {
+					point,
+					position: handle_end,
+					away_from: segment_end,
+				});
 			}
+			drawn
 		}
-		_ => {}
+		_ => [None, None],
 	}
 }
 
@@ -106,7 +140,7 @@ fn overlay_bezier_handle_specific_point(
 	transform: DAffine2,
 	is_selected: impl Fn(ManipulatorPointId) -> bool,
 	overlay_context: &mut OverlayContext,
-) {
+) -> [Option<DrawnHandle>; 2] {
 	let segment = Affine::new(transform.to_cols_array()) * segment;
 	let segment_start = point_to_dvec2(segment.start());
 	let segment_end = point_to_dvec2(segment.end());
@@ -114,21 +148,45 @@ fn overlay_bezier_handle_specific_point(
 
 	match segment_to_handles(&segment) {
 		BezierHandles::Quadratic { handle } if not_under_anchor(handle, segment_start) && not_under_anchor(handle, segment_end) => {
+			let point = ManipulatorPointId::PrimaryHandle(segment_id);
 			let anchor = if start == point_to_render { segment_start } else { segment_end };
 			overlay_context.line(handle, anchor, None, None);
-			overlay_context.manipulator_handle(handle, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
+			overlay_context.manipulator_handle(handle, is_selected(point), None);
+
+			[
+				Some(DrawnHandle {
+					point,
+					position: handle,
+					away_from: anchor,
+				}),
+				None,
+			]
 		}
 		BezierHandles::Cubic { handle_start, handle_end } => {
+			let mut drawn = [None, None];
 			if not_under_anchor(handle_start, segment_start) && (point_to_render == start) {
+				let point = ManipulatorPointId::PrimaryHandle(segment_id);
 				overlay_context.line(handle_start, segment_start, None, None);
-				overlay_context.manipulator_handle(handle_start, is_selected(ManipulatorPointId::PrimaryHandle(segment_id)), None);
+				overlay_context.manipulator_handle(handle_start, is_selected(point), None);
+				drawn[0] = Some(DrawnHandle {
+					point,
+					position: handle_start,
+					away_from: segment_start,
+				});
 			}
 			if not_under_anchor(handle_end, segment_end) && (point_to_render == end) {
+				let point = ManipulatorPointId::EndHandle(segment_id);
 				overlay_context.line(handle_end, segment_end, None, None);
-				overlay_context.manipulator_handle(handle_end, is_selected(ManipulatorPointId::EndHandle(segment_id)), None);
+				overlay_context.manipulator_handle(handle_end, is_selected(point), None);
+				drawn[1] = Some(DrawnHandle {
+					point,
+					position: handle_end,
+					away_from: segment_end,
+				});
 			}
+			drawn
 		}
-		_ => {}
+		_ => [None, None],
 	}
 }
 
@@ -152,49 +210,52 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			}
 		}
 
-		path_direction_overlays(&vector, transform, false, overlay_context);
+		let path_index_labels = path_direction_overlays(&vector, transform, false, overlay_context);
 
 		let is_selected = |point: ManipulatorPointId| selected_shape_state.is_point_selected(point);
 
+		let mut drawn_handles = Vec::new();
 		if display_handles {
 			let opposite_handles_data = selected_shape_state.selected_points().filter_map(|point_id| vector.adjacent_segment(&point_id)).collect::<Vec<_>>();
 
 			match draw_handles {
 				DrawHandles::All => {
 					vector.segment_iter().for_each(|(segment_id, segment, _start, _end)| {
-						overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context);
+						drawn_handles.extend(overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context).into_iter().flatten());
 					});
 				}
 				DrawHandles::SelectedAnchors(ref selected_segments) => {
-					let Some(focused_segments) = selected_segments.get(&layer) else { continue };
+					let focused_segments = selected_segments.get(&layer).map(Vec::as_slice).unwrap_or_default();
 
 					vector
 						.segment_iter()
 						.filter(|(segment_id, ..)| focused_segments.contains(segment_id))
 						.for_each(|(segment_id, segment, _start, _end)| {
-							overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context);
+							drawn_handles.extend(overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context).into_iter().flatten());
 						});
 
 					for (segment_id, segment, start, end) in vector.segment_iter() {
 						if let Some((corresponding_anchor, _)) = opposite_handles_data.iter().find(|(_, adj_segment_id)| adj_segment_id == &segment_id) {
-							overlay_bezier_handle_specific_point(segment, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
+							let drawn = overlay_bezier_handle_specific_point(segment, segment_id, (start, end), *corresponding_anchor, transform, is_selected, overlay_context);
+							drawn_handles.extend(drawn.into_iter().flatten());
 						}
 					}
 				}
 				DrawHandles::FrontierHandles(ref segment_endpoints_by_layer) => {
-					let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) else { continue };
-
-					vector
-						.segment_iter()
-						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
-						.for_each(|(segment_id, segment, start, end)| {
-							if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
-								let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
-								overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context);
-							} else {
-								overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context);
-							}
-						});
+					if let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) {
+						vector
+							.segment_iter()
+							.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
+							.for_each(|(segment_id, segment, start, end)| {
+								let drawn = if segment_endpoints.get(&segment_id).unwrap().len() == 1 {
+									let point_to_render = segment_endpoints.get(&segment_id).unwrap()[0];
+									overlay_bezier_handle_specific_point(segment, segment_id, (start, end), point_to_render, transform, is_selected, overlay_context)
+								} else {
+									overlay_bezier_handles(segment, segment_id, transform, is_selected, overlay_context)
+								};
+								drawn_handles.extend(drawn.into_iter().flatten());
+							});
+					}
 				}
 				DrawHandles::None => {}
 			}
@@ -205,6 +266,8 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 				overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(ManipulatorPointId::Anchor(id)), None);
 			}
 		}
+
+		index_label_overlays(&vector, transform, false, &drawn_handles, path_index_labels, overlay_context);
 	}
 }
 
@@ -228,7 +291,7 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
-		path_direction_overlays(&vector, transform, true, overlay_context);
+		let path_index_labels = path_direction_overlays(&vector, transform, true, overlay_context);
 
 		for id in vector.anchor_endpoints() {
 			if hovered.is_some_and(|(hovered_layer, hovered_id, _)| hovered_layer == layer && hovered_id == id) {
@@ -238,6 +301,8 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 
 			overlay_context.manipulator_anchor(transform.transform_point2(position), is_selected(layer, id), None);
 		}
+
+		index_label_overlays(&vector, transform, true, &[], path_index_labels, overlay_context);
 	}
 
 	// Drawn last so its halo sits above any other endpoint at the same spot
@@ -247,13 +312,23 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 	}
 }
 
-/// Marks how each path of a layer runs, as the overlay settings choose: chevrons at its start and end and along it, its index, and ticks where its path flows join.
-/// With `open_paths_only`, closed paths go unmarked, for tools that only show the anchors at open ends.
-fn path_direction_overlays(vector: &VectorGeometry, transform: DAffine2, open_paths_only: bool, overlay_context: &mut OverlayContext) {
+/// A path's index label, placed off its start anchor where it covers the least of the path.
+struct PathIndexLabel {
+	index: usize,
+	/// The pool index of the anchor the path starts at, where a point index label may share its spot.
+	anchor: u32,
+	position: DVec2,
+}
+
+/// Marks how each path of a layer runs, as the overlay settings choose: chevrons at its start and end and along it, and ticks where its path flows join.
+/// Returns each path's index label for [`index_label_overlays`] to draw. With `open_paths_only`, closed paths go unmarked, for tools that only show the anchors at open ends.
+fn path_direction_overlays(vector: &VectorGeometry, transform: DAffine2, open_paths_only: bool, overlay_context: &mut OverlayContext) -> Vec<PathIndexLabel> {
+	let mut index_labels = Vec::new();
+
 	let settings = overlay_context.visibility_settings;
 	let (show_ends, show_index, show_direction) = (settings.path_ends(), settings.path_index(), settings.path_direction());
 	if !(show_ends || show_index || show_direction) {
-		return;
+		return index_labels;
 	}
 
 	let to_viewport = Affine::new(transform.to_cols_array());
@@ -348,9 +423,113 @@ fn path_direction_overlays(vector: &VectorGeometry, transform: DAffine2, open_pa
 			let clockwise = segments.iter().map(|segment| segment.signed_area()).sum::<f64>() > 0.;
 			let outside = if clockwise { -departure.perp() } else { departure.perp() };
 			let away = direction_or(-spokes, outside);
-			let label_transform = DAffine2::from_translation(start + away * PATH_INDEX_LABEL_OFFSET);
-			overlay_context.text(&index.to_string(), COLOR_OVERLAY_BLUE, None, label_transform, 0., [Pivot::Middle, Pivot::Middle]);
+
+			index_labels.push(PathIndexLabel {
+				index,
+				anchor: contour.entry,
+				position: start + away * PATH_INDEX_LABEL_OFFSET,
+			});
 		}
+	}
+
+	index_labels
+}
+
+/// Draws the path index labels, and when the overlay settings show point indices, labels the anchors (or just the endpoints with `endpoints_only`) and drawn handles with their indices in the layer's list of points.
+/// A point index label sits off its point away from the segments meeting there, and a path's start anchor shares that spot with the path's index, the two side by side.
+fn index_label_overlays(vector: &VectorGeometry, transform: DAffine2, endpoints_only: bool, drawn_handles: &[DrawnHandle], path_index_labels: Vec<PathIndexLabel>, overlay_context: &OverlayContext) {
+	// The size `OverlayContext::text` draws at
+	const FONT_SIZE: f64 = 12.;
+
+	let draw_label = |text: &str, color: &str, position: DVec2, horizontal_pivot: Pivot| {
+		overlay_context.text(text, color, None, DAffine2::from_translation(position), 0., [horizontal_pivot, Pivot::Middle]);
+	};
+
+	if !overlay_context.visibility_settings.point_index() {
+		for label in &path_index_labels {
+			draw_label(&label.index.to_string(), COLOR_OVERLAY_MAGENTA, label.position, Pivot::Middle);
+		}
+		return;
+	}
+
+	let mut path_index_labels_at: HashMap<u32, Vec<&PathIndexLabel>> = HashMap::new();
+	for label in &path_index_labels {
+		path_index_labels_at.entry(label.anchor).or_default().push(label);
+	}
+
+	let to_viewport = Affine::new(transform.to_cols_array());
+
+	// In one O(segments) pass: the directions segments leave each anchor in (their sum and the first), and each handle's pool index
+	let mut spokes: HashMap<u32, (DVec2, DVec2)> = HashMap::new();
+	let mut handle_indices: HashMap<ManipulatorPointId, u32> = HashMap::new();
+	for span in spans(&vector.paths) {
+		let Some((start, end)) = span_endpoints(&vector.paths, span) else { continue };
+		let curve_type = curve_type_at(&vector.paths, span.path as usize);
+		let Some(segment) = vector
+			.paths
+			.element(span.path as usize)
+			.and_then(|path| path.segment(&vector.vector.0, curve_type, span.index as usize))
+		else {
+			continue;
+		};
+
+		if let Some((departure, arrival)) = end_directions(to_viewport * segment) {
+			for (anchor, spoke) in [(start, departure), (end, -arrival)] {
+				let (sum, _) = spokes.entry(anchor).or_insert((DVec2::ZERO, spoke));
+				*sum += spoke;
+			}
+		}
+
+		let segment_id = segment_id_of(&vector.paths, span).unwrap_or_default();
+		for (point, primary) in [(ManipulatorPointId::PrimaryHandle(segment_id), true), (ManipulatorPointId::EndHandle(segment_id), false)] {
+			if let Some(index) = handle_point(&vector.paths, span, primary) {
+				handle_indices.insert(point, index);
+			}
+		}
+	}
+
+	let endpoints: HashSet<PointId> = if endpoints_only { vector.anchor_endpoints().collect() } else { HashSet::new() };
+
+	// Opposite the segments meeting at an anchor, or beside them on the upper side where they run straight through
+	for index in vector.vector.anchor_indices(&vector.paths) {
+		let index = index as u32;
+		let (Some(id), Some(position)) = (vector.point_id_at(index), vector.position(index as usize)) else {
+			continue;
+		};
+		if endpoints_only && !endpoints.contains(&id) {
+			continue;
+		}
+
+		let away = match spokes.get(&index) {
+			Some(&(sum, first)) => direction_or(-sum, if first.perp().y > 0. { -first.perp() } else { first.perp() }),
+			None => DVec2::NEG_Y,
+		};
+		let spot = transform.transform_point2(position) + away * POINT_INDEX_LABEL_OFFSET;
+		let point_index = index.to_string();
+
+		let Some(path_labels) = path_index_labels_at.remove(&index) else {
+			draw_label(&point_index, COLOR_OVERLAY_BLUE, spot, Pivot::Middle);
+			continue;
+		};
+
+		// The point index and path index sit either side of the spot, slid outward so the label nearer the anchor clears it as a lone label would
+		let path_index = path_labels.iter().map(|label| label.index.to_string()).collect::<Vec<_>>().join(", ");
+		let nearer_width = text_width(if away.x < 0. { &path_index } else { &point_index }, FONT_SIZE);
+		let center = spot + DVec2::X * away.x * (INDEX_LABEL_GAP + nearer_width) / 2.;
+		draw_label(&point_index, COLOR_OVERLAY_BLUE, center - DVec2::X * INDEX_LABEL_GAP / 2., Pivot::End);
+		draw_label(&path_index, COLOR_OVERLAY_MAGENTA, center + DVec2::X * INDEX_LABEL_GAP / 2., Pivot::Start);
+	}
+
+	// Past each handle's tip, away from its anchor
+	for handle in drawn_handles {
+		let Some(&index) = handle_indices.get(&handle.point) else { continue };
+		let away = direction_or(handle.position - handle.away_from, DVec2::NEG_Y);
+		draw_label(&index.to_string(), COLOR_OVERLAY_BLUE, handle.position + away * POINT_INDEX_LABEL_OFFSET, Pivot::Middle);
+	}
+
+	// Any path index whose start anchor has no point index label of its own
+	for label in path_index_labels_at.into_values().flatten() {
+		draw_label(&label.index.to_string(), COLOR_OVERLAY_MAGENTA, label.position, Pivot::Middle);
 	}
 }
 
@@ -387,8 +566,8 @@ fn draw_chevron(overlay_context: &mut OverlayContext, center: DVec2, direction: 
 			// The shaft matches the barb's length
 			let shaft_end = tip - direction * tip.distance(barb_end);
 
-			overlay_context.line(shaft_end, tip, None, None);
-			overlay_context.line(barb_end, tip, None, None);
+			overlay_context.line(shaft_end, tip, Some(COLOR_OVERLAY_MAGENTA), None);
+			overlay_context.line(barb_end, tip, Some(COLOR_OVERLAY_MAGENTA), None);
 		}
 		None => {
 			let spread = direction.perp() * size / 2.;
