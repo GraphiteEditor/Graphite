@@ -36,7 +36,7 @@ use vector_types::vector::misc::{
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
-	CurveType, Path, PointId, SegmentId, TakenIds, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes,
+	CurveType, IdCollisionSet, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes,
 	paths_from_list_row_attributes, push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
@@ -1977,7 +1977,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let mut primary_source = None;
 	let mut output = Vector::default();
 	let mut output_paths = List::new();
-	let mut taken_ids = TakenIds::default();
+	let mut taken_ids = IdCollisionSet::default();
 
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {

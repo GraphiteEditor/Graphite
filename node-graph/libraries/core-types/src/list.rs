@@ -112,8 +112,10 @@ pub const ATTR_PATHS: &str = "paths";
 /// Path's `CurveType` naming the stride its point references weave in, on the `List<Path>` item
 /// holding the path (implicit default `Linear`).
 pub const ATTR_CURVE_TYPE: &str = "curve_type";
+/// Prefix of the attributes the engine keeps for itself, which are hidden from users.
+pub const INTERNAL_ATTRIBUTE_PREFIX: &str = "internal:";
 /// A vector item's cache of geometry derived from its point pool and paths, shared by the item's clones.
-pub const ATTR_GEOMETRY_CACHE: &str = "geometry_cache";
+pub const ATTR_GEOMETRY_CACHE: &str = "internal:geometry_cache";
 /// Point reference's `bool` tool state marking the tangent pair at this anchor occurrence as smooth,
 /// on the `List<i64>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
 /// colinear. Rendering derives continuity from actual tangent geometry and does not read this.

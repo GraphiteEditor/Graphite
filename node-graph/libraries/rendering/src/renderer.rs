@@ -739,7 +739,7 @@ pub struct RenderMetadata {
 	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
 	/// nodes with an `editor:click_target` override still outline the precise geometry.
 	pub outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
-	/// Layers whose targets include those of their child layers.
+	/// Group layers, whose child layers' targets the editor composes into theirs instead of `click_targets` holding them.
 	pub group_layers: HashSet<NodeId>,
 	/// Per-layer text frame from item 0's `editor:text_frame` attribute.
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.

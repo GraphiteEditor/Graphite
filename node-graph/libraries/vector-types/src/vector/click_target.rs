@@ -315,6 +315,14 @@ impl ClickTarget {
 
 	/// Does the click target intersect the path
 	pub fn intersect_path<It: Iterator<Item = PathSeg>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
+		// A collapsed placement has no inverse, so its placed copy is tested under the layer transform alone
+		if let TargetShape::Path { geometry, transform } = &self.shape
+			&& transform.matrix2.determinant().abs() <= f64::EPSILON
+		{
+			let placed = Self::new_with_path(Affine::new(transform.to_cols_array()) * geometry.path(), self.stroke_width);
+			return placed.intersect_path(bezier_iter, layer_transform);
+		}
+
 		// The query maps into the geometry's own space, so shared geometry is tested without being transformed
 		let mut layer_transform = match &self.shape {
 			TargetShape::Path { transform, .. } => layer_transform * *transform,

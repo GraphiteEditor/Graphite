@@ -35,7 +35,7 @@ pub struct DocumentMetadata {
 	/// Source-geometry outlines for hover/selection overlays, separate from `click_targets` so
 	/// nodes with an `editor:click_target` override still outline the precise geometry.
 	pub outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
-	/// Layers whose targets include those of their child layers.
+	/// Group layers, whose child layers' targets are composed into theirs on query (see [`Self::click_targets`]).
 	pub group_layers: HashSet<LayerNodeIdentifier>,
 	/// Each group's targets composed with its descendants' into its space.
 	composed_targets: HashMap<LayerNodeIdentifier, ComposedTargets>,

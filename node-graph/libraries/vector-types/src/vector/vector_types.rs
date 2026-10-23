@@ -291,13 +291,13 @@ pub fn contours_bounding_box(contours: &[BezPath], transform: DAffine2) -> Optio
 }
 
 fn contours_bounding_rect(contours: &[BezPath], transform: DAffine2) -> Option<Rect> {
-	// The identity needs no transformed copy of each contour
+	// Transforming segment by segment bounds each contour without copying it
+	let affine = Affine::new(transform.to_cols_array());
 	let bounds = |bezpath: &BezPath| {
 		if transform == DAffine2::IDENTITY {
-			bezpath.bounding_box()
-		} else {
-			(Affine::new(transform.to_cols_array()) * bezpath).bounding_box()
+			return bezpath.bounding_box();
 		}
+		bezpath.segments().map(|segment| (affine * segment).bounding_box()).reduce(|a, b| a.union(b)).unwrap_or_default()
 	};
 	contours.iter().map(bounds).reduce(|r1, r2| r1.union(r2))
 }
@@ -782,8 +782,8 @@ impl Vector {
 	}
 
 	/// Appends another vector's points and paths, renaming the IDs this vector already uses, and records the appended IDs in `taken_ids`.
-	/// `taken_ids` must hold this vector's IDs, as [`TakenIds::of`] gives them.
-	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64, taken_ids: &mut TakenIds) {
+	/// `taken_ids` must hold this vector's IDs, as [`IdCollisionSet::of`] gives them.
+	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64, taken_ids: &mut IdCollisionSet) {
 		let offset = self.0.len() as u32;
 
 		// Remap colliding stable IDs so both sides stay addressable after the merge.
@@ -851,12 +851,12 @@ impl Vector {
 
 /// The stable IDs a vector uses, carried across [`Vector::concat`] calls so merging many vectors stays linear.
 #[derive(Clone, Debug, Default)]
-pub struct TakenIds {
+pub struct IdCollisionSet {
 	points: rustc_hash::FxHashSet<PointId>,
 	segments: rustc_hash::FxHashSet<SegmentId>,
 }
 
-impl TakenIds {
+impl IdCollisionSet {
 	/// The IDs used by `vector`'s points and `paths`' segments.
 	pub fn of(vector: &Vector, paths: &List<Path>) -> Self {
 		let points = vector.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().copied().collect();
@@ -1045,7 +1045,7 @@ mod tests {
 		let (mut vector, mut paths) = (lone_anchor(DVec2::ZERO), List::new());
 		assert_eq!(vector.point_id_at(0), Some(PointId::ZERO));
 
-		let mut taken_ids = TakenIds::of(&vector, &paths);
+		let mut taken_ids = IdCollisionSet::of(&vector, &paths);
 		vector.concat(&mut paths, &lone_anchor(DVec2::X), &List::new(), DAffine2::IDENTITY, 7, &mut taken_ids);
 		vector.concat(&mut paths, &lone_anchor(DVec2::Y), &List::new(), DAffine2::IDENTITY, 8, &mut taken_ids);
 
@@ -1062,7 +1062,7 @@ mod tests {
 		assert_eq!(vector.point_id_at(1), Some(PointId::UNNAMED));
 		assert_eq!(vector.point_id_at(2), Some(PointId::UNNAMED));
 
-		let mut taken_ids = TakenIds::of(&vector, &paths);
+		let mut taken_ids = IdCollisionSet::of(&vector, &paths);
 		vector.concat(&mut paths, &lone_anchor(DVec2::new(5., 5.)), &List::new(), DAffine2::IDENTITY, 1, &mut taken_ids);
 
 		let index = vector.index_of_point_id(PointId::ZERO).unwrap();

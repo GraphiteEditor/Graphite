@@ -1,4 +1,4 @@
-//! Geometry derived from a vector item's point pool and paths, cached on the item so rendering and editor metadata extract it once.
+//! Geometry derived from a vector item's point pool and paths, cached on the item.
 
 use super::click_target::TargetPath;
 use super::contour::contour_bezpaths;
@@ -33,7 +33,7 @@ impl CachedGeometry {
 	}
 }
 
-/// A vector item's cache of geometry derived from its pool and paths, stored as its [`ATTR_GEOMETRY_CACHE`] attribute.
+/// A vector item's cache of geometry derived from its pool and paths.
 /// Clones of the item share it, and it takes no part in equality or hashing.
 #[derive(Clone, Default)]
 pub struct GeometryCache(Arc<Mutex<Vec<Arc<CachedGeometry>>>>);

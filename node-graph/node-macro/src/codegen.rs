@@ -676,7 +676,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		match (parsed.output_element.as_ref(), peel_list(&output)) {
 			(Some(element_ty), _) => (
 				quote!(#core_types::list::List<#element_ty>),
-				quote!(Vec::with_capacity(__frame_length)),
+				quote!(std::vec::Vec::with_capacity(__frame_length)),
 				quote!(__output.push(__result);),
 				quote!(__output.into_iter().collect::<#core_types::list::List<#element_ty>>()),
 				quote!(#core_types::list::List::new()),
