@@ -764,6 +764,58 @@ impl ShapeState {
 		}
 	}
 
+	/// Grows the selection one step along each selected layer's topology, like Blender's Select More.
+	/// Anchors sharing a segment with a selected anchor join it, as do segments sharing an endpoint with a selected segment.
+	pub fn grow_selection_along_topology(&mut self, document: &DocumentMessageHandler) {
+		for (&layer, state) in self.selected_shape_state.iter_mut() {
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+			let selected_anchors: Vec<PointId> = state.selected_points().filter_map(ManipulatorPointId::as_anchor).collect();
+			for anchor in selected_anchors {
+				for neighbor in vector.connected_points(anchor) {
+					state.select_point(ManipulatorPointId::Anchor(neighbor));
+				}
+			}
+
+			let selected_segment_ends: HashSet<PointId> = vector
+				.segment_iter()
+				.filter(|&(segment, ..)| state.is_segment_selected(segment))
+				.flat_map(|(_, _, start, end)| [start, end])
+				.collect();
+			for (segment, _, start, end) in vector.segment_iter() {
+				if selected_segment_ends.contains(&start) || selected_segment_ends.contains(&end) {
+					state.select_segment(segment);
+				}
+			}
+		}
+	}
+
+	/// Shrinks the selection one step along each selected layer's topology, like Blender's Select Less.
+	/// Selected anchors sharing a segment with an unselected anchor leave it, as do selected segments sharing an endpoint with an unselected segment.
+	pub fn shrink_selection_along_topology(&mut self, document: &DocumentMessageHandler) {
+		for (&layer, state) in self.selected_shape_state.iter_mut() {
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+
+			let selected_anchors: HashSet<PointId> = state.selected_points().filter_map(ManipulatorPointId::as_anchor).collect();
+			for &anchor in &selected_anchors {
+				if vector.connected_points(anchor).any(|neighbor| !selected_anchors.contains(&neighbor)) {
+					state.deselect_point(ManipulatorPointId::Anchor(anchor));
+				}
+			}
+
+			let unselected_segment_ends: HashSet<PointId> = vector
+				.segment_iter()
+				.filter(|&(segment, ..)| !state.is_segment_selected(segment))
+				.flat_map(|(_, _, start, end)| [start, end])
+				.collect();
+			for (segment, _, start, end) in vector.segment_iter() {
+				if unselected_segment_ends.contains(&start) || unselected_segment_ends.contains(&end) {
+					state.deselect_segment(segment);
+				}
+			}
+		}
+	}
+
 	/// Internal helper function that selects all anchors, and deselects all handles, for a layer given its [`LayerNodeIdentifier`] and [`SelectedLayerState`].
 	fn select_all_anchors_in_layer_with_state(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, state: &mut SelectedLayerState) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
