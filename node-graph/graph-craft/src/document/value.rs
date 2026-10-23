@@ -578,6 +578,7 @@ tagged_value! {
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GridType(vector::misc::GridType),
+	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
 	#[serde(alias = "MergeByDistanceAlgorithm")]

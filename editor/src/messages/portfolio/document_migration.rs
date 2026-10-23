@@ -2888,11 +2888,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Upgrade the "Grid" node from its six-input layout to the current seven-input layout (which adds a trailing
-	// "connect_cells" toggle, defaulting to the connected mesh that older grids produced). Legacy documents also placed
-	// "angles" at index 3 instead of index 5 (after "columns" and "rows"), so we reorder those. Either way, "connect_cells"
-	// is left at its default from the new node template.
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER) && inputs_count == 6 {
+	// Upgrade the "Grid" node's six- and seven-input layouts, replacing the seventh "connect_cells" toggle with "topology" and "staggered"
+	// after "grid_type". Legacy documents also placed "angles" before "columns" and "rows" instead of after, so we reorder those.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER) && (inputs_count == 6 || inputs_count == 7) {
 		let mut new_node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut new_node_template)?;
 
@@ -2905,20 +2903,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let index_5_is_rows = matches!(old_inputs.get(5), Some(NodeInput::Value { tagged_value, .. }) if !matches!(**tagged_value, TaggedValue::DVec2(_)));
 		let legacy_angles_layout = index_3_is_angles || index_5_is_rows;
 
-		if legacy_angles_layout {
-			// Old order: [primary, grid_type, spacing, angles, columns, rows]. Move "angles" from index 3 to index 5.
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 2), old_inputs[2].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 3), old_inputs[4].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 4), old_inputs[5].clone(), network_path);
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 5), old_inputs[3].clone(), network_path);
-		} else {
-			// Modern six-input order. Carry each input over to the same index.
-			for (index, input) in old_inputs.iter().take(6).enumerate() {
-				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
-			}
+		// Carry over "primary" and "grid_type", then "columns", "rows", "spacing", and "angles" to after "staggered"
+		let old_indices = if legacy_angles_layout { [4, 5, 2, 3] } else { [3, 4, 2, 5] };
+		for (new_index, old_index) in [(0, 0), (1, 1)].into_iter().chain((4..).zip(old_indices)) {
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(*node_id, new_index), old_inputs[old_index].clone(), network_path);
 		}
+
+		// Grids drew connected edges unless "connect_cells" was turned off, which drew separate cells
+		let disconnected_cells = matches!(old_inputs.get(6), Some(NodeInput::Value { tagged_value, .. }) if matches!(**tagged_value, TaggedValue::Bool(false)));
+		let topology = if disconnected_cells {
+			graphene_std::vector::misc::GridTopology::Cells
+		} else {
+			graphene_std::vector::misc::GridTopology::Edges
+		};
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::GridTopology(topology), false), network_path);
 	}
 
 	// Add the "Loop Level" parameter to the "Read Index" node

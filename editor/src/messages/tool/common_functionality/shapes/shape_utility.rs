@@ -599,7 +599,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::Integer(columns)), Some(&TaggedValue::Integer(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		parameters.value(GridTypeInput),
+		parameters.value(LatticeInput),
 		parameters.value(SpacingInput),
 		parameters.value(ColumnsInput),
 		parameters.value(RowsInput),
