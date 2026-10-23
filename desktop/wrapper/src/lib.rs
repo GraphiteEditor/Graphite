@@ -13,7 +13,9 @@ pub use graph_craft::application_io::resource::MmapResourceStorage;
 pub use graphite_editor::consts::{DOUBLE_CLICK_MILLISECONDS, FILE_EXTENSION};
 pub use graphite_editor::document_store::{DocumentStore, FolderStore};
 pub use graphite_editor::task::{Spawn, Task};
+pub use wgpu_executor::Scene;
 pub use wgpu_executor::Texture;
+pub use wgpu_executor::VelloCanvas;
 pub use wgpu_executor::WgpuBackends;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
@@ -39,7 +41,7 @@ impl DesktopWrapper {
 		random_seed: u64,
 		resource_storage: Arc<dyn ResourceStorage>,
 		document_store: Arc<dyn DocumentStore>,
-		wgpu_context: WgpuContext,
+		wgpu_executor: WgpuExecutor,
 		spawner: impl Spawn + Send + Sync + 'static,
 		editor_wake: impl Fn() + Send + Sync + 'static,
 		runtime_wake: impl Fn() + Send + Sync + 'static,
@@ -51,7 +53,7 @@ impl DesktopWrapper {
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
 		let env = Environment { platform: Platform::Desktop, host };
-		let application_io = PlatformApplicationIo::new_with_context(wgpu_context);
+		let application_io = PlatformApplicationIo::new_with_executor(wgpu_executor);
 
 		let (editor, runtime) = Builder::new()
 			.with_editor(

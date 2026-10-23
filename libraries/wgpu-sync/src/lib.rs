@@ -188,7 +188,8 @@ pub struct SurfaceTextureGuard<'a> {
 
 impl SurfaceTextureGuard<'_> {
 	pub fn present(self) {
-		self.raw.present();
+		let Self { raw, queue } = self;
+		queue.present(raw);
 	}
 }
 

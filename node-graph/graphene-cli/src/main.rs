@@ -5,7 +5,6 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use fern::colors::{Color, ColoredLevelConfig};
-use graph_craft::application_io::EditorPreferences;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
@@ -170,12 +169,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
 	let device = wgpu_executor_ref.context().device.clone();
 
-	let preferences = EditorPreferences {
-		max_render_region_size: EditorPreferences::default().max_render_region_size,
-	};
 	let editor_api = Arc::new(PlatformEditorApi {
 		application_io: Some(application_io_for_api),
-		editor_preferences: Box::new(preferences),
 	});
 	let spawner = Arc::new(TokioSpawner::default());
 	let runtime = AsyncRuntime::new(spawner.clone());

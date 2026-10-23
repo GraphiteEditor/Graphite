@@ -56,10 +56,6 @@ pub struct Image<P: Pixel> {
 	pub height: u32,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub data: Vec<P>,
-	/// Optional: Stores a base64 string representation of the image which can be used to speed up the conversion
-	/// to an svg string. This is used as a cache in order to not have to encode the data on every graph evaluation.
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub base64_string: Option<String>,
 	// TODO: Add an `origin` field to store where in the local space the image is anchored.
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
 }
@@ -136,26 +132,63 @@ impl<P: Pixel> Image<P> {
 			width,
 			height,
 			data: vec![color; (width * height) as usize],
-			base64_string: None,
 		}
 	}
 }
 
 impl Image<Color> {
+	/// The color at a point in pixel coordinates, interpolating the four nearest pixel centers by their alpha, with transparency outside the image.
+	pub fn sample_bilinear(&self, point: DVec2) -> Color {
+		let corner = (point - 0.5).floor();
+		let fraction = (point - 0.5 - corner).as_vec2();
+
+		let premultiplied_at = |offset_x: i64, offset_y: i64| {
+			let (x, y) = (corner.x as i64 + offset_x, corner.y as i64 + offset_y);
+			if x < 0 || y < 0 || x >= self.width as i64 || y >= self.height as i64 {
+				return [0.; 4];
+			}
+			let color = self.data[(y * self.width as i64 + x) as usize];
+			[color.r() * color.a(), color.g() * color.a(), color.b() * color.a(), color.a()]
+		};
+		let lerp = |a: [f32; 4], b: [f32; 4], t: f32| std::array::from_fn::<f32, 4, _>(|channel| a[channel] + (b[channel] - a[channel]) * t);
+
+		let top = lerp(premultiplied_at(0, 0), premultiplied_at(1, 0), fraction.x);
+		let bottom = lerp(premultiplied_at(0, 1), premultiplied_at(1, 1), fraction.x);
+		let [red, green, blue, alpha] = lerp(top, bottom, fraction.y);
+
+		match alpha > 0. {
+			true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha),
+			false => Color::TRANSPARENT,
+		}
+	}
+
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 		let data = image_data.chunks_exact(4).map(|v| SRGBA8::new(v[0], v[1], v[2], v[3]).into()).collect();
-		Image {
-			width,
-			height,
-			data,
-			base64_string: None,
-		}
+		Image { width, height, data }
 	}
 
 	/// Decodes an image file of any supported format.
 	pub fn from_encoded(data: &[u8]) -> Option<Self> {
 		let image = decode(data)?;
+
+		// Most files hold eight-bit samples, which decode through a table of all 256 values rather than a power function for each
+		if matches!(image.color(), ::image::ColorType::L8 | ::image::ColorType::La8 | ::image::ColorType::Rgb8 | ::image::ColorType::Rgba8) {
+			let image = image.to_rgba8();
+			let data = image
+				.as_raw()
+				.as_chunks::<4>()
+				.0
+				.iter()
+				.map(|&[red, green, blue, alpha]| SRGBA8::new(red, green, blue, alpha).into())
+				.collect();
+
+			return Some(Image {
+				width: image.width(),
+				height: image.height(),
+				data,
+			});
+		}
 
 		// Float samples hold linear light, as in HDR and EXR files, while integer samples are gamma encoded
 		let linear = matches!(image.color(), ::image::ColorType::Rgb32F | ::image::ColorType::Rgba32F);
@@ -182,13 +215,48 @@ impl Image<Color> {
 			width: image.width(),
 			height: image.height(),
 			data,
-			base64_string: None,
 		})
 	}
 
 	/// The pixel size of an image file, if it decodes in full as [`Image::from_encoded`] needs it to.
 	pub fn encoded_size(data: &[u8]) -> Option<(u32, u32)> {
 		decode(data).map(|image| (image.width(), image.height()))
+	}
+
+	/// The image shrunk by half along each axis `times` times, averaging each block of pixels with their colors weighted by their alpha.
+	/// Blocks at the right and bottom edges average only the pixels they have. O(width × height).
+	pub fn halved(&self, times: u32) -> Self {
+		if times == 0 {
+			return self.clone();
+		}
+
+		let factor = 1_u32 << times.min(31);
+		let (width, height) = (self.width.div_ceil(factor), self.height.div_ceil(factor));
+
+		let mut data = Vec::with_capacity((width * height) as usize);
+		for block_y in 0..height {
+			for block_x in 0..width {
+				let (mut red, mut green, mut blue, mut alpha, mut count) = (0., 0., 0., 0., 0.);
+
+				for y in (block_y * factor)..((block_y + 1) * factor).min(self.height) {
+					for x in (block_x * factor)..((block_x + 1) * factor).min(self.width) {
+						let pixel = self.data[(y * self.width + x) as usize];
+						red += pixel.r() * pixel.a();
+						green += pixel.g() * pixel.a();
+						blue += pixel.b() * pixel.a();
+						alpha += pixel.a();
+						count += 1.;
+					}
+				}
+
+				data.push(match alpha > 0. {
+					true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha / count),
+					false => Color::TRANSPARENT,
+				});
+			}
+		}
+
+		Image { width, height, data }
 	}
 
 	pub fn to_png(&self) -> Vec<u8> {
@@ -313,7 +381,6 @@ mod test {
 			width: 2,
 			height: 2,
 			data: vec![Color::WHITE, Color::BLACK, Color::RED, Color::GREEN],
-			base64_string: None,
 		};
 
 		let serialized = serde_json::to_string(&image).unwrap();
@@ -352,6 +419,45 @@ mod test {
 		}
 
 		assert!(Image::from_encoded(b"not an image").is_none());
+	}
+
+	#[test]
+	fn halving_averages_blocks_weighted_by_alpha() {
+		use super::*;
+
+		// An opaque red and a transparent green beside it average to red at half alpha, with no green showing through
+		let red = Color::from_rgbaf32_unchecked(1., 0., 0., 1.);
+		let clear_green = Color::from_rgbaf32_unchecked(0., 1., 0., 0.);
+		let image = Image {
+			width: 3,
+			height: 1,
+			data: vec![red, clear_green, red],
+		};
+
+		let halved = image.halved(1);
+		assert_eq!((halved.width, halved.height), (2, 1), "the odd column becomes a block of its own");
+		assert_eq!(halved.data[0], Color::from_rgbaf32_unchecked(1., 0., 0., 0.5));
+		assert_eq!(halved.data[1], red);
+		assert_eq!(image.halved(0), image);
+	}
+
+	#[test]
+	fn eight_bit_decoding_matches_the_gamma_curve() {
+		use super::*;
+
+		// Every channel value, as a gray ramp whose alpha runs the other way
+		let pixels: Vec<u8> = (0..=255_u8).flat_map(|value| [value, value, value, 255 - value]).collect();
+		let mut encoded = Vec::new();
+		::image::RgbaImage::from_raw(256, 1, pixels)
+			.unwrap()
+			.write_to(&mut std::io::Cursor::new(&mut encoded), ::image::ImageFormat::Png)
+			.unwrap();
+
+		let image = Image::from_encoded(&encoded).unwrap();
+		for (value, color) in image.data.iter().enumerate() {
+			let expected = Color::from_gamma_srgb_channels(value as f32 / 255., value as f32 / 255., value as f32 / 255., (255 - value) as f32 / 255.);
+			assert!((color.r() - expected.r()).abs() < 1e-6 && (color.a() - expected.a()).abs() < 1e-6, "value {value}");
+		}
 	}
 
 	#[test]

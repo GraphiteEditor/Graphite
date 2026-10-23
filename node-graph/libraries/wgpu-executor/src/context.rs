@@ -89,6 +89,7 @@ impl ContextBuilder {
 			power_preference: wgpu::PowerPreference::HighPerformance,
 			compatible_surface: None,
 			force_fallback_adapter: false,
+			apply_limit_buckets: false,
 		};
 		instance.request_adapter(&request_adapter_options).await.ok()
 	}

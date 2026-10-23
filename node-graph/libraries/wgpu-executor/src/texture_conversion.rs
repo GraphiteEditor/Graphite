@@ -106,7 +106,10 @@ impl RasterGpuToRasterCpuConverter {
 
 		receiver.await.expect("Failed to receive map result")?;
 
-		let view = buffer_slice.get_mapped_range();
+		let view = buffer_slice.get_mapped_range().map_err(|error| {
+			log::error!("Failed to read back a texture: {error}");
+			wgpu::BufferAsyncError
+		})?;
 
 		let row_stride = self.padded_bytes_per_row as usize;
 		let row_bytes = self.unpadded_bytes_per_row as usize;
@@ -125,7 +128,6 @@ impl RasterGpuToRasterCpuConverter {
 			data: cpu_data,
 			width: self.width,
 			height: self.height,
-			base64_string: None,
 		};
 
 		Ok(Raster::new_cpu(cpu_image))

@@ -1,9 +1,6 @@
 name: "Provide Shaders"
 
 on:
-  push:
-    branches:
-      - master
   workflow_dispatch: {}
 
 jobs:

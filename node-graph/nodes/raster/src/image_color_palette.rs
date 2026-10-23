@@ -2,6 +2,7 @@ use color::{ColorSpace, Oklab};
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::{Item, List};
+use graphic_types::evaluate_raster_effects;
 use raster_types::{CPU, Raster};
 use std::collections::BinaryHeap;
 use std::ops::{AddAssign, SubAssign};
@@ -14,7 +15,7 @@ const TABLE_SIDE: usize = CELLS_PER_AXIS + 1;
 const OKLAB_GAMUT_RANGES: [(f32, f32); 3] = [(0., 1.), (-0.24, 0.28), (-0.32, 0.2)];
 
 /// Finds the colors that best represent the distinct color ranges in an image, ignoring transparent areas.
-#[node_macro::node(category("Color"), icon("NodeImageColorPalette"))]
+#[node_macro::node(category("Color"), icon("NodeImageColorPalette"), memoize)]
 fn image_color_palette(
 	_: impl Ctx,
 	/// The image to find colors in.
@@ -25,6 +26,7 @@ fn image_color_palette(
 	count: Item<i64>,
 ) -> List<Color> {
 	let count = *count.element() as usize;
+	let image = evaluate_raster_effects(image);
 
 	// O(n) binning of the image's n pixels into an OkLab histogram, weighted by alpha so transparent pixels are ignored
 	let mut cumulative = vec![Moments::default(); TABLE_SIDE.pow(3)];
@@ -233,7 +235,6 @@ mod test {
 			width: data.len() as u32,
 			height: 1,
 			data,
-			base64_string: None,
 		});
 
 		let palette = image_color_palette((), Item::new_from_element(image), Item::new_from_element(count));

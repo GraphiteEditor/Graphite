@@ -31,15 +31,13 @@ impl PlatformApplicationIo {
 		}
 	}
 
+	/// Uses an executor the host already made, so the host can render with the same GPU resources as the node graph.
 	#[cfg(feature = "wgpu")]
-	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
-		let executor = WgpuExecutor::with_context(context);
-
-		let wgpu_available = executor.is_some();
-		set_wgpu_available(wgpu_available);
+	pub fn new_with_executor(executor: WgpuExecutor) -> Self {
+		set_wgpu_available(true);
 
 		Self {
-			gpu_executor: executor,
+			gpu_executor: Some(executor),
 			resources: None,
 		}
 	}
@@ -99,28 +97,4 @@ pub fn wgpu_available() -> Option<bool> {
 
 pub(crate) fn set_wgpu_available(available: bool) {
 	WGPU_AVAILABLE.store(available as i8, std::sync::atomic::Ordering::SeqCst);
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
-pub struct EditorPreferences {
-	/// Maximum render region size in pixels along one dimension of the square area.
-	pub max_render_region_size: u32,
-}
-
-impl graphene_application_io::GetEditorPreferences for EditorPreferences {
-	fn max_render_region_area(&self) -> u32 {
-		let size = self.max_render_region_size.min(u32::MAX.isqrt());
-		size.pow(2)
-	}
-}
-
-impl Default for EditorPreferences {
-	fn default() -> Self {
-		Self { max_render_region_size: 1280 }
-	}
-}
-
-unsafe impl StaticType for EditorPreferences {
-	type Static = EditorPreferences;
 }

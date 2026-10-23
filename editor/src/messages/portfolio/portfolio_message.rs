@@ -47,7 +47,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
-	EditorPreferences,
 	GarbageCollectResources,
 	ResolveResources,
 	ResolveDocumentResources {

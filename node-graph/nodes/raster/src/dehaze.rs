@@ -1,12 +1,13 @@
 use core_types::context::Ctx;
 use core_types::list::Item;
+use graphic_types::evaluate_raster_effects;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use raster_types::Image;
 use raster_types::{CPU, Raster};
 use std::cmp::{max, min};
 
-#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"))]
+#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), memoize)]
 fn dehaze(
 	_: impl Ctx,
 	image_frame: Item<Raster<CPU>>,
@@ -17,7 +18,7 @@ fn dehaze(
 ) -> Item<Raster<CPU>> {
 	let strength = *strength.element();
 
-	let (image, attributes) = image_frame.into_parts();
+	let (image, attributes) = evaluate_raster_effects(image_frame).into_parts();
 	let (width, height) = (image.width, image.height);
 
 	// Prepare the image data for processing
@@ -31,12 +32,7 @@ fn dehaze(
 	// Prepare the image data for returning
 	let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
 	let color_vec = bytemuck::cast_vec(buffer);
-	let dehazed_image = Image {
-		width,
-		height,
-		data: color_vec,
-		base64_string: None,
-	};
+	let dehazed_image = Image { width, height, data: color_vec };
 
 	Item::from_parts(Raster::new_cpu(dehazed_image), attributes)
 }
@@ -78,29 +74,16 @@ fn compute_dark_channel(image: &DynamicImage) -> DynamicImage {
 		}
 	}
 
-	let mut eroded_channel = RgbaImage::new(width, height);
-
-	for y in 0..height {
-		for x in 0..width {
-			let mut local_min = u8::MAX;
-
-			for dy in 0..PATCH_SIZE {
-				for dx in 0..PATCH_SIZE {
-					let nx = x as i32 + dx as i32 - half_patch as i32;
-					let ny = y as i32 + dy as i32 - half_patch as i32;
-
-					if nx >= 0 && nx < width as i32 && ny >= 0 && ny < height as i32 {
-						let intensity = dark_channel.get_pixel(nx as u32, ny as u32)[0];
-						if intensity < local_min {
-							local_min = intensity;
-						}
-					}
-				}
-			}
-			let alpha = image.get_pixel(x, y)[3];
-			eroded_channel.put_pixel(x, y, Rgba([local_min, local_min, local_min, alpha]));
-		}
-	}
+	// The minimum over each square patch is the minimum along its columns of the minimum along its rows, so two passes do it in O(width × height × patch size)
+	let row_minimums = GrayImage::from_fn(width, height, |x, y| {
+		let (start, end) = (x.saturating_sub(half_patch), (x + half_patch).min(width - 1));
+		Luma([(start..=end).map(|nx| dark_channel.get_pixel(nx, y)[0]).min().unwrap_or(u8::MAX)])
+	});
+	let eroded_channel = RgbaImage::from_fn(width, height, |x, y| {
+		let (start, end) = (y.saturating_sub(half_patch), (y + half_patch).min(height - 1));
+		let local_min = (start..=end).map(|ny| row_minimums.get_pixel(x, ny)[0]).min().unwrap_or(u8::MAX);
+		Rgba([local_min, local_min, local_min, image.get_pixel(x, y)[3]])
+	});
 
 	DynamicImage::ImageRgba8(eroded_channel)
 }
@@ -268,4 +251,37 @@ fn ndarray_to_image(array: &Array2<f64>, width: u32, height: u32) -> DynamicImag
 		img.put_pixel(x as u32, y as u32, Rgba([clamped_value, clamped_value, clamped_value, 255]));
 	}
 	img
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn dark_channel_is_the_minimum_over_each_patch() {
+		// Varied channels, with patches clipped where they overhang the edges
+		let (width, height) = (37, 23);
+		let image = DynamicImage::ImageRgba8(RgbaImage::from_fn(width, height, |x, y| {
+			let value = ((x * 97 + y * 57) % 251) as u8;
+			Rgba([value, value.wrapping_mul(3), value.wrapping_add(40), 200])
+		}));
+
+		let dark_channel = compute_dark_channel(&image);
+
+		let half_patch = PATCH_SIZE / 2;
+		for y in 0..height {
+			for x in 0..width {
+				let mut expected = u8::MAX;
+				for ny in y.saturating_sub(half_patch)..=(y + half_patch).min(height - 1) {
+					for nx in x.saturating_sub(half_patch)..=(x + half_patch).min(width - 1) {
+						let pixel = image.get_pixel(nx, ny);
+						expected = expected.min(pixel[0].min(pixel[1]).min(pixel[2]));
+					}
+				}
+
+				let pixel = dark_channel.get_pixel(x, y);
+				assert_eq!((pixel[0], pixel[3]), (expected, 200), "at ({x}, {y})");
+			}
+		}
+	}
 }

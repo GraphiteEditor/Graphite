@@ -6,8 +6,6 @@ pub struct CrateIdent {
 	gcore: syn::Result<TokenStream>,
 	gcore_shaders: syn::Result<TokenStream>,
 	graphene_core: syn::Result<TokenStream>,
-	raster_types: syn::Result<TokenStream>,
-	wgpu_executor: syn::Result<TokenStream>,
 }
 
 impl CrateIdent {
@@ -21,14 +19,6 @@ impl CrateIdent {
 
 	pub fn graphene_core(&self) -> syn::Result<&TokenStream> {
 		self.graphene_core.as_ref().map_err(Clone::clone)
-	}
-
-	pub fn raster_types(&self) -> syn::Result<&TokenStream> {
-		self.raster_types.as_ref().map_err(Clone::clone)
-	}
-
-	pub fn wgpu_executor(&self) -> syn::Result<&TokenStream> {
-		self.wgpu_executor.as_ref().map_err(Clone::clone)
 	}
 }
 
@@ -50,14 +40,6 @@ impl Default for CrateIdent {
 				.map(|gstd| quote!(#gstd::graphene_core))
 				.map_err(|estd| syn::Error::new(Span::call_site(), format!("{ecore}\n\nFallback: {estd}")))
 		});
-		let raster_types = find_crate("raster-types");
-		let wgpu_executor = find_crate("wgpu-executor");
-		Self {
-			gcore,
-			gcore_shaders,
-			graphene_core,
-			raster_types,
-			wgpu_executor,
-		}
+		Self { gcore, gcore_shaders, graphene_core }
 	}
 }

@@ -3,6 +3,7 @@ use core_types::transform::Footprint;
 use core_types::{CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphene_animation::AnimationCurve;
+use graphic_types::Generator;
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -89,6 +90,7 @@ fn quantize_real_time<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> List<String>,
 		Context -> List<f64>,
@@ -99,6 +101,7 @@ fn quantize_real_time<T>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
@@ -135,6 +138,7 @@ fn quantize_animation_time<T>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 		Context -> Item<Artboard>,
 		Context -> List<String>,
 		Context -> List<f64>,
@@ -145,6 +149,7 @@ fn quantize_animation_time<T>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> List<Artboard>,
 	)]
 	value: impl Node<Context<'static>, Output = T>,

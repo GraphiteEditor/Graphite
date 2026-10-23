@@ -342,7 +342,7 @@ pub fn replaceable_paint_chain(layer: LayerNodeIdentifier, network_interface: &N
 	// A generator discards its primary input, so the chain ends at whichever one is reached
 	let generators = [graphene_std::math_nodes::color_value::IDENTIFIER, graphene_std::math_nodes::gradient_value::IDENTIFIER];
 	let setters = [
-		graphene_std::math_nodes::gradient_form::IDENTIFIER,
+		graphene_std::math_nodes::gradient_curvature::IDENTIFIER,
 		graphene_std::math_nodes::gradient_spread::IDENTIFIER,
 		graphene_std::math_nodes::gradient_positions::IDENTIFIER,
 		graphene_std::math_nodes::gradient_midpoints::IDENTIFIER,

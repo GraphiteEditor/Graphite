@@ -5,7 +5,7 @@ use core_types::transform::{ApplyTransform, ScaleType, Transform};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, Interrupt, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Artboard, Graphic, Vector};
+use graphic_types::{Artboard, Generator, Graphic, Vector};
 use vector_types::Gradient;
 
 /// Applies the specified transform to the input content.
@@ -22,6 +22,7 @@ fn transform<T: Send + 'static>(
 		Context -> Item<Raster<GPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
+		Context -> Item<Generator>,
 	)]
 	content: impl Node<Context<'static>, Output = Item<T>>,
 	#[widget(ParsedWidgetOverride::Custom = "transform_translation")] translation: Item<DVec2>,
@@ -156,7 +157,7 @@ fn replace_transform<T>(
 
 /// Obtains the transform of the input content.
 #[node_macro::node(category("Math: Transform"), icon("NodeExtractTransform"), path(core_types::vector))]
-fn extract_transform<T: Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
+fn extract_transform<T: Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, Generator, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
 	Item::new_from_element(content.attribute_cloned_or_default(ATTR_TRANSFORM))
 }
 

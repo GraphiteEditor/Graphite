@@ -1,22 +1,20 @@
 mod buffer;
 mod context;
 mod pipeline;
-pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
+mod vello_effects;
+mod vello_render;
 
-use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
+use crate::vello_render::VelloRenderer;
+pub use crate::vello_render::{MAX_LAYER_RENDER_SIZE, VelloCanvas};
 use anyhow::Result;
-use core_types::Color;
-use core_types::color::SRGBA8;
-use glam::UVec2;
+use glam::{DAffine2, UVec2};
 use graphene_application_io::{ApplicationIo, EditorApi};
 use std::sync::Arc;
-use std::sync::Mutex;
-use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
+use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
-use wgpu::{Origin3d, TextureAspect};
 
 pub use buffer::Buffer;
 pub use context::Context as WgpuContext;
@@ -24,7 +22,7 @@ pub use context::ContextBuilder as WgpuContextBuilder;
 pub use pipeline::Pipeline as WgpuPipeline;
 pub use pipeline::PipelineCache as WgpuPipelineCache;
 pub use raster_types::Texture;
-pub use rendering::RenderContext;
+pub use rendering::scene::Scene;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
 pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
@@ -52,8 +50,9 @@ impl WgpuExecutor {
 pub struct WgpuExecutorInner {
 	context: WgpuContext,
 	texture_cache: std::sync::Mutex<TextureCache>,
-	vello_renderer: Mutex<Renderer>,
-	shader_runtime: ShaderRuntime,
+	vello_renderer: VelloRenderer,
+	/// The canvas the node graph renders documents on.
+	document_canvas: Mutex<VelloCanvas>,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -69,41 +68,71 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 }
 
 impl WgpuExecutor {
-	pub fn render_vello_scene(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<Texture> {
-		let texture = self.request_texture(size);
+	/// Renders a recorded document scene, placed by `transform`, into a new texture of `size` with straight alpha.
+	pub fn render_vello_scene(&self, scene: &Scene, transform: DAffine2, size: UVec2) -> Result<Texture> {
+		let mut canvas = self.inner.document_canvas.lock().unwrap_or_else(PoisonError::into_inner);
+		self.render_vello_scene_on_canvas(&mut canvas, scene, transform, size)
+	}
 
-		let texture_view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-		let SRGBA8 { red, green, blue, alpha } = background.unwrap_or(Color::TRANSPARENT).into();
-		let render_params = RenderParams {
-			base_color: vello::peniko::Color::from_rgba8(red, green, blue, alpha),
-			width: size.x,
-			height: size.y,
-			antialiasing_method: AaConfig::Msaa16,
-		};
-
-		{
-			let mut renderer = self.inner.vello_renderer.lock().unwrap();
-			for (image_brush, texture) in context.resource_overrides.iter() {
-				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture: (**texture).clone(),
-					mip_level: 0,
-					origin: Origin3d::ZERO,
-					aspect: TextureAspect::All,
-				};
-				renderer.override_image(&image_brush.image, Some(texture_view));
-			}
-
-			{
-				let queue = self.context().queue.lock();
-				renderer.render_to_texture(&self.context().device, &queue, scene, &texture_view, &render_params)?;
-			}
-			for (image_brush, _) in context.resource_overrides.iter() {
-				renderer.override_image(&image_brush.image, None);
-			}
+	/// Renders a recorded scene like [`Self::render_vello_scene`], but on a canvas the caller owns.
+	pub fn render_vello_scene_on_canvas(&self, canvas: &mut VelloCanvas, scene: &Scene, transform: DAffine2, size: UVec2) -> Result<Texture> {
+		let limit = self.context().device.limits().max_texture_dimension_2d;
+		if size.x > limit || size.y > limit {
+			anyhow::bail!("Render size {size} exceeds the GPU's texture size limit of {limit}");
 		}
 
+		let texture = self.request_texture(size);
+		let transform = vello_gpu::kurbo::Affine::new(transform.to_cols_array());
+
+		let queue = self.context().queue.lock();
+		self.inner.vello_renderer.render(canvas, &self.context().device, &queue, scene, transform, size, &texture)?;
+
 		Ok(texture)
+	}
+
+	/// Reads an `Rgba8Unorm` texture's pixels back to the CPU, as tightly packed rows, waiting on the GPU.
+	/// Fails in a browser, which hands over the pixels only once control returns to it.
+	pub fn read_texture_pixels(&self, texture: &wgpu::Texture) -> Result<Vec<u8>> {
+		let device = &self.context().device;
+		let (width, height) = (texture.width(), texture.height());
+		let row_bytes = width * 4;
+		let padded_row_bytes = row_bytes.div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+
+		let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+			label: Some("texture_readback_buffer"),
+			size: padded_row_bytes as u64 * height as u64,
+			usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+			mapped_at_creation: false,
+		});
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("texture_readback") });
+		encoder.copy_texture_to_buffer(
+			texture.as_image_copy(),
+			wgpu::TexelCopyBufferInfo {
+				buffer: &buffer,
+				layout: wgpu::TexelCopyBufferLayout {
+					offset: 0,
+					bytes_per_row: Some(padded_row_bytes),
+					rows_per_image: Some(height),
+				},
+			},
+			texture.size(),
+		);
+		self.context().queue.lock().submit([encoder.finish()]);
+
+		let (sender, mut receiver) = futures::channel::oneshot::channel();
+		buffer.slice(..).map_async(wgpu::MapMode::Read, move |result| {
+			let _ = sender.send(result);
+		});
+		let _ = device.poll(wgpu::wgt::PollType::wait_indefinitely());
+		let Ok(Some(mapping)) = receiver.try_recv() else {
+			anyhow::bail!("The GPU didn't map the texture's pixels for reading");
+		};
+		mapping?;
+
+		let mapped = buffer.slice(..).get_mapped_range()?;
+		let pixels = mapped.chunks_exact(padded_row_bytes as usize).flat_map(|row| &row[..row_bytes as usize]).copied().collect();
+
+		Ok(pixels)
 	}
 
 	pub fn pipeline_init<P: WgpuPipeline>(&self, pipeline: &WgpuPipelineCache) {
@@ -133,28 +162,16 @@ impl WgpuExecutor {
 	}
 
 	pub fn with_context(context: WgpuContext) -> Option<Self> {
-		let vello_renderer = Renderer::new(
-			&context.device,
-			RendererOptions {
-				pipeline_cache: None,
-				use_cpu: false,
-				antialiasing_support: AaSupport::all(),
-				num_init_threads: std::num::NonZeroUsize::new(1),
-			},
-		)
-		.map_err(|e| anyhow::anyhow!("Failed to create Vello renderer: {:?}", e))
-		.ok()?;
+		let vello_renderer = VelloRenderer::new(&context.device);
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
-
-		let shader_runtime = ShaderRuntime::default();
 
 		Some(Self {
 			inner: Arc::new(WgpuExecutorInner {
 				context,
 				texture_cache: texture_cache.into(),
-				vello_renderer: vello_renderer.into(),
-				shader_runtime,
+				vello_renderer,
+				document_canvas: Mutex::default(),
 			}),
 		})
 	}

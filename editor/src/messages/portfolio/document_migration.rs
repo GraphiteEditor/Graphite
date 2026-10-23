@@ -20,7 +20,7 @@ use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
-use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
+use graphene_std::vector::style::{GradientForm, GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use std::ops::Range;
@@ -268,10 +268,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::gradient_form::IDENTIFIER,
-		aliases: &["math_nodes::GradientTypeNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_spread::IDENTIFIER,
 		aliases: &["math_nodes::SpreadMethodNode"],
 	},
@@ -479,8 +475,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::filter::blur::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
+		node: graphene_std::blending_nodes::effects::blur::IDENTIFIER,
+		aliases: &["raster_nodes::filter::BlurNode", "graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::brightness_contrast::IDENTIFIER,
@@ -499,8 +495,9 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::ChannelMixerNode",
 		],
 	},
+	// Color Overlay became Paint Overlay, whose paint input takes the old color input's value as a solid paint
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+		node: graphene_std::blending_nodes::effects::paint_overlay::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::ColorOverlayNode",
 			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
@@ -508,6 +505,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::adjustments::ColorOverlayNode",
 			"raster_nodes::generate_curves::ColorOverlayNode",
 			"graphene_raster_nodes::blending_nodes::ColorOverlayNode",
+			"raster_nodes::blending_nodes::ColorOverlayNode",
 		],
 	},
 	NodeReplacement {
@@ -1171,9 +1169,47 @@ fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
 	monitor_reads_first_import && transform_reads_monitor_and_other_imports && exports_transform
 }
 
+/// The CPU node a removed GPU twin was generated from, as named in its era, like `raster_nodes::adjustments::InvertNode` for `raster_nodes::adjustments::invert_shader_node::InvertShaderNodeNode`.
+fn cpu_node_of_gpu_twin(identifier: &str) -> Option<String> {
+	let identifier = identifier.split('<').next()?;
+	let (module_path, struct_name) = identifier.rsplit_once("::")?;
+	let (parent_module_path, twin_module) = module_path.rsplit_once("::")?;
+	let cpu_struct_name = struct_name.strip_suffix("ShaderNodeNode")?;
+
+	twin_module.ends_with("_shader_node").then(|| format!("{parent_module_path}::{cpu_struct_name}Node"))
+}
+
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 	document.network_interface.normalize_stored_types();
+
+	// The removed GPU twins become their CPU nodes minus the trailing executor input, so the renames below carry them forward like their era's CPU nodes
+	let gpu_twins = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return None };
+			let kept_input_count = node.inputs.len().saturating_sub(1);
+			Some((*node_id, path, cpu_node_of_gpu_twin(identifier.as_str())?, node.inputs[..kept_input_count].to_vec()))
+		})
+		.collect::<Vec<_>>();
+	for (node_id, network_path, cpu_identifier, inputs) in gpu_twins {
+		let input_metadata = document
+			.network_interface
+			.node_metadata(&node_id, &network_path)
+			.map(|metadata| metadata.persistent_metadata.input_metadata.iter().take(inputs.len()).cloned().collect())
+			.unwrap_or_default();
+
+		let mut node_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::with_owned_string(cpu_identifier)),
+			inputs,
+			input_metadata,
+			..Default::default()
+		};
+		document.network_interface.replace_implementation(&node_id, &network_path, &mut node_template);
+		document.network_interface.replace_inputs(&node_id, &network_path, &mut node_template);
+	}
 
 	let network = document.network_interface.document_network().clone();
 
@@ -1199,6 +1235,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				};
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
 				document.network_interface.set_call_argument(node_id, &network_path, default_template.call_argument);
+
+				if *new == graphene_std::blending_nodes::effects::paint_overlay::IDENTIFIER {
+					reset_default_display_name(document, node_id, &network_path, "Color Overlay");
+				}
 			}
 		}
 	}
@@ -1539,6 +1579,49 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// The "Gradient Form" node was replaced by "Gradient Curvature", whose two curvatures take the presets of the form it set
+	const GRADIENT_FORM: [&str; 2] = ["math_nodes::GradientFormNode", "math_nodes::GradientTypeNode"];
+	let gradient_form_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return None };
+			GRADIENT_FORM.contains(&identifier.as_str().split('<').next().unwrap_or_default()).then_some((*node_id, path))
+		})
+		.collect();
+	for (node_id, network_path) in &gradient_form_nodes {
+		let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_curvature::IDENTIFIER)) else {
+			continue;
+		};
+		let mut node_template = definition.default_node_template();
+
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+		reset_default_display_name(document, node_id, network_path, "Gradient Form");
+
+		if let Some(input) = old_inputs.first() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), input.clone(), network_path);
+		}
+
+		let [start, end] = match old_inputs.get(1).and_then(|input| input.as_value()) {
+			Some(TaggedValue::GradientForm(GradientForm::Radial)) => graphene_std::renderer::dial_gradient::RADIAL_DIALS,
+			Some(TaggedValue::GradientForm(GradientForm::Linear)) => graphene_std::renderer::dial_gradient::LINEAR_DIALS,
+			_ => {
+				log::warn!("Old \"Gradient Form\" node {node_id} has no fixed form to migrate, so it becomes linear");
+				graphene_std::renderer::dial_gradient::LINEAR_DIALS
+			}
+		};
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::Number(start), false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Number(end), false), network_path);
+	}
+
 	// "Position on Path" and "Tangent on Path" were merged into the multi-output "Evaluate Path" node, with position at output 0 and tangent direction at output 1.
 	// Tangent instances get an "Inverse Tangent" node inserted to turn that direction back into the angle their downstream wires expect.
 	const POSITION_ON_PATH: &str = "graphene_core::vector::PositionOnPathNode";
@@ -1717,6 +1800,52 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// Noise Pattern and Mandelbrot once drew images cut off at a square, 100 units for a clipped Noise Pattern and 1 for Mandelbrot, where their
+	// patterns now fill the plane. An old Noise Pattern has a Clip toggle, after the primary input or first from before that input existed,
+	// and an old Mandelbrot lacks the primary input. Each takes the current inputs, with a square filled by its pattern where it was cut off.
+	let old_pattern_nodes = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let reference = document.network_interface.reference(node_id, &path)?;
+			let clipped = |clip_index: usize| !matches!(node.inputs.get(clip_index).and_then(|input| input.as_value()), Some(TaggedValue::Bool(false)));
+
+			if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) {
+				let starts_with_clip = matches!(node.inputs.first().and_then(|input| input.as_value()), Some(TaggedValue::Bool(_)));
+				let clip_index = match node.inputs.len() {
+					16 => 1,
+					15 if starts_with_clip => 0,
+					_ => return None,
+				};
+				return Some((*node_id, path, reference, Some(clip_index), clipped(clip_index).then_some(100.)));
+			}
+			if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER) && node.inputs.is_empty() {
+				return Some((*node_id, path, reference, None, Some(1.)));
+			}
+			None
+		})
+		.collect::<Vec<_>>();
+	for (node_id, network_path, reference, clip_index, clipped_size) in &old_pattern_nodes {
+		let Some(definition) = resolve_document_node_type(reference) else { continue };
+		let mut node_template = definition.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let Some(old_inputs) = document.network_interface.replace_inputs(node_id, network_path, &mut node_template) else {
+			continue;
+		};
+
+		// The noise settings follow the Clip toggle, in the same order as the current inputs after the primary one
+		if let Some(clip_index) = clip_index {
+			for (offset, input) in old_inputs.iter().skip(clip_index + 1).enumerate() {
+				document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1 + offset), input.clone(), network_path);
+			}
+		}
+
+		if let Some(size) = clipped_size {
+			fill_square_with_pattern(document, node_id, network_path, *size);
+		}
+	}
+
 	// Parameters that historically accepted fractional numbers are now integers (the polygon and star "Sides", the index,
 	// shift amount, and slice bound parameters of the list, string, and regex nodes, the "Path is Closed" index, and the
 	// "Blend" count), so a stored F64 truncates as those slots' own casts and Floor node did, preserving what documents drew
@@ -1768,6 +1897,76 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	// recorded leaves the opened document as the baseline rather than as a pile of changes to itself.
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();
+}
+
+/// Splices a rectangle filled with the pattern node's output onto the wires leaving it, covering the square from the origin of the pattern's space out to `size`.
+/// The rectangle is centered on its origin, so a Transform moves it onto the square, and the paint is moved back by the same amount to stay in place.
+fn fill_square_with_pattern(document: &mut DocumentMessageHandler, pattern_node_id: &NodeId, network_path: &[NodeId], size: f64) -> Option<()> {
+	let downstream_consumers: Vec<InputConnector> = document
+		.network_interface
+		.outward_wires(network_path)
+		.and_then(|wires| wires.get(&OutputConnector::node(*pattern_node_id, 0)))
+		.cloned()
+		.unwrap_or_default();
+	let was_in_chain = document.network_interface.is_chain(pattern_node_id, network_path);
+
+	let template = |identifier| resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier)).map(|definition| definition.default_node_template());
+	let rectangle_template = template(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)?;
+	let fill_template = template(graphene_std::vector_nodes::fill::IDENTIFIER)?;
+	let transform_template = template(graphene_std::transform_nodes::transform::IDENTIFIER)?;
+
+	let [rectangle_id, fill_id, paint_transform_id, placement_transform_id] = [(); 4].map(|_| NodeId::new());
+	document.network_interface.insert_node(rectangle_id, rectangle_template, network_path);
+	document.network_interface.insert_node(fill_id, fill_template, network_path);
+	document.network_interface.insert_node(paint_transform_id, transform_template.clone(), network_path);
+	document.network_interface.insert_node(placement_transform_id, transform_template, network_path);
+
+	let set_value = |document: &mut DocumentMessageHandler, node_id: NodeId, index: usize, value: TaggedValue| {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(value, false), network_path);
+	};
+	let wire = |document: &mut DocumentMessageHandler, node_id: NodeId, index: usize, source: NodeId| {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::node(source, 0), network_path);
+	};
+
+	// The rectangle's width and height, and the half-square translations of the paint and the filled rectangle
+	set_value(document, rectangle_id, 1, TaggedValue::Number(size));
+	set_value(document, rectangle_id, 2, TaggedValue::Number(size));
+	set_value(document, paint_transform_id, 1, TaggedValue::DVec2(DVec2::splat(-size / 2.)));
+	set_value(document, placement_transform_id, 1, TaggedValue::DVec2(DVec2::splat(size / 2.)));
+
+	wire(document, paint_transform_id, 0, *pattern_node_id);
+	wire(document, fill_id, 0, rectangle_id);
+	wire(document, fill_id, 1, paint_transform_id);
+	wire(document, placement_transform_id, 0, fill_id);
+	for consumer in &downstream_consumers {
+		document.network_interface.set_input(consumer, NodeInput::node(placement_transform_id, 0), network_path);
+	}
+
+	// A pattern in a layer chain gives way to the filled rectangle there, moving below to paint it, and otherwise the new nodes sit beside it
+	if was_in_chain {
+		document.network_interface.force_set_upstream_to_chain(&placement_transform_id, network_path);
+
+		if let Some(fill_position) = document.network_interface.position(&fill_id, network_path) {
+			document.network_interface.set_absolute_position(&paint_transform_id, fill_position + IVec2::new(-7, 3), network_path);
+			document.network_interface.set_absolute_position(pattern_node_id, fill_position + IVec2::new(-14, 3), network_path);
+		}
+	} else if let Some(position) = document.network_interface.position(pattern_node_id, network_path) {
+		let offsets = [
+			(paint_transform_id, IVec2::new(7, 0)),
+			(rectangle_id, IVec2::new(7, -3)),
+			(fill_id, IVec2::new(14, 0)),
+			(placement_transform_id, IVec2::new(21, 0)),
+		];
+		for (node_id, offset) in offsets {
+			document.network_interface.shift_absolute_node_position(&node_id, position + offset, network_path);
+		}
+	}
+
+	Some(())
 }
 
 /// Converts a legacy stroke dash input (a `List<f64>`, single `f64`, or comma/space separated `String`) to the `DashPattern` value type.
@@ -2300,7 +2499,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			(graphene_std::artboard::create_artboard::BackgroundInput.into(), Color::WHITE),
 			(graphene_std::math_nodes::color_value::ColorInput.into(), Color::TRANSPARENT),
 			(graphene_std::raster_nodes::adjustments::black_and_white::TintInput.into(), Color::BLACK),
-			(graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput.into(), Color::BLACK),
 			(graphene_std::raster_nodes::std_nodes::empty_image::ColorInput.into(), Color::WHITE),
 		];
 		for (parameter, fallback) in conversions {
@@ -2619,20 +2817,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document
 				.network_interface
 				.set_input(&InputConnector::node_at_index(*node_id, 2), NodeInput::value(TaggedValue::Resource(resource_id), false), network_path);
-		}
-	}
-
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
-		for (i, input) in old_inputs.iter().enumerate() {
-			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, i + 1), input.clone(), network_path);
 		}
 	}
 
@@ -3637,11 +3821,14 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
-	// The Upload Texture node's old wrapper-network form maps onto its proto node form, which draws the executor from scope
-	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
-		&& name == "Upload Texture"
-	{
-		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
+	// The removed Upload Texture node, in its proto node or older wrapper network form, degrades to a passthrough of its content
+	let is_upload_texture = match document.network_interface.reference(node_id, network_path) {
+		Some(DefinitionIdentifier::Network(name)) => name == "Upload Texture",
+		Some(DefinitionIdentifier::ProtoNode(identifier)) => identifier.as_str().ends_with("::UploadTextureNode"),
+		None => false,
+	};
+	if is_upload_texture {
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(content) = old_inputs.first() {
@@ -3785,7 +3972,19 @@ mod tests {
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
-		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+	}
+
+	#[test]
+	fn gpu_twins_name_the_cpu_nodes_they_came_from() {
+		assert_eq!(
+			cpu_node_of_gpu_twin("raster_nodes::adjustments::desaturate_shader_node::DesaturateShaderNodeNode").as_deref(),
+			Some(graphene_std::raster_nodes::adjustments::desaturate::IDENTIFIER.as_str())
+		);
+		assert_eq!(
+			cpu_node_of_gpu_twin("graphene_raster_nodes::blending_nodes::color_overlay_shader_node::ColorOverlayShaderNodeNode").as_deref(),
+			Some("graphene_raster_nodes::blending_nodes::ColorOverlayNode")
+		);
+		assert_eq!(cpu_node_of_gpu_twin(graphene_std::raster_nodes::adjustments::invert::IDENTIFIER.as_str()), None);
 	}
 
 	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
@@ -4245,6 +4444,54 @@ mod tests {
 	}
 
 	#[test]
+	fn gradient_form_nodes_become_gradient_curvature_presets() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+		use graphene_std::renderer::dial_gradient::{LINEAR_DIALS, RADIAL_DIALS};
+
+		let (source_id, form_id) = (NodeId(1), NodeId(2));
+		for (identifier, form, dials) in [
+			("math_nodes::GradientFormNode", GradientForm::Radial, RADIAL_DIALS),
+			("math_nodes::GradientTypeNode", GradientForm::Linear, LINEAR_DIALS),
+		] {
+			let mut document = DocumentMessageHandler::default();
+			let placeholder = || NodeInput::value(TaggedValue::None, false);
+			document.network_interface.insert_node(
+				source_id,
+				NodeTemplate {
+					inputs: vec![placeholder()],
+					..Default::default()
+				},
+				&[],
+			);
+			document.network_interface.insert_node(
+				form_id,
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
+					inputs: vec![placeholder(); 2],
+					..Default::default()
+				},
+				&[],
+			);
+			document.network_interface.set_input(&InputConnector::node_at_index(form_id, 0), NodeInput::node(source_id, 0), &[]);
+			document
+				.network_interface
+				.set_input(&InputConnector::node_at_index(form_id, 1), NodeInput::value(TaggedValue::GradientForm(form), false), &[]);
+			migrate(&mut document);
+
+			let node = &document.network_interface.document_network().nodes[&form_id];
+			assert!(matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::math_nodes::gradient_curvature::IDENTIFIER));
+			assert_eq!(node.inputs.first(), Some(&NodeInput::node(source_id, 0)), "the gradient feeding {identifier} should stay wired");
+
+			let curvature = |index: usize| node.inputs.get(index).and_then(|input| input.as_value()).cloned();
+			assert_eq!(
+				[curvature(1), curvature(2)],
+				dials.map(|dial| Some(TaggedValue::Number(dial))),
+				"{form:?} should become its curvature presets"
+			);
+		}
+	}
+
+	#[test]
 	fn test_no_duplicate_node_replacements() {
 		let mut hashmap = HashMap::<ProtoNodeIdentifier, u32>::new();
 		NODE_REPLACEMENTS.iter().for_each(|node| {
@@ -4589,6 +4836,83 @@ mod tests {
 
 			let current_content = opened.network_interface.document_node(&current, &[]).map(|node| node.inputs[0].clone());
 			assert!(matches!(current_content, Some(NodeInput::Node { node_id, output_index: 0, .. }) if node_id == upstream), "{title}");
+		}
+	}
+
+	// Noise Pattern and Mandelbrot once drew a square of their patterns, which now fill the plane, so the square becomes a rectangle filled with the pattern
+	#[tokio::test]
+	async fn clipped_patterns_become_rectangles_filled_with_them() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let proto = |identifier| DefinitionIdentifier::ProtoNode(identifier);
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let noise = editor.create_node_by_name(proto(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER)).await;
+		let mandelbrot = editor.create_node_by_name(proto(graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER)).await;
+		let noise_reader = editor.create_node_by_name(proto(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+		let mandelbrot_reader = editor.create_node_by_name(proto(graphene_std::transform_nodes::transform::IDENTIFIER)).await;
+
+		let document = editor.active_document_mut();
+		for (reader, pattern) in [(noise_reader, noise), (mandelbrot_reader, mandelbrot)] {
+			document.network_interface.set_input(&InputConnector::node_at_index(reader, 0), NodeInput::node(pattern, 0), &[]);
+		}
+
+		// Save them as an older editor did, the Noise Pattern with its Clip toggle on and the Mandelbrot without a primary input
+		let mut noise_inputs = document.network_interface.document_node(&noise, &[]).unwrap().inputs.clone();
+		noise_inputs.insert(1, NodeInput::value(TaggedValue::Bool(true), false));
+		noise_inputs[2] = NodeInput::value(TaggedValue::Integer(7), false);
+		for (node_id, inputs) in [(noise, noise_inputs), (mandelbrot, Vec::new())] {
+			let mut legacy = NodeTemplate { inputs, ..Default::default() };
+			legacy.normalize_input_metadata();
+			document.network_interface.replace_inputs(&node_id, &[], &mut legacy);
+		}
+		let serialized = document.serialize_document();
+
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let interface = &opened.network_interface;
+		let input = |node_id: NodeId, index: usize| interface.document_node(&node_id, &[]).and_then(|node| node.inputs.get(index)).cloned();
+		let upstream = |node_id: NodeId, index: usize| input(node_id, index).and_then(|input| input.as_node());
+		let value = |node_id: NodeId, index: usize| input(node_id, index).and_then(|input| input.as_value().cloned());
+
+		// Each reader now reads a rectangle of the square's size, moved onto the square, filled with the pattern moved back by the same amount
+		for (reader, pattern, size) in [(noise_reader, noise, 100.), (mandelbrot_reader, mandelbrot, 1.)] {
+			let placement = upstream(reader, 0).expect("the reader should read the placement transform");
+			assert_eq!(value(placement, 1), Some(TaggedValue::DVec2(DVec2::splat(size / 2.))));
+
+			let fill = upstream(placement, 0).expect("the placement should move the filled rectangle");
+			let rectangle = upstream(fill, 0).expect("the fill should paint a rectangle");
+			assert_eq!((value(rectangle, 1), value(rectangle, 2)), (Some(TaggedValue::Number(size)), Some(TaggedValue::Number(size))));
+
+			let paint = upstream(fill, 1).expect("the fill should paint with the moved pattern");
+			assert_eq!(value(paint, 1), Some(TaggedValue::DVec2(DVec2::splat(-size / 2.))));
+			assert_eq!(upstream(paint, 0), Some(pattern));
+		}
+
+		// The noise settings shift down past the removed Clip toggle, and the Mandelbrot gains its primary input
+		assert_eq!(interface.document_node(&noise, &[]).unwrap().inputs.len(), 15);
+		assert_eq!(value(noise, 1), Some(TaggedValue::Integer(7)));
+		assert_eq!(interface.document_node(&mandelbrot, &[]).unwrap().inputs.len(), 1);
+	}
+
+	// The demo draws its patterns through layers and adjustments, which must all take the generators the patterns now are
+	#[tokio::test]
+	async fn marbled_mandelbrot_renders_after_migration() {
+		use crate::messages::portfolio::ingest::utility_types::IngestAction;
+		use crate::messages::prelude::IngestMessage;
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		let content = std::fs::read_to_string("../demo-artwork/marbled-mandelbrot.graphite").unwrap();
+		editor.editor.handle_message(IngestMessage::Ingest {
+			data: content.into_bytes(),
+			action: IngestAction::Open,
+			mime_type: String::new(),
+			path: Some("marbled-mandelbrot.graphite".into()),
+		});
+		if let Err(error) = editor.eval_graph_until_finished().await {
+			panic!("The migrated demo failed to render: {error}");
 		}
 	}
 }

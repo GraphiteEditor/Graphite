@@ -15,7 +15,7 @@ publish.workspace = true
 workspace = true
 
 [features]
-gpu = ["graphite-editor/gpu", "graphene-std/shader-nodes"]
+gpu = ["graphite-editor/gpu"]
 
 [dependencies]
 # Local dependencies
@@ -29,7 +29,6 @@ wgpu = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 dirs = { workspace = true }
-vello = { workspace = true }
 image = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -67,7 +67,13 @@ impl D3D11Importer {
 			Ok::<_, TextureImportError>(hal_texture)
 		}?;
 
-		let texture = unsafe { device.create_texture_from_hal::<api::Dx12>(hal_texture, &texture_descriptor(self.width, self.height, self.format, "CEF D3D11→D3D12 Shared Texture")?) };
+		let texture = unsafe {
+			device.create_texture_from_hal::<api::Dx12>(
+				hal_texture,
+				&texture_descriptor(self.width, self.height, self.format, "CEF D3D11→D3D12 Shared Texture")?,
+				wgpu::TextureUses::UNINITIALIZED,
+			)
+		};
 
 		Ok(texture)
 	}
@@ -108,7 +114,13 @@ impl D3D11Importer {
 			Ok::<_, TextureImportError>(hal_texture)
 		}?;
 
-		let texture = unsafe { device.create_texture_from_hal::<Vulkan>(hal_texture, &texture_descriptor(self.width, self.height, self.format, "CEF D3D11 Shared Texture")?) };
+		let texture = unsafe {
+			device.create_texture_from_hal::<Vulkan>(
+				hal_texture,
+				&texture_descriptor(self.width, self.height, self.format, "CEF D3D11 Shared Texture")?,
+				wgpu::TextureUses::UNINITIALIZED,
+			)
+		};
 
 		Ok(texture)
 	}

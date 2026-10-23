@@ -30,9 +30,6 @@ pub enum PreferencesMessage {
 	UIScale {
 		scale: f64,
 	},
-	MaxRenderRegionSize {
-		size: u32,
-	},
 	DisableUIAcceleration {
 		disable_ui_acceleration: bool,
 	},

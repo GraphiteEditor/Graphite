@@ -3,7 +3,6 @@ use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluat
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
@@ -87,6 +86,8 @@ pub struct NodeGraphExecutor {
 	/// Documents whose gradient migration pass already ran this session, so entries that failed to measure
 	/// (kept pending for a retry on the next open) don't re-run the pass on every render request.
 	gradient_migration_attempted: HashSet<DocumentId>,
+	/// The canvas images the frontend holds, so a render sends only those it lacks.
+	canvas_images_sent: HashSet<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,8 +131,14 @@ impl NodeGraphExecutor {
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
 			pending: None,
+			canvas_images_sent: HashSet::new(),
 		};
 		(node_executor, node_runtime)
+	}
+
+	/// Forgets which canvas images the frontend holds, for a frontend that started over without them.
+	pub fn forget_canvas_images(&mut self) {
+		self.canvas_images_sent.clear();
 	}
 
 	/// Allows the test runner to see if any more executions have been queued.
@@ -148,12 +155,6 @@ impl NodeGraphExecutor {
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
-	}
-
-	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
-		self.sender
-			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
-			.expect("Failed to send editor preferences");
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
@@ -321,11 +322,11 @@ impl NodeGraphExecutor {
 		};
 
 		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
-		// `AllArtwork` and `Selection` expand vector layer bounds by the rendered stroke width so strokes
-		// drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
+		// `AllArtwork` and `Selection` expand layer bounds by the rendered stroke width and effects reach so strokes
+		// and shadows drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
 		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke(true, &[]),
+			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke_and_effects(true),
+			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke_and_effects(true, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
@@ -765,18 +766,28 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Convert each linear-light `Image<Color>` into gamma sRGB bytes (the DOM boundary form) before dispatching.
+				// The frontend keeps the canvases it was sent until a render stops using them, so only the images it lacks are sent
+				let canvas_ids_in_use: Vec<u64> = image_data.iter().map(|(id, _)| *id).collect();
+				let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
+				self.canvas_images_sent.retain(|id| in_use.contains(id));
+
+				// Convert each linear-light image, at its display resolution, into gamma sRGB bytes (the DOM boundary form)
 				let rgba8_bytes = |&color: &_| <[u8; 4]>::from(SRGBA8::from(color));
 				let image_data = image_data
 					.into_iter()
-					.map(|(id, image)| RasterizedImage {
-						id,
-						width: image.width,
-						height: image.height,
-						pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+					.filter(|(id, _)| self.canvas_images_sent.insert(*id))
+					.map(|(id, canvas_image)| {
+						let image = canvas_image.raster.halved(canvas_image.halvings);
+						RasterizedImage {
+							id,
+							width: image.width,
+							height: image.height,
+							pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+						}
 					})
 					.collect();
-				responses.add(FrontendMessage::UpdateImageData { image_data });
+
+				responses.add(FrontendMessage::UpdateImageData { image_data, canvas_ids_in_use });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			#[cfg(target_family = "wasm")]
@@ -805,6 +816,7 @@ impl NodeGraphExecutor {
 			clip_targets,
 			vector_data,
 			appearance_attributes,
+			effects_reach,
 			backgrounds: _,
 		} = render_output.metadata;
 
@@ -821,6 +833,7 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
 		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::UpdateAppearanceAttributes { appearance_attributes });
+		responses.add(DocumentMessage::UpdateEffectsReach { effects_reach });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);

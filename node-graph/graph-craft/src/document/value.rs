@@ -19,7 +19,7 @@ use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::RenderMetadata;
+use rendering::{CanvasImage, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::str::FromStr;
@@ -577,6 +577,9 @@ tagged_value! {
 	TonalRange(raster_nodes::adjustments::TonalRange),
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
+	GlowSource(graphic_types::GlowSource),
+	BevelStyle(graphic_types::BevelStyle),
+	BevelDirection(graphic_types::BevelDirection),
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
@@ -932,20 +935,14 @@ pub enum RenderOutputType {
 	#[serde(skip)]
 	Texture(graphene_application_io::Texture),
 	#[serde(skip)]
-	Buffer {
-		data: Vec<u8>,
-		width: u32,
-		height: u32,
-	},
+	Buffer { data: Vec<u8>, width: u32, height: u32 },
 	Svg {
 		svg: String,
-		image_data: Vec<(u64, Image<Color>)>,
+		/// The images the SVG draws to canvases, by the canvas ID their placeholders name.
+		image_data: Vec<(u64, CanvasImage)>,
 	},
 	#[cfg(target_family = "wasm")]
-	CanvasFrame {
-		canvas_id: u64,
-		resolution: DVec2,
-	},
+	CanvasFrame { canvas_id: u64, resolution: DVec2 },
 }
 
 impl CacheHash for RenderOutputType {

@@ -2,6 +2,7 @@ use core_types::list::{Item, List};
 use core_types::transform::TransformMut;
 use core_types::{ATTR_BACKGROUND, ATTR_CLIP, ATTR_DIMENSIONS, ATTR_LOCATION, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
+use graphic_types::Generator;
 use graphic_types::graphic::{Graphic, IntoGraphicList};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
@@ -20,6 +21,7 @@ fn create_artboard<T: IntoGraphicList>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 		Context -> Item<DAffine2>, // TODO: Remove this
 	)]
 	content: impl Node<Context<'static>, Output = T>,
@@ -51,7 +53,7 @@ fn create_artboard<T: IntoGraphicList>(
 	let normalized_location = location.min(location + dimensions);
 	let normalized_dimensions = dimensions.abs().max(DVec2::ONE);
 
-	let background = background.into_element();
+	let background = graphic_types::evaluate_color_effects(background).into_element();
 
 	// Name is not stored here, it's resolved live from the parent layer's display name
 	Ok(Item::new_from_element(Artboard::new(content))

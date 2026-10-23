@@ -36,7 +36,6 @@ wasm = [
 ]
 image-compare = []
 vello = ["gpu"]
-shader-nodes = ["raster-nodes/shader-nodes"]
 
 [dependencies]
 # Local dependencies
@@ -77,8 +76,7 @@ graphene-canvas-utils = { workspace = true, optional = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
-vello = { workspace = true }
-vello_encoding = { workspace = true }
+vello_gpu = { workspace = true }
 web-sys = { workspace = true, optional = true, features = [
 	"Window",
 	"CanvasRenderingContext2d",

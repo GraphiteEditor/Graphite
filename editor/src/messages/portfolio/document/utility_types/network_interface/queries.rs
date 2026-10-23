@@ -861,10 +861,10 @@ impl NodeNetworkInterface {
 		Some(transformed.bounding_box())
 	}
 
-	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
-	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
-	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
+	/// Calculates the document bounds in document space, expanding layer bounds to include the rendered stroke width and
+	/// effects. Used for export so the output canvas captures strokes and shadows that overflow the path geometry.
+	pub fn document_bounds_document_space_with_stroke_and_effects(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke_and_effects(layer))
 	}
 
 	/// Calculates the selected layer bounds in document space
@@ -880,17 +880,17 @@ impl NodeNetworkInterface {
 			.reduce(Quad::combine_bounds)
 	}
 
-	/// Calculates the selected layer bounds in document space, expanding vector layer bounds to include the
-	/// rendered stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
-	pub fn selected_bounds_document_space_with_stroke(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+	/// Calculates the selected layer bounds in document space, expanding layer bounds to include the rendered stroke width
+	/// and effects. Used for export so the output canvas captures strokes and shadows that overflow the path geometry.
+	pub fn selected_bounds_document_space_with_stroke_and_effects(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {
-			log::error!("Could not get selected nodes in selected_bounds_document_space_with_stroke");
+			log::error!("Could not get selected nodes in selected_bounds_document_space_with_stroke_and_effects");
 			return None;
 		};
 		selected_nodes
 			.selected_layers(&self.document_metadata)
 			.filter(|&layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke(layer))
+			.filter_map(|layer| self.document_metadata.bounding_box_document_with_stroke_and_effects(layer))
 			.reduce(Quad::combine_bounds)
 	}
 

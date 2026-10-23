@@ -53,7 +53,7 @@ fn render_background(
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * render_params.footprint.transform;
 
 			if render_params.viewport_zoom.unwrap_or_default() > 0. {
-				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
+				let draw_checkerboard = |render: &mut SvgRender, rect: vello_gpu::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
 					let checker_id = format!("{checker_id_prefix}-{}", generate_uuid());
 					let cell_size = 8. / render_params.viewport_zoom.unwrap_or(1.);
 					let pattern_size = cell_size * 2.;
@@ -88,14 +88,14 @@ fn render_background(
 						let max = bounds.end.ceil();
 
 						if min.is_finite() && max.is_finite() {
-							let rect = vello::kurbo::Rect::new(min.x, min.y, max.x, max.y);
+							let rect = vello_gpu::kurbo::Rect::new(min.x, min.y, max.x, max.y);
 							draw_checkerboard(&mut render, rect, glam::DVec2::ZERO, "checkered-viewport");
 						}
 					}
 				} else {
 					for background in &metadata.backgrounds {
 						let [a, b] = [background.location, background.location + background.dimensions];
-						let rect = vello::kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+						let rect = vello_gpu::kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 						draw_checkerboard(&mut render, rect, glam::DVec2::new(rect.x0, rect.y0), "checkered-artboard");
 					}
 				}

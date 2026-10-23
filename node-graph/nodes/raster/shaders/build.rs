@@ -1,8 +1,12 @@
-use cargo_gpu_install::install::{Install, InstalledBackend};
-use cargo_gpu_install::spirv_builder::SpirvMetadata;
-use std::path::PathBuf;
+#[cfg(not(feature = "compile"))]
+pub fn main() {}
 
+#[cfg(feature = "compile")]
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
+	use cargo_gpu_install::install::{Install, InstalledBackend};
+	use cargo_gpu_install::spirv_builder::SpirvMetadata;
+	use std::path::PathBuf;
+
 	env_logger::builder().filter_level(log::LevelFilter::Debug).init();
 
 	// Skip building the shaders if they are provided externally

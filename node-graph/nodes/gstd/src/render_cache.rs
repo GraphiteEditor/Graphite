@@ -5,7 +5,6 @@ use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, OwnedContextImpl, Poll};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
-use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
 use std::collections::HashSet;
@@ -35,7 +34,6 @@ pub struct CachedRegion {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct CacheKey {
-	pub max_region_area: u32,
 	pub render_mode_hash: u64,
 	pub zoom: u64,
 	pub rotation: u64,
@@ -53,7 +51,6 @@ pub struct CacheKey {
 impl CacheKey {
 	#[expect(clippy::too_many_arguments)]
 	fn new(
-		max_region_area: u32,
 		render_mode_hash: u64,
 		zoom: f64,
 		rotation: f64,
@@ -79,7 +76,6 @@ impl CacheKey {
 		let quantization_amount = 10f64.powi(ROTATION_QUANTIZATION_DIGITS);
 		let quantized_rotation = (rotation * quantization_amount).round() * quantization_amount.recip();
 		Self {
-			max_region_area,
 			render_mode_hash,
 			zoom: zoom.to_bits(),
 			rotation: quantized_rotation.to_bits(),
@@ -100,8 +96,8 @@ impl CacheKey {
 pub struct TileCache(Arc<Mutex<TileCacheImpl>>);
 
 impl TileCache {
-	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
-		self.0.lock().unwrap().query(viewport_bounds, cache_key, max_region_area)
+	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_size: u32) -> CacheQuery {
+		self.0.lock().unwrap().query(viewport_bounds, cache_key, max_region_size)
 	}
 
 	pub fn store_regions(&self, regions: Vec<CachedRegion>) {
@@ -165,7 +161,7 @@ fn tiles_bounds(tiles: &[TileCoord]) -> AxisAlignedBbox {
 }
 
 impl TileCacheImpl {
-	fn query(&mut self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
+	fn query(&mut self, viewport_bounds: &AxisAlignedBbox, cache_key: &CacheKey, max_region_size: u32) -> CacheQuery {
 		if &self.cache_key != cache_key {
 			self.invalidate_all();
 			self.cache_key = cache_key.clone();
@@ -187,7 +183,7 @@ impl TileCacheImpl {
 		}
 
 		let missing_tiles: Vec<_> = required_tiles.into_iter().filter(|t| !covered_tiles.contains(t)).collect();
-		let missing_regions = group_into_regions(&missing_tiles, max_region_area);
+		let missing_regions = group_into_regions(&missing_tiles, max_region_size);
 		CacheQuery { cached_regions, missing_regions }
 	}
 
@@ -218,7 +214,7 @@ impl TileCacheImpl {
 	}
 }
 
-fn group_into_regions(tiles: &[TileCoord], max_region_area: u32) -> Vec<RenderRegion> {
+fn group_into_regions(tiles: &[TileCoord], max_region_size: u32) -> Vec<RenderRegion> {
 	if tiles.is_empty() {
 		return Vec::new();
 	}
@@ -233,19 +229,18 @@ fn group_into_regions(tiles: &[TileCoord], max_region_area: u32) -> Vec<RenderRe
 		}
 		let region_tiles = flood_fill(&tile, &tile_set, &mut visited);
 		let region = RenderRegion { tiles: region_tiles };
-		regions.extend(split_oversized_region(region, max_region_area));
+		regions.extend(split_oversized_region(region, max_region_size));
 	}
 	regions
 }
 
-/// Recursively subdivides a region until all sub-regions have area <= max_region_area.
+/// Recursively subdivides a region until no sub-region is wider or taller than `max_region_size` pixels.
 /// Uses axis-aligned splits on the longest dimension.
-fn split_oversized_region(region: RenderRegion, max_region_area: u32) -> Vec<RenderRegion> {
+fn split_oversized_region(region: RenderRegion, max_region_size: u32) -> Vec<RenderRegion> {
 	let pixel_size = tiles_bounds(&region.tiles).size();
-	let area = (pixel_size.x * pixel_size.y) as u32;
 
 	// Base case: region is small enough
-	if area <= max_region_area {
+	if pixel_size.x <= max_region_size as f64 && pixel_size.y <= max_region_size as f64 {
 		return vec![region];
 	}
 
@@ -291,7 +286,7 @@ fn split_oversized_region(region: RenderRegion, max_region_area: u32) -> Vec<Ren
 	for tiles in [group1, group2] {
 		if !tiles.is_empty() {
 			let sub_region = RenderRegion { tiles };
-			result.extend(split_oversized_region(sub_region, max_region_area));
+			result.extend(split_oversized_region(sub_region, max_region_size));
 		}
 	}
 
@@ -327,7 +322,6 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 fn render_output_cache(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
 	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
-	#[scope(crate::platform_application_io::editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> Poll<Item<RenderOutput>> {
@@ -342,10 +336,11 @@ fn render_output_cache(
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
-	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
+	let executor = executor.into_element();
+	let Some(executor) = executor.filter(|_| matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) && physical_resolution.x > 0 && physical_resolution.y > 0) else {
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(&context.into_context());
-	}
+	};
 
 	let zoom = footprint.scale_magnitudes().x;
 	let rotation = footprint.decompose_rotation();
@@ -356,10 +351,25 @@ fn render_output_cache(
 		end: footprint.resolution.as_dvec2() - device_origin_offset,
 	};
 
-	let max_region_area = editor_api.into_element().editor_preferences.max_render_region_area();
+	// Each region renders into a texture of its own, which Vello GPU can also draw layers across in full
+	let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
+	let max_region_size = max_texture_size.min(wgpu_executor::MAX_LAYER_RENDER_SIZE);
+
+	// Only an export asks for an output too large for one texture, which is assembled on the CPU instead
+	if physical_resolution.x > max_texture_size || physical_resolution.y > max_texture_size {
+		let output = render_regions_to_buffer(
+			&viewport_bounds_device,
+			|ctx| data.eval(&ctx),
+			ctx.clone(),
+			&render_params,
+			&footprint.transform,
+			max_region_size,
+			&executor,
+		);
+		return output.map(Item::new_from_element);
+	}
 
 	let cache_key = CacheKey::new(
-		max_region_area,
 		render_params.render_mode as u64,
 		zoom,
 		rotation,
@@ -374,7 +384,7 @@ fn render_output_cache(
 		ctx.try_generations().cloned().unwrap_or_default(),
 	);
 
-	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_area);
+	let cache_query = tile_cache.query(&viewport_bounds_device, &cache_key, max_region_size);
 
 	// If no regions, fall back to direct render
 	if cache_query.cached_regions.is_empty() && cache_query.missing_regions.iter().all(|region| region.tiles.is_empty()) {
@@ -401,7 +411,6 @@ fn render_output_cache(
 		Poll::Final(_) | Poll::Partial(_) | Poll::Pending | Poll::Error(_) => None,
 	});
 
-	let executor = executor.into_element().expect("GPU executor not available");
 	let output_texture = executor.request_texture(physical_resolution);
 
 	let combined_metadata = composite_cached_regions(&all_regions, &output_texture, &device_origin_offset, &footprint.transform, &executor);
@@ -483,42 +492,31 @@ fn composite_cached_regions(
 			unreachable!("composite_cached_regions: expected texture output from Vello render");
 		};
 
-		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
-
-		// Convert global tile position to physical pixel offset in the output texture
-		let offset_pixels = min_tile * TILE_SIZE as i32 + device_origin_offset.round().as_ivec2();
-
-		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
-			(0, offset_pixels.x as u32, region.size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
-		} else {
-			let skip = (-offset_pixels.x) as u32;
-			(skip, 0, region.size.x.saturating_sub(skip).min(output_resolution.x))
-		};
-
-		let (src_y, dst_y, height) = if offset_pixels.y >= 0 {
-			(0, offset_pixels.y as u32, region.size.y.min(output_resolution.y.saturating_sub(offset_pixels.y as u32)))
-		} else {
-			let skip = (-offset_pixels.y) as u32;
-			(skip, 0, region.size.y.saturating_sub(skip).min(output_resolution.y))
-		};
-
-		if width > 0 && height > 0 {
+		if let Some(placement) = region_placement(region, device_origin_offset, output_resolution) {
 			encoder.copy_texture_to_texture(
 				wgpu::TexelCopyTextureInfo {
 					texture: texture.as_ref(),
 					mip_level: 0,
-					origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
+					origin: wgpu::Origin3d {
+						x: placement.source.x,
+						y: placement.source.y,
+						z: 0,
+					},
 					aspect: wgpu::TextureAspect::All,
 				},
 				wgpu::TexelCopyTextureInfo {
 					texture: output_texture,
 					mip_level: 0,
-					origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
+					origin: wgpu::Origin3d {
+						x: placement.destination.x,
+						y: placement.destination.y,
+						z: 0,
+					},
 					aspect: wgpu::TextureAspect::All,
 				},
 				wgpu::Extent3d {
-					width,
-					height,
+					width: placement.size.x,
+					height: placement.size.y,
 					depth_or_array_layers: 1,
 				},
 			);
@@ -531,4 +529,122 @@ fn composite_cached_regions(
 
 	queue.submit([encoder.finish()]);
 	combined_metadata
+}
+
+/// The part of a region's texture that lands inside the output.
+struct RegionPlacement {
+	/// The origin of the part within the region's texture.
+	source: UVec2,
+	/// The origin of the part within the output.
+	destination: UVec2,
+	size: UVec2,
+}
+
+fn region_placement(region: &CachedRegion, device_origin_offset: &DVec2, output_resolution: UVec2) -> Option<RegionPlacement> {
+	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
+
+	// Convert global tile position to physical pixel offset in the output texture
+	let offset_pixels = min_tile * TILE_SIZE as i32 + device_origin_offset.round().as_ivec2();
+
+	let (source_x, destination_x, width) = if offset_pixels.x >= 0 {
+		(0, offset_pixels.x as u32, region.size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
+	} else {
+		let skip = (-offset_pixels.x) as u32;
+		(skip, 0, region.size.x.saturating_sub(skip).min(output_resolution.x))
+	};
+
+	let (source_y, destination_y, height) = if offset_pixels.y >= 0 {
+		(0, offset_pixels.y as u32, region.size.y.min(output_resolution.y.saturating_sub(offset_pixels.y as u32)))
+	} else {
+		let skip = (-offset_pixels.y) as u32;
+		(skip, 0, region.size.y.saturating_sub(skip).min(output_resolution.y))
+	};
+
+	(width > 0 && height > 0).then_some(RegionPlacement {
+		source: UVec2::new(source_x, source_y),
+		destination: UVec2::new(destination_x, destination_y),
+		size: UVec2::new(width, height),
+	})
+}
+
+/// Renders an output too large for one texture into RGBA8 pixels on the CPU, rendering one region at a time and copying it in, so only one region's texture exists at once.
+fn render_regions_to_buffer<F>(
+	viewport_bounds_device: &AxisAlignedBbox,
+	render_fn: F,
+	ctx: impl Ctx + ExtractAll + CloneVarArgs,
+	render_params: &RenderParams,
+	viewport_transform: &DAffine2,
+	max_region_size: u32,
+	executor: &WgpuExecutor,
+) -> Poll<RenderOutput>
+where
+	F: Fn(Context<'static>) -> Poll<Item<RenderOutput>>,
+{
+	let device_origin_offset = viewport_transform.translation;
+	let resolution = (viewport_bounds_device.end - viewport_bounds_device.start).round().as_uvec2();
+	let row_bytes = resolution.x as usize * BYTES_PER_PIXEL;
+
+	let mut pixels = vec![0_u8; row_bytes * resolution.y as usize];
+	let mut metadata = rendering::RenderMetadata::default();
+	let mut partial = false;
+	let mut error = None;
+
+	for region in group_into_regions(&bounds_to_tiles(viewport_bounds_device), max_region_size) {
+		let rendered = render_missing_region(&region, &render_fn, ctx.clone(), render_params, viewport_transform, &device_origin_offset);
+		let output = match &rendered.output {
+			Poll::Final(output) => output,
+			Poll::Partial(output) => {
+				partial = true;
+				output
+			}
+			Poll::Fallback(boxed) => {
+				error.get_or_insert_with(|| boxed.1.clone());
+				&boxed.0
+			}
+			Poll::Pending => return Poll::Pending,
+			Poll::Error(error) => return Poll::Error(error.clone()),
+		};
+
+		let mut region_metadata = output.metadata.clone();
+		region_metadata.apply_transform(*viewport_transform);
+		metadata.merge(&region_metadata);
+
+		let Some(placement) = region_placement(&rendered, &device_origin_offset, resolution) else {
+			continue;
+		};
+		let RenderOutputType::Texture(texture) = &output.data else {
+			log::error!("Expected a texture from rendering a region with Vello");
+			continue;
+		};
+		let region_pixels = match executor.read_texture_pixels(texture) {
+			Ok(region_pixels) => region_pixels,
+			Err(error) => {
+				log::error!("Failed to read back a rendered region: {error}");
+				continue;
+			}
+		};
+
+		// Copy the overlapping rows of the region into place
+		let region_row_bytes = rendered.size.x as usize * BYTES_PER_PIXEL;
+		let copied_bytes = placement.size.x as usize * BYTES_PER_PIXEL;
+		for row in 0..placement.size.y as usize {
+			let source_start = (placement.source.y as usize + row) * region_row_bytes + placement.source.x as usize * BYTES_PER_PIXEL;
+			let destination_start = (placement.destination.y as usize + row) * row_bytes + placement.destination.x as usize * BYTES_PER_PIXEL;
+			pixels[destination_start..destination_start + copied_bytes].copy_from_slice(&region_pixels[source_start..source_start + copied_bytes]);
+		}
+	}
+
+	let output = RenderOutput {
+		data: RenderOutputType::Buffer {
+			data: pixels,
+			width: resolution.x,
+			height: resolution.y,
+		},
+		metadata,
+	};
+	match (partial, error) {
+		(true, _) => Poll::Partial(output),
+		(false, Some(error)) => Poll::Fallback(Box::new((output, error))),
+		(false, None) => Poll::Final(output),
+	}
 }

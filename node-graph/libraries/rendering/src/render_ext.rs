@@ -1,15 +1,14 @@
 use crate::renderer::{
-	ClearGuardPlacement, ItemRef, RenderParams, composite_paint_colors, faded_paint_color, format_transform_matrix, gradient_placement, gradient_settings_from_item, spread_adjusted_samples,
+	GradientShape, ItemRef, RenderParams, composite_paint_colors, faded_paint_color, format_transform_matrix, gradient_placement, painted_gradient, spread_adjusted_samples, svg_gradient_definition,
 	transform_is_invertible,
 };
 use crate::{Render, RenderSvgSegmentList, SvgRender};
 use core_types::color::SRGBA8;
 use core_types::list::List;
 use core_types::uuid::generate_uuid;
-use core_types::{ATTR_GRADIENT_FORM, ATTR_TRANSFORM, Color};
+use core_types::{ATTR_TRANSFORM, Color};
 use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
-use graphic_types::vector_types::gradient::GradientForm;
 use graphic_types::vector_types::vector::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 use vector_types::Gradient;
@@ -88,12 +87,11 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 	let mut stop = String::new();
 
 	let item = item?;
-	let stops = item.element()?;
-	let gradient_form: GradientForm = item.attribute_cloned_or_default(ATTR_GRADIENT_FORM);
+	let (stops, settings) = painted_gradient(item)?;
+	let shape = GradientShape::of(item);
 	let local_gradient_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let settings = gradient_settings_from_item(item);
 
-	let (mut samples, _) = spread_adjusted_samples(stops, settings, gradient_form, ClearGuardPlacement::SvgStopOrder);
+	let mut samples = spread_adjusted_samples(&stops, settings, shape.reaches_before_start());
 
 	let paint_opacity = item.paint_opacity(for_mask);
 	if paint_opacity < 1. {
@@ -135,7 +133,7 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 
 	let document_transform = item_transform * local_gradient_transform;
 
-	let placement = gradient_placement(document_transform, gradient_form);
+	let placement = gradient_placement(document_transform, shape);
 	let gradient_transform = format_transform_matrix(element_transform_inverse * placement);
 	let gradient_transform = if gradient_transform.is_empty() {
 		String::new()
@@ -150,23 +148,7 @@ fn render_gradient_paint(item: Option<ItemRef<'_, Gradient>>, svg_defs: &mut Str
 	};
 
 	let gradient_id = generate_uuid();
-
-	match gradient_form {
-		GradientForm::Linear => {
-			let _ = write!(
-				svg_defs,
-				r#"<linearGradient id="{}" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="1" y2="0"{gradient_spread}{gradient_transform}>{}</linearGradient>"#,
-				gradient_id, stop
-			);
-		}
-		GradientForm::Radial => {
-			let _ = write!(
-				svg_defs,
-				r#"<radialGradient id="{}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1"{gradient_spread}{gradient_transform}>{}</radialGradient>"#,
-				gradient_id, stop
-			);
-		}
-	}
+	svg_defs.push_str(&svg_gradient_definition(shape, gradient_id, &format!("{gradient_spread}{gradient_transform}"), &stop));
 
 	Some(gradient_id)
 }
@@ -286,10 +268,12 @@ impl RenderExt for Graphic {
 			| Graphic::Vector(_)
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::GradientList(_)
 			| Graphic::TextList(_)
