@@ -291,6 +291,7 @@ pub enum DocumentMessage {
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+		group_layers: HashSet<NodeId>,
 	},
 	UpdateOutlines {
 		outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
