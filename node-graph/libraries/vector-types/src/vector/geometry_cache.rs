@@ -6,20 +6,21 @@ use super::vector_types::Vector;
 use core_types::list::{ATTR_CURVE_TYPE, ATTR_GEOMETRY_CACHE, ATTR_PATHS, AttributeWitness, ElementsWitness, Item, ItemAttributeValues, List};
 use glam::DVec2;
 use kurbo::BezPath;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// How many geometries one cache remembers, so a memoized item and a modified copy sharing the cache don't keep evicting each other.
 const CACHE_ENTRIES: usize = 2;
 
-/// The contours one pool and paths weave, with witnesses to the storage they were extracted from.
-struct CachedContours {
+/// Geometry derived from one pool and paths, each part computed on first use, with witnesses to the storage it derives from.
+struct CachedGeometry {
 	pool: ElementsWitness<DVec2>,
 	paths: ElementsWitness<Path>,
 	curve_types: AttributeWitness,
-	contours: Arc<[BezPath]>,
+	contours: OnceLock<Arc<[BezPath]>>,
+	faces: OnceLock<Arc<[BezPath]>>,
 }
 
-impl CachedContours {
+impl CachedGeometry {
 	fn matches(&self, pool: &List<DVec2>, paths: &List<Path>) -> bool {
 		self.pool.matches(pool) && self.paths.matches(paths) && self.curve_types.matches(paths, ATTR_CURVE_TYPE)
 	}
@@ -28,32 +29,41 @@ impl CachedContours {
 /// A vector item's cache of geometry derived from its pool and paths, stored as its [`ATTR_GEOMETRY_CACHE`] attribute.
 /// Clones of the item share it, and it takes no part in equality or hashing.
 #[derive(Clone, Default)]
-pub struct GeometryCache(Arc<Mutex<Vec<Arc<CachedContours>>>>);
+pub struct GeometryCache(Arc<Mutex<Vec<Arc<CachedGeometry>>>>);
 
 impl GeometryCache {
 	/// The contours `vector` and `paths` weave, extracted once and reused for as long as neither changes.
 	pub fn contours(&self, vector: &Vector, paths: &List<Path>) -> Arc<[BezPath]> {
+		self.entry(vector, paths).contours.get_or_init(|| contour_bezpaths(&vector.0, paths).into()).clone()
+	}
+
+	/// The fillable faces of `vector` and `paths`, constructed once and reused for as long as neither changes.
+	pub fn faces(&self, vector: &Vector, paths: &List<Path>) -> Arc<[BezPath]> {
+		self.entry(vector, paths).faces.get_or_init(|| vector.construct_faces(paths).into()).clone()
+	}
+
+	/// The entry for this geometry, made most recently used, or a new empty one evicting the least recently used.
+	/// Only the lookup holds the lock, so computing an entry's parts doesn't block other readers of the cache.
+	fn entry(&self, vector: &Vector, paths: &List<Path>) -> Arc<CachedGeometry> {
 		let mut entries = self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
 
-		// Most recently used first
 		if let Some(position) = entries.iter().position(|entry| entry.matches(&vector.0, paths)) {
 			let entry = entries.remove(position);
-			let contours = entry.contours.clone();
-			entries.insert(0, entry);
-			return contours;
+			entries.insert(0, entry.clone());
+			return entry;
 		}
 
-		let contours: Arc<[BezPath]> = contour_bezpaths(&vector.0, paths).into();
-		let entry = CachedContours {
+		let entry = Arc::new(CachedGeometry {
 			pool: vector.0.elements_witness(),
 			paths: paths.elements_witness(),
 			curve_types: paths.attribute_witness(ATTR_CURVE_TYPE),
-			contours: contours.clone(),
-		};
-		entries.insert(0, Arc::new(entry));
+			contours: OnceLock::new(),
+			faces: OnceLock::new(),
+		});
+		entries.insert(0, entry.clone());
 		entries.truncate(CACHE_ENTRIES);
 
-		contours
+		entry
 	}
 }
 
@@ -125,6 +135,18 @@ mod tests {
 		let second = cache.contours(&vector.clone(), &paths.clone());
 
 		assert!(Arc::ptr_eq(&first, &second));
+	}
+
+	#[test]
+	fn unchanged_geometry_reuses_its_faces() {
+		let (vector, paths) = square();
+		let cache = GeometryCache::default();
+
+		let first = cache.faces(&vector, &paths);
+		let second = cache.faces(&vector, &paths);
+
+		assert!(Arc::ptr_eq(&first, &second));
+		assert_eq!(*first, *vector.construct_faces(&paths));
 	}
 
 	#[test]

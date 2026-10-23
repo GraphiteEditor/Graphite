@@ -123,6 +123,14 @@ impl<'a> ItemRef<'a, Vector> {
 		}
 	}
 
+	fn faces(self) -> Arc<[BezPath]> {
+		let Some(vector) = self.element() else { return Arc::default() };
+		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
+			Some(cache) => cache.faces(vector, self.paths()),
+			None => vector.construct_faces(self.paths()).into(),
+		}
+	}
+
 	/// The item's geometry cache, for a copy of the item drawing the same geometry, or a fresh one if it has none.
 	fn geometry_cache(self) -> GeometryCache {
 		self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE).cloned().unwrap_or_default()
@@ -1564,9 +1572,8 @@ fn render_vector_shape_svg(item: ItemRef<'_, Vector>, vector: &Vector, render: &
 	});
 
 	if use_face_fill {
-		for mut face_path in vector.construct_faces(paths) {
-			face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-			let face_d = face_path.to_svg();
+		for face_path in item.faces().iter() {
+			let face_d = (stroke_affine * face_path).to_svg();
 
 			emit_svg_fill_path(render, face_d, fill_paint, item_transform, element_transform, applied_stroke_transform, bounds_matrix, render_params);
 		}
@@ -1891,13 +1898,8 @@ fn render_vector_item_to_vello(
 	let use_face_fill = element.use_face_fill(element_paths);
 	let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
 		if use_face_fill {
-			for mut face_path in element.construct_faces(element_paths) {
-				face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-				let mut kurbo_path = kurbo::BezPath::new();
-				for element in face_path {
-					kurbo_path.push(element);
-				}
-				do_fill_path(scene, context, &kurbo_path, peniko::Fill::NonZero);
+			for face_path in item.faces().iter() {
+				do_fill_path(scene, context, &(stroke_affine * face_path), peniko::Fill::NonZero);
 			}
 		} else {
 			do_fill_path(scene, context, &path, peniko::Fill::NonZero);
