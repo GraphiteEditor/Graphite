@@ -6780,6 +6780,7 @@ dependencies = [
 [[package]]
 name = "vello_common"
 version = "0.3.0"
+source = "git+https://github.com/Keavon/vello.git?branch=graphite-vello-gpu#e395f7257577b5a2ee8dea63f86002f96ee78634"
 dependencies = [
  "bytemuck",
  "fearless_simd",
@@ -6793,6 +6794,7 @@ dependencies = [
 [[package]]
 name = "vello_gpu"
 version = "0.3.0"
+source = "git+https://github.com/Keavon/vello.git?branch=graphite-vello-gpu#e395f7257577b5a2ee8dea63f86002f96ee78634"
 dependencies = [
  "bytemuck",
  "hashbrown 0.17.1",
@@ -6806,6 +6808,7 @@ dependencies = [
 [[package]]
 name = "vello_gpu_shaders"
 version = "0.3.0"
+source = "git+https://github.com/Keavon/vello.git?branch=graphite-vello-gpu#e395f7257577b5a2ee8dea63f86002f96ee78634"
 dependencies = [
  "naga",
  "wesl",
