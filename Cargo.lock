@@ -3614,10 +3614,10 @@ dependencies = [
  "glam 0.33.10",
  "graphene-core",
  "graphic-types",
- "log",
  "math-parser",
  "node-macro",
  "rand",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
