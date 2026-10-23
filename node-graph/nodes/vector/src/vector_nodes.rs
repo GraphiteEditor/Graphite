@@ -4683,7 +4683,7 @@ mod test {
 		);
 	}
 
-	/// Two halves of a diamond drawn top to bottom and welded at both ends.
+	/// Two halves of a diamond drawn down its left side and back up its right, welded at both ends.
 	fn welded_diamond() -> Item<Vector> {
 		let mut vector = Vector::default();
 		for position in [DVec2::new(0., 0.), DVec2::new(-10., 10.), DVec2::new(0., 20.), DVec2::new(10., 10.)] {
@@ -4691,7 +4691,7 @@ mod test {
 		}
 		let mut paths = List::new();
 		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
-		push_path(&mut paths, CurveType::Linear, [0, 3, 2], []);
+		push_path(&mut paths, CurveType::Linear, [2, 3, 0], []);
 
 		Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
 	}
@@ -4725,16 +4725,14 @@ mod test {
 		let welded = polylines(sample(welded_diamond()));
 		assert!(matches!(welded.as_slice(), [polyline] if polyline.elements().last() == Some(&PathEl::ClosePath)));
 
-		// Each half runs from the top tip to the bottom tip by way of its own side corner
+		// Each half runs from tip to tip by way of its own side corner, down the left and back up the right
 		let unwelded = polylines(sample(super::unweld((), welded_diamond(), item(UnweldMethod::SharedPoints))));
 		assert_eq!(unwelded.len(), 2);
-		for (polyline, side_corner) in unwelded.iter().zip([DVec2::new(-10., 10.), DVec2::new(10., 10.)]) {
+		let (top, bottom) = (DVec2::ZERO, DVec2::new(0., 20.));
+		for (polyline, [from, side_corner, to]) in unwelded.iter().zip([[top, DVec2::new(-10., 10.), bottom], [bottom, DVec2::new(10., 10.), top]]) {
 			let points: Vec<DVec2> = polyline.elements().iter().filter_map(|element| element.end_point()).map(point_to_dvec2).collect();
 			assert_eq!(points.len(), 5);
-			assert!(
-				points[0].distance(DVec2::ZERO) < 1e-3 && points[2].distance(side_corner) < 1e-3 && points[4].distance(DVec2::new(0., 20.)) < 1e-3,
-				"{points:?}"
-			);
+			assert!(points[0].distance(from) < 1e-3 && points[2].distance(side_corner) < 1e-3 && points[4].distance(to) < 1e-3, "{points:?}");
 		}
 	}
 
