@@ -159,7 +159,7 @@ pub fn push_path(paths: &mut List<Path>, curve_type: CurveType, references: impl
 }
 
 /// Appends a path for each run of references, as [`push_path`] would one at a time.
-pub(crate) fn push_paths(paths: &mut List<Path>, runs: impl IntoIterator<Item = (CurveType, Vec<u32>, Vec<SegmentId>)>) {
+pub fn push_paths(paths: &mut List<Path>, runs: impl IntoIterator<Item = (CurveType, Vec<u32>, Vec<SegmentId>)>) {
 	let woven = runs.into_iter().map(|(curve_type, references, ids)| (curve_type, woven_path(curve_type, references, ids)));
 	let (curve_types, woven) = woven.unzip();
 

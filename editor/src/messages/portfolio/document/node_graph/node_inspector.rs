@@ -33,7 +33,7 @@ use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
-	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
+	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
 };
 use graphene_std::vector::style::{
 	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
@@ -424,6 +424,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GridTopology>(x) => enum_choice::<GridTopology>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).inspector_row(),
@@ -2619,10 +2620,6 @@ pub(crate) fn selective_color_inspector(node_id: NodeId, context: &mut NodeInspe
 pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput, true, context)).inspector_row();
-
-	let mut widgets = vec![grid_type];
-
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -2630,33 +2627,44 @@ pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 			return Vec::new();
 		}
 	};
-	let Some(grid_type_input) = document_node.input(GridTypeInput) else {
+	let Some(lattice_input) = document_node.input(LatticeInput) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
-		match grid_type {
-			GridType::Rectangular => {
-				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
-				widgets.push(spacing);
-			}
-			GridType::Isometric => {
-				let spacing = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
-					NumberInput::default().label("H").min(0.).unit(" px"),
-				));
-				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
-				widgets.extend([spacing, angles]);
-			}
-		}
-	}
+	let grid_type = match lattice_input.as_non_exposed_value() {
+		Some(&TaggedValue::GridType(grid_type)) => Some(grid_type),
+		_ => None,
+	};
 
+	// Staggered only changes some topologies
+	let staggered_applies = match document_node.input(TopologyInput).and_then(|input| input.as_non_exposed_value()) {
+		Some(&TaggedValue::GridTopology(topology)) => topology.supports_staggered(),
+		_ => true,
+	};
+
+	let lattice = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, LatticeInput, true, context)).inspector_row();
+	let topology = enum_choice::<GridTopology>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, TopologyInput, true, context))
+		.inspector_row();
+	let staggered = bool_widget(ParameterWidgetsInfo::new(node_id, StaggeredInput, true, context), CheckboxInput::default().disabled(!staggered_applies));
 	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput, true, context), NumberInput::default().min(1.));
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput, true, context), NumberInput::default().min(1.));
 
-	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput, true, context), CheckboxInput::default());
+	let mut widgets = vec![lattice, topology, LayoutGroup::row(staggered), LayoutGroup::row(columns), LayoutGroup::row(rows)];
 
-	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows), LayoutGroup::row(connect_cells)]);
+	if let Some(grid_type) = grid_type {
+		if grid_type.is_isometric() {
+			let spacing = LayoutGroup::row(number_widget(
+				ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
+				NumberInput::default().label("H").min(0.).unit(" px"),
+			));
+			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
+			widgets.extend([spacing, angles]);
+		} else {
+			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
+			widgets.push(spacing);
+		}
+	}
 
 	widgets
 }

@@ -1,14 +1,13 @@
-use crate::vector_nodes::{push_working_point, push_working_segment};
+use crate::grid_topology::Lattice;
 use core_types::list::{ATTR_PATHS, Item, List};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
+use vector_types::vector::Path;
 use vector_types::vector::algorithms::shapes;
-use vector_types::vector::misc::BezierHandles;
 use vector_types::vector::misc::SpiralType;
-use vector_types::vector::misc::{ArcType, BoxCorners, GridType};
-use vector_types::vector::{Path, PointId, SegmentId, WorkingVector};
+use vector_types::vector::misc::{ArcType, BoxCorners, GridTopology, GridType};
 
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"), icon("NodeCircle"))]
@@ -320,29 +319,39 @@ impl GridSpacing for DVec2 {
 	}
 }
 
-/// Generates a rectangular or isometric grid with the chosen number of columns and rows. Line segments connect the points, forming a vector mesh.
+/// Generates a rectangular or isometric grid of points with the chosen number of columns and rows, joined into paths by the chosen topology.
 #[node_macro::node(category("Vector: Shape"), icon("NodeGrid"), inspector("grid_inspector"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
-	grid_type: Item<GridType>,
-	#[unit(" px")]
-	#[hard(0..)]
-	#[default(10)]
-	#[implementations(f64, DVec2)]
-	spacing: Item<T>,
+	lattice: Item<GridType>,
+	/// How the points join into paths.
+	topology: Item<GridTopology>,
+	/// Removes edges so each point keeps three of them, turning rectangular grids into a brick wall and isometric grids into a honeycomb.
+	staggered: Item<bool>,
 	#[default(10)]
 	#[hard(0..)]
 	columns: Item<i64>,
 	#[default(10)]
 	#[hard(0..)]
 	rows: Item<i64>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(10)]
+	#[implementations(f64, DVec2)]
+	spacing: Item<T>,
 	#[unit("°")]
 	#[default(30., 30.)]
 	angles: Item<DVec2>,
-	#[default(true)] connect_cells: Item<bool>,
 ) -> Item<Vector> {
-	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
+	let (grid_type, topology, staggered, columns, rows, angles) = (
+		lattice.into_element(),
+		topology.into_element(),
+		*staggered.element(),
+		*columns.element(),
+		*rows.element(),
+		*angles.element(),
+	);
 	let (columns, rows) = (columns as u32, rows as u32);
 
 	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
@@ -354,75 +363,21 @@ fn grid<T: GridSpacing>(
 	let isometric_spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
 
 	// The position of the grid point at column `x`, row `y`.
-	let position = |x: u32, y: u32| -> DVec2 {
-		match grid_type {
-			GridType::Rectangular => DVec2::new(x_spacing * x as f64, y_spacing * y as f64),
-			GridType::Isometric => {
-				// Odd columns are offset vertically so the cells skew into the isometric shape.
-				let a_angles_eaten = x.div_ceil(2) as f64;
-				let b_angles_eaten = (x / 2) as f64;
-				let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
-				DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
-			}
+	let position = |x: u32, y: i64| -> DVec2 {
+		if !grid_type.is_isometric() {
+			return DVec2::new(x_spacing * x as f64, y_spacing * y as f64);
 		}
+
+		// Odd columns are offset vertically so the cells skew into the isometric shape.
+		let a_angles_eaten = x.div_ceil(2) as f64;
+		let b_angles_eaten = (x / 2) as f64;
+		let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
+		DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
 	};
 
-	// When the cells aren't connected, each one is its own closed quadrilateral subpath.
-	// The vertices are ordered counter-clockwise to match the framework's fill winding.
-	if !connect_cells {
-		let mut cells = Vec::new();
-		for y in 0..rows.saturating_sub(1) {
-			for x in 0..columns.saturating_sub(1) {
-				cells.push(vec![position(x, y), position(x + 1, y), position(x + 1, y + 1), position(x, y + 1)]);
-			}
-		}
-		let (mut vector, mut paths) = (Vector::default(), List::new());
-		crate::vector_nodes::replace_with_polygons(&mut vector, &mut paths, cells, connect_cells);
-		return Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths);
-	}
-
-	let mut working = WorkingVector::default();
-	let mut segment_id = SegmentId::ZERO;
-	let mut point_id = PointId::ZERO;
-
-	for y in 0..rows {
-		for x in 0..columns {
-			// Add the current point to the grid.
-			let current_index = push_working_point(&mut working, point_id.next_id(), position(x, y));
-
-			// Helper function to connect points with line segments.
-			let mut push_segment = |to_index: Option<usize>| {
-				if let Some(other_index) = to_index {
-					push_working_segment(&mut working, segment_id.next_id(), other_index, current_index, BezierHandles::Linear);
-				}
-			};
-
-			// Connect to the point to the left (horizontal connection).
-			push_segment((x > 0).then(|| current_index - 1));
-
-			// Connect to the point directly above (vertical connection).
-			push_segment(current_index.checked_sub(columns as usize));
-
-			// Isometric grids additionally connect odd columns diagonally, splitting each cell into triangles.
-			if grid_type == GridType::Isometric && x % 2 == 1 {
-				// Connect to the point diagonally up-right (if not at the right edge).
-				push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
-
-				// Connect to the point diagonally up-left.
-				push_segment(current_index.checked_sub(columns as usize + 1));
-			}
-		}
-	}
-
-	// A segment begins a path unless it carries on from the one stored before it, so the weave joins nothing around the grid's junctions
-	working.segment_begins_path = (0..working.segment_ids.len())
-		.map(|index| index == 0 || working.segment_start[index] != working.segment_end[index - 1])
-		.collect();
-
-	let (mut vector, mut paths) = (Vector::default(), List::new());
-	working.reweave(&mut vector, &mut paths);
-
-	Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+	Lattice::new(grid_type, columns, rows, staggered && topology.supports_staggered(), position)
+		.layout(topology)
+		.into_item()
 }
 
 #[cfg(test)]
@@ -439,11 +394,41 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), item(GridType::Isometric), item(0.), item(5_i64), item(5_i64), item((0., 0.).into()), item(true));
-		grid((), (), item(GridType::Isometric), item(90.), item(5_i64), item(5_i64), item((90., 90.).into()), item(true));
+		grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(0.),
+			item((0., 0.).into()),
+		);
+		grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(90.),
+			item((90., 90.).into()),
+		);
 
 		// Works properly
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((30., 30.).into()), item(true));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
@@ -456,7 +441,17 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((40., 30.).into()), item(true));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(10.),
+			item((40., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
@@ -468,22 +463,62 @@ mod tests {
 		}
 	}
 
-	// Only segments stored one after another join into paths, so no outline closes around the cells
 	#[test]
-	fn grid_joins_segments_only_where_they_follow_each_other() {
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(true));
+	fn grid_edges_are_each_their_own_path() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Edges),
+			item(false),
+			item(3_i64),
+			item(3_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 
 		assert_eq!(vector.segment_ids(&paths).len(), 2 * 3 + 2 * 3);
-		assert_eq!(paths.len(), 7);
-		assert!(vector.stroke_manipulator_groups(&paths).all(|(_, closed)| !closed));
+		assert_eq!(paths.len(), 2 * 3 + 2 * 3);
+		assert_eq!(vector.anchor_points(&paths).count(), 3 * 3);
+	}
+
+	#[test]
+	fn grid_lines_run_along_each_row_and_column() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Lines),
+			item(false),
+			item(3_i64),
+			item(4_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
+		let paths = shared_paths_from_item_attributes(&grid);
+		let vector = grid.element();
+
+		assert_eq!(paths.len(), 4 + 3);
+		assert_eq!(vector.segment_ids(&paths).len(), 4 * 2 + 3 * 3);
+		assert_eq!(vector.anchor_points(&paths).count(), 3 * 4);
 	}
 
 	#[test]
 	fn grid_disconnected_cells_test() {
 		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(false));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Cells),
+			item(false),
+			item(3_i64),
+			item(3_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 		assert_eq!(vector.stroke_manipulator_groups(&paths).filter(|(_, closed)| *closed).count(), 4);
