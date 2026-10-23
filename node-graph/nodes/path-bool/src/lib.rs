@@ -28,7 +28,7 @@ fn boolean_operation(
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
 	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
 	/// Intersection cuts away all but the overlapping areas shared by every path.
-	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	/// Difference cuts away the areas where an even number of paths overlap, keeping those where an odd number do.
 	operation: Item<BooleanOperation>,
 ) -> Item<Vector> {
 	let operation = operation.into_element();
@@ -128,7 +128,7 @@ impl WindingNumber {
 			BooleanOperation::SubtractFront => self.elems.first().is_some_and(is_in) && self.elems.iter().skip(1).all(is_out),
 			BooleanOperation::SubtractBack => self.elems.last().is_some_and(is_in) && self.elems.iter().rev().skip(1).all(is_out),
 			BooleanOperation::Intersect => !self.elems.is_empty() && self.elems.iter().all(is_in),
-			BooleanOperation::Difference => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
+			BooleanOperation::Difference => self.elems.iter().filter(|&winding| is_in(winding)).count() % 2 == 1,
 		}
 	}
 }
@@ -365,5 +365,20 @@ mod tests {
 		assert_eq!(outline.winding(Point::new(60., 60.)), 0, "the overlap should be empty");
 		assert_ne!(outline.winding(Point::new(-50., 0.)), 0, "the circle's own area should be filled");
 		assert_ne!(outline.winding(Point::new(150., 150.)), 0, "the square's own area should be filled");
+	}
+
+	#[test]
+	fn difference_keeps_areas_covered_by_an_odd_number_of_shapes() {
+		let circles = [(0., 0.), (60., 0.), (30., 52.)].map(|center| operand(&Circle::new(center, 50.)));
+		let result = boolean_operation((), circles.into_iter().collect(), Item::new_from_element(BooleanOperation::Difference));
+
+		let paths = result.attribute::<List<Path>>(ATTR_PATHS).cloned().unwrap_or_default();
+		let vector = result.element();
+		assert!(!vector.is_branching(&paths), "the regions meeting where the outlines cross shouldn't be welded into a mesh");
+
+		let outline: BezPath = vector.stroke_bezpath_iter(&paths).flat_map(|subpath| subpath.into_iter()).collect();
+		assert_ne!(outline.winding(Point::new(-30., 0.)), 0, "the area inside one circle should be filled");
+		assert_eq!(outline.winding(Point::new(30., -20.)), 0, "the area inside two circles should be empty");
+		assert_ne!(outline.winding(Point::new(30., 17.)), 0, "the area inside all three circles should be filled");
 	}
 }
