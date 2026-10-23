@@ -2251,13 +2251,11 @@ impl DocumentMessageHandler {
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Path(path) => {
-					let mut path = path.clone();
+				ClickTargetType::Path(mut path) => {
 					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
 					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
-				ClickTargetType::FreePoint(point) => {
-					let mut point = *point;
+				ClickTargetType::FreePoint(mut point) => {
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
@@ -4124,9 +4122,8 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
-		.flatten()
-		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
+		.filter_map(|target| target.path_with_transform())
+		.flat_map(|(path, placement)| path.segments().map(move |bezier| Affine::new((transform * placement).to_cols_array()) * bezier));
 	BezPath::from_path_segments(segments)
 }
 

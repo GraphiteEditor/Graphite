@@ -260,7 +260,8 @@ fn dragged_anchors(document: &DocumentMessageHandler, layers: &[LayerNodeIdentif
 	let mut anchors = Vec::new();
 	for layer in layers {
 		let to_document = metadata.transform_to_document_as_rendered(layer);
-		let drawn = metadata.layer_outline(layer).flat_map(anchor_positions).map(|position| to_document.transform_point2(position));
+		let outline: Vec<_> = metadata.layer_outline(layer).collect();
+		let drawn = outline.iter().flat_map(anchor_positions).map(|position| to_document.transform_point2(position));
 		anchors.extend(drawn.filter(|position| position.is_finite()));
 	}
 	anchors

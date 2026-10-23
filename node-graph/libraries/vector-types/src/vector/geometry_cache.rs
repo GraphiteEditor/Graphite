@@ -1,5 +1,6 @@
 //! Geometry derived from a vector item's point pool and paths, cached on the item so rendering and editor metadata extract it once.
 
+use super::click_target::TargetPath;
 use super::contour::contour_bezpaths;
 use super::path::Path;
 use super::vector_types::Vector;
@@ -18,11 +19,17 @@ struct CachedGeometry {
 	curve_types: AttributeWitness,
 	contours: OnceLock<Arc<[BezPath]>>,
 	faces: OnceLock<Arc<[BezPath]>>,
+	filled_target_path: OnceLock<Option<Arc<TargetPath>>>,
+	unfilled_target_path: OnceLock<Option<Arc<TargetPath>>>,
 }
 
 impl CachedGeometry {
 	fn matches(&self, pool: &List<DVec2>, paths: &List<Path>) -> bool {
 		self.pool.matches(pool) && self.paths.matches(paths) && self.curve_types.matches(paths, ATTR_CURVE_TYPE)
+	}
+
+	fn contours(&self, vector: &Vector, paths: &List<Path>) -> &Arc<[BezPath]> {
+		self.contours.get_or_init(|| contour_bezpaths(&vector.0, paths).into())
 	}
 }
 
@@ -34,7 +41,15 @@ pub struct GeometryCache(Arc<Mutex<Vec<Arc<CachedGeometry>>>>);
 impl GeometryCache {
 	/// The contours `vector` and `paths` weave, extracted once and reused for as long as neither changes.
 	pub fn contours(&self, vector: &Vector, paths: &List<Path>) -> Arc<[BezPath]> {
-		self.entry(vector, paths).contours.get_or_init(|| contour_bezpaths(&vector.0, paths).into()).clone()
+		self.entry(vector, paths).contours(vector, paths).clone()
+	}
+
+	/// The contours combined into one click target path by [`TargetPath::from_contours`], built once and reused for as long as neither changes.
+	pub fn target_path(&self, vector: &Vector, paths: &List<Path>, filled: bool) -> Option<Arc<TargetPath>> {
+		let entry = self.entry(vector, paths);
+		let slot = if filled { &entry.filled_target_path } else { &entry.unfilled_target_path };
+
+		slot.get_or_init(|| TargetPath::from_contours(entry.contours(vector, paths), filled).map(Arc::new)).clone()
 	}
 
 	/// The fillable faces of `vector` and `paths`, constructed once and reused for as long as neither changes.
@@ -59,6 +74,8 @@ impl GeometryCache {
 			curve_types: paths.attribute_witness(ATTR_CURVE_TYPE),
 			contours: OnceLock::new(),
 			faces: OnceLock::new(),
+			filled_target_path: OnceLock::new(),
+			unfilled_target_path: OnceLock::new(),
 		});
 		entries.insert(0, entry.clone());
 		entries.truncate(CACHE_ENTRIES);

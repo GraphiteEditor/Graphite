@@ -1,11 +1,10 @@
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, OnceLock, RwLock};
 
 use super::algorithms::{bezpath_algorithms::bezpath_is_inside_bezpath, intersection::filtered_segment_intersections};
 use super::misc::dvec2_to_point;
 use crate::math::QuadExt;
 use crate::vector::PointId;
 use core_types::math::quad::Quad;
-use core_types::transform::Transform;
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, BezPath, ParamCurve, PathEl, PathSeg, Shape};
 
@@ -71,109 +70,176 @@ pub enum ClickTargetType {
 	FreePoint(FreePoint),
 }
 
-/// Fixed-size ring buffer cache for rotated bounding boxes.
+/// Fixed-size ring buffer of tight bounding boxes of a path under normalized linear transforms.
 ///
-/// Stores up to 8 rotation angles and their corresponding bounding boxes to avoid
-/// recomputing expensive bezier curve bounds for repeated rotations. Uses 7-bit
-/// fingerprint hashing with MSB as presence flag for fast lookup.
+/// Any invertible transform `T · L` is placed as `bounds(L · path) = s · bounds(L' · path) + t` with `L' = L / s` and `s = sqrt(|det L|)`,
+/// so one entry serves every translation and uniform zoom of the same rotation, scale ratio, and skew.
 #[derive(Clone, Debug, Default)]
 struct BoundingBoxCache {
-	/// Packed 7-bit fingerprints with MSB presence flags for cache lookup
-	fingerprints: u64,
-	/// (rotation_angle, cached_bounds) pairs
-	elements: [(f64, BoundingBox); Self::CACHE_SIZE],
-	/// Next position to write in ring buffer
-	write_ptr: usize,
+	/// The bit patterns of each entry's normalized linear part, and the path's bounds under it.
+	entries: [Option<([u64; 4], [DVec2; 2])>; Self::CACHE_SIZE],
+	/// Next position to write in the ring buffer.
+	write_index: usize,
 }
 
 impl BoundingBoxCache {
-	/// Cache size - must be ≤ 8 since fingerprints is u64 (8 bytes, 1 byte per element)
 	const CACHE_SIZE: usize = 8;
-	const FINGERPRINT_BITS: u32 = 7;
-	const PRESENCE_FLAG: u8 = 1 << Self::FINGERPRINT_BITS;
 
-	/// Generates a 7-bit fingerprint from rotation with MSB as presence flag
-	fn rotation_fingerprint(rotation: f64) -> u8 {
-		(rotation.to_bits() % (1 << Self::FINGERPRINT_BITS)) as u8 | Self::PRESENCE_FLAG
+	fn read(&self, key: [u64; 4]) -> Option<[DVec2; 2]> {
+		self.entries.iter().flatten().find(|(entry_key, _)| *entry_key == key).map(|(_, bounds)| *bounds)
 	}
-	/// Attempts to find cached bounding box for the given rotation.
-	/// Returns Some(bounds) if found, None if not cached.
-	fn try_read(&self, rotation: f64, scale: DVec2, translation: DVec2, fingerprint: u8) -> Option<BoundingBox> {
-		// Build bitmask of positions with matching fingerprints for vectorized comparison
-		let mut mask: u8 = 0;
-		for (i, fp) in (0..Self::CACHE_SIZE).zip(self.fingerprints.to_le_bytes()) {
-			// Check MSB for presence and lower 7 bits for fingerprint match
-			if fp == fingerprint {
-				mask |= 1 << i;
+
+	fn write(&mut self, key: [u64; 4], bounds: [DVec2; 2]) {
+		self.entries[self.write_index] = Some((key, bounds));
+		self.write_index = (self.write_index + 1) % Self::CACHE_SIZE;
+	}
+}
+
+/// A path target's geometry in its own space, shared by every target (in any frame) drawing the same shape.
+#[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(from = "BezPath", into = "BezPath"))]
+pub struct TargetPath {
+	path: BezPath,
+	control_bounds: BoundingBox,
+	closed_contours: OnceLock<BezPath>,
+	bounding_box_cache: RwLock<BoundingBoxCache>,
+}
+
+impl TargetPath {
+	pub fn new(path: BezPath) -> Self {
+		Self {
+			control_bounds: control_box_bounds(&path),
+			path,
+			closed_contours: OnceLock::new(),
+			bounding_box_cache: Default::default(),
+		}
+	}
+
+	/// The contours combined into one compound path, closing each open one when `close_open_contours` is set, or None if all are empty.
+	pub fn from_contours(contours: &[BezPath], close_open_contours: bool) -> Option<Self> {
+		let nonempty_contours = || contours.iter().filter(|contour| !contour.elements().is_empty());
+		nonempty_contours().next()?;
+
+		let mut elements = Vec::with_capacity(nonempty_contours().map(|contour| contour.elements().len() + 1).sum());
+		for contour in nonempty_contours() {
+			elements.extend_from_slice(contour.elements());
+			if close_open_contours && !matches!(contour.elements().last(), Some(PathEl::ClosePath)) {
+				elements.push(PathEl::ClosePath);
 			}
 		}
-		// Check each position with matching fingerprint for exact rotation match
-		while mask != 0 {
-			let pos = mask.trailing_zeros() as usize;
 
-			if rotation == self.elements[pos].0 {
-				// Found cached rotation - apply scale and translation to cached bounds
-				let transform = DAffine2::from_scale_angle_translation(scale, 0., translation);
-				let new_bounds = self.elements[pos].1.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]);
-
-				return Some(new_bounds);
-			}
-			mask &= !(1 << pos);
-		}
-		None
+		Some(Self::new(BezPath::from_vec(elements)))
 	}
-	/// Computes and caches bounding box for the given rotation, then applies scale/translation.
-	/// Returns the final transformed bounds.
-	fn add_to_cache(&mut self, bezpath: &BezPath, rotation: f64, scale: DVec2, translation: DVec2, fingerprint: u8) -> BoundingBox {
-		// Compute bounds for pure rotation (expensive operation we want to cache)
-		let bounds = bezpath_bounding_box_with_transform(bezpath, DAffine2::from_angle(rotation));
 
-		if bounds.is_none() {
-			return bounds;
+	pub fn path(&self) -> &BezPath {
+		&self.path
+	}
+
+	fn closed_contours(&self) -> &BezPath {
+		self.closed_contours.get_or_init(|| closed_contours(&self.path))
+	}
+
+	/// Tight bounds of the path placed by `transform`, cached per normalized linear part (see [`BoundingBoxCache`]).
+	fn bounding_box_with_transform(&self, transform: DAffine2) -> BoundingBox {
+		let determinant = transform.matrix2.determinant();
+		if !determinant.is_finite() || determinant.abs() <= f64::EPSILON {
+			return bezpath_bounding_box_with_transform(&self.path, transform);
 		}
 
-		// Store in ring buffer at current write position
-		let write_ptr = self.write_ptr;
-		self.elements[write_ptr] = (rotation, bounds);
+		let scale = determinant.abs().sqrt();
+		let normalized = transform.matrix2 * (1. / scale);
+		// Rounding off the last mantissa bits lets zooms whose normalization differs by a few ulps share an entry
+		const IGNORED_MANTISSA_BITS: u64 = 0xFFFF;
+		let key = normalized.to_cols_array().map(|value| value.to_bits() & !IGNORED_MANTISSA_BITS);
+		let place = |[min, max]: [DVec2; 2]| [min * scale + transform.translation, max * scale + transform.translation];
 
-		// Update fingerprint byte for this position
-		let mut bytes = self.fingerprints.to_le_bytes();
-		bytes[write_ptr] = fingerprint;
-		self.fingerprints = u64::from_le_bytes(bytes);
+		if let Some(bounds) = self.bounding_box_cache.read().ok().and_then(|cache| cache.read(key)) {
+			return Some(place(bounds));
+		}
 
-		// Advance write pointer (ring buffer behavior)
-		self.write_ptr = (write_ptr + 1) % Self::CACHE_SIZE;
+		let bounds = bezpath_bounding_box_with_transform(&self.path, DAffine2::from_mat2(normalized))?;
+		if let Ok(mut cache) = self.bounding_box_cache.write() {
+			cache.write(key, bounds);
+		}
 
-		// Apply scale and translation to cached rotated bounds
-		let transform = DAffine2::from_scale_angle_translation(scale, 0., translation);
-		bounds.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+		Some(place(bounds))
+	}
+}
+
+impl Clone for TargetPath {
+	fn clone(&self) -> Self {
+		Self::new(self.path.clone())
+	}
+}
+
+impl PartialEq for TargetPath {
+	fn eq(&self, other: &Self) -> bool {
+		self.path == other.path
+	}
+}
+
+impl From<BezPath> for TargetPath {
+	fn from(path: BezPath) -> Self {
+		Self::new(path)
+	}
+}
+
+impl From<TargetPath> for BezPath {
+	fn from(target_path: TargetPath) -> Self {
+		target_path.path
+	}
+}
+
+#[derive(Clone, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+enum TargetShape {
+	/// Shared geometry placed into the target's space by `transform`, so moving a target never copies its path.
+	Path {
+		geometry: Arc<TargetPath>,
+		transform: DAffine2,
+	},
+	FreePoint(FreePoint),
+}
+
+impl PartialEq for TargetShape {
+	fn eq(&self, other: &Self) -> bool {
+		match (self, other) {
+			(
+				Self::Path { geometry, transform },
+				Self::Path {
+					geometry: other_geometry,
+					transform: other_transform,
+				},
+			) => transform == other_transform && (Arc::ptr_eq(geometry, other_geometry) || geometry == other_geometry),
+			(Self::FreePoint(point), Self::FreePoint(other_point)) => point == other_point,
+			_ => false,
+		}
 	}
 }
 
 /// Represents a clickable target for the layer
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ClickTarget {
-	target_type: ClickTargetType,
+	shape: TargetShape,
 	stroke_width: f64,
 	bounding_box: BoundingBox,
-	#[cfg_attr(feature = "serde", serde(skip))]
-	bounding_box_cache: Arc<RwLock<BoundingBoxCache>>,
-}
-
-impl PartialEq for ClickTarget {
-	fn eq(&self, other: &Self) -> bool {
-		self.target_type == other.target_type && self.stroke_width == other.stroke_width && self.bounding_box == other.bounding_box
-	}
 }
 
 impl ClickTarget {
 	pub fn new_with_path(path: BezPath, stroke_width: f64) -> Self {
+		Self::new_with_shared_path(Arc::new(TargetPath::new(path)), DAffine2::IDENTITY, stroke_width)
+	}
+
+	/// A target drawing shared geometry, placed into the target's space by `transform`.
+	pub fn new_with_shared_path(geometry: Arc<TargetPath>, transform: DAffine2, stroke_width: f64) -> Self {
+		let bounding_box = Self::path_loose_bounds(&geometry, transform);
+
 		Self {
-			bounding_box: control_box_bounds(&path),
-			target_type: ClickTargetType::Path(path),
+			shape: TargetShape::Path { geometry, transform },
 			stroke_width,
-			bounding_box_cache: Default::default(),
+			bounding_box,
 		}
 	}
 
@@ -186,18 +252,29 @@ impl ClickTarget {
 		]);
 
 		Self {
-			target_type: ClickTargetType::FreePoint(point),
+			shape: TargetShape::FreePoint(point),
 			stroke_width,
 			bounding_box,
-			bounding_box_cache: Default::default(),
 		}
 	}
 
-	pub fn target_type(&self) -> &ClickTargetType {
-		&self.target_type
+	/// The target's shape in its own space, copying and transforming a path target's geometry.
+	pub fn target_type(&self) -> ClickTargetType {
+		match &self.shape {
+			TargetShape::Path { geometry, transform } => ClickTargetType::Path(Affine::new(transform.to_cols_array()) * geometry.path()),
+			TargetShape::FreePoint(point) => ClickTargetType::FreePoint(*point),
+		}
 	}
 
-	/// Loose bounds (the control point hull) in the target's own space. Use [`Self::bounding_box_with_transform`] for tight bounds.
+	/// A path target's untransformed geometry and the transform placing it into the target's space.
+	pub fn path_with_transform(&self) -> Option<(&BezPath, DAffine2)> {
+		match &self.shape {
+			TargetShape::Path { geometry, transform } => Some((geometry.path(), *transform)),
+			TargetShape::FreePoint(_) => None,
+		}
+	}
+
+	/// Loose bounds (the transformed control point hull) in the target's own space. Use [`Self::bounding_box_with_transform`] for tight bounds.
 	pub fn bounding_box(&self) -> BoundingBox {
 		self.bounding_box
 	}
@@ -207,67 +284,44 @@ impl ClickTarget {
 	}
 
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> BoundingBox {
-		match self.target_type {
-			ClickTargetType::Path(ref path) => {
-				// Bypass cache for skewed transforms since rotation decomposition isn't valid
-				if transform.has_skew() {
-					return bezpath_bounding_box_with_transform(path, transform);
-				}
-
-				// Decompose transform into rotation, scale, translation for caching strategy
-				let rotation = transform.decompose_rotation();
-				let scale = transform.scale_magnitudes();
-				let translation = transform.translation;
-
-				// Generate fingerprint for cache lookup
-				let fingerprint = BoundingBoxCache::rotation_fingerprint(rotation);
-
-				// Try to read from cache first
-				let read_lock = self.bounding_box_cache.read().unwrap();
-				if let Some(value) = read_lock.try_read(rotation, scale, translation, fingerprint) {
-					return value;
-				}
-				std::mem::drop(read_lock);
-
-				// Cache miss - compute and store new entry
-				let mut write_lock = self.bounding_box_cache.write().unwrap();
-				write_lock.add_to_cache(path, rotation, scale, translation, fingerprint)
-			}
+		match &self.shape {
+			TargetShape::Path { geometry, transform: placement } => geometry.bounding_box_with_transform(transform * *placement),
 			// TODO: use point for calculation of bbox
-			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
+			TargetShape::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
 		}
 	}
 
 	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
-		match self.target_type {
-			ClickTargetType::Path(ref mut path) => {
-				path.apply_affine(Affine::new(affine_transform.to_cols_array()));
+		match &mut self.shape {
+			TargetShape::Path { geometry, transform } => {
+				*transform = affine_transform * *transform;
+				self.bounding_box = Self::path_loose_bounds(geometry, *transform);
 			}
-			ClickTargetType::FreePoint(ref mut point) => {
+			TargetShape::FreePoint(point) => {
 				point.apply_transform(affine_transform);
-			}
-		}
-
-		// Clones share the rotation cache, which no longer describes this target's path
-		self.bounding_box_cache = Default::default();
-		self.update_bbox();
-	}
-
-	fn update_bbox(&mut self) {
-		match self.target_type {
-			ClickTargetType::Path(ref path) => {
-				self.bounding_box = control_box_bounds(path);
-			}
-			ClickTargetType::FreePoint(ref point) => {
 				self.bounding_box = Some([point.position - DVec2::splat(self.stroke_width / 2.), point.position + DVec2::splat(self.stroke_width / 2.)]);
 			}
 		}
 	}
 
+	fn path_loose_bounds(geometry: &TargetPath, transform: DAffine2) -> BoundingBox {
+		let bounds = geometry.control_bounds?;
+		if transform == DAffine2::IDENTITY {
+			return Some(bounds);
+		}
+
+		Some((transform * Quad::from_box(bounds)).bounding_box())
+	}
+
 	/// Does the click target intersect the path
 	pub fn intersect_path<It: Iterator<Item = PathSeg>>(&self, mut bezier_iter: impl FnMut() -> It, layer_transform: DAffine2) -> bool {
+		// The query maps into the geometry's own space, so shared geometry is tested without being transformed
+		let mut layer_transform = match &self.shape {
+			TargetShape::Path { transform, .. } => layer_transform * *transform,
+			TargetShape::FreePoint(_) => layer_transform,
+		};
+
 		// Check if the matrix is not invertible
-		let mut layer_transform = layer_transform;
 		if layer_transform.matrix2.determinant().abs() <= f64::EPSILON {
 			layer_transform.matrix2 += DMat2::IDENTITY * 1e-4; // TODO: Is this the cleanest way to handle this?
 		}
@@ -275,8 +329,10 @@ impl ClickTarget {
 		let inverse = layer_transform.inverse();
 		let mut bezier_iter = || bezier_iter().map(|bezier| Affine::new(inverse.to_cols_array()) * bezier);
 
-		match self.target_type() {
-			ClickTargetType::Path(path) => {
+		match &self.shape {
+			TargetShape::Path { geometry, .. } => {
+				let path = geometry.path();
+
 				// Outline intersection (catches strokes and both filled/unfilled shapes)
 				let outline_intersects = |path_segment: PathSeg| bezier_iter().any(|line| !filtered_segment_intersections(path_segment, line, None, None).is_empty());
 				if path.segments().any(outline_intersects) {
@@ -285,7 +341,7 @@ impl ClickTarget {
 
 				// Selection point inside the fill (nonzero rule).
 				// Only closed contours contribute to the fill region; open segments would otherwise produce spurious winding on one side of the segment.
-				let fill_region = closed_contours(path);
+				let fill_region = geometry.closed_contours();
 				if !fill_region.is_empty() && bezier_iter().next().is_some_and(|segment| fill_region.contains(segment.start())) {
 					return true;
 				}
@@ -295,7 +351,7 @@ impl ClickTarget {
 				selection.close_path();
 				bezpath_is_inside_bezpath(path, &selection, None, None)
 			}
-			ClickTargetType::FreePoint(point) => bezier_iter().map(|segment: PathSeg| segment.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
+			TargetShape::FreePoint(point) => bezier_iter().map(|segment: PathSeg| segment.winding(dvec2_to_point(point.position))).sum::<i32>() != 0,
 		}
 	}
 
@@ -320,17 +376,23 @@ impl ClickTarget {
 	/// Does the click target intersect the point (not accounting for stroke size)
 	pub fn intersect_point_no_stroke(&self, point: DVec2) -> bool {
 		// Check if the point is within the bounding box
-		if self
+		if !self
 			.bounding_box
 			.is_some_and(|bbox| bbox[0].x <= point.x && point.x <= bbox[1].x && bbox[0].y <= point.y && point.y <= bbox[1].y)
 		{
-			// Check if the point is within the shape
-			match self.target_type() {
-				ClickTargetType::Path(path) => closed_contours(path).contains(dvec2_to_point(point)),
-				ClickTargetType::FreePoint(free_point) => free_point.position == point,
+			return false;
+		}
+
+		// Check if the point is within the shape
+		match &self.shape {
+			TargetShape::Path { geometry, transform } => {
+				if transform.matrix2.determinant() == 0. {
+					return false;
+				}
+				let local_point = transform.inverse().transform_point2(point);
+				geometry.closed_contours().contains(dvec2_to_point(local_point))
 			}
-		} else {
-			false
+			TargetShape::FreePoint(free_point) => free_point.position == point,
 		}
 	}
 }
@@ -346,157 +408,99 @@ mod tests {
 		Rect::new(corner1.x, corner1.y, corner2.x, corner2.y).to_path(DEFAULT_ACCURACY)
 	}
 
-	#[test]
-	fn test_bounding_box_cache_fingerprint_generation() {
-		// Test that fingerprints have MSB set and use only 7 bits for data
-		let rotation1 = 0.;
-		let rotation2 = PI / 3.;
-		let rotation3 = PI / 2.;
-
-		let fp1 = BoundingBoxCache::rotation_fingerprint(rotation1);
-		let fp2 = BoundingBoxCache::rotation_fingerprint(rotation2);
-		let fp3 = BoundingBoxCache::rotation_fingerprint(rotation3);
-
-		// All fingerprints should have MSB set (presence flag)
-		assert_eq!(fp1 & BoundingBoxCache::PRESENCE_FLAG, BoundingBoxCache::PRESENCE_FLAG);
-		assert_eq!(fp2 & BoundingBoxCache::PRESENCE_FLAG, BoundingBoxCache::PRESENCE_FLAG);
-		assert_eq!(fp3 & BoundingBoxCache::PRESENCE_FLAG, BoundingBoxCache::PRESENCE_FLAG);
-
-		// Lower 7 bits should contain the actual fingerprint data
-		let data1 = fp1 & !BoundingBoxCache::PRESENCE_FLAG;
-		let data2 = fp2 & !BoundingBoxCache::PRESENCE_FLAG;
-		let data3 = fp3 & !BoundingBoxCache::PRESENCE_FLAG;
-
-		// Data portions should be different (unless collision)
-		assert!(data1 != data2 && data2 != data3 && data3 != data1);
-	}
-
-	#[test]
-	fn test_bounding_box_cache_basic_operations() {
-		let mut cache = BoundingBoxCache::default();
-
-		// Create a simple rectangle path for testing
-		let path = rectangle_path(DVec2::ZERO, DVec2::new(100., 50.));
-
-		let rotation = PI / 4.;
-		let scale = DVec2::new(2., 2.);
-		let translation = DVec2::new(10., 20.);
-		let fingerprint = BoundingBoxCache::rotation_fingerprint(rotation);
-
-		// Cache should be empty initially
-		assert!(cache.try_read(rotation, scale, translation, fingerprint).is_none());
-
-		// Add to cache
-		let result = cache.add_to_cache(&path, rotation, scale, translation, fingerprint);
-		assert!(result.is_some());
-
-		// Should now be able to read from cache
-		let cached = cache.try_read(rotation, scale, translation, fingerprint);
-		assert!(cached.is_some());
-		assert_eq!(cached.unwrap(), result);
-	}
-
-	#[test]
-	fn test_bounding_box_cache_ring_buffer_behavior() {
-		let mut cache = BoundingBoxCache::default();
-		let path = rectangle_path(DVec2::ZERO, DVec2::new(10., 10.));
-		let scale = DVec2::ONE;
-		let translation = DVec2::ZERO;
-
-		// Fill cache beyond capacity to test ring buffer behavior
-		let rotations: Vec<f64> = (0..10).map(|i| i as f64 * PI / 8.).collect();
-
-		for rotation in &rotations {
-			let fingerprint = BoundingBoxCache::rotation_fingerprint(*rotation);
-			cache.add_to_cache(&path, *rotation, scale, translation, fingerprint);
-		}
-
-		// First two entries should be overwritten (cache size is 8)
-		let first_fp = BoundingBoxCache::rotation_fingerprint(rotations[0]);
-		let second_fp = BoundingBoxCache::rotation_fingerprint(rotations[1]);
-		let last_fp = BoundingBoxCache::rotation_fingerprint(rotations[9]);
-
-		assert!(cache.try_read(rotations[0], scale, translation, first_fp).is_none());
-		assert!(cache.try_read(rotations[1], scale, translation, second_fp).is_none());
-		assert!(cache.try_read(rotations[9], scale, translation, last_fp).is_some());
-	}
-
-	#[test]
-	fn test_click_target_bounding_box_caching() {
-		// Create a click target with a simple rectangle
-		let path = rectangle_path(DVec2::ZERO, DVec2::new(100., 50.));
-		let click_target = ClickTarget::new_with_path(path, 1.);
-
-		let rotation = PI / 6.;
-		let scale = DVec2::new(1.5, 1.5);
-		let translation = DVec2::new(20., 30.);
-		let transform = DAffine2::from_scale_angle_translation(scale, rotation, translation);
-
-		// Helper function to count present values in cache
-		let count_present_values = || {
-			let cache = click_target.bounding_box_cache.read().unwrap();
-			cache.fingerprints.to_le_bytes().iter().filter(|&&fp| fp & BoundingBoxCache::PRESENCE_FLAG != 0).count()
+	fn assert_bounds_eq(actual: BoundingBox, expected: BoundingBox) {
+		let (Some(actual), Some(expected)) = (actual, expected) else {
+			assert_eq!(actual, expected);
+			return;
 		};
+		assert!(actual[0].abs_diff_eq(expected[0], 1e-9) && actual[1].abs_diff_eq(expected[1], 1e-9), "{actual:?} != {expected:?}");
+	}
 
-		// Initially cache should be empty
-		assert_eq!(count_present_values(), 0);
-
-		// First call should compute and cache
-		let result1 = click_target.bounding_box_with_transform(transform);
-		assert!(result1.is_some());
-		assert_eq!(count_present_values(), 1);
-
-		// Second call with same transform should use cache, not add new entry
-		let result2 = click_target.bounding_box_with_transform(transform);
-		assert_eq!(result1, result2);
-		assert_eq!(count_present_values(), 1); // Should still be 1, not 2
-
-		// Different scale/translation but same rotation should use cached rotation
-		let transform2 = DAffine2::from_scale_angle_translation(DVec2::new(2., 2.), rotation, DVec2::new(50., 60.));
-		let result3 = click_target.bounding_box_with_transform(transform2);
-		assert!(result3.is_some());
-		assert_ne!(result1, result3); // Different due to different scale/translation
-		assert_eq!(count_present_values(), 1); // Should still be 1, reused same rotation
+	fn cached_entries(target: &ClickTarget) -> usize {
+		let TargetShape::Path { geometry, .. } = &target.shape else { return 0 };
+		geometry.bounding_box_cache.read().unwrap().entries.iter().flatten().count()
 	}
 
 	#[test]
-	fn test_click_target_skew_bypass_cache() {
+	fn cached_bounds_match_the_exact_bounds() {
 		let path = rectangle_path(DVec2::ZERO, DVec2::new(100., 50.));
 		let click_target = ClickTarget::new_with_path(path.clone(), 1.);
 
-		// Create a transform with skew (non-uniform scaling in different directions)
-		let skew_transform = DAffine2::from_cols_array(&[2., 0.5, 0., 1., 10., 20.]);
-		assert!(skew_transform.has_skew());
-
-		// Should bypass cache and compute directly
-		let result = click_target.bounding_box_with_transform(skew_transform);
-		let expected = bezpath_bounding_box_with_transform(&path, skew_transform);
-		assert_eq!(result, expected);
+		let transforms = [
+			DAffine2::from_scale_angle_translation(DVec2::splat(1.5), PI / 6., DVec2::new(20., 30.)),
+			DAffine2::from_scale_angle_translation(DVec2::new(2., 1.), PI / 4., DVec2::new(-5., 7.)),
+			DAffine2::from_scale_angle_translation(DVec2::new(-1., 3.), 1., DVec2::ZERO),
+			DAffine2::from_cols_array(&[2., 0.5, 0., 1., 10., 20.]),
+		];
+		for transform in transforms {
+			// Once computing the entry and once reading it back
+			assert_bounds_eq(click_target.bounding_box_with_transform(transform), bezpath_bounding_box_with_transform(&path, transform));
+			assert_bounds_eq(click_target.bounding_box_with_transform(transform), bezpath_bounding_box_with_transform(&path, transform));
+		}
 	}
 
 	#[test]
-	fn test_cache_fingerprint_collision_handling() {
-		let mut cache = BoundingBoxCache::default();
-		let path = rectangle_path(DVec2::ZERO, DVec2::new(10., 10.));
-		let scale = DVec2::ONE;
-		let translation = DVec2::ZERO;
+	fn panning_and_zooming_reuse_one_cache_entry() {
+		let click_target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, DVec2::new(100., 50.)), 1.);
+		let rotation = PI / 6.;
 
-		// Find two rotations that produce the same fingerprint (collision)
-		let rotation1 = 0.;
-		let rotation2 = 0.25;
-		let fp1 = BoundingBoxCache::rotation_fingerprint(rotation1);
-		let fp2 = BoundingBoxCache::rotation_fingerprint(rotation2);
-
-		// If we found a collision, test that exact rotation matching still works
-		if fp1 == fp2 && rotation1 != rotation2 {
-			// Add first rotation
-			cache.add_to_cache(&path, rotation1, scale, translation, fp1);
-
-			// Should find the exact rotation
-			assert!(cache.try_read(rotation1, scale, translation, fp1).is_some());
-
-			// Should not find the colliding rotation (different exact value)
-			assert!(cache.try_read(rotation2, scale, translation, fp2).is_none());
+		for (zoom, pan) in [(1., DVec2::ZERO), (1.1, DVec2::new(50., 60.)), (0.37, DVec2::new(-3., 9.)), (7.3, DVec2::ONE)] {
+			click_target.bounding_box_with_transform(DAffine2::from_scale_angle_translation(DVec2::new(2., 1.) * zoom, rotation, pan));
 		}
+
+		assert_eq!(cached_entries(&click_target), 1);
+	}
+
+	#[test]
+	fn the_cache_keeps_the_most_recent_entries() {
+		let click_target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, DVec2::splat(10.)), 1.);
+
+		for index in 0..10 {
+			click_target.bounding_box_with_transform(DAffine2::from_angle(index as f64 * PI / 16.));
+		}
+
+		assert_eq!(cached_entries(&click_target), BoundingBoxCache::CACHE_SIZE);
+	}
+
+	#[test]
+	fn degenerate_transforms_bypass_the_cache() {
+		let path = rectangle_path(DVec2::ZERO, DVec2::splat(10.));
+		let click_target = ClickTarget::new_with_path(path.clone(), 1.);
+		let flattening = DAffine2::from_scale(DVec2::new(1., 0.));
+
+		assert_bounds_eq(click_target.bounding_box_with_transform(flattening), bezpath_bounding_box_with_transform(&path, flattening));
+		assert_eq!(cached_entries(&click_target), 0);
+	}
+
+	#[test]
+	fn a_placed_shared_path_hits_like_a_baked_copy() {
+		let path = rectangle_path(DVec2::ZERO, DVec2::new(10., 5.));
+		let placement = DAffine2::from_scale_angle_translation(DVec2::new(3., 1.), 0.3, DVec2::new(40., -20.));
+
+		let shared = ClickTarget::new_with_shared_path(Arc::new(TargetPath::new(path.clone())), placement, 2.);
+		let baked = ClickTarget::new_with_path(Affine::new(placement.to_cols_array()) * &path, 2.);
+
+		let layer_transform = DAffine2::from_scale_angle_translation(DVec2::splat(0.5), -0.2, DVec2::new(3., 4.));
+		for x in (-10..60).step_by(3) {
+			for y in (-30..30).step_by(3) {
+				let point = DVec2::new(x as f64, y as f64);
+				assert_eq!(shared.intersect_point(point, layer_transform), baked.intersect_point(point, layer_transform), "at {point}");
+				assert_eq!(shared.intersect_point_no_stroke(point), baked.intersect_point_no_stroke(point), "at {point}");
+			}
+		}
+	}
+
+	#[test]
+	fn moving_a_target_keeps_its_geometry_shared() {
+		let mut target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, DVec2::ONE), 0.);
+		let original = target.clone();
+
+		target.apply_transform(DAffine2::from_translation(DVec2::new(5., 0.)));
+
+		let (TargetShape::Path { geometry, .. }, TargetShape::Path { geometry: original_geometry, .. }) = (&target.shape, &original.shape) else {
+			panic!("Both targets are paths");
+		};
+		assert!(Arc::ptr_eq(geometry, original_geometry));
+		assert_eq!(target.bounding_box(), Some([DVec2::new(5., 0.), DVec2::new(6., 1.)]));
 	}
 }

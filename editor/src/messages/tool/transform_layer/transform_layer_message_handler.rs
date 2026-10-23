@@ -718,10 +718,7 @@ impl TransformLayerMessageHandler {
 			let (outline, transform) = if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
 				(targets, document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface))
 			} else {
-				(
-					document.metadata().layer_with_free_points_outline(layer).cloned().collect(),
-					document.metadata().transform_to_viewport(layer),
-				)
+				(document.metadata().layer_with_free_points_outline(layer).collect(), document.metadata().transform_to_viewport(layer))
 			};
 			ghost_outline.push((outline, transform));
 		}

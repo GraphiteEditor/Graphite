@@ -355,14 +355,14 @@ impl DocumentMetadata {
 		self.all_layers().filter_map(|layer| self.bounding_box_viewport(layer)).reduce(Quad::combine_bounds)
 	}
 
-	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &BezPath> {
+	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = BezPath> {
 		self.visual_targets(layer).unwrap_or(&[]).iter().filter_map(|target| match target.target_type() {
 			ClickTargetType::Path(path) => Some(path),
 			ClickTargetType::FreePoint(_) => None,
 		})
 	}
 
-	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
+	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = ClickTargetType> {
 		self.visual_targets(layer).unwrap_or(&[]).iter().map(|target| target.target_type())
 	}
 

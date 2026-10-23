@@ -736,7 +736,7 @@ impl PathToolData {
 			let (outline, path_aware) = if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
 				(targets, true)
 			} else {
-				(document.metadata().layer_with_free_points_outline(layer).cloned().collect(), false)
+				(document.metadata().layer_with_free_points_outline(layer).collect(), false)
 			};
 
 			self.ghost_outline.push((outline, layer, path_aware));

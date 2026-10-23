@@ -26,7 +26,7 @@ use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
 use graphic_types::raster_types::{CPU, GPU, Image, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
-use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
+use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::vector_types::vector::{GeometryCache, Path, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths};
@@ -128,6 +128,15 @@ impl<'a> ItemRef<'a, Vector> {
 		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
 			Some(cache) => cache.faces(vector, self.paths()),
 			None => vector.construct_faces(self.paths()).into(),
+		}
+	}
+
+	/// The contours combined into one click target path, closing open ones when `filled`.
+	fn target_path(self, filled: bool) -> Option<Arc<TargetPath>> {
+		let vector = self.element()?;
+		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
+			Some(cache) => cache.target_path(vector, self.paths(), filled),
+			None => TargetPath::from_contours(&contour_bezpaths(&vector.0, self.paths()), filled).map(Arc::new),
 		}
 	}
 
@@ -2259,10 +2268,12 @@ impl Render for List<Vector> {
 	}
 }
 
-/// Build one multi-contour `BezPath` (nonzero fill rule, so holes like the inside of an "O" work
-/// correctly) plus one `FreePoint` per disconnected anchor, apply the transform, and append.
+/// Append one multi-contour target (nonzero fill rule, so holes like the inside of an "O" work correctly)
+/// plus one `FreePoint` per disconnected anchor, placed by the transform.
+/// The target's path is shared through the item's geometry cache with every copy drawing the same geometry.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, item: ItemRef<'_, Vector>, transform: DAffine2) {
-	extend_targets_from_bezpaths(targets, appearance, &item.contours(), transform);
+	let target_path = item.target_path(is_filled_for_hit_testing(appearance));
+	push_path_target(targets, appearance, target_path, &item.contours(), transform);
 
 	let Some(geometry) = item.element() else { return };
 	for click_target in extend_free_point_targets(geometry, item.paths(), transform) {
@@ -2270,14 +2281,25 @@ fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option
 	}
 }
 
-/// The contour half of [`extend_targets_from_vector`], also serving `editor:click_target` overrides.
+/// The contour half of [`extend_targets_from_vector`] for `editor:click_target` overrides, which have no geometry cache.
 fn extend_targets_from_bezpaths(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, bezpaths: &[BezPath], transform: DAffine2) {
-	// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing
-	let filled = appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill));
+	let target_path = TargetPath::from_contours(bezpaths, is_filled_for_hit_testing(appearance)).map(Arc::new);
+	push_path_target(targets, appearance, target_path, bezpaths, transform);
+}
 
-	let is_closed = |bezpath: &BezPath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
-	let nonempty_bezpaths = || bezpaths.iter().filter(|bezpath| !bezpath.elements().is_empty());
-	let all_contours_closed = nonempty_bezpaths().all(is_closed);
+/// A coverage whose paint is `Graphic::None` exists but paints nothing, so it does not close subpaths for hit testing.
+fn is_filled_for_hit_testing(appearance: Option<&Appearance>) -> bool {
+	appearance.is_some_and(|appearance| appearance.has_painted_cover(Cover::Fill))
+}
+
+/// Appends a target placing `target_path` (combined from `contours`) by `transform`, with the appearance's stroke as its click inflation.
+fn push_path_target(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, target_path: Option<Arc<TargetPath>>, contours: &[BezPath], transform: DAffine2) {
+	let Some(target_path) = target_path else { return };
+
+	let all_contours_closed = contours
+		.iter()
+		.filter(|bezpath| !bezpath.elements().is_empty())
+		.all(|bezpath| matches!(bezpath.elements().last(), Some(PathEl::ClosePath)));
 
 	// Inside/Outside-aligned strokes reach `weight` from the centerline rather than `weight / 2` per side,
 	// so they need double the click inflation. Alignment is only honored by the renderer for fully-closed paths.
@@ -2290,21 +2312,7 @@ fn extend_targets_from_bezpaths(targets: &mut Vec<ClickTarget>, appearance: Opti
 		}
 	});
 
-	if nonempty_bezpaths().next().is_some() {
-		// Sized up front and transformed before the target exists, so its bounds and cache are set up once.
-		// A filled target closes each open contour while copying, leaving the borrowed contours untouched.
-		let mut combined_elements = Vec::with_capacity(nonempty_bezpaths().map(|bezpath| bezpath.elements().len() + 1).sum());
-		for bezpath in nonempty_bezpaths() {
-			combined_elements.extend_from_slice(bezpath.elements());
-			if filled && !is_closed(bezpath) {
-				combined_elements.push(PathEl::ClosePath);
-			}
-		}
-		let mut combined_path = BezPath::from_vec(combined_elements);
-		combined_path.apply_affine(Affine::new(transform.to_cols_array()));
-
-		targets.push(ClickTarget::new_with_path(combined_path, stroke_width));
-	}
+	targets.push(ClickTarget::new_with_shared_path(target_path, transform, stroke_width));
 }
 
 /// Splits a compound bezpath into its contours, so per-contour closing behaves as with source geometry.
