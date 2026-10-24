@@ -812,7 +812,7 @@ fn read_attribute_raster(
 }
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
-#[node_macro::node(category("Data: List"), icon("NodeExtend"))]
+#[node_macro::node(category("Data: List"), icon("NodeExtend"), memoize)]
 fn extend<T: Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
