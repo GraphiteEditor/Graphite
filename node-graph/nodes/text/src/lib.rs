@@ -14,7 +14,7 @@ use core_types::math::float_noise::round_away_float_noise;
 use core_types::misc::{format_f64, parse_f64};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use rand::{Rng, SeedableRng};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -976,16 +976,6 @@ fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
 	let var_arg = var_arg as &dyn std::any::Any;
 
 	var_arg.downcast_ref::<Item<String>>().cloned().unwrap_or_default()
-}
-
-/// Converts a value to a JSON string representation.
-#[node_macro::node(category("Debug"), icon("NodeSerialize"))]
-fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, i64, DVec2, DAffine2)] value: Item<T>) -> Item<String> {
-	let (value, attributes) = value.into_parts();
-
-	let result = serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string());
-
-	Item::from_parts(result, attributes)
 }
 
 #[cfg(test)]
