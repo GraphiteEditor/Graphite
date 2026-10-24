@@ -42,6 +42,12 @@ unsafe impl<C: dyn_any::StaticTypeSized> dyn_any::StaticType for GradientStops<C
 	type Static = GradientStops<C::Static>;
 }
 
+impl<C> GradientStops<C> {
+	pub fn is_empty(&self) -> bool {
+		self.color.is_empty()
+	}
+}
+
 impl From<&Gradient> for GradientStops<Color> {
 	fn from(gradient: &Gradient) -> Self {
 		Self {

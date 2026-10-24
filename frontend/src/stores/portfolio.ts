@@ -29,17 +29,20 @@ const initialState: PortfolioStoreState = {
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
+// The layers (by ID string) the Layers panel has rows rendered for, whose details are the only ones it keeps
+let layersWithDetails = new Set<string>();
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
 export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
-export const propertiesPanelLayout = makeLayoutStore("propertiesPanelLayout");
+export const inspectorLayout = makeLayoutStore("inspectorLayout");
 export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
 export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
-export const layersPanelControlBarRightLayout = makeLayoutStore("layersPanelControlBarRightLayout");
-export const layersPanelBottomBarLayout = makeLayoutStore("layersPanelBottomBarLayout");
+export const layersPanelBottomBarLeftLayout = makeLayoutStore("layersPanelBottomBarLeftLayout");
+export const layersPanelBottomBarRightLayout = makeLayoutStore("layersPanelBottomBarRightLayout");
 
 // Each panel layout has its own dedicated store so a layout update only re-renders that panel's consumers.
 // Putting them at module scope (not inside the component) lets them survive a Svelte remount during a
@@ -135,9 +138,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(welcomeScreenButtonsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("PropertiesPanel", async (data) => {
+	subscriptions.subscribeLayoutUpdate("Inspector", async (data) => {
 		await tick();
-		patchLayoutStore(propertiesPanelLayout, data);
+		patchLayoutStore(inspectorLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
@@ -150,14 +153,14 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayoutStore(layersPanelControlBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelControlBarRightLayout, data);
+		patchLayoutStore(layersPanelBottomBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", async (data) => {
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", async (data) => {
 		await tick();
-		patchLayoutStore(layersPanelBottomBarLayout, data);
+		patchLayoutStore(layersPanelBottomBarRightLayout, data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
@@ -168,6 +171,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		// Details sent before their layer's row left view would otherwise be kept without the backend updating them
+		if (!layersWithDetails.has(String(data.data.id))) return;
+
 		update((state) => {
 			state.layerCache.set(String(data.data.id), data.data);
 			return state;
@@ -175,6 +181,17 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	return { subscribe };
+}
+
+// Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document
+export function retainLayerDetails(layerIds: Set<string>, otherDocument: boolean) {
+	layersWithDetails = layerIds;
+	update((state) => {
+		Array.from(state.layerCache.keys()).forEach((id) => {
+			if (otherDocument || !layerIds.has(id)) state.layerCache.delete(id);
+		});
+		return state;
+	});
 }
 
 export function destroyPortfolioStore() {
@@ -190,11 +207,11 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("TriggerExportImage");
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
-	subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
+	subscriptions.unsubscribeLayoutUpdate("Inspector");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
-	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
+	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
 	subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 }

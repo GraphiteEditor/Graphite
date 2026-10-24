@@ -1,30 +1,32 @@
 use super::*;
+use graphene_std::list::Item;
+use graphene_std::vector::VectorGeometry;
 
 impl NodeNetworkInterface {
-	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorGeometry> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))
-			&& let Some(vector) = self.document_metadata.vector_modify.get(&path_node)
+			&& let Some(geometry) = self.document_metadata.vector_modify.get(&path_node)
 		{
-			let mut modified = vector.clone();
+			let mut modified = geometry.clone();
 
 			let path_node = self.document_network().nodes.get(&path_node);
 			let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
 			if let Some(TaggedValue::VectorModification(modification)) = modification_input {
-				modification.apply(&mut modified);
+				modification.apply(&mut modified.vector, &mut modified.paths);
 			}
 			return Some(modified);
 		}
 
-		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
+		self.document_metadata.layer_vector_data.get(&layer).map(|item| VectorGeometry::from_item(item))
 	}
 
 	/// The vector geometry an upstream Path node would surface for editing.
 	/// This is the result of `compute_modified_vector`, but only if a visible 'Path' node is actually upstream.
 	/// Useful for tool overlays and snap target collection usages that want to match the Path tool's view
 	/// (e.g. the pre-solidified centerline for a Solidify Stroke layer) and otherwise do nothing.
-	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
+	pub fn upstream_path_node_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorGeometry> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 		graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
 		self.compute_modified_vector(layer)
@@ -46,11 +48,8 @@ impl NodeNetworkInterface {
 			targets.push(ClickTargetType::Path(combined));
 		}
 
-		for &point_id in vector.point_domain.ids() {
-			if !vector.any_connected(point_id) {
-				let position = vector.point_domain.position_from_id(point_id).unwrap_or_default();
-				targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
-			}
+		for (point_id, position) in vector.free_points() {
+			targets.push(ClickTargetType::FreePoint(FreePoint::new(point_id, position)));
 		}
 
 		Some(targets)
@@ -58,6 +57,7 @@ impl NodeNetworkInterface {
 
 	/// Loads the structure of layer nodes from a node graph.
 	pub fn load_structure(&mut self) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.structure = HashMap::from_iter([(LayerNodeIdentifier::ROOT_PARENT, NodeRelations::default())]);
 
 		// Only load structure if there is a root node
@@ -142,26 +142,34 @@ impl NodeNetworkInterface {
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 		self.document_metadata.outlines.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 		self.document_metadata.text_frames.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.group_layers.retain(|layer| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.reset_composed_targets();
 	}
 
-	/// Update the cached transforms of the layers
-	pub fn update_transforms(&mut self, upstream_footprints: HashMap<NodeId, Footprint>, local_transforms: HashMap<NodeId, DAffine2>) {
+	/// Update the cached transforms of the layers, which a render made with the given view reported
+	pub fn update_transforms(&mut self, upstream_footprints: HashMap<NodeId, Footprint>, local_transforms: HashMap<NodeId, DAffine2>, document_to_viewport: DAffine2) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.upstream_footprints = upstream_footprints;
 		self.document_metadata.local_transforms = local_transforms;
+		self.document_metadata.rendered_document_to_viewport = document_to_viewport;
 	}
 
 	/// Update the cached first item's source id of the layers
 	pub fn update_first_element_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.first_element_source_ids = new;
 	}
 
-	/// Update the cached click targets of the layers
-	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
+	/// Update the cached click targets of the layers and the set of group layers
+	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>, new_group_layers: HashSet<LayerNodeIdentifier>) {
 		self.document_metadata.click_targets = new_click_targets;
+		self.document_metadata.group_layers = new_group_layers;
+		self.document_metadata.mark_changed();
 	}
 
 	/// Update the cached source-geometry outline targets of the layers
 	pub fn update_outlines(&mut self, new_outlines: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.outlines = new_outlines;
 	}
 
@@ -177,12 +185,14 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the vector modify of the layers
-	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, Vector>) {
+	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorGeometry>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.vector_modify = new_vector_modify;
 	}
 
 	/// Update the layer vector data (for layers without Path nodes)
-	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
+	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Item<Vector>>>) {
+		self.document_metadata.mark_changed();
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 

@@ -24,6 +24,7 @@ use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 #[cfg(target_family = "wasm")]
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use std::sync::Arc;
 
 fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
@@ -40,7 +41,7 @@ fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 }
 
 /// Sends an HTTP GET request to a specified URL and optionally waits for the response (unless discarded) which is output as a string.
-#[node_macro::node(category("Web Request"))]
+#[node_macro::node(category("Data: I/O"), icon("NodeGetRequest"), placeholder = pending_text)]
 async fn get_request(
 	_: impl Ctx,
 	_primary: (),
@@ -58,14 +59,7 @@ async fn get_request(
 	let request = reqwest::Client::new().get(url).headers(header_map);
 
 	if discard_result {
-		#[cfg(target_family = "wasm")]
-		wasm_bindgen_futures::spawn_local(async move {
-			let _ = request.send().await;
-		});
-		#[cfg(all(not(target_family = "wasm"), feature = "tokio"))]
-		tokio::spawn(async move {
-			let _ = request.send().await;
-		});
+		let _ = request.send().await;
 		return Item::default();
 	}
 
@@ -75,8 +69,12 @@ async fn get_request(
 	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
+fn pending_text(_primary: &(), _url: &Item<String>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
+	Item::default()
+}
+
 /// Sends an HTTP POST request to a specified URL with the provided binary data and optionally waits for the response (unless discarded) which is output as a string.
-#[node_macro::node(category("Web Request"))]
+#[node_macro::node(category("Data: I/O"), icon("NodePostRequest"), placeholder = pending_post_text)]
 async fn post_request(
 	_: impl Ctx,
 	_primary: (),
@@ -98,14 +96,7 @@ async fn post_request(
 	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
 
 	if discard_result {
-		#[cfg(target_family = "wasm")]
-		wasm_bindgen_futures::spawn_local(async move {
-			let _ = request.send().await;
-		});
-		#[cfg(all(not(target_family = "wasm"), feature = "tokio"))]
-		tokio::spawn(async move {
-			let _ = request.send().await;
-		});
+		let _ = request.send().await;
 		return Item::default();
 	}
 
@@ -115,14 +106,18 @@ async fn post_request(
 	Item::new_from_element(response.text().await.ok().unwrap_or_default())
 }
 
+fn pending_post_text(_primary: &(), _url: &Item<String>, _body: &Item<Resource>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
+	Item::default()
+}
+
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
-#[node_macro::node(category("Web Request"), name("String to Bytes"))]
+#[node_macro::node(category("Data: I/O"), icon("NodeStringToBytes"), name("String to Bytes"))]
 fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 	Item::new_from_element(Resource::new(string.into_element().into_bytes()))
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
-#[node_macro::node(category("Web Request"), name("Image to Bytes"))]
+#[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 	let bytes: Vec<u8> = image
 		.element()
@@ -138,8 +133,8 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
-#[node_macro::node(category("Web Request"))]
-async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
+#[node_macro::node(category("Data: I/O"), icon("NodeLoadResource"), placeholder = pending_resource)]
+async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
 	let url = url.into_element();
 	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
 
@@ -160,11 +155,15 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[name("URL")] url: It
 	}
 }
 
+fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
+	Item::new_from_element(Resource::empty())
+}
+
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
-#[node_macro::node(category("Web Request"))]
-fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 	let data = data.into_element();
 	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
 
@@ -173,13 +172,13 @@ fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
-async fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
+fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
 	Item::new_from_element(CanvasHandle::new())
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[cfg(target_family = "wasm")]
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), placeholder = pending_raster)]
 async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, canvas: Item<CanvasHandle>) -> List<Raster<CPU>> {
 	let mut data = data;
 	let mut canvas = canvas.into_element();
@@ -238,24 +237,30 @@ async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>,
 	)
 }
 
+#[cfg(target_family = "wasm")]
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _canvas: &Item<CanvasHandle>) -> List<Raster<CPU>> {
+	List::new()
+}
+
 #[node_macro::node(category(""), inject_scope)]
-pub async fn editor_api<'a: 'n>(_: impl Ctx, #[scope("editor-api")] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a PlatformEditorApi> {
+fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Arc<PlatformEditorApi>> {
 	editor_api
 }
 
-#[node_macro::node(category(""))]
-pub async fn resource<'a: 'n>(
+#[node_macro::node(category(""), placeholder = pending_stored_resource)]
+async fn resource(
 	_: impl Ctx,
 	/// The scope-provided editor API giving access to the platform's resource storage.
 	#[scope(editor_api::IDENTIFIER)]
-	editor_api: Item<&'a PlatformEditorApi>,
+	editor_api: Item<Arc<PlatformEditorApi>>,
 	/// The content hash identifying which stored resource to load.
 	hash: Item<ResourceHash>,
 ) -> Item<Resource> {
 	let hash = hash.into_element();
 	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
 
-	let Some(application_io) = editor_api.into_element().application_io.as_ref() else {
+	let editor_api = editor_api.into_element();
+	let Some(application_io) = editor_api.application_io.as_ref() else {
 		log::error!("Resource {hash} is unavailable because the platform's application IO is missing");
 		return placeholder();
 	};
@@ -268,29 +273,34 @@ pub async fn resource<'a: 'n>(
 	Item::new_from_element(resource)
 }
 
+fn pending_stored_resource(_editor_api: &Item<Arc<PlatformEditorApi>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
+	Item::new_from_element(Resource::empty())
+}
+
 #[node_macro::node(category(""), inject_scope)]
-pub async fn wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<&'a ::wgpu_executor::WgpuExecutor> {
+fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<::wgpu_executor::WgpuExecutor> {
 	let executor = editor_api
 		.into_element()
 		.application_io
 		.as_ref()
 		.expect("ApplicationIo not available")
 		.gpu_executor()
-		.expect("GPU executor not available");
+		.expect("GPU executor not available")
+		.clone();
 	Item::new_from_element(executor)
 }
 
 #[node_macro::node(category(""), inject_scope)]
-pub async fn try_wgpu_executor<'a: 'n>(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<&'a PlatformEditorApi>) -> Item<Option<&'a ::wgpu_executor::WgpuExecutor>> {
-	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor());
+fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Option<::wgpu_executor::WgpuExecutor>> {
+	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor()).cloned();
 	Item::new_from_element(executor)
 }
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Debug"), memoize)]
-pub async fn upload_texture<'a: 'n>(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<&'a ::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
+#[node_macro::node(category("Raster"), icon("NodeUploadTexture"), memoize)]
+fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
 	let executor = executor.into_element();
 	let (raster, attributes) = content.into_parts();
 
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor).await, attributes)
+	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
 }

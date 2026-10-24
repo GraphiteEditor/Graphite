@@ -5,7 +5,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{Codec, Error, GddV1, GddV1Layout, Layout, Manifest, io, manifest};
-use document_graph_storage::{HotOp, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
+use document_graph_storage::{HotOp, HotSequence, Network, NetworkId, PeerId, ROOT_NETWORK, RegistryDelta, TimeStamp};
 
 fn empty_container() -> AnyContainer {
 	AnyContainer::Memory(MemoryBackend::new())
@@ -122,6 +122,8 @@ fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 
@@ -146,6 +148,8 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		let late = HotOp {
 			op: RegistryDelta::AddNetwork {
@@ -153,6 +157,8 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 10, peer: PeerId(5) },
+			sequence: HotSequence(2),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(early).unwrap();
 		gdd.apply_hot_op(late).unwrap();
@@ -190,6 +196,8 @@ fn last_broadcast_rev_persists_across_reopen() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(op).unwrap();
 		let retired = gdd.retire(TimeStamp { counter: 1, peer: PeerId(5) }).unwrap_or_else(|error| panic!("retire failed: {error:?}"));
@@ -596,11 +604,19 @@ fn first_commit_registers_peer_and_survives_reopen() {
 
 		gdd.commit_from_runtime(&network, &NoMetadata, &ResourceRegistry::new(), &HashMapResourceStorage::new())
 			.unwrap_or_else(|error| panic!("commit_from_runtime failed: {error:?}"));
-		assert_eq!(gdd.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "first commit registers the peer");
+		assert_eq!(
+			gdd.registry().peer_users.get(&PeerId(21)).map(|registration| registration.user),
+			Some(UserId(21)),
+			"first commit registers the peer"
+		);
 
 		let (working, layout) = gdd.into_storage();
 		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
-		assert_eq!(reopened.registry().peer_users.get(&PeerId(21)), Some(&UserId(21)), "registration survives reopen");
+		assert_eq!(
+			reopened.registry().peer_users.get(&PeerId(21)).map(|registration| registration.user),
+			Some(UserId(21)),
+			"registration survives reopen"
+		);
 	});
 }
 
@@ -619,6 +635,8 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 				network: Network::default(),
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
+			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 
@@ -680,5 +698,35 @@ fn declarations_round_trip_through_byte_store() {
 			DocumentNodeImplementation::ProtoNode(identifier) => assert_eq!(identifier.as_str(), PROTO, "proto-node identifier survived the byte-store round-trip"),
 			other => panic!("expected a ProtoNode implementation, got {other:?}"),
 		}
+	});
+}
+
+#[cfg(feature = "conversion")]
+#[test]
+fn an_export_without_history_drops_tombstones() {
+	use document_format::{ExportFormat, ExportOptions};
+	use document_graph_storage::{Network, NetworkId, RegistryDelta};
+
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(5), 0xAC, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+		let id = NetworkId(7);
+		gdd.stage_constructed_ops(vec![RegistryDelta::AddNetwork { id, network: Network::default() }], &Default::default(), &empty_byte_store())
+			.unwrap();
+		gdd.stage_constructed_ops(vec![RegistryDelta::RemoveNetwork { id, snapshot: Network::default() }], &Default::default(), &empty_byte_store())
+			.unwrap();
+		assert!(gdd.registry().removed_networks.contains_key(&id));
+
+		let dir = tempfile::tempdir().unwrap();
+		let dest = dir.path().join("flat");
+		let options = ExportOptions {
+			include_history: false,
+			..ExportOptions::default()
+		};
+		gdd.export(&dest, ExportFormat::Folder, options, &empty_byte_store(), None)
+			.await
+			.unwrap_or_else(|error| panic!("export failed: {error:?}"));
+
+		let reopened = GddV1::open(&dest).await.unwrap_or_else(|error| panic!("open failed: {error:?}"));
+		assert!(reopened.registry().removed_networks.is_empty(), "a document without history starts without tombstones");
 	});
 }

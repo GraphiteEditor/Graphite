@@ -128,13 +128,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.insert_node(origins_to_polyline_id, origins_to_polyline, &[]);
 		self.network_interface.move_node_to_chain_start(&origins_to_polyline_id, layer, &[], self.import);
 
-		// Add Auto-Tangents node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
-		let auto_tangents = resolve_proto_node_type(graphene_std::vector::auto_tangents::IDENTIFIER)
-			.expect("Auto-Tangents node does not exist")
+		// Add Smooth Anchors node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
+		let smooth_anchors = resolve_proto_node_type(graphene_std::vector::smooth_anchors::IDENTIFIER)
+			.expect("Smooth Anchors node does not exist")
 			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(1.), false)), Some(NodeInput::value(TaggedValue::Bool(false), false))]);
-		let auto_tangents_id = NodeId::new();
-		self.network_interface.insert_node(auto_tangents_id, auto_tangents, &[]);
-		self.network_interface.move_node_to_chain_start(&auto_tangents_id, layer, &[], self.import);
+		let smooth_anchors_id = NodeId::new();
+		self.network_interface.insert_node(smooth_anchors_id, smooth_anchors, &[]);
+		self.network_interface.move_node_to_chain_start(&smooth_anchors_id, layer, &[], self.import);
 
 		// Add Path node to chain start (closest to the Merge node)
 		let path = resolve_network_node_type("Path").expect("Path node does not exist").default_node_template();
@@ -147,8 +147,8 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn insert_vector(&mut self, bezpath: BezPath, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
 		// Build a VectorModification that reproduces the geometry (same format the Pen tool uses)
-		let vector = Vector::from_bezpath(bezpath);
-		let modification = Box::new(VectorModification::create_from_vector(&vector));
+		let (vector, paths) = Vector::from_bezpath(&bezpath);
+		let modification = Box::new(VectorModification::create_from_vector(&vector, &paths));
 
 		let shape = resolve_network_node_type("Path")
 			.expect("Path node does not exist")
@@ -247,14 +247,15 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	/// Clear the whole-expanse paint one tool left on a layer so the other can start its own chain there.
-	/// Severing at the attachment detaches the layer from whatever the walk stopped at, which is the only part a node
-	/// the rest of the graph also draws from is subjected to, since such a node is never among those deleted.
+	/// Severing at the attachment detaches the layer from the old chain, which is all that a node the rest of
+	/// the graph also draws from is subjected to, since such a node is never among those deleted.
 	fn clear_paint_chain(&mut self, paint_chain: &ReplaceablePaintChain) {
 		self.network_interface.disconnect_input(&paint_chain.attachment_input, &[]);
 
 		if !paint_chain.nodes.is_empty() {
 			self.network_interface.delete_nodes(paint_chain.nodes.clone(), false, &[]);
 		}
+		self.network_interface.remove_orphaned_dots(&[]);
 	}
 
 	/// Wire a node that paints the layer's whole expanse into the start of its chain,
@@ -752,7 +753,7 @@ impl<'a> ModifyInputsContext<'a> {
 		};
 
 		transform_utils::update_transform(self.network_interface, &transform_node_id, last_transform_value);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -959,7 +960,7 @@ impl<'a> ModifyInputsContext<'a> {
 		transform_utils::update_transform(self.network_interface, &transform_node_id, transform);
 
 		// Refresh the render and editor UI
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
@@ -970,7 +971,7 @@ impl<'a> ModifyInputsContext<'a> {
 			return;
 		};
 		self.network_interface.vector_modify(&path_node_id, modification_type);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		self.responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
@@ -1002,10 +1003,10 @@ impl<'a> ModifyInputsContext<'a> {
 		);
 	}
 
-	/// Set the input, refresh the Properties panel, and run the document graph if skip_rerender is false
+	/// Set the input, refresh the Inspector, and run the document graph if skip_rerender is false
 	pub fn set_input_with_refresh(&mut self, input_connector: InputConnector, input: NodeInput, skip_rerender: bool) {
 		self.network_interface.set_input(&input_connector, input, &[]);
-		self.responses.add(PropertiesPanelMessage::Refresh);
+		self.responses.add(InspectorMessage::Refresh);
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
@@ -1057,6 +1058,14 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 	};
 	let downstream_consumers = primary_output_consumers(network_interface, network_path, downstream);
 
+	// The rewiring knocks chain nodes out to absolute positions, so record how the pair and the chain feeding it were placed
+	let original_placements = network_interface
+		.upstream_flow_back_from_nodes(vec![downstream], network_path, FlowType::HorizontalFlow)
+		.enumerate()
+		.take_while(|(index, node_id)| *index < 2 || network_interface.is_chain(node_id, network_path))
+		.map(|(_, node_id)| (node_id, network_interface.is_chain(&node_id, network_path), network_interface.position(&node_id, network_path)))
+		.collect::<Vec<_>>();
+
 	network_interface.set_input(&InputConnector::node_at_index(downstream, 0), upstream_source, network_path);
 	network_interface.set_input(&InputConnector::node_at_index(upstream, 0), NodeInput::node(downstream, 0), network_path);
 	for consumer in &downstream_consumers {
@@ -1064,6 +1073,16 @@ pub fn set_stroke_paint_order(network_interface: &mut NodeNetworkInterface, netw
 			continue;
 		}
 		network_interface.set_input(consumer, NodeInput::node(upstream, 0), network_path);
+	}
+
+	// Each node of the pair takes over the other's place, and the chain feeding the pair is restored as it was
+	let swapped_nodes = [upstream, downstream].into_iter().chain(original_placements.iter().skip(2).map(|(node_id, _, _)| *node_id));
+	for (node_id, (_, was_chain, position)) in swapped_nodes.zip(&original_placements) {
+		if *was_chain {
+			network_interface.set_chain_position(&node_id, network_path);
+		} else if let Some(position) = position {
+			network_interface.set_absolute_position(&node_id, *position, network_path);
+		}
 	}
 
 	true

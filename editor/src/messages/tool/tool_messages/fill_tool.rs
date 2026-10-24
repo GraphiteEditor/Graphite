@@ -45,6 +45,13 @@ impl ToolMetadata for FillTool {
 	}
 }
 
+impl ToolEditTarget for FillTool {
+	fn edit_target(&self) -> EditTarget {
+		// Exact for a selected layer painted whole, which a click reaches through the selection, while geometry is filled on whichever layer is clicked
+		EditTarget::FirstApplicable(vec![EditTarget::proto_node(graphene_std::math_nodes::color_value::IDENTIFIER, Insertion::Never), EditTarget::fill()])
+	}
+}
+
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
 		let widgets = vec![
@@ -183,7 +190,8 @@ impl Fsm for FillToolFsmState {
 					_ => return self,
 				};
 
-				responses.add(DocumentMessage::AddTransaction);
+				// Left open until the release, so Esc or right-click while the button is held can still roll the fill back
+				responses.add(DocumentMessage::StartTransaction);
 				if route_to_color_chain {
 					responses.add(GraphOperationMessage::ColorValueSet { layer: layer_identifier, color });
 				} else {
@@ -195,7 +203,11 @@ impl Fsm for FillToolFsmState {
 
 				FillToolFsmState::Filling
 			}
-			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
+			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => {
+				responses.add(DocumentMessage::EndTransaction);
+
+				FillToolFsmState::Ready
+			}
 			(FillToolFsmState::Filling, FillToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
@@ -269,7 +281,7 @@ mod test_fill {
 
 	// The Fill tool writes solid colors, whose stored values the input monitor records as `Item<Color>` wires
 	async fn get_fills(editor: &mut EditorTestUtils) -> Vec<Item<Color>> {
-		let instrumented = match editor.eval_graph().await {
+		let instrumented = match editor.eval_graph_until_finished().await {
 			Ok(instrumented) => instrumented,
 			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
@@ -319,6 +331,30 @@ mod test_fill {
 		assert_eq!(fills.len(), 1);
 		let color = fills.first().unwrap().element();
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
+	}
+
+	#[tokio::test]
+	async fn esc_while_held_cancels_the_fill() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let original = *get_fills(&mut editor).await.first().expect("the rectangle should have a fill").element();
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.select_tool(ToolType::Fill).await;
+		editor.left_mousedown(50., 50., ModifierKeys::empty()).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(50., 50., ModifierKeys::empty()).await;
+
+		let fills = get_fills(&mut editor).await;
+		assert_eq!(fills.len(), 1);
+		assert_eq!(SRGBA8::from(*fills[0].element()), SRGBA8::from(original), "Esc while the button is held should undo the fill");
+
+		// Without the Esc, the fill sticks and is one undo step
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+		assert_eq!(SRGBA8::from(*get_fills(&mut editor).await[0].element()), SRGBA8::from(Color::GREEN));
+		editor.handle_message(DocumentMessage::Undo).await;
+		assert_eq!(SRGBA8::from(*get_fills(&mut editor).await[0].element()), SRGBA8::from(original), "one undo should take the fill back");
 	}
 
 	#[tokio::test]
@@ -532,6 +568,63 @@ mod test_fill {
 			get_upstream_gradient_value_node_id(ellipse, &document.network_interface),
 			Some(gradient_value_id),
 			"the ellipse's fill should still resolve to the gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_layer_drawing_shared_geometry_keeps_it() {
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_upstream_color_value_node_id;
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rectangle = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// A new layer above the rectangle, whose content is wired from the end of the rectangle's chain so both draw it
+		let sharing_id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: sharing_id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let sharing = LayerNodeIdentifier::new_unchecked(sharing_id);
+		let shared_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&InputConnector::layer_secondary_input(rectangle.to_node()), &[])
+			.and_then(|output| output.node_id())
+			.expect("the rectangle should have a chain");
+		editor
+			.active_document_mut()
+			.network_interface
+			.create_wire(&OutputConnector::primary_output(shared_id), &InputConnector::layer_secondary_input(sharing_id), &[]);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![sharing_id] }).await;
+
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(50., 50.), ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		assert!(
+			get_upstream_color_value_node_id(sharing, network_interface).is_none(),
+			"a layer drawing shared geometry isn't blank, so it mustn't get a whole-expanse color"
+		);
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::layer_secondary_input(sharing_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(shared_id),
+			"the layer should still draw the shared rectangle"
+		);
+
+		let fills = get_fills(&mut editor).await;
+		assert!(
+			fills.iter().any(|fill| SRGBA8::from(*fill.element()) == SRGBA8::from(Color::GREEN)),
+			"the shared rectangle's Fill should take the color"
 		);
 	}
 

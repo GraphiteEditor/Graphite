@@ -30,72 +30,8 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::node(category("Debug"))]
-pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
-	let image_frame_transform: DAffine2 = image_frame.attribute_cloned_or_default(ATTR_TRANSFORM);
-
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-	let image_bounds = Bbox::from_transform(image_frame_transform).to_axis_aligned_bbox();
-	let intersection = viewport_bounds.intersect(&image_bounds);
-	let size = intersection.size();
-
-	// If the image would not be visible, return it unchanged
-	if size.x <= 0. || size.y <= 0. {
-		return image_frame;
-	}
-
-	let (image, mut attributes) = image_frame.into_parts();
-	let (width, height) = (image.width, image.height);
-
-	// Resize the image using the image crate, which filters each channel independently, so premultiply to keep transparent texels from bleeding into edges
-	let mut image = image.into_data();
-	image.map_pixels(|px| px.to_associated_alpha());
-	let data = bytemuck::cast_vec(image.data);
-	let image_size = DAffine2::from_scale(DVec2::new(width as f64, height as f64));
-	let size_px = image_size.transform_vector2(size).as_uvec2();
-
-	let image_buffer = ::image::Rgba32FImage::from_raw(width, height, data).expect("Failed to convert internal image format into image-rs data type.");
-
-	let dynamic_image: ::image::DynamicImage = image_buffer.into();
-	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-	let offset_px = image_size.transform_vector2(offset).as_uvec2();
-	let cropped = dynamic_image.crop_imm(offset_px.x, offset_px.y, size_px.x, size_px.y);
-
-	let viewport_resolution_x = footprint.transform.transform_vector2(DVec2::X * size.x).length();
-	let viewport_resolution_y = footprint.transform.transform_vector2(DVec2::Y * size.y).length();
-	let mut new_width = size_px.x;
-	let mut new_height = size_px.y;
-
-	// Only downscale the image for now
-	let resized = if new_width < width || new_height < height {
-		new_width = viewport_resolution_x as u32;
-		new_height = viewport_resolution_y as u32;
-		// TODO: choose filter based on quality requirements
-		cropped.resize_exact(new_width, new_height, ::image::imageops::Triangle)
-	} else {
-		cropped
-	};
-	let buffer = resized.to_rgba32f();
-	let buffer = buffer.into_raw();
-	let vec = bytemuck::cast_vec(buffer);
-	let mut image = Image {
-		width: new_width,
-		height: new_height,
-		data: vec,
-		base64_string: None,
-	};
-	image.map_pixels(|px: Color| px.to_unassociated_alpha());
-	// we need to adjust the offset if we truncate the offset calculation
-
-	let new_transform = image_frame_transform * DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-	attributes.insert(ATTR_TRANSFORM, new_transform);
-
-	Item::from_parts(Raster::new_cpu(image), attributes)
-}
-
-#[node_macro::node(category("Raster: Channels"))]
-pub fn combine_channels(
+#[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"))]
+fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
 	#[expose] red: Item<Raster<CPU>>,
@@ -149,8 +85,8 @@ pub fn combine_channels(
 	Item::from_parts(Raster::new_cpu(image), attributes)
 }
 
-#[node_macro::node(category("Raster"))]
-pub fn mask(
+#[node_macro::node(category("Raster"), icon("NodeMask"))]
+fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
 	image: Item<Raster<CPU>>,
@@ -196,7 +132,7 @@ pub fn mask(
 }
 
 #[node_macro::node(category(""))]
-pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
+fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
 	let bounds = *bounds.element();
 
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -209,7 +145,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 	let (image, mut attributes) = image.into_parts();
 	let (image_width, image_height) = (image.width, image.height);
 	if image_width == 0 || image_height == 0 {
-		return empty_image((), Item::new_from_element(bounds), Item::new_from_element(Color::TRANSPARENT));
+		return empty_image(bounds, Color::TRANSPARENT);
 	}
 
 	let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -239,13 +175,12 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Ite
 	Item::from_parts(Raster::new_cpu(new_image), attributes)
 }
 
-#[node_macro::node(category("Debug"))]
-pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -> Item<Raster<CPU>> {
-	let transform = transform.into_element();
+/// Creates an image filled with one color, sized in pixels by the transform's scale and placed by the transform.
+fn empty_image(transform: DAffine2, color: Color) -> Item<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let image = Image::new(width, height, color.into_element());
+	let image = Image::new(width, height, color);
 
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
@@ -253,8 +188,8 @@ pub fn empty_image(_: impl Ctx, transform: Item<DAffine2>, color: Item<Color>) -
 /// Displays an image from a file.
 ///
 /// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
-#[node_macro::node(category("Raster"))]
-pub fn image<'a: 'n>(
+#[node_macro::node(category("Raster"), icon("NodeImage"))]
+fn image(
 	_: impl Ctx,
 	_primary: (),
 	/// The image file to display.
@@ -268,39 +203,39 @@ pub fn image<'a: 'n>(
 }
 
 /// Generates customizable procedural noise patterns.
-#[node_macro::node(category("Raster: Pattern"))]
+#[node_macro::node(category("Raster"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
-pub fn noise_pattern(
+fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
 	_primary: (),
 	#[default(true)] clip: Item<bool>,
 	#[hard(0..)] seed: Item<i64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_scale")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_scale")]
 	#[default(10.)]
 	scale: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_noise_type")] noise_type: Item<NoiseType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_domain_warp_amplitude")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_noise_type")] noise_type: Item<NoiseType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_amplitude")]
 	#[default(100.)]
 	domain_warp_amplitude: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_type")] fractal_type: Item<FractalType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_octaves")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_type")] fractal_type: Item<FractalType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_octaves")]
 	#[default(3)]
 	#[hard(1..10)]
 	fractal_octaves: Item<i64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_lacunarity")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_lacunarity")]
 	#[default(2.)]
 	fractal_lacunarity: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_gain")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_gain")]
 	#[default(0.5)]
 	fractal_gain: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_ping_pong_strength")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_ping_pong_strength")]
 	#[default(2.)]
 	fractal_ping_pong_strength: Item<f64>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
-	#[widget(ParsedWidgetOverride::Custom = "noise_properties_cellular_jitter")]
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: Item<f64>,
 ) -> Item<Raster<CPU>> {
@@ -434,8 +369,8 @@ pub fn noise_pattern(
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
-#[node_macro::node(category("Raster: Pattern"))]
-pub fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Raster"), icon("NodeMandelbrot"))]
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 

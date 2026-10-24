@@ -1,8 +1,8 @@
-use super::utility_types::Direction;
+use super::utility_types::{Direction, NodeEvaluationError};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector, RootNode};
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
@@ -19,8 +19,12 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
-	AddPrimaryImport,
-	AddSecondaryImport,
+	/// Adds the import at `import_index` wired to `input_connector`, from a wire dragged out of a dimmed connector for adding one.
+	/// Index 0 fills the empty primary, and any other is the next secondary import.
+	AddImportAndConnect {
+		import_index: usize,
+		input_connector: InputConnector,
+	},
 	AddExport,
 	AddPrimaryExport,
 	AddSecondaryExport,
@@ -45,6 +49,11 @@ pub enum NodeGraphMessage {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
 	},
+	/// Wires an output into several inputs together, so the exports among them share one redirect dot if the output is an import.
+	CreateWires {
+		output_connector: OutputConnector,
+		input_connectors: Vec<InputConnector>,
+	},
 	ConnectUpstreamOutputToInput {
 		downstream_input: InputConnector,
 		input_connector: InputConnector,
@@ -57,10 +66,19 @@ pub enum NodeGraphMessage {
 	DeleteSelectedNodes {
 		delete_children: bool,
 	},
+	/// Removes each redirect dot that the preceding operation left without a wire.
+	RemoveOrphanedDots,
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
+	/// Disconnects every wire an import feeds, or the wire feeding an export.
+	DisconnectImportExport {
+		index: ImportOrExport,
+	},
 	DisconnectRootNode,
+	SetRootNodeToRestore {
+		root_node_to_restore: RootNode,
+	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
@@ -68,7 +86,10 @@ pub enum NodeGraphMessage {
 		set_to_exposed: bool,
 		start_transaction: bool,
 	},
-	ExposeEncapsulatingPrimaryInput {
+	/// Whether the subgraph node shows its input for an import as a connector rather than as a parameter in the Inspector.
+	/// A hidden primary import also disappears from the subgraph.
+	ExposeEncapsulatingInput {
+		input_index: usize,
 		exposed: bool,
 	},
 	ExposePrimaryExport {
@@ -84,6 +105,20 @@ pub enum NodeGraphMessage {
 		input_connector: InputConnector,
 		insert_node_input_index: usize,
 	},
+	/// Splits the wire feeding an input with a new redirect dot centered on a grid point.
+	InsertDotOnWire {
+		node_id: NodeId,
+		input_connector: InputConnector,
+		x: i32,
+		y: i32,
+	},
+	/// Runs the wires leaving an output through a new redirect dot centered on a grid point, so they fan out from the dot instead.
+	InsertDotOnOutput {
+		node_id: NodeId,
+		output_connector: OutputConnector,
+		x: i32,
+		y: i32,
+	},
 	MergeSelectedNodes,
 	MoveLayerToStack {
 		layer: LayerNodeIdentifier,
@@ -94,9 +129,22 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		parent: LayerNodeIdentifier,
 	},
-	ReorderChainNode {
-		node_id: NodeId,
+	MoveChainNodes {
+		node_ids: Vec<NodeId>,
+		layer: NodeId,
 		insert_index: usize,
+	},
+	DuplicateChainNodes {
+		node_ids: Vec<NodeId>,
+		destination: Option<(NodeId, usize)>,
+		select_copies: bool,
+	},
+	DuplicateNodesInFlow {
+		node_ids: Vec<NodeId>,
+	},
+	PasteIntoChain {
+		target: ChainInsertionPoint,
+		copies: Vec<ChainNodeCopy>,
 	},
 	ReorderPinnedNode {
 		node_id: NodeId,
@@ -121,6 +169,12 @@ pub enum NodeGraphMessage {
 	PointerOutsideViewport {
 		shift: Key,
 	},
+	/// Sent every frame while a dragged wire hovers a node, to expand it once the hover delay passes.
+	WireHoverTick,
+	/// Sends where everything gliding into place is drawn, along with the wires that follow it.
+	SendGlide,
+	/// Sent every frame while nodes glide into their grid cells, to bring them closer.
+	GlideTick,
 	ShakeNode,
 	UpdateNodeGraphWidth,
 	RemoveImport {
@@ -128,6 +182,10 @@ pub enum NodeGraphMessage {
 	},
 	RemoveExport {
 		export_index: usize,
+	},
+	/// Removes an import or export, or hides it if it's the primary, since the primary slot always remains.
+	RemoveImportExport {
+		index: ImportOrExport,
 	},
 	ReorderImport {
 		start_index: usize,
@@ -190,13 +248,21 @@ pub enum NodeGraphMessage {
 		x: i32,
 		y: i32,
 	},
+	/// Moves the selected nodes one grid cell with the arrow keys, as an undo step of its own.
+	NudgeSelectedNodes {
+		direction: Direction,
+	},
+	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodes {
 		direction: Direction,
 		rubber_band: bool,
+		glide: bool,
 	},
+	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodesByAmount {
 		graph_delta: IVec2,
 		rubber_band: bool,
+		glide: bool,
 	},
 	TogglePreview {
 		node_id: NodeId,
@@ -210,6 +276,14 @@ pub enum NodeGraphMessage {
 	},
 	SetImportExportNameImpl {
 		name: String,
+		index: ImportOrExport,
+	},
+	SetImportExportDescription {
+		description: String,
+		index: ImportOrExport,
+	},
+	SetImportExportDescriptionImpl {
+		description: String,
 		index: ImportOrExport,
 	},
 	ToggleSelectedAsLayersOrNodes,
@@ -246,16 +320,27 @@ pub enum NodeGraphMessage {
 		node_ids: Vec<NodeId>,
 		network_path: Vec<NodeId>,
 	},
-	UpdateEdges,
 	UpdateBoxSelection,
+	/// Shows hovered the connector a press at the pointer would grab, or none.
+	UpdateHoveredConnector,
+	/// Highlights the wire a dragged node would be inserted onto if dropped where it is, or stops highlighting one.
+	UpdateWireInsertionPreview,
 	UpdateImportsExports,
+	/// Sends the Layers panel the details of every layer it has a row in view for.
 	UpdateLayerPanel,
+	/// Sends the Layers panel the details of the given layers.
+	SendLayerPanelDetails {
+		layers: Vec<NodeId>,
+	},
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]
 		resolved_types: ResolvedDocumentNodeTypesDelta,
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
+	},
+	UpdateEvaluationErrors {
+		errors: Vec<NodeEvaluationError>,
 	},
 	UpdateActionButtons,
 	UpdateGraphBarRight,

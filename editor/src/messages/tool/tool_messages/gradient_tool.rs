@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, GRADIENT_MIDPOINT_DIAMOND_RADIUS, GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN, GRADIENT_STOP_MIN_VIEWPORT_GAP, LINE_ROTATE_SNAP_ANGLE,
-	MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
+	COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, GRADIENT_MIDPOINT_DIAMOND_RADIUS, GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN, GRADIENT_STOP_MIN_VIEWPORT_GAP, MANIPULATOR_GROUP_MARKER_SIZE,
+	SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
 };
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::{GizmoEmphasis, OverlayContext};
@@ -12,7 +12,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{
 	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
 	replaceable_paint_chain, reverse_direction_tooltip_description,
 };
-use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::snap_session::{Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use glam::DMat2;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::color::SRGBA8;
@@ -78,6 +78,12 @@ impl ToolMetadata for GradientTool {
 	}
 }
 
+impl ToolEditTarget for GradientTool {
+	fn edit_target(&self) -> EditTarget {
+		EditTarget::FirstApplicable(vec![EditTarget::proto_node(graphene_std::math_nodes::gradient_value::IDENTIFIER, Insertion::Never), EditTarget::fill()])
+	}
+}
+
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
@@ -138,7 +144,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				{
 					selected_gradient.gradient.set_color(stop_index, color);
 					selected_gradient.render_gradient(responses);
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 				}
 			}
 			ToolMessage::Gradient(GradientToolMessage::UpdateRamp { ramp }) => {
@@ -167,7 +173,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 			}
 			_ => {
+				let was_drawing = matches!(self.fsm_state, GradientToolFsmState::Drawing { .. });
 				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
+
+				// However a drag ends, its snapping gesture ends with it
+				if was_drawing && !matches!(self.fsm_state, GradientToolFsmState::Drawing { .. }) {
+					context.snap_session.end_gesture();
+					responses.add(OverlaysMessage::Draw);
+				}
 
 				// Reading from the layer (not from the in-progress drag state) keeps the control bar widgets current across selection changes, not just drags
 				let (current_layer, current_gradient) = current_layer_and_gradient(context.document);
@@ -606,14 +619,18 @@ impl SelectedGradient {
 		lock_angle: bool,
 		gradient_form: GradientForm,
 		drag_start: DVec2,
-		snap_data: SnapData,
-		snap_manager: &mut SnapManager,
+		press_unsnapped: DVec2,
+		snap_session: &mut SnapSession,
+		view: SnapView,
 		gradient_angle: &mut f64,
 	) {
-		if mouse.distance(drag_start) < DRAG_THRESHOLD {
-			self.gradient = self.initial_gradient.clone();
-			self.appearance.transform = self.initial_gradient_transform;
-			self.render_gradient(responses);
+		if mouse.distance(press_unsnapped) <= DRAG_THRESHOLD {
+			// A new gradient's initial line is only a placeholder, so nothing is written until the drag passes the threshold
+			if self.dragging != GradientDragTarget::New {
+				self.gradient = self.initial_gradient.clone();
+				self.appearance.transform = self.initial_gradient_transform;
+				self.render_gradient(responses);
+			}
 			return;
 		}
 
@@ -630,49 +647,36 @@ impl SelectedGradient {
 			}
 		};
 
-		if (lock_angle || snap_rotate) && matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start | GradientDragTarget::New) {
+		if matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start | GradientDragTarget::New) {
+			let document_to_viewport = view.document.metadata().document_to_viewport;
 			let point = anchor_point();
 			let delta = point - mouse;
 
-			let mut angle = DVec2::X.try_angle_to(delta).unwrap_or(*gradient_angle);
+			// Locking keeps the angle and Shift steps it, either way holding the end on that line through the other end
+			let required = if lock_angle || snap_rotate {
+				let mut angle = DVec2::X.try_angle_to(delta).unwrap_or(*gradient_angle);
 
-			if lock_angle {
-				angle = *gradient_angle;
-			} else if snap_rotate {
-				let snap_resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
-				angle = (angle / snap_resolution).round() * snap_resolution;
-			}
+				if lock_angle {
+					angle = *gradient_angle;
+				} else if snap_rotate {
+					let snap_resolution = view.document.snapping_state.angle_step_radians();
+					angle = (angle / snap_resolution).round() * snap_resolution;
+				}
 
-			*gradient_angle = angle;
+				*gradient_angle = angle;
 
-			if lock_angle {
-				let unit_direction = DVec2::new(angle.cos(), angle.sin());
-				let length = delta.dot(unit_direction);
-				mouse = point - length * unit_direction;
+				let direction = document_to_viewport.inverse().transform_vector2(DVec2::from_angle(angle));
+				Locus::line(document_to_viewport.inverse().transform_point2(point), direction)
 			} else {
-				let length = delta.length();
-				let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
-				mouse = point - rotated;
-			}
-		} else {
-			// Update stored angle even when not constraining (for dragging endpoints and drawing a new gradient)
-			if matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start | GradientDragTarget::New) {
-				let point = anchor_point();
-				let delta = point - mouse;
 				if let Some(angle) = DVec2::X.try_angle_to(delta) {
 					*gradient_angle = angle;
 				}
-			}
+				None
+			};
 
-			// Basic point snapping when not angle-constraining
-			let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-			let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
-			let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
-			let snapped = snap_manager.free_snap(&snap_data, &point_candidate, SnapTypeConfiguration::default());
-			if snapped.is_snapped() {
-				mouse = document_to_viewport.transform_point2(snapped.snapped_point_document);
-			}
-			snap_manager.update_indicator(snapped);
+			let pointer = document_to_viewport.inverse().transform_point2(mouse);
+			let snapped = snap_session.snap_point(view, pointer, PointOptions { required, ..Default::default() });
+			mouse = document_to_viewport.transform_point2(snapped);
 		}
 
 		let local_mouse = self.gradient_to_viewport_transform.inverse().transform_point2(mouse);
@@ -693,8 +697,6 @@ impl SelectedGradient {
 				self.appearance.transform = create_new_gradient_transform(self.gradient_to_viewport_transform.inverse().transform_point2(drag_start), local_mouse);
 			}
 			GradientDragTarget::Stop(stop) => {
-				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-
 				let (viewport_start, viewport_end) = self.viewport_handle_positions();
 
 				let line_length = viewport_start.distance(viewport_end);
@@ -703,28 +705,8 @@ impl SelectedGradient {
 					return;
 				}
 
-				let (document_start, document_end) = (
-					document_to_viewport.inverse().transform_point2(viewport_start),
-					document_to_viewport.inverse().transform_point2(viewport_end),
-				);
-
-				let constraint = SnapConstraint::Line {
-					origin: document_start,
-					direction: document_end - document_start,
-				};
-
-				let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
-				let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
-
-				let snapped = snap_manager.constrained_snap(&snap_data, &point_candidate, constraint, SnapTypeConfiguration::default());
-
-				let projected_mouse_document = if snapped.is_snapped() {
-					snapped.snapped_point_document
-				} else {
-					constraint.projection(document_mouse)
-				};
-				let projected_mouse = document_to_viewport.transform_point2(projected_mouse_document);
-				snap_manager.update_indicator(snapped);
+				let on_line = snap_onto_line(snap_session, view, mouse, viewport_start, viewport_end);
+				let projected_mouse = view.document.metadata().document_to_viewport.transform_point2(on_line);
 
 				let Some(gradient_direction) = (viewport_end - viewport_start).try_normalize() else {
 					self.render_gradient(responses);
@@ -761,8 +743,6 @@ impl SelectedGradient {
 				}
 			}
 			GradientDragTarget::Midpoint(midpoint_index) => {
-				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-
 				let (viewport_start, viewport_end) = self.viewport_handle_positions();
 
 				let line_length = viewport_start.distance(viewport_end);
@@ -771,28 +751,8 @@ impl SelectedGradient {
 					return;
 				}
 
-				let (document_start, document_end) = (
-					document_to_viewport.inverse().transform_point2(viewport_start),
-					document_to_viewport.inverse().transform_point2(viewport_end),
-				);
-
-				let constraint = SnapConstraint::Line {
-					origin: document_start,
-					direction: document_end - document_start,
-				};
-
-				let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
-				let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
-
-				let snapped = snap_manager.constrained_snap(&snap_data, &point_candidate, constraint, SnapTypeConfiguration::default());
-
-				let projected_mouse_document = if snapped.is_snapped() {
-					snapped.snapped_point_document
-				} else {
-					constraint.projection(document_mouse)
-				};
-				let projected_mouse = document_to_viewport.transform_point2(projected_mouse_document);
-				snap_manager.update_indicator(snapped);
+				let on_line = snap_onto_line(snap_session, view, mouse, viewport_start, viewport_end);
+				let projected_mouse = view.document.metadata().document_to_viewport.transform_point2(on_line);
 
 				let Some(gradient_direction) = (viewport_end - viewport_start).try_normalize() else {
 					self.render_gradient(responses);
@@ -838,6 +798,20 @@ impl SelectedGradient {
 
 	fn viewport_handle_positions(&self) -> (DVec2, DVec2) {
 		gradient_handle_positions(self.unit_to_viewport_transform())
+	}
+
+	/// What dragging this moves that could be snapped to. A layer drawing only its gradient has the gradient's line or circle as its geometry, which moves with either end.
+	fn moving(&self, document: &DocumentMessageHandler) -> Moving {
+		let gradient_value = DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::gradient_value::IDENTIFIER);
+		let moves_an_end = matches!(self.dragging, GradientDragTarget::Start | GradientDragTarget::End | GradientDragTarget::New);
+		let layer = self
+			.layer
+			.filter(|&layer| moves_an_end && graph_modification_utils::is_layer_fed_by_node_of_name(layer, &document.network_interface, &gradient_value));
+
+		Moving {
+			layers: layer.into_iter().collect(),
+			..Default::default()
+		}
 	}
 }
 
@@ -904,7 +878,8 @@ impl ToolTransition for GradientTool {
 #[derive(Clone, Debug, Default)]
 struct GradientToolData {
 	selected_gradient: Option<SelectedGradient>,
-	snap_manager: SnapManager,
+	/// Where a press would insert a stop on a selected gradient's line, as snapped while the pointer moved: the layer and the position along its line.
+	insertion_marker: Option<(LayerNodeIdentifier, f64)>,
 	drag_start: DVec2,
 	/// The pointer-down position before snapping (document space), used to detect whether the mouse moved between the press and a double-click.
 	drag_start_unsnapped: DVec2,
@@ -943,9 +918,11 @@ impl Fsm for GradientToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
+			document_id,
 			global_tool_data,
 			input,
 			viewport,
+			snap_session,
 			..
 		} = tool_action_data;
 
@@ -1094,43 +1071,24 @@ impl Fsm for GradientToolFsmState {
 
 					if !matches!(self, GradientToolFsmState::Drawing { .. })
 						&& calculate_insertion(start, end, gradient, settings, mouse).is_some()
-						&& let Some(dir) = (end - start).try_normalize()
+						&& let Some(direction) = (end - start).try_normalize()
 					{
-						let perp = dir.perp();
+						let perpendicular = direction.perp();
 
-						// Snap the insertion point along the gradient line
-						let document_to_viewport = document.metadata().document_to_viewport;
-
-						let (document_start, document_end) = (document_to_viewport.inverse().transform_point2(start), document_to_viewport.inverse().transform_point2(end));
-						let constraint = SnapConstraint::Line {
-							origin: document_start,
-							direction: document_end - document_start,
-						};
-
-						let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
-						let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
-
-						let snap_data = SnapData::new(document, input, viewport);
-						let snapped = tool_data.snap_manager.constrained_snap(&snap_data, &point_candidate, constraint, SnapTypeConfiguration::default());
-
-						let snapped_point = if snapped.is_snapped() {
-							document_to_viewport.transform_point2(snapped.snapped_point_document)
-						} else {
-							let projected = constraint.projection(document_mouse);
-							document_to_viewport.transform_point2(projected)
+						// Where the pointer was snapped along this line, or else the closest spot on it
+						let marker = match tool_data.insertion_marker {
+							Some((marker_layer, position)) if marker_layer == layer => start.lerp(end, position),
+							_ => start + direction * direction.dot(mouse - start),
 						};
 
 						overlay_context.line(
-							snapped_point - perp * SEGMENT_OVERLAY_SIZE,
-							snapped_point + perp * SEGMENT_OVERLAY_SIZE,
+							marker - perpendicular * SEGMENT_OVERLAY_SIZE,
+							marker + perpendicular * SEGMENT_OVERLAY_SIZE,
 							Some(COLOR_OVERLAY_BLUE),
 							Some(1.),
 						);
 					}
 				}
-
-				let snap_data = SnapData::new(document, input, viewport);
-				tool_data.snap_manager.draw_overlays(snap_data, &mut overlay_context);
 
 				// Update color picker position if active (keeps it anchored to the stop during pan/zoom)
 				if let Some(stop_index) = tool_data.color_picker_editing_color_stop
@@ -1177,7 +1135,7 @@ impl Fsm for GradientToolFsmState {
 						GradientDragTarget::Midpoint(index) => {
 							selected_gradient.gradient.reset_midpoint(index);
 							selected_gradient.render_gradient(responses);
-							responses.add(PropertiesPanelMessage::Refresh);
+							responses.add(InspectorMessage::Refresh);
 						}
 						GradientDragTarget::Start | GradientDragTarget::End | GradientDragTarget::Stop(_) => {
 							// Find the stop index from the drag target
@@ -1227,12 +1185,12 @@ impl Fsm for GradientToolFsmState {
 					return ready_default;
 				}
 
-				// If we're in the middle of a drag, abort it first and revert to the initial gradient
+				// If we're in the middle of a drag, abort it first and revert to the gradient as it began
 				if matches!(state, GradientToolFsmState::Drawing { .. }) {
 					selected_gradient.gradient = selected_gradient.initial_gradient.clone();
+					selected_gradient.appearance.transform = selected_gradient.initial_gradient_transform;
 					selected_gradient.render_gradient(responses);
 					responses.add(DocumentMessage::AbortTransaction);
-					tool_data.snap_manager.cleanup(responses);
 				}
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -1271,7 +1229,7 @@ impl Fsm for GradientToolFsmState {
 						selected_gradient.render_gradient(responses);
 
 						responses.add(DocumentMessage::CommitTransaction);
-						responses.add(PropertiesPanelMessage::Refresh);
+						responses.add(InspectorMessage::Refresh);
 
 						return ready_default;
 					}
@@ -1288,7 +1246,7 @@ impl Fsm for GradientToolFsmState {
 						});
 					}
 					responses.add(DocumentMessage::CommitTransaction);
-					responses.add(PropertiesPanelMessage::Refresh);
+					responses.add(InspectorMessage::Refresh);
 					return ready_default;
 				}
 
@@ -1308,7 +1266,7 @@ impl Fsm for GradientToolFsmState {
 				// Render the new gradient
 				selected_gradient.render_gradient(responses);
 				responses.add(DocumentMessage::CommitTransaction);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 				tool_data.selected_gradient = None;
 
 				ready_default
@@ -1353,18 +1311,19 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerDown) => {
 				let document_to_viewport = document.metadata().document_to_viewport;
 
-				let mut mouse = input.mouse.position;
+				// The press lands on whatever the pointer was shown snapping to, or takes hold of a handle right where it is
+				let unsnapped = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let drag_start = match detect_hover_target(input.mouse.position, document) {
+					GradientHoverTarget::None | GradientHoverTarget::InsertionPoint => snap_session
+						.shown_position()
+						.unwrap_or_else(|| snap_press(snap_session, SnapView::new(document, *document_id, input)).0),
+					_ => unsnapped,
+				};
+				let mouse = document_to_viewport.transform_point2(drag_start);
 
-				let snap_data = SnapData::new(document, input, viewport);
-				let point = SnapCandidatePoint::gradient_handle(document_to_viewport.inverse().transform_point2(mouse));
-				let snapped = tool_data.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
-
-				if snapped.is_snapped() {
-					mouse = document_to_viewport.transform_point2(snapped.snapped_point_document);
-				}
-
-				tool_data.drag_start = document_to_viewport.inverse().transform_point2(mouse);
-				tool_data.drag_start_unsnapped = point.document_point;
+				tool_data.drag_start = drag_start;
+				tool_data.drag_start_unsnapped = unsnapped;
+				tool_data.insertion_marker = None;
 				tool_data.auto_pan_shift = DVec2::ZERO;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
@@ -1579,8 +1538,13 @@ impl Fsm for GradientToolFsmState {
 					}
 				};
 
-				if matches!(gradient_state, GradientToolFsmState::Drawing { .. }) && !transaction_started {
-					responses.add(DocumentMessage::StartTransaction);
+				if matches!(gradient_state, GradientToolFsmState::Drawing { .. }) {
+					if !transaction_started {
+						responses.add(DocumentMessage::StartTransaction);
+					}
+
+					let moving = tool_data.selected_gradient.as_ref().map_or_else(Moving::default, |selected| selected.moving(document));
+					snap_session.begin_gesture(SnapView::new(document, *document_id, input), moving);
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -1590,7 +1554,6 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Drawing { drag_hint }, GradientToolMessage::PointerMove { constrain_axis, lock_angle }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
 					let mouse = input.mouse.position;
-					let snap_data = SnapData::new(document, input, viewport);
 
 					// Recompute the gradient-to-viewport transform fresh each frame so zoom/pan mid-drag works correctly
 					if let Some(layer) = selected_gradient.layer {
@@ -1601,6 +1564,7 @@ impl Fsm for GradientToolFsmState {
 					// Convert drag_start from document space to effective viewport space
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let drag_start_viewport = document_to_viewport.transform_point2(tool_data.drag_start) + tool_data.auto_pan_shift;
+					let press_unsnapped_viewport = document_to_viewport.transform_point2(tool_data.drag_start_unsnapped) + tool_data.auto_pan_shift;
 					tool_data.auto_pan_shift = DVec2::ZERO;
 
 					selected_gradient.update_gradient(
@@ -1610,8 +1574,9 @@ impl Fsm for GradientToolFsmState {
 						input.keyboard.get(lock_angle as usize),
 						selected_gradient.appearance.gradient_form,
 						drag_start_viewport,
-						snap_data,
-						&mut tool_data.snap_manager,
+						press_unsnapped_viewport,
+						snap_session,
+						SnapView::new(document, *document_id, input),
 						&mut tool_data.gradient_angle,
 					);
 				}
@@ -1646,8 +1611,13 @@ impl Fsm for GradientToolFsmState {
 				state
 			}
 			(GradientToolFsmState::Drawing { .. }, GradientToolMessage::PointerUp) => {
-				responses.add(DocumentMessage::EndTransaction);
-				tool_data.snap_manager.cleanup(responses);
+				// A new gradient released where it was pressed is a click, so anything its drag wrote along the way is taken back
+				if tool_data.selected_gradient.as_ref().is_some_and(|selected| selected.dragging == GradientDragTarget::New) {
+					let press = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_unsnapped);
+					input.mouse.finish_transaction(press, responses);
+				} else {
+					responses.add(DocumentMessage::EndTransaction);
+				}
 
 				// Clear the selection if we were dragging an endpoint of the gradient which isn't a stop
 				if tool_data.selected_gradient.as_ref().is_some_and(|selected| match selected.dragging {
@@ -1671,8 +1641,14 @@ impl Fsm for GradientToolFsmState {
 				let hovering = detect_hover_target(mouse, document);
 				let selected = compute_selected_target(tool_data);
 
-				let snap_data = SnapData::new(document, input, viewport);
-				tool_data.snap_manager.preview_draw_gradient(&snap_data, mouse);
+				// Show where a press would land or insert a stop, unless it would take hold of a handle
+				if matches!(hovering, GradientHoverTarget::None | GradientHoverTarget::InsertionPoint) {
+					let (_, insertion_marker) = snap_press(snap_session, SnapView::new(document, *document_id, input));
+					tool_data.insertion_marker = insertion_marker;
+				} else {
+					snap_session.forget();
+					tool_data.insertion_marker = None;
+				}
 
 				responses.add(OverlaysMessage::Draw);
 				GradientToolFsmState::Ready { hovering, selected }
@@ -1680,7 +1656,6 @@ impl Fsm for GradientToolFsmState {
 
 			(GradientToolFsmState::Drawing { .. }, GradientToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.snap_manager.cleanup(responses);
 				tool_data.selected_gradient = None;
 				responses.add(OverlaysMessage::Draw);
 
@@ -1695,6 +1670,10 @@ impl Fsm for GradientToolFsmState {
 				dismiss_color_stop_color_picker(tool_data, responses);
 				// Clear the tool-default gradient override so re-activating the tool starts fresh from the working colors
 				tool_data.default_gradient_stops = None;
+
+				// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
+				snap_session.sleep_all();
+				responses.add(OverlaysMessage::Draw);
 
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
@@ -1751,6 +1730,11 @@ impl Fsm for GradientToolFsmState {
 					_ => {}
 				}
 
+				// The approach snap is shown only where a press would not take hold of a handle
+				if matches!(hovering, GradientHoverTarget::None | GradientHoverTarget::InsertionPoint) {
+					groups.push(snapping_hints());
+				}
+
 				HintData(groups)
 			}
 			GradientToolFsmState::Drawing { drag_hint } => {
@@ -1775,6 +1759,8 @@ impl Fsm for GradientToolFsmState {
 					_ => {}
 				}
 
+				groups.push(snapping_hints());
+
 				HintData(groups)
 			}
 		};
@@ -1792,6 +1778,48 @@ fn insert_stop_at_point(gradient: &mut Gradient, point: DVec2, unit_to_viewport:
 	let gradient_direction = (end - start).try_normalize()?;
 	let t = gradient_direction.dot(point - start) / start.distance(end);
 	(0. ..=1.).contains(&t).then(|| gradient.insert_stop(t, settings))
+}
+
+/// Snaps the pointer to somewhere on the line through two viewport positions, and returns where it lands in document space.
+fn snap_onto_line(snap_session: &mut SnapSession, view: SnapView, mouse: DVec2, viewport_start: DVec2, viewport_end: DVec2) -> DVec2 {
+	let viewport_to_document = view.document.metadata().document_to_viewport.inverse();
+	let [start, end, pointer] = [viewport_start, viewport_end, mouse].map(|position| viewport_to_document.transform_point2(position));
+
+	match Locus::line(start, end - start) {
+		Some(line) => snap_session.snap_point(
+			view,
+			pointer,
+			PointOptions {
+				required: Some(line),
+				..Default::default()
+			},
+		),
+		None => pointer,
+	}
+}
+
+/// Snaps the pointer to where a press would land, and returns that in document space.
+/// Where the press would insert a stop on a selected gradient's line, it lands on that line, and the layer and position along the line come with it.
+fn snap_press(snap_session: &mut SnapSession, view: SnapView) -> (DVec2, Option<(LayerNodeIdentifier, f64)>) {
+	let SnapView { document, input, .. } = view;
+	let document_to_viewport = document.metadata().document_to_viewport;
+	let mouse = input.mouse.position;
+
+	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
+			continue;
+		};
+		let (start, end) = gradient_handle_positions(gradient_to_viewport_transform(layer, document) * appearance.transform);
+
+		if calculate_insertion(start, end, &gradient, appearance.settings, mouse).is_some() {
+			let on_line = snap_onto_line(snap_session, view, mouse, start, end);
+			let position = (document_to_viewport.transform_point2(on_line) - start).dot(end - start) / start.distance_squared(end);
+			return (on_line, Some((layer, position)));
+		}
+	}
+
+	let pointer = document_to_viewport.inverse().transform_point2(mouse);
+	(snap_session.snap_point(view, pointer, PointOptions::default()), None)
 }
 
 fn dismiss_color_stop_color_picker(tool_data: &mut GradientToolData, responses: &mut VecDeque<Message>) {
@@ -1923,7 +1951,7 @@ fn apply_gradient_update(
 	{
 		update((&mut selected_gradient.gradient, &mut selected_gradient.appearance));
 	}
-	responses.add(PropertiesPanelMessage::Refresh);
+	responses.add(InspectorMessage::Refresh);
 	data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
 	responses.add(ToolMessage::RefreshToolOptions);
 }
@@ -1991,7 +2019,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 		data.default_gradient_stops = Some(new_gradient);
 	}
 
-	responses.add(PropertiesPanelMessage::Refresh);
+	responses.add(InspectorMessage::Refresh);
 	// Refresh the tool options so the swatch's `swatch_samples` update live as the user edits stops in the picker.
 	responses.add(ToolMessage::RefreshToolOptions);
 }
@@ -2373,6 +2401,7 @@ mod test_gradient {
 	async fn simple_draw() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
 		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
 		editor.select_primary_color(Color::GREEN).await;
 		editor.select_secondary_color(Color::BLUE).await;
@@ -2391,6 +2420,7 @@ mod test_gradient {
 	async fn draw_updates_fill_gradient_chain_line() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
 		let layer = create_fill_gradient_chain_layer(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
 		editor.drag_tool(ToolType::Gradient, 2., 3., 24., 4., ModifierKeys::empty()).await;
@@ -2406,6 +2436,7 @@ mod test_gradient {
 	async fn snap_simple_draw() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
 		editor
 			.handle_message(NavigationMessage::CanvasTiltSet {
 				angle_radians: f64::consts::FRAC_PI_8,
@@ -2423,7 +2454,7 @@ mod test_gradient {
 		// 15 degrees from horizontal
 		let angle = f64::to_radians(15.);
 		let direction = DVec2::new(angle.cos(), angle.sin());
-		let expected = start + direction * (end - start).length();
+		let expected = start + direction * (end - start).dot(direction);
 		assert!(transform.transform_point2(gradient.end()).abs_diff_eq(expected, 1e-10));
 	}
 
@@ -2499,6 +2530,7 @@ mod test_gradient {
 	async fn dragging_endpoint_sets_correct_point() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
 
 		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 
@@ -2699,6 +2731,87 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn a_click_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.drag_tool(ToolType::Gradient, 30., 40., 30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that barely moves shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_new_gradient_drag_released_back_where_it_was_pressed_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.select_tool(ToolType::Gradient).await;
+		editor.move_mouse(30., 40., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(30., 40., ModifierKeys::empty()).await;
+		editor.move_mouse(60., 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.move_mouse(30.5, 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a drag that comes back to where it was pressed shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_click_beside_a_snap_target_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// The press lands a few pixels inside the left edge, which it snaps onto
+		editor.drag_tool(ToolType::Gradient, 3., 50., 3.5, 50., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that snaps and barely moves shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn delete_mid_drag_of_an_end_restores_its_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// A middle stop, so deleting an end leaves a gradient
+		editor.move_mouse(60., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(60., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(60., 0., ModifierKeys::empty()).await;
+
+		// Drag the end down, then press Delete before releasing
+		editor.move_mouse(100., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(100., 0., ModifierKeys::empty()).await;
+		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		editor.left_mouseup(100., 50., ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
+		assert_eq!(gradient.stops.len(), 2, "the end stop should be deleted");
+		let (start, end) = (transform.transform_point2(gradient.start()), transform.transform_point2(gradient.end()));
+		assert!(start.abs_diff_eq(DVec2::new(0., 0.), 1e-6), "the start should stay put, got {start:?}");
+		assert!(end.abs_diff_eq(DVec2::new(60., 0.), 1e-6), "the line should end at the middle stop on the undragged line, got {end:?}");
+	}
+
+	#[tokio::test]
 	async fn delete_removes_layer_when_no_stop_selected() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -2812,7 +2925,7 @@ mod test_gradient {
 		let (gradient, _) = get_gradient_from_chain(&mut editor).await;
 		assert_eq!(gradient.gradient_spread, GradientSpread::Pad);
 
-		// Stamp the spread into the value node's ramp, the way the Properties panel's color picker writes it
+		// Stamp the spread into the value node's ramp, the way the Inspector's color picker writes it
 		let gradient_value_id = {
 			let network_interface = &editor.active_document().network_interface;
 			get_upstream_gradient_value_node_id(layer, network_interface).expect("the chain should have a gradient value node")
@@ -2860,7 +2973,7 @@ mod test_gradient {
 			})
 			.await;
 
-		// The Properties panel reads the value node's own ramp, so the spread has to be stored there
+		// The Inspector reads the value node's own ramp, so the spread has to be stored there
 		let network_interface = &editor.active_document().network_interface;
 		assert_eq!(
 			get_chain_source_gradient_settings(layer, network_interface).map(|settings| settings.spread),
@@ -3135,7 +3248,6 @@ mod test_gradient {
 		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
 		assert!(get_upstream_gradient_value_node_id(layer, &editor.active_document().network_interface).is_some());
 
-		editor.eval_graph().await.expect("graph should evaluate");
 		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
 		assert_eq!(bounds, Some([DVec2::ZERO, DVec2::X]), "a linear expanse's local bounds should be its canonical gradient line");
 
@@ -3149,7 +3261,6 @@ mod test_gradient {
 				options: super::GradientOptionsUpdate::Form(GradientForm::Radial),
 			})
 			.await;
-		editor.eval_graph().await.expect("graph should evaluate");
 		let bounds = editor.active_document().metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY);
 		assert_eq!(bounds, Some([DVec2::splat(-1.), DVec2::splat(1.)]), "a radial expanse's local bounds should be its unit circle");
 
@@ -3277,6 +3388,63 @@ mod test_gradient {
 		);
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops");
 		assert_eq!(stops.len(), 2);
+	}
+
+	#[tokio::test]
+	async fn drag_on_a_layer_drawing_shared_geometry_paints_its_fill() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rectangle = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// A new layer above the rectangle, whose content is wired from the end of the rectangle's chain so both draw it
+		let sharing_id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: sharing_id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let sharing = LayerNodeIdentifier::new_unchecked(sharing_id);
+		let shared_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&InputConnector::layer_secondary_input(rectangle.to_node()), &[])
+			.and_then(|output| output.node_id())
+			.expect("the rectangle should have a chain");
+		editor
+			.active_document_mut()
+			.network_interface
+			.create_wire(&OutputConnector::primary_output(shared_id), &InputConnector::layer_secondary_input(sharing_id), &[]);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![sharing_id] }).await;
+
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		assert!(
+			get_upstream_gradient_value_node_id(sharing, network_interface).is_none(),
+			"a layer drawing shared geometry isn't blank, so it mustn't get a whole-expanse gradient"
+		);
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::layer_secondary_input(sharing_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(shared_id),
+			"the layer should still draw the shared rectangle"
+		);
+
+		let fill_node_id = get_fill_node_id_with_direct_fill_input(rectangle, network_interface).expect("the rectangle should have a Fill node");
+		let paint = network_interface
+			.document_network()
+			.nodes
+			.get(&fill_node_id)
+			.and_then(|node| node.input(fill::PaintInput))
+			.and_then(|input| input.as_value());
+		assert!(matches!(paint, Some(TaggedValue::GradientRamp(_))), "the shared rectangle's Fill should take the gradient");
 	}
 
 	#[tokio::test]
@@ -3428,5 +3596,195 @@ mod test_gradient {
 			Some(gradient_value_id),
 			"the gradient should be painted through the preserved Transform node"
 		);
+	}
+
+	/// Draws the rectangle that the snapping tests paint their gradients on, which is far from everything they snap to.
+	async fn draw_painted_rectangle(editor: &mut EditorTestUtils) {
+		editor.draw_rect(0., 0., 400., 400.).await;
+	}
+
+	/// The ends of the one gradient held by a 'Fill' node, in the viewport.
+	async fn fill_gradient_ends(editor: &mut EditorTestUtils) -> (DVec2, DVec2) {
+		let (gradient, transform) = get_gradient_from_fill(editor).await;
+		(transform.transform_point2(gradient.start()), transform.transform_point2(gradient.end()))
+	}
+
+	/// Asserts a viewport position is where it was expected to within a millionth of a pixel.
+	fn assert_at(actual: DVec2, expected: DVec2, what: &str) {
+		assert!(actual.abs_diff_eq(expected, 1e-6), "{what} is at {actual} but was expected at {expected}");
+	}
+
+	/// Moves a layer across the viewport without leaving the Gradient tool, and returns where the top left corner of its bounding box lands.
+	async fn move_layer(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier, offset: DVec2) -> DVec2 {
+		editor
+			.handle_message(GraphOperationMessage::TransformChange {
+				layer,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Viewport,
+				skip_rerender: false,
+			})
+			.await;
+
+		let [corner, _] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the layer should have bounds");
+		corner
+	}
+
+	#[tokio::test]
+	async fn a_new_gradient_pressed_near_the_corner_of_another_layer_starts_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+
+		// The corner of an ellipse's bounding box, which lies outside the ellipse so the press paints the rectangle
+		editor.draw_ellipse(200., 150., 300., 250.).await;
+		let corner = DVec2::new(200., 150.);
+
+		let end = DVec2::new(120., 320.);
+		editor.drag_tool(ToolType::Gradient, corner.x - 4., corner.y - 3., end.x, end.y, ModifierKeys::empty()).await;
+
+		let (start, drawn_end) = fill_gradient_ends(&mut editor).await;
+		assert_at(start, corner, "the start");
+		assert_at(drawn_end, end, "the end");
+	}
+
+	#[tokio::test]
+	async fn a_gradient_end_dragged_near_the_corner_of_another_layer_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+		editor.draw_ellipse(200., 150., 300., 250.).await;
+		let corner = DVec2::new(200., 150.);
+
+		let (start, end) = (DVec2::new(60., 60.), DVec2::new(120., 320.));
+		editor.drag_tool(ToolType::Gradient, start.x, start.y, end.x, end.y, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, end.x, end.y, corner.x - 4., corner.y - 3., ModifierKeys::empty()).await;
+
+		let (dragged_start, dragged_end) = fill_gradient_ends(&mut editor).await;
+		assert_at(dragged_start, start, "the start");
+		assert_at(dragged_end, corner, "the end");
+	}
+
+	#[tokio::test]
+	async fn an_end_dragged_with_shift_stays_on_its_angle_step_and_stops_where_that_meets_an_edge() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+		editor.draw_rect(250., 100., 350., 300.).await;
+
+		let start = DVec2::new(50., 300.);
+		editor.drag_tool(ToolType::Gradient, start.x, start.y, 150., 300., ModifierKeys::empty()).await;
+
+		// The line rising at 15 degrees from the start meets the rectangle's left side far from its corners and middle
+		let step = DVec2::from_angle(-15_f64.to_radians());
+		let meets_the_side = start + step * (250. - start.x) / step.x;
+
+		// The pointer strays a few pixels off that line, just past the side that a free end would snap onto
+		let pointer = meets_the_side + DVec2::new(3., 4.);
+		editor.drag_tool(ToolType::Gradient, 150., 300., pointer.x, pointer.y, ModifierKeys::SHIFT).await;
+
+		let (dragged_start, dragged_end) = fill_gradient_ends(&mut editor).await;
+		assert_at(dragged_start, start, "the start");
+		assert_at(dragged_end, meets_the_side, "the end");
+	}
+
+	#[tokio::test]
+	async fn a_stop_dragged_along_the_gradient_line_lands_where_the_line_crosses_an_edge() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+
+		// The gradient line crosses the left side of this rectangle 15 pixels from the middle of that side
+		editor.draw_rect(220., 250., 300., 380.).await;
+		editor.drag_tool(ToolType::Gradient, 50., 300., 350., 300., ModifierKeys::empty()).await;
+
+		// A stop is added by clicking the line, then dragged a few pixels past and off the line from where it crosses the side
+		editor.click_tool(ToolType::Gradient, MouseKeys::LEFT, DVec2::new(120., 300.), ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 120., 300., 223., 305., ModifierKeys::empty()).await;
+
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		assert_stops_at_positions(&gradient.stops.positions(false), &[0., (220. - 50.) / 300., 1.], 1e-6);
+	}
+
+	#[tokio::test]
+	async fn a_stop_inserted_by_clicking_near_an_edge_lands_where_the_line_crosses_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+		editor.draw_rect(220., 260., 300., 390.).await;
+
+		// A slanted line, so the side a free point would snap onto lies away from where the line crosses it
+		let (start, end) = (DVec2::new(50., 350.), DVec2::new(350., 250.));
+		editor.drag_tool(ToolType::Gradient, start.x, start.y, end.x, end.y, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Gradient, MouseKeys::LEFT, DVec2::new(222., 297.), ModifierKeys::empty()).await;
+
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		assert_stops_at_positions(&gradient.stops.positions(false), &[0., (220. - start.x) / (end.x - start.x), 1.], 1e-6);
+	}
+
+	#[tokio::test]
+	async fn a_drag_after_a_finished_one_snaps_to_what_changed_in_between() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+		editor.draw_ellipse(200., 150., 300., 250.).await;
+		let ellipse = editor.get_selected_layer().await.expect("the ellipse should be selected");
+
+		editor.drag_tool(ToolType::Gradient, 60., 60., 120., 320., ModifierKeys::empty()).await;
+		let corner = move_layer(&mut editor, ellipse, DVec2::new(40., 0.)).await;
+
+		editor.drag_tool(ToolType::Gradient, corner.x - 4., corner.y - 3., 120., 320., ModifierKeys::empty()).await;
+		let (start, _) = fill_gradient_ends(&mut editor).await;
+		assert_at(start, corner, "the start");
+	}
+
+	#[tokio::test]
+	async fn a_drag_after_an_aborted_one_snaps_to_what_changed_in_between() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_painted_rectangle(&mut editor).await;
+		editor.draw_ellipse(200., 150., 300., 250.).await;
+		let ellipse = editor.get_selected_layer().await.expect("the ellipse should be selected");
+
+		// A drag that Escape cancels partway
+		editor.select_tool(ToolType::Gradient).await;
+		editor.move_mouse(60., 60., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(60., 60., ModifierKeys::empty()).await;
+		editor.move_mouse(120., 320., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(120., 320., ModifierKeys::empty()).await;
+		let corner = move_layer(&mut editor, ellipse, DVec2::new(40., 0.)).await;
+
+		editor.drag_tool(ToolType::Gradient, corner.x - 4., corner.y - 3., 120., 320., ModifierKeys::empty()).await;
+		let (start, _) = fill_gradient_ends(&mut editor).await;
+		assert_at(start, corner, "the start");
+	}
+
+	#[tokio::test]
+	async fn the_end_of_a_gradient_that_is_all_its_layer_draws_does_not_snap_to_where_it_began() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: NodeId::new(),
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] }).await;
+
+		// The gradient's line is the layer's only geometry, so it would offer the end a place to snap back to
+		let (start, end) = (DVec2::new(100., 200.), DVec2::new(300., 200.));
+		editor.drag_tool(ToolType::Gradient, start.x, start.y, end.x, end.y, ModifierKeys::empty()).await;
+
+		let beside_the_end = end + DVec2::new(5., 4.);
+		editor.drag_tool(ToolType::Gradient, end.x, end.y, beside_the_end.x, beside_the_end.y, ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_chain(&mut editor).await;
+		assert_at(transform.transform_point2(gradient.start()), start, "the start");
+		assert_at(transform.transform_point2(gradient.end()), beside_the_end, "the end");
 	}
 }

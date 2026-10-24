@@ -193,21 +193,6 @@ impl NodeMut<'_> {
 		changed
 	}
 
-	/// The Extract and Inject annotations the node declares for the Context.
-	pub(crate) fn set_context_features(&mut self, context_features: ContextDependencies) -> bool {
-		let changed = self.node.context_features != context_features;
-		self.node.context_features = context_features;
-		if changed {
-			let delta = RuntimeDelta::SetContextFeatures {
-				network_path: self.deltas.network_path(),
-				node_id: self.deltas.node_id(),
-				context_features: self.node.context_features,
-			};
-			self.deltas.graph(delta);
-		}
-		changed
-	}
-
 	/// The user-chosen name for this instance, empty when it has none.
 	pub(crate) fn set_display_name(&mut self, display_name: String) -> bool {
 		let changed = self.metadata.display_name != display_name;
@@ -274,7 +259,17 @@ impl NodeMut<'_> {
 		changed
 	}
 
-	/// The identifier of the widget override the properties panel uses for this input, or `None` for the
+	pub(crate) fn set_input_description(&mut self, input_index: usize, input_description: String) -> bool {
+		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
+		let changed = input_metadata.persistent_metadata.input_description != input_description;
+		input_metadata.persistent_metadata.input_description = input_description;
+		if changed {
+			self.emit_input_metadata();
+		}
+		changed
+	}
+
+	/// The identifier of the widget override the Inspector uses for this input, or `None` for the
 	/// widget generated from its type.
 	pub(crate) fn set_widget_override(&mut self, input_index: usize, widget_override: Option<String>) -> bool {
 		let Some(input_metadata) = self.metadata.input_metadata.get_mut(input_index) else { return false };
@@ -308,6 +303,37 @@ impl NodeMut<'_> {
 		self.metadata.output_names = output_names;
 		if changed {
 			let change = NodeMetadataChange::OutputNames(self.metadata.output_names.clone());
+			self.deltas.metadata(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_output_description(&mut self, output_index: usize, output_description: String) -> bool {
+		if output_index >= self.metadata.output_names.len() {
+			return false;
+		}
+
+		let output_descriptions = &mut self.metadata.output_descriptions;
+		if output_descriptions.get(output_index).map_or("", String::as_str) == output_description {
+			return false;
+		}
+
+		if output_index >= output_descriptions.len() {
+			output_descriptions.resize(output_index + 1, String::new());
+		}
+		output_descriptions[output_index] = output_description;
+
+		let change = NodeMetadataChange::OutputDescriptions(output_descriptions.clone());
+		self.deltas.metadata(change);
+		true
+	}
+
+	/// The encapsulating node's descriptions for the network's exports, replaced together since they are stored as one array.
+	pub(crate) fn set_output_descriptions(&mut self, output_descriptions: Vec<String>) -> bool {
+		let changed = self.metadata.output_descriptions != output_descriptions;
+		self.metadata.output_descriptions = output_descriptions;
+		if changed {
+			let change = NodeMetadataChange::OutputDescriptions(self.metadata.output_descriptions.clone());
 			self.deltas.metadata(change);
 		}
 		changed
@@ -447,7 +473,7 @@ impl NetworkMut<'_> {
 		changed
 	}
 
-	/// The display order of pinned nodes in the Properties panel.
+	/// The display order of pinned nodes in the Inspector.
 	pub(crate) fn set_pinned_order(&mut self, pinned_node_order: Vec<NodeId>) -> bool {
 		let changed = self.metadata.pinned_node_order != pinned_node_order;
 		self.metadata.pinned_node_order = pinned_node_order;

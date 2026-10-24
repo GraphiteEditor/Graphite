@@ -1,10 +1,11 @@
+use core_types::list::ATTR_PATHS;
 use core_types::list::{ATTR_APPEARANCE, Item, List, NodeIdPath};
 use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Ctx};
 use glam::DAffine2;
 use graphic_types::Appearance;
 use graphic_types::graphic::bake_paint_transforms;
-use graphic_types::vector_types::vector::VectorExt;
-use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use graphic_types::vector_types::vector::algorithms::weld::WeldExt;
+use graphic_types::vector_types::vector::{Path, SetVectorPaths, no_paths, paths_from_list_row_attributes, set_paths_at};
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
@@ -17,8 +18,8 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
-#[node_macro::node(category("Vector: Modifier"), memoize)]
-async fn boolean_operation(
+#[node_macro::node(category("Vector: Path"), icon("NodeBooleanOperation"), memoize)]
+fn boolean_operation(
 	_: impl Ctx,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.
 	content: List<Graphic>,
@@ -27,7 +28,7 @@ async fn boolean_operation(
 	/// Union combines all paths while cutting out overlapping areas (even the interiors of a single path).
 	/// Subtraction cuts overlapping areas out from the last (Subtract Front) or first (Subtract Back) path.
 	/// Intersection cuts away all but the overlapping areas shared by every path.
-	/// Difference cuts away the overlapping areas shared by every path, leaving only the non-overlapping areas.
+	/// Difference cuts away the areas where an even number of paths overlap, keeping those where an odd number do.
 	operation: Item<BooleanOperation>,
 ) -> Item<Vector> {
 	let operation = operation.into_element();
@@ -57,9 +58,11 @@ async fn boolean_operation(
 		// for editor click-target preservation.
 		result_vector_list.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content.clone());
 
-		// Clean up the boolean operation result by merging duplicated points
+		// Weld duplicated points within each contour only, since welding contours that touch would make the result fill as a mesh, holes included
 		let merge_transform: DAffine2 = result_vector_list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		result_vector_list.element_mut(0).unwrap().merge_by_distance_spatial(merge_transform, 0.0001);
+		let mut result_paths = result_vector_list.attribute::<List<Path>>(ATTR_PATHS, 0).cloned().unwrap_or_default();
+		result_vector_list.element_mut(0).unwrap().weld_within_pieces(&mut result_paths, merge_transform, 0.0001);
+		set_paths_at(&mut result_vector_list, 0, result_paths);
 	}
 
 	result_vector_list.into_iter().next().unwrap_or_default()
@@ -125,7 +128,7 @@ impl WindingNumber {
 			BooleanOperation::SubtractFront => self.elems.first().is_some_and(is_in) && self.elems.iter().skip(1).all(is_out),
 			BooleanOperation::SubtractBack => self.elems.last().is_some_and(is_in) && self.elems.iter().rev().skip(1).all(is_out),
 			BooleanOperation::Intersect => !self.elems.is_empty() && self.elems.iter().all(is_in),
-			BooleanOperation::Difference => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
+			BooleanOperation::Difference => self.elems.iter().filter(|&winding| is_in(winding)).count() % 2 == 1,
 		}
 	}
 }
@@ -145,6 +148,8 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 		let copy_from_transform: DAffine2 = vector.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		// The boolean op bakes input transforms into the output geometry, so the result item carries no transform of its own
 		attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
+		// The result weaves its own paths rather than inheriting the operand's
+		attributes.remove::<List<Path>>(ATTR_PATHS);
 
 		bake_paint_transforms(&mut attributes, copy_from_transform);
 
@@ -155,21 +160,24 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 
 	for index in 0..vector.len() {
 		let element = vector.element(index).unwrap();
-		paths.push(to_bez_path(element, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
+		let element_paths = paths_from_list_row_attributes(vector, index).unwrap_or_else(|| no_paths());
+		paths.push(to_bez_path(element, element_paths, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
 	}
 
 	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
 		Ok(top) => top,
 		Err(e) => {
 			log::error!("Boolean operation failed while building topology: {e}");
+			row.set_paths(List::<Path>::new());
 			list.push(row);
 			return list;
 		}
 	};
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
-	for contour in contours.contours() {
-		row.element_mut().append_bezpath(closed(contour.path.clone()));
-	}
+	let mut result_paths = List::new();
+	let closed_contours = contours.contours().map(|contour| closed(contour.path.clone()));
+	row.element_mut().append_bezpaths(&mut result_paths, closed_contours);
+	row.set_paths(result_paths);
 
 	list.push(row);
 	list
@@ -301,11 +309,11 @@ fn closed(mut path: BezPath) -> BezPath {
 	path
 }
 
-fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
+fn to_bez_path(vector: &Vector, element_paths: &List<Path>, transform: DAffine2) -> BezPath {
 	let transform = Affine::new(transform.to_cols_array());
 	let mut path = BezPath::new();
 
-	for subpath in vector.stroke_bezpath_iter() {
+	for subpath in vector.stroke_bezpath_iter(element_paths) {
 		let mut first = true;
 
 		for segment in closed(subpath).segments() {
@@ -332,5 +340,45 @@ pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
 			log::error!("Boolean Operation failed (a: {} segments, b: {} segments): {e}", a.segments().count(), b.segments().count());
 			Vec::new()
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use vector_types::kurbo::{Circle, Rect, Shape};
+
+	fn operand(shape: &impl Shape) -> Item<Graphic> {
+		Item::new_from_element(Graphic::Vector(Box::new(Vector::item_from_bezpath(&shape.to_path(0.01)))))
+	}
+
+	#[test]
+	fn difference_leaves_the_overlap_of_two_shapes_empty() {
+		let content: List<Graphic> = [operand(&Circle::new((0., 0.), 100.)), operand(&Rect::new(50., 50., 200., 200.))].into_iter().collect();
+		let result = boolean_operation((), content, Item::new_from_element(BooleanOperation::Difference));
+
+		let paths = result.attribute::<List<Path>>(ATTR_PATHS).cloned().unwrap_or_default();
+		let vector = result.element();
+		assert!(!vector.is_branching(&paths), "the two contours meeting where the outlines cross shouldn't be welded into a mesh");
+
+		let outline: BezPath = vector.stroke_bezpath_iter(&paths).flat_map(|subpath| subpath.into_iter()).collect();
+		assert_eq!(outline.winding(Point::new(60., 60.)), 0, "the overlap should be empty");
+		assert_ne!(outline.winding(Point::new(-50., 0.)), 0, "the circle's own area should be filled");
+		assert_ne!(outline.winding(Point::new(150., 150.)), 0, "the square's own area should be filled");
+	}
+
+	#[test]
+	fn difference_keeps_areas_covered_by_an_odd_number_of_shapes() {
+		let circles = [(0., 0.), (60., 0.), (30., 52.)].map(|center| operand(&Circle::new(center, 50.)));
+		let result = boolean_operation((), circles.into_iter().collect(), Item::new_from_element(BooleanOperation::Difference));
+
+		let paths = result.attribute::<List<Path>>(ATTR_PATHS).cloned().unwrap_or_default();
+		let vector = result.element();
+		assert!(!vector.is_branching(&paths), "the regions meeting where the outlines cross shouldn't be welded into a mesh");
+
+		let outline: BezPath = vector.stroke_bezpath_iter(&paths).flat_map(|subpath| subpath.into_iter()).collect();
+		assert_ne!(outline.winding(Point::new(-30., 0.)), 0, "the area inside one circle should be filled");
+		assert_eq!(outline.winding(Point::new(30., -20.)), 0, "the area inside two circles should be empty");
+		assert_ne!(outline.winding(Point::new(30., 17.)), 0, "the area inside all three circles should be filled");
 	}
 }

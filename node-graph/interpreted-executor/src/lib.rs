@@ -1,3 +1,6 @@
+// Auto-trait checks for the registry's node types walk deep into wgpu types, beyond the default limit of 128
+#![recursion_limit = "256"]
+
 pub mod dynamic_executor;
 pub mod node_registry;
 pub mod util;
@@ -5,7 +8,6 @@ pub mod util;
 #[cfg(test)]
 mod tests {
 	use core_types::*;
-	use futures::executor::block_on;
 
 	#[test]
 	fn double_number() {
@@ -46,6 +48,6 @@ mod tests {
 		let compiler = Compiler {};
 		let protograph = compiler.compile_single(network).expect("Graph should be generated");
 
-		let _exec = block_on(DynamicExecutor::new(protograph)).map(|_e| panic!("The network should not type check ")).unwrap_err();
+		let _exec = DynamicExecutor::new(protograph).map(|_e| panic!("The network should not type check ")).unwrap_err();
 	}
 }

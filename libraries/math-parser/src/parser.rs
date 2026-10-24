@@ -32,7 +32,7 @@ impl fmt::Display for ParseError {
 }
 
 /// A parse failure's message as prose and the code it quotes, so a host can render the code, which may be the user's own source,
-/// safely apart, with the byte range of the source it points at, which a sort error lacks.
+/// safely apart, with the byte range of the source it points at, which a sort error has only where it blames a name.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ErrorMessage {
 	parts: Vec<MessagePart>,
@@ -125,7 +125,10 @@ impl Node {
 
 	/// Parses the source for a host that supplies functions, which shadow any builtin of the same name.
 	pub fn try_parse_with_functions(src: &str, functions: &impl FunctionProvider) -> Result<Node, ParseError> {
-		sorted(parse(src)?, functions).map_err(|error| ParseError(vec![ErrorMessage::from_prose(&error.to_string())]))
+		sorted(parse(src)?, src, functions).map_err(|error| {
+			let message = ErrorMessage::from_prose(&error.to_string());
+			ParseError(vec![ErrorMessage { span: error.span(), ..message }])
+		})
 	}
 }
 
@@ -134,7 +137,7 @@ impl Node {
 struct FastParser;
 
 impl Cached for FastParser {
-	type Parser<'src> = Boxed<'src, 'src, Lexer<'src>, Syntax, extra::Default>;
+	type Parser<'src> = Boxed<'src, 'src, Lexer<'src>, Syntax<'src>, extra::Default>;
 
 	fn make_parser<'src>(self) -> <Self as Cached>::Parser<'src> {
 		parser().boxed()
@@ -145,7 +148,7 @@ impl Cached for FastParser {
 struct RichParser;
 
 impl Cached for RichParser {
-	type Parser<'src> = Boxed<'src, 'src, Lexer<'src>, Syntax, extra::Err<Rich<'src, Token<'src>, Span>>>;
+	type Parser<'src> = Boxed<'src, 'src, Lexer<'src>, Syntax<'src>, extra::Err<Rich<'src, Token<'src>, Span>>>;
 
 	fn make_parser<'src>(self) -> <Self as Cached>::Parser<'src> {
 		parser().boxed()
@@ -157,10 +160,124 @@ thread_local! {
 	static RICH_PARSER: Cache<RichParser> = Cache::new(RichParser);
 }
 
+/// Limits on an expression's tokens, bracket nesting, and depth of chained operations, which keep the parser and the passes recursing
+/// through its tree well within a thread's stack (1 MB in WebAssembly).
+const MAX_TOKENS: usize = 512;
+const MAX_NESTING: usize = 32;
+const MAX_DEPTH: usize = 128;
+
+/// A bracket level's chain of operations being read, the deepest group within that chain, and the deepest of its earlier chains.
+#[derive(Default)]
+struct ChainedLevel {
+	chain: usize,
+	deepest_group: usize,
+	deepest_chain: usize,
+}
+
+impl ChainedLevel {
+	/// How deep the level's tree can reach: each token of a chain nests at most one operation deeper, atop its deepest group.
+	fn depth(&self) -> usize {
+		self.deepest_chain.max(self.chain + self.deepest_group)
+	}
+}
+
+/// Why the source is too large to read within the stack, where it is.
+fn oversized(src: &str) -> Option<&'static str> {
+	// A group closing counts as one token of the chain around it, which reaches as deep again as the group does
+	fn close(levels: &mut Vec<ChainedLevel>) {
+		if levels.len() > 1
+			&& let Some(group) = levels.pop()
+			&& let Some(level) = levels.last_mut()
+		{
+			level.chain += 1;
+			level.deepest_group = level.deepest_group.max(group.depth());
+		}
+	}
+
+	let mut tokens = 0;
+	let mut levels = vec![ChainedLevel::default()];
+	let mut deepest_nesting = 0;
+	for token in Lexer::new(src) {
+		tokens += 1;
+		match token {
+			Token::LParen | Token::LBracket | Token::LBrace | Token::BarOpen => {
+				levels.push(ChainedLevel::default());
+				deepest_nesting = deepest_nesting.max(levels.len() - 1);
+			}
+			Token::RParen | Token::RBracket | Token::RBrace | Token::BarClose => close(&mut levels),
+			// A separator or keyword starts a new chain, whose operations are siblings of the last one's rather than nested within them
+			Token::Comma | Token::Semicolon | Token::Equals | Token::Where | Token::If | Token::Otherwise => {
+				if let Some(level) = levels.last_mut() {
+					level.deepest_chain = level.depth();
+					level.chain = 0;
+					level.deepest_group = 0;
+				}
+			}
+			_ => {
+				if let Some(level) = levels.last_mut() {
+					level.chain += 1;
+				}
+			}
+		}
+	}
+	// Unclosed groups still nest within the chains around them
+	while levels.len() > 1 {
+		close(&mut levels);
+	}
+	let depth = levels.last().map_or(0, ChainedLevel::depth);
+
+	if tokens > MAX_TOKENS || depth > MAX_DEPTH {
+		Some("The expression is too long to read")
+	} else if deepest_nesting > MAX_NESTING {
+		Some("The expression's brackets nest too deeply to read")
+	} else {
+		None
+	}
+}
+
+/// Parses the source as written with zero-cost errors, for a caller that needs only the tree, where the source has one.
+pub(crate) fn parse_quietly(src: &str) -> Option<Syntax<'_>> {
+	if oversized(src).is_some() {
+		return None;
+	}
+	FAST_PARSER.with(|cache| cache.get().parse(Lexer::new(src)).into_result().ok())
+}
+
+/// The keywords the grammar accepts right after the source, for an editor to offer only where one could follow.
+pub(crate) fn keywords_accepted_after(src: &str) -> Vec<&'static str> {
+	if oversized(src).is_some() {
+		return Vec::new();
+	}
+
+	// A character that's no token forces an error there, whose expected tokens are what the grammar would take in its place
+	let probe = format!("{src} @");
+	let at = probe.len() - 1;
+	let Err(errors) = RICH_PARSER.with(|cache| cache.get().parse(Lexer::new(&probe)).into_result()) else {
+		return Vec::new();
+	};
+
+	let expected = errors.iter().filter(|error| error.span().start == at).flat_map(|error| error.expected());
+	expected
+		.filter_map(|pattern| match pattern {
+			RichPattern::Token(token) => match **token {
+				Token::If => Some("if"),
+				Token::Otherwise => Some("otherwise"),
+				Token::Where => Some("where"),
+				_ => None,
+			},
+			_ => None,
+		})
+		.collect()
+}
+
 /// Parses the source as written, before its sorts are read.
-fn parse(src: &str) -> Result<Syntax, ParseError> {
+fn parse(src: &str) -> Result<Syntax<'_>, ParseError> {
+	if let Some(reason) = oversized(src) {
+		return Err(ParseError(vec![ErrorMessage::from_prose(reason)]));
+	}
+
 	// Parse with zero-cost errors first (several times faster), then re-parse invalid input with rich errors to build the messages
-	if let Ok(ast) = FAST_PARSER.with(|cache| cache.get().parse(Lexer::new(src)).into_result()) {
+	if let Some(ast) = parse_quietly(src) {
 		return Ok(ast);
 	}
 
@@ -216,21 +333,21 @@ fn parse(src: &str) -> Result<Syntax, ParseError> {
 
 /// A `where` clause: bindings separated by commas, each a value like `a = 1` or a function like `f(t) = t^2`, whose defining
 /// expression has no clause of its own unless parenthesized.
-fn where_clause<'src, I, E>(expression: impl Parser<'src, I, Syntax, E> + Clone) -> impl Parser<'src, I, Vec<Binding>, E> + Clone
+fn where_clause<'src, I, E>(expression: impl Parser<'src, I, Syntax<'src>, E> + Clone) -> impl Parser<'src, I, Vec<Binding<'src>>, E> + Clone
 where
 	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 	E: extra::ParserExtra<'src, I>,
 	E::Error: LabelError<'src, I, &'static str> + CustomError,
 {
 	// The `\` prefix always reaches the language's own builtin, so no clause can define a name that has it
-	let name = select! {Token::Ident(name) => name}.labelled("a name").validate(|name: &str, extra, emitter| {
+	let name = select! {Token::Ident(name) => name}.labelled("a name").validate(|name: &'src str, extra, emitter| {
 		if name.starts_with('\\') {
 			emitter.emit(CustomError::custom(extra.span(), "A `\\` name is always the builtin, so no `where` clause can define one"));
 		}
-		name.to_string()
+		name
 	});
 
-	let parameters = name.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<String>>();
+	let parameters = name.separated_by(just(Token::Comma)).at_least(1).collect::<Vec<&'src str>>();
 	let binding = name
 		.then(parameters.delimited_by(just(Token::LParen), just(Token::RParen)).or_not())
 		.then_ignore(just(Token::Equals))
@@ -245,14 +362,14 @@ where
 }
 
 /// The expression, within the names its `where` clause defines if it has one.
-fn with_bindings((body, bindings): (Syntax, Option<Vec<Binding>>)) -> Syntax {
+fn with_bindings<'src>((body, bindings): (Syntax<'src>, Option<Vec<Binding<'src>>>)) -> Syntax<'src> {
 	match bindings {
 		Some(bindings) => Syntax::Where { body: Box::new(body), bindings },
 		None => body,
 	}
 }
 
-pub fn parser<'src, I, E>() -> impl Parser<'src, I, Syntax, E>
+pub fn parser<'src, I, E>() -> impl Parser<'src, I, Syntax<'src>, E>
 where
 	I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 	E: extra::ParserExtra<'src, I>,
@@ -276,7 +393,7 @@ where
 		let piecewise = case
 			.separated_by(just(Token::Comma))
 			.at_least(1)
-			.collect::<Vec<(Syntax, Option<Syntax>)>>()
+			.collect::<Vec<(Syntax<'src>, Option<Syntax<'src>>)>>()
 			.delimited_by(just(Token::LBrace), just(Token::RBrace))
 			// Emitted rather than failed, since a failure at the atom's start would be relabeled as a missing atom
 			.validate(|written_cases, extra, emitter| {
@@ -297,7 +414,7 @@ where
 			expr.clone()
 				.separated_by(just(separator))
 				.at_least(1)
-				.collect::<Vec<Syntax>>()
+				.collect::<Vec<Syntax<'src>>>()
 				.delimited_by(just(Token::LBracket), just(Token::RBracket))
 				.map(move |entries| Syntax::Matrix { entries, by_rows })
 		};
@@ -314,13 +431,9 @@ where
 
 		// An ident followed by parenthesized args is a function call, otherwise a variable
 		let call_or_var = ident.then(args.or_not()).map(|(name, args)| match args {
-			Some((args, None)) => Syntax::FnCall { name: name.to_string(), expr: args },
-			Some((arguments, Some(bindings))) => Syntax::CallWhere(Box::new(CallWhere {
-				name: name.to_string(),
-				arguments,
-				bindings,
-			})),
-			None => Syntax::Var(name.to_string()),
+			Some((args, None)) => Syntax::FnCall { name, expr: args },
+			Some((arguments, Some(bindings))) => Syntax::CallWhere(Box::new(CallWhere { name, arguments, bindings })),
+			None => Syntax::Var(name),
 		});
 
 		let parens = expr
@@ -380,7 +493,7 @@ where
 		let product = unary
 			.clone()
 			.then(choice((mul_op.then(unary), implicit_mul)).repeated().collect::<Vec<_>>())
-			.map(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>)| {
+			.map(|(first, mut rest): (Syntax<'src>, Vec<(BinaryOp, Syntax<'src>)>)| {
 				// Two factors group only one way, while a longer chain is grouped by the sort pass, which knows the matrices
 				if rest.len() <= 1 {
 					return match rest.pop() {
@@ -416,7 +529,7 @@ where
 			.clone()
 			.then(cmp_op.then(range).repeated().collect::<Vec<_>>())
 			// Emitted rather than failed, since chumsky's `try_map` moves the deepest error found inside it back to its own start, hiding it behind the operator
-			.validate(|(first, mut rest): (Syntax, Vec<(BinaryOp, Syntax)>), extra, emitter| {
+			.validate(|(first, mut rest): (Syntax<'src>, Vec<(BinaryOp, Syntax<'src>)>), extra, emitter| {
 				// A lone comparison is an ordinary binary operation
 				if rest.len() <= 1 {
 					return match rest.pop() {
@@ -479,13 +592,13 @@ mod tests {
 	test_parser! {
 		test_parse_int_literal: "42" => Syntax::Lit(Literal::Integer(42)),
 		test_parse_float_literal: "3.14" => Syntax::Lit(Literal::Float(#[allow(clippy::approx_constant)] 3.14)),
-		test_parse_ident: "x" => Syntax::Var("x".to_string()),
+		test_parse_ident: "x" => Syntax::Var("x"),
 		test_matrix_rows: "[1;i]" => Syntax::Matrix {
-			entries: vec![Syntax::Lit(Literal::Integer(1)), Syntax::Var("i".to_string())],
+			entries: vec![Syntax::Lit(Literal::Integer(1)), Syntax::Var("i")],
 			by_rows: true,
 		},
 		test_matrix_columns: "[i,j]" => Syntax::Matrix {
-			entries: vec![Syntax::Var("i".to_string()), Syntax::Var("j".to_string())],
+			entries: vec![Syntax::Var("i"), Syntax::Var("j")],
 			by_rows: false,
 		},
 		test_range_below_arithmetic: "-1..2pi" => Syntax::Range {
@@ -496,7 +609,7 @@ mod tests {
 			to: Box::new(Syntax::BinOp {
 				lhs: Box::new(Syntax::Lit(Literal::Integer(2))),
 				op: BinaryOp::Mul,
-				rhs: Box::new(Syntax::Var("pi".to_string())),
+				rhs: Box::new(Syntax::Var("pi")),
 			}),
 		},
 		test_product_chain_stays_flat: "2 * 3 / 4" => Syntax::Product {
@@ -509,12 +622,12 @@ mod tests {
 				to: Box::new(Syntax::Lit(Literal::Integer(1))),
 			}),
 			op: BinaryOp::Eq,
-			rhs: Box::new(Syntax::Var("I".to_string())),
+			rhs: Box::new(Syntax::Var("I")),
 		},
 		test_transpose_then_inverse: "A^T^-1" => Syntax::BinOp {
 			lhs: Box::new(Syntax::UnaryOp {
 				op: UnaryOp::Transpose,
-				expr: Box::new(Syntax::Var("A".to_string())),
+				expr: Box::new(Syntax::Var("A")),
 			}),
 			op: BinaryOp::Pow,
 			rhs: Box::new(Syntax::UnaryOp {
@@ -542,23 +655,23 @@ mod tests {
 			rhs: Box::new(Syntax::Lit(Literal::Integer(3))),
 		},
 		test_parse_sqrt_call: "sqrt(16)" => Syntax::FnCall {
-			name: "sqrt".to_string(),
+			name: "sqrt",
 			expr: vec![Syntax::Lit(Literal::Integer(16))],
 		},
 		test_parse_ii_call: "ii(16)" => Syntax::FnCall {
-			name: "ii".to_string(),
+			name: "ii",
 			expr: vec![Syntax::Lit(Literal::Integer(16))],
 		},
 		// `i` is a name a binding may shadow, so only the evaluator can read this call as `i` times its argument
 		test_parse_i_mul: "i(16)" => Syntax::FnCall {
-			name: "i".to_string(),
+			name: "i",
 			expr: vec![Syntax::Lit(Literal::Integer(16))],
 		},
 		test_call_where_clause: "max(a, b where a = 1)" => Syntax::CallWhere(Box::new(CallWhere {
-			name: "max".to_string(),
-			arguments: vec![Syntax::Var("a".to_string()), Syntax::Var("b".to_string())],
+			name: "max",
+			arguments: vec![Syntax::Var("a"), Syntax::Var("b")],
 			bindings: vec![Binding {
-				name: "a".to_string(),
+				name: "a",
 				parameters: vec![],
 				value: Syntax::Lit(Literal::Integer(1)),
 			}],
@@ -581,29 +694,29 @@ mod tests {
 			}),
 		},
 		test_where_clause: "a where a = 1, f(t, u) = t" => Syntax::Where {
-			body: Box::new(Syntax::Var("a".to_string())),
+			body: Box::new(Syntax::Var("a")),
 			bindings: vec![
 				Binding {
-					name: "a".to_string(),
+					name: "a",
 					parameters: vec![],
 					value: Syntax::Lit(Literal::Integer(1)),
 				},
 				Binding {
-					name: "f".to_string(),
-					parameters: vec!["t".to_string(), "u".to_string()],
-					value: Syntax::Var("t".to_string()),
+					name: "f",
+					parameters: vec!["t", "u"],
+					value: Syntax::Var("t"),
 				},
 			],
 		},
 		test_piecewise_expr: "{0 otherwise, x + 3 if x < 0}" => Syntax::Piecewise {
 			cases: vec![Case {
 				value: Syntax::BinOp {
-					lhs: Box::new(Syntax::Var("x".to_string())),
+					lhs: Box::new(Syntax::Var("x")),
 					op: BinaryOp::Add,
 					rhs: Box::new(Syntax::Lit(Literal::Integer(3))),
 				},
 				condition: Syntax::BinOp {
-					lhs: Box::new(Syntax::Var("x".to_string())),
+					lhs: Box::new(Syntax::Var("x")),
 					op: BinaryOp::Lt,
 					rhs: Box::new(Syntax::Lit(Literal::Integer(0))),
 				},

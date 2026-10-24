@@ -131,7 +131,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Merge".into()))
 	}
 
-	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
+	/// The uneditable name in the Inspector which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId) -> String {
 		self.reference(node_id)
 			.ok()
@@ -174,14 +174,24 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.is_some_and(|upstream_id| self.is_layer(&upstream_id).unwrap_or_default())
 	}
 
+	fn is_passthrough(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		Ok(matches!(self.implementation(node_id)?, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER))
+	}
+
+	/// Whether the node is a redirect dot, which is a Passthrough node that the node graph draws as a small dot bending the wire running through it.
+	pub fn is_redirect_dot(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		Ok(self.is_passthrough(node_id)? && !self.is_layer(node_id)?)
+	}
+
 	/// Whether the node's signature fits the layer form: one output, at most two exposed leading inputs, and no exposed parameters.
+	/// A Passthrough never fits, since it's drawn as a redirect dot.
 	pub fn is_eligible_to_be_layer(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		let node = self.node(node_id)?;
 		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed()).count();
 		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed());
 		let output_count = self.number_of_outputs(node_id)?;
 
-		Ok(!self.hidden_primary_output(node_id)? && output_count == 1 && (input_count <= 2) && parameters_hidden)
+		Ok(!self.is_passthrough(node_id)? && !self.hidden_primary_output(node_id)? && output_count == 1 && (input_count <= 2) && parameters_hidden)
 	}
 
 	pub fn is_locked(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
@@ -244,6 +254,8 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn number_of_outputs(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
+			// A multi-output proto node has an output for each field of the struct it returns
+			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).map_or(1, |metadata| metadata.number_of_outputs()),
 			_ => 1,
 		})
 	}
@@ -264,6 +276,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	pub fn hidden_primary_output(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		Ok(match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(network) => network.exports.first().is_none_or(|input| !input.is_exposed()),
+			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).is_some_and(|metadata| metadata.hidden_primary_output()),
 			_ => false,
 		})
 	}

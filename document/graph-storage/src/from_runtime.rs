@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 
 use core_types::Context;
-use core_types::context::ContextDependencies;
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
@@ -11,8 +10,8 @@ use serde::Serialize;
 use crate::attr::*;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
 use crate::{
-	AttributesWrite, ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value,
-	ValueError, from_value, to_value,
+	ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value, ValueError, from_value,
+	to_value,
 };
 
 fn map_serialization_error(key: &str) -> impl FnOnce(ValueError) -> ConversionError + '_ {
@@ -221,11 +220,13 @@ pub fn convert_resource_entry(resources: &graphene_resource::ResourceRegistry, i
 			peer,
 		};
 		let body = to_value(source).map_err(|error| ConversionError::SerializationError(error.to_string()))?;
-		entry.set_source(
+		// Built rather than written: the chain is put in place as converted, floor and all at the origin.
+		entry.force_set_source(
 			key,
 			crate::SourceValue {
 				source: body,
 				timestamp: TimeStamp::ORIGIN,
+				deleted: false,
 			},
 		);
 	}
@@ -339,7 +340,15 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 	write_ui_network_attributes(&mut attributes, node_network, metadata_path, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 	write_scope_injections(&mut attributes, node_network, parent_path, network_id, ctx.ids(metadata_path), TimeStamp::ORIGIN)?;
 
-	registry.networks.insert(network_id, Network { exports, attributes });
+	registry.networks.insert(
+		network_id,
+		Network {
+			presence: TimeStamp::ORIGIN,
+			exports,
+			exports_timestamp: TimeStamp::ORIGIN,
+			attributes,
+		},
+	);
 	ctx.network_ids.insert(metadata_path.to_vec(), network_id);
 
 	Ok(())
@@ -411,6 +420,7 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	let mut inputs = Vec::with_capacity(doc_node.inputs.len());
 	for (input_index, input) in doc_node.inputs.iter().enumerate() {
 		let mut input_attrs = convert_input_attributes(input)?;
+		input_attrs.set_floor(timestamp);
 		write_ui_input_attributes(&mut input_attrs, ctx.metadata, metadata_path, runtime_node_id, input_index, timestamp)?;
 
 		inputs.push(InputSlot {
@@ -432,13 +442,10 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	let implementation = convert_implementation(&doc_node.implementation, &node_path, child_metadata_path, registry, ctx, recurse)?;
 
 	// Defaults match `DocumentNode::default()`; `to_runtime` rehydrates absent keys from the same defaults.
-	let mut attributes = crate::Attributes::new();
+	let mut attributes = crate::Attributes::empty_at(timestamp);
 	attributes
 		.set_if_not_default(node::CALL_ARGUMENT, &doc_node.call_argument, &concrete!(Context), timestamp)
 		.map_err(map_serialization_error(node::CALL_ARGUMENT))?;
-	attributes
-		.set_if_not_default(node::CONTEXT_FEATURES, &doc_node.context_features, &ContextDependencies::default(), timestamp)
-		.map_err(map_serialization_error(node::CONTEXT_FEATURES))?;
 	attributes
 		.set_if_not_default(node::VISIBLE, &doc_node.visible, &true, timestamp)
 		.map_err(map_serialization_error(node::VISIBLE))?;
@@ -449,6 +456,9 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 	write_ui_attributes(&mut attributes, ctx.metadata, metadata_path, runtime_node_id, timestamp)?;
 
 	Ok(Node {
+		presence: timestamp,
+		network_timestamp: timestamp,
+		inputs_timestamp: timestamp,
 		implementation,
 		implementation_timestamp: timestamp,
 		inputs,
@@ -461,11 +471,6 @@ fn convert_node<M: NodeMetadataSource + ?Sized>(
 /// `to_runtime` rehydrates an absent key from. For staging paths that encode this field alone.
 pub fn encode_call_argument(call_argument: &core_types::Type) -> Result<crate::AttributeDelta, ConversionError> {
 	encode_if_not_default(node::CALL_ARGUMENT, call_argument, &concrete!(Context))
-}
-
-/// The `context_features` attribute write, cleared at its default like [`encode_call_argument`].
-pub fn encode_context_features(context_features: &ContextDependencies) -> Result<crate::AttributeDelta, ConversionError> {
-	encode_if_not_default(node::CONTEXT_FEATURES, context_features, &ContextDependencies::default())
 }
 
 fn encode_if_not_default<T: Serialize + PartialEq>(key: &str, value: &T, default: &T) -> Result<crate::AttributeDelta, ConversionError> {
@@ -533,6 +538,13 @@ fn write_ui_attributes<M: NodeMetadataSource + ?Sized>(
 		attributes
 			.set_serialized(node::ui::OUTPUT_NAMES, &output_names, timestamp)
 			.map_err(map_serialization_error(node::ui::OUTPUT_NAMES))?;
+	}
+
+	let output_descriptions = metadata.output_descriptions(metadata_path, runtime_node_id);
+	if output_descriptions.iter().any(|description| !description.is_empty()) {
+		attributes
+			.set_serialized(node::ui::OUTPUT_DESCRIPTIONS, &output_descriptions, timestamp)
+			.map_err(map_serialization_error(node::ui::OUTPUT_DESCRIPTIONS))?;
 	}
 
 	Ok(())
@@ -812,7 +824,15 @@ impl<'m> ScopedConversion<'m> {
 		write_ui_network_attributes(&mut attributes, node_network, local_path, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 		write_scope_injections(&mut attributes, node_network, owner_path.as_ref(), network_id, self.ctx.ids(local_path), TimeStamp::ORIGIN)?;
 
-		registry.networks.insert(network_id, Network { exports, attributes });
+		registry.networks.insert(
+			network_id,
+			Network {
+				presence: TimeStamp::ORIGIN,
+				exports,
+				exports_timestamp: TimeStamp::ORIGIN,
+				attributes,
+			},
+		);
 		Ok(())
 	}
 

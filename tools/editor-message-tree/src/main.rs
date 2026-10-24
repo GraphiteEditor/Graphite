@@ -150,10 +150,10 @@ fn write_tree_html(tree: &DebugMessageTree, out: &mut String) {
 	let escaped_name = escape_html(tree.name());
 
 	out.push_str("<ul>\n");
-	out.push_str(&format!(r#"<li><span class="tree-node"><span class="subsystem">{escaped_name}</span>{link}</span>"#));
+	out.push_str(&format!(r#"<li><span class="tree-node" data-tree-node><span class="subsystem">{escaped_name}</span>{link}</span>"#));
 
 	if let Some(variants) = tree.variants() {
-		out.push_str(r#"<div class="nested">"#);
+		out.push_str(r#"<div class="nested" data-nested>"#);
 		write_tree_html_children(variants, out);
 		out.push_str("</div>");
 	}
@@ -233,8 +233,10 @@ fn write_tree_html_node(tree: &DebugMessageTree, out: &mut String) {
 	let warning = if has_link { naming_convention_warning(tree.name()) } else { "" };
 
 	if has_children {
-		out.push_str(&format!(r#"<li><span class="tree-node"><span class="{role}">{escaped_name}</span>{link}{warning}</span>"#));
-		out.push_str(r#"<div class="nested"><ul>"#);
+		out.push_str(&format!(
+			r#"<li><span class="tree-node" data-tree-node><span class="{role}">{escaped_name}</span>{link}{warning}</span>"#
+		));
+		out.push_str(r#"<div class="nested" data-nested><ul>"#);
 		out.push('\n');
 
 		for child in &children {
@@ -273,8 +275,10 @@ fn write_handler_or_data_html(name: &str, path: &str, line: usize, fields: &[Str
 	if fields.is_empty() {
 		out.push_str(&format!(r#"<li><span class="tree-leaf subsystem">{escaped_name}</span>{link}{warning}</li>"#));
 	} else {
-		out.push_str(&format!(r#"<li><span class="tree-node"><span class="subsystem">{escaped_name}</span>{link}{warning}</span>"#));
-		out.push_str(r#"<div class="nested"><ul>"#);
+		out.push_str(&format!(
+			r#"<li><span class="tree-node" data-tree-node><span class="subsystem">{escaped_name}</span>{link}{warning}</span>"#
+		));
+		out.push_str(r#"<div class="nested" data-nested><ul>"#);
 		out.push('\n');
 		for field in fields {
 			write_field_html(field, out);

@@ -11,6 +11,8 @@ pub const STACK_VERTICAL_GAP: i32 = 3;
 pub const LAYER_INDENT_OFFSET: i32 = 8;
 /// Horizontal grid width of a non-layer node in a chain.
 pub const NODE_CHAIN_WIDTH: i32 = 7;
+/// How quickly a dragged node glides into the grid cell it moves to, as the time it takes to cover all but 1/e (about 37%) of the remaining distance.
+pub const NODE_GLIDE_TIME_CONSTANT_MILLISECONDS: f64 = 30.;
 
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
@@ -37,20 +39,15 @@ pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 
 pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
 pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
+/// How long a dragged wire must rest over a node before the node reveals its hidden inputs the wire could connect to.
+pub const WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS: u64 = 250;
 
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
-/// These are layers whose bounding boxes are used for alignment.
-pub const MAX_ALIGNMENT_CANDIDATES: usize = 100;
-/// These are layers that are used for the layer snapper.
-pub const MAX_SNAP_CANDIDATES: usize = 10;
-/// These are points (anchors and bounding box corners etc.) in the layer snapper.
-pub const MAX_LAYER_SNAP_POINTS: usize = 100;
 
 pub const DRAG_THRESHOLD: f64 = 1.;
 
 // TRANSFORMING LAYER
-pub const ROTATE_INCREMENT: f64 = 15.;
 pub const SCALE_INCREMENT: f64 = 0.1;
 pub const SLOWING_DIVISOR: f64 = 10.;
 pub const NUDGE_AMOUNT: f64 = 1.;
@@ -112,11 +109,42 @@ pub const MANIPULATOR_GROUP_MARKER_SIZE: f64 = 6.;
 pub const SELECTION_THRESHOLD: f64 = 10.;
 pub const DRILL_THROUGH_THRESHOLD: f64 = 10.;
 pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
-pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SEGMENT_INSERTION_DISTANCE: f64 = 5.;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
+
+// PATH DIRECTION OVERLAYS
+// Paths shorter than this on screen get no markers
+pub const PATH_MARKERS_MIN_LENGTH: f64 = 24.;
+// From an end anchor's center to the middle of the marker beside it
+pub const PATH_END_MARKER_DISTANCE: f64 = 7.;
+pub const PATH_END_MARKER_SIZE: f64 = 9.;
+// Between arrows, stretched or squeezed slightly so a whole number of them fit evenly along each path
+pub const PATH_DIRECTION_ARROW_SPACING: f64 = 15.625;
+pub const PATH_DIRECTION_CHEVRON_SIZE: f64 = 8.;
+// How far to the right of the path its harpoons' shafts sit, apart from the path itself
+pub const PATH_DIRECTION_HARPOON_OFFSET: f64 = 3.;
+// In viewport pixels, far finer than the arrows need to sit evenly
+pub const PATH_DIRECTION_ARC_LENGTH_ACCURACY: f64 = 0.1;
+pub const PATH_INDEX_LABEL_OFFSET: f64 = 14.;
+pub const POINT_INDEX_LABEL_OFFSET: f64 = 12.;
+// Between a path's start anchor's point index and its path index, side by side
+pub const INDEX_LABEL_GAP: f64 = 8.;
+pub const PATH_FLOW_JOIN_TICK_LENGTH: f64 = 18.;
+pub const PATH_FLOW_JOIN_TICK_THICKNESS: f64 = 2.;
+
+// CURVATURE COMB OVERLAY
+// A tooth's length in document pixels is the curvature times this scale, in square document pixels
+pub const CURVATURE_COMB_MIN_SCALE: f64 = 100.;
+pub const CURVATURE_COMB_MAX_SCALE: f64 = 10_000.;
+// Midway along its slider, at the geometric mean of the minimum and maximum
+pub const CURVATURE_COMB_DEFAULT_SCALE: f64 = 1000.;
+// In viewport pixels along each segment, until a segment reaches its maximum teeth
+pub const CURVATURE_COMB_TOOTH_SPACING: f64 = 6.;
+pub const CURVATURE_COMB_MAX_TEETH_PER_SEGMENT: f64 = 128.;
+// In viewport pixels, past which the teeth near a cusp would only streak across the screen
+pub const CURVATURE_COMB_MAX_TOOTH_LENGTH: f64 = 2000.;
 
 // GRADIENT TOOL
 pub const GRADIENT_MIDPOINT_DIAMOND_RADIUS: f64 = 4.;
@@ -130,9 +158,6 @@ pub const CREATE_CURVE_THRESHOLD: f64 = 5.;
 // SPLINE TOOL
 pub const PATH_JOIN_THRESHOLD: f64 = 5.;
 
-// LINE TOOL
-pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
-
 // BRUSH TOOL
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const BRUSH_SIZE_DEFAULT: f64 = 40.;
@@ -143,11 +168,10 @@ pub const BRUSH_FLOW_DEFAULT: f64 = 100.;
 pub const EYEDROPPER_PREVIEW_AREA_RESOLUTION: u32 = 11;
 
 // GIZMOS
-pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
+pub const SPIRAL_END_HOVER_RADIUS: f64 = 8.;
 pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION: f64 = 1.2;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH: f64 = 10.;
-pub const ARC_SNAP_THRESHOLD: f64 = 5.;
 pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
@@ -169,6 +193,7 @@ pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_GREEN_25: &str = "#63ce6340";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_RED_25: &str = "#ef545440";
+pub const COLOR_OVERLAY_MAGENTA: &str = "#ba57bc";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
@@ -187,6 +212,16 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// How far, in viewport pixels, the second press of a double-click can land from the first, and how far the first can travel before its release.
+pub const DOUBLE_CLICK_ALLOWED_TRAVEL: f64 = 4.;
+/// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
+pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
+
+// FONTS
+/// How long a font catalog request may go unanswered before another can be sent.
+pub const FONT_CATALOG_REQUEST_TIMEOUT_MILLISECONDS: u64 = 60_000;
+/// How long to wait after a failed font catalog request before sending another.
+pub const FONT_CATALOG_RETRY_DELAY_MILLISECONDS: u64 = 10_000;
 
 // UI
 pub const UI_SCALE_DEFAULT: f64 = 1.;

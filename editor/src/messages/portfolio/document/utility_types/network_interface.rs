@@ -38,7 +38,7 @@ use crate::consts::{
 	EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, HALF_GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH,
 	STACK_VERTICAL_GAP,
 };
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::text_metrics::text_width;
@@ -52,8 +52,8 @@ use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::Appearance;
-use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
+use graphene_std::registry::MULTI_OUTPUT_NODES;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType, FreePoint};
 use graphene_std::vector::{Vector, VectorModificationType};
@@ -90,6 +90,19 @@ pub struct NodeNetworkInterface {
 	/// a set of changes.
 	#[serde(skip)]
 	deltas: Vec<EditorDelta>,
+	/// The document network nodes the open transaction has written to, read from `deltas`, for the Layers panel to highlight during an edit like a drag.
+	#[serde(skip)]
+	transaction_edited_nodes: HashSet<NodeId>,
+	/// How far into `deltas` the reading for `transaction_edited_nodes` has reached.
+	#[serde(skip)]
+	transaction_edited_nodes_scanned: usize,
+	/// Whether `transaction_edited_nodes` changed since `update_transaction_edited_nodes` last reported it.
+	#[serde(skip)]
+	transaction_edited_nodes_changed: bool,
+	/// The redirect dots in each network that an edit took a wire from, and on which side, since `remove_orphaned_dots` last judged them there.
+	/// Only these are judged, so a Passthrough left without a wire by anything other than an edit (like one a migration made from a removed node) is left in place.
+	#[serde(skip)]
+	dots_that_lost_a_wire: HashMap<Vec<NodeId>, HashSet<(NodeId, DotSide)>>,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -101,6 +114,10 @@ impl Clone for NodeNetworkInterface {
 			resolved_types: Default::default(),
 			transaction_status: TransactionStatus::Finished,
 			deltas: Vec::new(),
+			transaction_edited_nodes: HashSet::new(),
+			transaction_edited_nodes_scanned: 0,
+			transaction_edited_nodes_changed: false,
+			dots_that_lost_a_wire: HashMap::new(),
 		}
 	}
 }

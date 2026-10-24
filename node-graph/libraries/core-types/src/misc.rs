@@ -73,7 +73,7 @@ impl<T: Clampable> Clampable for Item<T> {
 		Item::from_parts(element.clamp_hard_max(max), attributes)
 	}
 }
-impl<T: Clampable> Clampable for List<T> {
+impl<T: Clampable + Clone> Clampable for List<T> {
 	fn clamp_hard_min(self, min: f64) -> Self {
 		self.into_iter().map(|item| item.clamp_hard_min(min)).collect()
 	}

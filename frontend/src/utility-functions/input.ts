@@ -1,6 +1,5 @@
 import { get } from "svelte/store";
 import type { DialogStore } from "/src/stores/dialog";
-import type { DocumentStore } from "/src/stores/document";
 import { toggleFullscreen } from "/src/stores/fullscreen";
 import type { PortfolioStore } from "/src/stores/portfolio";
 import { pasteFile } from "/src/utility-functions/files";
@@ -16,7 +15,6 @@ const BUTTON_FORWARD = 4;
 
 let viewportPointerInteractionOngoing = false;
 let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
-let canvasFocused = true;
 let inPointerLock = false;
 let lastShakeTime = 0;
 const shakeSamples: { x: number; y: number; time: number }[] = [];
@@ -40,18 +38,9 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 	// But on web, we want to not redirect paste
 	if (import.meta.env.MODE !== "native" && key === "KeyV" && accelKey) return false;
 
-	// Don't redirect user input from text entry into HTML elements
-	if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
-
-	// Don't redirect tab or enter if not in canvas (to allow navigating elements)
-	potentiallyRestoreCanvasFocus(e);
-	if (
-		!canvasFocused &&
-		!targetIsTextField(e.target || undefined) &&
-		["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key) &&
-		!(e.ctrlKey || e.metaKey || e.altKey)
-	)
-		return false;
+	// Don't redirect user input from text entry into HTML elements, except the keys that end the Text tool's editing in the backend
+	const endsTextToolEditing = e.target === textToolInteractiveInputElement && (key === "Escape" || (accelKey && ["Enter", "NumpadEnter"].includes(key)));
+	if (targetIsTextField(e.target || undefined) && !endsTextToolEditing) return false;
 
 	// Don't redirect if a MenuList is open
 	if (window.document.querySelector("[data-floating-menu-content]")) return false;
@@ -79,6 +68,12 @@ export async function shouldRedirectKeyboardEventToBackend(e: KeyboardEvent, dia
 }
 
 export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogStore: DialogStore) {
+	// Before any waiting, while the browser can still be kept from moving the focus through the page's elements
+	if (e.key === "Tab") {
+		if (tabBetweenTextFields(e)) return;
+		if (!(e.ctrlKey || e.metaKey || e.altKey)) e.preventDefault();
+	}
+
 	const key = await getLocalizedScanCode(e);
 
 	const NO_KEY_REPEAT_MODIFIER_KEYS = ["ControlLeft", "ControlRight", "ShiftLeft", "ShiftRight", "MetaLeft", "MetaRight", "AltLeft", "AltRight", "AltGraph", "CapsLock", "Fn", "FnLock"];
@@ -91,8 +86,11 @@ export async function onKeyDown(e: KeyboardEvent, editor: EditorWrapper, dialogS
 		return;
 	}
 
+	// Escape closing a menu or canceling an edit in the dialog, which marks the dialog once every listener has run, leaves it open
 	if (get(dialogStore).visible && key === "Escape") {
-		editor.onDialogDismiss();
+		setTimeout(() => {
+			if (!window.document.querySelector("[data-dialog] [data-escape-does-not-close]")) editor.onDialogDismiss();
+		}, 0);
 	}
 }
 
@@ -114,20 +112,17 @@ function isObserveOnly(e: MouseEvent): boolean {
 }
 
 // While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
-export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentStore: DocumentStore) {
-	potentiallyRestoreCanvasFocus(e);
-
+export function onPointerMove(e: PointerEvent, editor: EditorWrapper) {
 	if (!e.buttons) viewportPointerInteractionOngoing = false;
 
 	if (isObserveOnly(e)) return;
 
-	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu, or the graph overlay, on top of the canvas
+	// Don't redirect pointer movement to the backend if there's no ongoing interaction and it's over a floating menu on top of the canvas
 	// TODO: A better approach is to pass along a boolean to the backend's input preprocessor so it can know if it's being occluded by the GUI.
 	// TODO: This would allow it to properly decide to act on removing hover focus from something that was hovered in the canvas before moving over the GUI.
 	// TODO: Further explanation: https://github.com/GraphiteEditor/Graphite/pull/623#discussion_r866436197
 	const inFloatingMenu = e.target instanceof Element && e.target.closest("[data-floating-menu-content]");
-	const inGraphOverlay = get(documentStore).graphViewOverlayOpen;
-	if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
+	if (!viewportPointerInteractionOngoing && inFloatingMenu) return;
 
 	const modifiers = makeKeyboardModifiersBitfield(e);
 	if (detectShake(e)) editor.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
@@ -138,7 +133,6 @@ export function onPointerMove(e: PointerEvent, editor: EditorWrapper, documentSt
 }
 
 export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStore: DialogStore) {
-	potentiallyRestoreCanvasFocus(e);
 	potentiallyClearTextSelection(e);
 
 	if (isObserveOnly(e)) return;
@@ -171,8 +165,6 @@ export function onPointerDown(e: PointerEvent, editor: EditorWrapper, dialogStor
 }
 
 export function onPointerUp(e: PointerEvent, editor: EditorWrapper) {
-	potentiallyRestoreCanvasFocus(e);
-
 	// Don't let the browser navigate back or forward when using the buttons on some mice
 	// TODO: This works in Chrome but not in Firefox
 	// TODO: Possible workaround: use the browser's history API to block navigation:
@@ -310,10 +302,6 @@ export function onDrop(e: DragEvent) {
 	if (isUnclaimedFileDrag(e)) e.preventDefault();
 }
 
-export function onFocusOut() {
-	canvasFocused = false;
-}
-
 function pointerAttributes(e: PointerEvent): [number, number | undefined, number | undefined, number | undefined, number | undefined, number | undefined, boolean] {
 	const isPen = e.pointerType === "pen";
 	const eraser = isPen && (e.buttons & 0b10_0000) !== 0; // Pen eraser end is reported as the 32 button bit
@@ -386,7 +374,7 @@ function detectShake(e: PointerEvent | MouseEvent): boolean {
 	return false;
 }
 
-function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
+export function targetIsTextField(target: EventTarget | HTMLElement | undefined): boolean {
 	if (!(target instanceof HTMLElement)) return false;
 	return (
 		target.isContentEditable ||
@@ -395,31 +383,60 @@ function targetIsTextField(target: EventTarget | HTMLElement | undefined): boole
 	);
 }
 
+// Tab moves only between the text fields of a dialog, popover, or panel, returning whether it used the key, which elsewhere is a shortcut
+export function tabBetweenTextFields(e: KeyboardEvent): boolean {
+	if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return false;
+
+	const target = e.target instanceof HTMLElement ? e.target : undefined;
+	const inTextField = targetIsTextField(target);
+	// Away from a text field, Tab reaches the fields of the dialog or popover the focus is in, or else those of an open dialog
+	const scope = inTextField
+		? target?.closest("[data-floating-menu-content], [data-panel-body]") || window.document.body
+		: target?.closest("[data-floating-menu-content]") || window.document.querySelector("[data-dialog] [data-floating-menu-content]");
+	if (!target || !scope) return false;
+
+	e.preventDefault();
+
+	// Text fields that aren't widgets, like those for renaming, keep the focus
+	if (inTextField && !target.hasAttribute("data-input-element")) return true;
+
+	const fields = Array.from(scope.querySelectorAll("[data-input-element]")).filter((field): field is HTMLElement => {
+		const enabled = field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement ? !field.disabled : targetIsTextField(field);
+		return enabled && field.getClientRects().length > 0;
+	});
+	if (fields.length === 0) return true;
+
+	const step = e.shiftKey ? -1 : 1;
+	const index = fields.indexOf(target);
+	if (index === -1) fields[step > 0 ? 0 : fields.length - 1].focus();
+	else fields[(index + step + fields.length) % fields.length].focus();
+
+	return true;
+}
+
 function potentiallyClearTextSelection(e: PointerEvent) {
 	const target = e.target instanceof Element ? e.target : undefined;
 	if (target && (targetIsTextField(target) || window.getComputedStyle(target).userSelect !== "none")) return;
 
 	// A text control's selection lives in its shadow tree, which the document's `Selection` reports as collapsed and cannot clear, so each control holding one is collapsed through its own API
+	// eslint-disable-next-line graphite/require-data-selectors -- Every text control is wanted here, whichever component drew it
 	const controls = window.document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("textarea, input[type='text']");
 	controls.forEach((control) => {
 		const caret = control.selectionStart;
 		if (typeof caret === "number" && caret !== control.selectionEnd) control.setSelectionRange(caret, caret);
 	});
 
-	window.getSelection()?.removeAllRanges();
-}
-
-function potentiallyRestoreCanvasFocus(e: Event) {
-	const appElement = window.document.querySelector("[data-app-container]");
-	const app = appElement instanceof HTMLElement ? appElement : undefined;
-
-	const newInCanvasArea =
-		(e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&
-		!targetIsTextField(window.document.activeElement || undefined);
-	if (!canvasFocused && newInCanvasArea) {
-		canvasFocused = true;
-		app?.focus();
+	// A focused editable element's own caret is kept through a press that leaves the focus there, like on a popover's buttons, which only its mousedown decides
+	const focused = window.document.activeElement;
+	const anchor = window.getSelection()?.anchorNode;
+	if (focused instanceof HTMLElement && focused.isContentEditable && anchor && focused.contains(anchor)) {
+		setTimeout(() => {
+			if (window.document.activeElement !== focused) window.getSelection()?.removeAllRanges();
+		});
+		return;
 	}
+
+	window.getSelection()?.removeAllRanges();
 }
 
 // Direct input (desktop only)

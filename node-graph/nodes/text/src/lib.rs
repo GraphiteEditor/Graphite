@@ -6,14 +6,15 @@ pub mod regex;
 mod text_context;
 mod to_path;
 
-use convert_case::{Boundary, Converter, pattern};
+use convert_case::{Boundary, Converter, Pattern};
+use core_types::Interrupt;
 use core_types::graphene_hash::CacheHash;
 use core_types::list::{Item, List};
 use core_types::math::float_noise::round_away_float_noise;
 use core_types::misc::{format_f64, parse_f64};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use rand::{Rng, SeedableRng};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -186,7 +187,7 @@ pub enum StringCapitalization {
 }
 
 /// Constructs a string value which may be set to any plain text.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Value"), icon("NodeStringValue"))]
 fn string_value(_: impl Ctx, _primary: (), #[multiline] string: Item<String>) -> Item<String> {
 	string
 }
@@ -218,7 +219,7 @@ impl From<TextDenomination> for ipsum::Unit {
 }
 
 /// Generates *Lorem Ipsum* placeholder text of a desired length. The classic "Lorem ipsum dolor sit amet…" intro may be included up to its full four-sentence (or one-paragraph) length, or used in part or not at all, after which the randomized Latin-like text continues producing paragraphs until the requested length is reached.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeLoremIpsum"))]
 fn lorem_ipsum(
 	_: impl Ctx,
 	_primary: (),
@@ -257,13 +258,13 @@ fn lorem_ipsum(
 }
 
 /// Type-asserts a value to be a string.
-#[node_macro::node(category("Type Assertion"))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsString"))]
 fn as_string(_: impl Ctx, value: Item<String>) -> Item<String> {
 	value
 }
 
 /// Joins two strings together.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringConcatenate"))]
 fn string_concatenate(_: impl Ctx, #[implementations(String)] first: Item<String>, #[multiline] second: Item<String>) -> Item<String> {
 	let mut first = first;
 	first.element_mut().push_str(second.element());
@@ -271,7 +272,7 @@ fn string_concatenate(_: impl Ctx, #[implementations(String)] first: Item<String
 }
 
 /// Replaces all occurrences of "From" with "To" in the input string.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringReplace"))]
 fn string_replace(_: impl Ctx, string: Item<String>, #[multiline] from: Item<String>, #[multiline] to: Item<String>) -> Item<String> {
 	let mut string = string;
 	let result = string.element().replace(from.element().as_str(), to.element());
@@ -283,7 +284,7 @@ fn string_replace(_: impl Ctx, string: Item<String>, #[multiline] from: Item<Str
 /// Extracts a substring from the input string, starting at "Start" and ending before "End".
 ///
 /// Negative indices count from the end of the string. If the index of "Start" equals or exceeds "End", the result is an empty string.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringSlice"))]
 fn string_slice(_: impl Ctx, string: Item<String>, start: Item<i64>, end: Item<i64>) -> Item<String> {
 	let mut string = string;
 	let (start, end) = (*start.element(), *end.element());
@@ -304,7 +305,7 @@ fn string_slice(_: impl Ctx, string: Item<String>, start: Item<i64>, end: Item<i
 }
 
 /// Clips the string to a maximum character length, optionally appending a suffix (like "…") when truncation occurs. Strings already within the limit are not modified.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringTruncate"))]
 fn string_truncate(
 	_: impl Ctx,
 	/// The string to truncate.
@@ -336,7 +337,7 @@ fn string_truncate(
 }
 
 /// Formats a number as a string with control over decimal places, decimal separator, and thousands grouping.
-#[node_macro::node(category("Text"), properties("format_number_properties"))]
+#[node_macro::node(category("Math"), icon("NodeFormatNumber"), inspector("format_number_inspector"))]
 fn format_number(
 	_: impl Ctx,
 	/// The number to format as a string.
@@ -445,7 +446,7 @@ fn format_number(
 }
 
 /// Parses a string into a number. Falls back to the chosen value if the string is not a valid number.
-#[node_macro::node(category("Text"), name("String to Number"))]
+#[node_macro::node(category("Math"), icon("NodeStringToNumber"), name("String to Number"))]
 fn string_to_number(
 	_: impl Ctx,
 	/// The string containing a number. Surrounding whitespace is ignored, a decimal point (.) may be included, sign prefixes (+/-) are respected, scientific notation (e.g. "1e-3") is supported, and infinity may be written "inf", "infinity", or "∞".
@@ -459,7 +460,7 @@ fn string_to_number(
 }
 
 /// Parses a string like `"3, 4.5"` into a Vec2, using a comma and/or whitespace as separators. Falls back to the chosen value if the string is not a valid pair of numbers.
-#[node_macro::node(category("Text"), name("String to Vec2"))]
+#[node_macro::node(category("Math: Vec2"), icon("NodeStringToVec2"), name("String to Vec2"))]
 fn string_to_vec2(
 	_: impl Ctx,
 	/// The string containing two numbers separated by a comma or whitespace, like `"3, 4.5"`, optionally wrapped in `(`parentheses`)` or `[`square brackets`]`. Each number follows the same rules as the "String to Number" node.
@@ -485,7 +486,7 @@ fn string_to_vec2(
 }
 
 /// Removes leading and/or trailing whitespace from a string. Common whitespace characters include spaces, tabs, and newlines.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringTrim"))]
 fn string_trim(
 	_: impl Ctx,
 	/// The string that may contain leading and trailing whitespace that should be removed.
@@ -515,7 +516,7 @@ fn string_trim(
 ///
 /// Unescape: `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash) are converted into the actual special characters.
 /// Escape: the actual special characters are converted back into their escape sequence representations.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringEscape"))]
 fn string_escape(
 	_: impl Ctx,
 	/// The string that contains either literal escape sequences or control characters to be converted to the opposite representation.
@@ -534,7 +535,7 @@ fn string_escape(
 }
 
 /// Reverses the sequence of characters making up the string so it reads back-to-front. ("Backwards text" becomes "txet sdrawkcaB".)
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringReverse"))]
 fn string_reverse(
 	_: impl Ctx,
 	/// The string to be reversed.
@@ -548,7 +549,7 @@ fn string_reverse(
 }
 
 /// Repeats the string a given number of times, optionally with a separator between each repetition.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringRepeat"))]
 fn string_repeat(
 	_: impl Ctx,
 	/// The string to be repeated.
@@ -584,7 +585,7 @@ fn string_repeat(
 }
 
 /// Pads the string to a target length by filling with the given repeated substring. If the string already meets or exceeds the target length, it is returned unchanged.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringPad"))]
 fn string_pad(
 	_: impl Ctx,
 	/// The string to be padded to a target length.
@@ -662,7 +663,7 @@ fn string_pad(
 }
 
 /// Checks whether the string contains the given substring. Optionally restricts the match to only the start and/or end of the string.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringContains"))]
 fn string_contains(
 	_: impl Ctx,
 	/// The string to search within.
@@ -689,7 +690,7 @@ fn string_contains(
 }
 
 /// Similar to the **String Contains** node, this searches within the input string for the first (or last) occurrence of a substring and returns the index of where that begins, or -1 if not found.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringFindIndex"))]
 fn string_find_index(
 	_: impl Ctx,
 	/// The string to search within.
@@ -725,7 +726,7 @@ fn string_find_index(
 }
 
 /// Counts the number of occurrences of a substring within the string.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringOccurrences"))]
 fn string_occurrences(
 	_: impl Ctx,
 	/// The string to search within.
@@ -797,7 +798,7 @@ fn string_occurrences(
 }
 
 /// Converts a string's capitalization style to another of the common upper and lower case patterns, optionally joining words with a chosen separator.
-#[node_macro::node(category("Text"), properties("string_capitalization_properties"))]
+#[node_macro::node(category("String"), icon("NodeStringCapitalization"), inspector("string_capitalization_inspector"))]
 fn string_capitalization(
 	_: impl Ctx,
 	/// The string to have its letter capitalization converted.
@@ -822,18 +823,22 @@ fn string_capitalization(
 			StringCapitalization::LowerCase => input.to_lowercase(),
 			StringCapitalization::UpperCase => input.to_uppercase(),
 
-			// Word-aware capitalizations that split on word boundaries and rejoin with the joiner
-			StringCapitalization::CapitalCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(&joiner).convert(&input),
+			// Word-aware capitalizations: split into nonempty words, then rejoin with the joiner
+			StringCapitalization::CapitalCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Capital]).set_delimiter(joiner).convert(&input),
 			StringCapitalization::HeadlineCase => {
 				// First split into words with convert_case so word boundaries like "AlphaNumeric" are detected consistently with other modes,
 				// then apply the titlecase crate for smart capitalization (lowercasing short words like "of", "the", etc.),
 				// then rejoin with the custom joiner without mangling the capitalization
-				let spaced = Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::capital).set_delim(" ").convert(&input);
+				let spaced = Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Capital]).set_delimiter(" ").convert(input);
 				let headline = titlecase::titlecase(&spaced);
-				Converter::new().set_boundaries(&[Boundary::SPACE]).set_pattern(pattern::noop).set_delim(&joiner).convert(&headline)
+				Converter::new()
+					.set_boundaries(&[Boundary::Space])
+					.set_pattern(Pattern::RemoveEmpty)
+					.set_delimiter(joiner)
+					.convert(headline)
 			}
-			StringCapitalization::SentenceCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::sentence).set_delim(&joiner).convert(&input),
-			StringCapitalization::CamelCase => Converter::new().set_boundaries(&Boundary::defaults()).set_pattern(pattern::camel).set_delim(&joiner).convert(&input),
+			StringCapitalization::SentenceCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Sentence]).set_delimiter(joiner).convert(input),
+			StringCapitalization::CamelCase => Converter::new().set_patterns(&[Pattern::RemoveEmpty, Pattern::Camel]).set_delimiter(joiner).convert(input),
 		}
 	}
 	// When the joiner is disabled, apply only character-level casing while preserving the string's existing structure
@@ -889,7 +894,7 @@ fn string_capitalization(
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts the number of characters in a string.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringLength"))]
 fn string_length(_: impl Ctx, string: Item<String>) -> Item<f64> {
 	let (string, attributes) = string.into_parts();
 
@@ -899,7 +904,7 @@ fn string_length(_: impl Ctx, string: Item<String>) -> Item<f64> {
 /// Splits a string into a list of substrings based on the specified delimiter. This is the inverse of the **String Join** node.
 ///
 /// For example, splitting "a, b, c" with delimiter ", " produces `["a", "b", "c"]`.
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringSplit"))]
 fn string_split(
 	_: impl Ctx,
 	/// The string to split into substrings.
@@ -921,7 +926,7 @@ fn string_split(
 /// Joins a list of strings together with a separator between each pair. This is the inverse of the **String Split** node.
 ///
 /// For example, joining `["a", "b", "c"]` with separator ", " produces "a, b, c".
-#[node_macro::node(category("Text"))]
+#[node_macro::node(category("String"), icon("NodeStringJoin"))]
 fn string_join(
 	_: impl Ctx,
 	/// The list of strings to join together.
@@ -943,44 +948,34 @@ fn string_join(
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
-#[node_macro::node(category("Text"))]
-async fn map_string(
+#[node_macro::node(category("String"), icon("NodeStringMap"))]
+fn string_map(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	strings: List<String>,
 	#[expose]
 	#[implementations(Context -> Item<String>)]
 	mapped: impl Node<Context<'static>, Output = Item<String>>,
-) -> List<String> {
+) -> Result<List<String>, Interrupt> {
 	let mut result = List::new();
 
 	for (i, row) in strings.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(row)).with_index(i);
-		let mapped_string = mapped.eval(owned_ctx.into_context()).await;
+		let mapped_string = mapped.eval(owned_ctx.into_context())?;
 
 		result.push(mapped_string);
 	}
 
-	result
+	Ok(result)
 }
 
-/// Reads the current string from within a **Map String** node's loop.
-#[node_macro::node(category("Context"))]
+/// Reads the current string from within a **String Map** node's loop.
+#[node_macro::node(category("Data: Context"), icon("NodeReadContext"))]
 fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Item::new_from_element(String::new()) };
 	let var_arg = var_arg as &dyn std::any::Any;
 
 	var_arg.downcast_ref::<Item<String>>().cloned().unwrap_or_default()
-}
-
-/// Converts a value to a JSON string representation.
-#[node_macro::node(category("Debug"))]
-fn serialize<T: serde::Serialize>(_: impl Ctx, #[implementations(String, bool, f64, i64, DVec2, DAffine2)] value: Item<T>) -> Item<String> {
-	let (value, attributes) = value.into_parts();
-
-	let result = serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string());
-
-	Item::from_parts(result, attributes)
 }
 
 #[cfg(test)]
@@ -999,5 +994,43 @@ mod tests {
 		for text in ["", "3", "3, 4, 5", "3, four", "(3, 4.5]"] {
 			assert_eq!(parse(text), fallback, "{text:?} should fall back");
 		}
+	}
+
+	#[test]
+	fn string_capitalization_test() {
+		use StringCapitalization::*;
+		fn run(string: &str, capitalization: StringCapitalization, joiner: Option<&str>) -> String {
+			string_capitalization(
+				(),
+				Item::new_from_element(string.to_string()),
+				Item::new_from_element(capitalization),
+				Item::new_from_element(joiner.is_some()),
+				Item::new_from_element(joiner.map_or_default(|s| s.to_string())),
+			)
+			.into_element()
+		}
+
+		let sample_str = "Alice wAs_BeGinning to_getVery TIRED";
+
+		assert_eq!(run(sample_str, LowerCase, None), "alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, UpperCase, None), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run(sample_str, CapitalCase, None), "Alice WAs_BeGinning To_GetVery TIRED");
+		assert_eq!(run(sample_str, HeadlineCase, None), "Alice wAs_BeGinning to_getVery TIRED");
+		assert_eq!(run(sample_str, SentenceCase, None), "Alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, CamelCase, None), "alice Was_Beginning To_Getvery Tired");
+
+		assert_eq!(run(sample_str, LowerCase, Some(":")), "alice was_beginning to_getvery tired");
+		assert_eq!(run(sample_str, UpperCase, Some(":")), "ALICE WAS_BEGINNING TO_GETVERY TIRED");
+		assert_eq!(run(sample_str, CapitalCase, Some(":")), "Alice:W:As:Be:Ginning:To:Get:Very:Tired");
+		assert_eq!(run(sample_str, HeadlineCase, Some(":")), "Alice:W:as:Be:Ginning:to:Get:Very:Tired");
+		assert_eq!(run(sample_str, SentenceCase, Some(":")), "Alice:w:as:be:ginning:to:get:very:tired");
+		assert_eq!(run(sample_str, CamelCase, Some(":")), "alice:W:As:Be:Ginning:To:Get:Very:Tired");
+
+		// Repeated, leading, and trailing separators must not add extra joiners or shift which word is cased as the first
+		assert_eq!(run("  Chapter I - Down the Rabbit-Hole ", CapitalCase, Some("_")), "Chapter_I_Down_The_Rabbit_Hole");
+		assert_eq!(run("  Chapter I - Down the Rabbit-Hole ", HeadlineCase, Some("-")), "Chapter-I-Down-the-Rabbit-Hole");
+		assert_eq!(run("  leading words", SentenceCase, Some(" ")), "Leading words");
+		assert_eq!(run("__init__", CamelCase, Some("")), "init");
+		assert_eq!(run(" ", CapitalCase, Some("_")), "");
 	}
 }

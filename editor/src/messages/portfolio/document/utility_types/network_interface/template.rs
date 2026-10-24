@@ -23,16 +23,16 @@ pub struct NodeTemplate {
 	pub visible: bool,
 	/// Prevents identical proto nodes from being deduplicated during compilation, e.g. for monitor nodes.
 	pub skip_deduplication: bool,
-	/// List of Extract and Inject annotations for the Context.
-	pub context_features: ContextDependencies,
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed in italics.
 	pub display_name: String,
-	/// Metadata to override the properties panel widgets for each input. Kept the same length as `inputs`.
+	/// Metadata to override the Inspector widgets for each input. Kept the same length as `inputs`.
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
+	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
+	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI.
 	pub locked: bool,
-	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty.
+	/// Indicates that the node will be shown in the Inspector when it would otherwise be empty.
 	pub pinned: bool,
 	/// Whether the node is displayed as a left-to-right node or bottom-to-top layer, along with its position.
 	pub node_type_metadata: NodeTypePersistentMetadata,
@@ -58,10 +58,10 @@ impl Default for NodeTemplate {
 			implementation: NodeTemplateImplementation::default(),
 			visible: true,
 			skip_deduplication: false,
-			context_features: ContextDependencies::default(),
 			display_name: String::new(),
 			input_metadata: Vec::new(),
 			output_names: Vec::new(),
+			output_descriptions: Vec::new(),
 			locked: false,
 			pinned: false,
 			node_type_metadata: NodeTypePersistentMetadata::default(),
@@ -95,7 +95,7 @@ pub struct NodeNetworkTemplate {
 	///
 	/// [`DocumentNodeDefinition`]: crate::messages::portfolio::document::node_graph::document_node_definitions::DocumentNodeDefinition
 	pub reference: Option<String>,
-	/// The display order of pinned nodes in the Properties panel.
+	/// The display order of pinned nodes in the Inspector.
 	pub pinned_node_order: Vec<NodeId>,
 	pub previewing: Previewing,
 	pub navigation_metadata: NavigationMetadata,
@@ -114,7 +114,7 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
+			context_dependencies: _,
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
@@ -122,6 +122,7 @@ impl NodeTemplate {
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -159,10 +160,10 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -177,10 +178,10 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
 			display_name,
 			mut input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -197,7 +198,7 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_features,
+			context_dependencies: None,
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {
@@ -205,6 +206,7 @@ impl NodeTemplate {
 			display_name,
 			input_metadata,
 			output_names,
+			output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,

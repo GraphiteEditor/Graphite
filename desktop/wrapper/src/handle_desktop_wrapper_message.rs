@@ -10,7 +10,7 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(*message);
 		}
 		DesktopWrapperMessage::Wake => {
-			dispatcher.queue_editor_message(EditorMessage::Future(FutureMessage::Wake));
+			dispatcher.queue_editor_message(EditorMessage::Wake);
 		}
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
@@ -35,7 +35,6 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });
 			}
 		},
-		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),
 		DesktopWrapperMessage::UpdateMaximized { maximized } => {
 			let message = FrontendMessage::UpdateMaximized { maximized };
 			dispatcher.queue_editor_message(message);

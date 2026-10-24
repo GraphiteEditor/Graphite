@@ -17,7 +17,8 @@ pub mod tool_prelude {
 	pub use crate::messages::input_mapper::utility_types::keyboard::{Key, MouseMotion};
 	pub use crate::messages::layout::utility_types::widget_prelude::*;
 	pub use crate::messages::prelude::*;
-	pub use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionMessageContext, ToolMetadata, ToolTransition, ToolType};
+	pub use crate::messages::tool::common_functionality::edit_target::{EditTarget, Insertion};
+	pub use crate::messages::tool::utility_types::{EventToMessageMap, Fsm, ToolActionMessageContext, ToolEditTarget, ToolMetadata, ToolTransition, ToolType};
 	pub use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 	pub use glam::{DAffine2, DVec2};
 }

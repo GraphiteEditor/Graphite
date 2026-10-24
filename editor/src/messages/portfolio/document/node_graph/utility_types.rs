@@ -51,9 +51,8 @@ pub struct FrontendGraphInput {
 	pub resolved_type: String,
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
-	#[serde(rename = "connectedTo")]
-	/// Either "nothing", "import #{index}", or "{node name} #{output_index}".
-	pub connected_to: String,
+	/// Whether a wire feeds this input.
+	pub connected: bool,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -65,10 +64,11 @@ pub struct FrontendGraphOutput {
 	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
-	/// If connected to an export, it is "export index {index}".
-	/// If connected to a node, it is "{node name} input {input_index}".
-	#[serde(rename = "connectedTo")]
-	pub connected_to: Vec<String>,
+	/// Every type this output could produce given its node's current inputs, or empty where that isn't known.
+	#[serde(rename = "possibleTypes")]
+	pub possible_types: Vec<String>,
+	/// Whether this output feeds at least one wire.
+	pub connected: bool,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -79,6 +79,9 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
+	/// Whether the node is a redirect dot, which is a Passthrough node drawn as a small dot bending the wire running through it.
+	#[serde(rename = "isRedirectDot")]
+	pub is_redirect_dot: bool,
 	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
@@ -161,6 +164,16 @@ pub enum ContextMenuData {
 		#[serde(rename = "compatibleType")]
 		compatible_type: Option<String>,
 	},
+	/// An import or export of the viewed subgraph, by its index among the imports or the exports.
+	ModifyImportExport {
+		#[serde(rename = "isImport")]
+		is_import: bool,
+		index: u32,
+		/// For an import, whether the subgraph node shows its input as a connector rather than as a parameter in the Inspector.
+		exposed: bool,
+		/// Whether any wire is attached to it within the subgraph.
+		connected: bool,
+	},
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -179,8 +192,17 @@ pub struct ContextMenuInformation {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeGraphErrorDiagnostic {
+	/// The node the error is shown beside, which it follows as the node glides into place.
+	#[serde(rename = "nodeId")]
+	pub node_id: NodeId,
 	pub position: (i32, i32),
 	pub error: String,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct NodeEvaluationError {
+	pub node_path: Vec<NodeId>,
+	pub message: String,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -196,8 +218,8 @@ pub struct FrontendClickTargets {
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
-	#[serde(rename = "modifyImportExport")]
-	pub modify_import_export: Vec<String>,
+	#[serde(rename = "importExportNames")]
+	pub import_export_names: Vec<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

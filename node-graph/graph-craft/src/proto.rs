@@ -133,7 +133,7 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
-	pub(crate) context_features: ContextDependencies,
+	pub(crate) context_dependencies: ContextDependencies,
 }
 
 impl Default for ProtoNode {
@@ -144,7 +144,7 @@ impl Default for ProtoNode {
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
-			context_features: Default::default(),
+			context_dependencies: Default::default(),
 		}
 	}
 }
@@ -179,7 +179,7 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
-			context_features: Default::default(),
+			context_dependencies: Default::default(),
 		}
 	}
 
@@ -288,7 +288,7 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
 
@@ -318,7 +318,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_value_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextModification(context_deps))),
 				call_argument: concrete!(Context),
 				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
@@ -345,60 +345,80 @@ impl ProtoNetwork {
 		nullification_node_id
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+	pub fn source_ids(&self) -> impl Iterator<Item = &SourceId> {
+		self.nodes.iter().filter_map(|(_, node)| match &node.construction_args {
+			ConstructionArgs::Value(value) => match &**value {
+				TaggedValue::SourceId(source) => Some(source),
+				_ => None,
+			},
+			_ => None,
+		})
+	}
+
+	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
-		let mut combined_deps = ContextFeatures::default();
+		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let context_features = self.nodes[node_index].1.context_features;
+		let dependencies = self.nodes[node_index].1.context_dependencies;
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
-			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
+			ConstructionArgs::Value(value) if let TaggedValue::SourceId(source) = **value => {
+				return (
+					ContextModification {
+						features: dependencies.extract,
+						sources: [source].into(),
+					},
+					Some(id),
+				);
+			}
+			ConstructionArgs::Value(_) | ConstructionArgs::Inline(_) => return (dependencies.extract.into(), Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
 			let branch = self.find_context_dependencies(node);
 
+			combined_deps.features |= branch.0.features;
+			combined_deps.sources.extend(&branch.0.sources);
 			branch_dependencies.push(branch);
-			combined_deps |= branch.0;
 		}
-		let mut new_deps = combined_deps;
-
-		// Remove requirements which this node provides
-		new_deps &= !context_features.inject;
-		// Add requirements we have
-		new_deps |= context_features.extract;
+		// Remove requirements which this node provides and add requirements we have
+		let features = (combined_deps.features & !dependencies.inject) | dependencies.extract;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
-		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+		let we_introduces_new_deps = !combined_deps.features.contains(features);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
 		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
-			} else if we_introduce_new_deps || deps != combined_deps {
+			} else if we_introduces_new_deps || deps != combined_deps {
 				*child_node = self.insert_context_nullification_node(*child_node, deps);
 			}
 		}
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
 		// Which dependencies do we supply (and don't need ourselves)?
-		let net_injections = context_features.inject.difference(context_features.extract);
+		let net_injections = dependencies.inject.difference(dependencies.extract);
 
 		// Which dependencies still need to be met after this node?
-		let remaining_deps_from_children = combined_deps.difference(net_injections);
+		let remaining_deps_from_children = combined_deps.features.difference(net_injections);
 
 		// Do we satisfy any existing dependencies?
-		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+		let we_supply_existing_deps = !combined_deps.features.difference(remaining_deps_from_children).is_empty();
+
+		let new_deps = ContextModification {
+			features,
+			sources: combined_deps.sources,
+		};
 
 		let mut new_id = None;
 		if we_supply_existing_deps {
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+			new_id = Some(self.insert_context_nullification_node(id, new_deps.clone()));
 		}
 
 		(new_deps, new_id)
@@ -619,6 +639,36 @@ pub struct TypingContext {
 	promotions: HashMap<NodeId, Vec<(usize, Promotion)>>,
 }
 
+/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
+/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
+fn valid_type(from: &Type, to: &Type) -> bool {
+	match (from, to) {
+		// Direct comparison of two concrete types.
+		(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+		// Direct comparison of two function types.
+		// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
+		// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
+		// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
+		// This allows us to supply anything to a function that is satisfied with `()`.
+		// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
+		// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
+		// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
+		// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
+		// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+		// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
+		// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
+		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
+		// Ranked wrappers of the same rank are compared element-wise
+		(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
+		(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
+		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
+		// TODO: Add proper generic counting which is not based on the name
+		(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
+		// Reject unknown type relationships.
+		_ => false,
+	}
+}
+
 /// A rank adapter which type resolution marks for insertion between a wire and a connector whose ranks differ,
 /// carrying the element type the adapter is registered under.
 #[derive(Debug, Clone, PartialEq)]
@@ -631,7 +681,44 @@ pub enum Promotion {
 	Unbundle(Type),
 }
 
+/// Builds a [`Promotion`] variant from its element type.
+type PromotionVariant = fn(Type) -> Promotion;
+
 impl Promotion {
+	/// The promotion that lets a wire of the `from` value type feed a connector of the `to` value type of a different rank, if there is one.
+	pub fn between(from: &Type, to: &Type) -> Option<Self> {
+		Self::variant_between(from, to).map(|(variant, element)| variant(element.clone()))
+	}
+
+	/// Whether a promotion lets a wire of the `from` value type feed a connector of the `to` value type, without building it.
+	pub fn exists_between(from: &Type, to: &Type) -> bool {
+		Self::variant_between(from, to).is_some()
+	}
+
+	/// The variant and element type of the promotion between two value types. Every rank relation is matched structurally,
+	/// and only the `Bundle` layer inside an `Item` cell remains name-encoded.
+	fn variant_between<'a>(from: &'a Type, to: &'a Type) -> Option<(PromotionVariant, &'a Type)> {
+		fn concrete_name(ty: &Type) -> Option<&str> {
+			match ty {
+				Type::Concrete(descriptor) => Some(&descriptor.name),
+				_ => None,
+			}
+		}
+
+		match (from, to) {
+			// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
+			(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some((Self::ItemToList, element)),
+
+			// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
+			(Type::List(element), Type::Item(_)) if to.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some((Self::Bundle, element)),
+
+			// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
+			(Type::Item(_), Type::List(element)) if from.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some((Self::Unbundle, element)),
+
+			_ => None,
+		}
+	}
+
 	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
 	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
 		let (adapter_name, element) = match self {
@@ -700,7 +787,7 @@ impl TypingContext {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -726,38 +813,6 @@ impl TypingContext {
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
 			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
-		}
-
-		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
-		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_type(from: &Type, to: &Type) -> bool {
-			match (from, to) {
-				// Direct comparison of two concrete types.
-				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
-				// Direct comparison of two function types.
-				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
-				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
-				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
-				// This allows us to supply anything to a function that is satisfied with `()`.
-				// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
-				// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
-				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
-				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
-				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
-				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
-				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
-				// Ranked wrappers of the same rank are compared element-wise
-				(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
-				(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
-				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
-				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
-				// Reject unknown type relationships.
-				_ => false,
-			}
 		}
 
 		// List of all implementations that match the input types
@@ -789,16 +844,8 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter.
-				// Every rank relation is matched structurally; only the `Bundle` layer inside an `Item` cell remains name-encoded.
+				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter
 				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
-					fn concrete_name(ty: &Type) -> Option<&str> {
-						match ty {
-							Type::Concrete(descriptor) => Some(&descriptor.name),
-							_ => None,
-						}
-					}
-
 					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
 						return None;
 					};
@@ -806,23 +853,7 @@ impl TypingContext {
 						return None;
 					}
 
-					let from_value = from_output.nested_type();
-					let to_value = to_output.nested_type();
-
-					match (from_value, to_value) {
-						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
-						(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some(Promotion::ItemToList((**element).clone())),
-
-						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
-						(Type::List(element), Type::Item(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some(Promotion::Bundle((**element).clone())),
-
-						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
-						(Type::Item(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
-							Some(Promotion::Unbundle((**element).clone()))
-						}
-
-						_ => None,
-					}
+					Promotion::between(from_output.nested_type(), to_output.nested_type())
 				}
 
 				let mut promotable_matches = impls
@@ -1043,6 +1074,89 @@ mod test {
 			ids,
 			vec![NodeId(7074930193456627328), NodeId(651950451264872860), NodeId(15983493604836528424), NodeId(2458326405488235061)]
 		);
+	}
+
+	#[test]
+	fn retain_filter_placement_on_source_free_branch() {
+		let mut network = source_branch_network(&[SourceId(1)], &[]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		let filters = nullification_filters(&network);
+		assert_eq!(filters.len(), 1);
+		let (filter_id, wrapped, retained) = &filters[0];
+		assert_eq!(wrapped, "source_b");
+		assert!(retained.is_empty());
+
+		let (source_a_id, _) = find_node(&network, "source_a");
+		let (_, join) = find_node(&network, "join");
+		let ConstructionArgs::Nodes(join_args) = &join.construction_args else { unreachable!() };
+		assert_eq!(join_args, &vec![source_a_id, *filter_id]);
+	}
+
+	#[test]
+	fn diverging_source_sets_filter_each_branch() {
+		let mut network = source_branch_network(&[SourceId(1)], &[SourceId(2)]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		let mut filters = nullification_filters(&network);
+		filters.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+		let summary: Vec<_> = filters.iter().map(|(_, wrapped, retained)| (wrapped.as_str(), retained.as_slice())).collect();
+		assert_eq!(summary, vec![("source_a", &[SourceId(1)][..]), ("source_b", &[SourceId(2)][..])]);
+	}
+
+	#[test]
+	fn matching_source_sets_insert_no_filter() {
+		let mut network = source_branch_network(&[SourceId(1)], &[SourceId(1)]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		assert!(nullification_filters(&network).is_empty());
+		assert_eq!(network.source_ids().copied().collect::<Vec<_>>(), vec![SourceId(1), SourceId(1)]);
+	}
+
+	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {
+		network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).map(|(id, node)| (*id, node)).unwrap()
+	}
+
+	fn nullification_filters(network: &ProtoNetwork) -> Vec<(NodeId, String, Vec<SourceId>)> {
+		let node = |id: NodeId| &network.nodes[id.0 as usize].1;
+		network
+			.nodes
+			.iter()
+			.filter(|(_, candidate)| candidate.identifier == graphene_core::context_modification::context_modification::IDENTIFIER)
+			.map(|(id, candidate)| {
+				let ConstructionArgs::Nodes(args) = &candidate.construction_args else { unreachable!() };
+				let ConstructionArgs::Nodes(memoized) = &node(args[0]).construction_args else { unreachable!() };
+				let ConstructionArgs::Value(value) = &node(args[1]).construction_args else { unreachable!() };
+				let TaggedValue::ContextModification(modification) = &**value else { unreachable!() };
+				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
+			})
+			.collect()
+	}
+
+	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {
+		let node = |name: &'static str, construction_args: ConstructionArgs| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			..Default::default()
+		};
+		let mut nodes = vec![(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into())))];
+		let mut branch = |name: &'static str, sources: &[SourceId]| {
+			let mut inputs = vec![NodeId(0)];
+			for &source in sources {
+				inputs.push(NodeId(nodes.len() as u64));
+				nodes.push((NodeId(nodes.len() as u64), node("source_id", ConstructionArgs::Value(TaggedValue::SourceId(source).into()))));
+			}
+			let id = NodeId(nodes.len() as u64);
+			nodes.push((id, node(name, ConstructionArgs::Nodes(inputs))));
+			id
+		};
+		let branch_a = branch("source_a", branch_a_sources);
+		let branch_b = branch("source_b", branch_b_sources);
+
+		let output = NodeId(nodes.len() as u64);
+		nodes.push((output, node("join", ConstructionArgs::Nodes(vec![branch_a, branch_b]))));
+		ProtoNetwork { inputs: vec![], output, nodes }
 	}
 
 	fn test_network() -> ProtoNetwork {

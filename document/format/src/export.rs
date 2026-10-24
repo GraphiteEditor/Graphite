@@ -146,10 +146,14 @@ impl<L: Layout> Gdd<L> {
 		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
 		let session_state = SessionState {
 			peer_id: self.session.peer(),
+			user_id: self.session.user(),
 			head_rev: self.session.head_rev(),
 			last_broadcast_rev: self.session.last_broadcast_rev(),
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
+			last_hot_sequence: self.session.last_hot_sequence(),
+			retired_marks: self.session.retired_marks().clone(),
+			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};
@@ -194,8 +198,15 @@ impl<L: Layout> Gdd<L> {
 		if options.include_registry {
 			// With history, the persisted snapshot is the retired registry and the hot log layers on top
 			// (mirrors `Session::load`); without history it must be the full working registry, since
-			// `bootstrap_from_registry` reconstructs the whole document from it alone.
-			let snapshot = if options.include_history { export_session.retired_registry() } else { export_session.registry() };
+			// `bootstrap_from_registry` reconstructs the whole document from it alone. That document starts a history of
+			// its own, so the tombstones go.
+			let live;
+			let snapshot = if options.include_history {
+				export_session.retired_registry()
+			} else {
+				live = export_session.registry().without_tombstones();
+				&live
+			};
 			sink.write_entry(&io::path_for(self.layout.registry_basename(), codecs.registry), &codecs.registry.write_single(snapshot)?)?;
 		}
 

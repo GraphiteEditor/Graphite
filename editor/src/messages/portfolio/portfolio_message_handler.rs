@@ -1,13 +1,14 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::PanelType;
-use crate::application::{Editor, generate_uuid};
+use crate::application::{Environment, generate_uuid};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentInfo, PersistedState};
-use crate::messages::input_mapper::utility_types::keyboard::Key;
-use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
+use crate::messages::input_mapper::utility_types::keyboard::{Key, KeysGroup, LabeledShortcut};
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -18,6 +19,7 @@ use crate::messages::portfolio::document_storage_io::{
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
+use crate::messages::tool::common_functionality::edit_target::EditTarget;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -33,17 +35,19 @@ use std::vec;
 
 #[derive(ExtractField)]
 pub struct PortfolioMessageContext<'a> {
+	pub environment: Environment,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
+	pub tool_edit_target: &'a EditTarget,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 }
 
-#[derive(Debug, Default, ExtractField)]
+#[derive(Debug, ExtractField)]
 pub struct PortfolioMessageHandler {
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	loading_documents: HashMap<DocumentId, DocumentInfo>,
@@ -67,10 +71,12 @@ pub struct PortfolioMessageHandler {
 impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for PortfolioMessageHandler {
 	fn process_message(&mut self, message: PortfolioMessage, responses: &mut VecDeque<Message>, context: PortfolioMessageContext) {
 		let PortfolioMessageContext {
+			environment,
 			ipp,
 			preferences,
 			animation,
 			current_tool,
+			tool_edit_target,
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
@@ -85,18 +91,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				{
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
+						tool_edit_target,
 						preferences,
 						viewport,
 						resource_storage,
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
-						properties_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace.panel_layout.focus_document,
+						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
 					};
-					document.process_message(message, responses, document_inputs)
+					document.process_message(message, responses, document_inputs);
+					refresh_transaction_edited_nodes(document, true, responses);
 				}
 			}
 			PortfolioMessage::PersistentState(message) => {
@@ -110,7 +119,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.failed_documents.process_message(message, responses, context);
 			}
 			PortfolioMessage::Fonts(message) => {
-				let context = FontsMessageContext { resource_storage };
+				let context = FontsMessageContext {
+					resource_storage,
+					current_time: ipp.time,
+				};
 				self.fonts.process_message(message, responses, context);
 			}
 			PortfolioMessage::Ingest(message) => {
@@ -135,9 +147,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PersistentStateMessage::ReadState);
 
 				// Initialize the frontend with environment information
-				responses.add(FrontendMessage::UpdatePlatform {
-					platform: Editor::environment().into(),
-				});
+				responses.add(FrontendMessage::UpdatePlatform { platform: environment.into() });
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -154,21 +164,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Request status bar info layout
 				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
-				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
+				// Send shortcuts for widgets created in the frontend which need shortcut tooltips, labeled here since they bypass the layout system
+				let shortcut = |keys: &[Key]| Some(ActionShortcut::Shortcut(LabeledShortcut::new(KeysGroup(keys.to_vec()), environment)));
 				responses.add(FrontendMessage::SendShortcutFullscreen {
-					shortcut: action_shortcut_manual!(Key::F11),
-					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
+					shortcut: shortcut(&[Key::F11]),
+					shortcut_mac: shortcut(&[Key::Control, Key::Command, Key::KeyF]),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
-					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Alt, Key::MouseLeft]),
 				});
 				responses.add(FrontendMessage::SendShortcutShiftClick {
-					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+					shortcut: shortcut(&[Key::Shift, Key::MouseLeft]),
 				});
 
 				// Send the information for tooltips and categories for each node/input.
 				responses.add(FrontendMessage::SendUIMetadata {
 					node_descriptions: document_node_definitions::collect_node_descriptions(),
+					node_icons: document_node_definitions::collect_node_icons(),
 					node_types: document_node_definitions::collect_node_types(),
 				});
 			}
@@ -176,18 +188,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document) = self.documents.get_mut(&document_id) {
 					let document_inputs = DocumentMessageContext {
 						document_id,
+						environment,
 						ipp,
 						fonts: &self.fonts,
 						executor: &mut self.executor,
 						current_tool,
+						tool_edit_target,
 						preferences,
 						viewport,
 						resource_storage,
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
-						properties_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Properties) && !self.workspace.panel_layout.focus_document,
+						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
 					};
-					document.process_message(message, responses, document_inputs)
+					document.process_message(message, responses, document_inputs);
+					refresh_transaction_edited_nodes(document, self.active_document_id == Some(document_id), responses);
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
@@ -239,7 +254,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(ToolMessage::DeactivateTools);
 
 					// Clear relevant UI layouts if there are no documents
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
 					HintData::clear_layout(responses);
@@ -263,13 +278,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Is this the last document?
 				if self.document_ids.len() == 1 && self.document_ids[0] == document_id {
 					// Clear UI layouts that assume the existence of a document
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
 					HintData::clear_layout(responses);
 				}
 
-				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
+				// Actually delete the document (delay to delete document is required to let the document and Inspector messages above get processed)
 				responses.add(PortfolioMessage::DeleteDocument { document_id });
 				responses.add(remove_stored_document(self.document_store.clone(), document_id));
 
@@ -781,6 +796,23 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::SelectDocument { document_id } => {
+				// The document we are leaving won't get the pointer up that ends a wire drag in its graph, so abort the drag there before switching
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+					&& document.end_node_graph_wire_in_progress(responses)
+				{
+					responses.add(DocumentMessage::AbortTransaction);
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+					return;
+				}
+
+				// The document we are leaving won't get the frames that settle what glides in its graph, so it settles at once
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+				{
+					document.node_graph_handler.stop_gliding(&document.network_interface, responses);
+				}
+
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {
@@ -838,7 +870,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document.is_loaded = true;
 					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
-					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(InspectorMessage::Clear);
 				}
 			}
 			PortfolioMessage::RenameDocument { new_name } => {
@@ -973,6 +1005,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
+			PortfolioMessage::PollNodeGraphEvaluation => {
+				let Some(document_id) = self.active_document_id else { return };
+				let Some(active_document) = self.documents.get_mut(&document_id) else { return };
+
+				let dropped_thumbnails = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
+
+				// The runtime keeps the thumbnails of only the active document, rendering them all anew when another becomes active
+				if !dropped_thumbnails.is_empty() {
+					for (_, document) in self.documents.iter_mut().filter(|(id, _)| **id != document_id) {
+						document.layers_in_view.forget_thumbnails_in_background(&dropped_thumbnails);
+					}
+				}
+			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);
@@ -1029,12 +1074,25 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 }
 
 impl PortfolioMessageHandler {
-	pub fn with_executor(executor: crate::node_graph_executor::NodeGraphExecutor) -> Self {
-		Self { executor, ..Default::default() }
-	}
-
-	pub fn set_document_store(&mut self, store: Arc<dyn document_container::store::DocumentStore>) {
-		self.document_store = DocumentStoreHandle::new(store);
+	pub fn new(executor: NodeGraphExecutor, document_store: Arc<dyn document_container::store::DocumentStore>) -> Self {
+		Self {
+			documents: Default::default(),
+			loading_documents: Default::default(),
+			document_ids: Default::default(),
+			active_document_id: Default::default(),
+			failed_documents: Default::default(),
+			persistent_state: Default::default(),
+			fonts: Default::default(),
+			ingest: Default::default(),
+			executor,
+			selection_mode: Default::default(),
+			reset_node_definitions_on_open: Default::default(),
+			workspace: Default::default(),
+			document_store: DocumentStoreHandle::new(document_store),
+			pending_opens: Default::default(),
+			restore_select: Default::default(),
+			store_unavailable: Default::default(),
+		}
 	}
 
 	#[cfg(test)]
@@ -1203,30 +1261,6 @@ impl PortfolioMessageHandler {
 		self.document_ids.iter().position(|id| id == &document_id).expect("Active document is missing from document ids")
 	}
 
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let Some(document_id) = self.active_document_id else {
-			return Err("No active document".to_string());
-		};
-		let Some(active_document) = self.documents.get_mut(&document_id) else {
-			return Err("No active document".to_string());
-		};
-
-		let result = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
-		if result.is_err() {
-			let error = r#"
-				<rect x="50%" y="50%" width="460" height="100" transform="translate(-230 -50)" rx="4" fill="var(--color-warning-yellow)" />
-				<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" font-size="18" fill="var(--color-2-mildblack)">
-					<tspan x="50%" dy="-24" font-weight="bold">The document cannot render in its current state.</tspan>
-					<tspan x="50%" dy="24">Undo to go back, if available, or check for error details</tspan>
-					<tspan x="50%" dy="24">by clicking the <tspan font-style="italic">Node Graph</tspan> button up at the top right.</tspan>
-				/text>"#
-				// It's a mystery why the `/text>` tag above needs to be missing its `<`, but when it exists it prints the `<` character in the text. However this works with it removed.
-				.to_string();
-			responses.add(FrontendMessage::UpdateDocumentArtwork { svg: error });
-		}
-		result
-	}
-
 	fn document_details(&self, document_id: DocumentId) -> Option<DocumentInfo> {
 		if let Some(document) = self.documents.get(&document_id) {
 			Some(DocumentInfo {
@@ -1265,6 +1299,13 @@ impl PortfolioMessageHandler {
 		let mut path = network_path.to_vec();
 		path.push(*node_id);
 		path
+	}
+}
+
+/// Lets the Layers panel brighten the nodes an edit in progress, like a drag, has written to so far.
+fn refresh_transaction_edited_nodes(document: &mut DocumentMessageHandler, is_active: bool, responses: &mut VecDeque<Message>) {
+	if document.network_interface.update_transaction_edited_nodes() && is_active {
+		responses.add(NodeGraphMessage::UpdateLayerPanel);
 	}
 }
 

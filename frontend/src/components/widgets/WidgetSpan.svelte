@@ -4,6 +4,7 @@
 	import BreadcrumbTrailButtons from "/src/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import ImageButton from "/src/components/widgets/buttons/ImageButton.svelte";
+	import ParameterChainToggle from "/src/components/widgets/buttons/ParameterChainToggle.svelte";
 	import ParameterExposeButton from "/src/components/widgets/buttons/ParameterExposeButton.svelte";
 	import PopoverButton from "/src/components/widgets/buttons/PopoverButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
@@ -12,6 +13,7 @@
 	import ColorInput from "/src/components/widgets/inputs/ColorInput.svelte";
 	import ColorPresetsInput from "/src/components/widgets/inputs/ColorPresetsInput.svelte";
 	import DropdownInput from "/src/components/widgets/inputs/DropdownInput.svelte";
+	import MathExpressionInput from "/src/components/widgets/inputs/MathExpressionInput.svelte";
 	import NumberInput from "/src/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "/src/components/widgets/inputs/RadioInput.svelte";
 	import ReferencePointInput from "/src/components/widgets/inputs/ReferencePointInput.svelte";
@@ -171,11 +173,17 @@
 			getProps: (props, index) => ({
 				...props,
 				$$events: {
-					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
-					hoverOutEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
+					previewIndex: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
 					fileDrop: (e: CustomEvent<File>) => widgetValueFileDrop(index, e.detail),
 				},
+			}),
+		},
+		ParameterChainToggle: {
+			component: ParameterChainToggle,
+			getProps: (props, index) => ({
+				...props,
+				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		ParameterExposeButton: {
@@ -213,6 +221,21 @@
 			getProps: (props, index) => ({
 				...props,
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
+			}),
+		},
+		MathExpressionInput: {
+			component: MathExpressionInput,
+			getProps: (props, index) => ({
+				...props,
+				widgetId: widgets[index].widgetId,
+				analyze: (source: string, caret?: number, asked = false) => editor.analyzeMathExpression(layoutTarget, widgets[index].widgetId, source, caret, asked),
+				evaluate: (source: string) => editor.evaluateMathExpression(widgets[index].widgetId, source),
+				$$events: {
+					commitText: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true),
+					updateText: (e: CustomEvent) => widgetValueUpdate(index, e.detail, true),
+					startHistoryTransaction: () => widgetValueCommit(index, props.value),
+					commitHistoryTransaction: () => editor.endTransaction(),
+				},
 			}),
 		},
 		NodeCatalog: {
@@ -260,6 +283,7 @@
 				$$events: {
 					update: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					dragging: (e: CustomEvent<boolean>) => colorPickerStore.setDragging(e.detail),
+					startHistoryTransaction: () => widgetValueCommit(index, undefined),
 				},
 			}),
 		},
@@ -358,6 +382,7 @@
 	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
+		overflow: hidden;
 		min-height: var(--row-height);
 		--row-height: 32px;
 

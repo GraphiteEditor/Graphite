@@ -1,4 +1,8 @@
+use crate::application::Environment;
 use crate::messages::input_mapper::utility_types::keyboard::KeysGroup;
+use crate::messages::layout::utility_types::math_expression::{
+	MathExpressionTokens, math_expression_completions, math_expression_error, math_expression_error_ranges, math_expression_number, math_expression_tokens,
+};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
@@ -9,6 +13,7 @@ use std::collections::HashMap;
 
 #[derive(ExtractField)]
 pub struct LayoutMessageContext<'a> {
+	pub environment: Environment,
 	pub action_input_mapping: &'a dyn Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 }
 
@@ -20,6 +25,7 @@ pub struct LayoutMessageHandler {
 #[message_handler_data]
 impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHandler {
 	fn process_message(&mut self, message: LayoutMessage, responses: &mut std::collections::VecDeque<Message>, context: LayoutMessageContext) {
+		let environment = context.environment;
 		let action_input_mapping = &context.action_input_mapping;
 
 		match message {
@@ -33,7 +39,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 					return;
 				};
 				// Resend that diff
-				self.send_diff(vec![diff], layout_target, responses, action_input_mapping);
+				self.send_diff(vec![diff], layout_target, responses, action_input_mapping, environment);
 			}
 			LayoutMessage::ResendAllLayouts => {
 				// Collect non-empty layouts and their indices, then clear the stored copies so diffs compute as full re-sends
@@ -46,11 +52,11 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 					.collect();
 
 				for (layout_target, layout) in layouts_to_resend {
-					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+					self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping, environment);
 				}
 			}
 			LayoutMessage::SendLayout { layout, layout_target } => {
-				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
+				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping, environment);
 			}
 			LayoutMessage::DestroyLayout { layout_target } => {
 				if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
@@ -91,6 +97,41 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 					responses.add((dropdown_input.on_file_drop.callback)(&file));
 				}
 			}
+			LayoutMessage::AnalyzeMathExpression {
+				layout_target,
+				widget_id,
+				source,
+				caret,
+				asked,
+			} => {
+				let Some(layout) = self.layouts.get(layout_target as usize) else {
+					warn!("AnalyzeMathExpression referenced an invalid layout. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Some(widget_instance) = layout.iter().find(|widget| widget.widget_id == widget_id) else {
+					warn!("AnalyzeMathExpression referenced an invalid widget ID. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`");
+					return;
+				};
+				let Widget::MathExpressionInput(input) = &*widget_instance.widget else {
+					warn!("AnalyzeMathExpression referenced a widget other than a MathExpressionInput. `widget_id: {widget_id}`");
+					return;
+				};
+
+				// The reply carries the source it read, so the frontend can drop one that a later keystroke has outdated
+				let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(&source, input.accepts_reducers);
+				let completions = caret.map(|caret| math_expression_completions(&source, caret, asked));
+				responses.add(FrontendMessage::UpdateMathExpressionAnalysis {
+					widget_id,
+					source,
+					tokens,
+					tooltips,
+					completions,
+				});
+			}
+			LayoutMessage::EvaluateMathExpression { widget_id, source } => {
+				let result = math_expression_number(&source);
+				responses.add(FrontendMessage::UpdateMathExpressionEvaluation { widget_id, source, result });
+			}
 		}
 	}
 
@@ -127,7 +168,7 @@ impl LayoutMessageHandler {
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.
-				LayoutGroup::Section(WidgetSection { layout, .. }) => {
+				LayoutGroup::NodeSection(NodeSection { layout, .. }) => {
 					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
 				LayoutGroup::Table(WidgetTable { rows, .. }) => {
@@ -320,6 +361,29 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::ImageLabel(_) => {}
+			Widget::MathExpressionInput(math_expression_input) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (math_expression_input.on_commit.callback)(&()),
+					WidgetValueAction::Update => {
+						let Some(update_value) = value.as_str() else {
+							error!("MathExpressionInput update was not of type: string");
+							return;
+						};
+
+						// The widget is resent as stored, so its tokens and errors must be for its new value rather than its old one
+						let accepts_reducers = math_expression_input.accepts_reducers;
+						let error = math_expression_error(update_value, accepts_reducers);
+						let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(update_value, accepts_reducers);
+						math_expression_input.tokens = tokens;
+						math_expression_input.tooltips = tooltips;
+						math_expression_input.errors = math_expression_error_ranges(update_value, error.as_ref());
+						math_expression_input.value = update_value.into();
+						(math_expression_input.on_update.callback)(math_expression_input)
+					}
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ShortcutLabel(_) => {}
 			Widget::IconLabel(_) => {}
 			Widget::NodeCatalog(node_type_input) => match action {
@@ -374,6 +438,14 @@ impl LayoutMessageHandler {
 					_ => {}
 				},
 			},
+			Widget::ParameterChainToggle(parameter_chain_toggle) => {
+				let callback_message = match action {
+					WidgetValueAction::Commit => (parameter_chain_toggle.on_commit.callback)(&()),
+					WidgetValueAction::Update => (parameter_chain_toggle.on_update.callback)(parameter_chain_toggle),
+				};
+
+				responses.add(callback_message);
+			}
 			Widget::ParameterExposeButton(parameter_expose_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (parameter_expose_button.on_commit.callback)(&()),
@@ -506,6 +578,7 @@ impl LayoutMessageHandler {
 		mut new_layout: Layout,
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
+		environment: Environment,
 	) {
 		// Collect CheckboxId mappings from new layout
 		let mut checkbox_map = HashMap::new();
@@ -536,12 +609,19 @@ impl LayoutMessageHandler {
 			}];
 		}
 
-		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
+		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping, environment);
 	}
 
 	/// Send a diff to the frontend based on the layout target.
-	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
+	fn send_diff(
+		&self,
+		mut diff: Vec<WidgetDiff>,
+		layout_target: LayoutTarget,
+		responses: &mut VecDeque<Message>,
+		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
+		environment: Environment,
+	) {
+		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping, environment));
 
 		if matches!(layout_target, LayoutTarget::_LayoutTargetLength) {
 			panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing");

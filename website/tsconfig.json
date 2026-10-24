@@ -9,6 +9,7 @@
 		"noEmit": true,
 		"skipLibCheck": true,
 		"verbatimModuleSyntax": true,
+		"typeRoots": ["../frontend/node_modules/@types"],
 		"types": ["node"],
 		"lib": ["ESNext", "DOM", "DOM.Iterable"]
 	},
@@ -26,6 +27,8 @@
 		"public",
 		"static/wasm",
 		// Ignore vendored code
-		"static/*.js"
+		"static/*.js",
+		// Ignore the lint config, which brings in the frontend's untyped one
+		"eslint.config.js"
 	]
 }

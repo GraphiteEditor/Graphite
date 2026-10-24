@@ -4,8 +4,8 @@
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Data from "/src/components/panels/Data.svelte";
 	import Document from "/src/components/panels/Document.svelte";
+	import Inspector from "/src/components/panels/Inspector.svelte";
 	import Layers from "/src/components/panels/Layers.svelte";
-	import Properties from "/src/components/panels/Properties.svelte";
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -17,7 +17,7 @@
 		Welcome,
 		Document,
 		Layers,
-		Properties,
+		Inspector,
 		Data,
 	};
 	const BUTTON_LEFT = 0;

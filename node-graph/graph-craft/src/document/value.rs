@@ -1,16 +1,16 @@
 use super::DocumentNode;
 use crate::application_io::PlatformEditorApi;
 use crate::application_io::resource::Resource;
-use crate::proto::{Any as DAny, FutureAny};
+use crate::proto::{Any as DAny, AnyInput};
 use brush_nodes::{BrushCache, Stroke};
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
 use core_types::transform::Footprint;
-use core_types::{CacheHash, Color, ContextFeatures, MemoHash, Node, Type, TypeDescriptor};
-use dyn_any::DynAny;
+use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, Poll, RuntimeHandle, SourceId, Type, TypeDescriptor};
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
+use graphene_animation::AnimationCurve;
 use graphene_application_io::resource::ResourceHash;
 use graphene_application_io::resource::ResourceId;
 use graphic_types::raster_types::{CPU, Image, Raster};
@@ -22,7 +22,6 @@ use graphic_types::{Artboard, Graphic, Vector};
 use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
-use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
 use text_nodes::Font;
@@ -115,7 +114,11 @@ macro_rules! tagged_value {
 			DocumentNode(DocumentNode),
 			/// Carried by context nullification proto nodes constructed at proto node compilation time in `insert_context_nullification_nodes`.
 			#[serde(skip)]
-			ContextFeatures(ContextFeatures),
+			ContextModification(ContextModification),
+			#[serde(skip)]
+			SourceId(SourceId),
+			#[serde(skip)]
+			Runtime(RuntimeHandle),
 			#[serde(skip)]
 			EditorApi(Arc<PlatformEditorApi>),
 			/// Only used by the `resource` node, should never be serialized
@@ -148,7 +151,9 @@ macro_rules! tagged_value {
 					// =======================
 					Self::NodeIdPath(path) => path.cache_hash(state),
 					Self::DocumentNode(node) => node.cache_hash(state),
-					Self::ContextFeatures(features) => features.cache_hash(state),
+					Self::ContextModification(modification) => modification.cache_hash(state),
+					Self::SourceId(source) => source.cache_hash(state),
+					Self::Runtime(runtime) => runtime.cache_hash(state),
 					Self::RenderOutput(x) => x.cache_hash(state),
 					Self::EditorApi(x) => x.cache_hash(state),
 					Self::ResourceHash(x) => x.cache_hash(state),
@@ -156,9 +161,9 @@ macro_rules! tagged_value {
 			}
 		}
 
-		impl<'a> TaggedValue {
-			/// Converts to a Box<dyn DynAny>
-			pub fn to_dynany(self) -> DAny<'a> {
+		impl TaggedValue {
+			/// Converts to a `Box<dyn Any>`
+			pub fn to_dynany(self) -> DAny {
 				match self {
 					// ===============
 					// MANUAL VARIANTS
@@ -221,8 +226,10 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => Box::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Box::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Box::new(node),
-					Self::ContextFeatures(features) => Box::new(Item::new_from_element(features)),
-					Self::EditorApi(x) => Box::new(x),
+					Self::ContextModification(modification) => Box::new(Item::new_from_element(modification)),
+					Self::SourceId(source) => Box::new(Item::new_from_element(source)),
+					Self::Runtime(runtime) => Box::new(Item::new_from_element(runtime)),
+					Self::EditorApi(x) => Box::new(Item::new_from_element(x)),
 					Self::ResourceHash(x) => Box::new(Item::new_from_element(x)),
 				}
 			}
@@ -289,8 +296,10 @@ macro_rules! tagged_value {
 					Self::RenderOutput(x) => Arc::new(Item::new_from_element(x)),
 					Self::NodeIdPath(path) => Arc::new(Item::new_from_element(path)),
 					Self::DocumentNode(node) => Arc::new(node),
-					Self::ContextFeatures(features) => Arc::new(Item::new_from_element(features)),
-					Self::EditorApi(x) => Arc::new(x),
+					Self::ContextModification(modification) => Arc::new(Item::new_from_element(modification)),
+					Self::SourceId(source) => Arc::new(Item::new_from_element(source)),
+					Self::Runtime(runtime) => Arc::new(Item::new_from_element(runtime)),
+					Self::EditorApi(x) => Arc::new(Item::new_from_element(x)),
 					Self::ResourceHash(x) => Arc::new(Item::new_from_element(x)),
 				}
 			}
@@ -320,8 +329,10 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => item!(RenderOutput),
 					Self::NodeIdPath(_) => item!(NodeIdPath),
 					Self::DocumentNode(_) => concrete!(DocumentNode),
-					Self::ContextFeatures(_) => item!(ContextFeatures),
-					Self::EditorApi(_) => item!(&PlatformEditorApi),
+					Self::ContextModification(_) => item!(ContextModification),
+					Self::SourceId(_) => item!(SourceId),
+					Self::Runtime(_) => item!(RuntimeHandle),
+					Self::EditorApi(_) => item!(Arc<PlatformEditorApi>),
 					Self::ResourceHash(_) => item!(ResourceHash),
 				};
 
@@ -330,39 +341,38 @@ macro_rules! tagged_value {
 			}
 
 			/// Attempts to downcast the dynamic type to a tagged value
-			pub fn try_from_any(input: Box<dyn DynAny<'a> + 'a>) -> Result<Self, String> {
-				use dyn_any::downcast;
+			pub fn try_from_any(input: DAny) -> Result<Self, String> {
 				use std::any::TypeId;
 
-				match DynAny::type_id(input.as_ref()) {
+				match (*input).type_id() {
 					// ===============
 					// MANUAL VARIANTS
 					// ===============
 					// The manual variants convert from both their payload and wire forms, with the newtypes flattening to their stored `Vec<f64>` form
 					x if x == TypeId::of::<()>() => Ok(TaggedValue::None),
-					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::Numbers(*downcast(input).unwrap())),
-					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::Numbers(downcast::<List<f64>>(input).unwrap().iter_element_values().copied().collect())),
-					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(downcast::<DashPattern>(input).unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(downcast::<Item<DashPattern>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(downcast::<BoxCorners>(input).unwrap().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(downcast::<Item<BoxCorners>>(input).unwrap().into_element().0.iter_element_values().copied().collect())),
-					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(downcast::<TransferCurve>(input).unwrap().points().to_vec())),
-					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(downcast::<Item<TransferCurve>>(input).unwrap().into_element().points().to_vec())),
-					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*downcast::<Gradient>(input).unwrap()))),
-					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*downcast::<Item<Gradient>>(input).unwrap()))),
-					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(downcast::<List<Stroke>>(input).unwrap().into_iter().map(Item::into_element).collect())),
-					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(downcast::<Item<BrushCache>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Vec<f64>>() => Ok(TaggedValue::Numbers(*input.downcast().unwrap())),
+					x if x == TypeId::of::<List<f64>>() => Ok(TaggedValue::Numbers(input.downcast::<List<f64>>().unwrap().iter_element_values().copied().collect())),
+					x if x == TypeId::of::<DashPattern>() => Ok(TaggedValue::DashPattern(input.downcast::<DashPattern>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<DashPattern>>() => Ok(TaggedValue::DashPattern(input.downcast::<Item<DashPattern>>().unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<BoxCorners>() => Ok(TaggedValue::BoxCorners(input.downcast::<BoxCorners>().unwrap().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast::<Item<BoxCorners>>().unwrap().into_element().0.iter_element_values().copied().collect())),
+					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(input.downcast::<TransferCurve>().unwrap().points().to_vec())),
+					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(input.downcast::<Item<TransferCurve>>().unwrap().into_element().points().to_vec())),
+					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*input.downcast::<Gradient>().unwrap()))),
+					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*input.downcast::<Item<Gradient>>().unwrap()))),
+					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast::<List<Stroke>>().unwrap().into_iter().map(Item::into_element).collect())),
+					x if x == TypeId::of::<Item<BrushCache>>() => Ok(TaggedValue::BrushCache(input.downcast::<Item<BrushCache>>().unwrap().into_element())),
 					// =======================
 					// AUTO-GENERATED VARIANTS
 					// =======================
-					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*downcast(input).unwrap())), )*
-					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(downcast::<Item<$ty>>(input).unwrap().into_element())), )*
+					$( x if x == TypeId::of::<$ty>() => Ok(TaggedValue::$identifier(*input.downcast().unwrap())), )*
+					$( x if x == TypeId::of::<Item<$ty>>() => Ok(TaggedValue::$identifier(input.downcast::<Item<$ty>>().unwrap().into_element())), )*
 					// =======================
 					// NON-SERIALIZED VARIANTS
 					// =======================
-					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(downcast::<Item<RenderOutput>>(input).unwrap().into_element())),
+					x if x == TypeId::of::<Item<RenderOutput>>() => Ok(TaggedValue::RenderOutput(input.downcast::<Item<RenderOutput>>().unwrap().into_element())),
 
-					_ => Err(format!("Cannot convert {:?} to TaggedValue", DynAny::type_name(input.as_ref()))),
+					_ => Err(format!("Cannot convert {:?} to TaggedValue", (*input).type_id())),
 				}
 			}
 
@@ -428,7 +438,6 @@ macro_rules! tagged_value {
 						None
 					}
 					Type::Fn(_, output) => TaggedValue::from_type(output),
-					Type::Future(output) => TaggedValue::from_type(output),
 					// Element types with a dedicated variant use it directly (the variant's value is a rank-0 cell); the rest store the structural type
 					Type::Item(element) => TaggedValue::from_type(element).or_else(|| {
 						macro_rules! check {
@@ -486,7 +495,9 @@ macro_rules! tagged_value {
 					Self::RenderOutput(_) => "RenderOutput".to_string(),
 					Self::NodeIdPath(path) => format!("NodeIdPath({path:?})"),
 					Self::DocumentNode(node) => format!("DocumentNode({node:?})"),
-					Self::ContextFeatures(features) => format!("ContextFeatures({features:?})"),
+					Self::ContextModification(modification) => format!("ContextModification({modification:?})"),
+					Self::SourceId(source) => format!("SourceId({source:?})"),
+					Self::Runtime(_) => "Runtime".to_string(),
 					Self::EditorApi(_) => "PlatformEditorApi".to_string(),
 					Self::ResourceHash(hash) => format!("ResourceHash({hash:?})"),
 				}
@@ -540,6 +551,7 @@ tagged_value! {
 	VectorModification(Box<VectorModification>),
 	ImageData(Image<Color>),
 	Resource(ResourceId),
+	AnimationCurve(AnimationCurve),
 	// Legacy
 	#[serde(alias = "OptionalDAffine2")]
 	LegacyOptionalDAffine2(Option<DAffine2>),
@@ -552,10 +564,8 @@ tagged_value! {
 	#[serde(alias = "LuminanceCalculation")]
 	DesaturateMethod(raster_nodes::adjustments::DesaturateMethod),
 	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
-	XY(graphene_core::extract_xy::XY),
 	StringCapitalization(text_nodes::StringCapitalization),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
-	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
 	NoiseType(raster_nodes::adjustments::NoiseType),
 	FractalType(raster_nodes::adjustments::FractalType),
@@ -568,9 +578,12 @@ tagged_value! {
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GridType(vector::misc::GridType),
+	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
-	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
+	#[serde(alias = "MergeByDistanceAlgorithm")]
+	WeldMethod(vector::misc::WeldMethod),
+	UnweldMethod(vector::misc::UnweldMethod),
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),
@@ -597,6 +610,8 @@ tagged_value! {
 	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
 	#[serde(alias = "Fill")]
 	LegacyFill(graphic_types::migrations::legacy::LegacyFill), // TODO: Eventually remove this document upgrade code
+	XY(graphene_core::extract_xy::XY), // TODO: Eventually remove this document upgrade code
+	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha), // TODO: Eventually remove this document upgrade code
 }
 
 impl TaggedValue {
@@ -716,7 +731,6 @@ impl TaggedValue {
 				Some(ty)
 			}
 			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
-			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
 			Type::Item(element) => TaggedValue::from_primitive_string(string, element),
 			Type::List(element) => TaggedValue::from_primitive_string(string, element),
 		}
@@ -777,8 +791,8 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 			}
 			"Vector" | "VectorData" => {
 				let vector = graphic_types::migrations::migrate_to_optional_vector(content.clone()).map_err(serde::de::Error::custom)?;
-				if let Some(vector) = vector {
-					let modification = Box::new(VectorModification::create_from_vector(&vector));
+				if let Some((vector, paths, turned)) = vector {
+					let modification = Box::new(VectorModification::create_from_vector(&vector, &paths).with_segments_turned_on_load(turned));
 					return Ok(MemoHash::new(TaggedValue::VectorModification(modification)));
 				}
 				return Ok(MemoHash::new(TaggedValue::TypeDefault(list!(Vector))));
@@ -846,8 +860,39 @@ pub fn deserialize_tagged_value_with_legacy_migration<'de, D: serde::Deserialize
 		}
 	}
 
-	let tagged_value: TaggedValue = serde_json::from_value(value).map_err(serde::de::Error::custom)?;
+	// Reparsing from text on failure provides the error positions needed to replace any `null` saved in place of a float
+	let tagged_value = TaggedValue::deserialize(&value)
+		.or_else(|_| deserialize_replacing_null_floats_with_zero(&value.to_string()))
+		.map_err(serde::de::Error::custom)?;
 	Ok(MemoHash::new(tagged_value))
+}
+
+/// Parses JSON where NaN or infinity was saved as `null`, which serde_json rejects as a float, by replacing each rejected `null` with `0.0` until it parses.
+#[cfg(feature = "loading")]
+pub fn deserialize_replacing_null_floats_with_zero<T: serde::de::DeserializeOwned>(serialized_content: &str) -> serde_json::Result<T> {
+	let mut content = std::borrow::Cow::Borrowed(serialized_content);
+
+	// O(n) reparse per replaced `null`, which only happens for content that would otherwise fail to load
+	loop {
+		let error = match serde_json::from_str(&content) {
+			Ok(value) => return Ok(value),
+			Err(error) => error,
+		};
+
+		// serde_json reports the position just past the `null` it read in place of a float
+		if !error.to_string().starts_with("invalid type: null, expected f") {
+			return Err(error);
+		}
+		let Some(preceding_lines) = error.line().checked_sub(1) else { return Err(error) };
+		let line_start = content.split_inclusive('\n').take(preceding_lines).map(str::len).sum::<usize>();
+		let null_end = line_start + error.column();
+		let Some(null_start) = null_end.checked_sub("null".len()).filter(|&start| content.get(start..null_end) == Some("null")) else {
+			return Err(error);
+		};
+
+		log::warn!("Loading a `null` in place of a number as 0 (line {}, column {})", error.line(), error.column());
+		content.to_mut().replace_range(null_start..null_end, "0.0");
+	}
 }
 
 impl Display for TaggedValue {
@@ -865,12 +910,11 @@ impl Display for TaggedValue {
 pub struct UpcastNode {
 	value: MemoHash<TaggedValue>,
 }
-impl<'input> Node<'input, DAny<'input>> for UpcastNode {
-	type Output = FutureAny<'input>;
+impl Node<AnyInput> for UpcastNode {
+	type Output = DAny;
 
-	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		let memo_clone = MemoHash::clone(&self.value);
-		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
+	fn eval(&self, _: &AnyInput) -> Poll<DAny> {
+		Poll::Final((*self.value).clone().to_dynany())
 	}
 }
 impl UpcastNode {
@@ -878,23 +922,6 @@ impl UpcastNode {
 		Self { value }
 	}
 }
-#[derive(Default, Debug, Clone, Copy)]
-pub struct UpcastAsRefNode<T: AsRef<U> + Sync + Send, U: Sync + Send>(pub T, PhantomData<U>);
-
-impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<'i, DAny<'i>> for UpcastAsRefNode<T, U> {
-	type Output = FutureAny<'i>;
-	#[inline(always)]
-	fn eval(&'i self, _: DAny<'i>) -> Self::Output {
-		Box::pin(async move { Box::new(Item::new_from_element(self.0.as_ref())) as DAny<'i> })
-	}
-}
-
-impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
-	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
-		UpcastAsRefNode(value, PhantomData)
-	}
-}
-
 #[derive(Debug, Clone, PartialEq, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderOutput {
 	pub data: RenderOutputType,
@@ -969,7 +996,7 @@ mod typedefault_dispatch {
 				let expected_type_id = std::any::TypeId::of::<$type_default>();
 				let dyn_value = TaggedValue::TypeDefault(ty.clone()).to_dynany();
 				assert_eq!(
-					DynAny::type_id(&*dyn_value),
+					(*dyn_value).type_id(),
 					expected_type_id,
 					"`to_dynany(TypeDefault({0}))` did not produce a `{0}` — the type-default lists cover this type but the unwrap site doesn't handle it. Without a match, `to_dynany` falls back to `from_type_or_none`, which returns `TypeDefault({0})` again and recurses forever.",
 					std::any::type_name::<$type_default>(),

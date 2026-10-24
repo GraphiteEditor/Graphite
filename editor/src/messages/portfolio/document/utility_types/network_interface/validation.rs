@@ -3,7 +3,7 @@ use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeN
 use std::collections::{HashMap, HashSet};
 
 impl NodeNetworkInterface {
-	/// Checks the structural invariants between the document network and its parallel metadata tree at every nesting level.
+	/// Checks the structural invariants of the document network, its parallel metadata tree, and its redirect dots at every nesting level.
 	/// Returns a description of each violation found, or an empty list if the interface is internally consistent.
 	/// Intended for tests and debugging; violations indicate a desync bug in the mutation methods, not a user error.
 	// O(nodes + wires) summed across all nesting levels, plus an acyclicity walk per network
@@ -11,7 +11,17 @@ impl NodeNetworkInterface {
 		let mut violations = Vec::new();
 		validate_network(self.document_network(), &self.network_metadata, &mut Vec::new(), 0, &mut violations);
 		self.validate_outward_wires(&mut Vec::new(), &mut violations);
+		self.validate_dots_stay_on_wires(&mut violations);
 		violations
+	}
+
+	/// A redirect dot an edit took a wire from must be gone by the time the edit is done if that left it orphaned.
+	fn validate_dots_stay_on_wires(&self, violations: &mut Vec<String>) {
+		for (network_path, lost_wires) in &self.dots_that_lost_a_wire {
+			for (dot, side) in lost_wires.iter().filter(|(dot, side)| self.is_orphaned_dot(dot, *side, network_path)) {
+				violations.push(format!("Redirect dot {dot} in network {network_path:?} lost its {side:?} wire to an edit that left it behind"));
+			}
+		}
 	}
 
 	/// A loaded outward wire cache must match a fresh computation from the network.

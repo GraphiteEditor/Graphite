@@ -11,6 +11,7 @@
 	"//": "NOTE: `source-sans-pro` is never to be upgraded to 3.x because that renders 1px above its intended position.",
 	"///": "Waiting on <https://github.com/import-js/eslint-plugin-import/issues/3227> before we can update @eslint/js and eslint to 10.x",
 	"dependencies": {
+		"@fontsource/stix-two-math": "5.3.0",
 		"source-code-pro": "2.42.0",
 		"source-sans-pro": "2.45.0"
 	},
@@ -25,6 +26,7 @@
 		"eslint-plugin-svelte": "^3.17.0",
 		"globals": "^17.4.0",
 		"license-checker-rseidelsohn": "^4.4.2",
+		"postcss-selector-parser": "^7.1.1",
 		"prettier": "^3.8.1",
 		"prettier-plugin-svelte": "^3.5.1",
 		"sass": "^1.99.0",
