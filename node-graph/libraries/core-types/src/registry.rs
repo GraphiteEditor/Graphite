@@ -157,6 +157,52 @@ pub fn is_hidden_category(category: &str) -> bool {
 	category.is_empty() || category.starts_with('_')
 }
 
+/// Whether nodes in this category are developer tools for testing, listed in the node catalog only in development builds.
+pub fn is_development_category(category: &str) -> bool {
+	category == "Debug"
+}
+
+/// The node catalog's categories in display order, each master category's own nodes first and then its subcategories.
+pub const CATEGORY_ORDER: &[&str] = &[
+	"Value",
+	"Routing",
+	"Transform",
+	"Graphic",
+	"Vector: Style",
+	"Vector: Geometry",
+	"Vector: Point",
+	"Vector: Path",
+	"Vector: Deform",
+	"Vector: Measure",
+	"Raster",
+	"Raster: Effect",
+	"Raster: Adjustment",
+	"Raster: Filter",
+	"Color",
+	"Gradient",
+	"Typography",
+	"String",
+	"String: Regex",
+	"String: JSON",
+	"Math",
+	"Math: Arithmetic",
+	"Math: Logic",
+	"Math: Numeric",
+	"Math: Trig",
+	"Math: Vec2",
+	"Data: List",
+	"Data: Context",
+	"Data: Animation",
+	"Data: Attribute",
+	"Data: Type Assertion",
+	"Data: I/O",
+];
+
+/// Sorts categories into the node catalog's display order, with any unlisted category (such as Debug) after the listed ones.
+pub fn category_sort_key(category: &str) -> (usize, &str) {
+	(CATEGORY_ORDER.iter().position(|listed| *listed == category).unwrap_or(CATEGORY_ORDER.len()), category)
+}
+
 type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
