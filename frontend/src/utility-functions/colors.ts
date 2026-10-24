@@ -31,6 +31,27 @@ export function isSRgba8(value: unknown): value is SRGBA8 {
 	return !!value && typeof value === "object" && "red" in value;
 }
 
+let colorParsingCanvasContext: CanvasRenderingContext2D | undefined;
+
+// The 1x1 canvas context that color parsing reuses
+function colorParsingContext(): CanvasRenderingContext2D | undefined {
+	if (colorParsingCanvasContext) return colorParsingCanvasContext;
+
+	const canvas = document.createElement("canvas");
+	canvas.width = 1;
+	canvas.height = 1;
+	colorParsingCanvasContext = canvas.getContext("2d", { willReadFrequently: true }) || undefined;
+	return colorParsingCanvasContext;
+}
+
+// The theme colors by CSS variable name, read once since reading computed styles forces a style recalculation
+const themeColors = new Map<string, SRGBA8 | undefined>();
+
+function themeColor(variableName: string): SRGBA8 | undefined {
+	if (!themeColors.has(variableName)) themeColors.set(variableName, sRgba8FromCSS(window.getComputedStyle(document.body).getPropertyValue(variableName)));
+	return themeColors.get(variableName);
+}
+
 // Parse a CSS color string into an `SRGBA8`. Uses a canvas to delegate parsing to the browser.
 export function sRgba8FromCSS(colorCode: string): SRGBA8 | undefined {
 	// Allow single-digit hex value inputs
@@ -40,10 +61,7 @@ export function sRgba8FromCSS(colorCode: string): SRGBA8 | undefined {
 		colorValue = `#${digit}${digit}${digit}`;
 	}
 
-	const canvas = document.createElement("canvas");
-	canvas.width = 1;
-	canvas.height = 1;
-	const context = canvas.getContext("2d", { willReadFrequently: true });
+	const context = colorParsingContext();
 	if (!context) return undefined;
 
 	context.clearRect(0, 0, 1, 1);
@@ -152,7 +170,7 @@ export function sRgba8ContrastingColor(color: SRGBA8 | undefined): "black" | "wh
 
 export function contrastingOutlineFactor(value: FillChoice<SRGBA8>, proximityColor: string | [string, string], proximityRange: number): number {
 	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
-	const [range1, range2] = pair.map((color) => sRgba8FromCSS(window.getComputedStyle(document.body).getPropertyValue(color)));
+	const [range1, range2] = pair.map(themeColor);
 
 	const contrast = (color: SRGBA8 | undefined): number => {
 		if (!color) return 0;
