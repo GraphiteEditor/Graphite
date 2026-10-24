@@ -4,35 +4,38 @@
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import NodeSection from "/src/components/widgets/NodeSection.svelte";
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, LayoutTarget, NodeSection as NodeSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let widgetData: NodeSectionData;
-	export let layoutTarget: LayoutTarget;
-
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	type Props = {
+		widgetData: NodeSectionData;
+		layoutTarget: LayoutTarget;
+		class?: string;
+		classes?: Record<string, boolean>;
+	};
+	let { widgetData, layoutTarget, class: className = "", classes = {} }: Props = $props();
 
 	// A node without parameters has nothing to show, so its section stays collapsed with its arrow grayed out, like the Layers panel's
-	$: expandable = widgetData.layout.length > 0;
+	const expandable = $derived(widgetData.layout.length > 0);
 
 	// Whether the section is expanded is owned by the backend (persisted per node), so just reflect it here
-	$: expanded = widgetData.expanded && expandable;
+	const expanded = $derived(widgetData.expanded && expandable);
 
 	// The sections of the chain feeding one of this node's inputs, which follow its own rows and are shown beneath them
-	$: chainSections = widgetData.layout.flatMap((layoutGroup) => ("NodeSection" in layoutGroup && layoutGroup.NodeSection.outputWire ? [layoutGroup.NodeSection] : []));
+	const chainSections = $derived(widgetData.layout.flatMap((layoutGroup) => ("NodeSection" in layoutGroup && layoutGroup.NodeSection.outputWire ? [layoutGroup.NodeSection] : [])));
 
 	// A reorderable section is a Inspector node section the user can drag to reorder (a layer chain's node, or a pinned node)
-	$: reorderable = layoutTarget === "Inspector" && widgetData.draggable;
+	const reorderable = $derived(layoutTarget === "Inspector" && widgetData.draggable);
 
 	const editor = getContext<EditorWrapper>("editor");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
 	// Like the Layers panel's expand arrows, a modifier key applies the toggle recursively to the sections nested within
 	function toggleExpandedWithModifiers(e: MouseEvent) {
+		e.stopPropagation();
 		if (!expandable) return;
 
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
@@ -73,7 +76,7 @@
 			{/if}
 		{/each}
 	{:else}
-		<button class="header" class:expanded class:expandable data-inspector-reorder-handle={reorderable ? "" : undefined} on:click|stopPropagation={toggleExpandedWithModifiers}>
+		<button class="header" class:expanded class:expandable data-inspector-reorder-handle={reorderable ? "" : undefined} onclick={toggleExpandedWithModifiers}>
 			<div
 				class="icon-slot"
 				data-tooltip-label={!expandable ? undefined : expanded ? "Collapse (All)" : "Expand (All)"}
@@ -122,7 +125,7 @@
 				class={widgetData.pinned ? "" : "show-only-on-hover"}
 			/>
 			{#if reorderable}
-				<div class="drag-grip" data-tooltip-description="Drag to reorder this node." on:click|stopPropagation={() => undefined} role="presentation"></div>
+				<div class="drag-grip" data-tooltip-description="Drag to reorder this node." onclick={(e) => e.stopPropagation()} role="presentation"></div>
 			{/if}
 		</button>
 		{#if expanded}
@@ -131,14 +134,14 @@
 					{#if "Row" in layoutGroup}
 						<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
 					{:else if "NodeSection" in layoutGroup && !layoutGroup.NodeSection.outputWire}
-						<svelte:self widgetData={layoutGroup.NodeSection} {layoutTarget} />
+						<NodeSection widgetData={layoutGroup.NodeSection} {layoutTarget} />
 					{/if}
 				{/each}
 			</LayoutCol>
 			{#if chainSections.length > 0}
 				<LayoutCol class="chain-sections" data-section-contents>
 					{#each chainSections as chainSection}
-						<svelte:self widgetData={chainSection} {layoutTarget} />
+						<NodeSection widgetData={chainSection} {layoutTarget} />
 					{/each}
 				</LayoutCol>
 			{/if}
