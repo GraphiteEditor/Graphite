@@ -5,12 +5,14 @@ use crate::consts::{
 	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
+use crate::messages::portfolio::document::graph_operation::utility_types::DraggedShapeSize;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::transformation::OriginalTransforms;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_std::renderer::Quad;
+use std::collections::HashMap;
 
 /// (top, bottom, left, right)
 pub type EdgeBool = (bool, bool, bool, bool);
@@ -373,6 +375,8 @@ pub struct BoundingBoxManager {
 	pub original_bound_transform: DAffine2,
 	pub selected_edges: Option<SelectedEdges>,
 	pub original_transforms: OriginalTransforms,
+	/// Rectangle or ellipse size at the start of this bounds drag. Empty until the first move.
+	pub shape_resize_basis: HashMap<LayerNodeIdentifier, DraggedShapeSize>,
 	pub opposite_pivot: DVec2,
 	pub center_of_transformation: DVec2,
 	/// What a turn of the cage under way snaps by.

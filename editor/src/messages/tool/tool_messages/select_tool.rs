@@ -1832,6 +1832,13 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				let drag_too_small = input.mouse.position.distance(tool_data.drag_start) < 10. * f64::EPSILON;
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
+				if !drag_too_small && matches!(self, SelectToolFsmState::ResizingBounds) {
+					for &layer in &tool_data.layers_dragging {
+						if layer != LayerNodeIdentifier::ROOT_PARENT {
+							responses.add(GraphOperationMessage::BakeShapeScale { layer });
+						}
+					}
+				}
 
 				tool_data.pivot_before_drag = None;
 				let pivot_gizmo = tool_data.pivot_gizmo();
@@ -1846,6 +1853,7 @@ impl Fsm for SelectToolFsmState {
 					&& let Some(bounds) = &mut tool_data.bounding_box_manager
 				{
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				let selection = tool_data.nested_selection_behavior;
@@ -1960,6 +1968,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				responses.add(DocumentMessage::AbortTransaction);

@@ -1386,6 +1386,13 @@ impl Fsm for ShapeToolFsmState {
 				| ShapeToolFsmState::ModifyingGizmo,
 				ShapeToolMessage::DragStop,
 			) => {
+				if matches!(self, ShapeToolFsmState::ResizingBounds) {
+					for &layer in &tool_data.layers_dragging {
+						if layer != LayerNodeIdentifier::ROOT_PARENT {
+							responses.add(GraphOperationMessage::BakeShapeScale { layer });
+						}
+					}
+				}
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup();
 				snap_session.end_gesture();
@@ -1395,6 +1402,7 @@ impl Fsm for ShapeToolFsmState {
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
+					bounds.shape_resize_basis.clear();
 				}
 
 				tool_data.line_data.dragging_endpoint = None;
@@ -1457,6 +1465,7 @@ fn cancel_drag(tool_data: &mut ShapeToolData, snap_session: &mut SnapSession, re
 
 	if let Some(bounds) = &mut tool_data.bounding_box_manager {
 		bounds.original_transforms.clear();
+		bounds.shape_resize_basis.clear();
 	}
 
 	tool_data.cursor = MouseCursorIcon::Crosshair;

@@ -164,6 +164,16 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.transform_set(transform, transform_in, skip_rerender);
 				}
 			}
+			GraphOperationMessage::BakeShapeScale { layer } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.bake_scale_into_shape_generator();
+				}
+			}
+			GraphOperationMessage::WriteDraggedShapeSize { layer, size } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.write_dragged_shape_size(size);
+				}
+			}
 			GraphOperationMessage::Vector { layer, modification_type } => {
 				if layer == LayerNodeIdentifier::ROOT_PARENT {
 					log::error!("Cannot run Vector on ROOT_PARENT");

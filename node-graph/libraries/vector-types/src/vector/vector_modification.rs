@@ -878,6 +878,19 @@ impl VectorModification {
 		}
 	}
 
+	/// Multiply stored point offsets and handle offsets by `scale`.
+	/// Point ids and segment connectivity stay the same.
+	pub fn scale_offsets(&mut self, scale: DVec2) {
+		for delta in self.points.delta.values_mut() {
+			*delta *= scale;
+		}
+		for handle in self.segments.handle_primary.values_mut().chain(self.segments.handle_end.values_mut()) {
+			if let Some(position) = handle {
+				*position *= scale;
+			}
+		}
+	}
+
 	/// Create a new modification that will convert an empty [`Vector`] into the target [`Vector`].
 	pub fn create_from_vector(vector: &Vector, paths: &List<Path>) -> Self {
 		let working = WorkingVector::flatten(vector, paths);
@@ -1581,6 +1594,21 @@ mod tests {
 
 			assert!(vector.colinear_pairs(&paths).is_empty(), "removing {removed:?} should clear the tangent");
 		}
+	}
+
+	#[test]
+	fn scale_offsets_grows_a_moved_point() {
+		let bezpath = rectangle_bezpath(DVec2::NEG_ONE, DVec2::ONE);
+		let (vector, paths) = Vector::from_bezpath(&bezpath);
+		let point = anchor_id(&vector, &paths, 0);
+		let mut modification = VectorModification::default();
+		modification.modify(&VectorModificationType::ApplyPointDelta { point, delta: DVec2::new(2., 4.) });
+		modification.scale_offsets(DVec2::new(3., 0.5));
+
+		let (mut scaled, mut scaled_paths) = (vector.clone(), paths.clone());
+		modification.apply(&mut scaled, &mut scaled_paths);
+		let expected = anchor_position(&vector, &paths, 0) + DVec2::new(6., 2.);
+		assert_eq!(anchor_position(&scaled, &scaled_paths, 0), expected);
 	}
 
 	#[test]

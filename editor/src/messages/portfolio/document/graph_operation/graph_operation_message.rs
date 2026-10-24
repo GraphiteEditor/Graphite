@@ -1,4 +1,4 @@
-use super::utility_types::TransformIn;
+use super::utility_types::{DraggedShapeSize, TransformIn};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
 use crate::messages::prelude::*;
@@ -106,6 +106,16 @@ pub enum GraphOperationMessage {
 		transform: DAffine2,
 		transform_in: TransformIn,
 		skip_rerender: bool,
+	},
+	/// Move a rectangle or ellipse layer's scale off the Transform node and into its size inputs.
+	BakeShapeScale {
+		layer: LayerNodeIdentifier,
+	},
+	/// Write a rectangle or ellipse size from the size captured at the start of a bounds drag.
+	/// The gesture scale is whatever is on the Transform right now. The stored size is replaced, not multiplied again.
+	WriteDraggedShapeSize {
+		layer: LayerNodeIdentifier,
+		size: DraggedShapeSize,
 	},
 	Vector {
 		layer: LayerNodeIdentifier,
