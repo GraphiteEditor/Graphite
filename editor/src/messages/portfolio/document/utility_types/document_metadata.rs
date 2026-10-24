@@ -39,6 +39,8 @@ pub struct DocumentMetadata {
 	pub group_layers: HashSet<LayerNodeIdentifier>,
 	/// Each group's targets composed with its descendants' into its space.
 	composed_targets: HashMap<LayerNodeIdentifier, ComposedTargets>,
+	/// The whole document's bounds, one slot per way of combining them (see [`Self::document_bounds`]), each computed on first query after a change.
+	document_bounds: [OnceLock<Option<[DVec2; 2]>>; 4],
 	/// Per-layer text frame from item 0's `editor:text_frame` attribute (`DAffine2` mapping the (0, 0)-(1, 1) unit square onto the frame).
 	/// The Text tool composes this with `transform_to_viewport(layer)` to position its drag cage.
 	pub text_frames: HashMap<LayerNodeIdentifier, DAffine2>,
@@ -259,9 +261,16 @@ impl DocumentMetadata {
 			.flat_map(move |viewport_to_group| group.children(self).map(move |child| (child, viewport_to_group * self.transform_to_viewport(child))))
 	}
 
-	/// Forgets every group's composed targets, after the layers' targets, transforms, or structure change.
+	/// Forgets every group's composed targets and the document's bounds, after the layers' targets, transforms, or structure change.
 	pub fn reset_composed_targets(&mut self) {
 		self.composed_targets = self.group_layers.iter().map(|&group| (group, ComposedTargets::default())).collect();
+		self.document_bounds = Default::default();
+	}
+
+	/// The whole document's bounds with or without artboards and strokes, from `compute` on the first query after the layers change.
+	pub fn document_bounds(&self, include_artboards: bool, with_stroke: bool, compute: impl FnOnce() -> Option<[DVec2; 2]>) -> Option<[DVec2; 2]> {
+		let slot = usize::from(include_artboards) + 2 * usize::from(with_stroke);
+		*self.document_bounds[slot].get_or_init(compute)
 	}
 
 	/// Whether `hit` accepts a click target of the layer or of any descendant, each passed with its own layer's transform to document space.
@@ -762,6 +771,29 @@ mod tests {
 		// A copy kept from before, as undo keeps one, still has the number that stood for its own state alone
 		let generations = [earlier.generation, first.generation, second.generation, DocumentMetadata::default().generation];
 		assert!(generations.iter().enumerate().all(|(index, generation)| !generations[..index].contains(generation)));
+	}
+
+	// The document's bounds are computed once per way of combining them, and again once the layers change
+	#[test]
+	fn document_bounds_stay_cached_until_the_layers_change() {
+		let mut metadata = DocumentMetadata::default();
+		let computed = std::cell::Cell::new(0);
+		let compute = || {
+			computed.set(computed.get() + 1);
+			Some([DVec2::ZERO, DVec2::ONE])
+		};
+
+		metadata.document_bounds(true, false, compute);
+		metadata.document_bounds(true, false, compute);
+		assert_eq!(computed.get(), 1);
+
+		metadata.document_bounds(false, false, compute);
+		metadata.document_bounds(true, true, compute);
+		assert_eq!(computed.get(), 3);
+
+		metadata.mark_changed();
+		metadata.document_bounds(true, false, compute);
+		assert_eq!(computed.get(), 4);
 	}
 
 	#[test]

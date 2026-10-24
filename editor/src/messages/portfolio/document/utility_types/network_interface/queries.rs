@@ -824,7 +824,9 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document(layer))
+		self.document_metadata.document_bounds(include_artboards, false, || {
+			self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document(layer))
+		})
 	}
 
 	/// The union of every layer's bounds, with a layer inside a clipping artboard contributing only its part within the artboard.
@@ -883,7 +885,9 @@ impl NodeNetworkInterface {
 	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
 	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
 	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
+		self.document_metadata.document_bounds(include_artboards, true, || {
+			self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
+		})
 	}
 
 	/// Calculates the selected layer bounds in document space
