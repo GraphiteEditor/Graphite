@@ -522,7 +522,7 @@ fn dash_pattern(
 	Item::new_from_element(DashPattern::from(lengths))
 }
 
-#[node_macro::node(category("Repeat"), icon("NodeRepeatOnPoints"), name("Copy to Points"), path(core_types::vector))]
+#[node_macro::node(category("Graphic"), icon("NodeRepeatOnPoints"), name("Copy to Points"), path(core_types::vector))]
 fn copy_to_points<I: Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,
@@ -613,7 +613,7 @@ fn copy_to_points<I: Send + Clone>(
 	result_list
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeRoundCorners"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeRoundCorners"), path(core_types::vector))]
 fn round_corners<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
@@ -770,7 +770,7 @@ fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_le
 }
 
 /// Joins points lying within a distance of each other into one, connecting the paths they belong to.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeWeld"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeWeld"), path(core_types::vector))]
 fn weld<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The vector with points to join.
@@ -806,7 +806,7 @@ fn weld<V: MapVectorItems + Send + Sync + 'static>(
 }
 
 /// Separates path flows or segments where they meet, giving each its own copies of the points they share.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeUnweld"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeUnweld"), path(core_types::vector))]
 fn unweld<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The vector with path flows to separate.
@@ -1052,7 +1052,7 @@ pub mod extrude_algorithms {
 	}
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeExtrude"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeExtrude"), path(core_types::vector))]
 fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
@@ -1063,7 +1063,7 @@ fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vec
 	})
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBoxWarp"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeBoxWarp"), path(core_types::vector))]
 fn box_warp<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let target_paths = shared_paths_from_item_attributes(&rectangle);
@@ -1134,7 +1134,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-#[node_macro::node(category("Vector"), icon("NodePackStrips"), path(graphene_core::vector))]
+#[node_macro::node(category("Transform"), icon("NodePackStrips"), path(graphene_core::vector))]
 fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
@@ -1257,7 +1257,7 @@ where
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSmoothAnchors"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSmoothAnchors"), path(core_types::vector))]
 fn smooth_anchors<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
@@ -1428,7 +1428,7 @@ fn smooth_anchors<V: MapVectorItems + Send>(
 	})
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBoundingBox"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeBoundingBox"), path(core_types::vector))]
 fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -1458,13 +1458,13 @@ fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 }
 
 /// Type-asserts a value to be vector data.
-#[node_macro::node(category("Type Assertion"), icon("NodeAsVector"), path(core_types::vector))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsVector"), path(core_types::vector))]
 fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 	value
 }
 
 /// Creates vector points at the given positions, as a point cloud with nothing connecting them. **Points to Polyline** can join them into a path.
-#[node_macro::node(category("Vector"), icon("NodePointsToVector"), name("Points to Vector"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodePointsToVector"), name("Points to Vector"), path(core_types::vector))]
 fn points_to_vector(
 	_: impl Ctx,
 	/// The positions to place the points at, in order.
@@ -1480,7 +1480,7 @@ fn points_to_vector(
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
-#[node_macro::node(category("Vector"), icon("NodePointsToPolyline"), name("Points to Polyline"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodePointsToPolyline"), name("Points to Polyline"), path(core_types::vector))]
 fn points_to_polyline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
 	let closed = *closed.element();
 
@@ -1512,7 +1512,7 @@ fn points_to_polyline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(G
 }
 
 /// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeRelaxPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeRelaxPoints"), path(core_types::vector))]
 fn relax_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// A vector path or point cloud to relax.
@@ -1545,7 +1545,7 @@ fn relax_points<V: MapVectorItems + Send>(
 /// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
 ///
 /// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
-#[node_macro::node(category("Vector"), icon("NodeVoronoiCells"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeVoronoiCells"), path(core_types::vector))]
 fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
@@ -1566,7 +1566,7 @@ fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphi
 /// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
 ///
 /// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
-#[node_macro::node(category("Vector"), icon("NodeTriangulate"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeTriangulate"), path(core_types::vector))]
 fn triangulate<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
@@ -1676,7 +1676,7 @@ fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
 	if diagonal.is_finite() && diagonal > 0. { (diagonal * 1e-6).max(1e-12) } else { 1e-6 }
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"))]
+#[node_macro::node(category("Vector: Path"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"))]
 fn offset_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -1887,7 +1887,7 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 		.collect()
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSolidifyStroke"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSolidifyStroke"), path(core_types::vector))]
 fn solidify_stroke<V: SolidifyStroke + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
@@ -1895,7 +1895,7 @@ fn solidify_stroke<V: SolidifyStroke + Send>(_: impl Ctx, #[implementations(Grap
 }
 
 /// Splits the vector into separate items, one per path.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSeparatePaths"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSeparatePaths"), path(core_types::vector))]
 fn separate_paths<V: ExpandVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector with paths to separate.
@@ -1944,7 +1944,7 @@ fn path_is_closed(
 	Item::new_from_element(closed)
 }
 
-#[node_macro::node(category("Vector"), icon("NodeMapPoints"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeMapPoints"), path(graphene_core::vector))]
 fn map_points<V: MapVectorItems + Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -1969,7 +1969,7 @@ fn map_points<V: MapVectorItems + Send>(
 }
 
 /// Combines every vector path across the input into a single compound path.
-#[node_macro::node(category("Vector"), icon("NodeCombinePaths"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeCombinePaths"), path(graphene_core::vector))]
 pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let graphic_list = content.clone();
 	let flattened = content.into_flattened_list::<Vector>();
@@ -2016,7 +2016,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 }
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize)]
+#[node_macro::node(category("Vector: Path"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize)]
 fn sample_polyline<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -2100,7 +2100,7 @@ fn sample_polyline<V: MapVectorItems + Send>(
 }
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSimplify"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSimplify"), path(core_types::vector))]
 fn simplify<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to simplify.
@@ -2145,7 +2145,7 @@ fn simplify<V: MapVectorItems + Send>(
 }
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeDecimate"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeDecimate"), path(core_types::vector))]
 fn decimate<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to decimate.
@@ -2277,7 +2277,7 @@ fn decimate<V: MapVectorItems + Send>(
 /// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeCutPath"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeCutPath"), path(graphene_core::vector))]
 fn cut_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The path to insert a cut into.
@@ -2400,7 +2400,7 @@ fn evaluate_path(
 	}
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeScatterPoints"), path(core_types::vector), memoize)]
+#[node_macro::node(category("Vector: Point"), icon("NodeScatterPoints"), path(core_types::vector), memoize)]
 fn scatter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -2453,7 +2453,7 @@ fn scatter_points<V: MapVectorItems + Send>(
 	})
 }
 
-#[node_macro::node(name("Spline"), category("Vector: Modifier"), icon("NodeSpline"), path(core_types::vector))]
+#[node_macro::node(name("Spline"), category("Vector: Path"), icon("NodeSpline"), path(core_types::vector))]
 fn spline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -2589,7 +2589,7 @@ fn apply_point_deltas(vector: &mut Vector, paths: &List<Path>, anchors: &[usize]
 }
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeJitterPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeJitterPoints"), path(core_types::vector))]
 fn jitter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
@@ -2641,7 +2641,7 @@ fn jitter_points<V: MapVectorItems + Send>(
 
 /// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
 /// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeOffsetPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeOffsetPoints"), path(core_types::vector))]
 fn offset_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
@@ -2682,7 +2682,7 @@ fn offset_points<V: MapVectorItems + Send>(
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeMorph"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeMorph"), path(core_types::vector))]
 fn morph(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
@@ -3640,7 +3640,7 @@ fn bevel_algorithm(vector: &mut Vector, paths: &mut List<Path>, transform: DAffi
 	}
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBevel"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeBevel"), path(core_types::vector))]
 fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
@@ -3661,7 +3661,7 @@ fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 }
 
 /// Closes every open path with a straight segment from its end back to its start, or by joining the two where they already meet.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeClosePaths"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeClosePaths"), path(core_types::vector))]
 fn close_paths<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The vector with paths to close.
@@ -3675,7 +3675,7 @@ fn close_paths<V: MapVectorItems + Send + Sync + 'static>(
 }
 
 /// Reverses the direction every path runs in.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeReversePaths"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeReversePaths"), path(core_types::vector))]
 fn reverse_paths<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The vector with paths to reverse.
@@ -3700,7 +3700,7 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-#[node_macro::node(category("General"), icon("NodeCount"), path(graphene_core::vector))]
+#[node_macro::node(category("Data: List"), icon("NodeCount"), path(graphene_core::vector))]
 fn count(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }

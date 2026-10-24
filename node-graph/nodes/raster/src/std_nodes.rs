@@ -30,7 +30,7 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::node(category("Raster: Channels"), icon("NodeChannelsToImage"), name("Channels to Image"))]
+#[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"))]
 fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
@@ -203,7 +203,7 @@ fn image(
 }
 
 /// Generates customizable procedural noise patterns.
-#[node_macro::node(category("Raster: Pattern"), icon("NodeNoisePattern"))]
+#[node_macro::node(category("Raster"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
 	ctx: impl ExtractFootprint + Ctx,
@@ -369,7 +369,7 @@ fn noise_pattern(
 	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
 }
 
-#[node_macro::node(category("Raster: Pattern"), icon("NodeMandelbrot"))]
+#[node_macro::node(category("Raster"), icon("NodeMandelbrot"))]
 fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();

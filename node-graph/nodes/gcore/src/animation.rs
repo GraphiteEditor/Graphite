@@ -29,7 +29,7 @@ pub enum AnimationTimeMode {
 }
 
 /// Evaluate the value of an animation curve
-#[node_macro::node(category("Animation"))]
+#[node_macro::node(category("Data: Animation"))]
 fn evaluate_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: Item<AnimationCurve>) -> Item<f64> {
 	let curve = curve.into_element();
 	let time = ctx.try_animation_time().unwrap_or_default();
@@ -37,7 +37,7 @@ fn evaluate_curve(ctx: impl Ctx + ExtractAnimationTime, _primary: (), curve: Ite
 }
 
 /// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
-#[node_macro::node(category("Animation"), icon("NodeRealTime"))]
+#[node_macro::node(category("Data: Animation"), icon("NodeRealTime"))]
 fn real_time(
 	ctx: impl Ctx + ExtractRealTime,
 	_primary: (),
@@ -61,7 +61,7 @@ fn real_time(
 }
 
 /// Produces the time, in seconds on the timeline, since the beginning of animation playback.
-#[node_macro::node(category("Animation"), icon("NodeAnimationTime"))]
+#[node_macro::node(category("Data: Animation"), icon("NodeAnimationTime"))]
 fn animation_time(
 	ctx: impl Ctx + ExtractAnimationTime,
 	_primary: (),
@@ -72,7 +72,7 @@ fn animation_time(
 	Item::new_from_element(ctx.try_animation_time().unwrap_or_default() * *rate.element())
 }
 
-#[node_macro::node(category("Debug"), icon("NodeStepRealTime"))]
+#[node_macro::node(category("Data: Animation"), icon("NodeStepRealTime"))]
 fn step_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -118,7 +118,7 @@ fn step_real_time<T>(
 	value.eval(Some(new_context.into()))
 }
 
-#[node_macro::node(category("Debug"), icon("NodeStepAnimationTime"))]
+#[node_macro::node(category("Data: Animation"), icon("NodeStepAnimationTime"))]
 fn step_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
@@ -163,7 +163,7 @@ fn step_animation_time<T>(
 }
 
 /// Produces the current position of the user's pointer within the document canvas.
-#[node_macro::node(category("Animation"), icon("NodePointerPosition"))]
+#[node_macro::node(category("Data: Animation"), icon("NodePointerPosition"))]
 fn pointer_position(ctx: impl Ctx + ExtractPointerPosition) -> Item<DVec2> {
 	Item::new_from_element(ctx.try_pointer_position().unwrap_or_default())
 }

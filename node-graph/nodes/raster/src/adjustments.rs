@@ -154,7 +154,7 @@ pub struct ImageChannels {
 
 /// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
 #[cfg(feature = "std")]
-#[node_macro::node(category("Raster: Channels"), icon("NodeImageToChannels"), name("Image to Channels"))]
+#[node_macro::node(category("Raster"), icon("NodeImageToChannels"), name("Image to Channels"))]
 fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 	let (image, attributes) = image.into_parts();
 	let (width, height) = (image.width, image.height);
@@ -181,7 +181,7 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 	ImageChannels { red, green, blue, alpha }
 }
 
-#[node_macro::node(category("Raster: Channels"), icon("NodeMakeOpaque"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), icon("NodeMakeOpaque"), shader_node(PerPixelAdjust))]
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Color, Gradient)]

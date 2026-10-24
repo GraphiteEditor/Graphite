@@ -14,7 +14,7 @@ use pipeline::{BasicBrushPipeline, BasicBrushPipelineArgs};
 use raster_types::{GPU, Raster};
 use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
 
-#[node_macro::node(category("Raster: Brush"), icon("NodeBasicBrush"))]
+#[node_macro::node(category("Raster"), icon("NodeBasicBrush"))]
 fn basic_brush(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
