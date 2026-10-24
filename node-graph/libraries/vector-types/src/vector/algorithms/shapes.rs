@@ -2,8 +2,11 @@
 //!
 //! Anchor order and winding direction are load-bearing, since fills rely on every generator agreeing.
 
+mod heart;
+
 use crate::vector::misc::{ArcType, SpiralType, bezpath_from_anchors_and_handles};
 use glam::DVec2;
+pub use heart::{HeartProportions, heart_bezpath};
 use kurbo::BezPath;
 use std::f64::consts::TAU;
 

@@ -199,6 +199,63 @@ fn star(
 	Vector::item_from_bezpath(&shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element()))
 }
 
+/// Generates a heart shape with adjustable lobes, cleft, sides, and point.
+#[node_macro::node(category("Vector: Geometry"), icon("NodeHeart"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	/// How far the notch dips between the lobes: 0% at their tops, 100% level with the widest point.
+	#[unit("%")]
+	#[range]
+	#[hard(20..110)]
+	#[default(70.)]
+	cleft_depth: Item<f64>,
+	/// Opens the notch into a soft dip or pinches it into a sharp crease, with 0% following the lobes' natural round shape.
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	cleft_sharpness: Item<f64>,
+	/// Shifts the fullness of each lobe in toward the notch or out toward the sides, with 0% the natural round lobe.
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	lobe_lean: Item<f64>,
+	/// Height of the widest point: big lobes over a short point, or small lobes over a long point.
+	#[unit("%")]
+	#[range]
+	#[hard(58..80)]
+	#[default(70.)]
+	widest_point: Item<f64>,
+	/// Straight sides that taper into the point, or full sides that curve outward all the way down.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(50.)]
+	side_fullness: Item<f64>,
+	/// Opening angle at the very tip of the bottom point.
+	#[unit("°")]
+	#[range]
+	#[hard(15..150)]
+	#[default(75.)]
+	tip_angle: Item<f64>,
+) -> Item<Vector> {
+	let proportions = shapes::HeartProportions {
+		cleft_depth: *cleft_depth.element() / 100.,
+		cleft_sharpness: *cleft_sharpness.element() / 100.,
+		lobe_lean: *lobe_lean.element() / 100.,
+		widest_point: *widest_point.element() / 100.,
+		side_fullness: *side_fullness.element() / 100.,
+		tip_angle: tip_angle.element().to_radians(),
+	};
+	let (mut heart, mut paths) = Vector::from_bezpath(&shapes::heart_bezpath(100., &proportions));
+
+	// The widest points join each lobe smoothly to its side, while the cleft and tip stay sharp
+	let widest_points: Vec<_> = heart.segment_iter(&paths).step_by(2).map(|(_, _, _, end)| end).collect();
+	heart.set_smooth_points(&mut paths, widest_points, true);
+
+	Item::new_from_element(heart).with_paths(paths)
+}
+
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, CacheHash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -383,6 +440,7 @@ fn grid<T: GridSpacing>(
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::list::ATTR_SMOOTH;
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
 	use vector_types::vector::shared_paths_from_item_attributes;
@@ -532,6 +590,28 @@ mod tests {
 			let signed_area: f64 = (0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.;
 			assert!(signed_area > 0., "grid cell should wind counter-clockwise");
 		}
+	}
+
+	#[test]
+	fn heart_fills_its_box_with_smooth_widest_points() {
+		let heart = heart((), (), item(70.), item(0.), item(0.), item(70.), item(50.), item(75.));
+		let paths = shared_paths_from_item_attributes(&heart);
+		let vector = heart.element();
+
+		assert_eq!(vector.anchor_points(&paths).count(), 4);
+		assert_eq!(vector.segment_ids(&paths).len(), 4);
+
+		let [min, max] = vector.bounding_box(&paths).expect("the heart has geometry");
+		assert!(min.abs_diff_eq(DVec2::splat(-50.), 1e-9) && max.abs_diff_eq(DVec2::splat(50.), 1e-9), "bounds {min} to {max}");
+
+		// Only the widest points, at the sides of the box, are smooth
+		let path = paths.element(0).expect("the heart is one path");
+		let smooth_positions: Vec<DVec2> = (0..path.references().len())
+			.filter(|&index| path.0.attribute::<bool>(ATTR_SMOOTH, index) == Some(&true))
+			.filter_map(|index| path.position(&vector.0, index))
+			.collect();
+		assert_eq!(smooth_positions.len(), 2);
+		assert!(smooth_positions.iter().all(|position| (position.x.abs() - 50.).abs() < 1e-9), "smooth anchors at {smooth_positions:?}");
 	}
 
 	#[test]
