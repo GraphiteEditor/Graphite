@@ -172,6 +172,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Enter); action_dispatch=TextToolMessage::EditSelected),
 		//
 		// GradientToolMessage
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
