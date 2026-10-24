@@ -110,6 +110,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ops::UnwrapNode",
 			"graphene_core::debug::UnwrapNode",
 			"graphene_core::debug::UnwrapOptionNode",
+			// The deleted Sample Image degrades to a passthrough of its image
+			"graphene_raster_nodes::std_nodes::SampleImageNode",
+			"graphene_std::raster::SampleImageNode",
+			"graphene_std::raster::SampleNode",
+			"raster_nodes::std_nodes::SampleImageNode",
 		],
 	},
 	NodeReplacement {
@@ -550,10 +555,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::dehaze::DehazeNode", "graphene_std::dehaze::DehazeNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::std_nodes::EmptyImageNode", "graphene_std::raster::EmptyImageNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::ExposureNode",
@@ -659,14 +660,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::std_nodes::NoisePatternNode", "graphene_std::raster::NoisePatternNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::std_nodes::sample_image::IDENTIFIER,
-		aliases: &[
-			"graphene_raster_nodes::std_nodes::SampleImageNode",
-			"graphene_std::raster::SampleImageNode",
-			"graphene_std::raster::SampleNode",
-		],
-	},
-	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::selective_color::IDENTIFIER,
 		aliases: &["graphene_raster_nodes::adjustments::SelectiveColorNode", "graphene_core::raster::adjustments::SelectiveColorNode"],
 	},
@@ -728,10 +721,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::text_nodes::json::query_json::IDENTIFIER,
 		aliases: &["graphene_core::logic::JsonGetNode", "graphene_std::text_nodes::JsonGetNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::text_nodes::serialize::IDENTIFIER,
-		aliases: &["graphene_core::logic::SerializeNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::text_nodes::string_map::IDENTIFIER,
@@ -2336,7 +2325,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			(graphene_std::math_nodes::color_value::ColorInput.into(), Color::TRANSPARENT),
 			(graphene_std::raster_nodes::adjustments::black_and_white::TintInput.into(), Color::BLACK),
 			(graphene_std::raster_nodes::blending_nodes::color_overlay::ColorInput.into(), Color::BLACK),
-			(graphene_std::raster_nodes::std_nodes::empty_image::ColorInput.into(), Color::WHITE),
 		];
 		for (parameter, fallback) in conversions {
 			if reference != DefinitionIdentifier::ProtoNode(parameter.node_identifier.clone()) {
@@ -2780,6 +2768,57 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), old_inputs[0].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
+	}
+
+	// Sample Image nodes, now passthroughs, drop their old title
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER) {
+		reset_default_display_name(document, node_id, network_path, "Sample Image");
+	}
+
+	// Serialize became As String, whose input converts a wired value to text, while a stored value keeps the JSON text Serialize made of it
+	let serialize_identifiers = ["text_nodes::SerializeNode", "graphene_core::logic::SerializeNode"];
+	if serialize_identifiers
+		.iter()
+		.any(|&identifier| reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new(identifier)))
+	{
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::as_string::IDENTIFIER))?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let value_input = match old_inputs.first() {
+			Some(NodeInput::Value { tagged_value, exposed }) => {
+				let json = match &**tagged_value {
+					TaggedValue::String(value) => serde_json::to_string(value),
+					TaggedValue::Bool(value) => serde_json::to_string(value),
+					TaggedValue::Number(value) => serde_json::to_string(value),
+					TaggedValue::Integer(value) => serde_json::to_string(value),
+					TaggedValue::DVec2(value) => serde_json::to_string(value),
+					TaggedValue::DAffine2(value) => serde_json::to_string(value),
+					_ => Ok(String::new()),
+				};
+				NodeInput::value(TaggedValue::String(json.unwrap_or_default()), *exposed)
+			}
+			Some(wired) => wired.clone(),
+			None => return None,
+		};
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), value_input, network_path);
+		reset_default_display_name(document, node_id, network_path, "Serialize");
+	}
+
+	// Empty Image has no equivalent, so it becomes an Image node with no file, which still feeds an image to the nodes after it
+	let empty_image_identifiers = [
+		"raster_nodes::std_nodes::EmptyImageNode",
+		"graphene_raster_nodes::std_nodes::EmptyImageNode",
+		"graphene_std::raster::EmptyImageNode",
+	];
+	if empty_image_identifiers
+		.iter()
+		.any(|&identifier| reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new(identifier)))
+	{
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER))?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		reset_default_display_name(document, node_id, network_path, "Empty Image");
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::RemoveHandlesNode")) {
@@ -4704,6 +4743,105 @@ mod tests {
 			let node = opened.network_interface.document_node(&node_id, &[]).expect("the node should still exist");
 			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(identifier.clone()), "{title}");
 			assert_eq!(opened.network_interface.display_name(&node_id, &[]), *title);
+		}
+	}
+
+	// Serialize, Sample Image, and Empty Image nodes open as As String, Passthrough, and Image nodes, keeping their wires and Serialize's stored text
+	#[test]
+	fn removed_nodes_open_as_their_stand_ins() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::capture_logged_errors;
+		use glam::DAffine2;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let legacy_node = |identifier: &'static str, display_name: &str, inputs: Vec<NodeInput>| NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
+			input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
+			inputs,
+			display_name: display_name.to_string(),
+			..Default::default()
+		};
+		let default_template = |identifier| {
+			resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+				.expect("the definition should exist")
+				.default_node_template()
+		};
+
+		let (number, image) = (NodeId(1), NodeId(2));
+		let (serialize_stored_number, serialize_stored_string, serialize_wired) = (NodeId(3), NodeId(4), NodeId(5));
+		let (sample_image, empty_image, oldest_empty_image) = (NodeId(6), NodeId(7), NodeId(8));
+		let empty_image_inputs = || {
+			vec![
+				NodeInput::value(TaggedValue::DAffine2(DAffine2::from_scale(DVec2::splat(10.))), false),
+				NodeInput::value(TaggedValue::Color(Color::WHITE), false),
+			]
+		};
+
+		let mut document = DocumentMessageHandler::default();
+		let interface = &mut document.network_interface;
+		interface.insert_node(number, default_template(graphene_std::math_nodes::number_value::IDENTIFIER), &[]);
+		interface.insert_node(image, default_template(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER), &[]);
+		interface.insert_node(
+			serialize_stored_number,
+			legacy_node("text_nodes::SerializeNode", "Serialize", vec![NodeInput::value(TaggedValue::Number(2.5), false)]),
+			&[],
+		);
+		interface.insert_node(
+			serialize_stored_string,
+			legacy_node("graphene_core::logic::SerializeNode", "Serialize", vec![NodeInput::value(TaggedValue::String("Hi".into()), false)]),
+			&[],
+		);
+		interface.insert_node(
+			serialize_wired,
+			legacy_node("text_nodes::SerializeNode", "Serialize", vec![NodeInput::value(TaggedValue::None, false)]),
+			&[],
+		);
+		interface.insert_node(
+			sample_image,
+			legacy_node("raster_nodes::std_nodes::SampleImageNode", "Sample Image", vec![NodeInput::value(TaggedValue::None, false)]),
+			&[],
+		);
+		interface.insert_node(empty_image, legacy_node("raster_nodes::std_nodes::EmptyImageNode", "Empty Image", empty_image_inputs()), &[]);
+		interface.insert_node(oldest_empty_image, legacy_node("graphene_std::raster::EmptyImageNode", "Empty Image", empty_image_inputs()), &[]);
+		interface.set_input(&InputConnector::node_at_index(serialize_wired, 0), NodeInput::node(number, 0), &[]);
+		interface.set_input(&InputConnector::node_at_index(sample_image, 0), NodeInput::node(image, 0), &[]);
+
+		let serialized = document.serialize_document();
+		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), false));
+		let opened = opened.expect("the document should open");
+		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+
+		let interface = &opened.network_interface;
+		let node = |node_id| interface.document_node(&node_id, &[]).expect("the node should still exist");
+		let as_string = DocumentNodeImplementation::ProtoNode(graphene_std::text_nodes::as_string::IDENTIFIER);
+
+		// Serialize's stored values keep the JSON text it made of them, and its wire is kept for As String to convert
+		for (node_id, expected) in [(serialize_stored_number, "2.5"), (serialize_stored_string, "\"Hi\"")] {
+			assert_eq!(node(node_id).implementation, as_string, "node {node_id}");
+			assert_eq!(node(node_id).inputs[0].as_value(), Some(&TaggedValue::String(expected.to_string())), "node {node_id}");
+			assert_eq!(interface.display_name(&node_id, &[]), "As String", "node {node_id}");
+		}
+		assert_eq!(node(serialize_wired).implementation, as_string);
+		assert!(matches!(node(serialize_wired).inputs[0], NodeInput::Node { node_id, output_index: 0, .. } if node_id == number));
+
+		// Sample Image passes its image through
+		assert_eq!(node(sample_image).implementation, DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
+		assert!(matches!(node(sample_image).inputs[0], NodeInput::Node { node_id, output_index: 0, .. } if node_id == image));
+		assert_ne!(interface.display_name(&sample_image, &[]), "Sample Image");
+
+		// Empty Image becomes an Image node with no file
+		for node_id in [empty_image, oldest_empty_image] {
+			assert_eq!(
+				node(node_id).implementation,
+				DocumentNodeImplementation::ProtoNode(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER),
+				"node {node_id}"
+			);
+			assert_eq!(
+				node(node_id).inputs,
+				default_template(graphene_std::raster_nodes::std_nodes::image::IDENTIFIER).inputs,
+				"node {node_id}"
+			);
+			assert_eq!(interface.display_name(&node_id, &[]), "Image", "node {node_id}");
 		}
 	}
 }
