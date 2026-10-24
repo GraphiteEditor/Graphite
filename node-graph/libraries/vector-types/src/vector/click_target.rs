@@ -132,6 +132,54 @@ impl TargetPath {
 		Some(Self::new(BezPath::from_vec(elements)))
 	}
 
+	/// The contours as outlines plus the faces as the fill region, for a mesh whose fill paints its faces rather than its contours, or None if all are empty.
+	/// No contour stays closed, so none adds fill that could cancel a face's under the nonzero rule.
+	pub fn from_contours_and_faces(contours: &[BezPath], faces: &[BezPath]) -> Option<Self> {
+		let mut elements = Vec::new();
+
+		// A closed contour draws out its closing edge instead, keeping its whole outline without enclosing anything
+		for contour in contours {
+			let mut subpath_start = None;
+			let mut previous_end = None;
+			for &element in contour.elements() {
+				match element {
+					PathEl::ClosePath => {
+						if let Some(start) = subpath_start
+							&& previous_end != Some(start)
+						{
+							elements.push(PathEl::LineTo(start));
+						}
+						previous_end = subpath_start;
+					}
+					_ => {
+						if let PathEl::MoveTo(point) = element {
+							subpath_start = Some(point);
+						}
+						previous_end = element.end_point();
+						elements.push(element);
+					}
+				}
+			}
+		}
+
+		// Each loop of a face is closed so it counts toward the fill region
+		for face in faces {
+			let mut loop_open = false;
+			for &element in face.elements() {
+				if loop_open && matches!(element, PathEl::MoveTo(_)) {
+					elements.push(PathEl::ClosePath);
+				}
+				loop_open = !matches!(element, PathEl::ClosePath);
+				elements.push(element);
+			}
+			if loop_open {
+				elements.push(PathEl::ClosePath);
+			}
+		}
+
+		(!elements.is_empty()).then(|| Self::new(BezPath::from_vec(elements)))
+	}
+
 	pub fn path(&self) -> &BezPath {
 		&self.path
 	}
@@ -496,6 +544,37 @@ mod tests {
 				assert_eq!(shared.intersect_point_no_stroke(point), baked.intersect_point_no_stroke(point), "at {point}");
 			}
 		}
+	}
+
+	#[test]
+	fn a_mesh_target_fills_its_faces_but_not_its_open_contours() {
+		// An open corner whose closing would enclose a triangle, beside an unclosed square face like the ones meshes construct
+		let mut corner = BezPath::new();
+		corner.move_to((0., 0.));
+		corner.line_to((0., 10.));
+		corner.line_to((10., 10.));
+		let mut face = BezPath::new();
+		face.move_to((20., 0.));
+		face.line_to((30., 0.));
+		face.line_to((30., 10.));
+		face.line_to((20., 10.));
+		face.line_to((20., 0.));
+
+		let target = ClickTarget::new_with_shared_path(Arc::new(TargetPath::from_contours_and_faces(&[corner], &[face]).unwrap()), DAffine2::IDENTITY, 2.);
+
+		assert!(target.intersect_point_no_stroke(DVec2::new(25., 5.)));
+		assert!(!target.intersect_point_no_stroke(DVec2::new(3., 7.)));
+		assert!(target.intersect_point(DVec2::new(0., 5.), DAffine2::IDENTITY));
+	}
+
+	#[test]
+	fn a_closed_contour_wound_against_its_face_keeps_the_face_filled() {
+		let contour = rectangle_path(DVec2::ZERO, DVec2::splat(10.));
+		let face = contour.reverse_subpaths();
+
+		let target = ClickTarget::new_with_shared_path(Arc::new(TargetPath::from_contours_and_faces(&[contour], &[face]).unwrap()), DAffine2::IDENTITY, 0.);
+
+		assert!(target.intersect_point_no_stroke(DVec2::splat(5.)));
 	}
 
 	#[test]

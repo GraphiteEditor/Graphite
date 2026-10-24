@@ -131,12 +131,12 @@ impl<'a> ItemRef<'a, Vector> {
 		}
 	}
 
-	/// The contours combined into one click target path, closing open ones when `filled`.
+	/// The contours combined into one click target path, covering what the fill paints when `filled`.
 	fn target_path(self, filled: bool) -> Option<Arc<TargetPath>> {
 		let vector = self.element()?;
 		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
 			Some(cache) => cache.target_path(vector, self.paths(), filled),
-			None => TargetPath::from_contours(&contour_bezpaths(&vector.0, self.paths()), filled).map(Arc::new),
+			None => GeometryCache::default().target_path(vector, self.paths(), filled),
 		}
 	}
 
@@ -2277,7 +2277,7 @@ impl Render for List<Vector> {
 /// plus one `FreePoint` per disconnected anchor, placed by the transform.
 /// The target's path is shared through the item's geometry cache with every copy drawing the same geometry.
 fn extend_targets_from_vector(targets: &mut Vec<ClickTarget>, appearance: Option<&Appearance>, item: ItemRef<'_, Vector>, transform: DAffine2, close_filled_contours: bool) {
-	// Click targets close a filled layer's open contours so a click anywhere on the fill hits it
+	// Click targets cover a filled layer's fill so a click anywhere on it hits
 	let target_path = item.target_path(close_filled_contours && is_filled_for_hit_testing(appearance));
 	push_path_target(targets, appearance, target_path, &item.contours(), transform);
 
