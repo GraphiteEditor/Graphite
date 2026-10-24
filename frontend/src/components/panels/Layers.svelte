@@ -1145,7 +1145,7 @@
 
 <LayoutCol class="layers" on:dragleave={fileDragLeave}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={$layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true} bind:this={listArea} on:scroll={listAreaScroll}>
 		<LayoutCol
@@ -1451,8 +1451,8 @@
 		bind:this={bottomBar}
 		data-layer-bottom-bar
 	>
-		<WidgetLayout layout={$layersPanelBottomBarLeftLayout} layoutTarget="LayersPanelBottomLeftBar" />
-		<WidgetLayout layout={$layersPanelBottomBarRightLayout} layoutTarget="LayersPanelBottomRightBar" />
+		<WidgetLayout layout={layersPanelBottomBarLeftLayout} layoutTarget="LayersPanelBottomLeftBar" />
+		<WidgetLayout layout={layersPanelBottomBarRightLayout} layoutTarget="LayersPanelBottomRightBar" />
 	</LayoutRow>
 </LayoutCol>
 
