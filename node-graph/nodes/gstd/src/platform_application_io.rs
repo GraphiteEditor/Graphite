@@ -162,8 +162,8 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
-#[node_macro::node(category("Web Request"), icon("NodeDecodeImage"))]
-fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Web Request"), icon("NodeBytesToImage"), name("Bytes to Image"))]
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 	let data = data.into_element();
 	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
 

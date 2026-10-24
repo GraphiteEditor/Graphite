@@ -72,8 +72,8 @@ fn animation_time(
 	Item::new_from_element(ctx.try_animation_time().unwrap_or_default() * *rate.element())
 }
 
-#[node_macro::node(category("Debug"), icon("NodeQuantizeRealTime"))]
-fn quantize_real_time<T>(
+#[node_macro::node(category("Debug"), icon("NodeStepRealTime"))]
+fn step_real_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> Item<bool>,
@@ -118,8 +118,8 @@ fn quantize_real_time<T>(
 	value.eval(Some(new_context.into()))
 }
 
-#[node_macro::node(category("Debug"), icon("NodeQuantizeAnimationTime"))]
-fn quantize_animation_time<T>(
+#[node_macro::node(category("Debug"), icon("NodeStepAnimationTime"))]
+fn step_animation_time<T>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs,
 	#[implementations(
 		Context -> Item<bool>,

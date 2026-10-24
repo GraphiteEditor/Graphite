@@ -294,7 +294,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					(InputConnector::node(morph_node_id, graphene_std::vector::morph::PathInput), "Morph", "Morph Path")
 				};
 
-				// Create the control path layer (Path → Auto-Tangents → Origins to Polyline)
+				// Create the control path layer (Path → Smooth Anchors → Origins to Polyline)
 				let control_path_layer = modify_inputs.create_layer(control_path_id);
 				let path_node_id = modify_inputs.insert_control_path_data(control_path_layer);
 
