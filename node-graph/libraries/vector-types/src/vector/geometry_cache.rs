@@ -31,6 +31,10 @@ impl CachedGeometry {
 	fn contours(&self, vector: &Vector, paths: &List<Path>) -> &Arc<[BezPath]> {
 		self.contours.get_or_init(|| contour_bezpaths(&vector.0, paths).into())
 	}
+
+	fn faces(&self, vector: &Vector, paths: &List<Path>) -> &Arc<[BezPath]> {
+		self.faces.get_or_init(|| vector.construct_faces(paths).into())
+	}
 }
 
 /// A vector item's cache of geometry derived from its pool and paths.
@@ -44,17 +48,27 @@ impl GeometryCache {
 		self.entry(vector, paths).contours(vector, paths).clone()
 	}
 
-	/// The contours combined into one click target path by [`TargetPath::from_contours`], built once and reused for as long as neither changes.
+	/// The contours combined into one click target path, built once and reused for as long as neither changes.
+	/// When `filled`, it covers what the fill paints: a mesh's faces, or else the contours with the open ones closed.
 	pub fn target_path(&self, vector: &Vector, paths: &List<Path>, filled: bool) -> Option<Arc<TargetPath>> {
 		let entry = self.entry(vector, paths);
 		let slot = if filled { &entry.filled_target_path } else { &entry.unfilled_target_path };
 
-		slot.get_or_init(|| TargetPath::from_contours(entry.contours(vector, paths), filled).map(Arc::new)).clone()
+		slot.get_or_init(|| {
+			let contours = entry.contours(vector, paths);
+			let target_path = if filled && vector.use_face_fill(paths) {
+				TargetPath::from_contours_and_faces(contours, entry.faces(vector, paths))
+			} else {
+				TargetPath::from_contours(contours, filled)
+			};
+			target_path.map(Arc::new)
+		})
+		.clone()
 	}
 
 	/// The fillable faces of `vector` and `paths`, constructed once and reused for as long as neither changes.
 	pub fn faces(&self, vector: &Vector, paths: &List<Path>) -> Arc<[BezPath]> {
-		self.entry(vector, paths).faces.get_or_init(|| vector.construct_faces(paths).into()).clone()
+		self.entry(vector, paths).faces(vector, paths).clone()
 	}
 
 	/// The entry for this geometry, made most recently used, or a new empty one evicting the least recently used.
