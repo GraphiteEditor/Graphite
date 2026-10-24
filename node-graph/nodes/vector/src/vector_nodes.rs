@@ -31,13 +31,13 @@ use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::algorithms::weld::WeldExt;
 use vector_types::vector::misc::{
-	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, PointSpacingType, RowsOrColumns, Tangent, UnweldMethod, WeldMethod,
-	bezpath_from_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, PointSpacingType, RowsOrColumns, Tangent, UnweldMethod, WeldMethod, dvec2_to_point,
+	handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
 	CurveType, IdCollisionSet, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes,
-	paths_from_list_row_attributes, push_path, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
+	paths_from_list_row_attributes, push_path, push_paths, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
 /// Appends one point to the working form, returning the index that names it.
@@ -1272,160 +1272,164 @@ fn smooth_anchors<V: MapVectorItems + Send>(
 ) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let (spread, preserve_existing) = (*spread.element(), *preserve_existing.element());
+		let mut source = source;
 
+		// Tangents are spread where the item is drawn, or in its own space if the transform is too squashed to bring them back
 		let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let source_paths = shared_paths_from_item_attributes(&source);
-		let (source, mut attributes) = source.into_parts();
+		let transform = if transform.matrix2.determinant() != 0. { transform } else { DAffine2::IDENTITY };
+		let inverse = transform.inverse();
 
-		// Each subpath's softened bezpath, beside which of its manipulators were given auto-tangents
-		let mut softened_bezpaths = Vec::new();
-		let mut auto_tangented_manipulators = Vec::new();
+		edit_item_geometry(&mut source, |vector, paths| {
+			let point_count = vector.point_count();
+			let runs: Vec<_> = vector.stroke_manipulator_groups_and_anchor_indices(paths).collect();
 
-		for (mut manipulators_list, is_closed) in source.stroke_manipulator_groups(&source_paths) {
-			for manipulator in &mut manipulators_list {
-				manipulator.anchor = transform.transform_point2(manipulator.anchor);
-				manipulator.in_handle = manipulator.in_handle.map(|handle| transform.transform_point2(handle));
-				manipulator.out_handle = manipulator.out_handle.map(|handle| transform.transform_point2(handle));
+			// The anchors stay the pool's own points, keeping their welds and attributes, while the handles are made anew
+			let mut kept_index = vec![None; point_count];
+			for (index, former) in vector.keep_only_anchors(paths).into_iter().enumerate() {
+				kept_index[former] = Some(index as u32);
 			}
 
-			if manipulators_list.len() < 2 {
+			let mut next_id = SegmentId::ZERO;
+			let mut smooth_anchors = Vec::new();
+
+			for (manipulators_list, anchor_indices, is_closed) in runs {
+				let Some(anchors) = anchor_indices.iter().map(|&anchor| kept_index.get(anchor as usize).copied().flatten()).collect::<Option<Vec<u32>>>() else {
+					log::error!("Smooth Anchors skipped a contour through an anchor that was not kept");
+					continue;
+				};
+
 				// Not enough points for softening or handle removal
-				let mut unchanged = bezpath_from_manipulator_groups(&manipulators_list, is_closed);
-				unchanged.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+				if manipulators_list.len() < 2 {
+					push_contour(vector, paths, &anchors, &manipulators_list, is_closed, &mut next_id);
+					continue;
+				}
 
-				softened_bezpaths.push(unchanged);
-				auto_tangented_manipulators.push(Vec::new());
-				continue;
-			}
+				let drawn_anchors: Vec<DVec2> = manipulators_list.iter().map(|manipulator| transform.transform_point2(manipulator.anchor)).collect();
+				let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
 
-			let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
-			// Track which manipulator indices were given auto-tangent (colinear) handles
-			let mut auto_tangented = vec![false; manipulators_list.len()];
+				for i in 0..manipulators_list.len() {
+					let current = &manipulators_list[i];
+					let is_endpoint = !is_closed && (i == 0 || i == manipulators_list.len() - 1);
 
-			for i in 0..manipulators_list.len() {
-				let current = &manipulators_list[i];
-				let is_endpoint = !is_closed && (i == 0 || i == manipulators_list.len() - 1);
+					if preserve_existing {
+						// Check if this point has handles that are meaningfully different from the anchor
+						let has_handles = (current.in_handle.is_some() && !current.in_handle.unwrap().abs_diff_eq(current.anchor, 1e-5))
+							|| (current.out_handle.is_some() && !current.out_handle.unwrap().abs_diff_eq(current.anchor, 1e-5));
 
-				if preserve_existing {
-					// Check if this point has handles that are meaningfully different from the anchor
-					let has_handles = (current.in_handle.is_some() && !current.in_handle.unwrap().abs_diff_eq(current.anchor, 1e-5))
-						|| (current.out_handle.is_some() && !current.out_handle.unwrap().abs_diff_eq(current.anchor, 1e-5));
+						// If the point already has handles, keep it as is
+						if has_handles {
+							new_manipulators_list.push(*current);
+							continue;
+						}
+					}
 
-					// If the point already has handles, keep it as is
-					if has_handles {
+					// If spread is 0, remove handles for this point, making it a sharp corner
+					if spread == 0. {
+						new_manipulators_list.push(ManipulatorGroup {
+							anchor: current.anchor,
+							in_handle: None,
+							out_handle: None,
+							id: current.id,
+						});
+						continue;
+					}
+
+					// Endpoints of open paths get zero-length cubic handles so adjacent segments remain cubic (not quadratic)
+					if is_endpoint {
+						new_manipulators_list.push(ManipulatorGroup {
+							anchor: current.anchor,
+							in_handle: Some(current.anchor),
+							out_handle: Some(current.anchor),
+							id: current.id,
+						});
+						continue;
+					}
+
+					// Get previous and next points for auto-tangent calculation
+					let prev_index = if i == 0 { manipulators_list.len() - 1 } else { i - 1 };
+					let next_index = if i == manipulators_list.len() - 1 { 0 } else { i + 1 };
+
+					let current_position = drawn_anchors[i];
+					let delta_prev = drawn_anchors[prev_index] - current_position;
+					let delta_next = drawn_anchors[next_index] - current_position;
+
+					// Calculate normalized directions and distances to adjacent points
+					let distance_prev = delta_prev.length();
+					let distance_next = delta_next.length();
+
+					// Check if we have valid directions (e.g., points are not coincident)
+					if distance_prev < 1e-5 || distance_next < 1e-5 {
+						// Fallback: keep the original manipulator group (which has no active handles here)
 						new_manipulators_list.push(*current);
 						continue;
 					}
-				}
 
-				// If spread is 0, remove handles for this point, making it a sharp corner
-				if spread == 0. {
+					let direction_prev = delta_prev / distance_prev;
+					let direction_next = delta_next / distance_next;
+
+					// Calculate handle direction as the bisector of the two normalized directions.
+					// This ensures the in and out handles are colinear (180° apart) through the anchor.
+					let mut handle_direction = (direction_prev - direction_next).try_normalize().unwrap_or_else(|| direction_prev.perp());
+
+					// Ensure consistent orientation of the handle direction.
+					// This makes the `+ handle_direction` for in_handle and `- handle_direction` for out_handle consistent.
+					if direction_prev.dot(handle_direction) < 0. {
+						handle_direction = -handle_direction;
+					}
+
+					// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
+					let in_length = distance_prev / 3. * spread;
+					let out_length = distance_next / 3. * spread;
+
+					// Create new manipulator group with calculated auto-tangents
 					new_manipulators_list.push(ManipulatorGroup {
 						anchor: current.anchor,
-						in_handle: None,
-						out_handle: None,
+						in_handle: Some(inverse.transform_point2(current_position + handle_direction * in_length)),
+						out_handle: Some(inverse.transform_point2(current_position - handle_direction * out_length)),
 						id: current.id,
 					});
-					continue;
+					smooth_anchors.push(anchors[i]);
 				}
 
-				// Endpoints of open paths get zero-length cubic handles so adjacent segments remain cubic (not quadratic)
-				if is_endpoint {
-					new_manipulators_list.push(ManipulatorGroup {
-						anchor: current.anchor,
-						in_handle: Some(current.anchor),
-						out_handle: Some(current.anchor),
-						id: current.id,
-					});
-					continue;
-				}
-
-				// Get previous and next points for auto-tangent calculation
-				let prev_index = if i == 0 { manipulators_list.len() - 1 } else { i - 1 };
-				let next_index = if i == manipulators_list.len() - 1 { 0 } else { i + 1 };
-
-				let current_position = current.anchor;
-				let delta_prev = manipulators_list[prev_index].anchor - current_position;
-				let delta_next = manipulators_list[next_index].anchor - current_position;
-
-				// Calculate normalized directions and distances to adjacent points
-				let distance_prev = delta_prev.length();
-				let distance_next = delta_next.length();
-
-				// Check if we have valid directions (e.g., points are not coincident)
-				if distance_prev < 1e-5 || distance_next < 1e-5 {
-					// Fallback: keep the original manipulator group (which has no active handles here)
-					new_manipulators_list.push(*current);
-					continue;
-				}
-
-				let direction_prev = delta_prev / distance_prev;
-				let direction_next = delta_next / distance_next;
-
-				// Calculate handle direction as the bisector of the two normalized directions.
-				// This ensures the in and out handles are colinear (180° apart) through the anchor.
-				let mut handle_direction = (direction_prev - direction_next).try_normalize().unwrap_or_else(|| direction_prev.perp());
-
-				// Ensure consistent orientation of the handle direction.
-				// This makes the `+ handle_direction` for in_handle and `- handle_direction` for out_handle consistent.
-				if direction_prev.dot(handle_direction) < 0. {
-					handle_direction = -handle_direction;
-				}
-
-				// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
-				let in_length = distance_prev / 3. * spread;
-				let out_length = distance_next / 3. * spread;
-
-				// Create new manipulator group with calculated auto-tangents
-				new_manipulators_list.push(ManipulatorGroup {
-					anchor: current_position,
-					in_handle: Some(current_position + handle_direction * in_length),
-					out_handle: Some(current_position - handle_direction * out_length),
-					id: current.id,
-				});
-				auto_tangented[i] = true;
+				push_contour(vector, paths, &anchors, &new_manipulators_list, is_closed, &mut next_id);
 			}
 
-			let mut softened_bezpath = bezpath_from_manipulator_groups(&new_manipulators_list, is_closed);
-			softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+			vector.set_smooth_at_indices(paths, smooth_anchors, true);
+		});
 
-			softened_bezpaths.push(softened_bezpath);
-			auto_tangented_manipulators.push(auto_tangented);
-		}
-
-		// Weaving every subpath at once costs O(points) rather than a pass over everything woven so far per subpath
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
-		let span_counts = result.append_bezpaths_counting_spans(&mut result_paths, &softened_bezpaths);
-
-		// Each auto-tangented anchor is found as the end of its incoming segment, counted across all subpaths
-		let mut segment_offset = 0;
-		let mut smooth_segment_ends = Vec::new();
-		for (auto_tangented, appended_segments) in auto_tangented_manipulators.iter().zip(span_counts) {
-			// Mark auto-tangented points as having colinear handles
-			let num_manipulators = auto_tangented.len();
-			for (i, _) in auto_tangented.iter().enumerate().filter(|&(_, &tangented)| tangented) {
-				// For interior point i, the incoming segment is (i - 1) and the outgoing one is i, counted within this subpath.
-				// For closed paths, point 0's incoming segment is the last one. For open paths, endpoints are never
-				// auto-tangented (the `is_endpoint` check above ensures that), so `i == 0` and the last `i` only occur when closed.
-				let in_segment = if i == 0 { num_manipulators - 1 } else { i - 1 };
-				let out_segment = if i == num_manipulators - 1 { 0 } else { i };
-
-				if in_segment < appended_segments && out_segment < appended_segments {
-					smooth_segment_ends.push(segment_offset + in_segment);
-				}
-			}
-
-			segment_offset += appended_segments;
-		}
-
-		// O(segments + points) in one pass each, rather than a connectivity build per anchor
-		let segment_ends: Vec<PointId> = result.segment_iter(&result_paths).map(|(_, _, _, end)| end).collect();
-		let smooth_anchors = smooth_segment_ends.into_iter().filter_map(|index| segment_ends.get(index).copied());
-		result.set_smooth_points(&mut result_paths, smooth_anchors, true);
-
-		attributes.set_paths(result_paths);
-		Item::from_parts(result, attributes)
+		source
 	})
+}
+
+/// Appends a contour running through the given pool anchors, each span a cubic, quadratic, or line by which of its facing handles exist.
+/// The handles become new pool points, and spans of one curve type in a row share a path.
+fn push_contour(vector: &mut Vector, paths: &mut List<Path>, anchors: &[u32], manipulators_list: &[ManipulatorGroup], closed: bool, next_id: &mut SegmentId) {
+	let span_count = if closed { anchors.len() } else { anchors.len().saturating_sub(1) };
+
+	let mut runs: Vec<(CurveType, Vec<u32>, Vec<SegmentId>)> = Vec::new();
+	for i in 0..span_count {
+		let next = (i + 1) % anchors.len();
+		let (curve_type, handles) = match (manipulators_list[i].out_handle, manipulators_list[next].in_handle) {
+			(Some(handle_start), Some(handle_end)) => (CurveType::Cubic, vec![handle_start, handle_end]),
+			(None, None) => (CurveType::Linear, Vec::new()),
+			(Some(handle), None) | (None, Some(handle)) => (CurveType::Quadratic, vec![handle]),
+		};
+
+		// A change of curve type carries the contour on in a new path from the anchor the previous one ended at
+		if runs.last().is_none_or(|(current, ..)| *current != curve_type) {
+			runs.push((curve_type, vec![anchors[i]], Vec::new()));
+		}
+		let Some((_, references, ids)) = runs.last_mut() else { continue };
+
+		for handle in handles {
+			references.push(vector.point_count() as u32);
+			vector.0.push(Item::new_from_element(handle).with_attribute(ATTR_ID, PointId::UNNAMED));
+		}
+		references.push(anchors[next]);
+		ids.push(next_id.next_id());
+	}
+
+	push_paths(paths, runs);
 }
 
 #[node_macro::node(category("Vector: Geometry"), icon("NodeBoundingBox"), path(core_types::vector))]
@@ -4322,6 +4326,30 @@ mod test {
 		assert_eq!(segments.len(), 4);
 		assert!(segments.contains(&PathSeg::Cubic(teardrop)), "the loop should keep its curve, not among {segments:?}");
 		assert_eq!(smooth_anchors_by_contour(&output), [vec![false], vec![true, true, true]]);
+	}
+
+	// A spur setting out from an anchor of a loop stays welded to it, keeping the mesh a mesh rather than a loop and a loose open path
+	#[test]
+	fn smooth_anchors_keeps_a_mesh_welded() {
+		let mut mesh = BezPath::new();
+		mesh.move_to((0., 0.));
+		mesh.line_to((100., 0.));
+		mesh.line_to((50., 80.));
+		mesh.close_path();
+		mesh.move_to((100., 0.));
+		mesh.line_to((160., -30.));
+		mesh.line_to((200., 10.));
+
+		let (vector, paths) = Vector::from_bezpath_welded(&mesh);
+		let mut source = item(vector);
+		source.set_paths(paths);
+		assert!(source.element().is_branching(item_paths(&source)));
+
+		let output = super::smooth_anchors((), source, item(0.5), item(true));
+		let paths = item_paths(&output);
+		assert!(output.element().is_branching(paths), "the spur should still set out from the loop's anchor");
+		assert_eq!(output.element().anchor_positions(paths).len(), 5);
+		assert_eq!(output.element().segment_iter(paths).count(), 5);
 	}
 	#[test]
 	fn morph() {

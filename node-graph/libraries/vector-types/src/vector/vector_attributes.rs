@@ -738,6 +738,12 @@ impl Vector {
 	/// The boolean in the tuple indicates if the path is closed.
 	/// The groups pair index-for-index with the contours emission, both stitching the same contours.
 	pub fn stroke_manipulator_groups(&self, paths: &List<Path>) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {
+		self.stroke_manipulator_groups_and_anchor_indices(paths)
+			.map(|(manipulators_list, _, closed)| (manipulators_list, closed))
+	}
+
+	/// Like [`Self::stroke_manipulator_groups`], with the pool index of each group's anchor beside the groups.
+	pub fn stroke_manipulator_groups_and_anchor_indices(&self, paths: &List<Path>) -> impl Iterator<Item = (Vec<ManipulatorGroup>, Vec<u32>, bool)> {
 		let mut groups = Vec::new();
 
 		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
@@ -746,6 +752,7 @@ impl Vector {
 
 		for contour in contours(self.point_count(), paths) {
 			let mut manipulators_list: Vec<ManipulatorGroup> = Vec::new();
+			let mut anchor_indices = Vec::new();
 			let mut in_handle: Option<DVec2> = None;
 
 			for &part in &contour.parts {
@@ -764,6 +771,7 @@ impl Vector {
 						out_handle: handles.start(),
 						id: id_at(anchor),
 					});
+					anchor_indices.push(anchor);
 
 					in_handle = handles.end();
 				}
@@ -780,10 +788,11 @@ impl Vector {
 					out_handle: None,
 					id: id_at(contour.exit),
 				});
+				anchor_indices.push(contour.exit);
 			}
 
 			if !manipulators_list.is_empty() {
-				groups.push((manipulators_list, contour.closed));
+				groups.push((manipulators_list, anchor_indices, contour.closed));
 			}
 		}
 
