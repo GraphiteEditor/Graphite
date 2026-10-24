@@ -283,22 +283,32 @@ impl DocumentMetadata {
 
 	/// Get the bounding box of the click target of the specified layer in the specified transform space
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
-		let own_bounds = self
-			.own_visual_targets(layer)
-			.into_iter()
-			.flatten()
-			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
-			.reduce(Quad::combine_bounds);
+		let mut bounds = None;
+		self.extend_bounds_with_transform(layer, transform, &mut bounds);
+		bounds
+	}
 
-		if !self.group_layers.contains(&layer) {
-			return own_bounds;
+	/// Grows `bounds` to hold the layer's visual targets and, for a group, its descendants', each bounded in its own space.
+	fn extend_bounds_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2, bounds: &mut Option<[DVec2; 2]>) {
+		for target in self.own_visual_targets(layer).into_iter().flatten() {
+			// A target whose loose bounds lie within the bounds so far cannot extend them, so its tight bounds are never computed
+			if let (Some([min, max]), Some(loose)) = (*bounds, target.bounding_box()) {
+				let [loose_min, loose_max] = (transform * Quad::from_box(loose)).bounding_box();
+				if loose_min.cmpge(min).all() && loose_max.cmple(max).all() {
+					continue;
+				}
+			}
+
+			if let Some(tight) = target.bounding_box_with_transform(transform) {
+				*bounds = Some(bounds.map_or(tight, |bounds| Quad::combine_bounds(bounds, tight)));
+			}
 		}
 
-		// Each descendant is bounded in its own space, without composing copies of its targets
-		self.children_in_group_space(layer)
-			.filter_map(|(child, child_to_layer)| self.bounding_box_with_transform(child, transform * child_to_layer))
-			.chain(own_bounds)
-			.reduce(Quad::combine_bounds)
+		if self.group_layers.contains(&layer) {
+			for (child, child_to_layer) in self.children_in_group_space(layer) {
+				self.extend_bounds_with_transform(child, transform * child_to_layer, bounds);
+			}
+		}
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
