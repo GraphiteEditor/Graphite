@@ -18,7 +18,7 @@ pub use vector_types::vector::misc::BooleanOperation;
 // TODO: with multiple items while still assuming a single item for the boolean operations.
 
 /// Combines the geometric forms of one or more closed paths into a new vector path that results from cutting or joining the paths by the chosen method.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBooleanOperation"), memoize)]
+#[node_macro::node(category("Vector: Path"), icon("NodeBooleanOperation"), memoize)]
 fn boolean_operation(
 	_: impl Ctx,
 	/// The `List` of vector paths to perform the boolean operation on. Nested `List`s are automatically flattened.

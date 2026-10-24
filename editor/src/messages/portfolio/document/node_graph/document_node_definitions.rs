@@ -154,7 +154,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 	let custom = vec![
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
-			category: "General",
+			category: "Routing",
 			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
@@ -165,7 +165,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
-			category: "General",
+			category: "Graphic",
 			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -241,7 +241,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
-			category: "General",
+			category: "Graphic",
 			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -350,7 +350,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend",
-			category: "Vector",
+			category: "Vector: Deform",
 			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -534,7 +534,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
-			category: "Vector",
+			category: "Vector: Path",
 			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -615,7 +615,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
-			category: "Web Request",
+			category: "Data: I/O",
 			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -726,7 +726,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
-			category: "Text: Regex",
+			category: "String: Regex",
 			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -803,7 +803,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",
-			category: "Vector",
+			category: "Vector: Geometry",
 			icon: Some("NodePath"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -1616,11 +1616,13 @@ impl InputTypeConstraint {
 	}
 }
 
+/// The node catalog's entries, ordered by category and then by name.
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES
+	let mut node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
 		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
 		.filter(|(identifier, definition)| !registry::is_hidden_category(definition.category) && **identifier != DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER))
+		.filter(|(_, definition)| cfg!(debug_assertions) || !registry::is_development_category(definition.category))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
@@ -1633,7 +1635,14 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				category: definition.category.to_string(),
 			}
 		})
-		.collect()
+		.collect();
+
+	node_types.sort_by(|a, b| {
+		registry::category_sort_key(&a.category)
+			.cmp(&registry::category_sort_key(&b.category))
+			.then_with(|| a.name.cmp(&b.name))
+	});
+	node_types
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {
@@ -1734,6 +1743,26 @@ mod test {
 			.await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }).await;
 		editor.handle_message(InspectorMessage::Refresh).await;
+	}
+
+	// Every category the catalog lists has a place in its order, and every place in the order still holds nodes
+	#[test]
+	fn catalog_categories_match_the_category_order() {
+		use super::DOCUMENT_NODE_TYPES;
+		use graphene_std::registry::{CATEGORY_ORDER, is_development_category, is_hidden_category};
+		use std::collections::HashSet;
+
+		let categories: HashSet<&str> = DOCUMENT_NODE_TYPES
+			.values()
+			.map(|definition| definition.category)
+			.filter(|category| !is_hidden_category(category) && !is_development_category(category))
+			.collect();
+
+		let unordered: Vec<_> = categories.iter().filter(|category| !CATEGORY_ORDER.contains(category)).collect();
+		assert!(unordered.is_empty(), "categories missing from `CATEGORY_ORDER`: {unordered:?}");
+
+		let empty: Vec<_> = CATEGORY_ORDER.iter().filter(|category| !categories.contains(*category)).collect();
+		assert!(empty.is_empty(), "`CATEGORY_ORDER` lists categories with no nodes: {empty:?}");
 	}
 }
 
