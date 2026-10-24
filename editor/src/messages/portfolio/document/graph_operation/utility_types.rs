@@ -128,13 +128,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.insert_node(origins_to_polyline_id, origins_to_polyline, &[]);
 		self.network_interface.move_node_to_chain_start(&origins_to_polyline_id, layer, &[], self.import);
 
-		// Add Auto-Tangents node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
-		let auto_tangents = resolve_proto_node_type(graphene_std::vector::auto_tangents::IDENTIFIER)
-			.expect("Auto-Tangents node does not exist")
+		// Add Smooth Anchors node (between Origins to Polyline and Path), with spread=1 and preserve_existing=false
+		let smooth_anchors = resolve_proto_node_type(graphene_std::vector::smooth_anchors::IDENTIFIER)
+			.expect("Smooth Anchors node does not exist")
 			.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(1.), false)), Some(NodeInput::value(TaggedValue::Bool(false), false))]);
-		let auto_tangents_id = NodeId::new();
-		self.network_interface.insert_node(auto_tangents_id, auto_tangents, &[]);
-		self.network_interface.move_node_to_chain_start(&auto_tangents_id, layer, &[], self.import);
+		let smooth_anchors_id = NodeId::new();
+		self.network_interface.insert_node(smooth_anchors_id, smooth_anchors, &[]);
+		self.network_interface.move_node_to_chain_start(&smooth_anchors_id, layer, &[], self.import);
 
 		// Add Path node to chain start (closest to the Merge node)
 		let path = resolve_network_node_type("Path").expect("Path node does not exist").default_node_template();

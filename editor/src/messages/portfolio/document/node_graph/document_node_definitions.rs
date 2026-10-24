@@ -363,9 +363,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
 							..Default::default()
 						},
-						// 1: List Length (number of subpaths)
+						// 1: Count (number of subpaths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::list_length::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::count::IDENTIFIER),
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
 							..Default::default()
@@ -629,7 +629,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						},
 						NodeTemplate {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::decode_image::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::bytes_to_image::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 							..Default::default()
 						},

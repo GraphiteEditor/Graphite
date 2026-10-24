@@ -244,8 +244,8 @@ fn number_sequence(
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall these indices off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
-#[node_macro::node(category("General"), icon("NodeListIndices"))]
-fn list_indices(
+#[node_macro::node(category("General"), icon("NodeIndices"))]
+fn indices(
 	_: impl Ctx,
 	/// The list whose items are counted.
 	list: ListDyn,
@@ -260,8 +260,8 @@ fn list_indices(
 /// Extracts a portion of a list, starting at "Start" and ending before "End".
 ///
 /// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
-#[node_macro::node(category("General"), icon("NodeListSlice"))]
-fn list_slice<T: Send + Sync + Clone + 'static>(
+#[node_macro::node(category("General"), icon("NodeSlice"))]
+fn slice<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to take a portion of.
 	#[implementations(
@@ -1135,29 +1135,29 @@ mod test {
 	}
 
 	#[test]
-	fn list_indices_counts_each_item() {
-		let indices = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(0_i64));
-		assert_eq!(elements(&indices), [0., 1., 2.]);
+	fn indices_counts_each_item() {
+		let from_zero = indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(0_i64));
+		assert_eq!(elements(&from_zero), [0., 1., 2.]);
 
-		let from_one = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(1_i64));
+		let from_one = indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(1_i64));
 		assert_eq!(elements(&from_one), [1., 2., 3.]);
 	}
 
 	#[test]
-	fn list_slice_takes_the_portion_between_start_and_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(1_i64), Item::new_from_element(3_i64));
+	fn slice_takes_the_portion_between_start_and_end() {
+		let portion = slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(1_i64), Item::new_from_element(3_i64));
 		assert_eq!(elements(&portion), [2., 3.]);
 	}
 
 	#[test]
-	fn list_slice_resolves_negative_indices_from_the_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(-2_i64), Item::new_from_element(0_i64));
+	fn slice_resolves_negative_indices_from_the_end() {
+		let portion = slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(-2_i64), Item::new_from_element(0_i64));
 		assert_eq!(elements(&portion), [4., 5.], "an end of zero reaches through the end of the list");
 	}
 
 	#[test]
-	fn list_slice_yields_nothing_when_start_reaches_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3_i64), Item::new_from_element(3_i64));
+	fn slice_yields_nothing_when_start_reaches_end() {
+		let portion = slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3_i64), Item::new_from_element(3_i64));
 		assert!(elements(&portion).is_empty());
 	}
 

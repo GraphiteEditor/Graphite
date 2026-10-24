@@ -124,7 +124,6 @@ import NodeAsVector from "/../branding/assets/16x16-nodes/node-as-vector.svg";
 import NodeAssignColors from "/../branding/assets/16x16-nodes/node-assign-colors.svg";
 import NodeAssignRotations from "/../branding/assets/16x16-nodes/node-assign-rotations.svg";
 import NodeAssignScales from "/../branding/assets/16x16-nodes/node-assign-scales.svg";
-import NodeAutoTangents from "/../branding/assets/16x16-nodes/node-auto-tangents.svg";
 import NodeAverage from "/../branding/assets/16x16-nodes/node-average.svg";
 import NodeBakeTransform from "/../branding/assets/16x16-nodes/node-bake-transform.svg";
 import NodeBasicBrush from "/../branding/assets/16x16-nodes/node-basic-brush.svg";
@@ -140,6 +139,7 @@ import NodeBoxCorners from "/../branding/assets/16x16-nodes/node-box-corners.svg
 import NodeBoxWarp from "/../branding/assets/16x16-nodes/node-box-warp.svg";
 import NodeBrightnessContrast from "/../branding/assets/16x16-nodes/node-brightness-contrast.svg";
 import NodeBrushStrokes from "/../branding/assets/16x16-nodes/node-brush-strokes.svg";
+import NodeBytesToImage from "/../branding/assets/16x16-nodes/node-bytes-to-image.svg";
 import NodeCeiling from "/../branding/assets/16x16-nodes/node-ceiling.svg";
 import NodeCentroid from "/../branding/assets/16x16-nodes/node-centroid.svg";
 import NodeChannelMixer from "/../branding/assets/16x16-nodes/node-channel-mixer.svg";
@@ -158,13 +158,14 @@ import NodeConvexHull from "/../branding/assets/16x16-nodes/node-convex-hull.svg
 import NodeCosineInverse from "/../branding/assets/16x16-nodes/node-cosine-inverse.svg";
 import NodeCosine from "/../branding/assets/16x16-nodes/node-cosine.svg";
 import NodeCountPoints from "/../branding/assets/16x16-nodes/node-count-points.svg";
+import NodeCount from "/../branding/assets/16x16-nodes/node-count.svg";
 import NodeCrossProduct from "/../branding/assets/16x16-nodes/node-cross-product.svg";
 import NodeCurves from "/../branding/assets/16x16-nodes/node-curves.svg";
 import NodeCustomNode from "/../branding/assets/16x16-nodes/node-custom-node.svg";
 import NodeCutPath from "/../branding/assets/16x16-nodes/node-cut-path.svg";
 import NodeDashPattern from "/../branding/assets/16x16-nodes/node-dash-pattern.svg";
+import NodeDebugLog from "/../branding/assets/16x16-nodes/node-debug-log.svg";
 import NodeDecimate from "/../branding/assets/16x16-nodes/node-decimate.svg";
-import NodeDecodeImage from "/../branding/assets/16x16-nodes/node-decode-image.svg";
 import NodeDecomposeRotation from "/../branding/assets/16x16-nodes/node-decompose-rotation.svg";
 import NodeDecomposeScale from "/../branding/assets/16x16-nodes/node-decompose-scale.svg";
 import NodeDecomposeSkew from "/../branding/assets/16x16-nodes/node-decompose-skew.svg";
@@ -224,6 +225,7 @@ import NodeImageToBytes from "/../branding/assets/16x16-nodes/node-image-to-byte
 import NodeImageToChannels from "/../branding/assets/16x16-nodes/node-image-to-channels.svg";
 import NodeImage from "/../branding/assets/16x16-nodes/node-image.svg";
 import NodeIndexPoints from "/../branding/assets/16x16-nodes/node-index-points.svg";
+import NodeIndices from "/../branding/assets/16x16-nodes/node-indices.svg";
 import NodeIntoGroup from "/../branding/assets/16x16-nodes/node-into-group.svg";
 import NodeInvertTransform from "/../branding/assets/16x16-nodes/node-invert-transform.svg";
 import NodeInvert from "/../branding/assets/16x16-nodes/node-invert.svg";
@@ -235,12 +237,8 @@ import NodeLerp from "/../branding/assets/16x16-nodes/node-lerp.svg";
 import NodeLessThan from "/../branding/assets/16x16-nodes/node-less-than.svg";
 import NodeLevels from "/../branding/assets/16x16-nodes/node-levels.svg";
 import NodeLine from "/../branding/assets/16x16-nodes/node-line.svg";
-import NodeListIndices from "/../branding/assets/16x16-nodes/node-list-indices.svg";
-import NodeListLength from "/../branding/assets/16x16-nodes/node-list-length.svg";
-import NodeListSlice from "/../branding/assets/16x16-nodes/node-list-slice.svg";
 import NodeLoadImage from "/../branding/assets/16x16-nodes/node-load-image.svg";
 import NodeLoadResource from "/../branding/assets/16x16-nodes/node-load-resource.svg";
-import NodeLogToConsole from "/../branding/assets/16x16-nodes/node-log-to-console.svg";
 import NodeLogarithm from "/../branding/assets/16x16-nodes/node-logarithm.svg";
 import NodeLogicalAnd from "/../branding/assets/16x16-nodes/node-logical-and.svg";
 import NodeLogicalNot from "/../branding/assets/16x16-nodes/node-logical-not.svg";
@@ -250,7 +248,6 @@ import NodeMagnitude from "/../branding/assets/16x16-nodes/node-magnitude.svg";
 import NodeMakeOpaque from "/../branding/assets/16x16-nodes/node-make-opaque.svg";
 import NodeMandelbrot from "/../branding/assets/16x16-nodes/node-mandelbrot.svg";
 import NodeMapPoints from "/../branding/assets/16x16-nodes/node-map-points.svg";
-import NodeMapString from "/../branding/assets/16x16-nodes/node-map-string.svg";
 import NodeMap from "/../branding/assets/16x16-nodes/node-map.svg";
 import NodeMask from "/../branding/assets/16x16-nodes/node-mask.svg";
 import NodeMathF from "/../branding/assets/16x16-nodes/node-math-f.svg";
@@ -292,8 +289,6 @@ import NodePointsToVector from "/../branding/assets/16x16-nodes/node-points-to-v
 import NodePostRequest from "/../branding/assets/16x16-nodes/node-post-request.svg";
 import NodePosterize from "/../branding/assets/16x16-nodes/node-posterize.svg";
 import NodeQrCode from "/../branding/assets/16x16-nodes/node-qr-code.svg";
-import NodeQuantizeAnimationTime from "/../branding/assets/16x16-nodes/node-quantize-animation-time.svg";
-import NodeQuantizeRealTime from "/../branding/assets/16x16-nodes/node-quantize-real-time.svg";
 import NodeQueryJsonAll from "/../branding/assets/16x16-nodes/node-query-json-all.svg";
 import NodeQueryJson from "/../branding/assets/16x16-nodes/node-query-json.svg";
 import NodeRandom from "/../branding/assets/16x16-nodes/node-random.svg";
@@ -338,11 +333,15 @@ import NodeSign from "/../branding/assets/16x16-nodes/node-sign.svg";
 import NodeSimplify from "/../branding/assets/16x16-nodes/node-simplify.svg";
 import NodeSineInverse from "/../branding/assets/16x16-nodes/node-sine-inverse.svg";
 import NodeSine from "/../branding/assets/16x16-nodes/node-sine.svg";
+import NodeSlice from "/../branding/assets/16x16-nodes/node-slice.svg";
+import NodeSmoothAnchors from "/../branding/assets/16x16-nodes/node-smooth-anchors.svg";
 import NodeSolidifyStroke from "/../branding/assets/16x16-nodes/node-solidify-stroke.svg";
 import NodeSort from "/../branding/assets/16x16-nodes/node-sort.svg";
 import NodeSpiral from "/../branding/assets/16x16-nodes/node-spiral.svg";
 import NodeSpline from "/../branding/assets/16x16-nodes/node-spline.svg";
 import NodeStar from "/../branding/assets/16x16-nodes/node-star.svg";
+import NodeStepAnimationTime from "/../branding/assets/16x16-nodes/node-step-animation-time.svg";
+import NodeStepRealTime from "/../branding/assets/16x16-nodes/node-step-real-time.svg";
 import NodeStringCapitalization from "/../branding/assets/16x16-nodes/node-string-capitalization.svg";
 import NodeStringConcatenate from "/../branding/assets/16x16-nodes/node-string-concatenate.svg";
 import NodeStringContains from "/../branding/assets/16x16-nodes/node-string-contains.svg";
@@ -350,6 +349,7 @@ import NodeStringEscape from "/../branding/assets/16x16-nodes/node-string-escape
 import NodeStringFindIndex from "/../branding/assets/16x16-nodes/node-string-find-index.svg";
 import NodeStringJoin from "/../branding/assets/16x16-nodes/node-string-join.svg";
 import NodeStringLength from "/../branding/assets/16x16-nodes/node-string-length.svg";
+import NodeStringMap from "/../branding/assets/16x16-nodes/node-string-map.svg";
 import NodeStringOccurrences from "/../branding/assets/16x16-nodes/node-string-occurrences.svg";
 import NodeStringPad from "/../branding/assets/16x16-nodes/node-string-pad.svg";
 import NodeStringRepeat from "/../branding/assets/16x16-nodes/node-string-repeat.svg";
@@ -406,7 +406,6 @@ export const ICON_16X16_NODES = {
 	NodeAssignScales: { svg: NodeAssignScales, size: 16 },
 	NodeAsString: { svg: NodeAsString, size: 16 },
 	NodeAsVector: { svg: NodeAsVector, size: 16 },
-	NodeAutoTangents: { svg: NodeAutoTangents, size: 16 },
 	NodeAverage: { svg: NodeAverage, size: 16 },
 	NodeBakeTransform: { svg: NodeBakeTransform, size: 16 },
 	NodeBasicBrush: { svg: NodeBasicBrush, size: 16 },
@@ -422,6 +421,7 @@ export const ICON_16X16_NODES = {
 	NodeBoxWarp: { svg: NodeBoxWarp, size: 16 },
 	NodeBrightnessContrast: { svg: NodeBrightnessContrast, size: 16 },
 	NodeBrushStrokes: { svg: NodeBrushStrokes, size: 16 },
+	NodeBytesToImage: { svg: NodeBytesToImage, size: 16 },
 	NodeCeiling: { svg: NodeCeiling, size: 16 },
 	NodeCentroid: { svg: NodeCentroid, size: 16 },
 	NodeChannelMixer: { svg: NodeChannelMixer, size: 16 },
@@ -439,14 +439,15 @@ export const ICON_16X16_NODES = {
 	NodeConvexHull: { svg: NodeConvexHull, size: 16 },
 	NodeCosine: { svg: NodeCosine, size: 16 },
 	NodeCosineInverse: { svg: NodeCosineInverse, size: 16 },
+	NodeCount: { svg: NodeCount, size: 16 },
 	NodeCountPoints: { svg: NodeCountPoints, size: 16 },
 	NodeCrossProduct: { svg: NodeCrossProduct, size: 16 },
 	NodeCurves: { svg: NodeCurves, size: 16 },
 	NodeCustomNode: { svg: NodeCustomNode, size: 16 },
 	NodeCutPath: { svg: NodeCutPath, size: 16 },
 	NodeDashPattern: { svg: NodeDashPattern, size: 16 },
+	NodeDebugLog: { svg: NodeDebugLog, size: 16 },
 	NodeDecimate: { svg: NodeDecimate, size: 16 },
-	NodeDecodeImage: { svg: NodeDecodeImage, size: 16 },
 	NodeDecomposeRotation: { svg: NodeDecomposeRotation, size: 16 },
 	NodeDecomposeScale: { svg: NodeDecomposeScale, size: 16 },
 	NodeDecomposeSkew: { svg: NodeDecomposeSkew, size: 16 },
@@ -506,6 +507,7 @@ export const ICON_16X16_NODES = {
 	NodeImageToBytes: { svg: NodeImageToBytes, size: 16 },
 	NodeImageToChannels: { svg: NodeImageToChannels, size: 16 },
 	NodeIndexPoints: { svg: NodeIndexPoints, size: 16 },
+	NodeIndices: { svg: NodeIndices, size: 16 },
 	NodeIntoGroup: { svg: NodeIntoGroup, size: 16 },
 	NodeInvert: { svg: NodeInvert, size: 16 },
 	NodeInvertTransform: { svg: NodeInvertTransform, size: 16 },
@@ -517,23 +519,18 @@ export const ICON_16X16_NODES = {
 	NodeLessThan: { svg: NodeLessThan, size: 16 },
 	NodeLevels: { svg: NodeLevels, size: 16 },
 	NodeLine: { svg: NodeLine, size: 16 },
-	NodeListIndices: { svg: NodeListIndices, size: 16 },
-	NodeListLength: { svg: NodeListLength, size: 16 },
-	NodeListSlice: { svg: NodeListSlice, size: 16 },
 	NodeLoadImage: { svg: NodeLoadImage, size: 16 },
 	NodeLoadResource: { svg: NodeLoadResource, size: 16 },
 	NodeLogarithm: { svg: NodeLogarithm, size: 16 },
 	NodeLogicalAnd: { svg: NodeLogicalAnd, size: 16 },
 	NodeLogicalNot: { svg: NodeLogicalNot, size: 16 },
 	NodeLogicalOr: { svg: NodeLogicalOr, size: 16 },
-	NodeLogToConsole: { svg: NodeLogToConsole, size: 16 },
 	NodeLoremIpsum: { svg: NodeLoremIpsum, size: 16 },
 	NodeMagnitude: { svg: NodeMagnitude, size: 16 },
 	NodeMakeOpaque: { svg: NodeMakeOpaque, size: 16 },
 	NodeMandelbrot: { svg: NodeMandelbrot, size: 16 },
 	NodeMap: { svg: NodeMap, size: 16 },
 	NodeMapPoints: { svg: NodeMapPoints, size: 16 },
-	NodeMapString: { svg: NodeMapString, size: 16 },
 	NodeMask: { svg: NodeMask, size: 16 },
 	NodeMathF: { svg: NodeMathF, size: 16 },
 	NodeMathFx: { svg: NodeMathFx, size: 16 },
@@ -574,8 +571,6 @@ export const ICON_16X16_NODES = {
 	NodePosterize: { svg: NodePosterize, size: 16 },
 	NodePostRequest: { svg: NodePostRequest, size: 16 },
 	NodeQrCode: { svg: NodeQrCode, size: 16 },
-	NodeQuantizeAnimationTime: { svg: NodeQuantizeAnimationTime, size: 16 },
-	NodeQuantizeRealTime: { svg: NodeQuantizeRealTime, size: 16 },
 	NodeQueryJson: { svg: NodeQueryJson, size: 16 },
 	NodeQueryJsonAll: { svg: NodeQueryJsonAll, size: 16 },
 	NodeRandom: { svg: NodeRandom, size: 16 },
@@ -620,11 +615,15 @@ export const ICON_16X16_NODES = {
 	NodeSimplify: { svg: NodeSimplify, size: 16 },
 	NodeSine: { svg: NodeSine, size: 16 },
 	NodeSineInverse: { svg: NodeSineInverse, size: 16 },
+	NodeSlice: { svg: NodeSlice, size: 16 },
+	NodeSmoothAnchors: { svg: NodeSmoothAnchors, size: 16 },
 	NodeSolidifyStroke: { svg: NodeSolidifyStroke, size: 16 },
 	NodeSort: { svg: NodeSort, size: 16 },
 	NodeSpiral: { svg: NodeSpiral, size: 16 },
 	NodeSpline: { svg: NodeSpline, size: 16 },
 	NodeStar: { svg: NodeStar, size: 16 },
+	NodeStepAnimationTime: { svg: NodeStepAnimationTime, size: 16 },
+	NodeStepRealTime: { svg: NodeStepRealTime, size: 16 },
 	NodeStringCapitalization: { svg: NodeStringCapitalization, size: 16 },
 	NodeStringConcatenate: { svg: NodeStringConcatenate, size: 16 },
 	NodeStringContains: { svg: NodeStringContains, size: 16 },
@@ -632,6 +631,7 @@ export const ICON_16X16_NODES = {
 	NodeStringFindIndex: { svg: NodeStringFindIndex, size: 16 },
 	NodeStringJoin: { svg: NodeStringJoin, size: 16 },
 	NodeStringLength: { svg: NodeStringLength, size: 16 },
+	NodeStringMap: { svg: NodeStringMap, size: 16 },
 	NodeStringOccurrences: { svg: NodeStringOccurrences, size: 16 },
 	NodeStringPad: { svg: NodeStringPad, size: 16 },
 	NodeStringRepeat: { svg: NodeStringRepeat, size: 16 },

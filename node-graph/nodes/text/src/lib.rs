@@ -948,8 +948,8 @@ fn string_join(
 }
 
 /// Iterates over a list of strings, evaluating the mapped operation for each one. Use the **Read String** node to access the current string inside the loop.
-#[node_macro::node(category("Text"), icon("NodeMapString"))]
-fn map_string(
+#[node_macro::node(category("Text"), icon("NodeStringMap"))]
+fn string_map(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	strings: List<String>,
 	#[expose]
@@ -969,7 +969,7 @@ fn map_string(
 	Ok(result)
 }
 
-/// Reads the current string from within a **Map String** node's loop.
+/// Reads the current string from within a **String Map** node's loop.
 #[node_macro::node(category("Context"), icon("NodeReadContext"))]
 fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Item::new_from_element(String::new()) };
