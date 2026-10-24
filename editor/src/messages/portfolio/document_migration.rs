@@ -124,6 +124,18 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::animation::real_time::IDENTIFIER,
 		aliases: &["graphene_core::animation::RealTimeNode"],
 	},
+	NodeReplacement {
+		node: graphene_std::animation::step_animation_time::IDENTIFIER,
+		aliases: &["graphene_core::animation::QuantizeAnimationTimeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::animation::step_real_time::IDENTIFIER,
+		aliases: &["graphene_core::animation::QuantizeRealTimeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::debug::debug_log::IDENTIFIER,
+		aliases: &["graphene_core::debug::LogToConsoleNode"],
+	},
 	// ================================
 	// graphic
 	// ================================
@@ -175,6 +187,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphic_nodes::graphic::OmitElementNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::graphic::indices::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ListIndicesNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic::slice::IDENTIFIER,
+		aliases: &["graphic_nodes::graphic::ListSliceNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::LayerNode",
@@ -203,6 +223,13 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::graphic::ToGraphicNode",
 			"graphic_nodes::graphic::ToGraphicNode",
 		],
+	},
+	// ================================
+	// gstd
+	// ================================
+	NodeReplacement {
+		node: graphene_std::platform_application_io::bytes_to_image::IDENTIFIER,
+		aliases: &["graphene_std::platform_application_io::DecodeImageNode"],
 	},
 	// ================================
 	// math
@@ -706,6 +733,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::text_nodes::serialize::IDENTIFIER,
 		aliases: &["graphene_core::logic::SerializeNode"],
 	},
+	NodeReplacement {
+		node: graphene_std::text_nodes::string_map::IDENTIFIER,
+		aliases: &["text_nodes::MapStringNode"],
+	},
 	// ================================
 	// transform
 	// ================================
@@ -769,8 +800,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::AssignColorsNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::auto_tangents::IDENTIFIER,
-		aliases: &["graphene_core::vector::vector_nodes::AutoTangentsNode", "graphene_core::vector::AutoTangentsNode"],
+		node: graphene_std::vector::smooth_anchors::IDENTIFIER,
+		aliases: &[
+			"graphene_core::vector::vector_nodes::AutoTangentsNode",
+			"graphene_core::vector::AutoTangentsNode",
+			"core_types::vector::AutoTangentsNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::bevel::IDENTIFIER,
@@ -793,8 +828,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::ClosePathNode", "core_types::vector::ClosePathNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::list_length::IDENTIFIER,
-		aliases: &["graphene_core::vector::CountElementsNode"],
+		node: graphene_std::vector::count::IDENTIFIER,
+		aliases: &["graphene_core::vector::CountElementsNode", "graphene_core::vector::ListLengthNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::cut_path::IDENTIFIER,
@@ -1727,8 +1762,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::item_at_index::IDENTIFIER), &[1]),
 		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::remove_at_index::IDENTIFIER), &[1]),
 		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::shift::IDENTIFIER), &[1]),
-		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::list_indices::IDENTIFIER), &[1]),
-		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::list_slice::IDENTIFIER), &[1, 2]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::indices::IDENTIFIER), &[1]),
+		(DefinitionIdentifier::ProtoNode(graphene_std::graphic::slice::IDENTIFIER), &[1, 2]),
 		(DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::string_slice::IDENTIFIER), &[1, 2]),
 		(DefinitionIdentifier::ProtoNode(graphene_std::text_nodes::regex::regex_find::IDENTIFIER), &[2]),
 		(DefinitionIdentifier::Network("Regex Find".into()), &[2]),
@@ -2748,7 +2783,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::RemoveHandlesNode")) {
-		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::auto_tangents::IDENTIFIER))?.default_node_template();
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::smooth_anchors::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -2763,7 +2798,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::GenerateHandlesNode")) {
-		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::auto_tangents::IDENTIFIER))?.default_node_template();
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::smooth_anchors::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -2853,6 +2888,22 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		}
 
+		reset_default_display_name(document, node_id, network_path, old_default_name);
+	}
+
+	// Nodes renamed with unchanged inputs take their new names in place of their old default titles
+	let renamed = [
+		(graphene_std::animation::step_animation_time::IDENTIFIER, "Quantize Animation Time"),
+		(graphene_std::animation::step_real_time::IDENTIFIER, "Quantize Real Time"),
+		(graphene_std::debug::debug_log::IDENTIFIER, "Log to Console"),
+		(graphene_std::vector::smooth_anchors::IDENTIFIER, "Auto-Tangents"),
+		(graphene_std::platform_application_io::bytes_to_image::IDENTIFIER, "Decode Image"),
+		(graphene_std::graphic::indices::IDENTIFIER, "List Indices"),
+		(graphene_std::vector::count::IDENTIFIER, "List Length"),
+		(graphene_std::graphic::slice::IDENTIFIER, "List Slice"),
+		(graphene_std::text_nodes::string_map::IDENTIFIER, "Map String"),
+	];
+	if let Some((_, old_default_name)) = renamed.iter().find(|(identifier, _)| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) {
 		reset_default_display_name(document, node_id, network_path, old_default_name);
 	}
 
@@ -3063,7 +3114,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Migrate from the v2 "Morph" node (2 inputs: content, progression) to the v3 "Morph" node (5 inputs: content, progression, reverse, distribution, path).
 	// The old progression used integer part for pair selection (range 0..N-1 where N is the number of content objects).
 	// The new progression uses fractional 0..1 for euclidean traversal through all objects.
-	// We insert List Length → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
+	// We insert Count → Subtract 1 → Divide to remap: new_progression = old_progression / (N - 1).
 	// For the common 2-object case (N=2), this divides by 1 which is a no-op, preserving identical behavior.
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
@@ -3078,14 +3129,14 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			return None;
 		};
 
-		// Create List Length node: counts content `List` items → N
-		let Some(list_length_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::list_length::IDENTIFIER)) else {
-			log::error!("Could not get list_length node from definition when upgrading morph");
+		// Create Count node: counts content `List` items → N
+		let Some(count_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::count::IDENTIFIER)) else {
+			log::error!("Could not get count node from definition when upgrading morph");
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[1].clone(), network_path);
 			return None;
 		};
-		let list_length_template = list_length_def.default_node_template();
-		let list_length_id = NodeId::new();
+		let count_template = count_def.default_node_template();
+		let count_id = NodeId::new();
 
 		// Create Subtract node: N → N-1
 		let Some(subtract_def) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::subtract::IDENTIFIER)) else {
@@ -3107,10 +3158,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let divide_id = NodeId::new();
 
 		// Insert and position nodes
-		document.network_interface.insert_node(list_length_id, list_length_template, network_path);
-		document
-			.network_interface
-			.shift_absolute_node_position(&list_length_id, morph_position + IVec2::new(-21, 2), network_path);
+		document.network_interface.insert_node(count_id, count_template, network_path);
+		document.network_interface.shift_absolute_node_position(&count_id, morph_position + IVec2::new(-21, 2), network_path);
 
 		document.network_interface.insert_node(subtract_id, subtract_template, network_path);
 		document.network_interface.shift_absolute_node_position(&subtract_id, morph_position + IVec2::new(-14, 2), network_path);
@@ -3118,15 +3167,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.insert_node(divide_id, divide_template, network_path);
 		document.network_interface.shift_absolute_node_position(&divide_id, morph_position + IVec2::new(-7, 1), network_path);
 
-		// Wire: content source → List Length input 0
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(list_length_id, 0), old_inputs[0].clone(), network_path);
+		// Wire: content source → Count input 0
+		document.network_interface.set_input(&InputConnector::node_at_index(count_id, 0), old_inputs[0].clone(), network_path);
 
-		// Wire: List Length output → Subtract input 0 (minuend)
+		// Wire: Count output → Subtract input 0 (minuend)
 		document
 			.network_interface
-			.set_input(&InputConnector::node_at_index(subtract_id, 0), NodeInput::node(list_length_id, 0), network_path);
+			.set_input(&InputConnector::node_at_index(subtract_id, 0), NodeInput::node(count_id, 0), network_path);
 
 		// Wire: old progression → Divide input 0 (numerator)
 		document.network_interface.set_input(&InputConnector::node_at_index(divide_id, 0), old_inputs[1].clone(), network_path);
@@ -4591,6 +4638,72 @@ mod tests {
 
 			let current_content = opened.network_interface.document_node(&current, &[]).map(|node| node.inputs[0].clone());
 			assert!(matches!(current_content, Some(NodeInput::Node { node_id, output_index: 0, .. }) if node_id == upstream), "{title}");
+		}
+	}
+
+	// Nodes saved under their old identifiers and default titles open as the renamed nodes under their new titles
+	#[test]
+	fn renamed_nodes_open_under_their_new_names() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::capture_logged_errors;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+
+		let renames = [
+			(
+				graphene_std::animation::step_animation_time::IDENTIFIER,
+				"graphene_core::animation::QuantizeAnimationTimeNode",
+				"Quantize Animation Time",
+				"Step Animation Time",
+			),
+			(
+				graphene_std::animation::step_real_time::IDENTIFIER,
+				"graphene_core::animation::QuantizeRealTimeNode",
+				"Quantize Real Time",
+				"Step Real Time",
+			),
+			(graphene_std::debug::debug_log::IDENTIFIER, "graphene_core::debug::LogToConsoleNode", "Log to Console", "Debug Log"),
+			(
+				graphene_std::vector::smooth_anchors::IDENTIFIER,
+				"core_types::vector::AutoTangentsNode",
+				"Auto-Tangents",
+				"Smooth Anchors",
+			),
+			(
+				graphene_std::platform_application_io::bytes_to_image::IDENTIFIER,
+				"graphene_std::platform_application_io::DecodeImageNode",
+				"Decode Image",
+				"Bytes to Image",
+			),
+			(graphene_std::graphic::indices::IDENTIFIER, "graphic_nodes::graphic::ListIndicesNode", "List Indices", "Indices"),
+			(graphene_std::vector::count::IDENTIFIER, "graphene_core::vector::ListLengthNode", "List Length", "Count"),
+			(graphene_std::graphic::slice::IDENTIFIER, "graphic_nodes::graphic::ListSliceNode", "List Slice", "Slice"),
+			(graphene_std::text_nodes::string_map::IDENTIFIER, "text_nodes::MapStringNode", "Map String", "String Map"),
+		];
+
+		// Each node under its old identifier, storing its old default title
+		let mut document = DocumentMessageHandler::default();
+		for (index, (identifier, old_identifier, old_title, _)) in renames.iter().enumerate() {
+			let definition = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier.clone())).expect("the renamed node's definition should exist");
+			let mut node_template = definition.default_node_template();
+			node_template.implementation = NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(old_identifier));
+			node_template.display_name = old_title.to_string();
+			document.network_interface.insert_node(NodeId(index as u64), node_template, &[]);
+		}
+
+		let serialized = document.serialize_document();
+		for (identifier, ..) in &renames {
+			assert!(!serialized.contains(identifier.as_str()), "the saved document should name only the old identifiers, not {identifier}");
+		}
+
+		let (opened, errors) = capture_logged_errors(|| load_legacy_document(serialized, &HashMapResourceStorage::new(), false));
+		let opened = opened.expect("the document should open");
+		assert!(errors.is_empty(), "opening the document logged errors: {errors:?}");
+
+		for (index, (identifier, _, _, title)) in renames.iter().enumerate() {
+			let node_id = NodeId(index as u64);
+			let node = opened.network_interface.document_node(&node_id, &[]).expect("the node should still exist");
+			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(identifier.clone()), "{title}");
+			assert_eq!(opened.network_interface.display_name(&node_id, &[]), *title);
 		}
 	}
 }

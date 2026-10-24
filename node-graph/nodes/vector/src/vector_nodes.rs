@@ -1257,8 +1257,8 @@ where
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeAutoTangents"), name("Auto-Tangents"), path(core_types::vector))]
-fn auto_tangents<V: MapVectorItems + Send>(
+#[node_macro::node(category("Vector: Modifier"), icon("NodeSmoothAnchors"), path(core_types::vector))]
+fn smooth_anchors<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
@@ -3700,8 +3700,8 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-#[node_macro::node(category("General"), icon("NodeListLength"), path(graphene_core::vector))]
-fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
+#[node_macro::node(category("General"), icon("NodeCount"), path(graphene_core::vector))]
+fn count(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }
 
@@ -4278,7 +4278,7 @@ mod test {
 
 	// Existing handles are kept, so only the anchors without them are tangented and smooth
 	#[test]
-	fn auto_tangents_marks_the_tangented_anchors_smooth() {
+	fn smooth_anchors_marks_the_tangented_anchors_smooth() {
 		let mut bezpath = BezPath::new();
 		bezpath.move_to((0., 0.));
 		bezpath.line_to((10., 10.));
@@ -4294,7 +4294,7 @@ mod test {
 		bezpath.line_to((200., 50.));
 		bezpath.close_path();
 
-		let output = super::auto_tangents((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
+		let output = super::smooth_anchors((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
 
 		assert_eq!(
 			smooth_anchors_by_contour(&output),
@@ -4304,7 +4304,7 @@ mod test {
 
 	// A loop of one segment has no neighbor to share a tangent with, so it passes through unchanged
 	#[test]
-	fn auto_tangents_keeps_a_single_segment_loop() {
+	fn smooth_anchors_keeps_a_single_segment_loop() {
 		let teardrop = CubicBez::new((0., 0.), (50., -50.), (100., 50.), (0., 0.));
 		let mut bezpath = BezPath::new();
 		bezpath.move_to(teardrop.p0);
@@ -4315,7 +4315,7 @@ mod test {
 		bezpath.line_to((225., 40.));
 		bezpath.close_path();
 
-		let output = super::auto_tangents((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
+		let output = super::smooth_anchors((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
 		let paths = item_paths(&output);
 
 		let segments: Vec<PathSeg> = output.element().segment_iter(paths).map(|(_, segment, ..)| segment).collect();
