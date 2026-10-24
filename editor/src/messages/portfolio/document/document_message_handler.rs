@@ -1578,6 +1578,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
+					OverlaysType::PointIndex => visibility_settings.point_index = visible,
+					OverlaysType::PathEnds => visibility_settings.path_ends = visible,
+					OverlaysType::PathIndex => visibility_settings.path_index = visible,
+					OverlaysType::PathDirection => visibility_settings.path_direction = visible,
 				}
 
 				responses.add(EventMessage::ToolAbort);
@@ -3525,8 +3529,10 @@ impl DocumentMessageHandler {
 	fn overlays_options(&self) -> Vec<LayoutGroup> {
 		let settings = &self.overlays_visibility_settings;
 
-		let checkbox = |name: &str, overlays_type: OverlaysType, checked: bool, disabled: bool| {
+		// Without a description, a tooltip would only repeat the label beside the checkbox
+		let checkbox = |name: &str, overlays_type: OverlaysType, checked: bool, disabled: bool, description: &str| {
 			let checkbox_id = CheckboxId::new();
+			let tooltip_label = if description.is_empty() { "" } else { name };
 			vec![
 				CheckboxInput::new(checked)
 					.disabled(disabled)
@@ -3537,31 +3543,51 @@ impl DocumentMessageHandler {
 						}
 						.into()
 					})
+					.tooltip_label(tooltip_label)
+					.tooltip_description(description)
 					.for_label(checkbox_id)
 					.widget_instance(),
-				TextLabel::new(name).disabled(disabled).for_checkbox(checkbox_id).widget_instance(),
+				TextLabel::new(name)
+					.disabled(disabled)
+					.tooltip_label(tooltip_label)
+					.tooltip_description(description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
 			]
 		};
 
+		let path_ends_description = "
+			Marks where each path starts and ends, and where its path flows join.\n\
+			\n\
+			Chevron: the start, pointing the way the path sets out.\n\
+			Bar: the end, just before its last anchor. On a closed path, this is where it arrives back at its start.\n\
+			Thick tick: an anchor where the path passes from one path flow into the next.
+		"
+		.trim();
+
 		let left = [
 			vec![TextLabel::new("General").widget_instance()],
-			checkbox("Artboard Name", OverlaysType::ArtboardName, settings.artboard_name, false),
-			checkbox("G/R/S Measurement", OverlaysType::TransformMeasurement, settings.transform_measurement, false),
+			checkbox("Artboard Name", OverlaysType::ArtboardName, settings.artboard_name, false, ""),
+			checkbox("G/R/S Measurement", OverlaysType::TransformMeasurement, settings.transform_measurement, false, ""),
 			vec![TextLabel::new("Pen & Path Tools").widget_instance()],
-			checkbox("Path", OverlaysType::Path, settings.path, false),
-			checkbox("Anchors", OverlaysType::Anchors, settings.anchors, false),
-			checkbox("Handles", OverlaysType::Handles, settings.handles, !settings.anchors),
+			checkbox("Path", OverlaysType::Path, settings.path, false, ""),
+			checkbox("Path Ends", OverlaysType::PathEnds, settings.path_ends, !settings.anchors, path_ends_description),
+			checkbox("Anchors", OverlaysType::Anchors, settings.anchors, false, ""),
+			checkbox("Handles", OverlaysType::Handles, settings.handles, !settings.anchors, ""),
+			checkbox("Point Index", OverlaysType::PointIndex, settings.point_index, !settings.anchors, ""),
+			checkbox("Path Index", OverlaysType::PathIndex, settings.path_index, !settings.anchors, ""),
+			checkbox("Path Direction", OverlaysType::PathDirection, settings.path_direction, !settings.anchors, ""),
 		];
 		let right = [
 			vec![TextLabel::new("Select Tool").widget_instance()],
-			checkbox("Quick Measurement", OverlaysType::QuickMeasurement, settings.quick_measurement, false),
-			checkbox("Transform Cage", OverlaysType::TransformCage, settings.transform_cage, false),
-			checkbox("Transform Dial", OverlaysType::CompassRose, settings.compass_rose, false),
-			checkbox("Transform Pivot", OverlaysType::Pivot, settings.pivot, false),
-			checkbox("Transform Origin", OverlaysType::Origin, settings.origin, false),
-			checkbox("Hover Outline", OverlaysType::HoverOutline, settings.hover_outline, false),
-			checkbox("Selection Outline", OverlaysType::SelectionOutline, settings.selection_outline, false),
-			checkbox("Layer Origin", OverlaysType::LayerOriginCross, settings.layer_origin_cross, false),
+			checkbox("Quick Measurement", OverlaysType::QuickMeasurement, settings.quick_measurement, false, ""),
+			checkbox("Transform Cage", OverlaysType::TransformCage, settings.transform_cage, false, ""),
+			checkbox("Transform Dial", OverlaysType::CompassRose, settings.compass_rose, false, ""),
+			checkbox("Transform Pivot", OverlaysType::Pivot, settings.pivot, false, ""),
+			checkbox("Transform Origin", OverlaysType::Origin, settings.origin, false, ""),
+			checkbox("Hover Outline", OverlaysType::HoverOutline, settings.hover_outline, false, ""),
+			checkbox("Selection Outline", OverlaysType::SelectionOutline, settings.selection_outline, false, ""),
+			checkbox("Layer Origin", OverlaysType::LayerOriginCross, settings.layer_origin_cross, false, ""),
 		];
 
 		vec![

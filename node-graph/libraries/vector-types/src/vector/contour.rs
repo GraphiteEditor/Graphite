@@ -1,8 +1,8 @@
 use super::misc::dvec2_to_point;
-use super::path::{CurveType, Path, append_segment, curve_types_of};
+use super::path::{CurveType, Path, append_segment, curve_types_of, path_flows};
 use core_types::list::List;
 use glam::DVec2;
-use kurbo::BezPath;
+use kurbo::{BezPath, PathSeg};
 
 /// Paths stitched end to end into one outline, as [`contours`] describes.
 /// A closed contour arrives back at the point it left from.
@@ -183,19 +183,24 @@ fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveTyp
 	found
 }
 
+/// The segments a contour runs along in order, each beside the stored path it comes from.
+fn contour_segments<'a>(pool: &'a List<DVec2>, paths: &'a List<Path>, curve_types: &'a [CurveType], contour: &'a Contour) -> impl Iterator<Item = (u32, PathSeg)> + 'a {
+	contour.parts.iter().flat_map(move |&part| {
+		let path = paths.element(part as usize);
+		let curve_type = curve_types.get(part as usize).copied().unwrap_or_default();
+		let count = path.map_or(0, |path| path.segment_count(curve_type));
+
+		(0..count).filter_map(move |span| Some((part, path?.segment(pool, curve_type, span)?)))
+	})
+}
+
 /// Emits one contour as a bezpath, or `None` when its entry point is not in the pool.
 fn contour_to_bezpath(pool: &List<DVec2>, paths: &List<Path>, curve_types: &[CurveType], contour: &Contour) -> Option<BezPath> {
 	let mut bezpath = BezPath::new();
 	bezpath.move_to(dvec2_to_point(*pool.element(contour.entry as usize)?));
 
-	for &part in &contour.parts {
-		let path = paths.element(part as usize)?;
-		let curve_type = *curve_types.get(part as usize)?;
-
-		for span in 0..path.segment_count(curve_type) {
-			let Some(segment) = path.segment(pool, curve_type, span) else { continue };
-			append_segment(&mut bezpath, segment);
-		}
+	for (_, segment) in contour_segments(pool, paths, curve_types, contour) {
+		append_segment(&mut bezpath, segment);
 	}
 
 	if contour.closed {
@@ -214,12 +219,70 @@ pub fn contour_bezpaths(pool: &List<DVec2>, paths: &List<Path>) -> Vec<BezPath> 
 		.collect()
 }
 
+/// One contour's segments in the order and direction it runs along them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OrientedContour {
+	/// The pool point the contour sets out from.
+	pub entry: u32,
+	pub segments: Vec<PathSeg>,
+	/// Where in `segments` the contour crosses from one path flow into another. A closed contour lists 0 when it arrives back at its start from another flow.
+	pub flow_joins: Vec<usize>,
+	pub closed: bool,
+}
+
+/// Every contour as the segments it runs along, in the order [`contours`] finds them, which is also the order Separate Paths splits them into.
+pub fn oriented_contours(pool: &List<DVec2>, paths: &List<Path>) -> Vec<OrientedContour> {
+	let curve_types = curve_types(paths);
+
+	// The path flow each stored path belongs to
+	let mut flow_of_path = vec![0; paths.len()];
+	for (flow, range) in path_flows(paths).into_iter().enumerate() {
+		if let Some(members) = flow_of_path.get_mut(range) {
+			members.fill(flow);
+		}
+	}
+	let flow_of = |path: u32| flow_of_path.get(path as usize).copied().unwrap_or_default();
+
+	contours_with(pool.len(), paths, &curve_types)
+		.iter()
+		.map(|contour| {
+			let mut segments = Vec::new();
+			let mut flow_joins = Vec::new();
+			let mut previous_flow = None;
+			for (path, segment) in contour_segments(pool, paths, &curve_types, contour) {
+				let flow = flow_of(path);
+				if previous_flow.is_some_and(|previous| previous != flow) {
+					flow_joins.push(segments.len());
+				}
+				previous_flow = Some(flow);
+
+				segments.push(segment);
+			}
+
+			if contour.closed
+				&& let (Some(&first), Some(&last)) = (contour.parts.first(), contour.parts.last())
+				&& flow_of(first) != flow_of(last)
+			{
+				flow_joins.insert(0, 0);
+			}
+
+			OrientedContour {
+				entry: contour.entry,
+				segments,
+				flow_joins,
+				closed: contour.closed,
+			}
+		})
+		.collect()
+}
+
 #[cfg(test)]
 mod tests {
+	use super::super::misc::point_to_dvec2;
 	use super::super::path::{pool_and_paths_from_bezpath, push_path};
 	use super::*;
 	use core_types::list::Item;
-	use kurbo::PathEl;
+	use kurbo::{ParamCurve, PathEl};
 
 	fn bezpath_of(build: impl FnOnce(&mut BezPath)) -> BezPath {
 		let mut bezpath = BezPath::new();
@@ -426,5 +489,48 @@ mod tests {
 
 		assert_eq!(stitched(3, &paths), [(vec![1, 2], false)]);
 		assert_eq!(contour_bezpaths(&pool, &paths).len(), 1);
+	}
+
+	// A subpath split across curve types is one path flow, so it runs as one contour with no flow joins
+	#[test]
+	fn one_flow_in_several_curve_types_has_no_joins() {
+		let source = bezpath_of(|bezpath| {
+			bezpath.move_to((0., 0.));
+			bezpath.line_to((10., 0.));
+			bezpath.curve_to((15., 5.), (15., 10.), (10., 15.));
+			bezpath.close_path();
+		});
+		let (pool, paths) = pool_and_paths_from_bezpath(&source);
+
+		let oriented = oriented_contours(&pool, &paths);
+		assert_eq!(oriented.len(), 1);
+		assert_eq!(oriented[0].segments.len(), 3);
+		assert!(oriented[0].closed);
+		assert!(oriented[0].flow_joins.is_empty());
+	}
+
+	// Two halves welded at both ends join at each weld, with the contour running along their segments in order
+	#[test]
+	fn welded_flows_join_where_they_meet() {
+		let (pool, paths) = linear(4, &[&[0, 1, 2], &[2, 3, 0]]);
+
+		let oriented = oriented_contours(&pool, &paths);
+		assert_eq!(oriented.len(), 1);
+		assert_eq!(oriented[0].flow_joins, [0, 2]);
+
+		let starts: Vec<DVec2> = oriented[0].segments.iter().map(|segment| point_to_dvec2(segment.start())).collect();
+		let pool_positions: Vec<DVec2> = [0, 1, 2, 3].iter().map(|&index| *pool.element(index).expect("the point is in the pool")).collect();
+		assert_eq!(starts, pool_positions);
+	}
+
+	// An open contour never joins at its start, only where a welded path carries it on
+	#[test]
+	fn an_open_contour_joins_only_inside() {
+		let (pool, paths) = linear(4, &[&[0, 1, 2], &[3, 0]]);
+
+		let oriented = oriented_contours(&pool, &paths);
+		assert_eq!(oriented.len(), 1);
+		assert!(!oriented[0].closed);
+		assert_eq!(oriented[0].flow_joins, [1]);
 	}
 }

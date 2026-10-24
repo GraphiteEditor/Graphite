@@ -51,6 +51,10 @@ pub enum OverlaysType {
 	Path,
 	Anchors,
 	Handles,
+	PointIndex,
+	PathEnds,
+	PathIndex,
+	PathDirection,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -71,6 +75,10 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub point_index: bool,
+	pub path_ends: bool,
+	pub path_index: bool,
+	pub path_direction: bool,
 }
 
 impl Default for OverlaysVisibilitySettings {
@@ -90,6 +98,10 @@ impl Default for OverlaysVisibilitySettings {
 			path: true,
 			anchors: true,
 			handles: true,
+			point_index: false,
+			path_ends: true,
+			path_index: false,
+			path_direction: false,
 		}
 	}
 }
@@ -149,6 +161,22 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn point_index(&self) -> bool {
+		self.all && self.anchors && self.point_index
+	}
+
+	pub fn path_ends(&self) -> bool {
+		self.all && self.anchors && self.path_ends
+	}
+
+	pub fn path_index(&self) -> bool {
+		self.all && self.anchors && self.path_index
+	}
+
+	pub fn path_direction(&self) -> bool {
+		self.all && self.anchors && self.path_direction
 	}
 }
 
@@ -969,7 +997,7 @@ impl OverlayContext {
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {
-				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+				self.manipulator_anchor(transform.transform_point2(point.position), false, color);
 			}
 			ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 		});

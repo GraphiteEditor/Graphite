@@ -91,6 +91,17 @@
 			</div>
 			<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description}>{widgetData.name}</TextLabel>
 			<IconButton
+				icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
+				hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
+				size={24}
+				action={(e) => {
+					editor.toggleNodeVisibilityInspector(widgetData.id);
+					e?.stopPropagation();
+				}}
+				class={widgetData.visible ? "show-only-on-hover" : ""}
+			/>
+			<IconButton
 				icon="Trash"
 				tooltipDescription="Delete this node from the layer chain."
 				size={24}
@@ -109,17 +120,6 @@
 					e?.stopPropagation();
 				}}
 				class={widgetData.pinned ? "" : "show-only-on-hover"}
-			/>
-			<IconButton
-				icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
-				hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
-				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
-				size={24}
-				action={(e) => {
-					editor.toggleNodeVisibilityInspector(widgetData.id);
-					e?.stopPropagation();
-				}}
-				class={widgetData.visible ? "show-only-on-hover" : ""}
 			/>
 			{#if reorderable}
 				<div class="drag-grip" data-tooltip-description="Drag to reorder this node." on:click|stopPropagation={() => undefined} role="presentation"></div>
