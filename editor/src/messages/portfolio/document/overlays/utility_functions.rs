@@ -1,8 +1,8 @@
 use super::utility_types::{DrawHandles, OverlayContext, Pivot};
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_MAGENTA, HIDE_HANDLE_DISTANCE, INDEX_LABEL_GAP, PATH_DIRECTION_ARC_LENGTH_ACCURACY, PATH_DIRECTION_ARROW_SPACING, PATH_DIRECTION_CHEVRON_SIZE,
-	PATH_DIRECTION_HARPOON_OFFSET, PATH_END_MARKER_DISTANCE, PATH_END_MARKER_SIZE, PATH_FLOW_JOIN_TICK_LENGTH, PATH_FLOW_JOIN_TICK_THICKNESS, PATH_INDEX_LABEL_OFFSET, PATH_MARKERS_MIN_LENGTH,
-	POINT_INDEX_LABEL_OFFSET, SNAP_POINT_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_MAGENTA, CURVATURE_COMB_MAX_TEETH_PER_SEGMENT, CURVATURE_COMB_MAX_TOOTH_LENGTH, CURVATURE_COMB_TOOTH_SPACING, HIDE_HANDLE_DISTANCE,
+	INDEX_LABEL_GAP, PATH_DIRECTION_ARC_LENGTH_ACCURACY, PATH_DIRECTION_ARROW_SPACING, PATH_DIRECTION_CHEVRON_SIZE, PATH_DIRECTION_HARPOON_OFFSET, PATH_END_MARKER_DISTANCE, PATH_END_MARKER_SIZE,
+	PATH_FLOW_JOIN_TICK_LENGTH, PATH_FLOW_JOIN_TICK_THICKNESS, PATH_INDEX_LABEL_OFFSET, PATH_MARKERS_MIN_LENGTH, POINT_INDEX_LABEL_OFFSET, SNAP_POINT_TOLERANCE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -12,9 +12,9 @@ use crate::messages::tool::common_functionality::utility_functions::closest_open
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::vector::algorithms::util::pathseg_tangent;
-use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, PathSegPoints, pathseg_points, point_to_dvec2, segment_to_handles};
+use graphene_std::vector::misc::{BezierHandles, ManipulatorPointId, PathSegPoints, dvec2_to_point, pathseg_points, point_to_dvec2, segment_to_handles};
 use graphene_std::vector::{PointId, SegmentId, VectorGeometry, curve_type_at, handle_point, segment_id_of, span_endpoints, spans};
-use kurbo::{Affine, ParamCurve, ParamCurveArclen, ParamCurveArea, PathSeg, Rect, Shape};
+use kurbo::{Affine, BezPath, ParamCurve, ParamCurveArclen, ParamCurveArea, ParamCurveDeriv, PathSeg, Rect, Shape};
 use std::collections::{HashMap, HashSet};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -194,6 +194,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	let display_path = overlay_context.visibility_settings.path();
 	let display_handles = overlay_context.visibility_settings.handles();
 	let display_anchors = overlay_context.visibility_settings.anchors();
+	let document_zoom = document_zoom(document);
 
 	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -210,7 +211,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			}
 		}
 
-		let path_index_labels = path_direction_overlays(&vector, transform, false, overlay_context);
+		let path_index_labels = path_marker_overlays(&vector, transform, document_zoom, false, overlay_context);
 
 		let is_selected = |point: ManipulatorPointId| selected_shape_state.is_point_selected(point);
 
@@ -286,12 +287,13 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 			.is_some_and(|state| state.is_point_selected(ManipulatorPointId::Anchor(id)))
 	};
 	let hovered = pointer.and_then(|pointer| closest_open_path_endpoint(document, pointer, SNAP_POINT_TOLERANCE, selected_nodes.selected_visible_layers(&document.network_interface)));
+	let document_zoom = document_zoom(document);
 
 	for layer in selected_nodes.selected_visible_layers(&document.network_interface) {
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
-		let path_index_labels = path_direction_overlays(&vector, transform, true, overlay_context);
+		let path_index_labels = path_marker_overlays(&vector, transform, document_zoom, true, overlay_context);
 
 		for id in vector.anchor_endpoints() {
 			if hovered.is_some_and(|(hovered_layer, hovered_id, _)| hovered_layer == layer && hovered_id == id) {
@@ -312,6 +314,11 @@ pub fn open_path_endpoint_overlays(document: &DocumentMessageHandler, shape_edit
 	}
 }
 
+/// How many viewport pixels span one document pixel at the current zoom.
+fn document_zoom(document: &DocumentMessageHandler) -> f64 {
+	document.metadata().document_to_viewport.matrix2.determinant().abs().sqrt()
+}
+
 /// A path's index label, placed off its start anchor where it covers the least of the path.
 struct PathIndexLabel {
 	index: usize,
@@ -320,20 +327,23 @@ struct PathIndexLabel {
 	position: DVec2,
 }
 
-/// Marks how each path of a layer runs, as the overlay settings choose: chevrons at its start and end and along it, and ticks where its path flows join.
+/// Marks how each path of a layer runs and bends, as the overlay settings choose: its ends and flow joins, direction arrows, and curvature comb.
 /// Returns each path's index label for [`index_label_overlays`] to draw. With `open_paths_only`, closed paths go unmarked, for tools that only show the anchors at open ends.
-fn path_direction_overlays(vector: &VectorGeometry, transform: DAffine2, open_paths_only: bool, overlay_context: &mut OverlayContext) -> Vec<PathIndexLabel> {
+fn path_marker_overlays(vector: &VectorGeometry, transform: DAffine2, document_zoom: f64, open_paths_only: bool, overlay_context: &mut OverlayContext) -> Vec<PathIndexLabel> {
 	let mut index_labels = Vec::new();
 
 	let settings = overlay_context.visibility_settings;
-	let (show_ends, show_index, show_direction) = (settings.path_ends(), settings.path_index(), settings.path_direction());
-	if !(show_ends || show_index || show_direction) {
+	let (show_ends, show_index, show_direction, show_curvature_comb) = (settings.path_ends(), settings.path_index(), settings.path_direction(), settings.curvature_comb());
+	if !(show_ends || show_index || show_direction || show_curvature_comb) {
 		return index_labels;
 	}
 
 	let to_viewport = Affine::new(transform.to_cols_array());
 	let viewport_size: DVec2 = overlay_context.viewport.size().into();
 	let arrow_view = Rect::new(0., 0., viewport_size.x, viewport_size.y).inflate(PATH_DIRECTION_CHEVRON_SIZE, PATH_DIRECTION_CHEVRON_SIZE);
+
+	// Curvature measured in the viewport shrinks as the zoom grows, so squaring the zoom keeps the teeth in proportion to the artwork
+	let comb_scale = settings.curvature_comb_scale * document_zoom.powi(2);
 
 	// Enumerated before filtering so each index is the one Separate Paths gives that path
 	for (index, contour) in vector.oriented_contours().into_iter().enumerate() {
@@ -351,6 +361,44 @@ fn path_direction_overlays(vector: &VectorGeometry, transform: DAffine2, open_pa
 		let Some(&last) = segments.iter().rfind(has_direction) else { continue };
 		let Some((departure, _)) = end_directions(first) else { continue };
 		let start = point_to_dvec2(first.start());
+
+		// Teeth sticking out from each curve as far as it bends there, with their tips joined, drawn beneath the other markers
+		if show_curvature_comb {
+			let mut teeth = BezPath::new();
+			let mut tips = BezPath::new();
+
+			// O(teeth) curvature evaluations per segment, capped for segments that run far past the viewport
+			for &segment in segments.iter().filter(|segment| !matches!(segment, PathSeg::Line(_))) {
+				let tooth_count = (control_polygon_length(segment) / CURVATURE_COMB_TOOTH_SPACING).ceil().clamp(1., CURVATURE_COMB_MAX_TEETH_PER_SEGMENT);
+
+				// Each segment's tips join on their own, so an anchor where the curvature jumps shows a break in the comb
+				let step_size = 1. / tooth_count;
+				let mut previous_tooth: Option<CurvatureCombTooth> = None;
+				for step in 0..=tooth_count as usize {
+					let Some(tooth) = curvature_comb_tooth(segment, step as f64 * step_size, comb_scale) else {
+						previous_tooth = None;
+						continue;
+					};
+
+					teeth.move_to(dvec2_to_point(tooth.root));
+					teeth.line_to(dvec2_to_point(tooth.tip));
+
+					// Hermite curves between tips, leaving each one in the exact direction the tips travel there
+					match previous_tooth {
+						Some(previous) => tips.curve_to(
+							dvec2_to_point(previous.tip + previous.tip_velocity * step_size / 3.),
+							dvec2_to_point(tooth.tip - tooth.tip_velocity * step_size / 3.),
+							dvec2_to_point(tooth.tip),
+						),
+						None => tips.move_to(dvec2_to_point(tooth.tip)),
+					}
+					previous_tooth = Some(tooth);
+				}
+			}
+
+			overlay_context.stroke_path(&teeth, DAffine2::IDENTITY, COLOR_OVERLAY_BLUE_50);
+			overlay_context.stroke_path(&tips, DAffine2::IDENTITY, COLOR_OVERLAY_BLUE);
+		}
 
 		// Arrows spread evenly over the stretch clear of the end markers, as harpoons barbed on the right of travel so their side shows the winding direction
 		if show_direction {
@@ -596,6 +644,51 @@ fn end_directions(segment: PathSeg) -> Option<(DVec2, DVec2)> {
 	Some((departure.try_normalize()?, arrival.try_normalize()?))
 }
 
+/// One tooth of a curvature comb, in viewport space.
+#[derive(Clone, Copy)]
+struct CurvatureCombTooth {
+	/// Where the tooth sticks out from the segment.
+	root: DVec2,
+	tip: DVec2,
+	/// How fast the tip moves as the segment's `t` advances, for joining the tips with smooth curves.
+	tip_velocity: DVec2,
+}
+
+/// The curvature comb tooth on a segment at `t`, reaching away from the center of the bend by the curvature times `scale`.
+/// `None` where the segment momentarily stops (as at a cusp) and so bends in no particular direction.
+fn curvature_comb_tooth(segment: PathSeg, t: f64, scale: f64) -> Option<CurvatureCombTooth> {
+	let velocity_curve = segment.to_cubic().deriv();
+	let acceleration_curve = velocity_curve.deriv();
+	let [velocity, acceleration, jerk] = [velocity_curve.eval(t), acceleration_curve.eval(t), acceleration_curve.deriv().eval(t)].map(point_to_dvec2);
+
+	let speed_squared = velocity.length_squared();
+	if speed_squared < 1e-18 {
+		return None;
+	}
+	let speed = speed_squared.sqrt();
+
+	// Signed curvature, positive where the segment bends toward its left normal, and how fast it changes along `t`
+	let curvature = velocity.perp_dot(acceleration) / (speed_squared * speed);
+	let curvature_velocity = velocity.perp_dot(jerk) / (speed_squared * speed) - 3. * curvature * velocity.dot(acceleration) / speed_squared;
+	let normal = velocity.perp() / speed;
+
+	// A tooth held at the maximum length stops growing, so only the turning normal moves its tip
+	let unclamped_length = curvature * scale;
+	let (length, length_velocity) = if unclamped_length.abs() <= CURVATURE_COMB_MAX_TOOTH_LENGTH {
+		(unclamped_length, curvature_velocity * scale)
+	} else {
+		(CURVATURE_COMB_MAX_TOOTH_LENGTH.copysign(unclamped_length), 0.)
+	};
+
+	// The normal turns at minus the curvature times the velocity, carrying the tip with it
+	let root = point_to_dvec2(segment.eval(t));
+	Some(CurvatureCombTooth {
+		root,
+		tip: root - normal * length,
+		tip_velocity: velocity * (1. + length * curvature) - normal * length_velocity,
+	})
+}
+
 /// The unit direction of a vector, or the fallback when the vector is too short to point anywhere reliably.
 fn direction_or(vector: DVec2, fallback: DVec2) -> DVec2 {
 	if vector.length_squared() > 1e-6 { vector.normalize() } else { fallback }
@@ -625,4 +718,41 @@ pub fn hex_to_rgba_u8(hex: &str) -> [u8; 4] {
 	let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
 	let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
 	[r, g, b, a]
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use kurbo::CubicBez;
+
+	#[test]
+	fn curvature_comb_teeth_point_away_from_the_center_of_the_bend() {
+		// A quarter circle of radius 100 around the origin
+		let handle = 100. * 0.552_284_75;
+		let arc = PathSeg::Cubic(CubicBez::new((100., 0.), (100., handle), (handle, 100.), (0., 100.)));
+
+		for segment in [arc, arc.reverse()] {
+			let Some(tooth) = curvature_comb_tooth(segment, 0.5, 1000.) else { panic!("The arc should bend") };
+			let reach = tooth.tip.length() - tooth.root.length();
+
+			assert!((reach - 10.).abs() < 0.2, "The tooth should reach about 10 units outward from the arc, not {reach}");
+		}
+	}
+
+	#[test]
+	fn curvature_comb_tip_velocity_matches_how_the_tips_move() {
+		let segment = PathSeg::Cubic(CubicBez::new((0., 0.), (30., 80.), (90., -40.), (120., 30.)));
+		let tip_at = |t: f64, scale: f64| curvature_comb_tooth(segment, t, scale).unwrap().tip;
+
+		// Teeth growing with the curvature, then held at the maximum length
+		for scale in [500., 1e9] {
+			for t in [0.15, 0.3, 0.85] {
+				let step = 1e-6;
+				let measured = (tip_at(t + step, scale) - tip_at(t - step, scale)) / (2. * step);
+				let derived = curvature_comb_tooth(segment, t, scale).unwrap().tip_velocity;
+
+				assert!((derived - measured).length() < 1e-4 * measured.length().max(1.), "At t = {t}, {derived} should match {measured}");
+			}
+		}
+	}
 }

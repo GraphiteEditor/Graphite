@@ -1,7 +1,8 @@
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
-	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, CURVATURE_COMB_DEFAULT_SCALE,
+	DOWEL_PIN_RADIUS, GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET,
+	SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::hex_to_rgba_u8;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -64,6 +65,7 @@ pub enum OverlaysType {
 	PathEnds,
 	PathIndex,
 	PathDirection,
+	CurvatureComb,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -89,6 +91,9 @@ pub struct OverlaysVisibilitySettings {
 	pub path_ends: bool,
 	pub path_index: bool,
 	pub path_direction: bool,
+	pub curvature_comb: bool,
+	/// How far the curvature comb's teeth reach, as the curvature times this scale in square document pixels.
+	pub curvature_comb_scale: f64,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -113,6 +118,8 @@ impl Default for OverlaysVisibilitySettings {
 			path_ends: true,
 			path_index: false,
 			path_direction: false,
+			curvature_comb: false,
+			curvature_comb_scale: CURVATURE_COMB_DEFAULT_SCALE,
 		}
 	}
 }
@@ -189,6 +196,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn path_direction(&self) -> bool {
 		self.all && self.anchors && self.path_direction
+	}
+
+	pub fn curvature_comb(&self) -> bool {
+		self.all && self.anchors && self.curvature_comb
 	}
 }
 
@@ -428,6 +439,11 @@ impl OverlayContext {
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
 		self.internal().outline(target_types, transform, color);
+	}
+
+	/// Strokes the path with a 1px line, leaving any open subpaths open.
+	pub fn stroke_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		self.internal().stroke_path(bezpath, transform, color);
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
@@ -1051,6 +1067,12 @@ impl OverlayContextInternal {
 
 			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 		}
+	}
+
+	fn stroke_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		let path = self.push_path(bezpath, transform);
+
+		self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
