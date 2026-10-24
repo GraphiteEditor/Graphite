@@ -404,12 +404,15 @@ impl Vector {
 
 	/// Drops the paths and every point used only as a handle, leaving the anchors and free points as a bare cloud.
 	/// A point serving as an anchor in any path is kept even where another path uses it as a handle.
-	pub fn keep_only_anchors(&mut self, paths: &mut List<Path>) {
+	/// Returns the former pool index of each kept point, in their kept order.
+	pub fn keep_only_anchors(&mut self, paths: &mut List<Path>) -> Vec<usize> {
 		let anchors = self.anchor_indices(paths);
-		let pool = anchors.into_iter().filter_map(|index| self.0.clone_item(index)).collect();
+		let pool = anchors.iter().filter_map(|&index| self.0.clone_item(index)).collect();
 
 		self.0 = pool;
 		*paths = List::new();
+
+		anchors
 	}
 
 	/// The positions of all anchor points and free points in pool order, skipping handles.
@@ -614,7 +617,7 @@ impl Vector {
 	}
 
 	/// Sets the smooth flag on many anchors at once, reading one connectivity rather than one per anchor.
-	pub(crate) fn set_smooth_at_indices(&mut self, paths: &mut List<Path>, indices: impl IntoIterator<Item = u32>, smooth: bool) {
+	pub fn set_smooth_at_indices(&mut self, paths: &mut List<Path>, indices: impl IntoIterator<Item = u32>, smooth: bool) {
 		let mut indices = indices.into_iter().peekable();
 		if indices.peek().is_none() {
 			return;
