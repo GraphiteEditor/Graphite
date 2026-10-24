@@ -1,5 +1,5 @@
 import { SvelteMap } from "svelte/reactivity";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
@@ -149,6 +149,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		// The backend resends the structure whenever the graph changes, so an unchanged one is skipped instead of rebuilding the Layers panel
+		if (deepEqual(get(store).layerStructure, data.layerStructure)) return;
+
 		update((state) => {
 			state.layerStructure = data.layerStructure;
 			return state;
@@ -166,6 +169,17 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	return { subscribe };
+}
+
+// Whether two values built from plain objects, arrays and primitives are structurally equal
+function deepEqual(first: unknown, second: unknown): boolean {
+	if (Object.is(first, second)) return true;
+	if (typeof first !== "object" || typeof second !== "object" || !first || !second) return false;
+	if (Array.isArray(first) !== Array.isArray(second)) return false;
+
+	const firstEntries = Object.entries(first);
+	if (firstEntries.length !== Object.keys(second).length) return false;
+	return firstEntries.every(([key, value]) => Object.hasOwn(second, key) && deepEqual(value, Reflect.get(second, key)));
 }
 
 // Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document
