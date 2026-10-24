@@ -134,6 +134,8 @@ pub struct ProtoNode {
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
 	pub(crate) context_dependencies: ContextDependencies,
+	/// The context features read by this node and everything upstream of it.
+	pub upstream_context_features: ContextFeatures,
 }
 
 impl Default for ProtoNode {
@@ -145,6 +147,7 @@ impl Default for ProtoNode {
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
 			context_dependencies: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 }
@@ -180,6 +183,7 @@ impl ProtoNode {
 			},
 			skip_deduplication: false,
 			context_dependencies: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 
@@ -280,7 +284,8 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		self.find_context_dependencies(self.output);
+		let (output_dependencies, _) = self.find_context_dependencies(self.output);
+		self.nodes[self.output.0 as usize].1.upstream_context_features = output_dependencies.features;
 
 		// Perform topological sort a second time to integrate the new nodes
 		self.reorder_ids()?;
@@ -297,6 +302,7 @@ impl ProtoNetwork {
 			p.push(NodeId(10))
 		}
 
+		let features = context_deps.features;
 		let memoize_node_id = NodeId(self.nodes.len() as u64);
 
 		self.nodes.push((
@@ -309,6 +315,7 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -339,6 +346,7 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -380,6 +388,7 @@ impl ProtoNetwork {
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
 			let branch = self.find_context_dependencies(node);
+			self.nodes[node.0 as usize].1.upstream_context_features = branch.0.features;
 
 			combined_deps.features |= branch.0.features;
 			combined_deps.sources.extend(&branch.0.sources);
@@ -1131,6 +1140,44 @@ mod test {
 				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
 			})
 			.collect()
+	}
+
+	#[test]
+	fn nodes_record_the_context_features_their_output_depends_on() {
+		let node = |name: &'static str, construction_args: ConstructionArgs, extract: ContextFeatures, inject: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			context_dependencies: ContextDependencies { extract, inject },
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into()), none, none)),
+				(
+					NodeId(1),
+					node("reader", ConstructionArgs::Nodes(vec![NodeId(0)]), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX, none),
+				),
+				(NodeId(2), node("repeat", ConstructionArgs::Nodes(vec![NodeId(1)]), none, ContextFeatures::INDEX)),
+				(NodeId(3), node("wrap", ConstructionArgs::Nodes(vec![NodeId(2)]), none, none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let features_of = |name: &str| network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).unwrap().1.upstream_context_features;
+		assert_eq!(features_of("value"), none);
+		assert_eq!(features_of("reader"), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX);
+		assert_eq!(features_of("repeat"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of("wrap"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of(graphene_core::memo::memoize::IDENTIFIER.as_str()), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(
+			features_of(graphene_core::context_modification::context_modification::IDENTIFIER.as_str()),
+			ContextFeatures::ANIMATION_TIME
+		);
 	}
 
 	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {
