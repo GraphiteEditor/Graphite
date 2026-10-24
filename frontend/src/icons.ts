@@ -177,7 +177,6 @@ import NodeDistance from "/../branding/assets/16x16-nodes/node-distance.svg";
 import NodeDivide from "/../branding/assets/16x16-nodes/node-divide.svg";
 import NodeDotProduct from "/../branding/assets/16x16-nodes/node-dot-product.svg";
 import NodeEllipse from "/../branding/assets/16x16-nodes/node-ellipse.svg";
-import NodeEmptyImage from "/../branding/assets/16x16-nodes/node-empty-image.svg";
 import NodeEquals from "/../branding/assets/16x16-nodes/node-equals.svg";
 import NodeEvaluateGradient from "/../branding/assets/16x16-nodes/node-evaluate-gradient.svg";
 import NodeEvaluatePath from "/../branding/assets/16x16-nodes/node-evaluate-path.svg";
@@ -321,12 +320,10 @@ import NodeRgbaToColor from "/../branding/assets/16x16-nodes/node-rgba-to-color.
 import NodeRoot from "/../branding/assets/16x16-nodes/node-root.svg";
 import NodeRoundCorners from "/../branding/assets/16x16-nodes/node-round-corners.svg";
 import NodeRound from "/../branding/assets/16x16-nodes/node-round.svg";
-import NodeSampleImage from "/../branding/assets/16x16-nodes/node-sample-image.svg";
 import NodeSamplePolyline from "/../branding/assets/16x16-nodes/node-sample-polyline.svg";
 import NodeScatterPoints from "/../branding/assets/16x16-nodes/node-scatter-points.svg";
 import NodeSelectiveColor from "/../branding/assets/16x16-nodes/node-selective-color.svg";
 import NodeSeparatePaths from "/../branding/assets/16x16-nodes/node-separate-paths.svg";
-import NodeSerialize from "/../branding/assets/16x16-nodes/node-serialize.svg";
 import NodeShift from "/../branding/assets/16x16-nodes/node-shift.svg";
 import NodeShuffle from "/../branding/assets/16x16-nodes/node-shuffle.svg";
 import NodeSign from "/../branding/assets/16x16-nodes/node-sign.svg";
@@ -459,7 +456,6 @@ export const ICON_16X16_NODES = {
 	NodeDivide: { svg: NodeDivide, size: 16 },
 	NodeDotProduct: { svg: NodeDotProduct, size: 16 },
 	NodeEllipse: { svg: NodeEllipse, size: 16 },
-	NodeEmptyImage: { svg: NodeEmptyImage, size: 16 },
 	NodeEquals: { svg: NodeEquals, size: 16 },
 	NodeEvaluateGradient: { svg: NodeEvaluateGradient, size: 16 },
 	NodeEvaluatePath: { svg: NodeEvaluatePath, size: 16 },
@@ -603,12 +599,10 @@ export const ICON_16X16_NODES = {
 	NodeRoot: { svg: NodeRoot, size: 16 },
 	NodeRound: { svg: NodeRound, size: 16 },
 	NodeRoundCorners: { svg: NodeRoundCorners, size: 16 },
-	NodeSampleImage: { svg: NodeSampleImage, size: 16 },
 	NodeSamplePolyline: { svg: NodeSamplePolyline, size: 16 },
 	NodeScatterPoints: { svg: NodeScatterPoints, size: 16 },
 	NodeSelectiveColor: { svg: NodeSelectiveColor, size: 16 },
 	NodeSeparatePaths: { svg: NodeSeparatePaths, size: 16 },
-	NodeSerialize: { svg: NodeSerialize, size: 16 },
 	NodeShift: { svg: NodeShift, size: 16 },
 	NodeShuffle: { svg: NodeShuffle, size: 16 },
 	NodeSign: { svg: NodeSign, size: 16 },
