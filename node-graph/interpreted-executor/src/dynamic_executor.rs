@@ -211,6 +211,8 @@ pub struct BorrowTree {
 	nodes: HashMap<NodeId, (SharedNodeContainer, Path, Box<[NodeId]>)>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
+	/// The context features each node's output depends on.
+	context_features: HashMap<NodeId, core_types::ContextFeatures>,
 }
 
 impl BorrowTree {
@@ -256,6 +258,11 @@ impl BorrowTree {
 
 	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
 		self.nodes.get(&id).map(|(node, _, _)| node.clone())
+	}
+
+	/// The context features this node's output depends on.
+	pub fn context_features(&self, id: NodeId) -> core_types::ContextFeatures {
+		self.context_features.get(&id).copied().unwrap_or_default()
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
@@ -343,6 +350,7 @@ impl BorrowTree {
 	/// - If the node is the primary node for its path in the `source_map`, it's also removed from there.
 	/// - Returns `None` if the node is not found in the `nodes` HashMap.
 	pub fn free_node(&mut self, id: NodeId) -> Option<Path> {
+		self.context_features.remove(&id);
 		let (_, path, _) = self.nodes.remove(&id)?;
 		if self.source_map.get(&path)?.0 == id {
 			self.source_map.remove(&path);
@@ -413,6 +421,7 @@ impl BorrowTree {
 	/// - Returns an error if no constructor is found for the given node ID.
 	fn push_node(&mut self, id: NodeId, proto_node: ProtoNode, typing_context: &TypingContext) -> Result<(), GraphErrors> {
 		self.update_source_map(id, typing_context, &proto_node);
+		self.context_features.insert(id, proto_node.upstream_context_features);
 		let path = proto_node.original_location.path.clone().unwrap_or_default();
 
 		match &proto_node.construction_args {

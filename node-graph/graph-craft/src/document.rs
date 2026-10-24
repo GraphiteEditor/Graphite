@@ -167,6 +167,7 @@ impl DocumentNode {
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
 			context_dependencies: self.context_dependencies.unwrap_or_default(),
+			upstream_context_features: Default::default(),
 		}
 	}
 }
