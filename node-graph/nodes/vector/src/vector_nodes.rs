@@ -27,7 +27,7 @@ use vector_types::vector::SetVectorPaths;
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
-use vector_types::vector::algorithms::convex_hull::convex_hull_of_geometry;
+use vector_types::vector::algorithms::concave_hull::concave_hull_of_geometry;
 use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::algorithms::weld::WeldExt;
@@ -826,66 +826,69 @@ fn unweld<V: MapVectorItems + Send + Sync + 'static>(
 	})
 }
 
-/// Wraps all of the input geometry in its convex hull: the shape a taut rubber band would form when stretched around it.
-///
-/// Convex portions of curved segments are kept exactly as they are, and the boundary departs from a curve only where it must, continuing along a straight bridging line that leaves and rejoins the curves at perfect tangents. The anchor points, floating points, and subpaths (open or closed) of all the input shapes are wrapped together into one combined hull.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeConvexHull"), path(core_types::vector))]
-fn convex_hull(
+/// Wraps the points and paths of the vector content in a closed path in the shape of a rubber band stretched around everything. A curvature above zero may be given to obtain the concave hull, letting the (closed, open, or mesh-like) path or paths press into indents of the content where a ball with that curvature would be able to reach.
+#[node_macro::node(category("Vector: Point"), icon("NodeConvexHull"), path(core_types::vector))]
+fn convex_hull<V: MapVectorItems + Send>(
 	_: impl Ctx,
-	/// The `List` of vector paths to wrap in the convex hull. Nested `List`s are automatically flattened.
-	content: List<Graphic>,
-) -> Item<Vector> {
-	let flattened = content.clone().into_flattened_list::<Vector>();
+	/// The vector content to envelop in the hull, which may be points, paths, or both.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+	/// How tightly the hull follows indents in the content. Its reciprocal is the radius of the rolling ball used to form the hull. Zero curvature gives the convex hull.
+	#[unit("/px")]
+	#[hard(0..)]
+	#[soft(..0.1)]
+	#[range]
+	#[display_decimal_places(4)]
+	curvature: Item<f64>,
+) -> Item<V> {
+	let curvature = *curvature.element();
 
-	// Gather the world-space segments and floating anchor points of every input item
-	let mut segments = Vec::new();
-	let mut loose_points = Vec::new();
-	for index in 0..flattened.len() {
-		let Some(element) = flattened.element(index) else { continue };
-		let element_paths = paths_from_list_row_attributes(&flattened, index).unwrap_or_else(|| no_paths());
-		let transform: DAffine2 = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-		let affine = Affine::new(transform.to_cols_array());
+	V::map_vector_items(content, |content| {
+		let mut content = content;
+		let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let paths = shared_paths_from_item_attributes(&content);
+		let vector = content.element();
 
-		for bezpath in element.stroke_bezpath_iter(element_paths) {
-			segments.extend(bezpath.segments().map(|segment| affine * segment));
-		}
+		let segments: Vec<PathSeg> = vector.stroke_bezpath_iter(&paths).flat_map(|bezpath| bezpath.segments().collect::<Vec<_>>()).collect();
 
 		// Anchor points not connected to any segment still participate in the hull
-		let connectivity = element.connectivity(element_paths);
-		for (point_index, position) in element.positions().enumerate() {
-			let point_index = point_index as u32;
-			if connectivity.spokes(point_index) == 0 && !connectivity.is_handle(point_index) {
-				loose_points.push(dvec2_to_point(transform.transform_point2(position)));
-			}
-		}
+		let connectivity = vector.connectivity(&paths);
+		let loose_points: Vec<kurbo::Point> = (vector.positions().enumerate())
+			.filter(|&(index, _)| connectivity.spokes(index as u32) == 0 && !connectivity.is_handle(index as u32))
+			.map(|(_, position)| dvec2_to_point(position))
+			.collect();
+
+		let hull = concave_hull_in_transformed_space(&segments, &loose_points, curvature, transform);
+
+		let (hull, hull_paths) = Vector::from_bezpath_welded(&hull);
+		*content.element_mut() = hull;
+		content.set_paths(hull_paths);
+		content
+	})
+}
+
+/// The concave hull of geometry in an item's local space, with the ball sized in the space the item's transform places it in.
+fn concave_hull_in_transformed_space(segments: &[PathSeg], loose_points: &[kurbo::Point], curvature: f64, transform: DAffine2) -> BezPath {
+	let (x_axis, y_axis) = (transform.matrix2.x_axis, transform.matrix2.y_axis);
+	let scale_squared = x_axis.length_squared().max(y_axis.length_squared());
+	let tolerance = scale_squared * 1e-9;
+
+	// Convex hulls are unaffected by any transform and a similarity only resizes the ball, so these stay in local space to
+	// avoid round-trip error (as does a transform too squashed to invert)
+	let uniform = x_axis.dot(y_axis).abs() <= tolerance && (x_axis.length_squared() - y_axis.length_squared()).abs() <= tolerance;
+	let invertible = transform.matrix2.determinant().abs() > tolerance;
+	if curvature <= 0. || uniform || !invertible {
+		return concave_hull_of_geometry(segments, loose_points, curvature * scale_squared.sqrt());
 	}
 
-	let hull = convex_hull_of_geometry(&segments, &loose_points);
+	// Otherwise the ball would be an ellipse in local space, so the hull is found where the ball is round and brought back
+	let affine = Affine::new(transform.to_cols_array());
+	let segments: Vec<PathSeg> = segments.iter().map(|&segment| affine * segment).collect();
+	let loose_points: Vec<kurbo::Point> = loose_points.iter().map(|&point| affine * point).collect();
 
-	// Carry over the attributes and appearance of the last input item, matching the Boolean Operation node
-	let Some(last_index) = flattened.len().checked_sub(1) else { return Item::default() };
-	let mut attributes = flattened.clone_item_attributes(last_index);
-	let last_transform: DAffine2 = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, last_index);
-
-	// The hull geometry is built in world space, so the result item carries no transform of its own
-	attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
-	bake_paint_transforms(&mut attributes, last_transform);
-
-	// The geometry is baked into identity space, so a copied stroke authoring space would be stale
-	if let Some(appearance) = attributes.get_mut::<Appearance>(ATTR_APPEARANCE) {
-		for coverage in appearance.0.iter_element_values_mut() {
-			coverage.0.remove_attribute::<DAffine2>(ATTR_TRANSFORM);
-		}
-	}
-
-	let (vector, paths) = Vector::from_bezpath(&hull);
-	attributes.set_paths(paths);
-	let mut result = Item::from_parts(vector, attributes);
-
-	// Snapshot the input layers so the renderer can recurse into them for editor click-target preservation
-	result.set_attribute(ATTR_EDITOR_MERGED_LAYERS, content);
-
-	result
+	let mut hull = concave_hull_of_geometry(&segments, &loose_points, curvature);
+	hull.apply_affine(affine.inverse());
+	hull
 }
 
 pub mod extrude_algorithms {
@@ -4211,16 +4214,44 @@ mod test {
 		}
 	}
 
-	#[test]
-	fn convex_hull_wraps_multiple_items_and_floating_points() {
-		// Two squares far apart, each placed by its own transform, plus a free-floating anchor point far above
-		let square = Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY);
-		let mut content = List::new();
-		content.push(create_vector_item(square.clone(), DAffine2::IDENTITY));
-		content.push(create_vector_item(square, DAffine2::from_translation(DVec2::new(100., 0.))));
-		content.push(Item::new_from_element(Vector::from(DVec2::new(50., 200.))));
+	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {
+		let hull = super::convex_hull((), create_vector_item(bezpath, transform), item(curvature));
+		assert_eq!(hull.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), transform, "the hull should keep its item's transform");
+		hull
+	}
 
-		let hull = super::convex_hull(Footprint::default(), embed_vectors(content));
+	fn enclosed_area(content: &Item<Vector>) -> f64 {
+		content.element().stroke_bezpath_iter(item_paths(content)).map(|bezpath| bezpath.area().abs()).sum()
+	}
+
+	/// Two squares far apart and a floating point above them, all in one item.
+	fn two_squares_and_a_point() -> BezPath {
+		let mut content = Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY);
+		content.extend(Rect::new(100., 0., 110., 10.).path_elements(DEFAULT_ACCURACY));
+		content.move_to((50., 200.));
+		content
+	}
+
+	/// A square with a rectangular notch cut into the middle of one edge.
+	fn notched_square(size: f64, notch_width: f64, notch_depth: f64) -> BezPath {
+		let (left, right) = ((size - notch_width) / 2., (size + notch_width) / 2.);
+		BezPath::from_vec(vec![
+			PathEl::MoveTo(Point::new(0., 0.)),
+			PathEl::LineTo(Point::new(size, 0.)),
+			PathEl::LineTo(Point::new(size, size)),
+			PathEl::LineTo(Point::new(right, size)),
+			PathEl::LineTo(Point::new(right, size - notch_depth)),
+			PathEl::LineTo(Point::new(left, size - notch_depth)),
+			PathEl::LineTo(Point::new(left, size)),
+			PathEl::LineTo(Point::new(0., size)),
+			PathEl::ClosePath,
+		])
+	}
+
+	#[test]
+	fn convex_hull_at_zero_curvature_wraps_every_path_and_floating_point() {
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(1.5), 0.4, DVec2::new(30., -20.));
+		let hull = convex_hull_of(two_squares_and_a_point(), transform, 0.);
 
 		// The hull is the pentagon spanning both squares' outer corners and the floating point
 		let positions = hull.element().anchor_positions(item_paths(&hull));
@@ -4228,10 +4259,65 @@ mod test {
 		for expected in [DVec2::new(0., 0.), DVec2::new(110., 0.), DVec2::new(110., 10.), DVec2::new(50., 200.), DVec2::new(0., 10.)] {
 			assert!(positions.iter().any(|position| position.distance(expected) < 1e-6), "expected a hull anchor near {expected}");
 		}
+	}
 
-		// The hull geometry is emitted in world space with no residual transform
-		let transform: DAffine2 = hull.attribute_cloned_or_default(ATTR_TRANSFORM);
-		assert_eq!(transform, DAffine2::IDENTITY);
+	#[test]
+	fn convex_hull_curvature_separates_parts_farther_apart_than_the_ball() {
+		let hull = convex_hull_of(two_squares_and_a_point(), DAffine2::IDENTITY, 1. / 20.);
+
+		// Each square gets a hull of its own, and the floating point stays behind as an anchor
+		let hulls: Vec<BezPath> = hull.element().stroke_bezpath_iter(item_paths(&hull)).filter(|bezpath| bezpath.segments().next().is_some()).collect();
+		assert_eq!(hulls.len(), 2, "expected one hull per square, got {hulls:?}");
+		assert!((enclosed_area(&hull) - 200.).abs() < 1e-6, "expected the two squares' area, got {}", enclosed_area(&hull));
+
+		let positions = hull.element().anchor_positions(item_paths(&hull));
+		assert!(
+			positions.iter().any(|position| position.distance(DVec2::new(50., 200.)) < 1e-6),
+			"the floating point should remain, got {positions:?}"
+		);
+	}
+
+	#[test]
+	fn convex_hull_strands_share_anchors_with_the_regions_they_meet() {
+		// A ring of points with a tail, each point too close to the next for a ball of radius 30 to pass
+		let mut points: Vec<DVec2> = (0..12).map(|i| DVec2::from_angle(i as f64 * PI / 6.) * 100.).collect();
+		points.extend([DVec2::new(150., 0.), DVec2::new(200., 0.)]);
+		let hull = super::convex_hull((), vector_item_from_points(&points), item(1. / 30.));
+
+		// The tail is traced once, setting out from the ring's own anchor rather than a copy of it
+		let paths = item_paths(&hull);
+		let positions = hull.element().anchor_positions(paths);
+		assert_eq!(positions.len(), points.len(), "expected every point once, got {positions:?}");
+		assert_eq!(hull.element().segment_iter(paths).count(), 12 + 2);
+	}
+
+	#[test]
+	fn convex_hull_curvature_lets_the_ball_into_dents_wider_than_itself() {
+		let notched = notched_square(100., 40., 60.);
+
+		// A ball wider than the notch bridges its mouth, giving the full square
+		assert!((enclosed_area(&convex_hull_of(notched.clone(), DAffine2::IDENTITY, 0.)) - 10_000.).abs() < 1e-6);
+		assert!((enclosed_area(&convex_hull_of(notched.clone(), DAffine2::IDENTITY, 1. / 30.)) - 10_000.).abs() < 1e-6);
+
+		// A ball of radius 10 enters the notch and cuts each of its inner corners with a chord, filling a triangle of area 50
+		let area = enclosed_area(&convex_hull_of(notched, DAffine2::IDENTITY, 1. / 10.));
+		assert!((area - (10_000. - 40. * 60. + 2. * 50.)).abs() < 1e-3, "expected the notch to be kept, got an area of {area}");
+	}
+
+	#[test]
+	fn convex_hull_ball_is_sized_in_the_items_parent_space() {
+		// The notch is 15 wide locally, too narrow for a ball of radius 10, but twice that once the transform widens it
+		let notched = notched_square(50., 15., 30.);
+
+		// Scaled uniformly by 2, each corner's triangle of area 50 is a quarter of that locally
+		let similarity = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.7, DVec2::new(-40., 25.));
+		let area = enclosed_area(&convex_hull_of(notched.clone(), similarity, 1. / 10.));
+		assert!((area - (2500. - 15. * 30. + 2. * 12.5)).abs() < 1e-3, "expected the notch to be kept, got an area of {area}");
+
+		// Stretched along one axis, the round ball is an ellipse locally, and each corner's triangle is half its area of 50
+		let stretch = DAffine2::from_scale(DVec2::new(2., 1.));
+		let area = enclosed_area(&convex_hull_of(notched, stretch, 1. / 10.));
+		assert!((area - (2500. - 15. * 30. + 2. * 25.)).abs() < 1e-3, "expected the notch to be kept, got an area of {area}");
 	}
 
 	#[test]

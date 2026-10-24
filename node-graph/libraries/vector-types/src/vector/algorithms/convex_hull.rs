@@ -21,7 +21,7 @@ use kurbo::common::solve_quadratic;
 use kurbo::{BezPath, CubicBez, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, Vec2};
 
 /// Parameter-space epsilon below which a curve span is considered empty.
-const PARAM_EPSILON: f64 = 1e-9;
+pub(super) const PARAM_EPSILON: f64 = 1e-9;
 /// Iteration cap for the alternating tangency refinement between two curves.
 const MAX_BITANGENT_ITERATIONS: usize = 32;
 /// Parameter-space convergence tolerance for the tangency refinement.
@@ -117,7 +117,7 @@ pub fn convex_hull_of_geometry(segments: &[PathSeg], loose_points: &[Point]) -> 
 		2 => {
 			// All input geometry is collinear, so the hull degenerates to a straight segment
 			let (a, b) = (vertices[hull[0]].position, vertices[hull[1]].position);
-			return BezPath::from_vec(vec![PathEl::MoveTo(a), PathEl::LineTo(b), PathEl::ClosePath]);
+			return BezPath::from_vec(vec![PathEl::MoveTo(a), PathEl::LineTo(b)]);
 		}
 		_ => {}
 	}
@@ -225,7 +225,7 @@ fn normalize_geometry(segments: &[PathSeg], loose_points: &[Point]) -> (Vec<Conv
 /// If all four control points of a cubic lie on one line (meaning the curve itself is straight),
 /// returns the direction of that line. Uses the longest available chord as the reference direction so
 /// out-and-back curves with coincident endpoints are still judged correctly.
-fn collinear_direction(cubic: &CubicBez, spread: f64) -> Option<Vec2> {
+pub(super) fn collinear_direction(cubic: &CubicBez, spread: f64) -> Option<Vec2> {
 	let chords = [(cubic.p0, cubic.p3), (cubic.p0, cubic.p1), (cubic.p0, cubic.p2), (cubic.p1, cubic.p3)];
 	let (base, tip) = chords
 		.into_iter()
@@ -241,15 +241,17 @@ fn collinear_direction(cubic: &CubicBez, spread: f64) -> Option<Vec2> {
 /// The interior parametric extremes of a straight-line cubic (where the curve reverses direction along
 /// its line and overshoots past its endpoints).
 fn straight_curve_interior_extremes(cubic: &CubicBez, direction: Vec2) -> impl Iterator<Item = Point> + '_ {
+	straight_curve_reversals(cubic, direction).map(|t| cubic.eval(t))
+}
+
+/// The interior parameters where a straight-line cubic reverses direction along its line.
+pub(super) fn straight_curve_reversals(cubic: &CubicBez, direction: Vec2) -> impl Iterator<Item = f64> {
 	let derivative = cubic.deriv();
 	let (d0, d1, d2) = (derivative.p0.to_vec2(), derivative.p1.to_vec2(), derivative.p2.to_vec2());
 
 	// The derivative dotted with the line direction is a quadratic in Bernstein form; convert to power basis
 	let (a, b, c) = (d0.dot(direction), d1.dot(direction), d2.dot(direction));
-	solve_quadratic(a, 2. * (b - a), a - 2. * b + c)
-		.into_iter()
-		.filter(|t| (PARAM_EPSILON..1. - PARAM_EPSILON).contains(t))
-		.map(|t| cubic.eval(t))
+	solve_quadratic(a, 2. * (b - a), a - 2. * b + c).into_iter().filter(|t| (PARAM_EPSILON..1. - PARAM_EPSILON).contains(t))
 }
 
 /// The overall size of the input, used to make tolerances scale-relative.
@@ -701,24 +703,7 @@ fn emit_hull_path(contacts: &[Contact], arcs: &[ConvexArc], segments: &[PathSeg]
 			&& (t_out - t_in).abs() > PARAM_EPSILON
 		{
 			let arc = &arcs[arc];
-			let source = &segments[arc.source];
-			let (source_in, source_out) = (arc.to_source_t(t_in), arc.to_source_t(t_out));
-
-			// Cut the range out of the source segment, preserving its exact control points when the
-			// whole segment lies on the hull
-			let piece = if source_in == 0. && source_out == 1. {
-				*source
-			} else if source_in == 1. && source_out == 0. {
-				source.reverse()
-			} else {
-				source.subsegment(source_in..source_out)
-			};
-
-			match piece {
-				PathSeg::Line(line) => path.line_to(line.p1),
-				PathSeg::Quad(quad) => path.quad_to(quad.p1, quad.p2),
-				PathSeg::Cubic(cubic) => path.curve_to(cubic.p1, cubic.p2, cubic.p3),
-			}
+			push_source_cut(&mut path, &segments[arc.source], arc.to_source_t(t_in), arc.to_source_t(t_out));
 		}
 
 		// The bridge line to the next contact, unless the two already meet at a shared anchor. The
@@ -733,6 +718,23 @@ fn emit_hull_path(contacts: &[Contact], arcs: &[ConvexArc], segments: &[PathSeg]
 
 	path.close_path();
 	path
+}
+
+/// The range of a source segment between two of its parameters, which descend to cut it backward. A range covering the
+/// whole segment keeps its exact control points.
+pub(super) fn source_cut(source: &PathSeg, source_in: f64, source_out: f64) -> PathSeg {
+	if source_in == 0. && source_out == 1. {
+		*source
+	} else if source_in == 1. && source_out == 0. {
+		source.reverse()
+	} else {
+		source.subsegment(source_in..source_out)
+	}
+}
+
+/// Appends the range of a source segment between two of its parameters, as [`source_cut`] finds it.
+fn push_source_cut(path: &mut BezPath, source: &PathSeg, source_in: f64, source_out: f64) {
+	path.push(source_cut(source, source_in, source_out).as_path_el());
 }
 
 #[cfg(test)]
@@ -770,6 +772,17 @@ mod tests {
 	/// Asserts the four defining properties of a valid hull: the path is closed, its boundary is convex,
 	/// it contains all the input geometry, and its curved portions lie exactly on the input curves.
 	fn assert_hull_valid(hull: &BezPath, segments: &[PathSeg], loose_points: &[Point]) {
+		// Collinear geometry has a lone straight segment as its hull, left open since it encloses nothing
+		if let &[PathEl::MoveTo(start), PathEl::LineTo(end)] = hull.elements() {
+			let line = Line::new(start, end);
+			let inputs = segments.iter().flat_map(|segment| (0..=16).map(|k| segment.eval(k as f64 / 16.))).chain(loose_points.iter().copied());
+			for point in inputs {
+				let distance = line.nearest(point, 1e-12).distance_sq.sqrt();
+				assert!(distance <= 1e-6 * line.length().max(1.), "input point {point:?} lies {distance} off the degenerate hull");
+			}
+			return;
+		}
+
 		assert!(matches!(hull.elements().last(), Some(PathEl::ClosePath)), "hull must be a closed path");
 
 		let polygon = sample_hull_polygon(hull);
@@ -904,7 +917,7 @@ mod tests {
 	fn collinear_points_give_degenerate_segment() {
 		let points: Vec<Point> = (0..7).map(|i| Point::new(i as f64 * 10., i as f64 * 5.)).collect();
 		let hull = convex_hull_of_geometry(&[], &points);
-		assert_eq!(hull.elements().len(), 3, "expected move, line, close");
+		assert_eq!(hull.elements().len(), 2, "expected move, line");
 		assert!(hull.elements().contains(&PathEl::MoveTo(Point::new(0., 0.))));
 		assert!(hull.elements().contains(&PathEl::LineTo(Point::new(60., 30.))));
 	}

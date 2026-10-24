@@ -119,13 +119,22 @@ impl Vector {
 	/// Weaves bezpaths as [`Self::append_bezpaths`] does, returning how many spans each of them added.
 	pub fn append_bezpaths_counting_spans(&mut self, paths: &mut List<Path>, bezpaths: impl IntoIterator<Item = impl std::borrow::Borrow<BezPath>>) -> Vec<usize> {
 		let (last_point, last_segment) = (largest_point_id(&self.0), largest_segment_id(paths));
-		append_named_bezpaths(&mut self.0, paths, bezpaths, last_point, last_segment)
+		append_named_bezpaths(&mut self.0, paths, bezpaths, last_point, last_segment, false)
 	}
 
 	/// Builds a fresh pool and paths from a single bezpath.
 	pub fn from_bezpath(bezpath: &BezPath) -> (Self, List<Path>) {
 		let (mut vector, mut paths) = (Self::default(), List::new());
 		vector.append_bezpath(&mut paths, bezpath);
+
+		(vector, paths)
+	}
+
+	/// Builds a fresh pool and paths from a single bezpath like [`Self::from_bezpath`], but with anchors at exactly the
+	/// same position woven as one point, welding the contours that meet there.
+	pub fn from_bezpath_welded(bezpath: &BezPath) -> (Self, List<Path>) {
+		let (mut vector, mut paths) = (Self::default(), List::new());
+		append_named_bezpaths(&mut vector.0, &mut paths, [bezpath], None, None, true);
 
 		(vector, paths)
 	}
