@@ -334,7 +334,8 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		entry!(KeyDown(KeyY); action_dispatch=ToolMessage::ActivateToolShape),
 		entry!(KeyDown(KeyB); action_dispatch=ToolMessage::ActivateToolBrush),
 		entry!(KeyDown(KeyD); action_dispatch=ToolMessage::ResetColors),
-		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
+		entry!(KeyDown(KeyX); action_dispatch=ToolMessage::SwapColors),
+		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapFillAndStroke),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: true }),
 		entry!(KeyDown(KeyC); modifiers=[Alt, Shift], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: false }),
 		// TODO: Change to KeyDownNoRepeat when https://github.com/GraphiteEditor/Graphite/issues/2266 is resolved
