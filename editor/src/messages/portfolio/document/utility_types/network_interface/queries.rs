@@ -860,7 +860,12 @@ impl NodeNetworkInterface {
 
 			// Bounds containing NaN would poison the combined result, so the layer's descendants are bounded instead
 			match layer_bounds(metadata, layer).filter(is_finite) {
-				Some(bounds) => add(clip.map_or(bounds, |clip| Quad::clip(bounds, clip))),
+				Some(bounds) => {
+					let clipped = clip.map_or(bounds, |clip| Quad::clip(bounds, clip));
+					if is_finite(&clipped) {
+						add(clipped);
+					}
+				}
 				None => pending.extend(layer.children(metadata).map(|child| (child, clip))),
 			}
 		}
