@@ -1,4 +1,3 @@
-import { tick } from "svelte";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
@@ -51,9 +50,7 @@ export function createDialogStore(subscriptions: SubscriptionsRouter, editor: Ed
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("DialogButtons", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DialogButtons", (data) => {
 		update((state) => {
 			patchLayout(state.buttons, data);
 
@@ -61,9 +58,7 @@ export function createDialogStore(subscriptions: SubscriptionsRouter, editor: Ed
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("DialogColumn1", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DialogColumn1", (data) => {
 		update((state) => {
 			patchLayout(state.column1, data);
 
@@ -71,9 +66,7 @@ export function createDialogStore(subscriptions: SubscriptionsRouter, editor: Ed
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("DialogColumn2", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DialogColumn2", (data) => {
 		update((state) => {
 			patchLayout(state.column2, data);
 

@@ -500,23 +500,17 @@
 		});
 
 		// Update scrollbars and rulers
-		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
-			await tick();
-
+		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", (data) => {
 			const { position, size, multiplier } = data;
 			updateDocumentScrollbars(position, size, multiplier);
 		});
-		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
-			await tick();
-
+		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", (data) => {
 			const { origin, spacing, interval, visible, tilt, flip, selectionQuad } = data;
 			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined);
 		});
 
 		// Update mouse cursor icon
-		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
-			await tick();
-
+		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", (data) => {
 			updateMouseCursor(data.cursor);
 		});
 

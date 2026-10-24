@@ -1,4 +1,3 @@
-import { tick } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
@@ -125,33 +124,27 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", async (data) => {
-		await tick();
+	subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
 		patchLayout(welcomeScreenButtonsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("Inspector", async (data) => {
-		await tick();
+	subscriptions.subscribeLayoutUpdate("Inspector", (data) => {
 		patchLayout(inspectorLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
-		await tick();
+	subscriptions.subscribeLayoutUpdate("DataPanel", (data) => {
 		patchLayout(dataPanelLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", async (data) => {
-		await tick();
+	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 		patchLayout(layersPanelControlBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", async (data) => {
-		await tick();
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", (data) => {
 		patchLayout(layersPanelBottomBarLeftLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", async (data) => {
-		await tick();
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", (data) => {
 		patchLayout(layersPanelBottomBarRightLayout, data);
 	});
 

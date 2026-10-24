@@ -1,4 +1,3 @@
-import { tick } from "svelte";
 import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
@@ -48,33 +47,23 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("ToolOptions", (data) => {
 		patchLayout(get(store).toolOptionsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DocumentBar", (data) => {
 		patchLayout(get(store).documentBarLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("ToolShelf", (data) => {
 		patchLayout(get(store).toolShelfLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("WorkingColors", (data) => {
 		patchLayout(get(store).workingColorsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", (data) => {
 		patchLayout(get(store).nodeGraphControlBarLayout, data);
 	});
 
