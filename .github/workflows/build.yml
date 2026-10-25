@@ -433,8 +433,6 @@ jobs:
             ${{ github.workspace }}\target\artifacts\Graphite\chrome_elf.dll
             ${{ github.workspace }}\target\artifacts\Graphite\vulkan-1.dll
             ${{ github.workspace }}\target\artifacts\Graphite\dxcompiler.dll
-            ${{ github.workspace }}\target\artifacts\Graphite\libEGL.dll
-            ${{ github.workspace }}\target\artifacts\Graphite\libGLESv2.dll
             ${{ github.workspace }}\target\artifacts\Graphite\vk_swiftshader.dll
           file-digest: SHA256
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
