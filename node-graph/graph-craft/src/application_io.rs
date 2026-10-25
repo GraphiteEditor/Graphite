@@ -15,8 +15,10 @@ pub struct PlatformApplicationIo {
 
 impl PlatformApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(feature = "wgpu")]
+		#[cfg(all(feature = "wgpu", not(target_family = "wasm")))]
 		let executor = WgpuExecutor::new().await;
+		#[cfg(all(feature = "wgpu", target_family = "wasm"))]
+		let executor = graphene_canvas_utils::create_wgpu_executor().await;
 
 		#[cfg(not(feature = "wgpu"))]
 		let wgpu_available = false;
