@@ -285,7 +285,12 @@ fn assign_sample_counts(arcs: &mut [ConvexArc], scale: f64) {
 	}
 }
 
-/// Samples every arc and merges samples landing on bit-identical positions into shared vertices, so
+/// The exact bits of a position, with negative zero folded into zero so both name one place.
+pub(super) fn position_key(position: Point) -> (u64, u64) {
+	((position.x + 0.).to_bits(), (position.y + 0.).to_bits())
+}
+
+/// Samples every arc and merges samples landing on identical positions into shared vertices, so
 /// junction anchors carry the tags of both adjoining arcs.
 fn collect_hull_vertices(arcs: &[ConvexArc], points: &[Point]) -> Vec<HullVertex> {
 	use std::collections::HashMap;
@@ -293,8 +298,7 @@ fn collect_hull_vertices(arcs: &[ConvexArc], points: &[Point]) -> Vec<HullVertex
 	let mut vertices: Vec<HullVertex> = Vec::new();
 	let mut index_by_position: HashMap<(u64, u64), usize> = HashMap::new();
 	let mut add = |position: Point, tag: SampleTag| {
-		let key = (position.x.to_bits(), position.y.to_bits());
-		let index = *index_by_position.entry(key).or_insert_with(|| {
+		let index = *index_by_position.entry(position_key(position)).or_insert_with(|| {
 			vertices.push(HullVertex { position, tags: Vec::new() });
 			vertices.len() - 1
 		});
@@ -612,7 +616,7 @@ fn extend_contacts_past_anchors(contacts: &mut Vec<Contact>, arcs: &[ConvexArc],
 	let mut arcs_at_anchor: HashMap<(u64, u64), Vec<(usize, f64)>> = HashMap::new();
 	for (arc_index, arc) in arcs.iter().enumerate() {
 		for (position, end) in [(arc.cubic.p0, 0.), (arc.cubic.p3, 1.)] {
-			arcs_at_anchor.entry((position.x.to_bits(), position.y.to_bits())).or_default().push((arc_index, end));
+			arcs_at_anchor.entry(position_key(position)).or_default().push((arc_index, end));
 		}
 	}
 
@@ -626,7 +630,7 @@ fn extend_contacts_past_anchors(contacts: &mut Vec<Contact>, arcs: &[ConvexArc],
 		}
 
 		arcs_at_anchor
-			.get(&(anchor.x.to_bits(), anchor.y.to_bits()))?
+			.get(&position_key(anchor))?
 			.iter()
 			.filter(|&&(arc, _)| Some(arc) != own_arc)
 			.filter_map(|&(arc, end)| {

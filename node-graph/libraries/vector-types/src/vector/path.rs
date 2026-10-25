@@ -294,6 +294,8 @@ struct PathWeaver {
 	names: Option<WovenNames>,
 	/// The reference naming each anchor position so far, when anchors at exactly one position are woven as one point.
 	welded_anchors: Option<FxHashMap<(u64, u64), u32>>,
+	/// Whether welding has named the newest point again, so a close must keep it for those other references.
+	newest_point_shared: bool,
 }
 
 impl PathWeaver {
@@ -309,6 +311,7 @@ impl PathWeaver {
 			subpath_start: None,
 			names,
 			welded_anchors: weld_coincident_anchors.then(FxHashMap::default),
+			newest_point_shared: false,
 		}
 	}
 
@@ -316,11 +319,13 @@ impl PathWeaver {
 	fn push_point(&mut self, point: Point, anchor: bool) -> u32 {
 		let position = point_to_dvec2(point);
 		if anchor && let Some(&welded) = self.welded_anchors.as_ref().and_then(|welded| welded.get(&anchor_key(position))) {
+			self.newest_point_shared |= welded as usize + 1 == self.offset as usize + self.positions.len();
 			return welded;
 		}
 
 		self.positions.push(position);
 		self.anchors.push(anchor);
+		self.newest_point_shared = false;
 		let reference = self.offset + self.positions.len() as u32 - 1;
 
 		if anchor && let Some(welded) = &mut self.welded_anchors {
@@ -416,6 +421,7 @@ impl PathWeaver {
 			self.references.pop();
 			self.references.push(start);
 			if last as usize + 1 == self.offset as usize + self.positions.len()
+				&& !self.newest_point_shared
 				&& let Some(position) = self.positions.pop()
 			{
 				self.anchors.pop();
@@ -812,5 +818,24 @@ mod tests {
 		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
 		assert_eq!(references(0), vec![0, 1, 2, 0]);
 		assert_eq!(references(1), vec![1, 3, 4]);
+	}
+
+	// A contour closing onto an anchor that welding named for an earlier contour keeps that anchor in the pool
+	#[test]
+	fn weave_welding_keeps_shared_closing_anchor() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.line_to((0., 1e-9));
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((0., 1e-9));
+		bezpath.close_path();
+
+		let (mut pool, mut paths) = (List::new(), List::new());
+		append_named_bezpaths(&mut pool, &mut paths, [&bezpath], None, None, true);
+
+		assert_eq!(pool.len(), 3);
+		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
+		assert_eq!(references(0), vec![0, 1, 2]);
 	}
 }

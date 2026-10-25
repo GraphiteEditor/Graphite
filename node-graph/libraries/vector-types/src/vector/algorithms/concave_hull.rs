@@ -16,7 +16,7 @@
 //!    decision falls within the sampling's error, densify the samples there and repeat.
 //! 5. Emit: cut the touched ranges out of the original segments and join them with the spans, tracing strands once.
 
-use super::convex_hull::{PARAM_EPSILON, collinear_direction, convex_hull_of_geometry, source_cut, straight_curve_reversals};
+use super::convex_hull::{PARAM_EPSILON, collinear_direction, convex_hull_of_geometry, position_key, source_cut, straight_curve_reversals};
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, ParamCurveNearest, PathSeg, Point, QuadBez, Vec2};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::VecDeque;
@@ -1712,8 +1712,7 @@ fn emit_cycle(hull: &mut BezPath, pieces: &[Piece], links: &[Option<SpanSolution
 	}
 
 	// Another path meets each place a path starts, so no cut merges across one
-	let key = |point: Point| (point.x.to_bits(), point.y.to_bits());
-	let junctions: FxHashSet<(u64, u64)> = regions.iter().chain(&strands).filter_map(|run| run.first()).map(|&i| key(starts[i])).collect();
+	let junctions: FxHashSet<(u64, u64)> = regions.iter().chain(&strands).filter_map(|run| run.first()).map(|&i| position_key(starts[i])).collect();
 
 	let segments_of = |run: &[usize]| {
 		let mut segments = Vec::new();
@@ -1728,7 +1727,7 @@ fn emit_cycle(hull: &mut BezPath, pieces: &[Piece], links: &[Option<SpanSolution
 		for &i in run {
 			match steps[i] {
 				Step::Along { source, from, to } => {
-					let merges = previous_step.is_some_and(|previous_step| continues(previous_step, i)) && !junctions.contains(&key(starts[i]));
+					let merges = previous_step.is_some_and(|previous_step| continues(previous_step, i)) && !junctions.contains(&position_key(starts[i]));
 					match &mut pending {
 						Some((_, _, pending_to, _, pending_end)) if merges => (*pending_to, *pending_end) = (to, ends[i]),
 						_ => {
