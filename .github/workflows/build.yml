@@ -57,7 +57,8 @@ jobs:
       CARGO_TERM_COLOR: always
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
+      # sccache deletes the oldest files in its folder once past its size cap, so it gets a folder apart from rust-gpu's codegen backend and Binaryen
+      SCCACHE_DIR: /var/lib/github-actions/.cache/sccache
       # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
       WASM_BINDGEN_CLI_VERSION: "0.2.121"
       BINARYEN_VERSION: "130"

@@ -39,7 +39,8 @@ jobs:
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
+      # sccache deletes the oldest files in its folder once past its size cap, so it gets a folder apart from rust-gpu's codegen backend
+      SCCACHE_DIR: /var/lib/github-actions/.cache/sccache
     steps:
       - name: 📥 Clone repository
         uses: actions/checkout@v6
