@@ -30,9 +30,11 @@ use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::vector_types::vector::{GeometryCache, Path, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths};
+use graphic_types::vector_types::vector::{
+	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
+};
 use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -143,6 +145,21 @@ impl<'a> ItemRef<'a, Vector> {
 	/// The item's geometry cache, for a copy of the item drawing the same geometry, or a fresh one if it has none.
 	fn geometry_cache(self) -> GeometryCache {
 		self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE).cloned().unwrap_or_default()
+	}
+
+	/// The bounding box of the contours in the item's own space.
+	fn contours_bounding_box(self) -> Option<[DVec2; 2]> {
+		let vector = self.element()?;
+		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
+			Some(cache) => cache.bounding_box(vector, self.paths()),
+			None => contours_bounding_box(&self.contours(), DAffine2::IDENTITY),
+		}
+	}
+
+	/// The contours placed in the stroke space given by `transform`, with the outlines of the strokes drawn around them.
+	/// Copies of the item drawn in the same stroke space share these, so their strokes are expanded once.
+	fn placed_contours(self, transform: DAffine2) -> Option<Arc<PlacedContours>> {
+		Some(self.geometry_cache().placed_contours(self.element()?, self.paths(), transform))
 	}
 }
 
@@ -1729,6 +1746,16 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	}
 }
 
+/// Whether `bounds` placed by `transform` overlaps the scene once widened by `inflation`, which is measured in the space `inflation_transform` maps from.
+fn overlaps_scene(scene: &VelloSceneBuilder, bounds: [DVec2; 2], transform: DAffine2, inflation: f64, inflation_transform: DAffine2) -> bool {
+	let view = DAffine2::from_cols_array(&scene.view().as_coeffs());
+	let (largest_scale, _) = singular_values(view * inflation_transform);
+	let inflation = inflation * largest_scale;
+	let [min, max] = (view * transform * Quad::from_box(bounds)).bounding_box();
+
+	min.x - inflation < scene.width() as f64 && max.x + inflation > 0. && min.y - inflation < scene.height() as f64 && max.y + inflation > 0.
+}
+
 /// Draws one item of vector content into the Vello scene: fill and stroke paints, blend and opacity layering,
 /// stroke alignment compositing, and the sibling clipping run carried in `clip_masker` (inert for a lone item).
 #[allow(clippy::too_many_arguments)]
@@ -1777,15 +1804,9 @@ fn render_vector_item_to_vello(
 		};
 	}
 	let contours = item.contours();
-	let layer_bounds = contours_bounding_box(&contours, DAffine2::IDENTITY).unwrap_or_default();
-
-	let mut path = kurbo::BezPath::from_vec(Vec::with_capacity(contours.iter().map(|bezpath| bezpath.elements().len()).sum()));
+	let layer_bounds = item.contours_bounding_box().unwrap_or_default();
 	let stroke_affine = Affine::new(applied_stroke_transform.to_cols_array());
-	for bezpath in contours.iter() {
-		for &element in bezpath.elements() {
-			path.push(stroke_affine * element);
-		}
-	}
+	let element_affine = Affine::new(element_transform.to_cols_array());
 
 	// If we're using opacity or a blend mode, we need to push a layer
 	let blend_mode = match render_params.render_mode {
@@ -1801,6 +1822,20 @@ fn render_vector_item_to_vello(
 	let stroke_fully_transparent = stroke_paint.is_none_or(|paint| paint.is_guaranteed_fully_transparent());
 	let can_draw_aligned_stroke =
 		!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && contours.iter().all(|p| matches!(p.elements().last(), Some(PathEl::ClosePath)));
+
+	// Vello only culls after expanding strokes and flattening paths, so an item outside the scene is skipped before any of that work
+	let stroke_inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true)).max(get_outline_styles(render_params).0.width);
+	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform) {
+		if next_clips && clip_masker.is_none() {
+			*clip_masker = Some(List::new_from_item(Item::from_parts(element.clone(), item.clone_item_attributes())));
+		} else if clip_masker.is_some() && !next_clips {
+			*clip_masker = None;
+		}
+		return;
+	}
+
+	let Some(placed) = item.placed_contours(applied_stroke_transform) else { return };
+	let path = placed.path();
 
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 	let needs_blend_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
@@ -1857,7 +1892,7 @@ fn render_vector_item_to_vello(
 			let Some(color) = color else { return };
 
 			let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
-			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
+			scene.fill_path(fill_rule, element_affine, &fill, None, path);
 		};
 		let gradient_fill = |scene: &mut VelloSceneBuilder, gradient_item: ItemRef<'_, Gradient>| {
 			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
@@ -1870,7 +1905,7 @@ fn render_vector_item_to_vello(
 				Default::default()
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
-			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
+			scene.fill_path(fill_rule, element_affine, &brush, Some(brush_transform), path);
 		};
 
 		match paint {
@@ -1907,7 +1942,7 @@ fn render_vector_item_to_vello(
 				do_fill_path(scene, &(stroke_affine * face_path), peniko::Fill::NonZero);
 			}
 		} else {
-			do_fill_path(scene, &path, peniko::Fill::NonZero);
+			do_fill_path(scene, path, peniko::Fill::NonZero);
 		}
 	};
 
@@ -1945,7 +1980,8 @@ fn render_vector_item_to_vello(
 
 			let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 
-			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
+			let outline = placed.stroke_outline(&stroke, scene.stroke_tolerance(element_affine));
+			scene.fill_path(peniko::Fill::NonZero, element_affine, &brush, None, &outline);
 		};
 		let gradient_stroke = |scene: &mut VelloSceneBuilder, gradient_item: ItemRef<'_, Gradient>| {
 			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
@@ -1958,7 +1994,8 @@ fn render_vector_item_to_vello(
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
-			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+			let outline = placed.stroke_outline(&stroke, scene.stroke_tolerance(element_affine));
+			scene.fill_path(peniko::Fill::NonZero, element_affine, &brush, Some(brush_transform), &outline);
 		};
 
 		match paint {
@@ -1981,9 +2018,9 @@ fn render_vector_item_to_vello(
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
-				let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
+				let stroked = placed.stroke_outline(&stroke, 0.01);
 
-				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
+				scene.push_clip_layer(peniko::Fill::NonZero, element_affine, &*stroked);
 				paint.render_to_vello(scene, multiplied_transform, paint_render_params);
 				scene.pop_layer();
 			}
@@ -1995,7 +2032,8 @@ fn render_vector_item_to_vello(
 		RenderMode::Outline => {
 			let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
-			scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
+			let outline = placed.stroke_outline(&outline_stroke, scene.stroke_tolerance(element_affine));
+			scene.fill_path(peniko::Fill::NonZero, element_affine, outline_color_peniko, None, &outline);
 		}
 		_ => {
 			if use_layer {

@@ -19,7 +19,7 @@ pub use connectivity::*;
 pub use contour::*;
 pub use flatten::{WorkingVector, vector_from_legacy_parts};
 pub use geometry::VectorGeometry;
-pub use geometry_cache::{GeometryCache, SetVectorPaths, set_paths_at};
+pub use geometry_cache::{GeometryCache, PlacedContours, SetVectorPaths, set_paths_at};
 pub use path::*;
 pub use reference_point::*;
 pub use vector_attributes::*;
