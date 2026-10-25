@@ -345,21 +345,110 @@ impl EffectPasses {
 			recorder.textures.release(scratch);
 		}
 
-		for index in 1..target.mip_level_count() {
-			let level_size = UVec2::new(target.width() >> index, target.height() >> index).max(UVec2::ONE);
-			recorder.run_into(
+		self.record_mipmaps(device, &mut recorder.encoder, target);
+		queue.submit([recorder.encoder.finish()]);
+	}
+
+	/// Records the averaging of each of `texture`'s smaller mip levels from the one above it, like the levels of an uploaded image.
+	pub(crate) fn record_mipmaps(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture) {
+		let level = |level: u32| {
+			texture.create_view(&wgpu::TextureViewDescriptor {
+				base_mip_level: level,
+				mip_level_count: Some(1),
+				..Default::default()
+			})
+		};
+
+		for index in 1..texture.mip_level_count() {
+			let level_size = UVec2::new(texture.width() >> index, texture.height() >> index).max(UVec2::ONE);
+			self.record(
+				device,
+				encoder,
 				"halve",
-				target.format(),
-				&level(target, index),
+				texture.format(),
+				&level(index),
 				level_size,
-				&level(target, index - 1),
+				&level(index - 1),
 				None,
 				None,
 				Parameters::default(),
 			);
 		}
+	}
 
-		queue.submit([recorder.encoder.finish()]);
+	/// Records the shader's `entry_point` into `target`, a view of `format` and `size`, reading the `source` view and optionally the `secondary` and `content` views.
+	#[expect(clippy::too_many_arguments)]
+	fn record(
+		&self,
+		device: &wgpu::Device,
+		encoder: &mut wgpu::CommandEncoder,
+		entry_point: &'static str,
+		format: wgpu::TextureFormat,
+		target: &wgpu::TextureView,
+		size: UVec2,
+		source: &wgpu::TextureView,
+		secondary: Option<&wgpu::TextureView>,
+		content: Option<&wgpu::TextureView>,
+		parameters: Parameters,
+	) {
+		let parameters = Parameters {
+			target_to_uv: [1. / size.x as f32, 1. / size.y as f32],
+			..parameters
+		};
+
+		let (secondary, content) = (secondary.unwrap_or(source), content.unwrap_or(source));
+		let parameters_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+			label: Some("vello_effects_parameters"),
+			contents: bytemuck::bytes_of(&parameters),
+			usage: wgpu::BufferUsages::UNIFORM,
+		});
+		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: Some("vello_effects_bind_group"),
+			layout: &self.bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(source),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: wgpu::BindingResource::TextureView(secondary),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
+					resource: wgpu::BindingResource::TextureView(content),
+				},
+				wgpu::BindGroupEntry {
+					binding: 3,
+					resource: wgpu::BindingResource::Sampler(&self.sampler),
+				},
+				wgpu::BindGroupEntry {
+					binding: 4,
+					resource: parameters_buffer.as_entire_binding(),
+				},
+			],
+		});
+
+		let pipeline = self.pipeline(device, entry_point, format);
+		let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+			label: Some(entry_point),
+			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+				view: target,
+				resolve_target: None,
+				ops: wgpu::Operations {
+					load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+					store: wgpu::StoreOp::Store,
+				},
+				depth_slice: None,
+			})],
+			depth_stencil_attachment: None,
+			timestamp_writes: None,
+			occlusion_query_set: None,
+			multiview_mask: None,
+		});
+		pass.set_pipeline(&pipeline);
+		pass.set_bind_group(0, &bind_group, &[]);
+		pass.draw(0..3, 0..1);
 	}
 }
 
@@ -413,64 +502,8 @@ impl PassRecorder<'_> {
 		content: Option<&wgpu::TextureView>,
 		parameters: Parameters,
 	) {
-		let parameters = Parameters {
-			target_to_uv: [1. / size.x as f32, 1. / size.y as f32],
-			..parameters
-		};
-
-		let (secondary, content) = (secondary.unwrap_or(source), content.unwrap_or(source));
-		let parameters_buffer = self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-			label: Some("vello_effects_parameters"),
-			contents: bytemuck::bytes_of(&parameters),
-			usage: wgpu::BufferUsages::UNIFORM,
-		});
-		let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-			label: Some("vello_effects_bind_group"),
-			layout: &self.passes.bind_group_layout,
-			entries: &[
-				wgpu::BindGroupEntry {
-					binding: 0,
-					resource: wgpu::BindingResource::TextureView(source),
-				},
-				wgpu::BindGroupEntry {
-					binding: 1,
-					resource: wgpu::BindingResource::TextureView(secondary),
-				},
-				wgpu::BindGroupEntry {
-					binding: 2,
-					resource: wgpu::BindingResource::TextureView(content),
-				},
-				wgpu::BindGroupEntry {
-					binding: 3,
-					resource: wgpu::BindingResource::Sampler(&self.passes.sampler),
-				},
-				wgpu::BindGroupEntry {
-					binding: 4,
-					resource: parameters_buffer.as_entire_binding(),
-				},
-			],
-		});
-
-		let pipeline = self.passes.pipeline(self.device, entry_point, format);
-		let mut pass = self.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-			label: Some(entry_point),
-			color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-				view: target,
-				resolve_target: None,
-				ops: wgpu::Operations {
-					load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
-					store: wgpu::StoreOp::Store,
-				},
-				depth_slice: None,
-			})],
-			depth_stencil_attachment: None,
-			timestamp_writes: None,
-			occlusion_query_set: None,
-			multiview_mask: None,
-		});
-		pass.set_pipeline(&pipeline);
-		pass.set_bind_group(0, &bind_group, &[]);
-		pass.draw(0..3, 0..1);
+		self.passes
+			.record(self.device, &mut self.encoder, entry_point, format, target, size, source, secondary, content, parameters);
 	}
 
 	/// Puts `next` in place of the texture in `slot`, returning the old one to the pool.

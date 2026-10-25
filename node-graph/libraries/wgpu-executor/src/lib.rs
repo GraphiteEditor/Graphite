@@ -4,6 +4,7 @@ mod pipeline;
 mod texture_cache;
 pub mod texture_conversion;
 mod vello_effects;
+mod vello_generators;
 mod vello_render;
 
 use crate::texture_cache::TextureCache;
