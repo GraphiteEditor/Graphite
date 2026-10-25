@@ -3702,7 +3702,7 @@ impl DocumentMessageHandler {
 						entry.tooltip_description = "
 							*Normal*, *Outline*, and *Pixel Preview* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
 							\n\
-							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
+							This functionality requires WebGL2 support.
 							"
 						.trim()
 						.into();

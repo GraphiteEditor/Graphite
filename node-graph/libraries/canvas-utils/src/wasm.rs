@@ -52,35 +52,43 @@ impl Canvas for CanvasHandle {
 }
 
 #[cfg(feature = "wgpu")]
-pub struct CanvasSurfaceHandle(CanvasHandle, Option<Arc<WgpuSurface>>);
+const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+
+#[cfg(feature = "wgpu")]
+pub struct CanvasSurfaceHandle {
+	canvas: CanvasHandle,
+	surface: Option<Arc<WgpuSurface>>,
+	blitter: Option<wgpu::util::TextureBlitter>,
+}
 #[cfg(feature = "wgpu")]
 impl CanvasSurfaceHandle {
 	pub fn new() -> Self {
-		Self(CanvasHandle::new(), None)
+		Self {
+			canvas: CanvasHandle::new(),
+			surface: None,
+			blitter: None,
+		}
 	}
 	fn surface(&mut self, executor: &WgpuExecutor) -> &WgpuSurface {
-		if self.1.is_none() {
-			let canvas = self.0.get().canvas.clone();
-			let surface = executor
-				.context()
-				.instance
-				.create_surface(wgpu::SurfaceTarget::Canvas(canvas))
-				.expect("Failed to create surface from canvas");
-			self.1 = Some(Arc::new(surface));
+		if self.surface.is_none() {
+			// A WebGL2 device can only present to the canvas it was created from
+			let webgl_canvas = &executor.context().webgl_canvas;
+			self.canvas = CanvasHandle(Some(Arc::new(CanvasImpl::from_canvas(webgl_canvas.canvas.clone()))));
+			self.surface = Some(webgl_canvas.surface.clone());
 		}
-		self.1.as_ref().unwrap()
+		self.surface.as_ref().unwrap()
 	}
 }
 #[cfg(feature = "wgpu")]
 impl Canvas for CanvasSurfaceHandle {
 	fn id(&mut self) -> CanvasId {
-		self.0.id()
+		self.canvas.id()
 	}
 	fn context(&mut self) -> CanvasRenderingContext2d {
-		self.0.context()
+		self.canvas.context()
 	}
 	fn set_resolution(&mut self, resolution: glam::UVec2) {
-		self.0.set_resolution(resolution);
+		self.canvas.set_resolution(resolution);
 	}
 }
 #[cfg(feature = "wgpu")]
@@ -92,7 +100,6 @@ impl CanvasSurface for CanvasSurfaceHandle {
 
 		let surface = self.surface(executor);
 
-		// Blit the texture to the surface
 		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("Texture to Surface Blit"),
 		});
@@ -104,13 +111,14 @@ impl CanvasSurface for CanvasSurfaceHandle {
 		surface.configure(
 			&context.device,
 			&wgpu::SurfaceConfiguration {
-				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
-				format: wgpu::TextureFormat::Rgba8Unorm,
+				usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+				format: SURFACE_FORMAT,
 				color_space: wgpu::SurfaceColorSpace::Auto,
 				width: size.width,
 				height: size.height,
 				present_mode: surface_caps.present_modes[0],
-				alpha_mode: wgpu::CompositeAlphaMode::PreMultiplied,
+				// WebGL2 only accepts opaque, but its canvas is still composited as premultiplied
+				alpha_mode: wgpu::CompositeAlphaMode::Opaque,
 				view_formats: vec![],
 				desired_maximum_frame_latency: 2,
 			},
@@ -121,21 +129,11 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			_ => panic!("Failed to get surface texture"),
 		};
 
-		encoder.copy_texture_to_texture(
-			wgpu::TexelCopyTextureInfoBase {
-				texture: source_texture,
-				mip_level: 0,
-				origin: Default::default(),
-				aspect: Default::default(),
-			},
-			wgpu::TexelCopyTextureInfoBase {
-				texture: &surface_texture.texture,
-				mip_level: 0,
-				origin: Default::default(),
-				aspect: Default::default(),
-			},
-			source_texture.size(),
-		);
+		// Draw the texture onto the surface, since WebGL2 surfaces can't be copied into
+		let blitter = self.blitter.get_or_insert_with(|| wgpu::util::TextureBlitter::new(&context.device, SURFACE_FORMAT));
+		let source_view = source_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let target_view = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
+		blitter.copy(&context.device, &mut encoder, &source_view, &target_view);
 
 		surface_texture.queue.submit([encoder.finish()]);
 		surface_texture.present();
@@ -154,6 +152,10 @@ impl CanvasImpl {
 		let document = window().expect("should have a window in this context").document().expect("window should have a document");
 
 		let canvas: HtmlCanvasElement = document.create_element("canvas").unwrap().dyn_into::<HtmlCanvasElement>().unwrap();
+		Self::from_canvas(canvas)
+	}
+
+	fn from_canvas(canvas: HtmlCanvasElement) -> Self {
 		let canvas_id = CANVAS_IDS.fetch_add(1, Ordering::SeqCst);
 
 		// Store the canvas in the global scope so it doesn't get garbage collected

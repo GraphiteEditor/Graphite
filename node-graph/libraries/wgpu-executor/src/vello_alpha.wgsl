@@ -3,6 +3,10 @@
 struct Parameters {
 	// Nonzero when the source texture's format decodes sRGB to linear on load, so it must be encoded back
 	source_is_srgb: u32,
+	// WebGL2 needs uniform structs to span a multiple of 16 bytes
+	_pad_1: u32,
+	_pad_2: u32,
+	_pad_3: u32,
 }
 
 @group(0) @binding(0) var source: texture_2d<f32>;
