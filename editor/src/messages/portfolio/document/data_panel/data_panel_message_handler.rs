@@ -13,7 +13,6 @@ use graphene_std::core_types::misc::format_f64;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{INTERNAL_ATTRIBUTE_PREFIX, Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
-use graphene_std::memo::IORecord;
 use graphene_std::raster::{
 	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RelativeAbsolute,
 	SelectiveColorChoice, TonalRange,
@@ -31,7 +30,7 @@ use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
 use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel, SegmentId, Vector};
-use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
+use graphene_std::{Appearance, Artboard, Color, Cover, Coverage, Graphic};
 use kurbo::BezPath;
 use std::any::Any;
 use std::sync::Arc;
@@ -166,138 +165,168 @@ struct LayoutData<'a> {
 	breadcrumbs: Vec<String>,
 }
 
+/// Calls the given macro with its arguments followed by the bracketed list of every value type the Data panel can show.
+macro_rules! inspectable_types {
+	($callback:ident $(, $argument:expr)*) => {
+		$callback!($($argument,)* [
+			List<Artboard>,
+			List<Graphic>,
+			List<Vector>,
+			List<Raster<CPU>>,
+			List<Raster<GPU>>,
+			List<Color>,
+			List<Gradient>,
+			List<String>,
+			List<f64>,
+			List<i64>,
+			List<bool>,
+			List<DVec2>,
+			List<DAffine2>,
+			List<BlendMode>,
+			List<GradientForm>,
+			List<GradientSpread>,
+			List<GradientSpace>,
+			List<GradientHueDirection>,
+			List<GradientInterpolation>,
+			List<DashPattern>,
+			List<BoxCorners>,
+			List<TransferCurve>,
+			List<StrokeJoin>,
+			List<StrokeAlign>,
+			List<StrokeCap>,
+			List<WeldMethod>,
+			List<UnweldMethod>,
+			List<ExtrudeJoiningAlgorithm>,
+			List<PointSpacingType>,
+			List<StringCapitalization>,
+			List<TextDenomination>,
+			List<DesaturateMethod>,
+			List<RedGreenBlue>,
+			List<RelativeAbsolute>,
+			List<SelectiveColorChoice>,
+			List<TonalRange>,
+			List<AdjustmentChannel>,
+			List<HueSaturationRange>,
+			List<ScaleType>,
+			List<ReferencePoint>,
+			List<CentroidType>,
+			List<BooleanOperation>,
+			List<NoiseType>,
+			List<FractalType>,
+			List<CellularDistanceFunction>,
+			List<CellularReturnType>,
+			List<DomainWarpType>,
+			List<RealTimeMode>,
+			List<GridType>,
+			List<GridTopology>,
+			List<ArcType>,
+			List<SpiralType>,
+			List<TextAlign>,
+			List<QRCodeErrorCorrectionLevel>,
+			List<InterpolationDistribution>,
+			List<RowsOrColumns>,
+			Item<Artboard>,
+			Item<Graphic>,
+			Item<Vector>,
+			Item<Raster<CPU>>,
+			Item<Raster<GPU>>,
+			Item<Color>,
+			Item<Gradient>,
+			Item<String>,
+			Item<f64>,
+			Item<i64>,
+			Item<bool>,
+			Item<DVec2>,
+			Item<DAffine2>,
+			Item<BlendMode>,
+			Item<GradientForm>,
+			Item<GradientSpread>,
+			Item<GradientSpace>,
+			Item<GradientHueDirection>,
+			Item<GradientInterpolation>,
+			Item<DashPattern>,
+			Item<BoxCorners>,
+			Item<TransferCurve>,
+			Item<StrokeJoin>,
+			Item<StrokeAlign>,
+			Item<StrokeCap>,
+			Item<WeldMethod>,
+			Item<UnweldMethod>,
+			Item<ExtrudeJoiningAlgorithm>,
+			Item<PointSpacingType>,
+			Item<StringCapitalization>,
+			Item<TextDenomination>,
+			Item<DesaturateMethod>,
+			Item<RedGreenBlue>,
+			Item<RelativeAbsolute>,
+			Item<SelectiveColorChoice>,
+			Item<TonalRange>,
+			Item<AdjustmentChannel>,
+			Item<HueSaturationRange>,
+			Item<ScaleType>,
+			Item<ReferencePoint>,
+			Item<CentroidType>,
+			Item<BooleanOperation>,
+			Item<NoiseType>,
+			Item<FractalType>,
+			Item<CellularDistanceFunction>,
+			Item<CellularReturnType>,
+			Item<DomainWarpType>,
+			Item<RealTimeMode>,
+			Item<GridType>,
+			Item<GridTopology>,
+			Item<ArcType>,
+			Item<SpiralType>,
+			Item<TextAlign>,
+			Item<QRCodeErrorCorrectionLevel>,
+			Item<InterpolationDistribution>,
+			Item<RowsOrColumns>,
+		])
+	};
+}
+
 macro_rules! generate_layout_downcast {
 	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
 		if false { None }
 		$(
-			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
-				Some(io.output.layout_with_breadcrumb($data))
+			else if let Some(value) = $introspected_data.downcast_ref::<$ty>() {
+				Some(value.layout_with_breadcrumb($data))
 			}
 		)*
 		else { None }
 	}
 }
+
+macro_rules! shareable_downcast {
+	($output:expr, [ $($ty:ty),* $(,)? ]) => {{
+		let output = $output;
+		$(
+			let output = match output.downcast::<$ty>() {
+				Ok(value) => return Some(Arc::new(*value)),
+				Err(output) => output,
+			};
+		)*
+		drop(output);
+		None
+	}};
+}
+
+/// Turns an evaluated node's type-erased output into a value the Data panel can share and show, if it's of a type the panel knows.
+pub fn shareable_inspect_output(output: graphene_std::core_types::registry::Any) -> Option<Arc<dyn Any + Send + Sync + 'static>> {
+	let output = match output.downcast::<Item<NodeIdPath>>() {
+		Ok(path) => return Some(Arc::new(*path)),
+		Err(output) => output,
+	};
+	inspectable_types!(shareable_downcast, output)
+}
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `Item<NodeIdPath>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<NodeIdPath>>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(&io.output.element().0, data));
+	if let Some(path) = introspected_data.downcast_ref::<Item<NodeIdPath>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&path.element().0, data));
 	}
-	generate_layout_downcast!(introspected_data, data, [
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<String>,
-		List<f64>,
-		List<i64>,
-		List<bool>,
-		List<DVec2>,
-		List<DAffine2>,
-		List<BlendMode>,
-		List<GradientForm>,
-		List<GradientSpread>,
-		List<GradientSpace>,
-		List<GradientHueDirection>,
-		List<GradientInterpolation>,
-		List<DashPattern>,
-		List<BoxCorners>,
-		List<TransferCurve>,
-		List<StrokeJoin>,
-		List<StrokeAlign>,
-		List<StrokeCap>,
-		List<WeldMethod>,
-		List<UnweldMethod>,
-		List<ExtrudeJoiningAlgorithm>,
-		List<PointSpacingType>,
-		List<StringCapitalization>,
-		List<TextDenomination>,
-		List<DesaturateMethod>,
-		List<RedGreenBlue>,
-		List<RelativeAbsolute>,
-		List<SelectiveColorChoice>,
-		List<TonalRange>,
-		List<AdjustmentChannel>,
-		List<HueSaturationRange>,
-		List<ScaleType>,
-		List<ReferencePoint>,
-		List<CentroidType>,
-		List<BooleanOperation>,
-		List<NoiseType>,
-		List<FractalType>,
-		List<CellularDistanceFunction>,
-		List<CellularReturnType>,
-		List<DomainWarpType>,
-		List<RealTimeMode>,
-		List<GridType>,
-		List<GridTopology>,
-		List<ArcType>,
-		List<SpiralType>,
-		List<TextAlign>,
-		List<QRCodeErrorCorrectionLevel>,
-		List<InterpolationDistribution>,
-		List<RowsOrColumns>,
-		Item<Artboard>,
-		Item<Graphic>,
-		Item<Vector>,
-		Item<Raster<CPU>>,
-		Item<Raster<GPU>>,
-		Item<Color>,
-		Item<Gradient>,
-		Item<String>,
-		Item<f64>,
-		Item<i64>,
-		Item<bool>,
-		Item<DVec2>,
-		Item<DAffine2>,
-		Item<BlendMode>,
-		Item<GradientForm>,
-		Item<GradientSpread>,
-		Item<GradientSpace>,
-		Item<GradientHueDirection>,
-		Item<GradientInterpolation>,
-		Item<DashPattern>,
-		Item<BoxCorners>,
-		Item<TransferCurve>,
-		Item<StrokeJoin>,
-		Item<StrokeAlign>,
-		Item<StrokeCap>,
-		Item<WeldMethod>,
-		Item<UnweldMethod>,
-		Item<ExtrudeJoiningAlgorithm>,
-		Item<PointSpacingType>,
-		Item<StringCapitalization>,
-		Item<TextDenomination>,
-		Item<DesaturateMethod>,
-		Item<RedGreenBlue>,
-		Item<RelativeAbsolute>,
-		Item<SelectiveColorChoice>,
-		Item<TonalRange>,
-		Item<AdjustmentChannel>,
-		Item<HueSaturationRange>,
-		Item<ScaleType>,
-		Item<ReferencePoint>,
-		Item<CentroidType>,
-		Item<BooleanOperation>,
-		Item<NoiseType>,
-		Item<FractalType>,
-		Item<CellularDistanceFunction>,
-		Item<CellularReturnType>,
-		Item<DomainWarpType>,
-		Item<RealTimeMode>,
-		Item<GridType>,
-		Item<GridTopology>,
-		Item<ArcType>,
-		Item<SpiralType>,
-		Item<TextAlign>,
-		Item<QRCodeErrorCorrectionLevel>,
-		Item<InterpolationDistribution>,
-		Item<RowsOrColumns>,
-	])
+	inspectable_types!(generate_layout_downcast, introspected_data, data)
 }
 
 fn column_headings(value: &[&str]) -> Vec<WidgetInstance> {
