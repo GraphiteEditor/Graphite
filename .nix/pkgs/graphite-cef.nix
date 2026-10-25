@@ -67,7 +67,6 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     runHook preInstall
 
-    sed 's/-O0/-O2/' -i cmake/cef_variables.cmake
     patchelf --set-rpath "${rpath}" --set-interpreter "${pkgs.stdenv.cc.bintools.dynamicLinker}" Release/chrome-sandbox
     patchelf --add-needed libudev.so --set-rpath "${rpath}" Release/libcef.so
     if [ -e Release/libEGL.so ]; then
@@ -78,15 +77,9 @@ pkgs.stdenv.mkDerivation {
     fi
     patchelf --set-rpath "${gl_rpath}" Release/libvk_swiftshader.so
     patchelf --set-rpath "${gl_rpath}" Release/libvulkan.so.1
-    cp --recursive . $out
-
-    runHook postInstall
-  '';
-
-  postInstall = ''
-    rm -r $out/* $out/.* || true
     strip ./Release/*.so*
-    mkdir $out/lib
+
+    mkdir -p $out/lib
     mv ./Release/* $out/lib/
     find "./Resources/locales" -maxdepth 1 -type f ! -name 'en-US.pak' -delete
     mv ./Resources/* $out/lib/
@@ -101,5 +94,7 @@ pkgs.stdenv.mkDerivation {
         sha1 = "";
       }
     }' > $out/lib/archive.json
+
+    runHook postInstall
   '';
 }
