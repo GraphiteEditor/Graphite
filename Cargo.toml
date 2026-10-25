@@ -297,6 +297,6 @@ debug = true
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
 # TODO: Remove these once the fork's fixes are upstreamed and released
-vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
-vello_common = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
-vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
+vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
+vello_common = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }
+vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "4df331db2a02cb0f1cef4a0190dbbb2a00f4b075" }

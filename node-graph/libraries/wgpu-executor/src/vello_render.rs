@@ -406,33 +406,81 @@ fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, pixels: &[u8], widt
 	let (texture_width, texture_height) = image_texture_size(width, height, max_texture_size);
 	let pixels = if factor == 1 { premultiplied } else { box_downscale(&premultiplied, width, height, factor) };
 
-	let texture = create_texture(
-		device,
-		"vello_gpu_image",
-		UVec2::new(texture_width, texture_height),
-		wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-	);
-	queue.write_texture(
-		wgpu::TexelCopyTextureInfo {
-			texture: &texture,
-			mip_level: 0,
-			origin: wgpu::Origin3d::ZERO,
-			aspect: wgpu::TextureAspect::All,
-		},
-		&pixels,
-		wgpu::TexelCopyBufferLayout {
-			offset: 0,
-			bytes_per_row: Some(4 * texture_width),
-			rows_per_image: Some(texture_height),
-		},
-		wgpu::Extent3d {
+	// Each mipmap level halves the one before it, so a minified image averages its pixels rather than skipping over them
+	let level_count = texture_width.max(texture_height).ilog2() + 1;
+	let texture = device.create_texture(&wgpu::TextureDescriptor {
+		label: Some("vello_gpu_image"),
+		size: wgpu::Extent3d {
 			width: texture_width,
 			height: texture_height,
 			depth_or_array_layers: 1,
 		},
-	);
+		mip_level_count: level_count,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format: TEXTURE_FORMAT,
+		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+		view_formats: &[],
+	});
+
+	let (mut level_pixels, mut level_width, mut level_height) = (pixels, texture_width, texture_height);
+	for level in 0..level_count {
+		if level > 0 {
+			(level_pixels, level_width, level_height) = halve_for_mipmap(&level_pixels, level_width, level_height);
+		}
+
+		queue.write_texture(
+			wgpu::TexelCopyTextureInfo {
+				texture: &texture,
+				mip_level: level,
+				origin: wgpu::Origin3d::ZERO,
+				aspect: wgpu::TextureAspect::All,
+			},
+			&level_pixels,
+			wgpu::TexelCopyBufferLayout {
+				offset: 0,
+				bytes_per_row: Some(4 * level_width),
+				rows_per_image: Some(level_height),
+			},
+			wgpu::Extent3d {
+				width: level_width,
+				height: level_height,
+				depth_or_array_layers: 1,
+			},
+		);
+	}
 
 	Some(texture)
+}
+
+/// Halves premultiplied RGBA8 pixels to the next mipmap level's size, which rounds down, so the last pixel of each row and column of an odd side averages three.
+/// O(width × height).
+fn halve_for_mipmap(pixels: &[u8], width: u32, height: u32) -> (Vec<u8>, u32, u32) {
+	let (half_width, half_height) = ((width / 2).max(1), (height / 2).max(1));
+	// The source pixels along one side that an output pixel averages
+	let span = |index: u32, half: u32, full: u32| {
+		let start = index * 2;
+		let end = if index + 1 == half { full } else { start + 2 };
+		start..end.clamp(start + 1, full)
+	};
+
+	let mut output = Vec::with_capacity((half_width * half_height * 4) as usize);
+	for output_y in 0..half_height {
+		for output_x in 0..half_width {
+			let mut sums = [0_u32; 4];
+			let mut count = 0;
+			for y in span(output_y, half_height, height) {
+				for x in span(output_x, half_width, width) {
+					let index = ((y * width + x) * 4) as usize;
+					sums.iter_mut().zip(&pixels[index..index + 4]).for_each(|(sum, channel)| *sum += *channel as u32);
+					count += 1;
+				}
+			}
+			output.extend(sums.map(|sum| ((sum + count / 2) / count) as u8));
+		}
+	}
+
+	(output, half_width, half_height)
 }
 
 /// Averages each `factor` by `factor` block of RGBA8 pixels, letting blocks at the right and bottom edges average only the pixels they have.
