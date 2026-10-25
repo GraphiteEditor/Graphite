@@ -1016,7 +1016,7 @@ fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
 	let _: Option<Item<Vector>> = tree.eval(NodeId(1), &frame);
 
 	let last = tree.last_context(NodeId(1)).unwrap().flatten().unwrap();
-	let normalized: Context = last.with_replaced_footprint_and_time(Footprint::default(), 0.).into_context();
+	let normalized: Context = last.with_replaced_footprint_and_time(Some(Footprint::default()), Some(0.)).into_context();
 	assert_eq!(normalized.try_animation_time(), Some(0.));
 	assert!(normalized.try_footprint().is_none());
 	assert_eq!(normalized.try_index().map(|index| index.collect::<Vec<_>>()), Some(vec![3]));
@@ -1031,7 +1031,7 @@ fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
 
 #[test]
 fn a_document_node_made_of_several_proto_nodes_resolves_to_the_one_used_outside_of_it() {
-	// Document node 5 became a value and a Bounding Box, which document node 6 takes as its input
+	// Document node 5 became two proto nodes, the second of them used by document node 6
 	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(Vector)).into()), vec![NodeId(5), NodeId(0)]);
 	let mut inner_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(5), NodeId(1)]);
 	inner_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");

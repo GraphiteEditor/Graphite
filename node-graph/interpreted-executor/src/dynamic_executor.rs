@@ -317,13 +317,8 @@ impl BorrowTree {
 		self.nodes.get(&id).map(|(node, _, _)| node.clone() as SharedNodeContainer)
 	}
 
-	/// The context features this node's output depends on.
-	pub fn context_features(&self, id: NodeId) -> core_types::ContextFeatures {
-		self.context_features.get(&id).copied().unwrap_or_default()
-	}
-
-	/// The node giving the output of the document node at this path: its own proto node, or for a document node that became several proto
-	/// nodes (like a subnetwork, or a node the preprocessor wrapped), the one among them whose output is used outside of them.
+	/// The proto node giving the output of the document node at this path, which for a document node that became several proto nodes
+	/// (like a subnetwork or a node the preprocessor wrapped) is the one among them used outside of them.
 	pub fn output_node(&self, node_path: &[NodeId], graph_output: NodeId) -> Option<NodeId> {
 		if let Some((id, _)) = self.source_map.get(node_path) {
 			return Some(*id);
@@ -341,6 +336,11 @@ impl BorrowTree {
 			.filter(|input| inner_nodes.contains(input))
 			.min()
 			.copied()
+	}
+
+	/// The context features this node's output depends on.
+	pub fn context_features(&self, id: NodeId) -> core_types::ContextFeatures {
+		self.context_features.get(&id).copied().unwrap_or_default()
 	}
 
 	pub fn input_node(&self, node_path: &[NodeId], input_index: usize) -> Result<NodeId, IntrospectError> {

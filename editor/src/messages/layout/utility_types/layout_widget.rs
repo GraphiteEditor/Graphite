@@ -52,6 +52,10 @@ define_layout_target!(
 	ColorPickerDetails,
 	/// The Data panel visualizes the output data flowing through the selected node in the graph.
 	DataPanel,
+	/// The inspected node's context, at the right of the Data panel's top bar.
+	DataPanelContext,
+	/// The inspected node and the path to the data shown, at the left of the Data panel's top bar.
+	DataPanelPath,
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
 	DialogButtons,
 	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
