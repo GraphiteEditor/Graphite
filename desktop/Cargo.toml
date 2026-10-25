@@ -44,7 +44,6 @@ dirs = { workspace = true }
 ron = { workspace = true }
 bytemuck = { workspace = true }
 glam = { workspace = true }
-vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }

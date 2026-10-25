@@ -52,10 +52,6 @@ impl PreferencesMessageHandler {
 			max_render_region_size: self.max_render_region_size,
 		}
 	}
-
-	pub fn supports_wgpu(&self) -> bool {
-		graph_craft::application_io::wgpu_available().unwrap_or_default()
-	}
 }
 
 impl Default for PreferencesMessageHandler {

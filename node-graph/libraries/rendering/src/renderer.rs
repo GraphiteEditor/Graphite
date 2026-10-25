@@ -1,5 +1,6 @@
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
+use crate::vello_scene_builder::VelloSceneBuilder;
 use core_types::CacheHash;
 use core_types::FallibleVec2Operations;
 use core_types::blending::{BlendMode, apply_blend_mode};
@@ -24,14 +25,16 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::raster_types::{CPU, GPU, Image, Raster, Texture};
+use graphic_types::raster_types::{CPU, GPU, Image, Raster};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
 use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
-use graphic_types::vector_types::vector::{GeometryCache, Path, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths};
+use graphic_types::vector_types::vector::{
+	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
+};
 use graphic_types::{Appearance, Artboard, Cover, Coverage, FillAndStroke, Graphic, Vector};
-use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -40,10 +43,9 @@ use skrifa::{GlyphId, MetadataProvider};
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 use std::hash::Hash;
-use std::ops::Deref;
-use std::sync::{Arc, LazyLock};
+use std::sync::Arc;
 use vector_types::gradient::{GradientSettings, GradientSpread};
-use vello::*;
+use vello_gpu::peniko;
 
 /// A borrowed view of one item of ranked content: one index of a `List<T>`'s attributes, or a lone `Item<T>` reading its own envelope.
 /// Lets the per-item render logic serve both the list impls and the `Graphic` leaf variants without cloning.
@@ -143,6 +145,21 @@ impl<'a> ItemRef<'a, Vector> {
 	/// The item's geometry cache, for a copy of the item drawing the same geometry, or a fresh one if it has none.
 	fn geometry_cache(self) -> GeometryCache {
 		self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE).cloned().unwrap_or_default()
+	}
+
+	/// The bounding box of the contours in the item's own space.
+	fn contours_bounding_box(self) -> Option<[DVec2; 2]> {
+		let vector = self.element()?;
+		match self.attribute::<GeometryCache>(ATTR_GEOMETRY_CACHE) {
+			Some(cache) => cache.bounding_box(vector, self.paths()),
+			None => contours_bounding_box(&self.contours(), DAffine2::IDENTITY),
+		}
+	}
+
+	/// The contours placed in the stroke space given by `transform`, with the outlines of the strokes drawn around them.
+	/// Copies of the item drawn in the same stroke space share these, so their strokes are expanded once.
+	fn placed_contours(self, transform: DAffine2) -> Option<Arc<PlacedContours>> {
+		Some(self.geometry_cache().placed_contours(self.element()?, self.paths(), transform))
 	}
 }
 
@@ -358,11 +375,6 @@ impl Default for SvgRender {
 	}
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct RenderContext {
-	pub resource_overrides: Vec<(peniko::ImageBrush, Texture)>,
-}
-
 #[derive(Default, Clone, Copy, Hash, graphene_hash::CacheHash)]
 pub enum RenderOutputType {
 	#[default]
@@ -504,7 +516,7 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 	(outline_stroke, outline_color_peniko)
 }
 
-fn draw_raster_outline(scene: &mut Scene, outline_transform: &DAffine2, render_params: &RenderParams) {
+fn draw_raster_outline(scene: &mut VelloSceneBuilder, outline_transform: &DAffine2, render_params: &RenderParams) {
 	let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
 	let mut outline_path = rectangle_path(DVec2::ZERO, DVec2::ONE);
@@ -808,7 +820,7 @@ pub struct Background {
 pub trait Render: BoundingBox + RenderComplexity {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, _render_params: &RenderParams);
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	/// `inherited_appearance` is the nearest ancestor's appearance, cascading to items that lack their own, mirroring the render cascade.
@@ -830,6 +842,11 @@ pub trait Render: BoundingBox + RenderComplexity {
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
+}
+
+// SAFETY: The trait object borrows nothing, so it is already its own static type
+unsafe impl dyn_any::StaticType for dyn Render + Send + Sync {
+	type Static = dyn Render + Send + Sync;
 }
 
 /// Emits one item of graphic content as SVG, wrapped in a group carrying the item's transform, opacity, and blend mode.
@@ -910,9 +927,8 @@ fn render_graphic_item_to_vello<'a>(
 	item: ItemRef<'a, Graphic>,
 	next_clips: bool,
 	mask_element_and_transform: &mut Option<(&'a Graphic, DAffine2)>,
-	scene: &mut Scene,
+	scene: &mut VelloSceneBuilder,
 	transform: DAffine2,
-	context: &mut RenderContext,
 	render_params: &RenderParams,
 ) {
 	let Some(element) = item.element() else { return };
@@ -955,7 +971,7 @@ fn render_graphic_item_to_vello<'a>(
 	if next_clips && mask_element_and_transform.is_none() {
 		*mask_element_and_transform = Some((element, transform));
 
-		element.render_to_vello(scene, transform, context, render_params);
+		element.render_to_vello(scene, transform, render_params);
 	} else if let Some((mask_element, transform_mask)) = *mask_element_and_transform {
 		if !next_clips {
 			*mask_element_and_transform = None;
@@ -968,7 +984,7 @@ fn render_graphic_item_to_vello<'a>(
 			let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-			mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
+			mask_element.render_to_vello(scene, transform_mask, &render_params.for_clipper());
 			scene.push_layer(
 				peniko::Fill::NonZero,
 				peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
@@ -978,14 +994,14 @@ fn render_graphic_item_to_vello<'a>(
 			);
 		}
 
-		element.render_to_vello(scene, transform, context, render_params);
+		element.render_to_vello(scene, transform, render_params);
 
 		if matches!(bounds, RenderBoundingBox::Rectangle(_)) {
 			scene.pop_layer();
 			scene.pop_layer();
 		}
 	} else {
-		element.render_to_vello(scene, transform, context, render_params);
+		element.render_to_vello(scene, transform, render_params);
 	}
 
 	if layer {
@@ -1109,30 +1125,30 @@ impl Render for Graphic {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		match self {
 			Graphic::None(_) | Graphic::NoneList(_) => (),
-			Graphic::Graphic(item) => render_graphic_item_to_vello(ItemRef::Item(item), false, &mut None, scene, transform, context, render_params),
+			Graphic::Graphic(item) => render_graphic_item_to_vello(ItemRef::Item(item), false, &mut None, scene, transform, render_params),
 			Graphic::Vector(item) => {
 				// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
 				let paint_render_params = RenderParams {
 					inherited_appearance: None,
 					..render_params.clone()
 				};
-				render_vector_item_to_vello(ItemRef::Item(item), false, &mut None, scene, transform, context, render_params, &paint_render_params);
+				render_vector_item_to_vello(ItemRef::Item(item), false, &mut None, scene, transform, render_params, &paint_render_params);
 			}
 			Graphic::RasterCPU(item) => render_raster_cpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, context, render_params),
+			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, render_params),
 			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::VectorList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterCPUList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::ColorList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::GradientList(list) => list.render_to_vello(scene, transform, context, render_params),
-			Graphic::TextList(list) => list.render_to_vello(scene, transform, context, render_params),
+			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::VectorList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::RasterCPUList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::ColorList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::GradientList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::TextList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::StrokeList(_) => (),
 		}
 	}
@@ -1372,9 +1388,7 @@ impl Render for List<Artboard> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
-		use vello::peniko;
-
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
 			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
@@ -1397,7 +1411,7 @@ impl Render for List<Artboard> {
 			let child_transform = transform * DAffine2::from_translation(location);
 			let mut render_params = render_params.clone();
 			render_params.artboard_background = Some(background);
-			content.render_to_vello(scene, child_transform, context, &render_params);
+			content.render_to_vello(scene, child_transform, &render_params);
 			if clip {
 				scene.pop_layer();
 			}
@@ -1453,12 +1467,12 @@ impl Render for List<Graphic> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		let mut mask_element_and_transform = None;
 
 		for index in 0..self.len() {
 			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
-			render_graphic_item_to_vello(ItemRef::ListItem(self, index), next_clips, &mut mask_element_and_transform, scene, transform, context, render_params);
+			render_graphic_item_to_vello(ItemRef::ListItem(self, index), next_clips, &mut mask_element_and_transform, scene, transform, render_params);
 		}
 	}
 
@@ -1732,6 +1746,16 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	}
 }
 
+/// Whether `bounds` placed by `transform` overlaps the scene once widened by `inflation`, which is measured in the space `inflation_transform` maps from.
+fn overlaps_scene(scene: &VelloSceneBuilder, bounds: [DVec2; 2], transform: DAffine2, inflation: f64, inflation_transform: DAffine2) -> bool {
+	let view = DAffine2::from_cols_array(&scene.view().as_coeffs());
+	let (largest_scale, _) = singular_values(view * inflation_transform);
+	let inflation = inflation * largest_scale;
+	let [min, max] = (view * transform * Quad::from_box(bounds)).bounding_box();
+
+	min.x - inflation < scene.width() as f64 && max.x + inflation > 0. && min.y - inflation < scene.height() as f64 && max.y + inflation > 0.
+}
+
 /// Draws one item of vector content into the Vello scene: fill and stroke paints, blend and opacity layering,
 /// stroke alignment compositing, and the sibling clipping run carried in `clip_masker` (inert for a lone item).
 #[allow(clippy::too_many_arguments)]
@@ -1739,9 +1763,8 @@ fn render_vector_item_to_vello(
 	item: ItemRef<'_, Vector>,
 	next_clips: bool,
 	clip_masker: &mut Option<List<Vector>>,
-	scene: &mut Scene,
+	scene: &mut VelloSceneBuilder,
 	parent_transform: DAffine2,
-	context: &mut RenderContext,
 	render_params: &RenderParams,
 	paint_render_params: &RenderParams,
 ) {
@@ -1781,15 +1804,9 @@ fn render_vector_item_to_vello(
 		};
 	}
 	let contours = item.contours();
-	let layer_bounds = contours_bounding_box(&contours, DAffine2::IDENTITY).unwrap_or_default();
-
-	let mut path = kurbo::BezPath::from_vec(Vec::with_capacity(contours.iter().map(|bezpath| bezpath.elements().len()).sum()));
+	let layer_bounds = item.contours_bounding_box().unwrap_or_default();
 	let stroke_affine = Affine::new(applied_stroke_transform.to_cols_array());
-	for bezpath in contours.iter() {
-		for &element in bezpath.elements() {
-			path.push(stroke_affine * element);
-		}
-	}
+	let element_affine = Affine::new(element_transform.to_cols_array());
 
 	// If we're using opacity or a blend mode, we need to push a layer
 	let blend_mode = match render_params.render_mode {
@@ -1805,6 +1822,20 @@ fn render_vector_item_to_vello(
 	let stroke_fully_transparent = stroke_paint.is_none_or(|paint| paint.is_guaranteed_fully_transparent());
 	let can_draw_aligned_stroke =
 		!stroke_fully_transparent && stroke.is_some_and(|s| s.has_renderable_stroke() && s.align.is_not_centered()) && contours.iter().all(|p| matches!(p.elements().last(), Some(PathEl::ClosePath)));
+
+	// Vello only culls after expanding strokes and flattening paths, so an item outside the scene is skipped before any of that work
+	let stroke_inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true)).max(get_outline_styles(render_params).0.width);
+	if !overlaps_scene(scene, layer_bounds, multiplied_transform, stroke_inflation, element_transform) {
+		if next_clips && clip_masker.is_none() {
+			*clip_masker = Some(List::new_from_item(Item::from_parts(element.clone(), item.clone_item_attributes())));
+		} else if clip_masker.is_some() && !next_clips {
+			*clip_masker = None;
+		}
+		return;
+	}
+
+	let Some(placed) = item.placed_contours(applied_stroke_transform) else { return };
+	let path = placed.path();
 
 	let opacity = (opacity_attr * if render_params.for_mask { 1. } else { opacity_fill_attr }) as f32;
 	let needs_blend_layer = opacity < 1. || blend_mode_attr != BlendMode::default();
@@ -1836,7 +1867,7 @@ fn render_vector_item_to_vello(
 	} else if let Some(masker) = clip_masker.as_ref() {
 		if let Some((layer_affine, layer_rect)) = layer_geometry {
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., layer_affine, &layer_rect);
-			masker.render_to_vello(scene, parent_transform, context, &render_params.for_clipper());
+			masker.render_to_vello(scene, parent_transform, &render_params.for_clipper());
 			scene.push_layer(
 				peniko::Fill::NonZero,
 				peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
@@ -1854,16 +1885,16 @@ fn render_vector_item_to_vello(
 
 	let use_layer = can_draw_aligned_stroke;
 
-	let do_fill_path = |scene: &mut Scene, context: &mut RenderContext, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
+	let do_fill_path = |scene: &mut VelloSceneBuilder, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
 		let Some(paint) = fill_paint else { return };
 
-		let solid_fill = |scene: &mut Scene, color: Option<Color>| {
+		let solid_fill = |scene: &mut VelloSceneBuilder, color: Option<Color>| {
 			let Some(color) = color else { return };
 
 			let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
-			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
+			scene.fill_path(fill_rule, element_affine, &fill, None, path);
 		};
-		let gradient_fill = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
+		let gradient_fill = |scene: &mut VelloSceneBuilder, gradient_item: ItemRef<'_, Gradient>| {
 			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
 				return;
 			};
@@ -1874,7 +1905,7 @@ fn render_vector_item_to_vello(
 				Default::default()
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
-			scene.fill(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), path);
+			scene.fill_path(fill_rule, element_affine, &brush, Some(brush_transform), path);
 		};
 
 		match paint {
@@ -1898,24 +1929,24 @@ fn render_vector_item_to_vello(
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
 				scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
-				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
+				paint.render_to_vello(scene, multiplied_transform, paint_render_params);
 				scene.pop_layer();
 			}
 		};
 	};
 
 	let use_face_fill = element.use_face_fill(element_paths);
-	let do_fill = |scene: &mut Scene, context: &mut RenderContext| {
+	let do_fill = |scene: &mut VelloSceneBuilder| {
 		if use_face_fill {
 			for face_path in item.faces().iter() {
-				do_fill_path(scene, context, &(stroke_affine * face_path), peniko::Fill::NonZero);
+				do_fill_path(scene, &(stroke_affine * face_path), peniko::Fill::NonZero);
 			}
 		} else {
-			do_fill_path(scene, context, &path, peniko::Fill::NonZero);
+			do_fill_path(scene, path, peniko::Fill::NonZero);
 		}
 	};
 
-	let do_stroke = |scene: &mut Scene, width_scale: f64, context: &mut RenderContext| {
+	let do_stroke = |scene: &mut VelloSceneBuilder, width_scale: f64| {
 		let Some(paint) = stroke_paint else { return };
 		let Some(stroke) = stroke else { return };
 
@@ -1944,14 +1975,15 @@ fn render_vector_item_to_vello(
 			return;
 		};
 
-		let solid_stroke = |scene: &mut Scene, color: Option<Color>| {
+		let solid_stroke = |scene: &mut VelloSceneBuilder, color: Option<Color>| {
 			let Some(color) = color else { return };
 
 			let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 
-			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, None, &path);
+			let outline = placed.stroke_outline(&stroke, scene.stroke_tolerance(element_affine));
+			scene.fill_path(peniko::Fill::NonZero, element_affine, &brush, None, &outline);
 		};
-		let gradient_stroke = |scene: &mut Scene, gradient_item: ItemRef<'_, Gradient>| {
+		let gradient_stroke = |scene: &mut VelloSceneBuilder, gradient_item: ItemRef<'_, Gradient>| {
 			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
 				return;
 			};
@@ -1962,7 +1994,8 @@ fn render_vector_item_to_vello(
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
-			scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), &brush, Some(brush_transform), &path);
+			let outline = placed.stroke_outline(&stroke, scene.stroke_tolerance(element_affine));
+			scene.fill_path(peniko::Fill::NonZero, element_affine, &brush, Some(brush_transform), &outline);
 		};
 
 		match paint {
@@ -1985,10 +2018,10 @@ fn render_vector_item_to_vello(
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
-				let stroked = peniko::kurbo::stroke(path.iter(), &stroke, &StrokeOpts::default(), 0.01);
+				let stroked = placed.stroke_outline(&stroke, 0.01);
 
-				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &stroked);
-				paint.render_to_vello(scene, multiplied_transform, context, paint_render_params);
+				scene.push_clip_layer(peniko::Fill::NonZero, element_affine, &*stroked);
+				paint.render_to_vello(scene, multiplied_transform, paint_render_params);
 				scene.pop_layer();
 			}
 		};
@@ -1999,7 +2032,8 @@ fn render_vector_item_to_vello(
 		RenderMode::Outline => {
 			let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
-			scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
+			let outline = placed.stroke_outline(&outline_stroke, scene.stroke_tolerance(element_affine));
+			scene.fill_path(peniko::Fill::NonZero, element_affine, outline_color_peniko, None, &outline);
 		}
 		_ => {
 			if use_layer {
@@ -2031,24 +2065,24 @@ fn render_vector_item_to_vello(
 
 				if wants_stroke_below {
 					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-					vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
+					vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
 					scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-					do_stroke(scene, 2., context);
+					do_stroke(scene, 2.);
 
 					scene.pop_layer();
 					scene.pop_layer();
 
-					do_fill(scene, context);
+					do_fill(scene);
 				} else {
 					// Fill first (unclipped), then stroke (clipped) above
-					do_fill(scene, context);
+					do_fill(scene);
 
 					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-					vector_list.render_to_vello(scene, parent_transform, context, &render_params.for_alignment(applied_stroke_transform));
+					vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
 					scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-					do_stroke(scene, 2., context);
+					do_stroke(scene, 2.);
 
 					scene.pop_layer();
 					scene.pop_layer();
@@ -2067,8 +2101,8 @@ fn render_vector_item_to_vello(
 
 				for operation in &order {
 					match operation {
-						Op::Fill => do_fill(scene, context),
-						Op::Stroke => do_stroke(scene, 1., context),
+						Op::Fill => do_fill(scene),
+						Op::Stroke => do_stroke(scene, 1.),
 					}
 				}
 			}
@@ -2220,7 +2254,7 @@ impl Render for List<Vector> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 		let mut clip_masker: Option<List<Vector>> = None;
 
 		// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
@@ -2237,7 +2271,6 @@ impl Render for List<Vector> {
 				&mut clip_masker,
 				scene,
 				parent_transform,
-				context,
 				render_params,
 				&paint_render_params,
 			);
@@ -2443,7 +2476,7 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 }
 
 /// Draws one item of CPU raster content into the Vello scene.
-fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut Scene, transform: DAffine2, render_params: &RenderParams) {
+fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(image) = item.element() else { return };
 	if image.data.is_empty() {
 		return;
@@ -2543,7 +2576,7 @@ impl Render for List<Raster<CPU>> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_raster_cpu_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
@@ -2560,16 +2593,14 @@ impl Render for List<Raster<CPU>> {
 	}
 }
 
-static LAZY_ARC_VEC_ZERO_U8: LazyLock<Arc<Vec<u8>>> = LazyLock::new(|| Arc::new(Vec::new()));
-
 impl Render for List<Raster<GPU>> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
 		log::warn!("tried to render texture as an svg");
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
-			render_raster_gpu_item_to_vello(ItemRef::ListItem(self, index), scene, transform, context, render_params);
+			render_raster_gpu_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
 	}
 
@@ -2584,8 +2615,8 @@ impl Render for List<Raster<GPU>> {
 	}
 }
 
-/// Draws one item of GPU raster content into the Vello scene as a placeholder image, registering the texture override.
-fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+/// Draws one item of GPU raster content into the Vello scene.
+fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(raster) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
@@ -2629,21 +2660,9 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut S
 	let width = raster.data().width();
 	let height = raster.data().height();
 
-	let resource_override_index = context.resource_overrides.len();
-	// Stable across frames so vello reuses the atlas slot; high bit avoids Blob::new counter ids.
-	let blob_id = (resource_override_index as u64) << 40 | (width as u64) << 20 | height as u64 | 1 << 63;
-	let blob = peniko::Blob::from_raw_parts(LAZY_ARC_VEC_ZERO_U8.deref().clone(), blob_id);
-	let image = peniko::ImageBrush::new(peniko::ImageData {
-		data: blob,
-		format: peniko::ImageFormat::Rgba8,
-		width,
-		height,
-		alpha_type: peniko::ImageAlphaType::Alpha,
-	})
-	.with_extend(peniko::Extend::Pad);
+	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
-	scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
-	context.resource_overrides.push((image, raster.texture.clone()));
+	scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
 
 	if layer {
 		scene.pop_layer()
@@ -2653,15 +2672,14 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut S
 impl Render for List<brush_types::Stroke> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
 
-	fn render_to_vello(&self, _scene: &mut Scene, _transform: DAffine2, _context: &mut RenderContext, _render_params: &RenderParams) {}
+	fn render_to_vello(&self, _scene: &mut VelloSceneBuilder, _transform: DAffine2, _render_params: &RenderParams) {}
 }
 
 // Since colors and gradients are technically infinitely big, we have to implement
 // workarounds for rendering them correctly in a way which still allows us
 // to cache the intermediate render data (SVG string/Vello scene).
 // For SVG, this is is achived by creating a truly giant rectangle.
-// For Vello, we create a layer with a placeholder transform which we
-// later replace with the current viewport transform before each render.
+// For Vello, the scene records a viewport fill that covers whatever area each render draws.
 impl Render for List<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
@@ -2669,7 +2687,7 @@ impl Render for List<Color> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, _parent_transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_color_item_to_vello(ItemRef::ListItem(self, index), scene, render_params);
 		}
@@ -2705,10 +2723,8 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 	});
 }
 
-/// Draws one item of color content into the Vello scene under the viewport-replaced infinite transform.
-fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut Scene, render_params: &RenderParams) {
-	use vello::peniko;
-
+/// Draws one item of color content into the Vello scene, covering the whole render area.
+fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBuilder, render_params: &RenderParams) {
 	let Some(color) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
@@ -2718,16 +2734,13 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut Scene, rende
 
 	let vello_color = SRGBA8::from(*color).to_peniko_color();
 
-	let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
-
 	let mut layer = false;
 	if opacity < 1. || blend_mode_attr != BlendMode::default() {
-		let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-		scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+		scene.push_viewport_layer(peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver), opacity);
 		layer = true;
 	}
 
-	scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
+	scene.fill_viewport(vello_color, None);
 
 	if layer {
 		scene.pop_layer();
@@ -2790,7 +2803,7 @@ impl Render for List<Gradient> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_gradient_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
 		}
@@ -2896,10 +2909,8 @@ fn render_gradient_item_svg_with_thumbnail_rect(item: ItemRef<'_, Gradient>, thu
 	});
 }
 
-/// Draws one item of gradient content into the Vello scene under the viewport-replaced infinite transform.
-fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene, parent_transform: DAffine2, render_params: &RenderParams) {
-	use vello::peniko;
-
+/// Draws one item of gradient content into the Vello scene, covering the whole render area.
+fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 	if let RenderMode::Outline = render_params.render_mode {
 		return;
 	}
@@ -2948,24 +2959,14 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut Scene,
 			..Default::default()
 		});
 		let brush_transform = kurbo::Affine::new(gradient_placement(gradient_transform, gradient_form).to_cols_array());
-		let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 		let mut layer = false;
 		if opacity < 1. || blend_mode_attr != BlendMode::default() {
-			let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-			// See implementation in `List<Color>` for more detail
-			scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+			scene.push_viewport_layer(peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver), opacity);
 			layer = true;
 		}
 
-		// Encode shape and brush manually instead of Scene.fill(), which would multiply brush_transform by the path transform
-		scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&kurbo::Affine::scale(f64::INFINITY)));
-		scene.encoding_mut().encode_fill_style(peniko::Fill::NonZero);
-		scene.encoding_mut().encode_shape(&rect, true);
-
-		scene.encoding_mut().encode_transform(vello_encoding::Transform::from_kurbo(&brush_transform));
-		scene.encoding_mut().swap_last_path_tags();
-		scene.encoding_mut().encode_brush(&fill, 1.);
+		scene.fill_viewport(&fill, Some(brush_transform));
 
 		if layer {
 			scene.pop_layer();
@@ -3302,7 +3303,7 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 }
 
 /// Draws one item of text content into the Vello scene, laying out its glyphs under the item's styling.
-fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut Scene, transform: DAffine2, render_params: &RenderParams) {
+fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(text) = item.element() else { return };
 	if text.is_empty() {
 		return;
@@ -3421,7 +3422,7 @@ impl Render for List<String> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_text_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
