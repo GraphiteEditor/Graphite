@@ -45,14 +45,16 @@ pub struct NodeRuntime {
 	pending_export: Option<ExecutionRequest>,
 	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
-	update_thumbnails: bool,
 	async_runtime: Option<AsyncRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
-	monitor_nodes: Vec<Vec<NodeId>>,
+	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
+	stale_thumbnails: HashSet<Vec<NodeId>>,
+	/// The layers whose thumbnails the frontend shows, the only ones rendered.
+	thumbnails_in_view: HashSet<NodeId>,
 
 	/// Which node is inspected and which monitor node is used (if any) for the current execution.
 	inspect_state: Option<InspectState>,
@@ -78,6 +80,7 @@ pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	EditorPreferencesUpdate(EditorPreferences),
+	ThumbnailsInView { layers: HashSet<NodeId>, document_id: DocumentId },
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -114,7 +117,6 @@ impl NodeRuntime {
 			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
 			resources: ResourceRegistry::default(),
-			update_thumbnails: true,
 			async_runtime: None,
 
 			editor_api: PlatformEditorApi {
@@ -131,6 +133,8 @@ impl NodeRuntime {
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
 			monitor_nodes: Vec::new(),
+			stale_thumbnails: HashSet::new(),
+			thumbnails_in_view: HashSet::new(),
 
 			preprocessor: preprocessor::Preprocessor::new(),
 
@@ -155,6 +159,7 @@ impl NodeRuntime {
 		let mut graph = None;
 		let mut eyedropper = None;
 		let mut execution = None;
+		let mut thumbnails_in_view = None;
 
 		for request in self.pending_export.is_none().then_some(&self.receiver).into_iter().flat_map(Receiver::try_iter) {
 			match request {
@@ -175,6 +180,19 @@ impl NodeRuntime {
 					}
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
+				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => thumbnails_in_view = Some((layers, document_id)),
+			}
+		}
+
+		// An execution renders the thumbnails that came into view, otherwise they're rendered on their own without evaluating the graph
+		if let Some((layers, document_id)) = thumbnails_in_view {
+			self.thumbnails_in_view = layers;
+			if execution.is_none() && graph.is_none() {
+				let mut responses = VecDeque::new();
+				self.render_stale_thumbnails(&mut responses);
+				if !responses.is_empty() {
+					self.sender.send(NodeGraphUpdate::Thumbnails { responses, document_id }).expect("Failed to send response");
+				}
 			}
 		}
 
@@ -194,6 +212,7 @@ impl NodeRuntime {
 
 		for request in requests {
 			match request {
+				GraphRuntimeRequest::ThumbnailsInView { .. } => {}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = PlatformEditorApi {
@@ -222,8 +241,6 @@ impl NodeRuntime {
 					let result = self.update_network(network);
 					let node_graph_errors = self.node_graph_errors.clone();
 					let node_graph_warnings = self.node_graph_warnings.clone();
-
-					self.update_thumbnails = true;
 
 					self.sender
 						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
@@ -282,13 +299,7 @@ impl NodeRuntime {
 					}
 
 					let mut responses = VecDeque::new();
-					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-					let dropped_thumbnails = if !render_config.for_eyedropper {
-						self.process_monitor_nodes(&mut responses, self.update_thumbnails)
-					} else {
-						Vec::new()
-					};
-					self.update_thumbnails = false;
+					let dropped_thumbnails = if !render_config.for_eyedropper { self.process_monitor_nodes(&mut responses) } else { Vec::new() };
 
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
@@ -382,12 +393,19 @@ impl NodeRuntime {
 			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
 		};
 		self.node_graph_warnings = warnings;
+		let previous_monitor_ids: HashMap<Vec<NodeId>, NodeId> = std::mem::take(&mut self.monitor_nodes).into_iter().collect();
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
 			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
-			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
+			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
+			.collect();
+
+		// A proto node's ID hashes everything upstream of it, so a monitor node whose ID stayed the same records the same output
+		let changed_monitors = self.monitor_nodes.iter().filter(|(path, id)| previous_monitor_ids.get(path) != Some(id));
+		self.stale_thumbnails.extend(changed_monitors.map(|(path, _)| path.clone()));
+		let current_monitors: HashSet<&Vec<NodeId>> = self.monitor_nodes.iter().map(|(path, _)| path).collect();
+		self.stale_thumbnails.retain(|path| current_monitors.contains(path));
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -395,6 +413,7 @@ impl NodeRuntime {
 			(types, format!("{e:?}"))
 		});
 		self.async_runtime().retain_sources(self.executor.sources());
+
 		result
 	}
 
@@ -431,101 +450,80 @@ impl NodeRuntime {
 	}
 
 	/// Updates state data, giving back the layers whose thumbnails were dropped because they're no longer monitored.
-	fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) -> Vec<NodeId> {
+	fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
 		let mut dropped_thumbnails = Vec::new();
 		self.thumbnail_renders.retain(|id, _| {
-			let monitored = self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id));
+			let monitored = self.monitor_nodes.iter().any(|(monitor_node_path, _)| monitor_node_path.contains(id));
 			if !monitored {
 				dropped_thumbnails.push(*id);
 			}
 			monitored
 		});
 
-		for monitor_node_path in &self.monitor_nodes {
-			// Skip the inspect monitor node
-			if self
-				.inspect_state
-				.as_ref()
-				.is_some_and(|inspect_state| monitor_node_path.last().copied() == Some(inspect_state.monitor_node))
-			{
-				continue;
-			}
-
-			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
-			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+		for (monitor_node_path, _) in &self.monitor_nodes {
+			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {
 				warn!("Monitor node has invalid node id");
 				continue;
 			};
 
-			// Extract the monitor node's stored `Graphic` data
-			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
-				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
-				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
-				continue;
-			};
-
-			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content)
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
-				if update_thumbnails {
-					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
-				}
-			}
-			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
-			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
-				if update_thumbnails {
-					let bounds = artboard_clip_bounds(&io.output);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
-				}
-			}
-			// Vector list: vector modifications
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
-				// Insert the vector modify
+			// Vector monitors feed the path editing tools from the output they recorded in this frame
+			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else { continue };
+			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
 				let geometry = VectorGeometry::new(
 					io.output.element(0).cloned().unwrap_or_default(),
 					paths_from_list_row_attributes(&io.output, 0).cloned().unwrap_or_default(),
 				);
 				self.vector_modify.insert(parent_network_node_id, geometry);
-			}
-			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
-				if update_thumbnails {
-					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
-				}
-			}
-			// Rank-0 wires record single items; each arm mirrors its list counterpart through a singleton raise
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Graphic>>>() {
-				if update_thumbnails {
-					let singleton = List::new_from_item(io.output.clone());
-					let bounds = graphene_std::renderer::graphic_list_bounding_box(&singleton, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
-				}
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Artboard>>>() {
-				if update_thumbnails {
-					let singleton = List::new_from_item(io.output.clone());
-					let bounds = artboard_clip_bounds(&singleton);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
-				}
 			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Vector>>>() {
 				self.vector_modify.insert(parent_network_node_id, VectorGeometry::from_item(&io.output));
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<String>>>() {
-				if update_thumbnails {
-					let singleton = List::new_from_item(io.output.clone());
-					let bounds = graphene_std::renderer::text_list_bounding_box(&singleton, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
-				}
-			}
-			// Other
-			else {
-				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}
 		}
 
+		self.render_stale_thumbnails(responses);
+
 		dropped_thumbnails
+	}
+
+	/// Renders the thumbnails of the layers in view whose content changed since they were last rendered, keeping the others stale until they come into view.
+	fn render_stale_thumbnails(&mut self, responses: &mut VecDeque<FrontendMessage>) {
+		for monitor_node_path in std::mem::take(&mut self.stale_thumbnails) {
+			let Some(parent_network_node_id) = monitor_parent_node(&monitor_node_path) else { continue };
+
+			// The inspect monitor node and vector monitors have no thumbnail
+			let inspected = self.inspect_state.as_ref().is_some_and(|inspect_state| monitor_node_path.last() == Some(&inspect_state.monitor_node));
+			if inspected || records_vector(&self.executor, &monitor_node_path) {
+				continue;
+			}
+
+			if !self.thumbnails_in_view.contains(&parent_network_node_id) {
+				self.stale_thumbnails.insert(monitor_node_path);
+				continue;
+			}
+
+			match thumbnail_content(&self.executor, &monitor_node_path) {
+				// Text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content
+				Some(ThumbnailContent::Graphics(graphics)) => {
+					let bounds = graphene_std::renderer::graphic_list_bounding_box(&graphics, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &graphics, bounds, responses);
+				}
+				// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
+				// clips content to those rectangles so anything outside isn't visible
+				Some(ThumbnailContent::Artboards(artboards)) => {
+					let bounds = artboard_clip_bounds(&artboards);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &artboards, bounds, responses);
+				}
+				// Bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`
+				Some(ThumbnailContent::Text(text)) => {
+					let bounds = graphene_std::renderer::text_list_bounding_box(&text, DAffine2::IDENTITY);
+					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &text, bounds, responses);
+				}
+				// Content that isn't ready yet, or wasn't evaluated since the graph changed, is tried again on the next pass
+				None => {
+					self.stale_thumbnails.insert(monitor_node_path);
+				}
+			}
+		}
 	}
 
 	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
@@ -585,6 +583,71 @@ impl NodeRuntime {
 				value: new_thumbnail_svg.to_svg_string(),
 			});
 			*old_thumbnail_svg = new_thumbnail_svg;
+		}
+	}
+}
+
+/// The layer a monitor node belongs to, since monitor nodes sit within the network of the document node they monitor.
+fn monitor_parent_node(monitor_node_path: &[NodeId]) -> Option<NodeId> {
+	monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied()
+}
+
+/// Whether the monitor node records vector data for the path editing tools, rather than a layer's content for its thumbnail.
+fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> bool {
+	executor
+		.introspect(monitor_node_path)
+		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
+}
+
+/// The time that thumbnails are evaluated at, so they don't depend on where the playhead was when they were rendered.
+const THUMBNAIL_TIME: f64 = 0.;
+
+enum ThumbnailContent {
+	Graphics(List<Graphic>),
+	Artboards(List<Artboard>),
+	Text(List<String>),
+}
+
+/// Evaluates the content node a monitor node watches again, from the context it was last evaluated with but with a boundless footprint
+/// and a fixed time, so thumbnails stay consistent regardless of the view and playhead while keeping the varargs and indices they were evaluated with.
+fn thumbnail_content(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> Option<ThumbnailContent> {
+	let tree = executor.tree();
+	let content_node = tree.input_node(monitor_node_path, 0).ok()?;
+	let context = tree.last_context(content_node).ok()??;
+	let normalized: Context = context.map(|context| Arc::new(context.with_replaced_footprint_and_time(Footprint::BOUNDLESS, THUMBNAIL_TIME)));
+
+	let output = match tree.evaluate(content_node, &normalized).ok()? {
+		Poll::Final(output) | Poll::Partial(output) => output,
+		Poll::Fallback(boxed) => boxed.0,
+		Poll::Pending | Poll::Error(_) => return None,
+	};
+
+	// Rank-0 content is raised to a single-item list, so each kind renders through the same list path
+	let output = match output.downcast::<List<Graphic>>() {
+		Ok(graphics) => return Some(ThumbnailContent::Graphics(*graphics)),
+		Err(output) => output,
+	};
+	let output = match output.downcast::<Item<Graphic>>() {
+		Ok(graphic) => return Some(ThumbnailContent::Graphics(List::new_from_item(*graphic))),
+		Err(output) => output,
+	};
+	let output = match output.downcast::<List<Artboard>>() {
+		Ok(artboards) => return Some(ThumbnailContent::Artboards(*artboards)),
+		Err(output) => output,
+	};
+	let output = match output.downcast::<Item<Artboard>>() {
+		Ok(artboard) => return Some(ThumbnailContent::Artboards(List::new_from_item(*artboard))),
+		Err(output) => output,
+	};
+	let output = match output.downcast::<List<String>>() {
+		Ok(text) => return Some(ThumbnailContent::Text(*text)),
+		Err(output) => output,
+	};
+	match output.downcast::<Item<String>>() {
+		Ok(text) => Some(ThumbnailContent::Text(List::new_from_item(*text))),
+		Err(_) => {
+			log::warn!("Failed to downcast the content of monitor node {monitor_node_path:?} for its thumbnail");
+			None
 		}
 	}
 }
