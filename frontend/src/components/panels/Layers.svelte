@@ -156,7 +156,8 @@
 	const chainResizeObserver = new ResizeObserver((entries) => {
 		entries.forEach((entry) => {
 			const rowIndex = Number(entry.target.closest("[data-layer]")?.getAttribute("data-index"));
-			if (!Number.isNaN(rowIndex)) chainWidths[rowIndex] = entry.contentRect.width;
+			// Rounded to avoid issue for fractional device pixel ratio
+			if (!Number.isNaN(rowIndex)) chainWidths[rowIndex] = Math.round(entry.contentRect.width);
 		});
 		chainWidths = chainWidths;
 	});
