@@ -1,5 +1,5 @@
 use graphic_types::raster_types::Texture;
-use kurbo::{Affine, Rect, Shape, Stroke};
+use kurbo::{Affine, BezPath, Rect, Shape, Stroke};
 use std::collections::HashMap;
 use vello_gpu::peniko::{self, BlendMode, BrushRef, Fill};
 use vello_gpu::{Image, ImageSource, PaintType, TextureId, TextureRegion};
@@ -84,14 +84,32 @@ impl VelloSceneBuilder {
 		(self.scene, self.images)
 	}
 
+	/// The content's placement in the scene, applied on top of every transform it's drawn with.
+	pub fn view(&self) -> Affine {
+		self.view
+	}
+
+	/// The tolerance Vello GPU expands a stroke drawn with `transform` at, so a stroke outline expanded at it fills identically.
+	pub fn stroke_tolerance(&self, transform: Affine) -> f64 {
+		// Matches `vello_common::flatten::stroke`, including its use of the diagonal coefficients as the scale
+		const TOLERANCE: f64 = 0.25;
+		let [a, _, _, d, _, _] = (self.view * transform).as_coeffs();
+		TOLERANCE / a.abs().max(d.abs()).max(1.)
+	}
+
 	/// Fills a shape given in the space of `transform`, with the brush placed by `transform * brush_transform`.
 	pub fn fill<'b>(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, shape: &impl Shape) {
+		self.fill_path(fill_rule, transform, brush, brush_transform, &shape.to_path(SHAPE_TOLERANCE));
+	}
+
+	/// Like [`Self::fill`] for a path, which it draws without copying.
+	pub fn fill_path<'b>(&mut self, fill_rule: Fill, transform: Affine, brush: impl Into<BrushRef<'b>>, brush_transform: Option<Affine>, path: &BezPath) {
 		let Some((paint, paint_to_brush)) = self.paint(brush.into()) else { return };
 		self.scene.set_transform(self.view * transform);
 		self.scene.set_fill_rule(fill_rule);
 		self.scene.set_paint(paint);
 		self.scene.set_paint_transform(brush_transform.unwrap_or(Affine::IDENTITY) * paint_to_brush);
-		self.scene.fill_path(&shape.to_path(SHAPE_TOLERANCE));
+		self.scene.fill_path(path);
 	}
 
 	/// Strokes a shape given in the space of `transform`, with the brush placed by `transform * brush_transform`.
