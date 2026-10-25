@@ -603,6 +603,10 @@ pub fn get_star_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::star::IDENTIFIER))
 }
 
+pub fn get_heart_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::heart::IDENTIFIER))
+}
+
 pub fn get_arc_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arc::IDENTIFIER))
 }
