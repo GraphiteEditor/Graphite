@@ -2,12 +2,14 @@ use dyn_any::DynAny;
 #[cfg(feature = "wgpu")]
 use graphene_application_io::Texture;
 use std::sync::Arc;
+#[cfg(feature = "wgpu")]
+use std::sync::OnceLock;
 use std::sync::atomic::{AtomicU64, Ordering};
 use web_sys::js_sys::{Object, Reflect};
 use web_sys::wasm_bindgen::{JsCast, JsValue};
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, window};
 #[cfg(feature = "wgpu")]
-use wgpu_executor::{WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
+use wgpu_executor::{WgpuContextBuilder, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 const CANVASES_OBJECT_KEY: &str = "imageCanvases";
 
@@ -54,6 +56,24 @@ impl Canvas for CanvasHandle {
 #[cfg(feature = "wgpu")]
 const SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
+/// The viewport canvas the WebGL2 device was created from, and its surface.
+#[cfg(feature = "wgpu")]
+static DEVICE_CANVAS: OnceLock<(CanvasHandle, Arc<WgpuSurface>)> = OnceLock::new();
+
+#[cfg(feature = "wgpu")]
+pub async fn create_wgpu_executor() -> Option<WgpuExecutor> {
+	// WebGL2 makes its adapter from a canvas's context, so the canvas has to exist first
+	let canvas = CanvasImpl::new();
+	let (context, surface) = WgpuContextBuilder::new().build_with_surface(wgpu::SurfaceTarget::Canvas(canvas.canvas.clone())).await?;
+
+	if DEVICE_CANVAS.set((CanvasHandle(Some(Arc::new(canvas))), Arc::new(surface))).is_err() {
+		log::error!("A second GPU executor was created, which can't present to the viewport canvas");
+		return None;
+	}
+
+	WgpuExecutor::with_context(context)
+}
+
 #[cfg(feature = "wgpu")]
 pub struct CanvasSurfaceHandle {
 	canvas: CanvasHandle,
@@ -69,12 +89,12 @@ impl CanvasSurfaceHandle {
 			blitter: None,
 		}
 	}
-	fn surface(&mut self, executor: &WgpuExecutor) -> &WgpuSurface {
+	fn surface(&mut self) -> &WgpuSurface {
 		if self.surface.is_none() {
 			// A WebGL2 device can only present to the canvas it was created from
-			let webgl_canvas = &executor.context().webgl_canvas;
-			self.canvas = CanvasHandle(Some(Arc::new(CanvasImpl::from_canvas(webgl_canvas.canvas.clone()))));
-			self.surface = Some(webgl_canvas.surface.clone());
+			let (canvas, surface) = DEVICE_CANVAS.get().expect("The GPU executor should be created by `create_wgpu_executor`");
+			self.canvas = canvas.clone();
+			self.surface = Some(surface.clone());
 		}
 		self.surface.as_ref().unwrap()
 	}
@@ -98,7 +118,7 @@ impl CanvasSurface for CanvasSurfaceHandle {
 
 		let source_texture: &wgpu::Texture = texture.as_ref();
 
-		let surface = self.surface(executor);
+		let surface = self.surface();
 
 		let mut encoder = context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
 			label: Some("Texture to Surface Blit"),
@@ -152,10 +172,6 @@ impl CanvasImpl {
 		let document = window().expect("should have a window in this context").document().expect("window should have a document");
 
 		let canvas: HtmlCanvasElement = document.create_element("canvas").unwrap().dyn_into::<HtmlCanvasElement>().unwrap();
-		Self::from_canvas(canvas)
-	}
-
-	fn from_canvas(canvas: HtmlCanvasElement) -> Self {
 		let canvas_id = CANVAS_IDS.fetch_add(1, Ordering::SeqCst);
 
 		// Store the canvas in the global scope so it doesn't get garbage collected

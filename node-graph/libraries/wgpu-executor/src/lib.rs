@@ -106,6 +106,7 @@ impl WgpuExecutor {
 }
 
 impl WgpuExecutor {
+	#[cfg(not(target_family = "wasm"))]
 	pub async fn new() -> Option<Self> {
 		Self::with_context(WgpuContext::new().await?)
 	}

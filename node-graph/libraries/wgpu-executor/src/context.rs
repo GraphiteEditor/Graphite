@@ -1,7 +1,7 @@
 use wgpu::{Backends, Device, Features};
-use wgpu_sync::{Adapter, Instance, Queue};
 #[cfg(target_family = "wasm")]
-use {std::sync::Arc, web_sys::wasm_bindgen::JsCast, wgpu_sync::Surface};
+use wgpu_sync::Surface;
+use wgpu_sync::{Adapter, Instance, Queue};
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -9,24 +9,9 @@ pub struct Context {
 	pub queue: Queue,
 	pub instance: Instance,
 	pub adapter: Adapter,
-	/// The canvas the WebGL2 device was created from, which is the only one it can present to.
-	#[cfg(target_family = "wasm")]
-	pub webgl_canvas: WebGlCanvas,
 }
 
-/// An HTML canvas with its WebGL2 surface.
-#[cfg(target_family = "wasm")]
-#[derive(Debug, Clone)]
-pub struct WebGlCanvas {
-	pub canvas: web_sys::HtmlCanvasElement,
-	pub surface: Arc<Surface>,
-}
-// SAFETY: Wasm is single-threaded
-#[cfg(target_family = "wasm")]
-unsafe impl Send for WebGlCanvas {}
-#[cfg(target_family = "wasm")]
-unsafe impl Sync for WebGlCanvas {}
-
+#[cfg(not(target_family = "wasm"))]
 impl Context {
 	pub async fn new() -> Option<Self> {
 		ContextBuilder::new().build().await
@@ -87,12 +72,9 @@ impl ContextBuilder {
 }
 #[cfg(target_family = "wasm")]
 impl ContextBuilder {
-	pub async fn build(self) -> Option<Context> {
-		// WebGL2 makes its adapter from a canvas's context, so the canvas has to exist first
-		let canvas = web_sys::window()?.document()?.create_element("canvas").ok()?.dyn_into::<web_sys::HtmlCanvasElement>().ok()?;
-
+	pub async fn build_with_surface(self, target: impl Into<wgpu::SurfaceTarget<'static>>) -> Option<(Context, Surface)> {
 		let instance = self.build_instance();
-		let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())).ok()?;
+		let surface = instance.create_surface(target).ok()?;
 		let request_adapter_options = wgpu::RequestAdapterOptions {
 			power_preference: wgpu::PowerPreference::HighPerformance,
 			compatible_surface: Some(surface.raw()),
@@ -102,13 +84,7 @@ impl ContextBuilder {
 		let adapter = instance.request_adapter(&request_adapter_options).await.ok()?;
 		let (device, queue) = self.request_device(&adapter).await?;
 
-		Some(Context {
-			device,
-			queue,
-			adapter,
-			instance,
-			webgl_canvas: WebGlCanvas { canvas, surface: Arc::new(surface) },
-		})
+		Some((Context { device, queue, adapter, instance }, surface))
 	}
 }
 impl ContextBuilder {
