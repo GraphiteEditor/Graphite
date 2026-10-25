@@ -84,7 +84,13 @@ impl DmaBufImporter {
 			Ok::<_, TextureImportError>(hal_texture)
 		}?;
 
-		let texture = unsafe { device.create_texture_from_hal::<Vulkan>(hal_texture, &texture_descriptor(self.width, self.height, self.format, "CEF DMA-BUF Texture")?) };
+		let texture = unsafe {
+			device.create_texture_from_hal::<Vulkan>(
+				hal_texture,
+				&texture_descriptor(self.width, self.height, self.format, "CEF DMA-BUF Texture")?,
+				wgpu::TextureUses::UNINITIALIZED,
+			)
+		};
 
 		Ok(texture)
 	}

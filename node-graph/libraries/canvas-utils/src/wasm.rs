@@ -106,6 +106,7 @@ impl CanvasSurface for CanvasSurfaceHandle {
 			&wgpu::SurfaceConfiguration {
 				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
 				format: wgpu::TextureFormat::Rgba8Unorm,
+				color_space: wgpu::SurfaceColorSpace::Auto,
 				width: size.width,
 				height: size.height,
 				present_mode: surface_caps.present_modes[0],

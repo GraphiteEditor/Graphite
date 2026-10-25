@@ -254,7 +254,7 @@ mod blank_check {
 			match self.receiver.try_recv() {
 				Ok(Ok(())) => {
 					let slice = self.buffer.slice(..u64::from(self.width) * 4);
-					slice.get_mapped_range().chunks_exact(4).all(|texel| texel[3] == 0)
+					slice.get_mapped_range().is_ok_and(|view| view.as_chunks::<4>().0.iter().all(|texel| texel[3] == 0))
 				}
 				_ => false,
 			}
