@@ -19,6 +19,7 @@ impl Context {
 pub struct ContextBuilder {
 	backends: Backends,
 	features: Features,
+	optional_features: Features,
 	selection: Option<usize>,
 }
 impl ContextBuilder {
@@ -26,6 +27,7 @@ impl ContextBuilder {
 		Self {
 			backends: Backends::all(),
 			features: Features::empty(),
+			optional_features: Features::empty(),
 			selection: None,
 		}
 	}
@@ -35,6 +37,10 @@ impl ContextBuilder {
 	}
 	pub fn with_features(mut self, features: Features) -> Self {
 		self.features = features;
+		self
+	}
+	pub fn with_optional_features(mut self, features: Features) -> Self {
+		self.optional_features = features;
 		self
 	}
 	pub fn with_selection(mut self, index: usize) -> Self {
@@ -96,7 +102,7 @@ impl ContextBuilder {
 	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
 		let device_descriptor = wgpu::DeviceDescriptor {
 			label: None,
-			required_features: self.features,
+			required_features: self.features | (self.optional_features & adapter.features()),
 			required_limits: adapter.limits(),
 			memory_hints: Default::default(),
 			trace: wgpu::Trace::Off,
