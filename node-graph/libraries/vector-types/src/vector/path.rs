@@ -5,6 +5,7 @@ use core_types::list::{ATTR_CURVE_TYPE, ATTR_ID, ATTR_PATHS, Item, List, Shared}
 use glam::DVec2;
 use graphene_hash::CacheHash;
 use kurbo::{BezPath, CubicBez, Line, PathEl, PathSeg, Point, QuadBez};
+use rustc_hash::FxHashMap;
 
 /// The curve family a path's point references weave in, fixing the stride of its reference pattern.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, CacheHash)]
@@ -291,10 +292,14 @@ struct PathWeaver {
 	curve_type: Option<CurveType>,
 	subpath_start: Option<u32>,
 	names: Option<WovenNames>,
+	/// The reference naming each anchor position so far, when anchors at exactly one position are woven as one point.
+	welded_anchors: Option<FxHashMap<(u64, u64), u32>>,
+	/// Whether welding has named the newest point again, so a close must keep it for those other references.
+	newest_point_shared: bool,
 }
 
 impl PathWeaver {
-	fn new(offset: u32, names: Option<WovenNames>) -> Self {
+	fn new(offset: u32, names: Option<WovenNames>, weld_coincident_anchors: bool) -> Self {
 		Self {
 			positions: Vec::new(),
 			anchors: Vec::new(),
@@ -305,14 +310,28 @@ impl PathWeaver {
 			curve_type: None,
 			subpath_start: None,
 			names,
+			welded_anchors: weld_coincident_anchors.then(FxHashMap::default),
+			newest_point_shared: false,
 		}
 	}
 
 	/// Adds an anchor or handle point to the pool being built and returns the reference naming it.
 	fn push_point(&mut self, point: Point, anchor: bool) -> u32 {
-		self.positions.push(point_to_dvec2(point));
+		let position = point_to_dvec2(point);
+		if anchor && let Some(&welded) = self.welded_anchors.as_ref().and_then(|welded| welded.get(&anchor_key(position))) {
+			self.newest_point_shared |= welded as usize + 1 == self.offset as usize + self.positions.len();
+			return welded;
+		}
+
+		self.positions.push(position);
 		self.anchors.push(anchor);
-		self.offset + self.positions.len() as u32 - 1
+		self.newest_point_shared = false;
+		let reference = self.offset + self.positions.len() as u32 - 1;
+
+		if anchor && let Some(welded) = &mut self.welded_anchors {
+			welded.insert(anchor_key(position), reference);
+		}
+		reference
 	}
 
 	fn position(&self, reference: u32) -> Option<DVec2> {
@@ -401,9 +420,14 @@ impl PathWeaver {
 		if coincident {
 			self.references.pop();
 			self.references.push(start);
-			if last as usize + 1 == self.offset as usize + self.positions.len() {
-				self.positions.pop();
+			if last as usize + 1 == self.offset as usize + self.positions.len()
+				&& !self.newest_point_shared
+				&& let Some(position) = self.positions.pop()
+			{
 				self.anchors.pop();
+				if let Some(welded) = &mut self.welded_anchors {
+					welded.remove(&anchor_key(position));
+				}
 			}
 		} else if self.begin_segment(CurveType::Linear) {
 			self.references.push(start);
@@ -494,29 +518,35 @@ impl PathWeaver {
 	}
 }
 
+/// The exact position an anchor sits at, with negative zero folded into zero so both name one place.
+fn anchor_key(position: DVec2) -> (u64, u64) {
+	((position.x + 0.).to_bits(), (position.y + 0.).to_bits())
+}
+
 /// Appends a bezpath's contours to a point pool and its paths.
 pub fn append_bezpath(pool: &mut List<DVec2>, paths: &mut List<Path>, bezpath: &BezPath) {
-	let mut weaver = PathWeaver::new(pool.len() as u32, None);
+	let mut weaver = PathWeaver::new(pool.len() as u32, None, false);
 	weaver.push_bezpath(bezpath);
 	weaver.finish(pool, paths);
 }
 
 /// Appends the contours of each bezpath in turn to a point pool and its paths, naming the anchors and spans they add,
 /// and returns how many spans each bezpath added. Each bezpath's IDs skip one after the largest taken before it, as
-/// they do when bezpaths are appended one at a time.
+/// they do when bezpaths are appended one at a time. Welding coincident anchors weaves each exact position as one point.
 pub(crate) fn append_named_bezpaths(
 	pool: &mut List<DVec2>,
 	paths: &mut List<Path>,
 	bezpaths: impl IntoIterator<Item = impl std::borrow::Borrow<BezPath>>,
 	last_point: Option<PointId>,
 	last_segment: Option<SegmentId>,
+	weld_coincident_anchors: bool,
 ) -> Vec<usize> {
 	let names = WovenNames {
 		last_point,
 		last_segment,
 		..Default::default()
 	};
-	let mut weaver = PathWeaver::new(pool.len() as u32, Some(names));
+	let mut weaver = PathWeaver::new(pool.len() as u32, Some(names), weld_coincident_anchors);
 
 	// Every span woven is named, so the names taken so far count the spans each bezpath adds
 	let named_spans = |weaver: &PathWeaver| weaver.names.as_ref().map_or(0, |names| names.segment_ids.len());
@@ -767,5 +797,45 @@ mod tests {
 		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
 		assert_eq!(references(0), vec![0, 1, 0]);
 		assert_eq!(references(1), vec![0, 2]);
+	}
+
+	// Welding coincident anchors names each exact position once, so a tail sets out from the triangle's own corner
+	#[test]
+	fn weave_welding_coincident_anchors() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.line_to((0., 10.));
+		bezpath.close_path();
+		bezpath.move_to((10., 0.));
+		bezpath.quad_to((0., 0.), (20., 0.));
+
+		let (mut pool, mut paths) = (List::new(), List::new());
+		append_named_bezpaths(&mut pool, &mut paths, [&bezpath], None, None, true);
+
+		// The handle resting on the triangle's first corner stays a point of its own
+		assert_eq!(pool.len(), 5);
+		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
+		assert_eq!(references(0), vec![0, 1, 2, 0]);
+		assert_eq!(references(1), vec![1, 3, 4]);
+	}
+
+	// A contour closing onto an anchor that welding named for an earlier contour keeps that anchor in the pool
+	#[test]
+	fn weave_welding_keeps_shared_closing_anchor() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.line_to((0., 1e-9));
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((0., 1e-9));
+		bezpath.close_path();
+
+		let (mut pool, mut paths) = (List::new(), List::new());
+		append_named_bezpaths(&mut pool, &mut paths, [&bezpath], None, None, true);
+
+		assert_eq!(pool.len(), 3);
+		let references = |index: usize| paths.element(index).unwrap().0.iter_element_values().copied().collect::<Vec<_>>();
+		assert_eq!(references(0), vec![0, 1, 2]);
 	}
 }

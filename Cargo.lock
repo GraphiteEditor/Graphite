@@ -6632,6 +6632,7 @@ dependencies = [
  "num-traits",
  "petgraph 0.7.1",
  "polycool",
+ "robust",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
