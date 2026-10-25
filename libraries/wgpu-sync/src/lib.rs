@@ -168,6 +168,11 @@ impl Surface {
 	pub fn get_capabilities(&self, adapter: &wgpu::Adapter) -> wgpu::SurfaceCapabilities {
 		self.raw.get_capabilities(adapter)
 	}
+
+	/// The unsynchronized surface, for uses that don't touch the swapchain, like [`wgpu::RequestAdapterOptions::compatible_surface`].
+	pub fn raw(&self) -> &wgpu::Surface<'static> {
+		&self.raw
+	}
 }
 
 #[derive(Debug)]

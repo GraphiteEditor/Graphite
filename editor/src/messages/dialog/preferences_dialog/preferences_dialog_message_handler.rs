@@ -361,49 +361,43 @@ impl PreferencesDialogMessageHandler {
 		// COMPATIBILITY
 		// =============
 		{
-			let wgpu_available = graph_craft::application_io::wgpu_available().unwrap_or(false);
 			let is_desktop = cfg!(not(target_family = "wasm"));
-			if wgpu_available || is_desktop {
-				let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
-				rows.push(header);
-			}
+			let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
 
-			if wgpu_available {
-				let render_tile_resolution_description = "
-					Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
-					\n\
-					*Default: 1280 px.*
-					"
-				.trim();
-				let render_tile_resolution_label = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					TextLabel::new("Render Tile Resolution")
-						.tooltip_label("Render Tile Resolution")
-						.tooltip_description(render_tile_resolution_description)
-						.widget_instance(),
-				];
-				let render_tile_resolution = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					NumberInput::new(Some(preferences.max_render_region_size as f64))
-						.tooltip_label("Render Tile Resolution")
-						.tooltip_description(render_tile_resolution_description)
-						.mode_range()
-						.int()
-						.min(256.)
-						.max(4096.)
-						.increment_step(256.)
-						.unit(" px")
-						.on_update(|number_input: &NumberInput| {
-							let size = number_input.value.unwrap_or(EditorPreferences::default().max_render_region_size as f64) as u32;
-							PreferencesMessage::MaxRenderRegionSize { size }.into()
-						})
-						.widget_instance(),
-				];
+			let render_tile_resolution_description = "
+				Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
+				\n\
+				*Default: 1280 px.*
+				"
+			.trim();
+			let render_tile_resolution_label = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				TextLabel::new("Render Tile Resolution")
+					.tooltip_label("Render Tile Resolution")
+					.tooltip_description(render_tile_resolution_description)
+					.widget_instance(),
+			];
+			let render_tile_resolution = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(preferences.max_render_region_size as f64))
+					.tooltip_label("Render Tile Resolution")
+					.tooltip_description(render_tile_resolution_description)
+					.mode_range()
+					.int()
+					.min(256.)
+					.max(4096.)
+					.increment_step(256.)
+					.unit(" px")
+					.on_update(|number_input: &NumberInput| {
+						let size = number_input.value.unwrap_or(EditorPreferences::default().max_render_region_size as f64) as u32;
+						PreferencesMessage::MaxRenderRegionSize { size }.into()
+					})
+					.widget_instance(),
+			];
 
-				rows.extend_from_slice(&[render_tile_resolution_label, render_tile_resolution]);
-			}
+			rows.extend_from_slice(&[header, render_tile_resolution_label, render_tile_resolution]);
 
 			if is_desktop {
 				let ui_acceleration_description = "

@@ -1,5 +1,7 @@
 use wgpu::{Backends, Device, Features};
 use wgpu_sync::{Adapter, Instance, Queue};
+#[cfg(target_family = "wasm")]
+use {std::sync::Arc, web_sys::wasm_bindgen::JsCast, wgpu_sync::Surface};
 
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -7,7 +9,23 @@ pub struct Context {
 	pub queue: Queue,
 	pub instance: Instance,
 	pub adapter: Adapter,
+	/// The canvas the WebGL2 device was created from, which is the only one it can present to.
+	#[cfg(target_family = "wasm")]
+	pub webgl_canvas: WebGlCanvas,
 }
+
+/// An HTML canvas with its WebGL2 surface.
+#[cfg(target_family = "wasm")]
+#[derive(Debug, Clone)]
+pub struct WebGlCanvas {
+	pub canvas: web_sys::HtmlCanvasElement,
+	pub surface: Arc<Surface>,
+}
+// SAFETY: Wasm is single-threaded
+#[cfg(target_family = "wasm")]
+unsafe impl Send for WebGlCanvas {}
+#[cfg(target_family = "wasm")]
+unsafe impl Sync for WebGlCanvas {}
 
 impl Context {
 	pub async fn new() -> Option<Self> {
@@ -70,10 +88,27 @@ impl ContextBuilder {
 #[cfg(target_family = "wasm")]
 impl ContextBuilder {
 	pub async fn build(self) -> Option<Context> {
+		// WebGL2 makes its adapter from a canvas's context, so the canvas has to exist first
+		let canvas = web_sys::window()?.document()?.create_element("canvas").ok()?.dyn_into::<web_sys::HtmlCanvasElement>().ok()?;
+
 		let instance = self.build_instance();
-		let adapter = self.request_adapter(&instance).await?;
+		let surface = instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.clone())).ok()?;
+		let request_adapter_options = wgpu::RequestAdapterOptions {
+			power_preference: wgpu::PowerPreference::HighPerformance,
+			compatible_surface: Some(surface.raw()),
+			force_fallback_adapter: false,
+			apply_limit_buckets: false,
+		};
+		let adapter = instance.request_adapter(&request_adapter_options).await.ok()?;
 		let (device, queue) = self.request_device(&adapter).await?;
-		Some(Context { device, queue, adapter, instance })
+
+		Some(Context {
+			device,
+			queue,
+			adapter,
+			instance,
+			webgl_canvas: WebGlCanvas { canvas, surface: Arc::new(surface) },
+		})
 	}
 }
 impl ContextBuilder {
@@ -82,16 +117,6 @@ impl ContextBuilder {
 			backends: self.backends,
 			..wgpu::InstanceDescriptor::new_without_display_handle()
 		}))
-	}
-	#[cfg(target_family = "wasm")]
-	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {
-		let request_adapter_options = wgpu::RequestAdapterOptions {
-			power_preference: wgpu::PowerPreference::HighPerformance,
-			compatible_surface: None,
-			force_fallback_adapter: false,
-			apply_limit_buckets: false,
-		};
-		instance.request_adapter(&request_adapter_options).await.ok()
 	}
 	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
 		let device_descriptor = wgpu::DeviceDescriptor {
