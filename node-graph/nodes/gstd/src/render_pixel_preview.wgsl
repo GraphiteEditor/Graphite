@@ -30,7 +30,6 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 var t_source: texture_2d<f32>;
 
 struct Params {
-	// Columns of the matrix, since WebGL2 lays out a uniform `mat2x2` with a 16-byte column stride
 	x_axis: vec2<f32>,
 	y_axis: vec2<f32>,
 	translation: vec2<f32>,
