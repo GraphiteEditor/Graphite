@@ -103,6 +103,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
+						palette_open: self.workspace.panel_layout.is_panel_visible(PanelType::Palette) && !self.workspace.panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs);
 					refresh_transaction_edited_nodes(document, true, responses);
@@ -206,6 +207,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
+						palette_open: self.workspace.panel_layout.is_panel_visible(PanelType::Palette) && !self.workspace.panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs);
 					refresh_transaction_edited_nodes(document, self.active_document_id == Some(document_id), responses);

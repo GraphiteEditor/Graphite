@@ -70,6 +70,10 @@ define_layout_target!(
 	LayersPanelBottomRightBar,
 	/// Blending options at the top of the Layers panel.
 	LayersPanelControlLeftBar,
+	/// Adding palette, naming/editing the palette
+	PalettePanelBottomRightBar,
+	/// Showcasing currently focused active palette
+	PalettePanelBottomLeftBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
