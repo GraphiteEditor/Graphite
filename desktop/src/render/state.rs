@@ -36,6 +36,7 @@ impl RenderState {
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
+			color_space: wgpu::SurfaceColorSpace::Auto,
 			width: size.width,
 			height: size.height,
 			present_mode: present_mode.unwrap_or(surface_caps.present_modes[0]),

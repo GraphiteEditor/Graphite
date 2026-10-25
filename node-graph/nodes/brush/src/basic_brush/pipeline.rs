@@ -186,7 +186,7 @@ impl Scatter {
 				module: &shader,
 				entry_point: Some("vs_main"),
 				compilation_options: options.clone(),
-				buffers: &[instance_layout],
+				buffers: &[Some(instance_layout)],
 			},
 			fragment: Some(wgpu::FragmentState {
 				module: &shader,

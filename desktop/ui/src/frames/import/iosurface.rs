@@ -81,6 +81,7 @@ impl IOSurfaceImporter {
 						height: texture_desc.size.height,
 						depth: texture_desc.array_layer_count(),
 					},
+					None,
 				);
 
 				Ok::<_, TextureImportError>(hal_tex)
@@ -88,6 +89,6 @@ impl IOSurfaceImporter {
 			texture
 		};
 
-		Ok(unsafe { device.create_texture_from_hal::<wgpu::wgc::api::Metal>(hal_tex, &texture_desc) })
+		Ok(unsafe { device.create_texture_from_hal::<wgpu::wgc::api::Metal>(hal_tex, &texture_desc, wgpu::TextureUses::UNINITIALIZED) })
 	}
 }
