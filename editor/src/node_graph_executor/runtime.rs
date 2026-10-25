@@ -381,10 +381,12 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
+		let footprint_invariance_violations = proto_network.footprint_invariance_violations();
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		});
+		self.node_graph_errors.extend(footprint_invariance_violations);
 		self.async_runtime().retain_sources(self.executor.sources());
 		result
 	}
