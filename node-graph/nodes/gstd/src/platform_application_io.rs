@@ -41,7 +41,7 @@ fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
 }
 
 /// Sends an HTTP GET request to a specified URL and optionally waits for the response (unless discarded) which is output as a string.
-#[node_macro::node(category("Web Request"), icon("NodeGetRequest"), placeholder = pending_text)]
+#[node_macro::node(category("Data: I/O"), icon("NodeGetRequest"), placeholder = pending_text)]
 async fn get_request(
 	_: impl Ctx,
 	_primary: (),
@@ -74,7 +74,7 @@ fn pending_text(_primary: &(), _url: &Item<String>, _discard_result: &Item<bool>
 }
 
 /// Sends an HTTP POST request to a specified URL with the provided binary data and optionally waits for the response (unless discarded) which is output as a string.
-#[node_macro::node(category("Web Request"), icon("NodePostRequest"), placeholder = pending_post_text)]
+#[node_macro::node(category("Data: I/O"), icon("NodePostRequest"), placeholder = pending_post_text)]
 async fn post_request(
 	_: impl Ctx,
 	_primary: (),
@@ -111,13 +111,13 @@ fn pending_post_text(_primary: &(), _url: &Item<String>, _body: &Item<Resource>,
 }
 
 /// Converts a text string to raw binary data. Useful for transmission over HTTP or writing to files.
-#[node_macro::node(category("Web Request"), icon("NodeStringToBytes"), name("String to Bytes"))]
+#[node_macro::node(category("Data: I/O"), icon("NodeStringToBytes"), name("String to Bytes"))]
 fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 	Item::new_from_element(Resource::new(string.into_element().into_bytes()))
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
-#[node_macro::node(category("Web Request"), icon("NodeImageToBytes"), name("Image to Bytes"))]
+#[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 	let bytes: Vec<u8> = image
 		.element()
@@ -133,7 +133,7 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 }
 
 /// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
-#[node_macro::node(category("Web Request"), icon("NodeLoadResource"), placeholder = pending_resource)]
+#[node_macro::node(category("Data: I/O"), icon("NodeLoadResource"), placeholder = pending_resource)]
 async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
 	let url = url.into_element();
 	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
@@ -162,8 +162,8 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
-#[node_macro::node(category("Web Request"), icon("NodeDecodeImage"))]
-fn decode_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 	let data = data.into_element();
 	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
 
@@ -297,7 +297,7 @@ fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: I
 }
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Debug"), icon("NodeUploadTexture"), memoize)]
+#[node_macro::node(category("Raster"), icon("NodeUploadTexture"), memoize)]
 fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
 	let executor = executor.into_element();
 	let (raster, attributes) = content.into_parts();

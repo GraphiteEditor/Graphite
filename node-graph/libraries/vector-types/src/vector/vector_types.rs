@@ -1,6 +1,8 @@
 use super::addressing;
+use super::algorithms::consts::CLOSE_POINT_TOLERANCE;
 use super::connectivity::Connectivity;
-use super::contour::{contour_bezpaths, contours};
+use super::contour::{Contour, contour_bezpaths, contours};
+use super::geometry_cache::{GeometryCache, SetVectorPaths, set_paths_at};
 use super::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use super::path::{
 	CurveType, Path, append_named_bezpaths, curve_type_at, curve_types_of, no_paths, paths_from_item_attributes, paths_from_list_row_attributes, push_path, shared_paths_from_item_attributes,
@@ -8,7 +10,7 @@ use super::path::{
 use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{ATTR_ID, ATTR_PATHS, ATTR_SMOOTH, Item, List};
+use core_types::list::{ATTR_GEOMETRY_CACHE, ATTR_ID, ATTR_PATHS, ATTR_SMOOTH, Item, List};
 use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
@@ -87,7 +89,7 @@ impl Vector {
 }
 
 /// The largest ID in the pool's point ID sequence, which a pool has once it holds point IDs at all.
-fn largest_point_id(pool: &List<DVec2>) -> Option<PointId> {
+pub(crate) fn largest_point_id(pool: &List<DVec2>) -> Option<PointId> {
 	let ids = pool.iter_attribute_values::<PointId>(ATTR_ID)?;
 
 	// An ID attribute that names nothing yet counts as a sequence at zero, which documents saved with edits to such geometry rely on
@@ -117,7 +119,7 @@ impl Vector {
 	/// Weaves bezpaths as [`Self::append_bezpaths`] does, returning how many spans each of them added.
 	pub fn append_bezpaths_counting_spans(&mut self, paths: &mut List<Path>, bezpaths: impl IntoIterator<Item = impl std::borrow::Borrow<BezPath>>) -> Vec<usize> {
 		let (last_point, last_segment) = (largest_point_id(&self.0), largest_segment_id(paths));
-		append_named_bezpaths(&mut self.0, paths, bezpaths, last_point, last_segment)
+		append_named_bezpaths(&mut self.0, paths, bezpaths, last_point, last_segment, false)
 	}
 
 	/// Builds a fresh pool and paths from a single bezpath.
@@ -128,11 +130,20 @@ impl Vector {
 		(vector, paths)
 	}
 
+	/// Builds a fresh pool and paths from a single bezpath like [`Self::from_bezpath`], but with anchors at exactly the
+	/// same position woven as one point, welding the contours that meet there.
+	pub fn from_bezpath_welded(bezpath: &BezPath) -> (Self, List<Path>) {
+		let (mut vector, mut paths) = (Self::default(), List::new());
+		append_named_bezpaths(&mut vector.0, &mut paths, [bezpath], None, None, true);
+
+		(vector, paths)
+	}
+
 	/// Builds a holder item from a single bezpath, its paths riding the item's attributes.
 	pub fn item_from_bezpath(bezpath: &BezPath) -> Item<Self> {
 		let (vector, paths) = Self::from_bezpath(bezpath);
 
-		Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+		Item::new_from_element(vector).with_paths(paths)
 	}
 }
 
@@ -232,12 +243,7 @@ impl Vector {
 	}
 
 	fn bounding_box_with_transform_rect(&self, paths: &List<Path>, transform: DAffine2) -> Option<Rect> {
-		self.stroke_bezpath_iter(paths)
-			.map(|mut bezpath| {
-				bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-				bezpath.bounding_box()
-			})
-			.reduce(|r1, r2| r1.union(r2))
+		contours_bounding_rect(&contour_bezpaths(&self.0, paths), transform)
 	}
 
 	/// Tight bounding box in the supplied transform space, including the actual rendered stroke geometry
@@ -250,65 +256,7 @@ impl Vector {
 	/// stroke, so its AABB matches the unmasked centered stroke's. For open paths the renderer always
 	/// draws a centered `weight`-wide stroke regardless of the align attribute, so we mirror that here.
 	pub fn stroke_inclusive_bounding_box_with_transform(&self, paths: &List<Path>, transform: DAffine2, stroke: Option<&Stroke>) -> Option<[DVec2; 2]> {
-		let path_bounds = self.bounding_box_with_transform(paths, transform);
-
-		let Some(stroke) = stroke else { return path_bounds };
-		// Stroke alignment is only honored by the renderer when every contour is closed; open paths fall
-		// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
-		let aligned_renders = stroke.align != StrokeAlign::Center && self.stroke_bezpath_iter(paths).all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
-		let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
-		// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
-		if kurbo_width <= 0. {
-			return path_bounds;
-		}
-
-		let join = match stroke.join {
-			StrokeJoin::Miter => kurbo::Join::Miter,
-			StrokeJoin::Bevel => kurbo::Join::Bevel,
-			StrokeJoin::Round => kurbo::Join::Round,
-		};
-		let cap = match stroke.cap {
-			StrokeCap::Butt => kurbo::Cap::Butt,
-			StrokeCap::Round => kurbo::Cap::Round,
-			StrokeCap::Square => kurbo::Cap::Square,
-		};
-
-		let stroke_style = kurbo::Stroke::new(kurbo_width)
-			.with_caps(cap)
-			.with_join(join)
-			.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
-			.with_miter_limit(stroke.join_miter_limit);
-		let stroke_options = kurbo::StrokeOpts::default();
-		// Same tolerance as `solidify_stroke`, balanced between performance and curve accuracy
-		const STROKE_TOLERANCE: f64 = 0.25;
-
-		let stroke_local = Affine::new(stroke.transform.to_cols_array());
-		let stroke_local_inverse = (stroke.transform.matrix2.determinant() != 0.).then(|| Affine::new(stroke.transform.inverse().to_cols_array()));
-		let final_transform = Affine::new(transform.to_cols_array());
-
-		let stroke_bounds = self
-			.stroke_bezpath_iter(paths)
-			.map(|mut bezpath| {
-				// Match `solidify_stroke`'s pre/post-stroke transform pair so non-uniform `stroke.transform`
-				// (e.g. resisting layer scale) is applied while kurbo strokes, then undone before placing the
-				// stroked geometry back in the vector's local space
-				bezpath.apply_affine(stroke_local);
-				let mut stroked = kurbo::stroke(bezpath, &stroke_style, &stroke_options, STROKE_TOLERANCE);
-				if let Some(inverse) = stroke_local_inverse {
-					stroked.apply_affine(inverse);
-				}
-				stroked.apply_affine(final_transform);
-				stroked.bounding_box()
-			})
-			.reduce(|a, b| a.union(b))
-			.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]);
-
-		// Union with the path bounds in case a degenerate contour (e.g. a single point) produced no stroke geometry
-		match (path_bounds, stroke_bounds) {
-			(Some([min_a, max_a]), Some([min_b, max_b])) => Some([min_a.min(min_b), max_a.max(max_b)]),
-			(Some(b), None) | (None, Some(b)) => Some(b),
-			(None, None) => None,
-		}
+		contours_stroke_inclusive_bounding_box(&contour_bezpaths(&self.0, paths), transform, stroke)
 	}
 
 	/// Calculate the corners of the bounding box but with a nonzero size.
@@ -343,6 +291,85 @@ impl Vector {
 
 		// Non-zero fill rule
 		number != 0
+	}
+}
+
+/// The bounding box of already extracted contours, placed by `transform`.
+pub fn contours_bounding_box(contours: &[BezPath], transform: DAffine2) -> Option<[DVec2; 2]> {
+	contours_bounding_rect(contours, transform).map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)])
+}
+
+fn contours_bounding_rect(contours: &[BezPath], transform: DAffine2) -> Option<Rect> {
+	// Transforming segment by segment bounds each contour without copying it
+	let affine = Affine::new(transform.to_cols_array());
+	let bounds = |bezpath: &BezPath| {
+		if transform == DAffine2::IDENTITY {
+			return bezpath.bounding_box();
+		}
+		bezpath.segments().map(|segment| (affine * segment).bounding_box()).reduce(|a, b| a.union(b)).unwrap_or_default()
+	};
+	contours.iter().map(bounds).reduce(|r1, r2| r1.union(r2))
+}
+
+/// Like [`Vector::stroke_inclusive_bounding_box_with_transform`], for already extracted contours.
+pub fn contours_stroke_inclusive_bounding_box(contours: &[BezPath], transform: DAffine2, stroke: Option<&Stroke>) -> Option<[DVec2; 2]> {
+	let path_bounds = contours_bounding_box(contours, transform);
+
+	let Some(stroke) = stroke else { return path_bounds };
+	// Stroke alignment is only honored by the renderer when every contour is closed; open paths fall
+	// back to drawing a Center-aligned `weight`-wide stroke. Match that behavior to keep bounds in sync.
+	let aligned_renders = stroke.align != StrokeAlign::Center && contours.iter().all(|path| matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath)));
+	let kurbo_width = if aligned_renders { stroke.effective_width() } else { stroke.weight };
+	// `Inside`-aligned strokes never expand beyond the path bounds; a zero-weight stroke is invisible
+	if kurbo_width <= 0. {
+		return path_bounds;
+	}
+
+	let join = match stroke.join {
+		StrokeJoin::Miter => kurbo::Join::Miter,
+		StrokeJoin::Bevel => kurbo::Join::Bevel,
+		StrokeJoin::Round => kurbo::Join::Round,
+	};
+	let cap = match stroke.cap {
+		StrokeCap::Butt => kurbo::Cap::Butt,
+		StrokeCap::Round => kurbo::Cap::Round,
+		StrokeCap::Square => kurbo::Cap::Square,
+	};
+
+	let stroke_style = kurbo::Stroke::new(kurbo_width)
+		.with_caps(cap)
+		.with_join(join)
+		.with_dashes(stroke.dash_offset, stroke.dash_lengths.clone())
+		.with_miter_limit(stroke.join_miter_limit);
+	let stroke_options = kurbo::StrokeOpts::default();
+	// Same tolerance as `solidify_stroke`, balanced between performance and curve accuracy
+	const STROKE_TOLERANCE: f64 = 0.25;
+
+	let stroke_local = Affine::new(stroke.transform.to_cols_array());
+	let stroke_local_inverse = (stroke.transform.matrix2.determinant() != 0.).then(|| Affine::new(stroke.transform.inverse().to_cols_array()));
+	let final_transform = Affine::new(transform.to_cols_array());
+
+	let stroke_bounds = contours
+		.iter()
+		.map(|bezpath| {
+			// Match `solidify_stroke`'s pre/post-stroke transform pair so non-uniform `stroke.transform`
+			// (e.g. resisting layer scale) is applied while kurbo strokes, then undone before placing the
+			// stroked geometry back in the vector's local space
+			let mut stroked = kurbo::stroke(stroke_local * bezpath, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+			if let Some(inverse) = stroke_local_inverse {
+				stroked.apply_affine(inverse);
+			}
+			stroked.apply_affine(final_transform);
+			stroked.bounding_box()
+		})
+		.reduce(|a, b| a.union(b))
+		.map(|rect| [DVec2::new(rect.x0, rect.y0), DVec2::new(rect.x1, rect.y1)]);
+
+	// Union with the path bounds in case a degenerate contour (e.g. a single point) produced no stroke geometry
+	match (path_bounds, stroke_bounds) {
+		(Some([min_a, max_a]), Some([min_b, max_b])) => Some([min_a.min(min_b), max_a.max(max_b)]),
+		(Some(b), None) | (None, Some(b)) => Some(b),
+		(None, None) => None,
 	}
 }
 
@@ -386,12 +413,15 @@ impl Vector {
 
 	/// Drops the paths and every point used only as a handle, leaving the anchors and free points as a bare cloud.
 	/// A point serving as an anchor in any path is kept even where another path uses it as a handle.
-	pub fn keep_only_anchors(&mut self, paths: &mut List<Path>) {
+	/// Returns the former pool index of each kept point, in their kept order.
+	pub fn keep_only_anchors(&mut self, paths: &mut List<Path>) -> Vec<usize> {
 		let anchors = self.anchor_indices(paths);
-		let pool = anchors.into_iter().filter_map(|index| self.0.clone_item(index)).collect();
+		let pool = anchors.iter().filter_map(|&index| self.0.clone_item(index)).collect();
 
 		self.0 = pool;
 		*paths = List::new();
+
+		anchors
 	}
 
 	/// The positions of all anchor points and free points in pool order, skipping handles.
@@ -596,7 +626,7 @@ impl Vector {
 	}
 
 	/// Sets the smooth flag on many anchors at once, reading one connectivity rather than one per anchor.
-	pub(crate) fn set_smooth_at_indices(&mut self, paths: &mut List<Path>, indices: impl IntoIterator<Item = u32>, smooth: bool) {
+	pub fn set_smooth_at_indices(&mut self, paths: &mut List<Path>, indices: impl IntoIterator<Item = u32>, smooth: bool) {
 		let mut indices = indices.into_iter().peekable();
 		if indices.peek().is_none() {
 			return;
@@ -661,85 +691,134 @@ impl Vector {
 	}
 
 	/// Welds every open contour shut with a linear segment from its last point back to its first, stored where the contour runs on into it.
+	/// A contour already ending on its start, within floating point noise, merges that end into the start instead.
 	pub fn close_subpaths(&mut self, paths: &mut List<Path>) {
-		// A closing segment sits after the contour's last stored path, or before it when the contour crosses that path
-		// backward, since that is the neighbor the contour reads on into. Either way it is read from the contour's exit.
-		let closings: Vec<(usize, bool, [u32; 2])> = contours(self.point_count(), paths)
-			.into_iter()
-			.filter(|contour| !contour.closed)
-			.filter_map(|contour| {
-				let last = contour.parts.last()?;
-				Some(if last.reversed {
-					(last.path as usize, true, [contour.entry, contour.exit])
-				} else {
-					(last.path as usize + 1, false, [contour.exit, contour.entry])
-				})
-			})
-			.collect();
-		if closings.is_empty() {
-			return;
+		let mut open: Vec<Contour> = contours(self.point_count(), paths).into_iter().filter(|contour| !contour.closed).collect();
+
+		// An end resting on its own start is that point, so it merges in rather than drawing a closing segment of no length
+		let positions = self.0.iter_element_values().as_slice();
+		let rests_on_start = |contour: &&Contour| matches!((positions.get(contour.entry as usize), positions.get(contour.exit as usize)), (Some(entry), Some(exit)) if entry.distance_squared(*exit) <= CLOSE_POINT_TOLERANCE * CLOSE_POINT_TOLERANCE);
+		let resting: Vec<(u32, u32)> = open.iter().filter(rests_on_start).map(|contour| (contour.exit, contour.entry)).collect();
+		if !resting.is_empty() {
+			self.merge_points(paths, &resting);
+			open = contours(self.point_count(), paths).into_iter().filter(|contour| !contour.closed).collect();
 		}
 
-		// Each closing segment's ID skips one after the latest, as the IDs of a newly appended bezpath do
+		// A closing segment carries on the contour's last stored path from its exit, even at a junction. A linear path takes
+		// it in as one more span, and any other is followed by a linear path that carries on its path flow.
+		let curve_types: Vec<CurveType> = curve_types_of(paths).collect();
 		let mut latest = largest_segment_id(paths);
-		let mut closing_paths = Vec::with_capacity(closings.len());
-		for (before, backward, references) in closings {
+		let mut closing_paths = Vec::new();
+		for contour in open {
+			let Some(&last) = contour.parts.last() else { continue };
+
+			// Each closing segment's ID skips one after the latest, as the IDs of a newly appended bezpath do
 			let id = latest.map_or(SegmentId::ZERO, |mut latest| latest.next_id()).next_id();
 			latest = Some(id);
 
-			let mut single = List::new();
-			push_path(&mut single, CurveType::Linear, references, [id]);
-			closing_paths.extend(single.into_iter().map(|path| (before, backward, path)));
+			if curve_types.get(last as usize) == Some(&CurveType::Linear)
+				&& let Some(path) = paths.element_mut(last as usize)
+			{
+				path.0.set_attribute(ATTR_ID, path.0.len().saturating_sub(1), id);
+				path.0.push(Item::new_from_element(i64::from(contour.entry)));
+			} else {
+				let mut single = List::new();
+				push_path(&mut single, CurveType::Linear, [contour.exit, contour.entry], [id]);
+				closing_paths.extend(single.into_iter().map(|path| (last as usize + 1, path)));
+			}
+		}
+		if closing_paths.is_empty() {
+			return;
 		}
 
-		// Two closing segments can share a place between two stored paths, where the one read on from the path before goes first
-		closing_paths.sort_by_key(|&(before, backward, _)| (before, backward));
+		// Contours come out in the order of their first stored paths, so their last ones can be out of order
+		closing_paths.sort_by_key(|&(after, _)| after);
 
-		// Rebuild the paths with each closing segment in its place, keeping every other path in its stored order
+		// Rebuild the paths with each closing path after the one it carries on, keeping every other path in its stored order
 		let mut closing_paths = closing_paths.into_iter().peekable();
 		let mut rebuilt = List::new();
 		for (index, path) in std::mem::take(paths).into_iter().enumerate() {
-			while let Some((_, _, closing)) = closing_paths.next_if(|&(before, ..)| before == index) {
+			while let Some((_, closing)) = closing_paths.next_if(|&(after, _)| after == index) {
 				rebuilt.push(closing);
 			}
 			rebuilt.push(path);
 		}
-		for (_, _, closing) in closing_paths {
+		for (_, closing) in closing_paths {
 			rebuilt.push(closing);
 		}
 
 		*paths = rebuilt;
 	}
 
-	/// Appends another vector's points and paths, remapping IDs that collide with this vector's.
-	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64) {
+	/// Merges the first point of each pair into the second, renaming every reference to it and dropping it from the pool, in O(points + references).
+	fn merge_points(&mut self, paths: &mut List<Path>, merges: &[(u32, u32)]) {
+		let point_count = self.0.len();
+
+		// Each point's representative is found by following merges to a point merged into nothing, which settles chains and cycles alike
+		let mut merged_into: Vec<usize> = (0..point_count).collect();
+		let representative = |merged_into: &mut Vec<usize>, mut point: usize| {
+			while merged_into[point] != point {
+				merged_into[point] = merged_into[merged_into[point]];
+				point = merged_into[point];
+			}
+			point
+		};
+		for &(from, to) in merges {
+			let (from, to) = (from as usize, to as usize);
+			if from >= point_count || to >= point_count {
+				continue;
+			}
+
+			let (from, to) = (representative(&mut merged_into, from), representative(&mut merged_into, to));
+			merged_into[from] = to;
+		}
+		let representatives: Vec<usize> = (0..point_count).map(|point| representative(&mut merged_into, point)).collect();
+
+		// Kept points are renumbered past those dropped, and every reference names its point's representative
+		let mut renumbered = Vec::with_capacity(point_count);
+		let mut kept_count = 0;
+		for (point, &representative) in representatives.iter().enumerate() {
+			renumbered.push(kept_count);
+			kept_count += usize::from(representative == point);
+		}
+		for path in paths.iter_element_values_mut() {
+			for reference in path.0.iter_element_values_mut() {
+				if let Some(&representative) = usize::try_from(*reference).ok().and_then(|point| representatives.get(point)) {
+					*reference = renumbered[representative] as i64;
+				}
+			}
+		}
+
+		let kept = representatives.iter().enumerate().map(|(point, &representative)| representative == point);
+		self.0 = std::mem::take(&mut self.0).into_iter().zip(kept).filter_map(|(point, kept)| kept.then_some(point)).collect();
+	}
+
+	/// Appends another vector's points and paths, renaming the IDs this vector already uses, and records the appended IDs in `taken_ids`.
+	/// `taken_ids` must hold this vector's IDs, as [`IdCollisionSet::of`] gives them.
+	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64, taken_ids: &mut IdCollisionSet) {
 		let offset = self.0.len() as u32;
 
-		// Remap colliding stable IDs so both sides stay addressable after the merge
-		let own_point_ids: std::collections::HashSet<_> = self.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().copied().collect();
-		let own_segment_ids: std::collections::HashSet<_> = paths
-			.iter_element_values()
-			.filter_map(|path| path.0.iter_attribute_values::<SegmentId>(ATTR_ID))
-			.flatten()
-			.copied()
-			.collect();
-
+		// Remap colliding stable IDs so both sides stay addressable after the merge.
+		// Appended IDs are only checked against the IDs taken before this call.
+		let mut appended_point_ids = Vec::new();
 		for index in 0..additional.0.len() {
 			let Some(&position) = additional.0.element(index) else { continue };
 			let mut item = Item::new_from_element(transform_of_additional.transform_point2(position));
 
 			if let Some(&id) = additional.0.attribute::<PointId>(ATTR_ID, index) {
-				let id = if id != PointId::UNNAMED && own_point_ids.contains(&id) {
+				let id = if id != PointId::UNNAMED && taken_ids.points.contains(&id) {
 					id.generate_from_hash(collision_hash_seed)
 				} else {
 					id
 				};
 				item.set_attribute(ATTR_ID, id);
+				appended_point_ids.push(id);
 			}
 
 			self.0.push(item);
 		}
 
+		let mut appended_segment_ids = Vec::new();
 		for index in 0..additional_paths.len() {
 			let Some(mut item) = additional_paths.clone_item(index) else { continue };
 
@@ -749,14 +828,18 @@ impl Vector {
 			}
 			if let Some(ids) = path.0.iter_attribute_values_mut::<SegmentId>(ATTR_ID) {
 				for id in ids {
-					if *id != SegmentId::ZERO && own_segment_ids.contains(id) {
+					if *id != SegmentId::ZERO && taken_ids.segments.contains(id) {
 						*id = id.generate_from_hash(collision_hash_seed);
 					}
+					appended_segment_ids.push(*id);
 				}
 			}
 
 			paths.push(item);
 		}
+
+		taken_ids.points.extend(appended_point_ids);
+		taken_ids.segments.extend(appended_segment_ids);
 	}
 
 	/// Rewrites every stable ID deterministically from the given hash, so instanced copies stay distinct.
@@ -778,11 +861,34 @@ impl Vector {
 	}
 }
 
+/// The stable IDs a vector uses, carried across [`Vector::concat`] calls so merging many vectors stays linear.
+#[derive(Clone, Debug, Default)]
+pub struct IdCollisionSet {
+	points: rustc_hash::FxHashSet<PointId>,
+	segments: rustc_hash::FxHashSet<SegmentId>,
+}
+
+impl IdCollisionSet {
+	/// The IDs used by `vector`'s points and `paths`' segments.
+	pub fn of(vector: &Vector, paths: &List<Path>) -> Self {
+		let points = vector.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().copied().collect();
+		let segments = paths
+			.iter_element_values()
+			.filter_map(|path| path.0.iter_attribute_values::<SegmentId>(ATTR_ID))
+			.flatten()
+			.copied()
+			.collect();
+
+		Self { points, segments }
+	}
+}
+
 /// Edits a holder item's pool and paths together, taking the paths attribute out and putting it back where it was, or last if absent.
 pub fn edit_item_geometry<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vector, &mut List<Path>) -> R) -> R {
 	let mut paths = item.attribute_mut::<List<Path>>(ATTR_PATHS).map(std::mem::take).unwrap_or_default();
 	let result = edit(item.element_mut(), &mut paths);
 	*item.attribute_mut_or_insert_default::<List<Path>>(ATTR_PATHS) = paths;
+	item.set_attribute(ATTR_GEOMETRY_CACHE, GeometryCache::default());
 
 	result
 }
@@ -792,6 +898,7 @@ pub fn edit_item_points<R>(item: &mut Item<Vector>, edit: impl FnOnce(&mut Vecto
 	let paths = shared_paths_from_item_attributes(item);
 	let result = edit(item.element_mut(), &paths);
 	ensure_paths_attribute(item);
+	item.set_attribute(ATTR_GEOMETRY_CACHE, GeometryCache::default());
 
 	result
 }
@@ -808,7 +915,7 @@ pub fn ensure_paths_attribute(item: &mut Item<Vector>) {
 pub fn edit_list_row_geometry<R>(list: &mut List<Vector>, index: usize, edit: impl FnOnce(&mut Vector, &mut List<Path>) -> R) -> Option<R> {
 	let mut paths = list.attribute::<List<Path>>(ATTR_PATHS, index).cloned().unwrap_or_default();
 	let result = edit(list.element_mut(index)?, &mut paths);
-	list.set_attribute(ATTR_PATHS, index, paths);
+	set_paths_at(list, index, paths);
 
 	Some(result)
 }
@@ -950,8 +1057,9 @@ mod tests {
 		let (mut vector, mut paths) = (lone_anchor(DVec2::ZERO), List::new());
 		assert_eq!(vector.point_id_at(0), Some(PointId::ZERO));
 
-		vector.concat(&mut paths, &lone_anchor(DVec2::X), &List::new(), DAffine2::IDENTITY, 7);
-		vector.concat(&mut paths, &lone_anchor(DVec2::Y), &List::new(), DAffine2::IDENTITY, 8);
+		let mut taken_ids = IdCollisionSet::of(&vector, &paths);
+		vector.concat(&mut paths, &lone_anchor(DVec2::X), &List::new(), DAffine2::IDENTITY, 7, &mut taken_ids);
+		vector.concat(&mut paths, &lone_anchor(DVec2::Y), &List::new(), DAffine2::IDENTITY, 8, &mut taken_ids);
 
 		assert_eq!(vector.point_id_at(0), Some(PointId::ZERO));
 		assert_eq!(vector.point_id_at(1), Some(PointId::ZERO.generate_from_hash(7)));
@@ -966,7 +1074,8 @@ mod tests {
 		assert_eq!(vector.point_id_at(1), Some(PointId::UNNAMED));
 		assert_eq!(vector.point_id_at(2), Some(PointId::UNNAMED));
 
-		vector.concat(&mut paths, &lone_anchor(DVec2::new(5., 5.)), &List::new(), DAffine2::IDENTITY, 1);
+		let mut taken_ids = IdCollisionSet::of(&vector, &paths);
+		vector.concat(&mut paths, &lone_anchor(DVec2::new(5., 5.)), &List::new(), DAffine2::IDENTITY, 1, &mut taken_ids);
 
 		let index = vector.index_of_point_id(PointId::ZERO).unwrap();
 		assert_eq!(vector.position(index as usize), Some(DVec2::new(5., 5.)));
@@ -1063,11 +1172,11 @@ mod tests {
 		assert_eq!(paths.len(), 1);
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 2);
+		assert_eq!(paths.len(), 1);
 		assert!(vector.stroke_bezpath_iter(&paths).all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 2);
+		assert_eq!(paths.len(), 1);
 	}
 
 	// A crossbar between two junctions closes in one pass like the uprights it joins, and closing again adds nothing
@@ -1090,31 +1199,26 @@ mod tests {
 		assert!(contours.iter().all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		assert_eq!(paths.len(), 3);
 	}
 
-	// Two contours whose closing segments belong in the same place between two stored paths both close in one pass
+	// A curved path ending at a junction closes with a linear path stored after it, which carries on its path flow through the junction
 	#[test]
-	fn close_subpaths_closes_contours_meeting_between_the_same_paths() {
+	fn close_subpaths_carries_on_a_curved_path_flow() {
 		let mut vector = Vector::default();
-		for position in [(0., 0.), (10., 0.), (10., 10.), (20., 0.), (30., 0.), (30., 10.)] {
+		for position in [(0., 0.), (5., -5.), (15., -5.), (20., 0.), (20., 10.), (30., 0.)] {
 			vector.0.push(Item::new_from_element(DVec2::from(position)));
 		}
-
-		// The first contour runs along path 0, then backward along path 3, so its closing segment goes before path 3.
-		// The second runs along paths 1 and 2, so its closing segment goes after path 2, the same place.
 		let mut paths = List::new();
-		for references in [vec![0, 1], vec![3, 4], vec![4, 5], vec![2, 1]] {
-			push_path(&mut paths, CurveType::Linear, references, []);
-		}
+		push_path(&mut paths, CurveType::Cubic, [0, 1, 2, 3], []);
+		push_path(&mut paths, CurveType::Linear, [4, 3], []);
+		push_path(&mut paths, CurveType::Linear, [5, 3], []);
 
 		vector.close_subpaths(&mut paths);
-		let contours: Vec<_> = vector.stroke_bezpath_iter(&paths).collect();
-		assert_eq!(contours.len(), 2);
-		assert!(contours.iter().all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
-		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references, [vec![0, 1, 2, 3], vec![3, 0], vec![4, 3, 4], vec![5, 3, 5]]);
+		assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed));
 	}
 
 	// Paths ending at a junction close too, and closing them again adds nothing
@@ -1130,10 +1234,82 @@ mod tests {
 		}
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		assert_eq!(paths.len(), 3);
 		assert!(vector.stroke_bezpath_iter(&paths).all(|contour| matches!(contour.elements().last(), Some(PathEl::ClosePath))));
 
 		vector.close_subpaths(&mut paths);
-		assert_eq!(paths.len(), 6);
+		assert_eq!(paths.len(), 3);
+	}
+
+	// An end resting on its own start, within floating point noise, merges into it instead of adding a closing segment, while a wider gap still gets one
+	#[test]
+	fn close_subpaths_merges_an_end_resting_on_its_start() {
+		for (gap, merges) in [(0., true), (1e-9, true), (1e-3, false)] {
+			let mut vector = Vector::default();
+			for position in [(0., 0.), (10., 0.), (10., 10.), (gap, 0.)] {
+				vector.0.push(Item::new_from_element(DVec2::from(position)));
+			}
+			let mut paths = List::new();
+			push_path(&mut paths, CurveType::Linear, [0, 1, 2, 3], []);
+
+			vector.close_subpaths(&mut paths);
+
+			let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+			if merges {
+				assert_eq!(references, [vec![0, 1, 2, 0]], "gap {gap}");
+				assert_eq!(vector.point_count(), 3, "gap {gap}");
+			} else {
+				assert_eq!(references, [vec![0, 1, 2, 3, 0]], "gap {gap}");
+				assert_eq!(vector.point_count(), 4, "gap {gap}");
+			}
+			assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed), "gap {gap}");
+		}
+	}
+
+	// Closing paths land after the curved paths they carry on even when contours end out of storage order, so one meeting junctions at both ends still closes
+	#[test]
+	fn close_subpaths_places_closing_paths_in_storage_order() {
+		let mut vector = Vector::default();
+		for index in 0..13 {
+			vector.0.push(Item::new_from_element(DVec2::new(index as f64, (index * index) as f64)));
+		}
+
+		// The first contour welds on path 2, so it ends after the second, which meets junctions at points 5 and 6
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1], []);
+		push_path(&mut paths, CurveType::Cubic, [5, 9, 10, 6], []);
+		push_path(&mut paths, CurveType::Cubic, [1, 2, 3, 4], []);
+		for references in [[7, 6], [8, 6], [11, 5], [12, 5]] {
+			push_path(&mut paths, CurveType::Linear, references, []);
+		}
+
+		vector.close_subpaths(&mut paths);
+
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references[..5], [vec![0, 1], vec![5, 9, 10, 6], vec![6, 5], vec![1, 2, 3, 4], vec![4, 0]]);
+		assert!(contours(vector.point_count(), &paths).iter().all(|contour| contour.closed));
+	}
+
+	// Paths ending where a merged end was still meet the closed path there, at the start it merged into
+	#[test]
+	fn close_subpaths_keeps_paths_meeting_a_merged_end() {
+		let mut vector = Vector::default();
+		for position in [(0., 0.), (10., 0.), (10., 10.), (0., 0.), (-10., 0.), (0., -10.)] {
+			vector.0.push(Item::new_from_element(DVec2::from(position)));
+		}
+		let mut paths = List::new();
+		for references in [vec![0, 1, 2, 3], vec![4, 3], vec![5, 3]] {
+			push_path(&mut paths, CurveType::Linear, references, []);
+		}
+
+		vector.close_subpaths(&mut paths);
+
+		assert_eq!(vector.point_count(), 5);
+		let references: Vec<Vec<u32>> = paths.iter_element_values().map(|path| path.references().collect()).collect();
+		assert_eq!(references[0], [0, 1, 2, 0]);
+		assert!(
+			references.iter().filter(|path| path.contains(&3)).all(|path| path.contains(&0)),
+			"the side paths end at the merged start"
+		);
 	}
 }

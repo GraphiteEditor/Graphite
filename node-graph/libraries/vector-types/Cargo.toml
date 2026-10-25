@@ -38,6 +38,7 @@ log = { workspace = true }
 petgraph = { workspace = true }
 rustc-hash = { workspace = true }
 polycool = { workspace = true }
+robust = { workspace = true }
 tinyvec = { workspace = true }
 
 # Optional workspace dependencies

@@ -1,8 +1,10 @@
+use super::contour::{OrientedContour, oriented_contours};
+use super::geometry_cache::SetVectorPaths;
 use super::misc::{HandleId, ManipulatorGroup, ManipulatorPointId};
 use super::path::{Path, paths_from_item_attributes};
 use super::vector_attributes::{FoundSubpath, PointId, SegmentId};
 use super::vector_types::Vector;
-use core_types::list::{ATTR_PATHS, Item, List};
+use core_types::list::{Item, List};
 use glam::{DAffine2, DVec2};
 use kurbo::{BezPath, PathSeg, Rect};
 
@@ -29,7 +31,7 @@ impl VectorGeometry {
 
 	/// Rebuilds a holder item carrying this bundle's element and paths.
 	pub fn into_item(self) -> Item<Vector> {
-		Item::new_from_element(self.vector).with_attribute(ATTR_PATHS, self.paths)
+		Item::new_from_element(self.vector).with_paths(self.paths)
 	}
 
 	pub fn point_count(&self) -> usize {
@@ -136,6 +138,10 @@ impl VectorGeometry {
 
 	pub fn stroke_bezpath_iter(&self) -> impl Iterator<Item = BezPath> {
 		self.vector.stroke_bezpath_iter(&self.paths)
+	}
+
+	pub fn oriented_contours(&self) -> Vec<OrientedContour> {
+		oriented_contours(&self.vector.0, &self.paths)
 	}
 
 	pub fn stroke_manipulator_groups(&self) -> impl Iterator<Item = (Vec<ManipulatorGroup>, bool)> {

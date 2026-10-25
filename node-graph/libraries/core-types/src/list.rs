@@ -112,6 +112,10 @@ pub const ATTR_PATHS: &str = "paths";
 /// Path's `CurveType` naming the stride its point references weave in, on the `List<Path>` item
 /// holding the path (implicit default `Linear`).
 pub const ATTR_CURVE_TYPE: &str = "curve_type";
+/// Prefix of the attributes the engine keeps for itself, which are hidden from users.
+pub const INTERNAL_ATTRIBUTE_PREFIX: &str = "internal:";
+/// A vector item's cache of geometry derived from its point pool and paths, shared by the item's clones.
+pub const ATTR_GEOMETRY_CACHE: &str = "internal:geometry_cache";
 /// Point reference's `bool` tool state marking the tangent pair at this anchor occurrence as smooth,
 /// on the `List<i64>` inside a `Path` (implicit default `false`). Editing tools keep a smooth pair
 /// colinear. Rendering derives continuity from actual tangent geometry and does not read this.
@@ -570,7 +574,8 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 
 	/// Creates a new attribute filled with `count` default `T` values.
 	fn new_with_defaults(&self, count: usize) -> Arc<dyn AnyAttribute> {
-		Arc::new(Attribute(vec![T::default(); count]))
+		// A default per item, since clones of one would share state such as a cache between items
+		Arc::new(Attribute(std::iter::repeat_with(T::default).take(count).collect()))
 	}
 
 	/// Returns the number of elements in this attribute.
@@ -1329,12 +1334,13 @@ impl Attributes {
 /// A struct-of-arrays collection where each item holds an element of type `T` alongside
 /// a set of type-erased, dynamically-typed attributes stored in parallel attributes.
 ///
-/// Elements are stored contiguously in a `Vec<T>`, while attributes live in an internal
+/// Elements are stored contiguously in a shared `Vec<T>`, while attributes live in an internal
 /// [`Attributes`] store that keeps one attribute per attribute key. Items are accessed by
 /// index through element/attribute accessor methods, or consumed as owned [`Item`]s via iteration.
+/// Clones share the elements and every attribute until one of them is written to.
 #[derive(Clone, Debug)]
 pub struct List<T> {
-	element: Vec<T>,
+	element: Arc<Vec<T>>,
 	attributes: Attributes,
 }
 
@@ -1347,7 +1353,7 @@ impl<T> List<T> {
 	/// Creates an empty list with pre-allocated capacity for the given number of items.
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
-			element: Vec::with_capacity(capacity),
+			element: Arc::new(Vec::with_capacity(capacity)),
 			attributes: Attributes::new(),
 		}
 	}
@@ -1355,7 +1361,7 @@ impl<T> List<T> {
 	/// Creates a list containing a single item with the given element and no attributes.
 	pub fn new_from_element(element: T) -> Self {
 		Self {
-			element: vec![element],
+			element: Arc::new(vec![element]),
 			attributes: Attributes::with_len(1),
 		}
 	}
@@ -1364,7 +1370,7 @@ impl<T> List<T> {
 	pub fn new_from_elements(elements: Vec<T>) -> Self {
 		let len = elements.len();
 		Self {
-			element: elements,
+			element: Arc::new(elements),
 			attributes: Attributes::with_len(len),
 		}
 	}
@@ -1374,21 +1380,9 @@ impl<T> List<T> {
 		let mut attributes = Attributes::new();
 		attributes.push_item(item.attributes);
 		Self {
-			element: vec![item.element],
+			element: Arc::new(vec![item.element]),
 			attributes,
 		}
-	}
-
-	/// Appends an item to the end of this list.
-	pub fn push(&mut self, item: Item<T>) {
-		self.element.push(item.element);
-		self.attributes.push_item(item.attributes);
-	}
-
-	/// Appends all items from another list into this one.
-	pub fn extend(&mut self, list: List<T>) {
-		self.element.extend(list.element);
-		self.attributes.extend(list.attributes);
 	}
 
 	/// Returns the number of items in this list.
@@ -1406,6 +1400,17 @@ impl<T> List<T> {
 		self.attributes.keys()
 	}
 
+	/// A witness to this list's element storage, for telling later whether a list still holds these elements.
+	pub fn elements_witness(&self) -> ElementsWitness<T> {
+		ElementsWitness(Arc::downgrade(&self.element))
+	}
+
+	/// A witness to the storage of the attribute for `key`, or to its absence.
+	pub fn attribute_witness(&self, key: &str) -> AttributeWitness {
+		let attribute = self.attributes.position(key).map(|position| Arc::downgrade(&self.attributes.entries()[position].1));
+		AttributeWitness(attribute)
+	}
+
 	// ============================
 	// Attribute-oriented iteration
 	// ============================
@@ -1413,11 +1418,6 @@ impl<T> List<T> {
 	/// Returns an iterator over shared references to all element values.
 	pub fn iter_element_values(&self) -> std::slice::Iter<'_, T> {
 		self.element.iter()
-	}
-
-	/// Returns an iterator over mutable references to all element values.
-	pub fn iter_element_values_mut(&mut self) -> std::slice::IterMut<'_, T> {
-		self.element.iter_mut()
 	}
 
 	/// Returns an iterator over shared references to the values of a typed attribute, or `None` if the attribute doesn't exist or has the wrong type.
@@ -1449,11 +1449,6 @@ impl<T> List<T> {
 	/// Returns a shared reference to the element at the given index, or `None` if out of bounds.
 	pub fn element(&self, index: usize) -> Option<&T> {
 		self.element.get(index)
-	}
-
-	/// Returns a mutable reference to the element at the given index, or `None` if out of bounds.
-	pub fn element_mut(&mut self, index: usize) -> Option<&mut T> {
-		self.element.get_mut(index)
 	}
 
 	// ========================
@@ -1519,17 +1514,6 @@ impl<T> List<T> {
 		self.attributes.get_any_value(key, index)
 	}
 
-	// ====================
-	// Split borrow helpers
-	// ====================
-
-	/// Returns disjoint mutable references to the element slice and a typed attribute slice, creating the attribute with defaults if it doesn't exist.
-	/// This enables simultaneous mutable access to elements and a single attribute without borrowing conflicts.
-	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
-		let Self { element, attributes } = self;
-		(element.as_mut_slice(), attributes.get_or_create_attribute_slice_mut::<U>(key))
-	}
-
 	// ==================
 	// Item-level cloning
 	// ==================
@@ -1548,6 +1532,92 @@ impl<T> List<T> {
 	/// Clones all attribute values at the given item index into a new [`ItemAttributeValues`], without cloning the element.
 	pub fn clone_item_attributes(&self, index: usize) -> ItemAttributeValues {
 		self.attributes.clone_item(index)
+	}
+}
+
+// ==============
+// Element writes
+// ==============
+
+/// Writing to the elements copies them first if clones of the list still share them.
+impl<T: Clone> List<T> {
+	fn elements_mut(&mut self) -> &mut Vec<T> {
+		Arc::make_mut(&mut self.element)
+	}
+
+	/// Appends an item to the end of this list.
+	pub fn push(&mut self, item: Item<T>) {
+		self.elements_mut().push(item.element);
+		self.attributes.push_item(item.attributes);
+	}
+
+	/// Appends all items from another list into this one.
+	pub fn extend(&mut self, list: List<T>) {
+		// An empty list adopts the other's elements without copying them
+		if self.element.is_empty() {
+			self.element = list.element;
+		} else {
+			let elements = self.elements_mut();
+			match Arc::try_unwrap(list.element) {
+				Ok(other_elements) => elements.extend(other_elements),
+				Err(shared) => elements.extend_from_slice(&shared),
+			}
+		}
+		self.attributes.extend(list.attributes);
+	}
+
+	/// Returns an iterator over mutable references to all element values.
+	pub fn iter_element_values_mut(&mut self) -> std::slice::IterMut<'_, T> {
+		self.elements_mut().iter_mut()
+	}
+
+	/// Returns a mutable reference to the element at the given index, or `None` if out of bounds.
+	pub fn element_mut(&mut self, index: usize) -> Option<&mut T> {
+		if index >= self.element.len() {
+			return None;
+		}
+		self.elements_mut().get_mut(index)
+	}
+
+	/// Returns disjoint mutable references to the element slice and a typed attribute slice, creating the attribute with defaults if it doesn't exist.
+	/// This enables simultaneous mutable access to elements and a single attribute without borrowing conflicts.
+	pub fn element_and_attribute_slices_mut<U: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>(&mut self, key: &str) -> (&mut [T], &mut [U]) {
+		let Self { element, attributes } = self;
+		(Arc::make_mut(element).as_mut_slice(), attributes.get_or_create_attribute_slice_mut::<U>(key))
+	}
+}
+
+/// Identifies a list's element storage without keeping it alive.
+/// A write moves observed elements to new storage, so a list that matches still holds the elements the witness saw.
+pub struct ElementsWitness<T>(std::sync::Weak<Vec<T>>);
+
+impl<T> Clone for ElementsWitness<T> {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl<T> ElementsWitness<T> {
+	/// Whether `list` holds the very elements this witness saw, unchanged.
+	pub fn matches(&self, list: &List<T>) -> bool {
+		std::ptr::eq(self.0.as_ptr(), Arc::as_ptr(&list.element))
+	}
+}
+
+/// Identifies the storage of one of a list's attributes, or its absence, without keeping it alive.
+/// A write copies an observed attribute to new storage, so a list that matches still holds the values the witness saw.
+#[derive(Clone)]
+pub struct AttributeWitness(Option<std::sync::Weak<dyn AnyAttribute>>);
+
+impl AttributeWitness {
+	/// Whether `list` holds the very attribute for `key` this witness saw, unchanged (or still lacks it).
+	pub fn matches<T>(&self, list: &List<T>, key: &str) -> bool {
+		let current = list.attributes.position(key).map(|position| &list.attributes.entries()[position].1);
+		match (&self.0, current) {
+			(Some(witnessed), Some(current)) => std::ptr::addr_eq(witnessed.as_ptr(), Arc::as_ptr(current)),
+			(None, None) => true,
+			_ => false,
+		}
 	}
 }
 
@@ -1597,15 +1667,16 @@ impl<T: BoundingBox> BoundingBox for List<T> {
 	}
 }
 
-impl<T> IntoIterator for List<T> {
+impl<T: Clone> IntoIterator for List<T> {
 	type Item = Item<T>;
 	type IntoIter = ItemIter<T>;
 
 	/// Consumes a [`List`] and returns an iterator of [`Item`]s, each containing the owned data of the respective item from the original list.
+	/// The elements move out unless clones of the list still share them, in which case they are copied.
 	fn into_iter(self) -> Self::IntoIter {
 		let attributes = self.attributes.into_item_vec();
 		ItemIter {
-			element: self.element.into_iter(),
+			element: Arc::unwrap_or_clone(self.element).into_iter(),
 			attributes: attributes.into_iter(),
 		}
 	}
@@ -1614,7 +1685,7 @@ impl<T> IntoIterator for List<T> {
 impl<T> Default for List<T> {
 	fn default() -> Self {
 		Self {
-			element: Vec::new(),
+			element: Arc::new(Vec::new()),
 			attributes: Attributes::new(),
 		}
 	}
@@ -1622,7 +1693,7 @@ impl<T> Default for List<T> {
 
 impl<T: CacheHash> CacheHash for List<T> {
 	fn cache_hash<H: core::hash::Hasher>(&self, state: &mut H) {
-		self.element.cache_hash(state);
+		self.element.as_slice().cache_hash(state);
 
 		// Hash every attribute (key + values) rather than just the well-known ones, so changes to user-defined keys
 		// (e.g., gradient_form, gradient_spread) invalidate downstream graph caches as expected
@@ -1633,7 +1704,7 @@ impl<T: CacheHash> CacheHash for List<T> {
 impl<T: PartialEq> PartialEq for List<T> {
 	fn eq(&self, other: &Self) -> bool {
 		// Attributes participate in equality so the `a == b` ⇒ `hash(a) == hash(b)` contract holds with `cache_hash`
-		self.element == other.element && self.attributes.equals(&other.attributes)
+		(Arc::ptr_eq(&self.element, &other.element) || self.element == other.element) && self.attributes.equals(&other.attributes)
 	}
 }
 
@@ -1662,13 +1733,18 @@ impl<T> FromIterator<Item<T>> for List<T> {
 	fn from_iter<I: IntoIterator<Item = Item<T>>>(iter: I) -> Self {
 		let iter = iter.into_iter();
 		let (lower_bound, _) = iter.size_hint();
-		let mut list = Self::with_capacity(lower_bound);
+		let mut elements = Vec::with_capacity(lower_bound);
+		let mut attributes = Attributes::new();
 
 		for item in iter {
-			list.push(item);
+			elements.push(item.element);
+			attributes.push_item(item.attributes);
 		}
 
-		list
+		Self {
+			element: Arc::new(elements),
+			attributes,
+		}
 	}
 }
 

@@ -1,5 +1,5 @@
-use crate::parsing::{Implementation, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload};
-use proc_macro_error2::emit_error;
+use crate::parsing::{Implementation, NodeOutputTier, NodeParsedField, ParsedFieldType, ParsedNodeFn, RegularParsedField, output_payload, output_tier};
+use proc_macro_error2::{abort_if_dirty, emit_error};
 use quote::quote;
 use syn::spanned::Spanned;
 use syn::{GenericParam, Type};
@@ -15,11 +15,14 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 		validate_no_item_parameters,
 		validate_element_wise,
 		validate_ranked_inputs,
+		validate_async,
 	];
 
 	for validator in validators {
 		validator(parsed);
 	}
+
+	abort_if_dirty();
 
 	Ok(())
 }
@@ -72,12 +75,6 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 }
 
 fn validate_element_wise(parsed: &ParsedNodeFn) {
-	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
-		emit_error!(parsed.fn_name.span(), "An async node cannot take `impl Node` inputs");
-	}
-	if parsed.attributes.placeholder.is_some() && !parsed.is_async {
-		emit_error!(parsed.fn_name.span(), "Only an async node can have a `placeholder`");
-	}
 	if parsed.attributes.skip_impl {
 		return;
 	}
@@ -448,6 +445,18 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 				}
 			}
 		}
+	}
+}
+
+fn validate_async(parsed: &ParsedNodeFn) {
+	if parsed.is_async && matches!(output_tier(&parsed.output_type), NodeOutputTier::Interrupt | NodeOutputTier::Poll) {
+		emit_error!(parsed.output_type.span(), "An async node cannot return `Result<T, Interrupt>` or `Poll<T>`");
+	}
+	if parsed.is_async && parsed.fields.iter().any(|field| matches!(field.ty, ParsedFieldType::Node(_))) {
+		emit_error!(parsed.fn_name.span(), "An async node cannot take `impl Node` inputs");
+	}
+	if parsed.attributes.placeholder.is_some() && !parsed.is_async {
+		emit_error!(parsed.fn_name.span(), "Only an async node can have a `placeholder`");
 	}
 }
 

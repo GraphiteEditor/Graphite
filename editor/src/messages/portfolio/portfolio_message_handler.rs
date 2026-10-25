@@ -806,6 +806,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				}
 
+				// The document we are leaving won't get the frames that settle what glides in its graph, so it settles at once
+				if self.active_document_id != Some(document_id)
+					&& let Some(document) = self.active_document_mut()
+				{
+					document.node_graph_handler.stop_gliding(&document.network_interface, responses);
+				}
+
 				// Auto-save the document we are leaving
 				let mut node_graph_open = false;
 				if let Some(document) = self.active_document() {
@@ -1002,7 +1009,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let Some(document_id) = self.active_document_id else { return };
 				let Some(active_document) = self.documents.get_mut(&document_id) else { return };
 
-				self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
+				let dropped_thumbnails = self.executor.poll_node_graph_evaluation(active_document, document_id, responses);
+
+				// The runtime keeps the thumbnails of only the active document, rendering them all anew when another becomes active
+				if !dropped_thumbnails.is_empty() {
+					for (_, document) in self.documents.iter_mut().filter(|(id, _)| **id != document_id) {
+						document.layers_in_view.forget_thumbnails_in_background(&dropped_thumbnails);
+					}
+				}
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;

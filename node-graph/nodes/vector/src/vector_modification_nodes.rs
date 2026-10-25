@@ -1,11 +1,11 @@
-use core_types::list::{Item, List, NodeIdPath};
+use core_types::list::{ATTR_GEOMETRY_CACHE, Item, List, NodeIdPath};
 use core_types::transform::BakeTransform;
 use core_types::uuid::NodeId;
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_LAYER_PATH, ATTR_TRANSFORM, Ctx};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use vector_types::kurbo::BezPath;
-use vector_types::vector::{VectorModification, edit_item_geometry, ensure_paths_attribute, shared_paths_from_item_attributes};
+use vector_types::vector::{GeometryCache, VectorModification, edit_item_geometry, ensure_paths_attribute, shared_paths_from_item_attributes};
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
@@ -21,6 +21,7 @@ fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<Vect
 
 	if moved_in_place && !fills_by_face {
 		ensure_paths_attribute(&mut vector);
+		vector.set_attribute(ATTR_GEOMETRY_CACHE, GeometryCache::default());
 	} else {
 		edit_item_geometry(&mut vector, |element, paths| {
 			if !moved_in_place {
@@ -53,7 +54,7 @@ fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<Vect
 }
 
 /// Bakes the content's transform attribute into its underlying value, removing the attribute.
-#[node_macro::node(category("Vector"), icon("NodeBakeTransform"))]
+#[node_macro::node(category("Transform"), icon("NodeBakeTransform"))]
 fn bake_transform<T: BakeTransform + Send + 'static>(_ctx: impl Ctx, #[implementations(Vector, DAffine2, DVec2)] content: Item<T>) -> Item<T> {
 	let mut content = content;
 	if let Some(transform) = content.remove_attribute::<DAffine2>(ATTR_TRANSFORM) {
@@ -128,7 +129,10 @@ mod tests {
 
 		assert_eq!(modified.element().0.element(1), Some(&DVec2::new(11., 0.)));
 		assert!(std::ptr::eq(paths_from_item_attributes(&drawn).unwrap(), paths_from_item_attributes(&modified).unwrap()));
-		assert_eq!(modified.attributes().keys().collect::<Vec<_>>(), [ATTR_PATHS, ATTR_TRANSFORM, ATTR_EDITOR_LAYER_PATH]);
+		assert_eq!(
+			modified.attributes().keys().collect::<Vec<_>>(),
+			[ATTR_PATHS, ATTR_GEOMETRY_CACHE, ATTR_TRANSFORM, ATTR_EDITOR_LAYER_PATH]
+		);
 	}
 
 	// A point cloud comes out with an empty paths attribute placed last, whether the edit is made in place or by reweaving
@@ -148,7 +152,10 @@ mod tests {
 			let modified = path_modify((), drawn.clone(), Item::new_from_element(Box::new(modification)), Item::default());
 
 			assert_eq!(paths_from_item_attributes(&modified).map(List::len), Some(0));
-			assert_eq!(modified.attributes().keys().collect::<Vec<_>>(), [ATTR_TRANSFORM, ATTR_PATHS, ATTR_EDITOR_LAYER_PATH]);
+			assert_eq!(
+				modified.attributes().keys().collect::<Vec<_>>(),
+				[ATTR_TRANSFORM, ATTR_PATHS, ATTR_GEOMETRY_CACHE, ATTR_EDITOR_LAYER_PATH]
+			);
 		}
 	}
 }

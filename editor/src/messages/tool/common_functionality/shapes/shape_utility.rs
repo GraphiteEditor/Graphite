@@ -17,7 +17,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::core_types::misc::format_f64;
 use graphene_std::math::float_noise::round_away_float_noise;
-use graphene_std::vector::algorithms::shapes::{arc_bezpath, regular_polygon_bezpath, star_polygon_bezpath};
+use graphene_std::vector::algorithms::shapes::{HeartProportions, arc_bezpath, heart_bezpath, regular_polygon_bezpath, star_polygon_bezpath};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -33,6 +33,7 @@ pub enum ShapeType {
 	#[default]
 	Polygon = 0,
 	Star,
+	Heart,
 	Circle,
 	Arc,
 	Spiral,
@@ -48,6 +49,7 @@ impl ShapeType {
 	pub const ALL: &[ShapeType] = &[
 		ShapeType::Polygon,
 		ShapeType::Star,
+		ShapeType::Heart,
 		ShapeType::Circle,
 		ShapeType::Arc,
 		ShapeType::Spiral,
@@ -61,13 +63,17 @@ impl ShapeType {
 	/// True if this shape mode's fill checkbox is ticked by default when nothing is selected.
 	/// Spiral/Grid/Line are open paths and default to fill-off, the closed shapes default to fill-on.
 	pub fn defaults_to_fill(&self) -> bool {
-		matches!(self, Self::Polygon | Self::Star | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow)
+		matches!(
+			self,
+			Self::Polygon | Self::Star | Self::Heart | Self::Circle | Self::Arc | Self::Rectangle | Self::Ellipse | Self::Arrow
+		)
 	}
 
 	pub fn name(&self) -> String {
 		(match self {
 			Self::Polygon => "Polygon",
 			Self::Star => "Star",
+			Self::Heart => "Heart",
 			Self::Circle => "Circle",
 			Self::Arc => "Arc",
 			Self::Spiral => "Spiral",
@@ -339,6 +345,41 @@ pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &Document
 	Some((spiral_type, start_angle, inner_radius, outer_radius, turns, angle_resolution))
 }
 
+/// Extract the node input values of Heart, as the proportions they shape it by.
+pub fn extract_heart_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<HeartProportions> {
+	use graphene_std::vector::generator_nodes::heart::*;
+
+	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
+
+	let (
+		Some(&TaggedValue::Number(cleft_depth)),
+		Some(&TaggedValue::Number(cleft_sharpness)),
+		Some(&TaggedValue::Number(lobe_lean)),
+		Some(&TaggedValue::Number(widest_point)),
+		Some(&TaggedValue::Number(side_fullness)),
+		Some(&TaggedValue::Number(tip_angle)),
+	) = (
+		parameters.value(CleftDepthInput),
+		parameters.value(CleftSharpnessInput),
+		parameters.value(LobeLeanInput),
+		parameters.value(WidestPointInput),
+		parameters.value(SideFullnessInput),
+		parameters.value(TipAngleInput),
+	)
+	else {
+		return None;
+	};
+
+	Some(HeartProportions {
+		cleft_depth: cleft_depth / 100.,
+		cleft_sharpness: cleft_sharpness / 100.,
+		lobe_lean: lobe_lean / 100.,
+		widest_point: widest_point / 100.,
+		side_fullness: side_fullness / 100.,
+		tip_angle: tip_angle.to_radians(),
+	})
+}
+
 /// Calculate the viewport positions of arc endpoints
 pub fn arc_end_points(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(DVec2, DVec2)> {
 	let (radius, start_angle, sweep_angle, _) = extract_arc_parameters(Some(layer?), document)?;
@@ -474,6 +515,16 @@ pub fn arc_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessag
 	overlay_context.outline(targets.iter(), viewport, None);
 }
 
+/// Outlines the geometric shape made by a Heart node
+pub fn heart_outline(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	let Some(proportions) = extract_heart_parameters(layer, document) else { return };
+
+	let targets = [ClickTargetType::Path(heart_bezpath(&proportions))];
+	let viewport = document.metadata().transform_to_viewport(layer);
+
+	overlay_context.outline(targets.iter(), viewport, None);
+}
+
 /// Check if the the cursor is inside the geometric star shape made by the Star node without any upstream node modifications
 pub fn inside_star(viewport: DAffine2, n: u32, radius1: f64, radius2: f64, mouse_position: DVec2) -> bool {
 	let mut paths = Vec::new();
@@ -599,7 +650,7 @@ pub fn extract_grid_parameters(layer: LayerNodeIdentifier, document: &DocumentMe
 	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
 
 	let (Some(&TaggedValue::GridType(grid_type)), Some(&TaggedValue::DVec2(spacing)), Some(&TaggedValue::Integer(columns)), Some(&TaggedValue::Integer(rows)), Some(&TaggedValue::DVec2(angles))) = (
-		parameters.value(GridTypeInput),
+		parameters.value(LatticeInput),
 		parameters.value(SpacingInput),
 		parameters.value(ColumnsInput),
 		parameters.value(RowsInput),

@@ -212,7 +212,7 @@ impl ValueProvider for SingleVariableMathContext {
 /// Evaluates a math expression written in terms of the single variable `x`, which carries the input value, or `X` when the input is a Transform.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
-#[node_macro::node(name("Math f(x)"), category("Math: Arithmetic"), icon("NodeMathFx"))]
+#[node_macro::node(name("Math f(x)"), category("Math"), icon("NodeMathFx"))]
 fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
@@ -284,7 +284,7 @@ impl ValueProvider for PositionalMathContext {
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
-#[node_macro::node(name("Math f(…)"), category("Math: Arithmetic"), icon("NodeMathF"))]
+#[node_macro::node(name("Math f(…)"), category("Math"), icon("NodeMathF"))]
 fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
@@ -905,7 +905,7 @@ fn lerp<T: Lerp>(
 }
 
 /// The random function (`rand`) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
-#[node_macro::node(category("Math: Numeric"), icon("NodeRandom"))]
+#[node_macro::node(category("Math"), icon("NodeRandom"))]
 fn random(
 	_: impl Ctx,
 	_primary: (),
@@ -927,21 +927,21 @@ fn random(
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Converts a `Number` to the `Integer` type, which may be the required type for certain node inputs.
-#[node_macro::node(category("Type Assertion"), icon("NodeAsInteger"))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsInteger"))]
 fn as_integer(_: impl Ctx, value: Item<i64>) -> Item<i64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Converts an `Integer` or `Bool` to the `Number` type, which may be the required type for certain node inputs. A `Bool` becomes 0 (false) or 1 (true).
-#[node_macro::node(category("Type Assertion"), icon("NodeAsNumber"))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsNumber"))]
 fn as_number(_: impl Ctx, value: Item<f64>) -> Item<f64> {
 	value
 }
 
 // TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
 /// Passes a true or false value through as the type `Bool`, which may be the required type for certain node inputs.
-#[node_macro::node(category("Type Assertion"), icon("NodeAsBool"))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsBool"))]
 fn as_bool(_: impl Ctx, value: Item<bool>) -> Item<bool> {
 	value
 }
@@ -1209,7 +1209,7 @@ fn least_common_multiple(
 }
 
 /// Adds together all the numbers in the input list, producing their total.
-#[node_macro::node(category("Math: Numeric"), icon("NodeSum"))]
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeSum"))]
 fn sum(_: impl Ctx, values: List<f64>) -> Item<f64> {
 	Item::new_from_element(values.iter_element_values().sum())
 }
@@ -1376,7 +1376,7 @@ fn logical_not(
 }
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
-#[node_macro::node(category("Math: Logic"), icon("NodeSwitch"))]
+#[node_macro::node(category("Routing"), icon("NodeSwitch"))]
 fn switch<T: Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	condition: Item<bool>,

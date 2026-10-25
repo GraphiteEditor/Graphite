@@ -1256,10 +1256,12 @@ impl ParsedNodeFn {
 pub(crate) enum NodeOutputTier {
 	/// `-> T`
 	Plain,
+	/// `-> Result<T, E>` where `E: Into<NodeError>`
+	Error,
+	/// `-> Result<T, (T, E)>` where `E: Into<NodeError>`
+	Fallback,
 	/// `-> Result<T, Interrupt>`
 	Interrupt,
-	/// `-> Result<T, (T, NodeError)>`
-	Fallback,
 	/// `-> Poll<T>`
 	Poll,
 }
@@ -1274,7 +1276,8 @@ pub(crate) fn output_tier(output_type: &Type) -> NodeOutputTier {
 		("Poll", 1) => NodeOutputTier::Poll,
 		("Result", 2) => match arguments.args.last() {
 			Some(syn::GenericArgument::Type(Type::Tuple(_))) => NodeOutputTier::Fallback,
-			_ => NodeOutputTier::Interrupt,
+			Some(syn::GenericArgument::Type(Type::Path(error))) if error.path.segments.last().is_some_and(|segment| segment.ident == "Interrupt") => NodeOutputTier::Interrupt,
+			_ => NodeOutputTier::Error,
 		},
 		_ => NodeOutputTier::Plain,
 	}
@@ -2098,8 +2101,11 @@ mod tests {
 		let payload: Type = parse_quote!(Item<u32>);
 		for (ty, tier) in [
 			(parse_quote!(Item<u32>), NodeOutputTier::Plain),
+			(parse_quote!(Result<Item<u32>, NodeError>), NodeOutputTier::Error),
+			(parse_quote!(Result<Item<u32>, std::num::ParseIntError>), NodeOutputTier::Error),
 			(parse_quote!(Result<Item<u32>, Interrupt>), NodeOutputTier::Interrupt),
 			(parse_quote!(Result<Item<u32>, (Item<u32>, NodeError)>), NodeOutputTier::Fallback),
+			(parse_quote!(Result<Item<u32>, (Item<u32>, std::num::ParseIntError)>), NodeOutputTier::Fallback),
 			(parse_quote!(Poll<Item<u32>>), NodeOutputTier::Poll),
 		] {
 			let ty: Type = ty;

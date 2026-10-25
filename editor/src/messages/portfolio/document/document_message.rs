@@ -208,6 +208,11 @@ pub enum DocumentMessage {
 	SetLayersPanelHoveredLayer {
 		id: Option<NodeId>,
 	},
+	/// The layers with a row in view in the Layers panel, and among them those it lacks the details of, which it's sent.
+	SetLayersPanelView {
+		layers: Vec<NodeId>,
+		layers_missing_details: Vec<NodeId>,
+	},
 	SetNodePinned {
 		node_id: NodeId,
 		pinned: bool,
@@ -221,6 +226,9 @@ pub enum DocumentMessage {
 	SetOverlaysVisibility {
 		visible: bool,
 		overlays_type: Option<OverlaysType>,
+	},
+	SetCurvatureCombScale {
+		scale: f64,
 	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
@@ -286,6 +294,7 @@ pub enum DocumentMessage {
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+		group_layers: HashSet<NodeId>,
 	},
 	UpdateOutlines {
 		outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,

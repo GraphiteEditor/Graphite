@@ -1348,11 +1348,6 @@ name = "dpi"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
-
-[[package]]
-name = "dpi"
-version = "0.1.2"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
 dependencies = [
  "serde",
 ]
@@ -3556,7 +3551,7 @@ version = "0.17.1"
 source = "git+https://github.com/timon-schelling/muda.git?rev=e5bc28bbd6781b18afbfc237981f9ef47eddf863#e5bc28bbd6781b18afbfc237981f9ef47eddf863"
 dependencies = [
  "crossbeam-channel",
- "dpi 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dpi",
  "keyboard-types",
  "objc2",
  "objc2-app-kit",
@@ -6637,6 +6632,7 @@ dependencies = [
  "num-traits",
  "petgraph 0.7.1",
  "polycool",
+ "robust",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
@@ -7667,13 +7663,14 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 
 [[package]]
 name = "winit"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "453408a9f608e14c92c6c1b5ef0193e1699aee3bfb17b48cc5423c6ec2ae1806"
 dependencies = [
  "bitflags 2.13.2",
  "cfg_aliases",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "libc",
  "raw-window-handle",
  "rustix",
@@ -7694,12 +7691,13 @@ dependencies = [
 
 [[package]]
 name = "winit-android"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d356e863a4adda4a0309e34a0cafbb9dd57be61cca7c7ae3de95a285938959cd"
 dependencies = [
  "android-activity",
  "bitflags 2.13.2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "ndk",
  "raw-window-handle",
  "smol_str",
@@ -7709,13 +7707,14 @@ dependencies = [
 
 [[package]]
 name = "winit-appkit"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd77d5b64db1abaf4ba11d08c1da69695f9c4fdc3ee19a543479872ef79e05c0"
 dependencies = [
  "bitflags 2.13.2",
  "block2",
  "dispatch2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -7731,11 +7730,12 @@ dependencies = [
 
 [[package]]
 name = "winit-common"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "93ef82b1146fc93e6f60755e851152d708ede1f845eb73e8fdefc3192458ccf5"
 dependencies = [
  "block2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "memmap2 0.9.10",
  "objc2",
  "objc2-core-foundation",
@@ -7749,12 +7749,13 @@ dependencies = [
 
 [[package]]
 name = "winit-core"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "74158ad0526ab0f1e850b89f63a4513f4fee9178ef72b408bfb37f30a429d62e"
 dependencies = [
  "bitflags 2.13.2",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "keyboard-types",
  "raw-window-handle",
  "serde",
@@ -7764,11 +7765,12 @@ dependencies = [
 
 [[package]]
 name = "winit-orbital"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "321adbc811d8b15f34f6d6ec49afaff4cbc06c3e807e56de8eda6ec9d3466151"
 dependencies = [
  "bitflags 2.13.2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "libredox",
  "orbclient",
  "raw-window-handle",
@@ -7780,13 +7782,14 @@ dependencies = [
 
 [[package]]
 name = "winit-uikit"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ed4addb22374bc174e41143c22608ed125590962157bdcb02415377b41ef1b5a"
 dependencies = [
  "bitflags 2.13.2",
  "block2",
  "dispatch2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",
@@ -7801,13 +7804,14 @@ dependencies = [
 
 [[package]]
 name = "winit-wayland"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8352b11bc0d223a37bbbdb55d2250949917c313f3ee07a34da7d614d74fce69e"
 dependencies = [
  "bitflags 2.13.2",
  "calloop",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "foldhash 0.2.0",
  "libc",
  "memmap2 0.9.10",
@@ -7828,14 +7832,15 @@ dependencies = [
 
 [[package]]
 name = "winit-web"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c38d83a15b854abe625a3db8144ad9a5094899d9a0bc976b4edc4c233197563"
 dependencies = [
  "atomic-waker",
  "bitflags 2.13.2",
  "concurrent-queue",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "js-sys",
  "pin-project",
  "raw-window-handle",
@@ -7850,12 +7855,13 @@ dependencies = [
 
 [[package]]
 name = "winit-win32"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf3b2326760dad4a8fe721a8c8a40fd4f7efb338ef468f340794ea1efcd5261e"
 dependencies = [
  "bitflags 2.13.2",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "percent-encoding",
  "raw-window-handle",
  "smol_str",
@@ -7868,14 +7874,15 @@ dependencies = [
 
 [[package]]
 name = "winit-x11"
-version = "0.31.0-beta.3"
-source = "git+https://github.com/timon-schelling/winit?branch=graphite#2bdd85391e28078d1cbb68761b13fd3332e7d2a4"
+version = "0.31.0-beta.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "eee2be0a6dce77b889b6f9040a349e8c2cea6c0c4257f0b61591d7e0d9a6dfaf"
 dependencies = [
  "bitflags 2.13.2",
  "bytemuck",
  "calloop",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit?branch=graphite)",
+ "dpi",
  "libc",
  "percent-encoding",
  "raw-window-handle",
@@ -7932,14 +7939,14 @@ dependencies = [
 
 [[package]]
 name = "x11rb"
-version = "0.13.2"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9993aa5be5a26815fe2c3eacfc1fde061fc1a1f094bf1ad2a18bf9c495dd7414"
+checksum = "5a8885a854a8bfdf87a301e53e41b17c5f8f33639903131338b997b1eb614f44"
 dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
- "libloading 0.8.8",
+ "libloading 0.9.0",
  "once_cell",
  "rustix",
  "x11rb-protocol",
@@ -7948,9 +7955,9 @@ dependencies = [
 
 [[package]]
 name = "x11rb-protocol"
-version = "0.13.2"
+version = "0.14.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
+checksum = "acf4d1bc32aa46eec18caa634ec3cf4c05bfa151f12b93b510b15190f69a1ca8"
 
 [[package]]
 name = "xattr"

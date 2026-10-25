@@ -255,6 +255,7 @@ impl NodeRuntime {
 								execution_id,
 								result: ExecutionResult::Panic(payload),
 								responses: VecDeque::new(),
+								dropped_thumbnails: Vec::new(),
 								vector_modify: HashMap::new(),
 								inspect_result: None,
 							};
@@ -274,9 +275,11 @@ impl NodeRuntime {
 
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-					if !render_config.for_eyedropper {
-						self.process_monitor_nodes(&mut responses, self.update_thumbnails);
-					}
+					let dropped_thumbnails = if !render_config.for_eyedropper {
+						self.process_monitor_nodes(&mut responses, self.update_thumbnails)
+					} else {
+						Vec::new()
+					};
 					self.update_thumbnails = false;
 
 					// Resolve the result from the inspection by accessing the monitor node
@@ -343,6 +346,7 @@ impl NodeRuntime {
 						execution_id,
 						result,
 						responses,
+						dropped_thumbnails,
 						vector_modify: self.vector_modify.clone(),
 						inspect_result,
 					};
@@ -417,10 +421,17 @@ impl NodeRuntime {
 		errors.into_boxed_slice()
 	}
 
-	/// Updates state data
-	fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
+	/// Updates state data, giving back the layers whose thumbnails were dropped because they're no longer monitored.
+	fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) -> Vec<NodeId> {
 		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
-		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
+		let mut dropped_thumbnails = Vec::new();
+		self.thumbnail_renders.retain(|id, _| {
+			let monitored = self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id));
+			if !monitored {
+				dropped_thumbnails.push(*id);
+			}
+			monitored
+		});
 
 		for monitor_node_path in &self.monitor_nodes {
 			// Skip the inspect monitor node
@@ -504,6 +515,8 @@ impl NodeRuntime {
 				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
 			}
 		}
+
+		dropped_thumbnails
 	}
 
 	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.

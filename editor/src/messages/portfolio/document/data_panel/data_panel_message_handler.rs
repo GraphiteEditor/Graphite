@@ -11,7 +11,7 @@ use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::format_f64;
 use graphene_std::gradient::Gradient;
-use graphene_std::list::{Item, List, NodeIdPath};
+use graphene_std::list::{INTERNAL_ATTRIBUTE_PREFIX, Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
 use graphene_std::memo::IORecord;
 use graphene_std::raster::{
@@ -24,7 +24,8 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
+	WeldMethod,
 };
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
@@ -209,7 +210,8 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<StrokeJoin>,
 		List<StrokeAlign>,
 		List<StrokeCap>,
-		List<MergeByDistanceAlgorithm>,
+		List<WeldMethod>,
+		List<UnweldMethod>,
 		List<ExtrudeJoiningAlgorithm>,
 		List<PointSpacingType>,
 		List<StringCapitalization>,
@@ -232,6 +234,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		List<DomainWarpType>,
 		List<RealTimeMode>,
 		List<GridType>,
+		List<GridTopology>,
 		List<ArcType>,
 		List<SpiralType>,
 		List<TextAlign>,
@@ -263,7 +266,8 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<StrokeJoin>,
 		Item<StrokeAlign>,
 		Item<StrokeCap>,
-		Item<MergeByDistanceAlgorithm>,
+		Item<WeldMethod>,
+		Item<UnweldMethod>,
 		Item<ExtrudeJoiningAlgorithm>,
 		Item<PointSpacingType>,
 		Item<StringCapitalization>,
@@ -286,6 +290,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Item<DomainWarpType>,
 		Item<RealTimeMode>,
 		Item<GridType>,
+		Item<GridTopology>,
 		Item<ArcType>,
 		Item<SpiralType>,
 		Item<TextAlign>,
@@ -425,7 +430,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 			}
 		}
 
-		let attribute_keys: Vec<String> = self.attribute_keys().map(str::to_string).collect();
+		let attribute_keys: Vec<String> = self.attribute_keys().filter(|key| !key.starts_with(INTERNAL_ATTRIBUTE_PREFIX)).map(str::to_string).collect();
 
 		let mut rows = (0..self.len())
 			.map(|index| {
@@ -981,7 +986,8 @@ impl_table_item_layout_for_choice_enum!(
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	StringCapitalization,
@@ -1003,6 +1009,7 @@ impl_table_item_layout_for_choice_enum!(
 	DomainWarpType,
 	RealTimeMode,
 	GridType,
+	GridTopology,
 	ArcType,
 	SpiralType,
 	TextAlign,
@@ -1153,7 +1160,8 @@ macro_rules! known_item_types {
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
-			MergeByDistanceAlgorithm,
+			WeldMethod,
+			UnweldMethod,
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
 			StringCapitalization,
@@ -1176,6 +1184,7 @@ macro_rules! known_item_types {
 			DomainWarpType,
 			RealTimeMode,
 			GridType,
+			GridTopology,
 			ArcType,
 			SpiralType,
 			TextAlign,

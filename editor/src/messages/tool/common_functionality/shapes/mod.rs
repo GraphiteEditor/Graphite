@@ -3,6 +3,7 @@ pub mod arrow_shape;
 pub mod circle_shape;
 pub mod ellipse_shape;
 pub mod grid_shape;
+pub mod heart_shape;
 pub mod line_shape;
 pub mod polygon_shape;
 pub mod rectangle_shape;

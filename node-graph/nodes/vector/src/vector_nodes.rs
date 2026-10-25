@@ -23,20 +23,22 @@ use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
 use vector_types::GradientForm;
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
+use vector_types::vector::SetVectorPaths;
 use vector_types::vector::algorithms::bezpath_algorithms::{
 	self, TValue, bezpath_area_centroid_and_area, bezpath_length_centroid_and_length, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath,
 };
-use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use vector_types::vector::algorithms::concave_hull::concave_hull_of_geometry;
 use vector_types::vector::algorithms::offset_bezpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
+use vector_types::vector::algorithms::weld::WeldExt;
 use vector_types::vector::misc::{
-	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, Tangent,
-	bezpath_from_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	BezierHandles, CentroidType, ExtrudeJoiningAlgorithm, InterpolationDistribution, ManipulatorGroup, PointSpacingType, RowsOrColumns, Tangent, UnweldMethod, WeldMethod, dvec2_to_point,
+	handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, GradientSettings, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{
-	CurveType, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes, paths_from_list_row_attributes,
-	push_path, shared_paths_from_item_attributes, span_endpoints, spans,
+	CurveType, IdCollisionSet, Path, PointId, SegmentId, WorkingVector, curve_type_at, edit_item_geometry, edit_item_points, handle_point, no_paths, paths_from_item_attributes,
+	paths_from_list_row_attributes, push_path, push_paths, reverse_path_flows, shared_paths_from_item_attributes, span_endpoints, spans,
 };
 
 /// Appends one point to the working form, returning the index that names it.
@@ -521,7 +523,7 @@ fn dash_pattern(
 	Item::new_from_element(DashPattern::from(lengths))
 }
 
-#[node_macro::node(category("Repeat"), icon("NodeRepeatOnPoints"), name("Copy to Points"), path(core_types::vector))]
+#[node_macro::node(category("Graphic"), icon("NodeRepeatOnPoints"), name("Copy to Points"), path(core_types::vector))]
 fn copy_to_points<I: Send + Clone>(
 	_: impl Ctx,
 	points: List<Vector>,
@@ -612,7 +614,7 @@ fn copy_to_points<I: Send + Clone>(
 	result_list
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeRoundCorners"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeRoundCorners"), path(core_types::vector))]
 fn round_corners<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
@@ -667,12 +669,12 @@ fn round_corners<V: MapVectorItems + Send>(
 		let (mut result, mut result_paths) = (Vector::default(), List::new());
 		result.append_bezpaths(&mut result_paths, &rounded_subpaths);
 
-		attributes.insert(ATTR_PATHS, result_paths);
+		attributes.set_paths(result_paths);
 		Item::from_parts(result, attributes)
 	})
 }
 
-/// Rounds off the anchors where a subpath's direction turns, cutting back along both segments' curves, and leaves smooth joins as they are.
+///Rounds off the anchors where a subpath's direction turns, cutting back along both segments' curves, and leaves smooth joins as they are.
 /// Returns `None` when there's no corner to round.
 fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_length_limit: f64, min_angle_threshold: f64) -> Option<BezPath> {
 	let closed = matches!(subpath.elements().last(), Some(PathEl::ClosePath));
@@ -768,31 +770,125 @@ fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_le
 	Some(rounded)
 }
 
-#[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), icon("NodeMergeByDistance"), path(core_types::vector))]
-fn merge_by_distance<V: MapVectorItems + Send + Sync + 'static>(
+/// Joins points lying within a distance of each other into one, connecting the paths they belong to.
+#[node_macro::node(category("Vector: Path"), icon("NodeWeld"), path(core_types::vector))]
+fn weld<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
-	#[implementations(Graphic, Vector)] content: Item<V>,
+	/// The vector with points to join.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+	/// How close points must be to join.
 	#[unit(" px")]
 	#[default(0.1)]
 	#[hard(0.0001..)]
 	distance: Item<f64>,
-	algorithm: Item<MergeByDistanceAlgorithm>,
+	/// Which points may join: any within the distance, the two ends of each segment shorter than it, or only the ends of open path flows.
+	method: Item<WeldMethod>,
 ) -> Item<V> {
-	let (distance, algorithm) = (*distance.element(), *algorithm.element());
+	let (distance, method) = (*distance.element(), *method.element());
 
 	V::map_vector_items(content, |content| {
 		let mut content = content;
 
-		match algorithm {
-			MergeByDistanceAlgorithm::Spatial => {
+		match method {
+			WeldMethod::All => {
 				let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-				edit_item_geometry(&mut content, |vector, paths| vector.merge_by_distance_spatial(paths, transform, distance));
+				edit_item_geometry(&mut content, |vector, paths| vector.weld_all(paths, transform, distance));
 			}
-			MergeByDistanceAlgorithm::Topological => edit_item_geometry(&mut content, |vector, paths| vector.merge_by_distance_topological(paths, distance)),
+			WeldMethod::Connected => edit_item_geometry(&mut content, |vector, paths| vector.weld_connected(paths, distance)),
+			WeldMethod::FlowEnds => {
+				let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+				edit_item_geometry(&mut content, |vector, paths| vector.weld_flow_ends(paths, transform, distance));
+			}
 		}
 
 		content
 	})
+}
+
+/// Separates path flows or segments where they meet, giving each its own copies of the points they share.
+#[node_macro::node(category("Vector: Path"), icon("NodeUnweld"), path(core_types::vector))]
+fn unweld<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The vector with path flows to separate.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+	/// Which points are split: every anchor so each segment stands alone, every point path flows share, or only those where a path flow ends.
+	method: Item<UnweldMethod>,
+) -> Item<V> {
+	let method = *method.element();
+
+	V::map_vector_items(content, |content| {
+		let mut content = content;
+		edit_item_geometry(&mut content, |vector, paths| vector.unweld(paths, method));
+
+		content
+	})
+}
+
+/// Wraps the points and paths of the vector content in a closed path in the shape of a rubber band stretched around everything. A curvature above zero may be given to obtain the concave hull, letting the (closed, open, or mesh-like) path or paths press into indents of the content where a ball with that curvature would be able to reach.
+#[node_macro::node(category("Vector: Point"), icon("NodeConvexHull"), path(core_types::vector))]
+fn convex_hull<V: MapVectorItems + Send>(
+	_: impl Ctx,
+	/// The vector content to envelop in the hull, which may be points, paths, or both.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+	/// How tightly the hull follows indents in the content. Its reciprocal is the radius of the rolling ball used to form the hull. Zero curvature gives the convex hull.
+	#[unit("/px")]
+	#[hard(0..)]
+	#[soft(..0.1)]
+	#[range]
+	#[display_decimal_places(4)]
+	curvature: Item<f64>,
+) -> Item<V> {
+	let curvature = *curvature.element();
+
+	V::map_vector_items(content, |content| {
+		let mut content = content;
+		let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let paths = shared_paths_from_item_attributes(&content);
+		let vector = content.element();
+
+		let segments: Vec<PathSeg> = vector.stroke_bezpath_iter(&paths).flat_map(|bezpath| bezpath.segments().collect::<Vec<_>>()).collect();
+
+		// Anchor points not connected to any segment still participate in the hull
+		let connectivity = vector.connectivity(&paths);
+		let loose_points: Vec<kurbo::Point> = (vector.positions().enumerate())
+			.filter(|&(index, _)| connectivity.spokes(index as u32) == 0 && !connectivity.is_handle(index as u32))
+			.map(|(_, position)| dvec2_to_point(position))
+			.collect();
+
+		let hull = concave_hull_in_transformed_space(&segments, &loose_points, curvature, transform);
+
+		let (hull, hull_paths) = Vector::from_bezpath_welded(&hull);
+		*content.element_mut() = hull;
+		content.set_paths(hull_paths);
+		content
+	})
+}
+
+/// The concave hull of geometry in an item's local space, with the ball sized in the space the item's transform places it in.
+fn concave_hull_in_transformed_space(segments: &[PathSeg], loose_points: &[kurbo::Point], curvature: f64, transform: DAffine2) -> BezPath {
+	let (x_axis, y_axis) = (transform.matrix2.x_axis, transform.matrix2.y_axis);
+	let scale_squared = x_axis.length_squared().max(y_axis.length_squared());
+	let tolerance = scale_squared * 1e-9;
+
+	// Convex hulls are unaffected by any transform and a similarity only resizes the ball, so these stay in local space to
+	// avoid round-trip error (as does a transform too squashed to invert)
+	let uniform = x_axis.dot(y_axis).abs() <= tolerance && (x_axis.length_squared() - y_axis.length_squared()).abs() <= tolerance;
+	let invertible = transform.matrix2.determinant().abs() > tolerance;
+	if curvature <= 0. || uniform || !invertible {
+		return concave_hull_of_geometry(segments, loose_points, curvature * scale_squared.sqrt());
+	}
+
+	// Otherwise the ball would be an ellipse in local space, so the hull is found where the ball is round and brought back
+	let affine = Affine::new(transform.to_cols_array());
+	let segments: Vec<PathSeg> = segments.iter().map(|&segment| affine * segment).collect();
+	let loose_points: Vec<kurbo::Point> = loose_points.iter().map(|&point| affine * point).collect();
+
+	let mut hull = concave_hull_of_geometry(&segments, &loose_points, curvature);
+	hull.apply_affine(affine.inverse());
+	hull
 }
 
 pub mod extrude_algorithms {
@@ -1022,7 +1118,7 @@ pub mod extrude_algorithms {
 	}
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeExtrude"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeExtrude"), path(core_types::vector))]
 fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, direction: Item<DVec2>, joining_algorithm: Item<ExtrudeJoiningAlgorithm>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
@@ -1033,7 +1129,7 @@ fn extrude<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vec
 	})
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBoxWarp"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeBoxWarp"), path(core_types::vector))]
 fn box_warp<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>, #[expose] rectangle: Item<Vector>) -> Item<V> {
 	let target_transform: DAffine2 = rectangle.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let target_paths = shared_paths_from_item_attributes(&rectangle);
@@ -1104,7 +1200,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-#[node_macro::node(category("Vector"), icon("NodePackStrips"), path(graphene_core::vector))]
+#[node_macro::node(category("Transform"), icon("NodePackStrips"), path(graphene_core::vector))]
 fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
@@ -1227,8 +1323,8 @@ where
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeAutoTangents"), name("Auto-Tangents"), path(core_types::vector))]
-fn auto_tangents<V: MapVectorItems + Send>(
+#[node_macro::node(category("Vector: Path"), icon("NodeSmoothAnchors"), path(core_types::vector))]
+fn smooth_anchors<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
 	/// The amount of spread for the auto-tangents, from 0 (sharp corner) to 1 (full spread).
@@ -1242,163 +1338,167 @@ fn auto_tangents<V: MapVectorItems + Send>(
 ) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let (spread, preserve_existing) = (*spread.element(), *preserve_existing.element());
+		let mut source = source;
 
+		// Tangents are spread where the item is drawn, or in its own space if the transform is too squashed to bring them back
 		let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let source_paths = shared_paths_from_item_attributes(&source);
-		let (source, mut attributes) = source.into_parts();
+		let transform = if transform.matrix2.determinant() != 0. { transform } else { DAffine2::IDENTITY };
+		let inverse = transform.inverse();
 
-		// Each subpath's softened bezpath, beside which of its manipulators were given auto-tangents
-		let mut softened_bezpaths = Vec::new();
-		let mut auto_tangented_manipulators = Vec::new();
+		edit_item_geometry(&mut source, |vector, paths| {
+			let point_count = vector.point_count();
+			let runs: Vec<_> = vector.stroke_manipulator_groups_and_anchor_indices(paths).collect();
 
-		for (mut manipulators_list, is_closed) in source.stroke_manipulator_groups(&source_paths) {
-			for manipulator in &mut manipulators_list {
-				manipulator.anchor = transform.transform_point2(manipulator.anchor);
-				manipulator.in_handle = manipulator.in_handle.map(|handle| transform.transform_point2(handle));
-				manipulator.out_handle = manipulator.out_handle.map(|handle| transform.transform_point2(handle));
+			// The anchors stay the pool's own points, keeping their welds and attributes, while the handles are made anew
+			let mut kept_index = vec![None; point_count];
+			for (index, former) in vector.keep_only_anchors(paths).into_iter().enumerate() {
+				kept_index[former] = Some(index as u32);
 			}
 
-			if manipulators_list.len() < 2 {
+			let mut next_id = SegmentId::ZERO;
+			let mut smooth_anchors = Vec::new();
+
+			for (manipulators_list, anchor_indices, is_closed) in runs {
+				let Some(anchors) = anchor_indices.iter().map(|&anchor| kept_index.get(anchor as usize).copied().flatten()).collect::<Option<Vec<u32>>>() else {
+					log::error!("Smooth Anchors skipped a contour through an anchor that was not kept");
+					continue;
+				};
+
 				// Not enough points for softening or handle removal
-				let mut unchanged = bezpath_from_manipulator_groups(&manipulators_list, is_closed);
-				unchanged.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+				if manipulators_list.len() < 2 {
+					push_contour(vector, paths, &anchors, &manipulators_list, is_closed, &mut next_id);
+					continue;
+				}
 
-				softened_bezpaths.push(unchanged);
-				auto_tangented_manipulators.push(Vec::new());
-				continue;
-			}
+				let drawn_anchors: Vec<DVec2> = manipulators_list.iter().map(|manipulator| transform.transform_point2(manipulator.anchor)).collect();
+				let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
 
-			let mut new_manipulators_list = Vec::with_capacity(manipulators_list.len());
-			// Track which manipulator indices were given auto-tangent (colinear) handles
-			let mut auto_tangented = vec![false; manipulators_list.len()];
+				for i in 0..manipulators_list.len() {
+					let current = &manipulators_list[i];
+					let is_endpoint = !is_closed && (i == 0 || i == manipulators_list.len() - 1);
 
-			for i in 0..manipulators_list.len() {
-				let current = &manipulators_list[i];
-				let is_endpoint = !is_closed && (i == 0 || i == manipulators_list.len() - 1);
+					if preserve_existing {
+						// Check if this point has handles that are meaningfully different from the anchor
+						let has_handles = (current.in_handle.is_some() && !current.in_handle.unwrap().abs_diff_eq(current.anchor, 1e-5))
+							|| (current.out_handle.is_some() && !current.out_handle.unwrap().abs_diff_eq(current.anchor, 1e-5));
 
-				if preserve_existing {
-					// Check if this point has handles that are meaningfully different from the anchor
-					let has_handles = (current.in_handle.is_some() && !current.in_handle.unwrap().abs_diff_eq(current.anchor, 1e-5))
-						|| (current.out_handle.is_some() && !current.out_handle.unwrap().abs_diff_eq(current.anchor, 1e-5));
+						// If the point already has handles, keep it as is
+						if has_handles {
+							new_manipulators_list.push(*current);
+							continue;
+						}
+					}
 
-					// If the point already has handles, keep it as is
-					if has_handles {
+					// If spread is 0, remove handles for this point, making it a sharp corner
+					if spread == 0. {
+						new_manipulators_list.push(ManipulatorGroup {
+							anchor: current.anchor,
+							in_handle: None,
+							out_handle: None,
+							id: current.id,
+						});
+						continue;
+					}
+
+					// Endpoints of open paths get zero-length cubic handles so adjacent segments remain cubic (not quadratic)
+					if is_endpoint {
+						new_manipulators_list.push(ManipulatorGroup {
+							anchor: current.anchor,
+							in_handle: Some(current.anchor),
+							out_handle: Some(current.anchor),
+							id: current.id,
+						});
+						continue;
+					}
+
+					// Get previous and next points for auto-tangent calculation
+					let prev_index = if i == 0 { manipulators_list.len() - 1 } else { i - 1 };
+					let next_index = if i == manipulators_list.len() - 1 { 0 } else { i + 1 };
+
+					let current_position = drawn_anchors[i];
+					let delta_prev = drawn_anchors[prev_index] - current_position;
+					let delta_next = drawn_anchors[next_index] - current_position;
+
+					// Calculate normalized directions and distances to adjacent points
+					let distance_prev = delta_prev.length();
+					let distance_next = delta_next.length();
+
+					// Check if we have valid directions (e.g., points are not coincident)
+					if distance_prev < 1e-5 || distance_next < 1e-5 {
+						// Fallback: keep the original manipulator group (which has no active handles here)
 						new_manipulators_list.push(*current);
 						continue;
 					}
-				}
 
-				// If spread is 0, remove handles for this point, making it a sharp corner
-				if spread == 0. {
+					let direction_prev = delta_prev / distance_prev;
+					let direction_next = delta_next / distance_next;
+
+					// Calculate handle direction as the bisector of the two normalized directions.
+					// This ensures the in and out handles are colinear (180° apart) through the anchor.
+					let mut handle_direction = (direction_prev - direction_next).try_normalize().unwrap_or_else(|| direction_prev.perp());
+
+					// Ensure consistent orientation of the handle direction.
+					// This makes the `+ handle_direction` for in_handle and `- handle_direction` for out_handle consistent.
+					if direction_prev.dot(handle_direction) < 0. {
+						handle_direction = -handle_direction;
+					}
+
+					// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
+					let in_length = distance_prev / 3. * spread;
+					let out_length = distance_next / 3. * spread;
+
+					// Create new manipulator group with calculated auto-tangents
 					new_manipulators_list.push(ManipulatorGroup {
 						anchor: current.anchor,
-						in_handle: None,
-						out_handle: None,
+						in_handle: Some(inverse.transform_point2(current_position + handle_direction * in_length)),
+						out_handle: Some(inverse.transform_point2(current_position - handle_direction * out_length)),
 						id: current.id,
 					});
-					continue;
+					smooth_anchors.push(anchors[i]);
 				}
 
-				// Endpoints of open paths get zero-length cubic handles so adjacent segments remain cubic (not quadratic)
-				if is_endpoint {
-					new_manipulators_list.push(ManipulatorGroup {
-						anchor: current.anchor,
-						in_handle: Some(current.anchor),
-						out_handle: Some(current.anchor),
-						id: current.id,
-					});
-					continue;
-				}
-
-				// Get previous and next points for auto-tangent calculation
-				let prev_index = if i == 0 { manipulators_list.len() - 1 } else { i - 1 };
-				let next_index = if i == manipulators_list.len() - 1 { 0 } else { i + 1 };
-
-				let current_position = current.anchor;
-				let delta_prev = manipulators_list[prev_index].anchor - current_position;
-				let delta_next = manipulators_list[next_index].anchor - current_position;
-
-				// Calculate normalized directions and distances to adjacent points
-				let distance_prev = delta_prev.length();
-				let distance_next = delta_next.length();
-
-				// Check if we have valid directions (e.g., points are not coincident)
-				if distance_prev < 1e-5 || distance_next < 1e-5 {
-					// Fallback: keep the original manipulator group (which has no active handles here)
-					new_manipulators_list.push(*current);
-					continue;
-				}
-
-				let direction_prev = delta_prev / distance_prev;
-				let direction_next = delta_next / distance_next;
-
-				// Calculate handle direction as the bisector of the two normalized directions.
-				// This ensures the in and out handles are colinear (180° apart) through the anchor.
-				let mut handle_direction = (direction_prev - direction_next).try_normalize().unwrap_or_else(|| direction_prev.perp());
-
-				// Ensure consistent orientation of the handle direction.
-				// This makes the `+ handle_direction` for in_handle and `- handle_direction` for out_handle consistent.
-				if direction_prev.dot(handle_direction) < 0. {
-					handle_direction = -handle_direction;
-				}
-
-				// Calculate handle lengths: 1/3 of distance to adjacent points, scaled by spread
-				let in_length = distance_prev / 3. * spread;
-				let out_length = distance_next / 3. * spread;
-
-				// Create new manipulator group with calculated auto-tangents
-				new_manipulators_list.push(ManipulatorGroup {
-					anchor: current_position,
-					in_handle: Some(current_position + handle_direction * in_length),
-					out_handle: Some(current_position - handle_direction * out_length),
-					id: current.id,
-				});
-				auto_tangented[i] = true;
+				push_contour(vector, paths, &anchors, &new_manipulators_list, is_closed, &mut next_id);
 			}
 
-			let mut softened_bezpath = bezpath_from_manipulator_groups(&new_manipulators_list, is_closed);
-			softened_bezpath.apply_affine(Affine::new(transform.inverse().to_cols_array()));
+			vector.set_smooth_at_indices(paths, smooth_anchors, true);
+		});
 
-			softened_bezpaths.push(softened_bezpath);
-			auto_tangented_manipulators.push(auto_tangented);
-		}
-
-		// Weaving every subpath at once costs O(points) rather than a pass over everything woven so far per subpath
-		let (mut result, mut result_paths) = (Vector::default(), List::new());
-		let span_counts = result.append_bezpaths_counting_spans(&mut result_paths, &softened_bezpaths);
-
-		// Each auto-tangented anchor is found as the end of its incoming segment, counted across all subpaths
-		let mut segment_offset = 0;
-		let mut smooth_segment_ends = Vec::new();
-		for (auto_tangented, appended_segments) in auto_tangented_manipulators.iter().zip(span_counts) {
-			// Mark auto-tangented points as having colinear handles
-			let num_manipulators = auto_tangented.len();
-			for (i, _) in auto_tangented.iter().enumerate().filter(|&(_, &tangented)| tangented) {
-				// For interior point i, the incoming segment is (i - 1) and the outgoing one is i, counted within this subpath.
-				// For closed paths, point 0's incoming segment is the last one. For open paths, endpoints are never
-				// auto-tangented (the `is_endpoint` check above ensures that), so `i == 0` and the last `i` only occur when closed.
-				let in_segment = if i == 0 { num_manipulators - 1 } else { i - 1 };
-				let out_segment = if i == num_manipulators - 1 { 0 } else { i };
-
-				if in_segment < appended_segments && out_segment < appended_segments {
-					smooth_segment_ends.push(segment_offset + in_segment);
-				}
-			}
-
-			segment_offset += appended_segments;
-		}
-
-		// O(segments + points) in one pass each, rather than a connectivity build per anchor
-		let segment_ends: Vec<PointId> = result.segment_iter(&result_paths).map(|(_, _, _, end)| end).collect();
-		let smooth_anchors = smooth_segment_ends.into_iter().filter_map(|index| segment_ends.get(index).copied());
-		result.set_smooth_points(&mut result_paths, smooth_anchors, true);
-
-		attributes.insert(ATTR_PATHS, result_paths);
-		Item::from_parts(result, attributes)
+		source
 	})
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBoundingBox"), path(core_types::vector))]
+/// Appends a contour running through the given pool anchors, each span a cubic, quadratic, or line by which of its facing handles exist.
+/// The handles become new pool points, and spans of one curve type in a row share a path.
+fn push_contour(vector: &mut Vector, paths: &mut List<Path>, anchors: &[u32], manipulators_list: &[ManipulatorGroup], closed: bool, next_id: &mut SegmentId) {
+	let span_count = if closed { anchors.len() } else { anchors.len().saturating_sub(1) };
+
+	let mut runs: Vec<(CurveType, Vec<u32>, Vec<SegmentId>)> = Vec::new();
+	for i in 0..span_count {
+		let next = (i + 1) % anchors.len();
+		let (curve_type, handles) = match (manipulators_list[i].out_handle, manipulators_list[next].in_handle) {
+			(Some(handle_start), Some(handle_end)) => (CurveType::Cubic, vec![handle_start, handle_end]),
+			(None, None) => (CurveType::Linear, Vec::new()),
+			(Some(handle), None) | (None, Some(handle)) => (CurveType::Quadratic, vec![handle]),
+		};
+
+		// A change of curve type carries the contour on in a new path from the anchor the previous one ended at
+		if runs.last().is_none_or(|(current, ..)| *current != curve_type) {
+			runs.push((curve_type, vec![anchors[i]], Vec::new()));
+		}
+		let Some((_, references, ids)) = runs.last_mut() else { continue };
+
+		for handle in handles {
+			references.push(vector.point_count() as u32);
+			vector.0.push(Item::new_from_element(handle).with_attribute(ATTR_ID, PointId::UNNAMED));
+		}
+		references.push(anchors[next]);
+		ids.push(next_id.next_id());
+	}
+
+	push_paths(paths, runs);
+}
+
+#[node_macro::node(category("Vector: Geometry"), icon("NodeBoundingBox"), path(core_types::vector))]
 fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -1410,7 +1510,7 @@ fn bounding_box<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic
 			.unwrap_or_default();
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -1428,13 +1528,13 @@ fn dimensions(_: impl Ctx, content: Item<Vector>) -> Item<DVec2> {
 }
 
 /// Type-asserts a value to be vector data.
-#[node_macro::node(category("Type Assertion"), icon("NodeAsVector"), path(core_types::vector))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsVector"), path(core_types::vector))]
 fn as_vector(_: impl Ctx, value: Item<Vector>) -> Item<Vector> {
 	value
 }
 
 /// Creates vector points at the given positions, as a point cloud with nothing connecting them. **Points to Polyline** can join them into a path.
-#[node_macro::node(category("Vector"), icon("NodePointsToVector"), name("Points to Vector"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodePointsToVector"), name("Points to Vector"), path(core_types::vector))]
 fn points_to_vector(
 	_: impl Ctx,
 	/// The positions to place the points at, in order.
@@ -1446,11 +1546,11 @@ fn points_to_vector(
 		vector.0.push(Item::new_from_element(position).with_attribute(ATTR_ID, next_point.next_id()));
 	}
 
-	Item::new_from_element(vector).with_attribute(ATTR_PATHS, List::<Path>::new())
+	Item::new_from_element(vector).with_paths(List::<Path>::new())
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
-#[node_macro::node(category("Vector"), icon("NodePointsToPolyline"), name("Points to Polyline"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodePointsToPolyline"), name("Points to Polyline"), path(core_types::vector))]
 fn points_to_polyline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
 	let closed = *closed.element();
 
@@ -1482,7 +1582,7 @@ fn points_to_polyline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(G
 }
 
 /// Evens out the distances between points by applying Lloyd's relaxation, moving every interior point toward the center of its Voronoi cell.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeRelaxPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeRelaxPoints"), path(core_types::vector))]
 fn relax_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// A vector path or point cloud to relax.
@@ -1515,7 +1615,7 @@ fn relax_points<V: MapVectorItems + Send>(
 /// Builds a Voronoi diagram from the anchor points. Each point claims the region of space closest to it, and those regions tessellate the plane. Cells around the outside are clipped to the convex hull of the points so the diagram stays finite.
 ///
 /// When Connect Cells is off, every cell becomes its own closed, fillable subpath. When on, the cells share their common points and segments, forming a single connected mesh.
-#[node_macro::node(category("Vector"), icon("NodeVoronoiCells"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeVoronoiCells"), path(core_types::vector))]
 fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
@@ -1536,7 +1636,7 @@ fn voronoi_cells<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphi
 /// Builds a Delaunay triangulation connecting the anchor points. It is the geometric dual of the **Voronoi** node: a mesh of triangles in which no point lies inside any triangle's circumscribed circle.
 ///
 /// When Connect Cells is off, every triangle becomes its own closed, fillable subpath. When on, the triangles share their common points and segments, forming a single connected mesh.
-#[node_macro::node(category("Vector"), icon("NodeTriangulate"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeTriangulate"), path(core_types::vector))]
 fn triangulate<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>, connect_cells: Item<bool>) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
@@ -1646,7 +1746,7 @@ fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
 	if diagonal.is_finite() && diagonal > 0. { (diagonal * 1e-6).max(1e-12) } else { 1e-6 }
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"))]
+#[node_macro::node(category("Vector: Path"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"))]
 fn offset_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -1694,7 +1794,7 @@ fn offset_path<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, &offset_bezpaths);
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -1844,7 +1944,7 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 				let stroke_paint = appearance.first_index_of(Cover::Stroke).and_then(|index| appearance.paint_at(index).cloned()).unwrap_or_default();
 				stroke_attributes.insert(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), stroke_paint));
 			}
-			stroke_attributes.insert(ATTR_PATHS, solidified_stroke_paths);
+			stroke_attributes.set_paths(solidified_stroke_paths);
 
 			let stroke_row = Item::from_parts(solidified_stroke, stroke_attributes);
 
@@ -1857,20 +1957,26 @@ fn solidify_stroke_list(content: List<Vector>) -> List<Vector> {
 		.collect()
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSolidifyStroke"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSolidifyStroke"), path(core_types::vector))]
 fn solidify_stroke<V: SolidifyStroke + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
 	// TODO: Make this node support stroke align, which it currently ignores
 
 	V::solidify_strokes(content)
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSeparateSubpaths"), path(core_types::vector))]
-fn separate_subpaths<V: ExpandVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> List<V> {
+/// Splits the vector into separate items, one per path.
+#[node_macro::node(category("Vector: Path"), icon("NodeSeparatePaths"), path(core_types::vector))]
+fn separate_paths<V: ExpandVectorItems + Send>(
+	_: impl Ctx,
+	/// The vector with paths to separate.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+) -> List<V> {
 	V::expand_vector_items(content, |content| {
 		let content_paths = shared_paths_from_item_attributes(&content);
 		let bezpaths = content.element().stroke_bezpath_iter(&content_paths).collect::<Vec<_>>();
 
-		// Pass the original element through unchanged when it has no subpaths, so its attributes
+		// Pass the original element through unchanged when it has no paths, so its attributes
 		// (such as the layer transform) survive downstream rather than being dropped along with the empty list.
 		if bezpaths.is_empty() {
 			return List::new_from_item(content);
@@ -1884,7 +1990,7 @@ fn separate_subpaths<V: ExpandVectorItems + Send>(_: impl Ctx, #[implementations
 				let (vector, paths) = Vector::from_bezpath(&bezpath);
 
 				let mut attributes = attributes.clone();
-				attributes.insert(ATTR_PATHS, paths);
+				attributes.set_paths(paths);
 				Item::from_parts(vector, attributes)
 			})
 			.collect()
@@ -1908,7 +2014,7 @@ fn path_is_closed(
 	Item::new_from_element(closed)
 }
 
-#[node_macro::node(category("Vector"), icon("NodeMapPoints"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeMapPoints"), path(graphene_core::vector))]
 fn map_points<V: MapVectorItems + Send>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -1933,7 +2039,7 @@ fn map_points<V: MapVectorItems + Send>(
 }
 
 /// Combines every vector path across the input into a single compound path.
-#[node_macro::node(category("Vector"), icon("NodeCombinePaths"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeCombinePaths"), path(graphene_core::vector))]
 pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let graphic_list = content.clone();
 	let flattened = content.into_flattened_list::<Vector>();
@@ -1941,6 +2047,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 	let mut primary_source = None;
 	let mut output = Vector::default();
 	let mut output_paths = List::new();
+	let mut taken_ids = IdCollisionSet::default();
 
 	// Concatenate every vector element's subpaths into the single output compound path
 	for index in 0..flattened.len() {
@@ -1954,7 +2061,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		let collision_hash_seed = hasher.finish();
 
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-		output.concat(&mut output_paths, element, &element_paths, source_transform, collision_hash_seed);
+		output.concat(&mut output_paths, element, &element_paths, source_transform, collision_hash_seed, &mut taken_ids);
 
 		primary_source = Some((index, source_transform));
 	}
@@ -1968,7 +2075,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		attributes.insert_cloned_from(&source_attributes, ATTR_EDITOR_LAYER_PATH);
 		bake_paint_transforms(&mut attributes, source_transform);
 	}
-	attributes.insert(ATTR_PATHS, output_paths);
+	attributes.set_paths(output_paths);
 
 	// Preserve a reference to the original upstream `List<Graphic>` so the renderer can recurse into it
 	// when collecting metadata, exposing the original child layers' click targets to editor tools.
@@ -1979,7 +2086,7 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 }
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize)]
+#[node_macro::node(category("Vector: Path"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize)]
 fn sample_polyline<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -2057,13 +2164,13 @@ fn sample_polyline<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, &sample_bezpaths);
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeSimplify"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSimplify"), path(core_types::vector))]
 fn simplify<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to simplify.
@@ -2102,13 +2209,13 @@ fn simplify<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, simplified_bezpaths);
 
 		*item.element_mut() = result;
-		item.set_attribute(ATTR_PATHS, result_paths);
+		item.set_paths(result_paths);
 		item
 	})
 }
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeDecimate"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeDecimate"), path(core_types::vector))]
 fn decimate<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to decimate.
@@ -2232,7 +2339,7 @@ fn decimate<V: MapVectorItems + Send>(
 		result.append_bezpaths(&mut result_paths, &decimated_bezpaths);
 
 		*content.element_mut() = result;
-		content.set_attribute(ATTR_PATHS, result_paths);
+		content.set_paths(result_paths);
 		content
 	})
 }
@@ -2240,7 +2347,7 @@ fn decimate<V: MapVectorItems + Send>(
 /// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeCutPath"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeCutPath"), path(graphene_core::vector))]
 fn cut_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The path to insert a cut into.
@@ -2284,76 +2391,8 @@ fn cut_path<V: MapVectorItems + Send>(
 			result_vector.append_bezpaths(&mut result_paths, others.chain(split));
 
 			*content.element_mut() = result_vector;
-			content.set_attribute(ATTR_PATHS, result_paths);
+			content.set_paths(result_paths);
 		}
-
-		content
-	})
-}
-
-/// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeCutSegments"), path(core_types::vector))]
-fn cut_segments<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
-	V::map_vector_items(content, |content| {
-		let mut content = content;
-		// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
-		edit_item_geometry(&mut content, |vector, paths| {
-			let mut working = WorkingVector::flatten(vector, paths);
-
-			let points_count = working.point_ids.len();
-			let segments_count = working.segment_ids.len();
-
-			let mut point_usages = vec![0_usize; points_count];
-
-			// Count how many times each point is used as an endpoint of the segments
-			let start_points = working.segment_start.clone();
-			let end_points = working.segment_end.clone();
-			for (&start, &end) in start_points.iter().zip(end_points.iter()) {
-				point_usages[start] += 1;
-				point_usages[end] += 1;
-			}
-
-			let mut new_point_ids = Vec::new();
-			let mut new_point_positions = Vec::new();
-			let mut offset_sum: usize = 0;
-			let mut points_with_new_offsets = Vec::with_capacity(points_count);
-
-			// Build the new anchor list with the original points, but with duplications based on their extra usages by the segments
-			for (index, (&point_id, &point)) in working.point_ids.iter().zip(&working.point_positions).enumerate() {
-				// Ensure at least one usage to preserve free-floating points not connected to any segments
-				let usage_count = point_usages[index].max(1);
-
-				new_point_ids.push(point_id);
-				new_point_positions.push(point);
-
-				for i in 1..usage_count {
-					new_point_ids.push(point_id.generate_from_hash(i as u64));
-					new_point_positions.push(point);
-				}
-
-				points_with_new_offsets.push(offset_sum);
-				offset_sum += usage_count;
-			}
-
-			// Reconcile the segments with the new points
-			working.point_ids = new_point_ids;
-			working.point_positions = new_point_positions;
-			for original_segment_index in 0..segments_count {
-				let original_point_start_index = start_points[original_segment_index];
-				let original_point_end_index = end_points[original_segment_index];
-
-				point_usages[original_point_start_index] -= 1;
-				point_usages[original_point_end_index] -= 1;
-
-				let start_usage = points_with_new_offsets[original_point_start_index] + point_usages[original_point_start_index];
-				let end_usage = points_with_new_offsets[original_point_end_index] + point_usages[original_point_end_index];
-
-				working.segment_start[original_segment_index] = start_usage;
-				working.segment_end[original_segment_index] = end_usage;
-			}
-
-			working.reweave(vector, paths);
-		});
 
 		content
 	})
@@ -2431,7 +2470,7 @@ fn evaluate_path(
 	}
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeScatterPoints"), path(core_types::vector), memoize)]
+#[node_macro::node(category("Vector: Point"), icon("NodeScatterPoints"), path(core_types::vector), memoize)]
 fn scatter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
@@ -2484,7 +2523,7 @@ fn scatter_points<V: MapVectorItems + Send>(
 	})
 }
 
-#[node_macro::node(name("Spline"), category("Vector: Modifier"), icon("NodeSpline"), path(core_types::vector))]
+#[node_macro::node(name("Spline"), category("Vector: Path"), icon("NodeSpline"), path(core_types::vector))]
 fn spline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] content: Item<V>) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -2620,7 +2659,7 @@ fn apply_point_deltas(vector: &mut Vector, paths: &List<Path>, anchors: &[usize]
 }
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeJitterPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeJitterPoints"), path(core_types::vector))]
 fn jitter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
@@ -2672,7 +2711,7 @@ fn jitter_points<V: MapVectorItems + Send>(
 
 /// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
 /// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeOffsetPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeOffsetPoints"), path(core_types::vector))]
 fn offset_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
@@ -2713,7 +2752,7 @@ fn offset_points<V: MapVectorItems + Send>(
 /// Interpolates the geometry, appearance, and transform between multiple vector layers, producing a single morphed vector shape.
 ///
 /// *Progression* morphs through all objects. Interpolation is linear unless *Path* geometry is provided to control the trajectory between key objects. The **Origins to Polyline** node may be used to create a path with anchor points corresponding to each object. Other nodes can modify its path segments.
-#[node_macro::node(category("Vector: Modifier"), icon("NodeMorph"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Deform"), icon("NodeMorph"), path(core_types::vector))]
 fn morph(
 	_: impl Ctx,
 	/// The vector objects to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
@@ -3366,7 +3405,7 @@ fn morph(
 	working.reweave(&mut vector, &mut paths);
 
 	let mut item = Item::new_from_element(vector);
-	item.set_attribute(ATTR_PATHS, paths);
+	item.set_paths(paths);
 	item.set_attribute(ATTR_TRANSFORM, lerped_transform);
 
 	// Propagate each blending/layer column only when the input carries it, so attribute presence stays determined by the graph rather than by runtime values
@@ -3671,7 +3710,7 @@ fn bevel_algorithm(vector: &mut Vector, paths: &mut List<Path>, transform: DAffi
 	}
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeBevel"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeBevel"), path(core_types::vector))]
 fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
@@ -3691,10 +3730,30 @@ fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 	})
 }
 
-#[node_macro::node(category("Vector: Modifier"), icon("NodeClosePath"), path(core_types::vector))]
-fn close_path<V: MapVectorItems + Send + Sync + 'static>(_: impl Ctx, #[implementations(Graphic, Vector)] source: Item<V>) -> Item<V> {
-	V::map_vector_items(source, |mut item| {
+/// Closes every open path with a straight segment from its end back to its start, or by joining the two where they already meet.
+#[node_macro::node(category("Vector: Path"), icon("NodeClosePaths"), path(core_types::vector))]
+fn close_paths<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The vector with paths to close.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+) -> Item<V> {
+	V::map_vector_items(content, |mut item| {
 		edit_item_geometry(&mut item, |vector, paths| vector.close_subpaths(paths));
+		item
+	})
+}
+
+/// Reverses the direction every path runs in.
+#[node_macro::node(category("Vector: Path"), icon("NodeReversePaths"), path(core_types::vector))]
+fn reverse_paths<V: MapVectorItems + Send + Sync + 'static>(
+	_: impl Ctx,
+	/// The vector with paths to reverse.
+	#[implementations(Graphic, Vector)]
+	content: Item<V>,
+) -> Item<V> {
+	V::map_vector_items(content, |mut item| {
+		edit_item_geometry(&mut item, |_, paths| reverse_path_flows(paths));
 		item
 	})
 }
@@ -3711,8 +3770,8 @@ fn point_inside(_: impl Ctx, source: Item<Vector>, point: Item<DVec2>) -> Item<b
 
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall this count off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-#[node_macro::node(category("General"), icon("NodeListLength"), path(graphene_core::vector))]
-fn list_length(_: impl Ctx, content: ListDyn) -> Item<f64> {
+#[node_macro::node(category("Data: List"), icon("NodeCount"), path(graphene_core::vector))]
+fn count(_: impl Ctx, content: ListDyn) -> Item<f64> {
 	Item::new_from_element(content.len() as f64)
 }
 
@@ -4155,6 +4214,112 @@ mod test {
 		}
 	}
 
+	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {
+		let hull = super::convex_hull((), create_vector_item(bezpath, transform), item(curvature));
+		assert_eq!(hull.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), transform, "the hull should keep its item's transform");
+		hull
+	}
+
+	fn enclosed_area(content: &Item<Vector>) -> f64 {
+		content.element().stroke_bezpath_iter(item_paths(content)).map(|bezpath| bezpath.area().abs()).sum()
+	}
+
+	/// Two squares far apart and a floating point above them, all in one item.
+	fn two_squares_and_a_point() -> BezPath {
+		let mut content = Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY);
+		content.extend(Rect::new(100., 0., 110., 10.).path_elements(DEFAULT_ACCURACY));
+		content.move_to((50., 200.));
+		content
+	}
+
+	/// A square with a rectangular notch cut into the middle of one edge.
+	fn notched_square(size: f64, notch_width: f64, notch_depth: f64) -> BezPath {
+		let (left, right) = ((size - notch_width) / 2., (size + notch_width) / 2.);
+		BezPath::from_vec(vec![
+			PathEl::MoveTo(Point::new(0., 0.)),
+			PathEl::LineTo(Point::new(size, 0.)),
+			PathEl::LineTo(Point::new(size, size)),
+			PathEl::LineTo(Point::new(right, size)),
+			PathEl::LineTo(Point::new(right, size - notch_depth)),
+			PathEl::LineTo(Point::new(left, size - notch_depth)),
+			PathEl::LineTo(Point::new(left, size)),
+			PathEl::LineTo(Point::new(0., size)),
+			PathEl::ClosePath,
+		])
+	}
+
+	#[test]
+	fn convex_hull_at_zero_curvature_wraps_every_path_and_floating_point() {
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(1.5), 0.4, DVec2::new(30., -20.));
+		let hull = convex_hull_of(two_squares_and_a_point(), transform, 0.);
+
+		// The hull is the pentagon spanning both squares' outer corners and the floating point
+		let positions = hull.element().anchor_positions(item_paths(&hull));
+		assert_eq!(positions.len(), 5, "expected a pentagon, got anchors at {positions:?}");
+		for expected in [DVec2::new(0., 0.), DVec2::new(110., 0.), DVec2::new(110., 10.), DVec2::new(50., 200.), DVec2::new(0., 10.)] {
+			assert!(positions.iter().any(|position| position.distance(expected) < 1e-6), "expected a hull anchor near {expected}");
+		}
+	}
+
+	#[test]
+	fn convex_hull_curvature_separates_parts_farther_apart_than_the_ball() {
+		let hull = convex_hull_of(two_squares_and_a_point(), DAffine2::IDENTITY, 1. / 20.);
+
+		// Each square gets a hull of its own, and the floating point stays behind as an anchor
+		let hulls: Vec<BezPath> = hull.element().stroke_bezpath_iter(item_paths(&hull)).filter(|bezpath| bezpath.segments().next().is_some()).collect();
+		assert_eq!(hulls.len(), 2, "expected one hull per square, got {hulls:?}");
+		assert!((enclosed_area(&hull) - 200.).abs() < 1e-6, "expected the two squares' area, got {}", enclosed_area(&hull));
+
+		let positions = hull.element().anchor_positions(item_paths(&hull));
+		assert!(
+			positions.iter().any(|position| position.distance(DVec2::new(50., 200.)) < 1e-6),
+			"the floating point should remain, got {positions:?}"
+		);
+	}
+
+	#[test]
+	fn convex_hull_strands_share_anchors_with_the_regions_they_meet() {
+		// A ring of points with a tail, each point too close to the next for a ball of radius 30 to pass
+		let mut points: Vec<DVec2> = (0..12).map(|i| DVec2::from_angle(i as f64 * PI / 6.) * 100.).collect();
+		points.extend([DVec2::new(150., 0.), DVec2::new(200., 0.)]);
+		let hull = super::convex_hull((), vector_item_from_points(&points), item(1. / 30.));
+
+		// The tail is traced once, setting out from the ring's own anchor rather than a copy of it
+		let paths = item_paths(&hull);
+		let positions = hull.element().anchor_positions(paths);
+		assert_eq!(positions.len(), points.len(), "expected every point once, got {positions:?}");
+		assert_eq!(hull.element().segment_iter(paths).count(), 12 + 2);
+	}
+
+	#[test]
+	fn convex_hull_curvature_lets_the_ball_into_dents_wider_than_itself() {
+		let notched = notched_square(100., 40., 60.);
+
+		// A ball wider than the notch bridges its mouth, giving the full square
+		assert!((enclosed_area(&convex_hull_of(notched.clone(), DAffine2::IDENTITY, 0.)) - 10_000.).abs() < 1e-6);
+		assert!((enclosed_area(&convex_hull_of(notched.clone(), DAffine2::IDENTITY, 1. / 30.)) - 10_000.).abs() < 1e-6);
+
+		// A ball of radius 10 enters the notch and cuts each of its inner corners with a chord, filling a triangle of area 50
+		let area = enclosed_area(&convex_hull_of(notched, DAffine2::IDENTITY, 1. / 10.));
+		assert!((area - (10_000. - 40. * 60. + 2. * 50.)).abs() < 1e-3, "expected the notch to be kept, got an area of {area}");
+	}
+
+	#[test]
+	fn convex_hull_ball_is_sized_in_the_items_parent_space() {
+		// The notch is 15 wide locally, too narrow for a ball of radius 10, but twice that once the transform widens it
+		let notched = notched_square(50., 15., 30.);
+
+		// Scaled uniformly by 2, each corner's triangle of area 50 is a quarter of that locally
+		let similarity = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0.7, DVec2::new(-40., 25.));
+		let area = enclosed_area(&convex_hull_of(notched.clone(), similarity, 1. / 10.));
+		assert!((area - (2500. - 15. * 30. + 2. * 12.5)).abs() < 1e-3, "expected the notch to be kept, got an area of {area}");
+
+		// Stretched along one axis, the round ball is an ellipse locally, and each corner's triangle is half its area of 50
+		let stretch = DAffine2::from_scale(DVec2::new(2., 1.));
+		let area = enclosed_area(&convex_hull_of(notched, stretch, 1. / 10.));
+		assert!((area - (2500. - 15. * 30. + 2. * 25.)).abs() < 1e-3, "expected the notch to be kept, got an area of {area}");
+	}
+
 	#[test]
 	fn sample_polyline() {
 		let path = BezPath::from_vec(vec![PathEl::MoveTo(Point::ZERO), PathEl::CurveTo(Point::ZERO, Point::new(100., 0.), Point::new(100., 0.))]);
@@ -4289,7 +4454,7 @@ mod test {
 
 	// Existing handles are kept, so only the anchors without them are tangented and smooth
 	#[test]
-	fn auto_tangents_marks_the_tangented_anchors_smooth() {
+	fn smooth_anchors_marks_the_tangented_anchors_smooth() {
 		let mut bezpath = BezPath::new();
 		bezpath.move_to((0., 0.));
 		bezpath.line_to((10., 10.));
@@ -4305,7 +4470,7 @@ mod test {
 		bezpath.line_to((200., 50.));
 		bezpath.close_path();
 
-		let output = super::auto_tangents((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
+		let output = super::smooth_anchors((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
 
 		assert_eq!(
 			smooth_anchors_by_contour(&output),
@@ -4315,7 +4480,7 @@ mod test {
 
 	// A loop of one segment has no neighbor to share a tangent with, so it passes through unchanged
 	#[test]
-	fn auto_tangents_keeps_a_single_segment_loop() {
+	fn smooth_anchors_keeps_a_single_segment_loop() {
 		let teardrop = CubicBez::new((0., 0.), (50., -50.), (100., 50.), (0., 0.));
 		let mut bezpath = BezPath::new();
 		bezpath.move_to(teardrop.p0);
@@ -4326,13 +4491,37 @@ mod test {
 		bezpath.line_to((225., 40.));
 		bezpath.close_path();
 
-		let output = super::auto_tangents((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
+		let output = super::smooth_anchors((), vector_item_from_bezpath(bezpath), item(0.5), item(true));
 		let paths = item_paths(&output);
 
 		let segments: Vec<PathSeg> = output.element().segment_iter(paths).map(|(_, segment, ..)| segment).collect();
 		assert_eq!(segments.len(), 4);
 		assert!(segments.contains(&PathSeg::Cubic(teardrop)), "the loop should keep its curve, not among {segments:?}");
 		assert_eq!(smooth_anchors_by_contour(&output), [vec![false], vec![true, true, true]]);
+	}
+
+	// A spur setting out from an anchor of a loop stays welded to it, keeping the mesh a mesh rather than a loop and a loose open path
+	#[test]
+	fn smooth_anchors_keeps_a_mesh_welded() {
+		let mut mesh = BezPath::new();
+		mesh.move_to((0., 0.));
+		mesh.line_to((100., 0.));
+		mesh.line_to((50., 80.));
+		mesh.close_path();
+		mesh.move_to((100., 0.));
+		mesh.line_to((160., -30.));
+		mesh.line_to((200., 10.));
+
+		let (vector, paths) = Vector::from_bezpath_welded(&mesh);
+		let mut source = item(vector);
+		source.set_paths(paths);
+		assert!(source.element().is_branching(item_paths(&source)));
+
+		let output = super::smooth_anchors((), source, item(0.5), item(true));
+		let paths = item_paths(&output);
+		assert!(output.element().is_branching(paths), "the spur should still set out from the loop's anchor");
+		assert_eq!(output.element().anchor_positions(paths).len(), 5);
+		assert_eq!(output.element().segment_iter(paths).count(), 5);
 	}
 	#[test]
 	fn morph() {
@@ -4694,5 +4883,89 @@ mod test {
 			pathseg_abs_diff_eq(rounded[0].segments().next().unwrap(), line.segments().next().unwrap(), 1e-9),
 			"a subpath too short to have corners should stay where it was"
 		);
+	}
+
+	/// Two halves of a diamond drawn down its left side and back up its right, welded at both ends.
+	fn welded_diamond() -> Item<Vector> {
+		let mut vector = Vector::default();
+		for position in [DVec2::new(0., 0.), DVec2::new(-10., 10.), DVec2::new(0., 20.), DVec2::new(10., 10.)] {
+			vector.0.push(Item::new_from_element(position));
+		}
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
+		push_path(&mut paths, CurveType::Linear, [2, 3, 0], []);
+
+		Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+	}
+
+	// The welded diamond reads as one closed contour, and once unwelded as two open paths
+	#[test]
+	fn unwelded_paths_are_read_one_at_a_time() {
+		let diamond = welded_diamond();
+		let unwelded = super::unweld((), diamond.clone(), item(UnweldMethod::SharedPoints));
+
+		assert!(*super::path_is_closed((), diamond.clone(), item(0)).element());
+		assert!(!*super::path_is_closed((), unwelded.clone(), item(0)).element());
+
+		assert_eq!(super::separate_paths((), diamond.clone()).len(), 1);
+		assert_eq!(super::separate_paths((), unwelded.clone()).len(), 2);
+		assert_eq!(super::separate_paths((), super::unweld((), diamond.clone(), item(UnweldMethod::All))).len(), 4);
+
+		// Halfway along the whole contour is the diamond's far tip, while halfway along the first path alone is its left corner
+		let halfway = super::evaluate_path((), diamond, item(0.5), item(false), item(false));
+		assert!(halfway.position.element().distance(DVec2::new(0., 20.)) < 1e-3, "{:?}", halfway.position);
+		let halfway = super::evaluate_path((), unwelded, item(0.5), item(false), item(false));
+		assert!(halfway.position.element().distance(DVec2::new(-10., 10.)) < 1e-3, "{:?}", halfway.position);
+	}
+
+	// Sampling the welded diamond goes once around its closed contour, and once unwelded, along each open path on its own
+	#[test]
+	fn unwelded_paths_are_sampled_one_at_a_time() {
+		let sample = |content: Item<Vector>| super::sample_polyline((), content, item(PointSpacingType::Quantity), item(100.), item(5), item(0.), item(0.), item(false));
+		let polylines = |sampled: Item<Vector>| sampled.element().stroke_bezpath_iter(item_paths(&sampled)).collect::<Vec<_>>();
+
+		let welded = polylines(sample(welded_diamond()));
+		assert!(matches!(welded.as_slice(), [polyline] if polyline.elements().last() == Some(&PathEl::ClosePath)));
+
+		// Each half runs from tip to tip by way of its own side corner, down the left and back up the right
+		let unwelded = polylines(sample(super::unweld((), welded_diamond(), item(UnweldMethod::SharedPoints))));
+		assert_eq!(unwelded.len(), 2);
+		let (top, bottom) = (DVec2::ZERO, DVec2::new(0., 20.));
+		for (polyline, [from, side_corner, to]) in unwelded.iter().zip([[top, DVec2::new(-10., 10.), bottom], [bottom, DVec2::new(10., 10.), top]]) {
+			let points: Vec<DVec2> = polyline.elements().iter().filter_map(|element| element.end_point()).map(point_to_dvec2).collect();
+			assert_eq!(points.len(), 5);
+			assert!(points[0].distance(from) < 1e-3 && points[2].distance(side_corner) < 1e-3 && points[4].distance(to) < 1e-3, "{points:?}");
+		}
+	}
+
+	// Morphing reads the welded diamond as one closed contour and the unwelded one as two open paths, both as the control path and as the shapes morphed
+	#[test]
+	fn unwelded_paths_are_morphed_one_at_a_time() {
+		let unwelded = || super::unweld((), welded_diamond(), item(UnweldMethod::SharedPoints));
+
+		// Halfway along the whole contour is the diamond's far tip, while halfway along the first path alone is its left corner
+		let squares = || embed_vectors([(); 3].map(|_| vector_item_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))).into_iter().collect());
+		let morph_along = |path: Item<Vector>| super::morph((), squares(), item(0.5), item(false), item(InterpolationDistribution::Objects), path);
+		let position = |morphed: Item<Vector>| morphed.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM).translation;
+		assert!(position(morph_along(welded_diamond())).distance(DVec2::new(0., 20.)) < 1e-3);
+		assert!(position(morph_along(unwelded())).distance(DVec2::new(-10., 10.)) < 1e-3);
+
+		// Midway between two copies of the diamond, the welded one stays one closed contour and the unwelded one two open paths
+		let morph_between = |diamond: Item<Vector>| {
+			super::morph(
+				(),
+				embed_vectors([diamond.clone(), diamond].into_iter().collect()),
+				item(0.5),
+				item(false),
+				item(InterpolationDistribution::Objects),
+				Item::default(),
+			)
+		};
+		let closed = |morphed: Item<Vector>| {
+			let subpaths = morphed.element().stroke_bezpath_iter(item_paths(&morphed));
+			subpaths.map(|subpath| subpath.elements().last() == Some(&PathEl::ClosePath)).collect::<Vec<_>>()
+		};
+		assert_eq!(closed(morph_between(welded_diamond())), [true]);
+		assert_eq!(closed(morph_between(unwelded())), [false, false]);
 	}
 }

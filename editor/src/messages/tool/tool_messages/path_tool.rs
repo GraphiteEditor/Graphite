@@ -87,6 +87,7 @@ pub enum PathToolMessage {
 		// Should be `Key::KeyG` (Grab), `Key::KeyR` (Rotate), or `Key::KeyS` (Scale)
 		key: Key,
 	},
+	GrowSelection,
 	ManipulatorMakeHandlesFree,
 	ManipulatorMakeHandlesColinear,
 	MouseDown {
@@ -132,6 +133,7 @@ pub enum PathToolMessage {
 	SetPivot {
 		position: ReferencePoint,
 	},
+	ShrinkSelection,
 	SwapSelectedHandles,
 	UpdateOptions {
 		options: PathOptionsUpdate,
@@ -459,6 +461,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				Enter,
 				SelectAll,
 				DeselectAllSelected,
+				GrowSelection,
+				ShrinkSelection,
 				BreakPath,
 				DeleteAndBreakPath,
 				ClosePath,
@@ -733,7 +737,7 @@ impl PathToolData {
 			let (outline, path_aware) = if let Some(targets) = document.network_interface.path_aware_outline_targets(layer) {
 				(targets, true)
 			} else {
-				(document.metadata().layer_with_free_points_outline(layer).cloned().collect(), false)
+				(document.metadata().layer_with_free_points_outline(layer).collect(), false)
 			};
 
 			self.ghost_outline.push((outline, layer, path_aware));
@@ -3245,6 +3249,20 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
+			(_, PathToolMessage::GrowSelection) => {
+				shape_editor.grow_selection_along_topology(document);
+
+				responses.add(OverlaysMessage::Draw);
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::ShrinkSelection) => {
+				shape_editor.shrink_selection_along_topology(document);
+
+				responses.add(OverlaysMessage::Draw);
+
+				PathToolFsmState::Ready
+			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
 					shape_editor.reposition_control_point(&id, &document.network_interface, DVec2::new(new_x, coordinates.y), layer, responses);
@@ -3673,6 +3691,13 @@ fn update_dynamic_hints(
 				hint_data.append(&mut groups);
 			}
 
+			if at_least_one_anchor_selected || shape_editor.selected_segments().next().is_some() {
+				hint_data.push(HintGroup(vec![HintInfo::multi_keys(
+					[[Key::Shift, Key::FakeKeyPlus], [Key::Shift, Key::Minus]],
+					"Grow/Shrink Selection",
+				)]));
+			}
+
 			HintData(hint_data)
 		}
 		PathToolFsmState::Dragging(dragging_state) => {
@@ -4092,6 +4117,45 @@ mod test_path_tool {
 			matches!(selected[..], [ManipulatorPointId::Anchor(_)]),
 			"only the Alt-clicked anchor should be selected, not {selected:?}"
 		);
+	}
+
+	/// Where along the path, counting anchors in the order they were placed, the selected anchors are.
+	fn selected_anchor_indices(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Vec<usize> {
+		let vector = editor.active_document().network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		let selected = selected_points(editor);
+
+		vector
+			.anchor_points()
+			.enumerate()
+			.filter(|&(_, point)| selected.contains(&ManipulatorPointId::Anchor(point)))
+			.map(|(index, _)| index)
+			.collect()
+	}
+
+	#[tokio::test]
+	async fn shift_plus_and_minus_grow_and_shrink_the_selection_along_the_path() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C, D]).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, B, ModifierKeys::empty()).await;
+		assert_eq!(selected_anchor_indices(&editor, layer), [1]);
+
+		// Each grow reaches one segment further, until there's nowhere left to go
+		editor.press(Key::Equal, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_indices(&editor, layer), [0, 1, 2]);
+		editor.press(Key::Equal, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_indices(&editor, layer), [0, 1, 2, 3]);
+
+		// A selection with no unselected anchors beside it has no edge to shrink from
+		editor.press(Key::Minus, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_indices(&editor, layer), [0, 1, 2, 3]);
+
+		// Growing on the numpad and then shrinking keeps a selected end of the path, beside no unselected anchor
+		editor.handle_message(PathToolMessage::DeselectAllSelected).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, B, ModifierKeys::empty()).await;
+		editor.press(Key::NumpadAdd, ModifierKeys::SHIFT).await;
+		editor.press(Key::Minus, ModifierKeys::SHIFT).await;
+		assert_eq!(selected_anchor_indices(&editor, layer), [0, 1]);
 	}
 
 	#[tokio::test]

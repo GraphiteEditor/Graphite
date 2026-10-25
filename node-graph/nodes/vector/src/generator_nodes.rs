@@ -1,17 +1,16 @@
-use crate::vector_nodes::{push_working_point, push_working_segment};
-use core_types::list::{ATTR_PATHS, Item, List};
+use crate::grid_topology::Lattice;
+use core_types::list::{Item, List};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
 use vector_types::vector::algorithms::shapes;
-use vector_types::vector::misc::BezierHandles;
 use vector_types::vector::misc::SpiralType;
-use vector_types::vector::misc::{ArcType, BoxCorners, GridType};
-use vector_types::vector::{Path, PointId, SegmentId, WorkingVector};
+use vector_types::vector::misc::{ArcType, BoxCorners, GridTopology, GridType};
+use vector_types::vector::{Path, SetVectorPaths};
 
 /// Generates a circle shape with a chosen radius.
-#[node_macro::node(category("Vector: Shape"), icon("NodeCircle"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeCircle"))]
 fn circle(
 	_: impl Ctx,
 	_primary: (),
@@ -24,7 +23,7 @@ fn circle(
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
-#[node_macro::node(category("Vector: Shape"), icon("NodeArc"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeArc"))]
 fn arc(
 	_: impl Ctx,
 	_primary: (),
@@ -52,7 +51,7 @@ fn arc(
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
-#[node_macro::node(category("Vector: Shape"), icon("NodeSpiral"), inspector("spiral_inspector"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeSpiral"), inspector("spiral_inspector"))]
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
@@ -89,7 +88,7 @@ fn spiral(
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
-#[node_macro::node(category("Vector: Shape"), icon("NodeEllipse"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeEllipse"))]
 fn ellipse(
 	_: impl Ctx,
 	_primary: (),
@@ -112,11 +111,11 @@ fn ellipse(
 		ellipse.set_smooth(&mut paths, anchor, true);
 	}
 
-	Item::new_from_element(ellipse).with_attribute(ATTR_PATHS, paths)
+	Item::new_from_element(ellipse).with_paths(paths)
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
-#[node_macro::node(category("Vector: Shape"), icon("NodeRectangle"), inspector("rectangle_inspector"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeRectangle"), inspector("rectangle_inspector"))]
 fn rectangle(
 	_: impl Ctx,
 	_primary: (),
@@ -155,7 +154,7 @@ fn rectangle(
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
-#[node_macro::node(category("Vector: Shape"), icon("NodeBoxCorners"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeBoxCorners"))]
 fn box_corners(
 	_: impl Ctx,
 	/// The corner values, filling the four corners clockwise from the top-left. Give one value for all corners, two for opposite pairs, three for top-left, the two sides, then bottom-right, or four for each corner.
@@ -166,7 +165,7 @@ fn box_corners(
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
-#[node_macro::node(category("Vector: Shape"), icon("NodeRegularPolygon"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeRegularPolygon"))]
 fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
@@ -182,7 +181,7 @@ fn regular_polygon(
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
-#[node_macro::node(category("Vector: Shape"), icon("NodeStar"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeStar"))]
 fn star(
 	_: impl Ctx,
 	_primary: (),
@@ -198,6 +197,63 @@ fn star(
 ) -> Item<Vector> {
 	let points = *sides.element() as u64;
 	Vector::item_from_bezpath(&shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element()))
+}
+
+/// Generates a heart shape with adjustable lobes, cleft, sides, and point.
+#[node_macro::node(category("Vector: Geometry"), icon("NodeHeart"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	/// How far the notch dips between the lobes: 0% at their tops, 100% level with the widest point.
+	#[unit("%")]
+	#[range]
+	#[hard(20..110)]
+	#[default(70.)]
+	cleft_depth: Item<f64>,
+	/// Opens the notch into a soft dip or pinches it into a sharp crease, with 0% following the lobes' natural round shape.
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	cleft_sharpness: Item<f64>,
+	/// Shifts the fullness of each lobe in toward the notch or out toward the sides, with 0% the natural round lobe.
+	#[unit("%")]
+	#[range]
+	#[hard(-100..100)]
+	lobe_lean: Item<f64>,
+	/// Height of the widest point: big lobes over a short point, or small lobes over a long point.
+	#[unit("%")]
+	#[range]
+	#[hard(58..80)]
+	#[default(70.)]
+	widest_point: Item<f64>,
+	/// Straight sides that taper into the point, or full sides that curve outward all the way down.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(50.)]
+	side_fullness: Item<f64>,
+	/// Opening angle at the very tip of the bottom point.
+	#[unit("°")]
+	#[range]
+	#[hard(15..150)]
+	#[default(75.)]
+	tip_angle: Item<f64>,
+) -> Item<Vector> {
+	let proportions = shapes::HeartProportions {
+		cleft_depth: *cleft_depth.element() / 100.,
+		cleft_sharpness: *cleft_sharpness.element() / 100.,
+		lobe_lean: *lobe_lean.element() / 100.,
+		widest_point: *widest_point.element() / 100.,
+		side_fullness: *side_fullness.element() / 100.,
+		tip_angle: tip_angle.element().to_radians(),
+	};
+	let (mut heart, mut paths) = Vector::from_bezpath(&shapes::heart_bezpath(&proportions));
+
+	// The widest points join each lobe smoothly to its side, while the cleft and tip stay sharp
+	let widest_points: Vec<_> = heart.segment_iter(&paths).step_by(2).map(|(_, _, _, end)| end).collect();
+	heart.set_smooth_points(&mut paths, widest_points, true);
+
+	Item::new_from_element(heart).with_paths(paths)
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -217,7 +273,7 @@ pub enum QRCodeErrorCorrectionLevel {
 }
 
 /// Generates a QR code from the input text.
-#[node_macro::node(category("Vector: Shape"), icon("NodeQrCode"), name("QR Code"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeQrCode"), name("QR Code"))]
 fn qr_code(
 	_: impl Ctx,
 	_primary: (),
@@ -243,7 +299,7 @@ fn qr_code(
 	};
 
 	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
-		return Item::new_from_element(Vector::default()).with_attribute(ATTR_PATHS, List::<Path>::new());
+		return Item::new_from_element(Vector::default()).with_paths(List::<Path>::new());
 	};
 
 	let (mut vector, paths) = match individual_squares {
@@ -267,11 +323,11 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+	Item::new_from_element(vector).with_paths(paths)
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
-#[node_macro::node(category("Vector: Shape"), icon("NodeArrow"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeArrow"))]
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
@@ -295,7 +351,7 @@ fn arrow(
 	Vector::item_from_bezpath(&shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
 }
 
-#[node_macro::node(category("Vector: Shape"), icon("NodeLine"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeLine"))]
 fn line(
 	_: impl Ctx,
 	_primary: (),
@@ -320,29 +376,39 @@ impl GridSpacing for DVec2 {
 	}
 }
 
-/// Generates a rectangular or isometric grid with the chosen number of columns and rows. Line segments connect the points, forming a vector mesh.
-#[node_macro::node(category("Vector: Shape"), icon("NodeGrid"), inspector("grid_inspector"))]
+/// Generates a rectangular or isometric grid of points with the chosen number of columns and rows, joined into paths by the chosen topology.
+#[node_macro::node(category("Vector: Geometry"), icon("NodeGrid"), inspector("grid_inspector"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,
 	_primary: (),
-	grid_type: Item<GridType>,
-	#[unit(" px")]
-	#[hard(0..)]
-	#[default(10)]
-	#[implementations(f64, DVec2)]
-	spacing: Item<T>,
+	lattice: Item<GridType>,
+	/// How the points join into paths.
+	topology: Item<GridTopology>,
+	/// Removes edges so each point keeps three of them, turning rectangular grids into a brick wall and isometric grids into a honeycomb.
+	staggered: Item<bool>,
 	#[default(10)]
 	#[hard(0..)]
 	columns: Item<i64>,
 	#[default(10)]
 	#[hard(0..)]
 	rows: Item<i64>,
+	#[unit(" px")]
+	#[hard(0..)]
+	#[default(10)]
+	#[implementations(f64, DVec2)]
+	spacing: Item<T>,
 	#[unit("°")]
 	#[default(30., 30.)]
 	angles: Item<DVec2>,
-	#[default(true)] connect_cells: Item<bool>,
 ) -> Item<Vector> {
-	let (grid_type, columns, rows, angles, connect_cells) = (grid_type.into_element(), *columns.element(), *rows.element(), *angles.element(), *connect_cells.element());
+	let (grid_type, topology, staggered, columns, rows, angles) = (
+		lattice.into_element(),
+		topology.into_element(),
+		*staggered.element(),
+		*columns.element(),
+		*rows.element(),
+		*angles.element(),
+	);
 	let (columns, rows) = (columns as u32, rows as u32);
 
 	let (x_spacing, y_spacing) = spacing.element().as_dvec2().into();
@@ -354,80 +420,27 @@ fn grid<T: GridSpacing>(
 	let isometric_spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
 
 	// The position of the grid point at column `x`, row `y`.
-	let position = |x: u32, y: u32| -> DVec2 {
-		match grid_type {
-			GridType::Rectangular => DVec2::new(x_spacing * x as f64, y_spacing * y as f64),
-			GridType::Isometric => {
-				// Odd columns are offset vertically so the cells skew into the isometric shape.
-				let a_angles_eaten = x.div_ceil(2) as f64;
-				let b_angles_eaten = (x / 2) as f64;
-				let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
-				DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
-			}
+	let position = |x: u32, y: i64| -> DVec2 {
+		if !grid_type.is_isometric() {
+			return DVec2::new(x_spacing * x as f64, y_spacing * y as f64);
 		}
+
+		// Odd columns are offset vertically so the cells skew into the isometric shape.
+		let a_angles_eaten = x.div_ceil(2) as f64;
+		let b_angles_eaten = (x / 2) as f64;
+		let offset_y_fraction = b_angles_eaten * tan_b - a_angles_eaten * tan_a;
+		DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
 	};
 
-	// When the cells aren't connected, each one is its own closed quadrilateral subpath.
-	// The vertices are ordered counter-clockwise to match the framework's fill winding.
-	if !connect_cells {
-		let mut cells = Vec::new();
-		for y in 0..rows.saturating_sub(1) {
-			for x in 0..columns.saturating_sub(1) {
-				cells.push(vec![position(x, y), position(x + 1, y), position(x + 1, y + 1), position(x, y + 1)]);
-			}
-		}
-		let (mut vector, mut paths) = (Vector::default(), List::new());
-		crate::vector_nodes::replace_with_polygons(&mut vector, &mut paths, cells, connect_cells);
-		return Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths);
-	}
-
-	let mut working = WorkingVector::default();
-	let mut segment_id = SegmentId::ZERO;
-	let mut point_id = PointId::ZERO;
-
-	for y in 0..rows {
-		for x in 0..columns {
-			// Add the current point to the grid.
-			let current_index = push_working_point(&mut working, point_id.next_id(), position(x, y));
-
-			// Helper function to connect points with line segments.
-			let mut push_segment = |to_index: Option<usize>| {
-				if let Some(other_index) = to_index {
-					push_working_segment(&mut working, segment_id.next_id(), other_index, current_index, BezierHandles::Linear);
-				}
-			};
-
-			// Connect to the point to the left (horizontal connection).
-			push_segment((x > 0).then(|| current_index - 1));
-
-			// Connect to the point directly above (vertical connection).
-			push_segment(current_index.checked_sub(columns as usize));
-
-			// Isometric grids additionally connect odd columns diagonally, splitting each cell into triangles.
-			if grid_type == GridType::Isometric && x % 2 == 1 {
-				// Connect to the point diagonally up-right (if not at the right edge).
-				push_segment(current_index.checked_sub(columns as usize - 1).filter(|_| x + 1 < columns));
-
-				// Connect to the point diagonally up-left.
-				push_segment(current_index.checked_sub(columns as usize + 1));
-			}
-		}
-	}
-
-	// A segment begins a path unless it carries on from the one stored before it, so the weave joins nothing around the grid's junctions
-	working.segment_begins_path = (0..working.segment_ids.len())
-		.map(|index| index == 0 || working.segment_start[index] != working.segment_end[index - 1])
-		.collect();
-
-	let (mut vector, mut paths) = (Vector::default(), List::new());
-	working.reweave(&mut vector, &mut paths);
-
-	Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths)
+	Lattice::new(grid_type, columns, rows, staggered && topology.supports_staggered(), position)
+		.layout(topology)
+		.into_item()
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use core_types::list::ATTR_SMOOTH;
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
 	use vector_types::vector::shared_paths_from_item_attributes;
@@ -439,11 +452,41 @@ mod tests {
 	#[test]
 	fn isometric_grid_test() {
 		// Doesn't crash with weird angles
-		grid((), (), item(GridType::Isometric), item(0.), item(5_i64), item(5_i64), item((0., 0.).into()), item(true));
-		grid((), (), item(GridType::Isometric), item(90.), item(5_i64), item(5_i64), item((90., 90.).into()), item(true));
+		grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(0.),
+			item((0., 0.).into()),
+		);
+		grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(90.),
+			item((90., 90.).into()),
+		);
 
 		// Works properly
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((30., 30.).into()), item(true));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
@@ -456,7 +499,17 @@ mod tests {
 
 	#[test]
 	fn skew_isometric_grid_test() {
-		let grid = grid((), (), item(GridType::Isometric), item(10.), item(5_i64), item(5_i64), item((40., 30.).into()), item(true));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::IsometricTiling),
+			item(GridTopology::Edges),
+			item(false),
+			item(5_i64),
+			item(5_i64),
+			item(10.),
+			item((40., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
@@ -468,22 +521,62 @@ mod tests {
 		}
 	}
 
-	// Only segments stored one after another join into paths, so no outline closes around the cells
 	#[test]
-	fn grid_joins_segments_only_where_they_follow_each_other() {
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(true));
+	fn grid_edges_are_each_their_own_path() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Edges),
+			item(false),
+			item(3_i64),
+			item(3_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 
 		assert_eq!(vector.segment_ids(&paths).len(), 2 * 3 + 2 * 3);
-		assert_eq!(paths.len(), 7);
-		assert!(vector.stroke_manipulator_groups(&paths).all(|(_, closed)| !closed));
+		assert_eq!(paths.len(), 2 * 3 + 2 * 3);
+		assert_eq!(vector.anchor_points(&paths).count(), 3 * 3);
+	}
+
+	#[test]
+	fn grid_lines_run_along_each_row_and_column() {
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Lines),
+			item(false),
+			item(3_i64),
+			item(4_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
+		let paths = shared_paths_from_item_attributes(&grid);
+		let vector = grid.element();
+
+		assert_eq!(paths.len(), 4 + 3);
+		assert_eq!(vector.segment_ids(&paths).len(), 4 * 2 + 3 * 3);
+		assert_eq!(vector.anchor_points(&paths).count(), 3 * 4);
 	}
 
 	#[test]
 	fn grid_disconnected_cells_test() {
 		// A 3x3 rectangular grid has a 2x2 arrangement of cells, each its own closed quad subpath.
-		let grid = grid((), (), item(GridType::Rectangular), item(10.), item(3_i64), item(3_i64), item((30., 30.).into()), item(false));
+		let grid = grid(
+			(),
+			(),
+			item(GridType::Rectangular),
+			item(GridTopology::Cells),
+			item(false),
+			item(3_i64),
+			item(3_i64),
+			item(10.),
+			item((30., 30.).into()),
+		);
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 		assert_eq!(vector.stroke_manipulator_groups(&paths).filter(|(_, closed)| *closed).count(), 4);
@@ -497,6 +590,28 @@ mod tests {
 			let signed_area: f64 = (0..anchors.len()).map(|i| anchors[i].perp_dot(anchors[(i + 1) % anchors.len()])).sum::<f64>() / 2.;
 			assert!(signed_area > 0., "grid cell should wind counter-clockwise");
 		}
+	}
+
+	#[test]
+	fn heart_fills_its_box_with_smooth_widest_points() {
+		let heart = heart((), (), item(70.), item(0.), item(0.), item(70.), item(50.), item(75.));
+		let paths = shared_paths_from_item_attributes(&heart);
+		let vector = heart.element();
+
+		assert_eq!(vector.anchor_points(&paths).count(), 4);
+		assert_eq!(vector.segment_ids(&paths).len(), 4);
+
+		let [min, max] = vector.bounding_box(&paths).expect("the heart has geometry");
+		assert!(min.abs_diff_eq(DVec2::splat(-50.), 1e-9) && max.abs_diff_eq(DVec2::splat(50.), 1e-9), "bounds {min} to {max}");
+
+		// Only the widest points, at the sides of the box, are smooth
+		let path = paths.element(0).expect("the heart is one path");
+		let smooth_positions: Vec<DVec2> = (0..path.references().len())
+			.filter(|&index| path.0.attribute::<bool>(ATTR_SMOOTH, index) == Some(&true))
+			.filter_map(|index| path.position(&vector.0, index))
+			.collect();
+		assert_eq!(smooth_positions.len(), 2);
+		assert!(smooth_positions.iter().all(|position| (position.x.abs() - 50.).abs() < 1e-9), "smooth anchors at {smooth_positions:?}");
 	}
 
 	#[test]

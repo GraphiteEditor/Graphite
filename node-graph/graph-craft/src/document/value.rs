@@ -578,9 +578,12 @@ tagged_value! {
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GridType(vector::misc::GridType),
+	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
-	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
+	#[serde(alias = "MergeByDistanceAlgorithm")]
+	WeldMethod(vector::misc::WeldMethod),
+	UnweldMethod(vector::misc::UnweldMethod),
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),

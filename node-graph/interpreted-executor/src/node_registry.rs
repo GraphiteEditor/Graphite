@@ -23,7 +23,8 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
+	WeldMethod,
 };
 use graphene_std::vector::style::{DashPattern, GradientForm, GradientHueDirection, GradientInterpolation, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector, VectorModification};
@@ -321,7 +322,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				DashPattern,
 				BoxCorners,
 				TransferCurve,
-				MergeByDistanceAlgorithm,
+				WeldMethod,
+				UnweldMethod,
 				ExtrudeJoiningAlgorithm,
 				PointSpacingType,
 				StringCapitalization,
@@ -345,6 +347,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 				DomainWarpType,
 				RealTimeMode,
 				GridType,
+				GridTopology,
 				ArcType,
 				SpiralType,
 				TextAlign,
@@ -380,7 +383,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	node_types.extend(rank_adapter_nodes!(Box<VectorModification>));
 	#[cfg(feature = "gpu")]
 	node_types.extend(rank_adapter_nodes!(Raster<GPU>));
-	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `List Length`): any `List` wire erases its element type
+	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `Count`): any `List` wire erases its element type
 	macro_rules! list_dyn_rows {
 		($($element:ty),* $(,)?) => {{
 			let entries: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![

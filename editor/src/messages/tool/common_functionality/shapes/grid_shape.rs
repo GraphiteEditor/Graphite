@@ -88,6 +88,10 @@ impl Grid {
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::GridType(grid_type), false)),
+			None,
+			None,
+			None,
+			None,
 			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
 		])
 	}
@@ -106,7 +110,7 @@ impl Grid {
 		let SnapView { document, input: ipp, .. } = view;
 		let [center, lock_ratio, _] = modifier;
 		let (center, lock_ratio) = (ipp.keyboard.key(center), ipp.keyboard.key(lock_ratio));
-		let is_isometric = grid_type == GridType::Isometric;
+		let is_isometric = grid_type.is_isometric();
 
 		let Some(node_id) = graph_modification_utils::get_grid_id(layer, &document.network_interface) else {
 			return;

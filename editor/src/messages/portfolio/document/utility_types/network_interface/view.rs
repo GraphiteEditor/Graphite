@@ -174,14 +174,24 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 			.is_some_and(|upstream_id| self.is_layer(&upstream_id).unwrap_or_default())
 	}
 
+	fn is_passthrough(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		Ok(matches!(self.implementation(node_id)?, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER))
+	}
+
+	/// Whether the node is a redirect dot, which is a Passthrough node that the node graph draws as a small dot bending the wire running through it.
+	pub fn is_redirect_dot(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		Ok(self.is_passthrough(node_id)? && !self.is_layer(node_id)?)
+	}
+
 	/// Whether the node's signature fits the layer form: one output, at most two exposed leading inputs, and no exposed parameters.
+	/// A Passthrough never fits, since it's drawn as a redirect dot.
 	pub fn is_eligible_to_be_layer(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
 		let node = self.node(node_id)?;
 		let input_count = node.inputs.iter().take(2).filter(|input| input.is_exposed()).count();
 		let parameters_hidden = node.inputs.iter().skip(2).all(|input| !input.is_exposed());
 		let output_count = self.number_of_outputs(node_id)?;
 
-		Ok(!self.hidden_primary_output(node_id)? && output_count == 1 && (input_count <= 2) && parameters_hidden)
+		Ok(!self.is_passthrough(node_id)? && !self.hidden_primary_output(node_id)? && output_count == 1 && (input_count <= 2) && parameters_hidden)
 	}
 
 	pub fn is_locked(&self, node_id: &NodeId) -> Result<bool, NetworkError> {

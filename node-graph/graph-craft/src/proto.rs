@@ -134,6 +134,8 @@ pub struct ProtoNode {
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
 	pub(crate) context_dependencies: ContextDependencies,
+	/// The context features read by this node and everything upstream of it.
+	pub upstream_context_features: ContextFeatures,
 }
 
 impl Default for ProtoNode {
@@ -145,6 +147,7 @@ impl Default for ProtoNode {
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
 			context_dependencies: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 }
@@ -180,6 +183,7 @@ impl ProtoNode {
 			},
 			skip_deduplication: false,
 			context_dependencies: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 
@@ -280,7 +284,8 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		self.find_context_dependencies(self.output);
+		let (output_dependencies, _) = self.find_context_dependencies(self.output);
+		self.nodes[self.output.0 as usize].1.upstream_context_features = output_dependencies.features;
 
 		// Perform topological sort a second time to integrate the new nodes
 		self.reorder_ids()?;
@@ -297,6 +302,7 @@ impl ProtoNetwork {
 			p.push(NodeId(10))
 		}
 
+		let features = context_deps.features;
 		let memoize_node_id = NodeId(self.nodes.len() as u64);
 
 		self.nodes.push((
@@ -309,6 +315,7 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -339,6 +346,7 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -380,6 +388,7 @@ impl ProtoNetwork {
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
 			let branch = self.find_context_dependencies(node);
+			self.nodes[node.0 as usize].1.upstream_context_features = branch.0.features;
 
 			combined_deps.features |= branch.0.features;
 			combined_deps.sources.extend(&branch.0.sources);
@@ -639,6 +648,36 @@ pub struct TypingContext {
 	promotions: HashMap<NodeId, Vec<(usize, Promotion)>>,
 }
 
+/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
+/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
+fn valid_type(from: &Type, to: &Type) -> bool {
+	match (from, to) {
+		// Direct comparison of two concrete types.
+		(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+		// Direct comparison of two function types.
+		// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
+		// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
+		// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
+		// This allows us to supply anything to a function that is satisfied with `()`.
+		// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
+		// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
+		// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
+		// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
+		// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+		// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
+		// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
+		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
+		// Ranked wrappers of the same rank are compared element-wise
+		(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
+		(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
+		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
+		// TODO: Add proper generic counting which is not based on the name
+		(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
+		// Reject unknown type relationships.
+		_ => false,
+	}
+}
+
 /// A rank adapter which type resolution marks for insertion between a wire and a connector whose ranks differ,
 /// carrying the element type the adapter is registered under.
 #[derive(Debug, Clone, PartialEq)]
@@ -651,7 +690,44 @@ pub enum Promotion {
 	Unbundle(Type),
 }
 
+/// Builds a [`Promotion`] variant from its element type.
+type PromotionVariant = fn(Type) -> Promotion;
+
 impl Promotion {
+	/// The promotion that lets a wire of the `from` value type feed a connector of the `to` value type of a different rank, if there is one.
+	pub fn between(from: &Type, to: &Type) -> Option<Self> {
+		Self::variant_between(from, to).map(|(variant, element)| variant(element.clone()))
+	}
+
+	/// Whether a promotion lets a wire of the `from` value type feed a connector of the `to` value type, without building it.
+	pub fn exists_between(from: &Type, to: &Type) -> bool {
+		Self::variant_between(from, to).is_some()
+	}
+
+	/// The variant and element type of the promotion between two value types. Every rank relation is matched structurally,
+	/// and only the `Bundle` layer inside an `Item` cell remains name-encoded.
+	fn variant_between<'a>(from: &'a Type, to: &'a Type) -> Option<(PromotionVariant, &'a Type)> {
+		fn concrete_name(ty: &Type) -> Option<&str> {
+			match ty {
+				Type::Concrete(descriptor) => Some(&descriptor.name),
+				_ => None,
+			}
+		}
+
+		match (from, to) {
+			// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
+			(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some((Self::ItemToList, element)),
+
+			// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
+			(Type::List(element), Type::Item(_)) if to.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some((Self::Bundle, element)),
+
+			// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
+			(Type::Item(_), Type::List(element)) if from.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some((Self::Unbundle, element)),
+
+			_ => None,
+		}
+	}
+
 	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
 	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
 		let (adapter_name, element) = match self {
@@ -748,36 +824,6 @@ impl TypingContext {
 			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
 		}
 
-		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
-		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_type(from: &Type, to: &Type) -> bool {
-			match (from, to) {
-				// Direct comparison of two concrete types.
-				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Direct comparison of two function types.
-				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
-				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
-				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
-				// This allows us to supply anything to a function that is satisfied with `()`.
-				// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
-				// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
-				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
-				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
-				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
-				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
-				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
-				// Ranked wrappers of the same rank are compared element-wise
-				(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
-				(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
-				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
-				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
-				// Reject unknown type relationships.
-				_ => false,
-			}
-		}
-
 		// List of all implementations that match the input types
 		let valid_output_types = impls
 			.keys()
@@ -807,16 +853,8 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter.
-				// Every rank relation is matched structurally; only the `Bundle` layer inside an `Item` cell remains name-encoded.
+				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter
 				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
-					fn concrete_name(ty: &Type) -> Option<&str> {
-						match ty {
-							Type::Concrete(descriptor) => Some(&descriptor.name),
-							_ => None,
-						}
-					}
-
 					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
 						return None;
 					};
@@ -824,23 +862,7 @@ impl TypingContext {
 						return None;
 					}
 
-					let from_value = from_output.nested_type();
-					let to_value = to_output.nested_type();
-
-					match (from_value, to_value) {
-						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
-						(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some(Promotion::ItemToList((**element).clone())),
-
-						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
-						(Type::List(element), Type::Item(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some(Promotion::Bundle((**element).clone())),
-
-						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
-						(Type::Item(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
-							Some(Promotion::Unbundle((**element).clone()))
-						}
-
-						_ => None,
-					}
+					Promotion::between(from_output.nested_type(), to_output.nested_type())
 				}
 
 				let mut promotable_matches = impls
@@ -1118,6 +1140,44 @@ mod test {
 				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
 			})
 			.collect()
+	}
+
+	#[test]
+	fn nodes_record_the_context_features_their_output_depends_on() {
+		let node = |name: &'static str, construction_args: ConstructionArgs, extract: ContextFeatures, inject: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			context_dependencies: ContextDependencies { extract, inject },
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into()), none, none)),
+				(
+					NodeId(1),
+					node("reader", ConstructionArgs::Nodes(vec![NodeId(0)]), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX, none),
+				),
+				(NodeId(2), node("repeat", ConstructionArgs::Nodes(vec![NodeId(1)]), none, ContextFeatures::INDEX)),
+				(NodeId(3), node("wrap", ConstructionArgs::Nodes(vec![NodeId(2)]), none, none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let features_of = |name: &str| network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).unwrap().1.upstream_context_features;
+		assert_eq!(features_of("value"), none);
+		assert_eq!(features_of("reader"), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX);
+		assert_eq!(features_of("repeat"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of("wrap"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of(graphene_core::memo::memoize::IDENTIFIER.as_str()), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(
+			features_of(graphene_core::context_modification::context_modification::IDENTIFIER.as_str()),
+			ContextFeatures::ANIMATION_TIME
+		);
 	}
 
 	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {

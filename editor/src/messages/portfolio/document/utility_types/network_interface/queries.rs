@@ -173,6 +173,12 @@ impl NodeNetworkInterface {
 		self.query(network_path, "has_primary_input", |view| view.has_primary_input(node_id)).unwrap_or_default()
 	}
 
+	/// The input a node is spliced into a wire by, which is its first exposed input. That's its primary input unless the primary input is hidden.
+	pub fn first_exposed_input(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<InputConnector> {
+		let input_index = self.document_node(node_id, network_path)?.inputs.iter().position(|input| input.is_exposed())?;
+		Some(InputConnector::node_at_index(*node_id, input_index))
+	}
+
 	/// Grid rows the node body spans, which is the greater of its input rows and its output count.
 	pub fn displayed_row_count(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
 		self.query(network_path, "displayed_row_count", |view| view.displayed_row_count(node_id)).unwrap_or(1)
@@ -180,6 +186,93 @@ impl NodeNetworkInterface {
 
 	pub fn number_of_outputs(&self, node_id: &NodeId, network_path: &[NodeId]) -> usize {
 		self.query(network_path, "number_of_outputs", |view| view.number_of_outputs(node_id)).unwrap_or_default()
+	}
+
+	/// The output a wire is really drawn from when picked up at the end of a run of dots that nothing else uses.
+	/// Picking it up removes those dots, so the wire in hand continues from where the run began.
+	pub fn output_past_sole_dots(&self, mut output: OutputConnector, network_path: &[NodeId]) -> OutputConnector {
+		let mut visited = HashSet::new();
+		while let OutputConnector::Node { node_id, .. } = output
+			&& self.is_redirect_dot(&node_id, network_path)
+			&& visited.insert(node_id)
+		{
+			let sole_consumer = self
+				.with_outward_wires(network_path, |outward_wires| outward_wires.get(&output).is_some_and(|consumers| consumers.len() == 1))
+				.unwrap_or_default();
+			if !sole_consumer {
+				break;
+			}
+
+			let Some(upstream) = self.upstream_output_connector(&InputConnector::primary_input(node_id), network_path) else {
+				break;
+			};
+			output = upstream;
+		}
+		output
+	}
+
+	/// Whether a redirect dot can bend the wire feeding the input. The export's wire to a previewed node can't be, since ending the preview takes it away.
+	pub fn can_bend_wire_into(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+		let has_wire = self.upstream_output_connector(input_connector, network_path).is_some();
+		let preview_wire = *input_connector == InputConnector::Export(0) && matches!(self.previewing(network_path), Previewing::Yes { .. });
+
+		has_wire && !preview_wire
+	}
+
+	/// The inputs fed by the output through wires a redirect dot can bend.
+	pub fn inputs_fed_through_bendable_wires(&self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<InputConnector> {
+		let fed_inputs = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(output_connector).cloned()).flatten();
+		fed_inputs.unwrap_or_default().into_iter().filter(|input| self.can_bend_wire_into(input, network_path)).collect()
+	}
+
+	/// The nodes to copy or duplicate for a selection. A dot is part of a wire and can't exist on its own, so the selected dots are dropped,
+	/// and every dot on a wire between two of the kept nodes is added, selected or not, so the copies stay wired together.
+	pub fn selection_with_bridging_dots(&self, selected: Vec<NodeId>, network_path: &[NodeId]) -> Vec<NodeId> {
+		let mut kept = selected.into_iter().filter(|node_id| !self.is_redirect_dot(node_id, network_path)).collect::<Vec<_>>();
+		let Some(network) = self.nested_network(network_path) else { return kept };
+		let kept_set = kept.iter().copied().collect::<HashSet<_>>();
+
+		let dots = network.nodes.keys().copied().filter(|node_id| self.is_redirect_dot(node_id, network_path)).collect::<Vec<_>>();
+		for dot in dots {
+			// Follow the wire upstream through any dots to the node feeding it
+			let mut source = self.upstream_output_connector(&InputConnector::primary_input(dot), network_path).and_then(|output| output.node_id());
+			let mut visited = HashSet::new();
+			while let Some(source_id) = source
+				&& self.is_redirect_dot(&source_id, network_path)
+				&& visited.insert(source_id)
+			{
+				source = self
+					.upstream_output_connector(&InputConnector::primary_input(source_id), network_path)
+					.and_then(|output| output.node_id());
+			}
+			if !source.is_some_and(|source_id| kept_set.contains(&source_id)) {
+				continue;
+			}
+
+			// Walk on through any dots that follow to the nodes the wire finally reaches
+			let mut pending = vec![dot];
+			let mut visited = HashSet::from([dot]);
+			let mut reaches_copied_node = false;
+			while let Some(current) = pending.pop() {
+				let consumers = self
+					.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(current)).cloned())
+					.flatten()
+					.unwrap_or_default();
+				for consumer in consumers.into_iter().filter_map(|consumer| consumer.node_id()) {
+					if self.is_redirect_dot(&consumer, network_path) {
+						if visited.insert(consumer) {
+							pending.push(consumer);
+						}
+					} else if kept_set.contains(&consumer) {
+						reaches_copied_node = true;
+					}
+				}
+			}
+			if reaches_copied_node {
+				kept.push(dot);
+			}
+		}
+		kept
 	}
 
 	/// Creates a copy for each node by disconnecting nodes which are not connected to other copied nodes.
@@ -660,6 +753,11 @@ impl NodeNetworkInterface {
 		self.query(network_path, "hidden_primary_import", |view| Ok(view.hidden_primary_import())).unwrap_or_default()
 	}
 
+	/// Whether the node is a redirect dot, which is a Passthrough node that the node graph draws as a small dot bending the wire running through it.
+	pub fn is_redirect_dot(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.query(network_path, "is_redirect_dot", |view| view.is_redirect_dot(node_id)).unwrap_or_default()
+	}
+
 	pub fn is_absolute(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.query(network_path, "is_absolute", |view| view.is_absolute(node_id)).unwrap_or_default()
 	}
@@ -726,34 +824,60 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document(layer))
+		self.document_metadata.document_bounds(include_artboards, false, || {
+			self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document(layer))
+		})
 	}
 
+	/// The union of every layer's bounds, with a layer inside a clipping artboard contributing only its part within the artboard.
+	/// A layer's bounds hold its descendants', so only the outermost layers below the root and each artboard are bounded, in O(layers).
 	fn combined_document_bounds(&self, include_artboards: bool, layer_bounds: impl Fn(&DocumentMetadata, LayerNodeIdentifier) -> Option<[DVec2; 2]>) -> Option<[DVec2; 2]> {
-		self.document_metadata
-			.all_layers()
-			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
-			.filter_map(|layer| {
-				// A layer clipped by its artboard contributes only the intersection of the two bounds
-				if !self.is_artboard(&layer.to_node(), &[])
-					&& let Some(artboard_node_identifier) = layer
-						.ancestors(self.document_metadata())
-						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
-					&& let Some(artboard) = self.document_node(&artboard_node_identifier.to_node(), &[])
-					&& let Some(clip_input) = artboard.inputs.get(ARTBOARD_CLIP_INPUT_INDEX)
-					&& let NodeInput::Value { tagged_value, .. } = clip_input
-					&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
-				{
-					return Some(Quad::clip(
-						layer_bounds(&self.document_metadata, layer).unwrap_or_default(),
-						self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
-					));
+		let metadata = &self.document_metadata;
+		let is_finite = |[min, max]: &[DVec2; 2]| min.is_finite() && max.is_finite();
+
+		let mut combined: Option<[DVec2; 2]> = None;
+		let mut add = |bounds: [DVec2; 2]| combined = Some(combined.map_or(bounds, |combined| Quad::combine_bounds(combined, bounds)));
+
+		// Each layer with the bounds of the nearest artboard above it, if that one clips its content
+		let mut pending: Vec<(LayerNodeIdentifier, Option<[DVec2; 2]>)> = LayerNodeIdentifier::ROOT_PARENT.children(metadata).map(|layer| (layer, None)).collect();
+		while let Some((layer, clip)) = pending.pop() {
+			if self.is_artboard(&layer.to_node(), &[]) {
+				let clips_content = self.artboard_clips_content(layer);
+
+				if include_artboards && let Some(bounds) = layer_bounds(metadata, layer).filter(is_finite) {
+					add(bounds);
+
+					// Content clipped to the artboard lies within the bounds just added
+					if clips_content {
+						continue;
+					}
 				}
-				layer_bounds(&self.document_metadata, layer)
-			})
-			// Skip any layer bounds containing NaN to avoid poisoning the combined result
-			.filter(|[min, max]| min.is_finite() && max.is_finite())
-			.reduce(Quad::combine_bounds)
+
+				let child_clip = clips_content.then(|| metadata.bounding_box_document(layer).unwrap_or_default());
+				pending.extend(layer.children(metadata).map(|child| (child, child_clip)));
+				continue;
+			}
+
+			// Bounds containing NaN would poison the combined result, so the layer's descendants are bounded instead
+			match layer_bounds(metadata, layer).filter(is_finite) {
+				Some(bounds) => {
+					let clipped = clip.map_or(bounds, |clip| Quad::clip(bounds, clip));
+					if is_finite(&clipped) {
+						add(clipped);
+					}
+				}
+				None => pending.extend(layer.children(metadata).map(|child| (child, clip))),
+			}
+		}
+
+		combined
+	}
+
+	/// Whether the artboard layer clips the content inside it to its bounds.
+	fn artboard_clips_content(&self, artboard: LayerNodeIdentifier) -> bool {
+		self.document_node(&artboard.to_node(), &[])
+			.and_then(|artboard| artboard.inputs.get(ARTBOARD_CLIP_INPUT_INDEX))
+			.is_some_and(|clip_input| matches!(clip_input, NodeInput::Value { tagged_value, .. } if tagged_value.clone().deref() == &TaggedValue::Bool(true)))
 	}
 
 	pub fn document_bounds_viewport_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
@@ -766,7 +890,9 @@ impl NodeNetworkInterface {
 	/// Calculates the document bounds in document space, expanding vector layer bounds to include the rendered
 	/// stroke width. Used for export so the output canvas captures strokes that overflow the path geometry.
 	pub fn document_bounds_document_space_with_stroke(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
+		self.document_metadata.document_bounds(include_artboards, true, || {
+			self.combined_document_bounds(include_artboards, |metadata, layer| metadata.bounding_box_document_with_stroke(layer))
+		})
 	}
 
 	/// Calculates the selected layer bounds in document space

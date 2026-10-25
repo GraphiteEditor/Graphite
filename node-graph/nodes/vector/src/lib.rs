@@ -1,4 +1,5 @@
 pub mod generator_nodes;
+mod grid_topology;
 pub mod merge_qr_squares;
 pub mod vector_modification_nodes;
 mod vector_nodes;

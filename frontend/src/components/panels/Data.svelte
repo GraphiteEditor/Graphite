@@ -6,7 +6,7 @@
 
 <LayoutCol class="data-panel">
 	<LayoutCol class="body" scrollableX={true} scrollableY={true}>
-		<WidgetLayout layout={$dataPanelLayout} layoutTarget="DataPanel" />
+		<WidgetLayout layout={dataPanelLayout} layoutTarget="DataPanel" />
 	</LayoutCol>
 </LayoutCol>
 

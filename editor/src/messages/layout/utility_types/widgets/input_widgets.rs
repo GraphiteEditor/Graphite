@@ -331,7 +331,7 @@ pub struct NodeCatalog {
 
 	// Behavior
 	#[serde(rename = "initialSearchTerm")]
-	pub intial_search: String,
+	pub initial_search: String,
 
 	// Callbacks
 	#[serde(skip)]

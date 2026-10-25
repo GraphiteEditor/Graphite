@@ -28,7 +28,7 @@
 				<IconLabel icon="GraphiteLogotype" />
 			</LayoutRow>
 			<LayoutRow class="actions">
-				<WidgetLayout layout={$welcomeScreenButtonsLayout} layoutTarget="WelcomeScreenButtons" />
+				<WidgetLayout layout={welcomeScreenButtonsLayout} layoutTarget="WelcomeScreenButtons" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutCol>

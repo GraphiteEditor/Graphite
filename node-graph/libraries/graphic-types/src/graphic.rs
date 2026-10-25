@@ -181,7 +181,7 @@ pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
 
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::GraphicList` sub-`List`s composes transforms and opacity.
-fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
+fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
 	// Its list is already the flat answer, so hand it back rather than rebuilding it item by item
 	if is_lone_anonymous_leaf(&content) {
 		let Some(item) = content.into_iter().next() else { return List::new() };
@@ -189,7 +189,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 		return extract_variant(item.into_element()).unwrap_or_default();
 	}
 
-	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
+	fn flatten_recursive<T: Clone>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
 			// Whether the parent carries each composed attribute: a structural fact (attribute presence), never a value comparison.
 			// Flattening composes a parent attribute onto its children only when the parent has it,
