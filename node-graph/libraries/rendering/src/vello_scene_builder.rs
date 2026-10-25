@@ -97,15 +97,17 @@ pub struct GeneratorTile {
 }
 
 impl GeneratorTile {
-	/// The pattern's pixels across the tile and its border.
+	/// The samples across and down the tile and its border.
+	pub const SAMPLES: u32 = GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER;
+
+	/// The pattern's pixels across the tile and its border, rendered on the CPU.
 	pub fn render(&self, pattern: &GeneratorPattern) -> Result<Raster<CPU>, ImageError> {
 		let (corner, texel) = self.corner_and_texel();
-		let samples = GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER;
-		raster_kernels::generators::render_pattern(pattern, [corner, corner + DVec2::splat(samples as f64 * texel)], samples, samples).map(Raster::new_cpu)
+		raster_kernels::generators::render_pattern(pattern, [corner, corner + DVec2::splat(Self::SAMPLES as f64 * texel)], Self::SAMPLES, Self::SAMPLES).map(Raster::new_cpu)
 	}
 
 	/// The corner of the tile's samples, including its border, in the pattern's space, and the span of one sample.
-	fn corner_and_texel(&self) -> (DVec2, f64) {
+	pub fn corner_and_texel(&self) -> (DVec2, f64) {
 		let span = 2_f64.powi(-self.level);
 		let texel = span / GENERATOR_TILE_PIXELS as f64;
 		(DVec2::new(self.column as f64, self.row as f64) * span - GENERATOR_TILE_BORDER as f64 * texel, texel)
@@ -421,7 +423,7 @@ impl<'a> VelloSceneBuilder<'a> {
 			SceneImage::Raster { raster, .. } => (raster.width, raster.height),
 			SceneImage::Texture(texture) => (texture.width(), texture.height()),
 			SceneImage::Rendered(texture) => (texture.width(), texture.height()),
-			SceneImage::GeneratorTile { .. } => (GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER, GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER),
+			SceneImage::GeneratorTile { .. } => (GeneratorTile::SAMPLES, GeneratorTile::SAMPLES),
 		};
 		if width == 0 || height == 0 {
 			return None;

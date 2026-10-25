@@ -1,4 +1,5 @@
 use crate::vello_effects::{AdjustmentPassTextures, EffectPasses, EffectTextures, adjustment_run_hash};
+use crate::vello_generators::GeneratorPasses;
 use glam::{DMat2, UVec2};
 use graphic_types::raster_types::{CPU, Raster, WeakCPU};
 use graphic_types::{Adjustment, EffectOperation, Effects};
@@ -14,7 +15,7 @@ use vello_gpu::{
 use wgpu_sync::Queue;
 
 /// The format of the textures Vello GPU renders into, of the image textures it samples, and of the textures handed back.
-const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+pub(crate) const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// How many renders a GPU texture's premultiplied copy survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
@@ -35,6 +36,7 @@ pub(crate) struct VelloRenderer {
 	gpu: Mutex<(Renderer, Resources)>,
 	alpha_conversion: AlphaConversion,
 	effect_passes: EffectPasses,
+	generator_passes: GeneratorPasses,
 }
 
 /// A stream of frames rendered through the shared Vello renderer, such as the document or the overlays, keeping what its frames reuse.
@@ -83,6 +85,7 @@ impl VelloRenderer {
 			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
 			alpha_conversion: AlphaConversion::new(device),
 			effect_passes: EffectPasses::new(device, adapter),
+			generator_passes: GeneratorPasses::default(),
 		}
 	}
 
@@ -247,7 +250,7 @@ impl RenderContext<'_> {
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			let view = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size);
+			let view = self.canvas.images.prepare(device, &queue, &mut encoder, self.renderer, image, max_texture_size);
 
 			// Adjustments draw a copy of the texture they're carried out on
 			let view = match image {
@@ -398,14 +401,14 @@ struct ImageTextures {
 }
 
 impl ImageTextures {
-	/// A view of the premultiplied texture for `image`, uploading CPU pixels the first time they're drawn.
+	/// A view of the premultiplied texture for `image`, uploading CPU pixels or rendering a generator's tile the first time they're drawn.
 	/// GPU textures are converted again at every render since the texture cache hands their textures out again with new contents.
 	fn prepare(
 		&mut self,
 		device: &wgpu::Device,
 		queue: &wgpu::Queue,
 		encoder: &mut wgpu::CommandEncoder,
-		alpha_conversion: &AlphaConversion,
+		renderer: &VelloRenderer,
 		image: &SceneImage,
 		max_texture_size: u32,
 	) -> Option<wgpu::TextureView> {
@@ -433,8 +436,18 @@ impl ImageTextures {
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
 				SceneImage::GeneratorTile { pattern, tile } => {
-					let (pixels, width, height) = tile.render(pattern).ok()?.to_flat_u8();
-					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+					// Rendered on the GPU, or on the CPU where 32-bit floats can't place its pixels
+					let (corner, texel) = tile.corner_and_texel();
+					match renderer.generator_passes.render_tile(device, encoder, pattern, corner, texel, GeneratorTile::SAMPLES) {
+						Some(texture) => {
+							renderer.effect_passes.record_mipmaps(device, encoder, &texture);
+							texture
+						}
+						None => {
+							let (pixels, width, height) = tile.render(pattern).ok()?.to_flat_u8();
+							upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+						}
+					}
 				}
 				SceneImage::Rendered(_) => return None,
 				SceneImage::Texture(texture) => create_texture(
@@ -465,7 +478,7 @@ impl ImageTextures {
 
 		if let SceneImage::Texture(source) = image {
 			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-			alpha_conversion.premultiply(device, encoder, &source_view, source.format().is_srgb(), &view);
+			renderer.alpha_conversion.premultiply(device, encoder, &source_view, source.format().is_srgb(), &view);
 		}
 
 		Some(view)
