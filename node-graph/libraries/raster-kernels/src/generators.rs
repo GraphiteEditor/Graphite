@@ -1,7 +1,7 @@
 //! The kernels rendering each [`GeneratorPattern`] across any area of its space at any resolution.
 
 use core_types::Color;
-use glam::DVec2;
+use glam::{DVec2, IVec2};
 use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, GeneratorPattern, NoiseSettings, NoiseType};
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{Image, ImageError};
@@ -41,7 +41,7 @@ pub fn render_pattern(pattern: &GeneratorPattern, area: [DVec2; 2], width: u32, 
 /// Samples a noise pattern's luminance, from 0 to 1, at positions in its space.
 struct NoiseSampler {
 	noise: fastnoise_lite::FastNoiseLite,
-	white_noise_seed: Option<u64>,
+	white_noise_seed: Option<i32>,
 	domain_warp: bool,
 }
 
@@ -72,7 +72,7 @@ impl NoiseSampler {
 			NoiseType::WhiteNoise => {
 				return Self {
 					noise,
-					white_noise_seed: Some(settings.seed as u64),
+					white_noise_seed: Some(settings.seed as i32),
 					domain_warp: false,
 				};
 			}
@@ -123,8 +123,7 @@ impl NoiseSampler {
 	fn sample(&self, position: DVec2) -> f32 {
 		// White noise gives each square of one document unit its own random value
 		if let Some(seed) = self.white_noise_seed {
-			let cell = position.floor().as_i64vec2();
-			return white_noise(seed, cell.x, cell.y);
+			return white_noise(seed, position.floor().as_ivec2());
 		}
 
 		let (mut x, mut y) = (position.x as f32, position.y as f32);
@@ -135,16 +134,25 @@ impl NoiseSampler {
 	}
 }
 
-/// A random value from 0 to 1 for each cell of a grid, the same for the same seed and cell.
-fn white_noise(seed: u64, x: i64, y: i64) -> f32 {
-	// The SplitMix64 finalizer, which spreads every input bit across the whole result
-	let mut value = seed ^ (x as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ (y as u64).wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
-	value = (value ^ (value >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-	value = (value ^ (value >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-	value ^= value >> 31;
+/// A random value from 0 to 1 for each cell of a grid, the same for the same seed and cell, matching the GPU's.
+fn white_noise(seed: i32, cell: IVec2) -> f32 {
+	let [hash, _, _] = pcg3d([cell.x as u32, cell.y as u32, seed as u32]);
 
 	// The top 24 bits, which an f32 holds exactly
-	(value >> 40) as f32 / (1_u64 << 24) as f32
+	(hash >> 8) as f32 / (1_u32 << 24) as f32
+}
+
+/// PCG3D from Jarzynski and Olano's "Hash Functions for GPU Rendering", which spreads every input bit across the result.
+fn pcg3d(input: [u32; 3]) -> [u32; 3] {
+	let mix = |[x, y, z]: [u32; 3]| {
+		let x = x.wrapping_add(y.wrapping_mul(z));
+		let y = y.wrapping_add(z.wrapping_mul(x));
+		let z = z.wrapping_add(x.wrapping_mul(y));
+		[x, y, z]
+	};
+
+	let v = mix(input.map(|value| value.wrapping_mul(1_664_525).wrapping_add(1_013_904_223)));
+	mix(v.map(|value| value ^ (value >> 16)))
 }
 
 /// How many iterations `c` takes to escape the Mandelbrot set, or the iteration limit if it doesn't.

@@ -780,11 +780,11 @@ fn adjusted_images_remake_one_copy_as_their_adjustments_change() {
 	assert_eq!(copies(&canvas), 2);
 }
 
-/// A noise pattern with features a few units across.
-fn noise_pattern() -> graphic_types::generator::GeneratorPattern {
+/// The settings of a noise pattern with features a few units across.
+fn noise_settings() -> graphic_types::generator::NoiseSettings {
 	use graphic_types::generator::*;
 
-	GeneratorPattern::Noise(NoiseSettings {
+	NoiseSettings {
 		seed: 11,
 		scale: 6.,
 		noise_type: NoiseType::OpenSimplex2,
@@ -799,34 +799,110 @@ fn noise_pattern() -> graphic_types::generator::GeneratorPattern {
 		cellular_distance_function: CellularDistanceFunction::Euclidean,
 		cellular_return_type: CellularReturnType::Nearest,
 		cellular_jitter: 1.,
-	})
+	}
 }
 
-#[test]
-fn generators_draw_their_pattern_at_the_resolution_in_view() {
-	use graphic_types::raster_types::Raster;
+/// A noise pattern with features a few units across.
+fn noise_pattern() -> graphic_types::generator::GeneratorPattern {
+	graphic_types::generator::GeneratorPattern::Noise(noise_settings())
+}
 
-	// Each unit of the pattern drawn across two pixels, so its tiles sample the pattern at every pixel's center
+/// Draws `pattern` with `pixels_per_unit` pixels to a unit, from `origin` in its space, comparing 64 by 64 pixels with the generator's own samples.
+/// Returns how many pixels differ by more than 2 levels and the most any differs by, or `None` without a GPU.
+fn drawing_differences(pattern: &graphic_types::generator::GeneratorPattern, pixels_per_unit: f64, origin: glam::DVec2) -> Option<(usize, u8)> {
 	let size = UVec2::new(80, 80);
-	let pattern = noise_pattern();
-	let Some(pixels) = render(size, |scene| scene.draw_generator(&pattern, Affine::translate((8., 8.)) * Affine::scale(2.))) else {
-		return;
-	};
-
-	let (expected, _, _) = Raster::new_cpu(raster_kernels::generators::render_pattern(&pattern, [glam::DVec2::ZERO, glam::DVec2::splat(32.)], 64, 64).unwrap()).to_flat_u8();
-	let mut worst = 0;
-	for y in 0..64 {
-		for x in 0..64 {
-			let gpu = pixel(&pixels, size, x + 8, y + 8);
-			let cpu = &expected[((y * 64 + x) * 4) as usize..][..4];
-			worst = (0..3).map(|channel| gpu[channel].abs_diff(cpu[channel])).fold(worst, u8::max);
-		}
-	}
-	assert!(worst <= 2, "the drawn pattern differs from the generator's own samples by up to {worst} levels");
+	let pixels = render(size, |scene| {
+		scene.draw_generator(pattern, Affine::translate((8., 8.)) * Affine::scale(pixels_per_unit) * Affine::translate((-origin.x, -origin.y)))
+	})?;
 
 	// The pattern fills the plane, past the area compared
 	assert_eq!(pixel(&pixels, size, 2, 2)[3], 255);
 	assert_eq!(pixel(&pixels, size, 76, 76)[3], 255);
+
+	let (expected, _, _) = raster_kernels::generators::render_pattern(pattern, [origin, origin + 64. / pixels_per_unit], 64, 64)
+		.unwrap()
+		.to_flat_u8();
+	let differences: Vec<u8> = (0..64 * 64)
+		.map(|index| {
+			let drawn = pixel(&pixels, size, index % 64 + 8, index / 64 + 8);
+			let sampled = &expected[(index * 4) as usize..][..4];
+			(0..3).map(|channel| drawn[channel].abs_diff(sampled[channel])).max().unwrap_or(0)
+		})
+		.collect();
+
+	let mismatched = differences.iter().filter(|&&difference| difference > 2).count();
+	Some((mismatched, differences.into_iter().max().unwrap_or(0)))
+}
+
+#[test]
+fn generators_draw_their_pattern_at_the_resolution_in_view() {
+	// Each unit of the pattern drawn across two pixels, so its tiles sample the pattern at every pixel's center
+	let Some((_, worst)) = drawing_differences(&noise_pattern(), 2., glam::DVec2::ZERO) else { return };
+	assert!(worst <= 2, "the drawn pattern differs from the generator's own samples by up to {worst} levels");
+}
+
+#[test]
+fn every_noise_setting_renders_on_the_gpu_like_on_the_cpu() {
+	use core_types::choice_type::ChoiceTypeStatic;
+	use graphic_types::generator::*;
+
+	fn every<T: ChoiceTypeStatic + 'static>() -> impl Iterator<Item = T> {
+		T::list().iter().flat_map(|section| section.iter().map(|(variant, _)| *variant))
+	}
+
+	// Each noise type, fractal type, and domain warp, and each pairing of the cellular noise's distance function and return type
+	let base = || NoiseSettings {
+		fractal_type: FractalType::None,
+		..noise_settings()
+	};
+	let warps = [FractalType::None, FractalType::DomainWarpProgressive, FractalType::DomainWarpIndependent];
+	let variations = (every::<NoiseType>().map(|noise_type| NoiseSettings { noise_type, ..base() }))
+		.chain(every::<FractalType>().map(|fractal_type| NoiseSettings {
+			fractal_type,
+			fractal_weighted_strength: 0.5,
+			..base()
+		}))
+		.chain(every::<DomainWarpType>().flat_map(|domain_warp_type| {
+			warps.map(|fractal_type| NoiseSettings {
+				domain_warp_type,
+				domain_warp_amplitude: 4.,
+				fractal_type,
+				..base()
+			})
+		}))
+		.chain(every::<CellularDistanceFunction>().flat_map(|cellular_distance_function| {
+			every::<CellularReturnType>().map(move |cellular_return_type| NoiseSettings {
+				noise_type: NoiseType::Cellular,
+				cellular_distance_function,
+				cellular_return_type,
+				..base()
+			})
+		}));
+
+	// Another GPU's rounding may put a few pixels on the other side of a cell's edge
+	for settings in variations {
+		let Some((mismatched, _)) = drawing_differences(&GeneratorPattern::Noise(settings.clone()), 2., glam::DVec2::ZERO) else {
+			return;
+		};
+		assert!(mismatched <= 8, "{mismatched} pixels differ from the CPU's samples with {settings:?}");
+	}
+}
+
+#[test]
+fn the_mandelbrot_set_renders_on_the_gpu_like_on_the_cpu() {
+	use graphic_types::generator::GeneratorPattern;
+
+	// Its whole unit square across the pixels compared, where the GPU's 32-bit floats may escape a few points on the set's edge at another iteration
+	let Some((mismatched, _)) = drawing_differences(&GeneratorPattern::Mandelbrot, 64., glam::DVec2::ZERO) else {
+		return;
+	};
+	assert!(mismatched <= 40, "{mismatched} pixels differ from the CPU's samples");
+
+	// Pixels a billionth of a unit across, too fine for 32-bit floats, on the edge of the set's second largest bulb
+	let Some((_, worst)) = drawing_differences(&GeneratorPattern::Mandelbrot, 2_f64.powi(30), glam::DVec2::new(0.25, 0.5)) else {
+		return;
+	};
+	assert!(worst <= 2, "deep zooms differ from the CPU's samples by up to {worst} levels");
 }
 
 #[test]
