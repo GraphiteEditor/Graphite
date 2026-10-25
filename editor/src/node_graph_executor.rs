@@ -1,5 +1,6 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage, RenderStatus};
 use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
+use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -497,14 +498,14 @@ impl NodeGraphExecutor {
 
 					// Thumbnails reach the frontend only for the layers it shows in view
 					for response in existing_responses {
-						match response {
-							FrontendMessage::UpdateNodeThumbnail { id, value } => {
+						match LayersInView::thumbnail_layer(&response) {
+							Some(layer) => {
 								// A render finishing after a switch to another document has thumbnails of the previous one's layers
 								if execution_context.document_id == document_id {
-									document.layers_in_view.receive_thumbnail(id, value, responses);
+									document.layers_in_view.receive_thumbnail(layer, response, responses);
 								}
 							}
-							response => responses.add(response),
+							None => responses.add(response),
 						}
 					}
 					document.network_interface.update_vector_modify(vector_modify);
@@ -616,8 +617,9 @@ impl NodeGraphExecutor {
 
 	fn receive_thumbnails(document: &mut DocumentMessageHandler, thumbnails: VecDeque<FrontendMessage>, responses: &mut VecDeque<Message>) {
 		for thumbnail in thumbnails {
-			if let FrontendMessage::UpdateNodeThumbnail { id, value } = thumbnail {
-				document.layers_in_view.receive_thumbnail(id, value, responses);
+			match LayersInView::thumbnail_layer(&thumbnail) {
+				Some(layer) => document.layers_in_view.receive_thumbnail(layer, thumbnail, responses),
+				None => responses.add(thumbnail),
 			}
 		}
 	}

@@ -6,7 +6,6 @@ use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, L
 use core_types::math::quad::Quad;
 use core_types::none;
 use core_types::ops::FromAnchorPosition;
-use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Transform;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
@@ -862,29 +861,6 @@ impl BoundingBox for Graphic {
 			Graphic::GradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::StrokeList(list) => list.thumbnail_bounding_box(transform, include_stroke),
-		}
-	}
-}
-
-impl RenderComplexity for Graphic {
-	fn render_complexity(&self) -> usize {
-		match self {
-			Self::None(_) | Self::NoneList(_) => 0,
-			Self::Graphic(item) => item.render_complexity(),
-			Self::Vector(item) => item.render_complexity(),
-			Self::RasterCPU(item) => item.render_complexity(),
-			Self::RasterGPU(item) => item.render_complexity(),
-			Self::Color(item) => item.render_complexity(),
-			Self::Gradient(item) => item.render_complexity(),
-			Self::Text(item) => item.render_complexity(),
-			Self::GraphicList(list) => list.render_complexity(),
-			Self::VectorList(list) => list.render_complexity(),
-			Self::RasterCPUList(list) => list.render_complexity(),
-			Self::RasterGPUList(list) => list.render_complexity(),
-			Self::ColorList(list) => list.render_complexity(),
-			Self::GradientList(list) => list.render_complexity(),
-			Self::TextList(list) => list.render_complexity(),
-			Self::StrokeList(list) => list.render_complexity(),
 		}
 	}
 }

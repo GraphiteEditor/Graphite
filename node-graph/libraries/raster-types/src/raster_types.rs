@@ -297,17 +297,3 @@ where
 		self.bounding_box(transform, include_stroke)
 	}
 }
-
-// RenderComplexity trait implementations
-impl core_types::render_complexity::RenderComplexity for Raster<CPU> {
-	fn render_complexity(&self) -> usize {
-		(self.width * self.height / 500) as usize
-	}
-}
-
-impl core_types::render_complexity::RenderComplexity for Raster<GPU> {
-	fn render_complexity(&self) -> usize {
-		// GPU textures currently can't have a thumbnail
-		usize::MAX
-	}
-}

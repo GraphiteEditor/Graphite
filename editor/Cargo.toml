@@ -15,7 +15,7 @@ workspace = true
 
 [features]
 default = ["gpu"]
-wasm = ["graphene-std/wasm", "interpreted-executor/wasm", "dep:wasm-bindgen"]
+wasm = ["graphene-std/wasm", "interpreted-executor/wasm", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 gpu = ["interpreted-executor/gpu", "dep:wgpu-executor"]
 
 [dependencies]
@@ -64,6 +64,7 @@ wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true }
