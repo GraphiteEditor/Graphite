@@ -6,7 +6,7 @@ mod heart;
 
 use crate::vector::misc::{ArcType, SpiralType, bezpath_from_anchors_and_handles};
 use glam::DVec2;
-pub use heart::{HeartProportions, heart_bezpath};
+pub use heart::{HEART_SIZE, HeartProportions, heart_bezpath};
 use kurbo::BezPath;
 use std::f64::consts::TAU;
 

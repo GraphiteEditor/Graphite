@@ -176,6 +176,11 @@ pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
 pub const GRID_ROW_COLUMN_GIZMO_OFFSET: f64 = 15.;
+pub const HEART_HANDLE_HOVER_RADIUS: f64 = 8.;
+/// How far the handles for the cleft's and tip's angles sit out along those tangents, in viewport pixels.
+pub const HEART_ANGLE_HANDLE_DISTANCE: f64 = 24.;
+/// How far a heart's Lobe Lean or Side Fullness handle is dragged to cross its whole range, in viewport pixels.
+pub const HEART_SLIDER_DRAG_DISTANCE: f64 = 200.;
 
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;

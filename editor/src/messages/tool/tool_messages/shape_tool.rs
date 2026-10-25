@@ -16,6 +16,7 @@ use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
 use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
+use crate::messages::tool::common_functionality::shapes::heart_shape::Heart;
 use crate::messages::tool::common_functionality::shapes::line_shape::LineToolData;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, clicked_on_shape_endpoints, transform_cage_overlays};
@@ -29,6 +30,7 @@ use crate::messages::tool::common_functionality::utility_functions::{closest_poi
 use crate::messages::tool::utility_types::DocumentToolData;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::algorithms::shapes::HEART_SIZE;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
 use graphene_std::vector::style::FillChoice;
 use graphene_std::{Color, ParameterRef};
@@ -181,6 +183,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
+		MenuListEntry::new("Heart").label("Heart").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Heart),
+			}
+			.into()
+		}),
 		MenuListEntry::new("Circle").label("Circle").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Circle),
@@ -319,6 +327,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 	let Some(shape_type) = [
 		(regular_polygon::IDENTIFIER, ShapeType::Polygon),
 		(star::IDENTIFIER, ShapeType::Star),
+		(heart::IDENTIFIER, ShapeType::Heart),
 		(circle::IDENTIFIER, ShapeType::Circle),
 		(arc::IDENTIFIER, ShapeType::Arc),
 		(spiral::IDENTIFIER, ShapeType::Spiral),
@@ -405,7 +414,7 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 				changed = true;
 			}
 		}
-		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle => {}
+		ShapeType::Ellipse | ShapeType::Rectangle | ShapeType::Line | ShapeType::Circle | ShapeType::Heart => {}
 	}
 
 	changed
@@ -732,6 +741,7 @@ impl ToolEditTarget for ShapeTool {
 		let gizmo_shapes = || {
 			[
 				graphene_std::vector_nodes::star::IDENTIFIER,
+				graphene_std::vector::generator_nodes::heart::IDENTIFIER,
 				graphene_std::vector_nodes::regular_polygon::IDENTIFIER,
 				graphene_std::vector_nodes::arc::IDENTIFIER,
 				graphene_std::vector_nodes::circle::IDENTIFIER,
@@ -1057,7 +1067,8 @@ impl Fsm for ShapeToolFsmState {
 
 				// The modifiers are checked first in these, as the gizmo and line end checks mark what they find as being dragged
 				if !input.keyboard.key(Key::Accel) && tool_data.gizmo_manager.handle_click() {
-					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
+					// A handle is held from where the pointer pressed it, since a snap shown before the handle was found under the pointer may lie elsewhere
+					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 					snap_session.begin_gesture(SnapView::new(document, *document_id, input), Moving::default());
 					responses.add(DocumentMessage::StartTransaction);
 
@@ -1155,6 +1166,7 @@ impl Fsm for ShapeToolFsmState {
 				let node = match tool_data.current_shape {
 					ShapeType::Polygon => Polygon::create_node(tool_options.vertices),
 					ShapeType::Star => Star::create_node(tool_options.vertices),
+					ShapeType::Heart => Heart::create_node(),
 					ShapeType::Circle => Circle::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
 					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
@@ -1171,10 +1183,12 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Heart | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+						// A heart's size is in its transform, so it starts out as a dot until the drag scales it up
+						let scale = if tool_data.current_shape == ShapeType::Heart { DVec2::splat(1. / HEART_SIZE) } else { DVec2::ONE };
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
+							transform: DAffine2::from_scale_angle_translation(scale, 0., input.mouse.position),
 							transform_in: TransformIn::Viewport,
 							skip_rerender: false,
 						});
@@ -1231,6 +1245,7 @@ impl Fsm for ShapeToolFsmState {
 				match tool_data.current_shape {
 					ShapeType::Polygon => Polygon::update_shape(view, snap_session, layer, tool_data, modifier, responses),
 					ShapeType::Star => Star::update_shape(view, snap_session, layer, tool_data, modifier, responses),
+					ShapeType::Heart => Heart::update_shape(view, snap_session, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(view, snap_session, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(view, snap_session, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(view, snap_session, layer, tool_data, responses),
@@ -1489,6 +1504,11 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					]),
 					HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Decrease/Increase Sides")]),
 				],
+				ShapeType::Heart => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Heart"),
+					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 				ShapeType::Circle => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Circle"),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
@@ -1536,7 +1556,9 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 		ShapeToolFsmState::Drawing(shape) => {
 			let mut common_hint_group = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
 			let tool_hint_group = match shape {
-				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Polygon | ShapeType::Star | ShapeType::Heart | ShapeType::Arc => {
+					HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")])
+				}
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
@@ -1604,13 +1626,15 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 #[cfg(test)]
 mod test_shape_tool {
 	use super::ShapeOptionsUpdate;
+	use crate::consts::{HEART_ANGLE_HANDLE_DISTANCE, HEART_SLIDER_DRAG_DISTANCE};
 	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 	use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 	use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id};
 	use crate::messages::tool::common_functionality::shapes::shape_utility::{
-		ShapeType, arc_end_points, extract_arc_parameters, extract_circle_radius, extract_spiral_parameters, extract_star_parameters, regular_polygon_points, star_vertex_position,
+		ShapeType, arc_end_points, extract_arc_parameters, extract_circle_radius, extract_heart_parameters, extract_spiral_parameters, extract_star_parameters, regular_polygon_points,
+		star_vertex_position,
 	};
 	use crate::messages::tool::common_functionality::shapes::spiral_shape::calculate_spiral_endpoints;
 	use crate::messages::tool::common_functionality::snap_session::Kind;
@@ -1618,10 +1642,10 @@ mod test_shape_tool {
 	use glam::DAffine2;
 	use graph_craft::document::NodeInput;
 	use graph_craft::document::value::TaggedValue;
-	use graphene_std::vector::algorithms::shapes::calculate_growth_factor;
+	use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, heart_bezpath};
 	use graphene_std::vector::generator_nodes::arc;
-	use graphene_std::vector::misc::SpiralType;
-	use kurbo::PathEl;
+	use graphene_std::vector::misc::{SpiralType, point_to_dvec2};
+	use kurbo::{Affine, CubicBez, ParamCurve, PathEl, PathSeg};
 	use std::f64::consts::{PI, TAU};
 
 	/// The anchors a layer draws, in document space, counting the one a closed path returns to only once.
@@ -2194,6 +2218,141 @@ mod test_shape_tool {
 		);
 
 		editor.left_mouseup(last.x, last.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_heart_drawn_fills_the_box_it_is_dragged_out_to() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let (from, to) = (DVec2::new(300., 300.), DVec2::new(420., 380.));
+		let layer = draw_shape(&mut editor, ShapeType::Heart, from, to).await;
+
+		let [min, max] = editor.active_document().metadata().bounding_box_viewport(layer).expect("the heart should have a bounding box");
+		assert!(min.distance(from) < 1e-6 && max.distance(to) < 1e-6, "the heart spans {min} to {max}");
+	}
+
+	/// A heart's segments in the viewport, clockwise from the cleft: the right lobe, the right side, the left side, and the left lobe.
+	fn heart_segments(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Vec<CubicBez> {
+		let document = editor.active_document();
+		let proportions = extract_heart_parameters(layer, document).expect("the heart should have its parameters");
+		let to_viewport = Affine::new(document.metadata().transform_to_viewport(layer).to_cols_array());
+
+		heart_bezpath(&proportions)
+			.segments()
+			.map(|segment| match segment {
+				PathSeg::Cubic(cubic) => to_viewport * cubic,
+				_ => panic!("every heart segment should be a cubic"),
+			})
+			.collect()
+	}
+
+	/// Draws a heart filling a 100 pixel box in a new document.
+	async fn draw_heart(editor: &mut EditorTestUtils) -> LayerNodeIdentifier {
+		editor.new_document().await;
+		draw_shape(editor, ShapeType::Heart, DVec2::new(300., 300.), DVec2::new(400., 400.)).await
+	}
+
+	async fn drag_gizmo_handle_and_let_go(editor: &mut EditorTestUtils, handle: DVec2, pointer: DVec2) {
+		drag_gizmo_handle(editor, handle, &[pointer]).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+	}
+
+	#[tokio::test]
+	async fn a_hearts_cleft_dragged_down_follows_the_pointer() {
+		let mut editor = EditorTestUtils::create();
+		let layer = draw_heart(&mut editor).await;
+
+		let cleft = point_to_dvec2(heart_segments(&editor, layer)[0].p0);
+		let pointer = cleft + DVec2::new(0., 10.);
+		drag_gizmo_handle_and_let_go(&mut editor, cleft, pointer).await;
+
+		let dragged = point_to_dvec2(heart_segments(&editor, layer)[0].p0);
+		assert!(dragged.distance(pointer) < 1e-6, "the cleft is at {dragged} rather than {pointer}");
+	}
+
+	#[tokio::test]
+	async fn a_hearts_left_widest_point_dragged_up_raises_both_to_the_pointer() {
+		let mut editor = EditorTestUtils::create();
+		let layer = draw_heart(&mut editor).await;
+
+		let widest = point_to_dvec2(heart_segments(&editor, layer)[3].p0);
+		let pointer = widest - DVec2::new(0., 5.);
+		drag_gizmo_handle_and_let_go(&mut editor, widest, pointer).await;
+
+		let segments = heart_segments(&editor, layer);
+		for dragged in [segments[0].p3, segments[3].p0] {
+			assert!((dragged.y - pointer.y).abs() < 1e-6, "a widest point is at a height of {} rather than {}", dragged.y, pointer.y);
+		}
+	}
+
+	#[tokio::test]
+	async fn a_hearts_tip_tangent_turned_to_45_degrees_opens_the_tip_to_a_right_angle() {
+		let mut editor = EditorTestUtils::create();
+		let layer = draw_heart(&mut editor).await;
+
+		let side = heart_segments(&editor, layer)[1];
+		let tip = point_to_dvec2(side.p3);
+		let handle = tip + (point_to_dvec2(side.p2) - tip).normalize() * HEART_ANGLE_HANDLE_DISTANCE;
+		let pointer = tip + DVec2::new(1., -1.).normalize() * HEART_ANGLE_HANDLE_DISTANCE;
+		drag_gizmo_handle_and_let_go(&mut editor, handle, pointer).await;
+
+		let tip_angle = extract_heart_parameters(layer, editor.active_document()).expect("the heart should have its parameters").tip_angle;
+		assert!((tip_angle.to_degrees() - 90.).abs() < 1e-9, "the tip opens to {}°", tip_angle.to_degrees());
+	}
+
+	#[tokio::test]
+	async fn a_hearts_cleft_tangent_turned_points_where_it_was_turned_to() {
+		let mut editor = EditorTestUtils::create();
+		let layer = draw_heart(&mut editor).await;
+
+		// The cleft's tangent is turned 10° flatter
+		let elevation_of = |lobe: CubicBez| (-(lobe.p1.y - lobe.p0.y)).atan2(lobe.p1.x - lobe.p0.x);
+		let lobe = heart_segments(&editor, layer)[0];
+		let (cleft, elevation) = (point_to_dvec2(lobe.p0), elevation_of(lobe));
+		let along = |elevation: f64| cleft + DVec2::new(elevation.cos(), -elevation.sin()) * HEART_ANGLE_HANDLE_DISTANCE;
+		let turned = elevation - 10_f64.to_radians();
+		drag_gizmo_handle_and_let_go(&mut editor, along(elevation), along(turned)).await;
+
+		let dragged = elevation_of(heart_segments(&editor, layer)[0]);
+		assert!(
+			(dragged - turned).abs() < 1e-6,
+			"the cleft's tangent rises {}° rather than {}°",
+			dragged.to_degrees(),
+			turned.to_degrees()
+		);
+	}
+
+	#[tokio::test]
+	async fn a_hearts_left_lobe_dragged_outward_leans_both_lobes_out_at_the_set_rate() {
+		let mut editor = EditorTestUtils::create();
+		let layer = draw_heart(&mut editor).await;
+
+		let lobe = heart_segments(&editor, layer)[3];
+		let top = (0..=1000)
+			.map(|i| point_to_dvec2(lobe.eval(i as f64 / 1000.)))
+			.min_by(|a, b| a.y.total_cmp(&b.y))
+			.expect("the lobe should have points");
+		drag_gizmo_handle_and_let_go(&mut editor, top, top - DVec2::new(50., 0.)).await;
+
+		// Lobe Lean spans from -100% to 100%
+		let lobe_lean = extract_heart_parameters(layer, editor.active_document()).expect("the heart should have its parameters").lobe_lean;
+		let expected = 50. / HEART_SLIDER_DRAG_DISTANCE * 2.;
+		assert!((lobe_lean - expected).abs() < 1e-9, "the lobes lean {lobe_lean} rather than {expected}");
+	}
+
+	#[tokio::test]
+	async fn a_hearts_side_dragged_away_from_its_chord_fills_out_at_the_set_rate() {
+		let mut editor = EditorTestUtils::create();
+		let layer = draw_heart(&mut editor).await;
+
+		let side = heart_segments(&editor, layer)[1];
+		let (middle, chord) = (point_to_dvec2(side.eval(0.5)), point_to_dvec2(side.p3) - point_to_dvec2(side.p0));
+		let outward = DVec2::new(chord.y, -chord.x).normalize();
+		drag_gizmo_handle_and_let_go(&mut editor, middle, middle + outward * 40.).await;
+
+		let side_fullness = extract_heart_parameters(layer, editor.active_document()).expect("the heart should have its parameters").side_fullness;
+		let expected = 0.5 + 40. / HEART_SLIDER_DRAG_DISTANCE;
+		assert!((side_fullness - expected).abs() < 1e-9, "the side fullness is {side_fullness} rather than {expected}");
 	}
 
 	#[tokio::test]

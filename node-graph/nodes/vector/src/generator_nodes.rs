@@ -247,7 +247,7 @@ fn heart(
 		side_fullness: *side_fullness.element() / 100.,
 		tip_angle: tip_angle.element().to_radians(),
 	};
-	let (mut heart, mut paths) = Vector::from_bezpath(&shapes::heart_bezpath(100., &proportions));
+	let (mut heart, mut paths) = Vector::from_bezpath(&shapes::heart_bezpath(&proportions));
 
 	// The widest points join each lobe smoothly to its side, while the cleft and tip stay sharp
 	let widest_points: Vec<_> = heart.segment_iter(&paths).step_by(2).map(|(_, _, _, end)| end).collect();

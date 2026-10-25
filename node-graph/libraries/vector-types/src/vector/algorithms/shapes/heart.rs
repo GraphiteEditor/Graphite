@@ -84,13 +84,16 @@ pub struct HeartProportions {
 	pub tip_angle: f64,
 }
 
-/// Constructs a heart filling a `size` by `size` box centered on the origin, with its tip pointing down.
-pub fn heart_bezpath(size: f64, proportions: &HeartProportions) -> BezPath {
+/// Width and height of the square box that [`heart_bezpath`] fills.
+pub const HEART_SIZE: f64 = 100.;
+
+/// Constructs a heart filling a [`HEART_SIZE`] square box centered on the origin, with its tip pointing down.
+pub fn heart_bezpath(proportions: &HeartProportions) -> BezPath {
 	let half = heart_half(proportions);
 
 	// Center the box on the origin with y pointing down, and mirror the right half into the left
-	let right = |point: DVec2| size * DVec2::new(point.x, 0.5 - point.y);
-	let left = |point: DVec2| size * DVec2::new(-point.x, 0.5 - point.y);
+	let right = |point: DVec2| HEART_SIZE * DVec2::new(point.x, 0.5 - point.y);
+	let left = |point: DVec2| HEART_SIZE * DVec2::new(-point.x, 0.5 - point.y);
 
 	let anchors = [
 		Anchor::new(right(half.cleft), Some(left(half.cleft_out)), Some(right(half.cleft_out))),
@@ -449,17 +452,23 @@ mod tests {
 	#[test]
 	fn heart_fills_its_box() {
 		for proportions in sample_proportions() {
-			let bounds = heart_bezpath(100., &proportions).bounding_box();
+			let (bounds, half_size) = (heart_bezpath(&proportions).bounding_box(), HEART_SIZE / 2.);
 
-			assert!((bounds.x0 + 50.).abs() < 1e-9 && (bounds.x1 - 50.).abs() < 1e-9, "width bounds {bounds:?} for {proportions:?}");
-			assert!((bounds.y0 + 50.).abs() < 1e-9 && (bounds.y1 - 50.).abs() < 1e-9, "height bounds {bounds:?} for {proportions:?}");
+			assert!(
+				(bounds.x0 + half_size).abs() < 1e-9 && (bounds.x1 - half_size).abs() < 1e-9,
+				"width bounds {bounds:?} for {proportions:?}"
+			);
+			assert!(
+				(bounds.y0 + half_size).abs() < 1e-9 && (bounds.y1 - half_size).abs() < 1e-9,
+				"height bounds {bounds:?} for {proportions:?}"
+			);
 		}
 	}
 
 	#[test]
 	fn heart_curvature_is_continuous_at_the_widest_points() {
 		for proportions in sample_proportions() {
-			let cubics = cubics(&heart_bezpath(100., &proportions));
+			let cubics = cubics(&heart_bezpath(&proportions));
 			assert_eq!(cubics.len(), 4);
 
 			// Each widest point joins a lobe and a side, arriving and leaving in either order
@@ -474,7 +483,7 @@ mod tests {
 
 	#[test]
 	fn heart_moves_continuously_with_every_proportion() {
-		let control_points = |proportions: &HeartProportions| -> Vec<kurbo::Point> { cubics(&heart_bezpath(1., proportions)).iter().flat_map(|cubic| [cubic.p0, cubic.p1, cubic.p2]).collect() };
+		let control_points = |proportions: &HeartProportions| -> Vec<kurbo::Point> { cubics(&heart_bezpath(proportions)).iter().flat_map(|cubic| [cubic.p0, cubic.p1, cubic.p2]).collect() };
 
 		// The largest movement of any control point between neighboring samples as one proportion sweeps its domain
 		let largest_step = |baseline: &HeartProportions, (set, get): &Proportion, steps: usize| -> f64 {
