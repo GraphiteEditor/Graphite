@@ -2,6 +2,7 @@ import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -20,9 +21,9 @@ const initialState: DialogStoreState = {
 	visible: false,
 	title: "",
 	icon: undefined,
-	buttons: [],
-	column1: [],
-	column2: [],
+	buttons: createLayout(),
+	column1: createLayout(),
+	column2: createLayout(),
 	// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 	panicDetails: "",
 };
