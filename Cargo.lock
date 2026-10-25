@@ -6561,7 +6561,7 @@ dependencies = [
 [[package]]
 name = "vello_common"
 version = "0.3.0"
-source = "git+https://github.com/Keavon/vello.git?rev=f20a8dde35de04c44d05e88b33864f27ad7d6f70#f20a8dde35de04c44d05e88b33864f27ad7d6f70"
+source = "git+https://github.com/Keavon/vello.git?rev=4df331db2a02cb0f1cef4a0190dbbb2a00f4b075#4df331db2a02cb0f1cef4a0190dbbb2a00f4b075"
 dependencies = [
  "bytemuck",
  "fearless_simd",
@@ -6576,7 +6576,7 @@ dependencies = [
 [[package]]
 name = "vello_gpu"
 version = "0.3.0"
-source = "git+https://github.com/Keavon/vello.git?rev=f20a8dde35de04c44d05e88b33864f27ad7d6f70#f20a8dde35de04c44d05e88b33864f27ad7d6f70"
+source = "git+https://github.com/Keavon/vello.git?rev=4df331db2a02cb0f1cef4a0190dbbb2a00f4b075#4df331db2a02cb0f1cef4a0190dbbb2a00f4b075"
 dependencies = [
  "bytemuck",
  "hashbrown 0.17.1",
@@ -6590,7 +6590,7 @@ dependencies = [
 [[package]]
 name = "vello_gpu_shaders"
 version = "0.3.0"
-source = "git+https://github.com/Keavon/vello.git?rev=f20a8dde35de04c44d05e88b33864f27ad7d6f70#f20a8dde35de04c44d05e88b33864f27ad7d6f70"
+source = "git+https://github.com/Keavon/vello.git?rev=4df331db2a02cb0f1cef4a0190dbbb2a00f4b075#4df331db2a02cb0f1cef4a0190dbbb2a00f4b075"
 dependencies = [
  "naga",
  "wesl",
