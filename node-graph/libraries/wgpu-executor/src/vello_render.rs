@@ -1,5 +1,6 @@
 use crate::vello_adjustments::adjustment_run_hash;
 use crate::vello_effects::{EffectPasses, EffectTextures};
+use crate::vello_generators::GeneratorPasses;
 use glam::{DAffine2, UVec2};
 use graphic_types::effects::EffectCapture;
 use graphic_types::raster_types::{CPU, Image, Raster, WeakCPU};
@@ -16,7 +17,7 @@ use vello_gpu::{
 use wgpu_sync::Queue;
 
 /// The format of the textures Vello GPU renders the canvas into, of the image textures it samples, and of the textures handed back.
-const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
+pub(crate) const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// Formats for content processed further, by effects or by blending from a layer, of which the first the GPU supports is used so steep changes don't bring out 8-bit banding.
 /// 16-bit unorm comes first for holding every 8-bit level exactly, unlike half floats.
@@ -41,6 +42,7 @@ pub(crate) struct VelloRenderer {
 	gpu: Mutex<(Renderer, Resources)>,
 	alpha_conversion: AlphaConversion,
 	effect_passes: EffectPasses,
+	generator_passes: GeneratorPasses,
 	/// The format of content rendered for its effects and of the layers Vello GPU draws in, one of [`PRECISE_FORMATS`] or else [`TEXTURE_FORMAT`].
 	precise_format: wgpu::TextureFormat,
 }
@@ -110,6 +112,7 @@ impl VelloRenderer {
 			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
 			alpha_conversion: AlphaConversion::new(device),
 			effect_passes: EffectPasses::new(device, adapter),
+			generator_passes: GeneratorPasses::default(),
 			precise_format,
 		}
 	}
@@ -280,7 +283,7 @@ impl RenderContext<'_> {
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			let view = self.canvas.images.prepare(device, &queue, &mut encoder, &self.renderer.alpha_conversion, image, max_texture_size);
+			let view = self.canvas.images.prepare(device, &queue, &mut encoder, self.renderer, image, max_texture_size);
 
 			// Adjustments draw a copy of the texture they're carried out on
 			let view = match image {
@@ -424,14 +427,14 @@ struct ImageTextures {
 }
 
 impl ImageTextures {
-	/// A view of the premultiplied texture for `image`, uploading CPU pixels the first time they're drawn.
+	/// A view of the premultiplied texture for `image`, uploading CPU pixels or rendering a generator's tile the first time they're drawn.
 	/// GPU textures are converted again at every render since the texture cache hands their textures out again with new contents.
 	fn prepare(
 		&mut self,
 		device: &wgpu::Device,
 		queue: &wgpu::Queue,
 		encoder: &mut wgpu::CommandEncoder,
-		alpha_conversion: &AlphaConversion,
+		renderer: &VelloRenderer,
 		image: &SceneImage,
 		max_texture_size: u32,
 	) -> Option<wgpu::TextureView> {
@@ -459,8 +462,18 @@ impl ImageTextures {
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
 				SceneImage::GeneratorTile { pattern, tile } => {
-					let (pixels, width, height) = tile.render(pattern).ok()?.to_flat_u8();
-					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+					// Rendered on the GPU, or on the CPU where 32-bit floats can't place its pixels
+					let (corner, texel) = tile.corner_and_texel();
+					match renderer.generator_passes.render_tile(device, encoder, pattern, corner, texel, GeneratorTile::SAMPLES) {
+						Some(texture) => {
+							renderer.effect_passes.record_mipmaps(device, encoder, &texture);
+							texture
+						}
+						None => {
+							let (pixels, width, height) = tile.render(pattern).ok()?.to_flat_u8();
+							upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+						}
+					}
 				}
 				SceneImage::Rendered(_) => return None,
 				SceneImage::Texture(texture) => create_texture(
@@ -493,7 +506,7 @@ impl ImageTextures {
 
 		if let SceneImage::Texture(source) = image {
 			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-			alpha_conversion.premultiply(device, encoder, &source_view, source.format().is_srgb(), &view);
+			renderer.alpha_conversion.premultiply(device, encoder, &source_view, source.format().is_srgb(), &view);
 		}
 
 		Some(view)
