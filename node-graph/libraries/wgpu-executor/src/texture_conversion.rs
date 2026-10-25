@@ -102,9 +102,31 @@ impl RasterGpuToRasterCpuConverter {
 			let _ = sender.send(result);
 		});
 
-		let _ = device.poll(wgpu::wgt::PollType::wait_indefinitely());
+		#[cfg(not(target_family = "wasm"))]
+		let map_result = {
+			let _ = device.poll(wgpu::wgt::PollType::wait_indefinitely());
+			receiver.await
+		};
 
-		receiver.await.expect("Failed to receive map result")?;
+		// A WebGL2 fence only signals once control returns to the browser's event loop, so a wait can't block until the map completes
+		#[cfg(target_family = "wasm")]
+		let map_result = {
+			let mut receiver = receiver;
+			loop {
+				let _ = device.poll(wgpu::wgt::PollType::Poll);
+				match receiver.try_recv() {
+					Ok(Some(result)) => break Ok(result),
+					Ok(None) => {
+						if !yield_to_event_loop().await {
+							break Err(futures::channel::oneshot::Canceled);
+						}
+					}
+					Err(canceled) => break Err(canceled),
+				}
+			}
+		};
+
+		map_result.expect("Failed to receive map result")?;
 
 		let view = buffer_slice.get_mapped_range().expect("Failed to get mapped range");
 
@@ -130,6 +152,46 @@ impl RasterGpuToRasterCpuConverter {
 
 		Ok(Raster::new_cpu(cpu_image))
 	}
+}
+
+/// Resumes in a later task of the browser's event loop, returning false if one couldn't be scheduled.
+#[cfg(target_family = "wasm")]
+async fn yield_to_event_loop() -> bool {
+	use futures::task::AtomicWaker;
+	use std::sync::Arc;
+	use std::sync::atomic::{AtomicBool, Ordering};
+	use web_sys::wasm_bindgen::JsCast;
+	use web_sys::wasm_bindgen::closure::Closure;
+
+	#[derive(Default)]
+	struct Timeout {
+		fired: AtomicBool,
+		waker: AtomicWaker,
+	}
+	let timeout = Arc::new(Timeout::default());
+
+	// Only the shared flag is held across the wait below, keeping the future `Send` as `ConvertAsync` requires
+	let scheduled = {
+		let timeout = Arc::clone(&timeout);
+		let callback = Closure::once_into_js(move || {
+			timeout.fired.store(true, Ordering::Release);
+			timeout.waker.wake();
+		});
+		web_sys::window().is_some_and(|window| window.set_timeout_with_callback(callback.unchecked_ref()).is_ok())
+	};
+	if !scheduled {
+		return false;
+	}
+
+	std::future::poll_fn(|context| {
+		timeout.waker.register(context.waker());
+		if timeout.fired.load(Ordering::Acquire) {
+			std::task::Poll::Ready(true)
+		} else {
+			std::task::Poll::Pending
+		}
+	})
+	.await
 }
 
 /// Passthrough conversion for GPU `List`s - no conversion needed

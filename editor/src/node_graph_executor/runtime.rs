@@ -233,7 +233,7 @@ impl NodeRuntime {
 						self.pending_export = None;
 					}
 
-					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
+					// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU, as in headless tests
 					if render_config.export_format == ExportFormat::Raster
 						&& (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none())
 					{

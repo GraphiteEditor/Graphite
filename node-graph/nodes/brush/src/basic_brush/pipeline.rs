@@ -21,7 +21,7 @@ struct ScatterUniforms {
 	kernel_scale: f32,
 	kernel_exponent: f32,
 	kernel_section_scale: f32,
-	_pad: f32,
+	_pad: [f32; 3],
 }
 
 #[repr(C)]
@@ -433,7 +433,7 @@ impl<'a> Recorder<'a> {
 				kernel_scale: kernel.scale,
 				kernel_exponent: kernel.exponent,
 				kernel_section_scale: kernel.section_scale,
-				_pad: 0.,
+				_pad: [0.; 3],
 			}),
 			usage: wgpu::BufferUsages::UNIFORM,
 		});
