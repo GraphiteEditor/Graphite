@@ -16,14 +16,13 @@ workspace = true
 
 [features]
 default = ["serde"]
-serde = ["dep:serde"]
+serde = ["dep:serde", "glam/serde", "half/serde"]
 type_id_logging = []
 dealloc_nodes = []
-wasm = ["tsify", "wasm-bindgen", "no-std-types/wasm"]
+wasm = ["tsify", "wasm-bindgen"]
 
 [dependencies]
 # Local dependencies
-no-std-types = { workspace = true }
 graphene-hash = { workspace = true, features = ["derive"] }
 
 # Workspace dependencies
@@ -32,6 +31,9 @@ bitflags = { workspace = true }
 bytemuck = { workspace = true }
 node-macro = { workspace = true }
 num-traits = { workspace = true }
+num-derive = { workspace = true }
+num_enum = { workspace = true, features = ["std"] }
+half = { workspace = true, features = ["std"] }
 rand = { workspace = true }
 glam = { workspace = true }
 serde_json = { workspace = true }

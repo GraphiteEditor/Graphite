@@ -4,7 +4,8 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 
 #[repr(i32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize, graphene_hash::CacheHash, Debug, Default, Clone, Copy, Eq, PartialEq, Hash, FromPrimitive, IntoPrimitive)]
+#[derive(dyn_any::DynAny, graphene_hash::CacheHash, Debug, Default, Clone, Copy, Eq, PartialEq, Hash, FromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BlendMode {
 	// Basic group
 	#[default]

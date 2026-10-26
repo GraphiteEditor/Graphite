@@ -1,15 +1,14 @@
 use crate::raster_kernel::{Adjust, MapColor, Wgsl, raster_kernel_pipeline};
 use crate::{gpu_param_enum, gpu_params};
+use core_types::blending::BlendMode;
+use core_types::color::Color;
 use core_types::list::Item;
-use core_types::Interrupt;
-use no_std_types::Ctx;
-use no_std_types::blending::BlendMode;
-use no_std_types::color::Color;
+use core_types::{Ctx, Interrupt};
 use raster_types::{GPU, Raster};
 use vector_types::Gradient;
 use wgpu_executor::WgpuPipelineCache;
 
-pub use no_std_types::blending::{apply_blend_mode, blend_colors};
+pub use core_types::blending::{apply_blend_mode, blend_colors};
 
 /// Mixes the over color onto the under color by a blend mode and opacity, as if they were stacked layers.
 #[node_macro::node(category("Color"), icon("NodeMixColors"))]
