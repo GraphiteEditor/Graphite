@@ -332,6 +332,19 @@ pub enum FrontendMessage {
 	ClearNodeThumbnails {
 		ids: Vec<NodeId>,
 	},
+	UpdateNodeThumbnailPixels {
+		id: NodeId,
+		width: u32,
+		height: u32,
+		pixels: serde_bytes::ByteBuf,
+	},
+	UpdateNodeThumbnailCanvases {
+		id: NodeId,
+		#[serde(rename = "layersPanelCanvasId")]
+		layers_panel_canvas_id: u64,
+		#[serde(rename = "nodeGraphCanvasId")]
+		node_graph_canvas_id: u64,
+	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<DocumentInfo>,

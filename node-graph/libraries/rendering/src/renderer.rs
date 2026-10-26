@@ -13,7 +13,6 @@ use core_types::list::ATTR_APPEARANCE;
 use core_types::list::{ATTR_GEOMETRY_CACHE, ATTR_PATHS};
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::math::quad::Quad;
-use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Footprint;
 use core_types::uuid::{NodeId, generate_uuid};
 use core_types::{
@@ -781,7 +780,7 @@ pub struct Background {
 }
 
 // TODO: Rename to "Graphical"
-pub trait Render: BoundingBox + RenderComplexity {
+pub trait Render: BoundingBox {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, _render_params: &RenderParams);

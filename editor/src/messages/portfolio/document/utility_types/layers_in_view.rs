@@ -10,8 +10,8 @@ pub struct LayersInView {
 	layers_panel: HashSet<NodeId>,
 	/// The nodes in view in the node graph while it's open.
 	node_graph: HashSet<NodeId>,
-	/// The latest thumbnail of each layer, as rendered by the graph runtime.
-	thumbnails: HashMap<NodeId, String>,
+	/// The message with the latest thumbnail of each layer, as rendered by the graph runtime.
+	thumbnails: HashMap<NodeId, FrontendMessage>,
 	/// The layers whose latest thumbnail the frontend has.
 	thumbnails_sent: HashSet<NodeId>,
 }
@@ -40,10 +40,17 @@ impl LayersInView {
 		responses.add(PortfolioMessage::SubmitThumbnailsInView);
 	}
 
-	/// Keeps a layer's newly rendered thumbnail, sending it to the frontend only if the layer is in view.
-	pub fn receive_thumbnail(&mut self, layer: NodeId, thumbnail: String, responses: &mut VecDeque<Message>) {
+	pub fn thumbnail_layer(message: &FrontendMessage) -> Option<NodeId> {
+		match message {
+			FrontendMessage::UpdateNodeThumbnail { id, .. } | FrontendMessage::UpdateNodeThumbnailCanvases { id, .. } | FrontendMessage::UpdateNodeThumbnailPixels { id, .. } => Some(*id),
+			_ => None,
+		}
+	}
+
+	/// Keeps the message with a layer's newly rendered thumbnail, sending it to the frontend only if the layer is in view.
+	pub fn receive_thumbnail(&mut self, layer: NodeId, thumbnail: FrontendMessage, responses: &mut VecDeque<Message>) {
 		if self.in_view(&layer) {
-			responses.add(FrontendMessage::UpdateNodeThumbnail { id: layer, value: thumbnail.clone() });
+			responses.add(thumbnail.clone());
 			self.thumbnails_sent.insert(layer);
 		} else {
 			// Out of view, the frontend's copy is now stale until the layer comes back into view
@@ -84,7 +91,7 @@ impl LayersInView {
 			}
 			let Some(thumbnail) = self.thumbnails.get(&layer) else { continue };
 
-			responses.add(FrontendMessage::UpdateNodeThumbnail { id: layer, value: thumbnail.clone() });
+			responses.add(thumbnail.clone());
 			self.thumbnails_sent.insert(layer);
 		}
 	}
@@ -93,6 +100,10 @@ impl LayersInView {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	fn svg_thumbnail(layer: NodeId, svg: &str) -> FrontendMessage {
+		FrontendMessage::UpdateNodeThumbnail { id: layer, value: svg.to_string() }
+	}
 
 	fn thumbnails_sent(responses: VecDeque<Message>) -> Vec<(NodeId, String)> {
 		responses
@@ -110,8 +121,8 @@ mod tests {
 		let mut layers_in_view = LayersInView::default();
 
 		let mut responses = VecDeque::new();
-		layers_in_view.receive_thumbnail(layer, "first".to_string(), &mut responses);
-		layers_in_view.receive_thumbnail(layer, "latest".to_string(), &mut responses);
+		layers_in_view.receive_thumbnail(layer, svg_thumbnail(layer, "first"), &mut responses);
+		layers_in_view.receive_thumbnail(layer, svg_thumbnail(layer, "latest"), &mut responses);
 		assert!(thumbnails_sent(responses).is_empty(), "out of view, a thumbnail isn't sent");
 
 		let mut responses = VecDeque::new();
@@ -130,12 +141,12 @@ mod tests {
 
 		let mut responses = VecDeque::new();
 		layers_in_view.set_layers_panel(HashSet::from([layer]), &mut responses);
-		layers_in_view.receive_thumbnail(layer, "in view".to_string(), &mut responses);
+		layers_in_view.receive_thumbnail(layer, svg_thumbnail(layer, "in view"), &mut responses);
 		assert_eq!(thumbnails_sent(responses), vec![(layer, "in view".to_string())], "in view, a thumbnail is sent as it's received");
 
 		let mut responses = VecDeque::new();
 		layers_in_view.set_layers_panel(HashSet::new(), &mut responses);
-		layers_in_view.receive_thumbnail(layer, "changed".to_string(), &mut responses);
+		layers_in_view.receive_thumbnail(layer, svg_thumbnail(layer, "changed"), &mut responses);
 		layers_in_view.set_layers_panel(HashSet::from([layer]), &mut responses);
 		assert_eq!(thumbnails_sent(responses), vec![(layer, "changed".to_string())]);
 	}
@@ -147,7 +158,7 @@ mod tests {
 
 		let mut responses = VecDeque::new();
 		layers_in_view.set_layers_panel(HashSet::from([layer]), &mut responses);
-		layers_in_view.receive_thumbnail(layer, "before".to_string(), &mut responses);
+		layers_in_view.receive_thumbnail(layer, svg_thumbnail(layer, "before"), &mut responses);
 
 		let mut responses = VecDeque::new();
 		layers_in_view.forget_thumbnails(&[layer, other_documents_layer], &mut responses);
@@ -163,7 +174,7 @@ mod tests {
 		assert!(thumbnails_sent(responses).is_empty(), "a forgotten thumbnail isn't sent again");
 
 		let mut responses = VecDeque::new();
-		layers_in_view.receive_thumbnail(layer, "after".to_string(), &mut responses);
+		layers_in_view.receive_thumbnail(layer, svg_thumbnail(layer, "after"), &mut responses);
 		assert_eq!(thumbnails_sent(responses), vec![(layer, "after".to_string())], "rendered anew, it's sent as before");
 	}
 }
