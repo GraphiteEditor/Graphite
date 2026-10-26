@@ -1,26 +1,25 @@
 use core_types::list::{Item, List};
+use core_types::ops::ConvertAsync;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, NodeError, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
-use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster, Texture};
 use graphic_types::{Artboard, Graphic, Vector};
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
+use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::Gradient;
 use wgpu_executor::WgpuExecutor;
 
 #[derive(Clone, dyn_any::DynAny)]
-pub enum RenderIntermediateType {
-	/// The content itself, drawn into a Vello scene at each render since the scene depends on the render's size and placement
-	Vello(Arc<dyn Render + Send + Sync>),
-	Svg(Arc<SvgRenderOutput>),
-}
-#[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
-	pub(crate) ty: RenderIntermediateType,
+	/// The content itself, drawn at each render since a Vello scene depends on the render's size and placement and SVG output on the GPU raster downloads
+	pub(crate) content: Arc<dyn Render + Send + Sync>,
+	/// Images of the content's GPU raster textures, downloaded only for SVG output, which can't reference textures
+	pub(crate) gpu_raster_downloads: Arc<HashMap<Texture, Raster<CPU>>>,
 	pub(crate) metadata: RenderMetadata,
 }
 
@@ -38,36 +37,53 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	)]
 	data: impl Node<Context<'static>, Output = T>,
 ) -> Result<Item<RenderIntermediate>, Interrupt> {
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
-
 	let ctx = OwnedContextImpl::from(ctx.clone()).into_context();
 	let data = data.eval(ctx)?;
 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None, None);
-	let intermediate = match &render_params.render_output_type {
-		RenderOutputTypeRequest::Vello => RenderIntermediate {
-			ty: RenderIntermediateType::Vello(Arc::new(data)),
-			metadata,
-		},
-		RenderOutputTypeRequest::Svg => {
-			let mut render = SvgRender::new();
-
-			data.render_svg(&mut render, render_params);
-
-			RenderIntermediate {
-				ty: RenderIntermediateType::Svg(Arc::new(render.into())),
-				metadata,
-			}
-		}
+	let intermediate = RenderIntermediate {
+		content: Arc::new(data),
+		gpu_raster_downloads: Arc::default(),
+		metadata,
 	};
 
 	Ok(Item::new_from_element(intermediate))
+}
+
+/// Downloads the content's GPU raster textures for SVG output to embed, leaving them undrawn without a GPU executor.
+#[node_macro::node(category(""), placeholder = pending_gpu_raster_downloads)]
+async fn download_gpu_rasters(
+	ctx: impl Ctx + ExtractVarArgs,
+	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
+	mut data: Item<RenderIntermediate>,
+) -> Item<RenderIntermediate> {
+	let render_output_type = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type")
+		.render_output_type;
+	let (RenderOutputTypeRequest::Svg, Some(executor)) = (render_output_type, executor.into_element()) else {
+		return data;
+	};
+
+	let mut textures = Vec::new();
+	data.element().content.collect_gpu_textures(&mut textures);
+	if textures.is_empty() {
+		return data;
+	}
+
+	let rasters: List<Raster<GPU>> = textures.iter().map(|texture| Item::new_from_element(Raster::new_gpu(texture.clone()))).collect();
+	let downloads = rasters.convert(Footprint::DEFAULT, executor).await;
+
+	data.element_mut().gpu_raster_downloads = Arc::new(textures.into_iter().zip(downloads.into_iter().map(Item::into_element)).collect());
+	data
+}
+
+fn pending_gpu_raster_downloads(_executor: &Item<Option<WgpuExecutor>>, data: &Item<RenderIntermediate>) -> Item<RenderIntermediate> {
+	data.clone()
 }
 
 #[node_macro::node(category(""))]
@@ -82,18 +98,25 @@ fn render(
 		.expect("Did not find var args")
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
-	let mut render_params = render_params.clone();
-	render_params.footprint = *footprint;
 
-	let RenderIntermediate { ty, mut metadata } = data.into_element();
+	let RenderIntermediate {
+		content,
+		gpu_raster_downloads,
+		mut metadata,
+	} = data.into_element();
 	metadata.apply_transform(footprint.transform);
 
-	let data = match (render_params.render_output_type, ty) {
-		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(data)) => {
+	let data = match render_params.render_output_type {
+		RenderOutputTypeRequest::Svg => {
+			let render_params = RenderParams {
+				gpu_raster_downloads,
+				..render_params.clone()
+			};
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * footprint.transform;
 			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
 
-			let mut render = SvgRender::from(data.as_ref());
+			let mut render = SvgRender::new();
+			content.render_svg(&mut render, &render_params);
 			render.wrap_with_transform(logical_transform, Some(logical_resolution));
 
 			let output = SvgRenderOutput::from(render);
@@ -104,10 +127,14 @@ fn render(
 				image_data: output.image_data.into_iter().collect(),
 			}
 		}
-		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
+		RenderOutputTypeRequest::Vello => {
+			let render_params = RenderParams {
+				footprint: *footprint,
+				..render_params.clone()
+			};
 			let executor = executor.eval(Context::default())?.into_element();
 
-			let mut draw = |scene: &mut VelloSceneBuilder| data.render_to_vello(scene, Default::default(), &render_params);
+			let mut draw = |scene: &mut VelloSceneBuilder| content.render_to_vello(scene, Default::default(), &render_params);
 			let texture = match executor.render_vello(footprint.resolution, footprint.transform, &mut draw) {
 				Ok(texture) => texture,
 				// Leave the output transparent, at a size the GPU can hold, rather than taking down the editor
@@ -119,7 +146,6 @@ fn render(
 			};
 			RenderOutputType::Texture(texture)
 		}
-		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
 	Ok(Item::new_from_element(RenderOutput { data, metadata }))
