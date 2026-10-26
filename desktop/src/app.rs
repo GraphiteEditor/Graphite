@@ -26,11 +26,11 @@ use crate::spawner::TokioSpawner;
 use crate::ui::{InputEvent, UiCommand, UiInstance};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
-use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, WgpuExecutor, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
-	wgpu_context: WgpuContext,
+	wgpu_executor: WgpuExecutor,
 	window: Option<Window>,
 	window_scale: f64,
 	window_size: PhysicalSize<u32>,
@@ -96,11 +96,13 @@ impl App {
 		let runtime_wake = move || {
 			let _ = runtime_wake_sender.try_send(());
 		};
+		// The node graph and the window's overlays render through this one executor, sharing its renderer and texture cache
+		let wgpu_executor = WgpuExecutor::with_context(wgpu_context).expect("Failed to create WgpuExecutor");
 		let (desktop_wrapper, mut node_runtime) = DesktopWrapper::new(
 			rand::rng().random(),
 			Arc::new(resource_storage),
 			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
-			wgpu_context.clone(),
+			wgpu_executor.clone(),
 			TokioSpawner::new(async_runtime.handle().clone()),
 			editor_wake,
 			runtime_wake,
@@ -121,7 +123,7 @@ impl App {
 
 		Self {
 			render_state: None,
-			wgpu_context,
+			wgpu_executor,
 			window: None,
 			window_scale: 1.,
 			window_size: PhysicalSize { width: 0, height: 0 },
@@ -551,7 +553,7 @@ impl ApplicationHandler for App {
 		#[cfg(target_os = "macos")]
 		let present_mode = if !self.preferences.vsync { Some(wgpu::PresentMode::Immediate) } else { None };
 
-		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone(), present_mode);
+		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_executor.clone(), present_mode);
 		self.render_state = Some(render_state);
 
 		if let Some(window) = &self.window.as_ref() {

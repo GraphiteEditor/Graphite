@@ -1,22 +1,22 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, RasterizedImage, RenderStatus};
 use crate::messages::portfolio::document::node_graph::utility_types::NodeEvaluationError;
+use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
 use graphene_std::list::List;
-use graphene_std::memo::IORecord;
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, paths_from_list_row_attributes};
-use graphene_std::{ATTR_TRANSFORM, Context, Graphic};
+use graphene_std::{ATTR_TRANSFORM, Graphic};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 use std::any::Any;
 use std::sync::Arc;
@@ -59,12 +59,15 @@ pub type EvaluationError = Box<[(Arc<dyn std::error::Error + Send + Sync>, Box<[
 pub struct CompilationResponse {
 	result: Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)>,
 	node_graph_errors: GraphErrors,
+	node_graph_warnings: GraphErrors,
 }
 
 pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
+	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
+	InspectResult(Box<InspectResult>),
 }
 
 #[derive(Debug)]
@@ -75,10 +78,9 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	pending: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
+	/// The document whose network the graph runtime was last sent.
+	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
-	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
-	/// so the runtime can splice its monitor node alongside the target rather than only at the top level.
-	/// Tracking the previously-sent value lets `update_node_graph` re-send the network when the inspection target changes.
 	previous_node_to_inspect: Vec<NodeId>,
 	// TODO: Eventually remove this document upgrade code
 	/// In-progress one-time pre-pass that converts legacy bounding-box-relative gradients to absolute space, if any.
@@ -125,6 +127,7 @@ impl NodeGraphExecutor {
 			sender: request_sender,
 			receiver: response_receiver,
 			node_graph_hash: 0,
+			node_graph_document: None,
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
 			gradient_migration: None,
@@ -148,6 +151,22 @@ impl NodeGraphExecutor {
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
+	}
+
+	pub fn submit_inspect_context_overrides(&self, overrides: graphene_std::ContextOverrides) {
+		self.sender.send(GraphRuntimeRequest::InspectContextOverrides(overrides)).expect("Failed to send the context overrides");
+	}
+
+	pub fn submit_thumbnails_in_view(&self, document: &DocumentMessageHandler, document_id: DocumentId) {
+		// The runtime renders thumbnails from the network it has, which may still be another document's
+		if self.node_graph_document != Some(document_id) {
+			return;
+		}
+
+		let layers = document.layers_in_view.all_in_view();
+		self.sender
+			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
+			.expect("Failed to send the thumbnails in view");
 	}
 
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
@@ -177,19 +196,22 @@ impl NodeGraphExecutor {
 	}
 
 	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.network_hash();
-		// Refresh the graph when it changes or the inspect node changes
-		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
+		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
+			self.node_graph_document = Some(document_id);
 
 			let resources = document.resources.registry.clone();
 
 			self.sender
 				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
 				.map_err(|e| e.to_string())?;
+		} else if self.previous_node_to_inspect != node_to_inspect {
+			self.previous_node_to_inspect.clone_from(&node_to_inspect);
+			self.sender.send(GraphRuntimeRequest::Inspect(node_to_inspect)).map_err(|e| e.to_string())?;
 		}
 
 		Ok(())
@@ -250,7 +272,7 @@ impl NodeGraphExecutor {
 		ignore_hash: bool,
 		pointer: DVec2,
 	) -> Result<Message, String> {
-		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
+		self.update_node_graph(document, document_id, node_to_inspect, ignore_hash)?;
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
@@ -476,14 +498,14 @@ impl NodeGraphExecutor {
 
 					// Thumbnails reach the frontend only for the layers it shows in view
 					for response in existing_responses {
-						match response {
-							FrontendMessage::UpdateNodeThumbnail { id, value } => {
+						match LayersInView::thumbnail_layer(&response) {
+							Some(layer) => {
 								// A render finishing after a switch to another document has thumbnails of the previous one's layers
 								if execution_context.document_id == document_id {
-									document.layers_in_view.receive_thumbnail(id, value, responses);
+									document.layers_in_view.receive_thumbnail(layer, response, responses);
 								}
 							}
-							response => responses.add(response),
+							None => responses.add(response),
 						}
 					}
 					document.network_interface.update_vector_modify(vector_modify);
@@ -500,13 +522,19 @@ impl NodeGraphExecutor {
 
 					// Update the Data panel on the frontend using the value of the inspect result.
 					if let Some(inspect_result) = (!self.previous_node_to_inspect.is_empty()).then_some(inspect_result).flatten() {
-						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+						responses.add(DataPanelMessage::UpdateLayout {
+							inspect_result: Box::new(inspect_result),
+						});
 					} else {
 						responses.add(DataPanelMessage::ClearLayout);
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
-					let CompilationResponse { node_graph_errors, result } = execution_response;
+					let CompilationResponse {
+						node_graph_errors,
+						node_graph_warnings,
+						result,
+					} = execution_response;
 
 					// TODO: Eventually remove this document upgrade code
 					// The migration's temporary redirected-export compilations must not push types or a graph view to the frontend
@@ -530,6 +558,7 @@ impl NodeGraphExecutor {
 							responses.add(NodeGraphMessage::UpdateTypes {
 								resolved_types: incomplete_delta,
 								node_graph_errors,
+								node_graph_warnings,
 							});
 
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
@@ -541,26 +570,58 @@ impl NodeGraphExecutor {
 					responses.add(NodeGraphMessage::UpdateTypes {
 						resolved_types: type_delta,
 						node_graph_errors,
+						node_graph_warnings,
 					});
 				}
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
+				NodeGraphUpdate::InspectResult(inspect_result) => {
+					if inspect_result.inspect_node_path == self.previous_node_to_inspect {
+						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+					}
+				}
+				NodeGraphUpdate::Thumbnails {
+					responses: thumbnails,
+					document_id: thumbnails_document,
+				} => {
+					if thumbnails_document == document_id {
+						Self::receive_thumbnails(document, thumbnails, responses);
+					}
+				}
 			}
 		}
 
-		// An error leaves the later responses unapplied, but the runtime still dropped their thumbnails
+		// An error leaves the later responses unapplied, but the runtime still dropped and rendered their thumbnails
 		for response in results {
-			if let NodeGraphUpdate::ExecutionResponse(execution_response) = response {
-				if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
-					document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
+			match response {
+				NodeGraphUpdate::ExecutionResponse(execution_response) => {
+					if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
+						document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
+					}
+					all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
 				}
-				all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
+				NodeGraphUpdate::Thumbnails {
+					responses: thumbnails,
+					document_id: thumbnails_document,
+				} if thumbnails_document == document_id => {
+					Self::receive_thumbnails(document, thumbnails, responses);
+				}
+				_ => {}
 			}
 		}
 
 		all_dropped_thumbnails
+	}
+
+	fn receive_thumbnails(document: &mut DocumentMessageHandler, thumbnails: VecDeque<FrontendMessage>, responses: &mut VecDeque<Message>) {
+		for thumbnail in thumbnails {
+			match LayersInView::thumbnail_layer(&thumbnail) {
+				Some(layer) => document.layers_in_view.receive_thumbnail(layer, thumbnail, responses),
+				None => responses.add(thumbnail),
+			}
+		}
 	}
 
 	/// The document an execution was submitted for, while it's still queued or pending.
@@ -935,35 +996,20 @@ fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId]) -> boo
 // TODO: Eventually remove this document upgrade code
 /// Turn a measured fill node's evaluated geometry into a `[0,1]² -> bounding box` affine plus the geometry's item transform.
 fn measure_fill_geometry(data: &Arc<dyn Any + Send + Sync>) -> Option<(DAffine2, DAffine2)> {
-	if let Some(list) = introspected_output::<List<Vector>>(data) {
+	if let Some(list) = data.downcast_ref::<List<Vector>>() {
 		let vector = list.element(0)?;
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
-		let paths = paths_from_list_row_attributes(&list, 0).unwrap_or_else(|| no_paths());
+		let paths = paths_from_list_row_attributes(list, 0).unwrap_or_else(|| no_paths());
 		let bounds = vector.nonzero_bounding_box(paths);
 		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		return Some((bounding_box_affine, item_transform));
 	}
-	if let Some(list) = introspected_output::<List<Graphic>>(data) {
-		let RenderBoundingBox::Rectangle(bounds) = graphic_list_bounding_box(&list, DAffine2::IDENTITY) else {
+	if let Some(list) = data.downcast_ref::<List<Graphic>>() {
+		let RenderBoundingBox::Rectangle(bounds) = graphic_list_bounding_box(list, DAffine2::IDENTITY) else {
 			return None;
 		};
 		let bounding_box_affine = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 		return Some((bounding_box_affine, DAffine2::IDENTITY));
-	}
-	None
-}
-
-// TODO: Eventually remove this document upgrade code
-/// Extract a monitor node's recorded output, trying each context type the runtime may have evaluated it under.
-fn introspected_output<T: Clone + Send + Sync + 'static>(data: &Arc<dyn Any + Send + Sync>) -> Option<T> {
-	if let Some(io) = data.downcast_ref::<IORecord<(), T>>() {
-		return Some(io.output.clone());
-	}
-	if let Some(io) = data.downcast_ref::<IORecord<Footprint, T>>() {
-		return Some(io.output.clone());
-	}
-	if let Some(io) = data.downcast_ref::<IORecord<Context, T>>() {
-		return Some(io.output.clone());
 	}
 	None
 }
@@ -980,7 +1026,7 @@ mod test {
 	use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 	use crate::test_utils::test_prelude::{self, NodeGraphLayer};
 	use graph_craft::ProtoNodeIdentifier;
-	use graph_craft::document::NodeNetwork;
+	use graph_craft::document::{DocumentNode, NodeNetwork};
 	use graphene_std::Context;
 	use graphene_std::NodeParameter;
 	use graphene_std::list::Item;

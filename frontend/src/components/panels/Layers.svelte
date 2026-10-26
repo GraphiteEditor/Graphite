@@ -2,6 +2,8 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import ThumbnailCanvas from "/src/components/views/ThumbnailCanvas.svelte";
+	import ThumbnailImage from "/src/components/views/ThumbnailImage.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
@@ -87,6 +89,7 @@
 
 	const editor = getContext<EditorWrapper>("editor");
 	const nodeGraph = getContext<NodeGraphStore>("nodeGraph");
+	const thumbnailImages = nodeGraph.thumbnailImagesStore;
 	const tooltip = getContext<TooltipStore>("tooltip");
 	const portfolio = getContext<PortfolioStore>("portfolio");
 
@@ -156,7 +159,8 @@
 	const chainResizeObserver = new ResizeObserver((entries) => {
 		entries.forEach((entry) => {
 			const rowIndex = Number(entry.target.closest("[data-layer]")?.getAttribute("data-index"));
-			if (!Number.isNaN(rowIndex)) chainWidths[rowIndex] = entry.contentRect.width;
+			// Rounded to avoid issue for fractional device pixel ratio
+			if (!Number.isNaN(rowIndex)) chainWidths[rowIndex] = Math.round(entry.contentRect.width);
 		});
 		chainWidths = chainWidths;
 	});
@@ -1227,8 +1231,10 @@
 							/>
 						{/if}
 						<div class="thumbnail">
-							{#if $nodeGraph.thumbnails.has(listing.id)}
-								{@html $nodeGraph.thumbnails.get(listing.id)}
+							{#if $nodeGraph.thumbnailCanvases.has(listing.id)}
+								<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(listing.id)?.layersPanelCanvasId} />
+							{:else if $thumbnailImages.has(listing.id)}
+								<ThumbnailImage image={$thumbnailImages.get(listing.id)} />
 							{/if}
 						</div>
 						<div class="layer-name-and-chain" class:editing={listing.editingName} style:--chain-width={`${chainFullWidth(inlineSlots.length, slots.length > 0)}px`}>
@@ -1660,7 +1666,8 @@
 					background-position: var(--color-transparent-checkered-background-position-mini);
 					background-repeat: var(--color-transparent-checkered-background-repeat);
 
-					svg {
+					canvas {
+						display: block;
 						width: 100%;
 						height: 100%;
 					}

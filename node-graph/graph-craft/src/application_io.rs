@@ -15,14 +15,10 @@ pub struct PlatformApplicationIo {
 
 impl PlatformApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(feature = "wgpu")]
+		#[cfg(all(feature = "wgpu", not(target_family = "wasm")))]
 		let executor = WgpuExecutor::new().await;
-
-		#[cfg(not(feature = "wgpu"))]
-		let wgpu_available = false;
-		#[cfg(feature = "wgpu")]
-		let wgpu_available = executor.is_some();
-		set_wgpu_available(wgpu_available);
+		#[cfg(all(feature = "wgpu", target_family = "wasm"))]
+		let executor = graphene_canvas_utils::create_wgpu_executor().await;
 
 		Self {
 			#[cfg(feature = "wgpu")]
@@ -32,14 +28,9 @@ impl PlatformApplicationIo {
 	}
 
 	#[cfg(feature = "wgpu")]
-	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
-		let executor = WgpuExecutor::with_context(context);
-
-		let wgpu_available = executor.is_some();
-		set_wgpu_available(wgpu_available);
-
+	pub fn new_with_executor(executor: WgpuExecutor) -> Self {
 		Self {
-			gpu_executor: executor,
+			gpu_executor: Some(executor),
 			resources: None,
 		}
 	}
@@ -82,24 +73,6 @@ unsafe impl StaticType for PlatformApplicationIo {
 }
 
 pub type PlatformEditorApi = graphene_application_io::EditorApi<PlatformApplicationIo>;
-
-static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
-
-/// Returns:
-/// - `None` if the availability of WGPU has not been determined yet
-/// - `Some(true)` if WGPU is available
-/// - `Some(false)` if WGPU is not available
-pub fn wgpu_available() -> Option<bool> {
-	match WGPU_AVAILABLE.load(std::sync::atomic::Ordering::SeqCst) {
-		-1 => None,
-		0 => Some(false),
-		_ => Some(true),
-	}
-}
-
-pub(crate) fn set_wgpu_available(available: bool) {
-	WGPU_AVAILABLE.store(available as i8, std::sync::atomic::Ordering::SeqCst);
-}
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]

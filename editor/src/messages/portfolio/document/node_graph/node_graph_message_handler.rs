@@ -1728,7 +1728,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::WireHoverTick => {
-				self.expand_wire_hovered_node_after_delay(ipp.time, network_interface, selection_network_path, responses);
+				self.expand_wire_hovered_node_after_delay(ipp.time, ipp.mouse.position, network_interface, selection_network_path, responses);
 			}
 			NodeGraphMessage::SendGlide => {
 				let glide_offsets = network_interface.glide_offsets(&self.glide_network_path);
@@ -2064,7 +2064,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					{
 						nodes.push(*node_id);
 					}
-					for error in &network_interface.resolved_types.node_graph_errors {
+					let resolved_types = &network_interface.resolved_types;
+					for error in resolved_types.node_graph_errors.iter().chain(&resolved_types.node_graph_warnings) {
 						if error.node_path.contains(node_id) {
 							nodes.push(*node_id);
 						}
@@ -2596,7 +2597,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
+			NodeGraphMessage::UpdateTypes {
+				resolved_types,
+				node_graph_errors,
+				node_graph_warnings,
+			} => {
 				// Hidden passthrough nodes let a wire borrow its color and rank from an upstream node, so any type change can restyle wires whose own node is unchanged.
 				// Compare each displayed wire's style (color, rank) across the update and unload only those that changed, so value-only recompiles keep their built wire paths.
 				let types_changed = !resolved_types.add.is_empty() || !resolved_types.remove.is_empty();
@@ -2617,7 +2622,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.collect::<Vec<_>>()
 				});
 
-				network_interface.resolved_types.update(resolved_types, node_graph_errors);
+				network_interface.resolved_types.update(resolved_types, node_graph_errors, node_graph_warnings);
 
 				if let Some(styles_before) = styles_before {
 					for (input, style_before) in styles_before {
@@ -2899,38 +2904,25 @@ impl NodeGraphMessageHandler {
 	}
 
 	/// Expands the hovered node once the wire has rested over it for the hover delay.
-	fn expand_wire_hovered_node_after_delay(&mut self, time: u64, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
+	fn expand_wire_hovered_node_after_delay(&mut self, time: u64, mouse_position: DVec2, network_interface: &mut NodeNetworkInterface, network_path: &[NodeId], responses: &mut VecDeque<Message>) {
 		let Some((node_id, hover_start_time)) = self.wire_hovered_node else { return };
 		if time.saturating_sub(hover_start_time) < WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS {
 			return;
 		}
-		self.set_wire_hover_tick_subscribed(false, responses);
 
-		let Some(output_connector) = self.wire_in_progress_output_connector(network_interface, network_path) else {
-			return;
-		};
+		let revealed_input_indices = self.wire_revealable_input_indices(node_id, network_interface, network_path);
 
-		// Connecting the wire to its source node, or to any node upstream of it, would form a cycle
-		if let OutputConnector::Node { node_id: source_node_id, .. } = output_connector
-			&& network_interface
-				.upstream_flow_back_from_nodes(vec![source_node_id], network_path, FlowType::UpstreamFlow)
-				.any(|upstream_node_id| upstream_node_id == node_id)
-		{
+		// Revealing inputs above the one the wire targets would move it out from under the pointer, so the delay restarts until the wire leaves it
+		let targeted_input_index = network_interface
+			.input_connector_from_click(mouse_position, network_path)
+			.filter(|input_connector| input_connector.node_id() == Some(node_id))
+			.map(|input_connector| input_connector.input_index());
+		if targeted_input_index.is_some_and(|targeted_input_index| revealed_input_indices.iter().any(|&input_index| input_index < targeted_input_index)) {
+			self.wire_hovered_node = Some((node_id, time));
 			return;
 		}
 
-		let output_types = network_interface.potential_output_types(&output_connector, network_path);
-
-		let revealed_input_indices = (0..network_interface.number_of_inputs(&node_id, network_path))
-			.filter(|&input_index| {
-				let input_connector = InputConnector::node_at_index(node_id, input_index);
-				let hidden_value = matches!(network_interface.input_from_connector(&input_connector, network_path), Some(NodeInput::Value { exposed: false, .. }));
-
-				hidden_value
-					&& !network_interface.is_internal_input(&node_id, input_index, network_path)
-					&& output_types.iter().any(|output_type| network_interface.input_accepts_type(&input_connector, output_type, network_path))
-			})
-			.collect::<Vec<_>>();
+		self.set_wire_hover_tick_subscribed(false, responses);
 		if revealed_input_indices.is_empty() {
 			return;
 		}
@@ -2942,6 +2934,35 @@ impl NodeGraphMessageHandler {
 		responses.add(NodeGraphMessage::SendGraph);
 
 		self.wire_expanded_node = Some((node_id, revealed_input_indices, transaction_checkpoint));
+	}
+
+	/// The hidden inputs of a node that could take the wire in progress, which resting the wire on the node reveals.
+	fn wire_revealable_input_indices(&self, node_id: NodeId, network_interface: &NodeNetworkInterface, network_path: &[NodeId]) -> Vec<usize> {
+		let Some(output_connector) = self.wire_in_progress_output_connector(network_interface, network_path) else {
+			return Vec::new();
+		};
+
+		// Connecting the wire to its source node, or to any node upstream of it, would form a cycle
+		if let OutputConnector::Node { node_id: source_node_id, .. } = output_connector
+			&& network_interface
+				.upstream_flow_back_from_nodes(vec![source_node_id], network_path, FlowType::UpstreamFlow)
+				.any(|upstream_node_id| upstream_node_id == node_id)
+		{
+			return Vec::new();
+		}
+
+		let output_types = network_interface.potential_output_types(&output_connector, network_path);
+
+		(0..network_interface.number_of_inputs(&node_id, network_path))
+			.filter(|&input_index| {
+				let input_connector = InputConnector::node_at_index(node_id, input_index);
+				let hidden_value = matches!(network_interface.input_from_connector(&input_connector, network_path), Some(NodeInput::Value { exposed: false, .. }));
+
+				hidden_value
+					&& !network_interface.is_internal_input(&node_id, input_index, network_path)
+					&& output_types.iter().any(|output_type| network_interface.input_accepts_type(&input_connector, output_type, network_path))
+			})
+			.collect()
 	}
 
 	/// Hides the inputs revealed by the expanded node again, except `connected_input`.
@@ -3800,7 +3821,7 @@ impl NodeGraphMessageHandler {
 			})
 			.collect();
 		// Evaluation errors come from the last graph that compiled, so a type error hides them
-		let errors = match graph_errors.is_empty() {
+		let mut errors: Vec<_> = match graph_errors.is_empty() {
 			true => self
 				.evaluation_errors
 				.iter()
@@ -3812,6 +3833,16 @@ impl NodeGraphMessageHandler {
 				.collect(),
 			false => graph_errors,
 		};
+		let warnings = network_interface
+			.resolved_types
+			.node_graph_warnings
+			.iter()
+			.filter(|warning| inside(&warning.node_path))
+			.map(|warning| match warning.node_path.len() == depth + 1 {
+				true => (warning.node_path[depth], format!("{:?}", warning.error)),
+				false => (warning.node_path[depth], "Node graph warning within this node".to_string()),
+			});
+		errors.extend(warnings);
 
 		let mut shown = HashSet::new();
 		errors

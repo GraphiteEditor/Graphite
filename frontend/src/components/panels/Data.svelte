@@ -1,10 +1,19 @@
 <script lang="ts">
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
-	import { dataPanelLayout } from "/src/stores/portfolio";
+	import { dataPanelContextLayout, dataPanelLayout, dataPanelPathLayout } from "/src/stores/portfolio";
 </script>
 
 <LayoutCol class="data-panel">
+	<LayoutRow class="top-bar">
+		<LayoutRow class="path" scrollableX={true}>
+			<WidgetLayout layout={dataPanelPathLayout} layoutTarget="DataPanelPath" />
+		</LayoutRow>
+		<LayoutRow class="context" scrollableX={true}>
+			<WidgetLayout layout={dataPanelContextLayout} layoutTarget="DataPanelContext" />
+		</LayoutRow>
+	</LayoutRow>
 	<LayoutCol class="body" scrollableX={true} scrollableY={true}>
 		<WidgetLayout layout={dataPanelLayout} layoutTarget="DataPanel" />
 	</LayoutCol>
@@ -14,6 +23,22 @@
 	.data-panel {
 		flex-grow: 1;
 		padding-bottom: 4px;
+
+		.top-bar {
+			flex: 0 0 auto;
+			padding: 0 4px;
+
+			.path,
+			.context {
+				flex: 1 1 50%;
+				min-width: 0;
+			}
+
+			// An auto margin, unlike end alignment, keeps the start of overflowing content reachable by scrolling
+			.context > :first-child {
+				margin-left: auto;
+			}
+		}
 
 		// Within the scrolling area, so the table's gutter can reach its edges without overflowing
 		.body {

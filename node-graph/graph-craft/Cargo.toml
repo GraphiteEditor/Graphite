@@ -16,7 +16,7 @@ workspace = true
 [features]
 default = ["dealloc_nodes", "wgpu", "loading"]
 dealloc_nodes = ["core-types/dealloc_nodes"]
-wgpu = ["wgpu-executor"]
+wgpu = ["wgpu-executor", "dep:graphene-canvas-utils", "graphene-canvas-utils?/wgpu"]
 tokio = ["dep:tokio"]
 loading = ["serde_json"]
 wasm = [
@@ -40,6 +40,7 @@ rendering = { workspace = true, features = ["serde"] }
 raster-nodes = { workspace = true, features = ["serde"] }
 vector-nodes = { workspace = true, features = ["serde"] }
 graphic-types = { workspace = true, features = ["serde"] }
+graphic-nodes = { workspace = true }
 text-nodes = { workspace = true, features = ["serde"] }
 
 # Workspace dependencies
@@ -75,6 +76,7 @@ web-sys = { workspace = true, features = [
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
+graphene-canvas-utils = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 mmap-io = { workspace = true }

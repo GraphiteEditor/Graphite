@@ -4,11 +4,12 @@ use graph_craft::Type;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
 use graph_craft::graphene_compiler::Executor;
-use graph_craft::proto::{ConstructionArgs, GraphError, NodeContainer, ProtoNetwork, ProtoNode, SharedNodeContainer, TypeErasedBox, TypingContext};
+use graph_craft::proto::{Any, AnyInput, ConstructionArgs, GraphError, NodeContainer, ProtoNetwork, ProtoNode, SharedNode, SharedNodeContainer, TypeErasedBox, TypeErasedNode, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 /// An executor of a node graph that does not require an online compilation server, and instead uses `Box<dyn ...>`.
 #[derive(Clone)]
@@ -187,6 +188,62 @@ impl std::fmt::Display for IntrospectError {
 	}
 }
 
+/// A node in the borrow tree, which keeps the last context it was evaluated with in the graph for evaluating it again outside of it.
+struct ObservedNode {
+	container: NodeContainer,
+	last_context: Mutex<Option<core_types::Context<'static>>>,
+}
+
+type SharedObservedNode = Arc<ObservedNode>;
+
+thread_local! {
+	/// Whether evaluated nodes keep their context, which they don't while a node is evaluated again outside of the graph.
+	static KEEP_CONTEXTS: Cell<bool> = const { Cell::new(true) };
+}
+
+impl ObservedNode {
+	fn new(node: TypeErasedBox<'static>) -> SharedObservedNode {
+		Arc::new(Self {
+			container: NodeContainer::new(node),
+			last_context: Mutex::default(),
+		})
+	}
+
+	/// Evaluates the node without it or the nodes upstream of it keeping the context.
+	fn eval_unrecorded(&self, input: &AnyInput) -> Poll<Any> {
+		// Restores the flag on drop, so it's restored even if the evaluation panics
+		struct RestoreKeepContexts(bool);
+		impl Drop for RestoreKeepContexts {
+			fn drop(&mut self) {
+				KEEP_CONTEXTS.set(self.0);
+			}
+		}
+
+		let _restore = RestoreKeepContexts(KEEP_CONTEXTS.replace(false));
+		self.container.eval(input)
+	}
+
+	fn last_context(&self) -> Option<core_types::Context<'static>> {
+		self.last_context.lock().unwrap().clone()
+	}
+}
+
+impl SharedNode for ObservedNode {
+	#[inline]
+	fn eval(&self, input: &AnyInput) -> Poll<Any> {
+		if KEEP_CONTEXTS.get()
+			&& let Some(context) = input.downcast_ref::<core_types::Context<'static>>()
+		{
+			*self.last_context.lock().unwrap() = Some(context.clone());
+		}
+		self.container.eval(input)
+	}
+
+	fn node(&self) -> &TypeErasedNode<'static> {
+		self.container.node()
+	}
+}
+
 /// A store of dynamically typed nodes and their associated source map.
 ///
 /// [`BorrowTree`] maintains two main data structures:
@@ -198,7 +255,7 @@ impl std::fmt::Display for IntrospectError {
 ///
 /// # Fields
 ///
-/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`SharedNodeContainer`], [`Path`], and input [`NodeId`]s.
+/// * `nodes`: A [`HashMap`] of [`NodeId`]s to tuples of [`ObservedNode`]s, [`Path`], and input [`NodeId`]s.
 ///   This stores the actual node instances, their associated paths, and the nodes connected to their inputs.
 ///
 /// * `source_map`: A [`HashMap`] from [`Path`] to tuples of [`NodeId`] and [`NodeTypes`].
@@ -208,7 +265,7 @@ impl std::fmt::Display for IntrospectError {
 #[derive(Default, Clone)]
 pub struct BorrowTree {
 	/// A hashmap of node IDs and dynamically typed nodes, with their paths and input node IDs.
-	nodes: HashMap<NodeId, (SharedNodeContainer, Path, Box<[NodeId]>)>,
+	nodes: HashMap<NodeId, (SharedObservedNode, Path, Box<[NodeId]>)>,
 	/// A hashmap from the document path to the proto node ID.
 	source_map: HashMap<Path, (NodeId, NodeTypes)>,
 	/// The context features each node's output depends on.
@@ -242,10 +299,10 @@ impl BorrowTree {
 	}
 
 	fn node_deps(&self, nodes: &[NodeId]) -> Vec<SharedNodeContainer> {
-		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.clone()).collect()
+		nodes.iter().map(|node| self.nodes.get(node).unwrap().0.clone() as SharedNodeContainer).collect()
 	}
 
-	fn store_node(&mut self, node: SharedNodeContainer, id: NodeId, path: Path, inputs: Box<[NodeId]>) {
+	fn store_node(&mut self, node: SharedObservedNode, id: NodeId, path: Path, inputs: Box<[NodeId]>) {
 		self.nodes.insert(id, (node, path, inputs));
 	}
 
@@ -253,16 +310,57 @@ impl BorrowTree {
 	pub fn introspect(&self, node_path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (node, _path, _) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
-		node.serialize().ok_or(IntrospectError::NoData)
+		node.node().serialize().ok_or(IntrospectError::NoData)
 	}
 
 	pub fn get(&self, id: NodeId) -> Option<SharedNodeContainer> {
-		self.nodes.get(&id).map(|(node, _, _)| node.clone())
+		self.nodes.get(&id).map(|(node, _, _)| node.clone() as SharedNodeContainer)
+	}
+
+	/// The proto node giving the output of the document node at this path, which for a document node that became several proto nodes
+	/// (like a subnetwork or a node the preprocessor wrapped) is the one among them used outside of them.
+	pub fn output_node(&self, node_path: &[NodeId], graph_output: NodeId) -> Option<NodeId> {
+		if let Some((id, _)) = self.source_map.get(node_path) {
+			return Some(*id);
+		}
+
+		let within = |path: &[NodeId]| path.starts_with(node_path);
+		let inner_nodes: HashSet<NodeId> = self.nodes.iter().filter(|(_, (_, path, _))| within(path)).map(|(id, _)| *id).collect();
+		if inner_nodes.contains(&graph_output) {
+			return Some(graph_output);
+		}
+		self.nodes
+			.values()
+			.filter(|(_, path, _)| !within(path))
+			.flat_map(|(_, _, inputs)| inputs.iter())
+			.filter(|input| inner_nodes.contains(input))
+			.min()
+			.copied()
 	}
 
 	/// The context features this node's output depends on.
 	pub fn context_features(&self, id: NodeId) -> core_types::ContextFeatures {
 		self.context_features.get(&id).copied().unwrap_or_default()
+	}
+
+	pub fn input_node(&self, node_path: &[NodeId], input_index: usize) -> Result<NodeId, IntrospectError> {
+		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
+		let (_, _, inputs) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
+		inputs.get(input_index).copied().ok_or(IntrospectError::NoData)
+	}
+
+	/// The context this node was last evaluated with in the graph.
+	pub fn last_context(&self, id: NodeId) -> Result<Option<core_types::Context<'static>>, IntrospectError> {
+		Ok(self.container(id)?.last_context())
+	}
+
+	/// Evaluates this node with the given context outside of a graph evaluation, without it or the nodes upstream of it keeping the context.
+	pub fn evaluate(&self, id: NodeId, context: &core_types::Context<'static>) -> Result<Poll<core_types::registry::Any>, IntrospectError> {
+		Ok(self.container(id)?.eval_unrecorded(context))
+	}
+
+	fn container(&self, id: NodeId) -> Result<&ObservedNode, IntrospectError> {
+		self.nodes.get(&id).map(|(node, _, _)| &**node).ok_or(IntrospectError::ProtoNodeNotFound(id))
 	}
 
 	/// Evaluate the output node of the [`BorrowTree`].
@@ -427,7 +525,7 @@ impl BorrowTree {
 		match &proto_node.construction_args {
 			ConstructionArgs::Value(value) => {
 				let upcasted = UpcastNode::new(value.to_owned());
-				let node = NodeContainer::new(Box::new(upcasted) as TypeErasedBox<'_>);
+				let node = ObservedNode::new(Box::new(upcasted) as TypeErasedBox<'_>);
 				self.store_node(node, id, path.into(), Box::default());
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
@@ -442,14 +540,13 @@ impl BorrowTree {
 							.adapter_constructor(&promotion.adapter_identifier())
 							.ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 						let adapter = adapter_constructor(vec![construction_nodes[*argument_index].clone()]);
-						construction_nodes[*argument_index] = NodeContainer::new(adapter);
+						construction_nodes[*argument_index] = Arc::new(NodeContainer::new(adapter));
 					}
 				}
 
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes);
-				let node = NodeContainer::new(node);
-				self.store_node(node, id, path.into(), ids.into());
+				self.store_node(ObservedNode::new(node), id, path.into(), ids.into());
 			}
 		};
 		Ok(())

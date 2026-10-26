@@ -3,7 +3,6 @@ pub use cache::BrushCache;
 
 use core_types::CacheHash;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, Vec2};
 use std::f32::consts::{PI, TAU};
@@ -115,12 +114,6 @@ impl BoundingBox for Stroke {
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		self.bounding_box(transform, include_stroke)
-	}
-}
-
-impl RenderComplexity for Stroke {
-	fn render_complexity(&self) -> usize {
-		self.len()
 	}
 }
 

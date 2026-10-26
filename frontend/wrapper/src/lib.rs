@@ -165,7 +165,7 @@ impl log::Log for WasmLog {
 	fn enabled(&self, metadata: &log::Metadata) -> bool {
 		// Dependencies that log routine rendering details at the debug level are capped so they don't flood the console
 		let crate_name = metadata.target().split("::").next().unwrap_or_default();
-		if crate_name.starts_with("vello") {
+		if ["vello", "wgpu", "naga"].iter().any(|prefix| crate_name.starts_with(prefix)) {
 			return metadata.level() <= log::Level::Info;
 		}
 

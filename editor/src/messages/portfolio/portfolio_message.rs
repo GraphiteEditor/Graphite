@@ -150,6 +150,10 @@ pub enum PortfolioMessage {
 	},
 	SubmitEyedropperPreviewRender,
 	PollNodeGraphEvaluation,
+	SubmitThumbnailsInView,
+	SubmitInspectContextOverrides {
+		overrides: graphene_std::ContextOverrides,
+	},
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,

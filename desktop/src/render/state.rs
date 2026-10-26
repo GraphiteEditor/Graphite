@@ -1,7 +1,7 @@
 use wgpu::PresentMode;
 
 use crate::window::Window;
-use crate::wrapper::{Texture, WgpuContext, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
+use crate::wrapper::{Texture, VelloCanvas, VelloSceneBuilder, WgpuCurrentSurfaceTexture, WgpuExecutor, WgpuSurface};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -21,12 +21,15 @@ pub(crate) struct RenderState {
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
-	overlays_scene: Option<vello::Scene>,
+	overlays_scene: Option<VelloSceneBuilder>,
+	#[derivative(Debug = "ignore")]
+	overlays_canvas: VelloCanvas,
 	surface_outdated: bool,
 }
 
 impl RenderState {
-	pub(crate) fn new(window: &Window, context: WgpuContext, present_mode: Option<PresentMode>) -> Self {
+	pub(crate) fn new(window: &Window, executor: WgpuExecutor, present_mode: Option<PresentMode>) -> Self {
+		let context = executor.context();
 		let size = window.surface_size();
 		let surface = window.create_surface(&context.instance);
 
@@ -36,6 +39,7 @@ impl RenderState {
 		let config = wgpu::SurfaceConfiguration {
 			usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
 			format: surface_format,
+			color_space: wgpu::SurfaceColorSpace::Auto,
 			width: size.width,
 			height: size.height,
 			present_mode: present_mode.unwrap_or(surface_caps.present_modes[0]),
@@ -161,8 +165,6 @@ impl RenderState {
 			cache: None,
 		});
 
-		let executor = WgpuExecutor::with_context(context).expect("Failed to create WgpuExecutor");
-
 		Self {
 			surface,
 			executor,
@@ -179,6 +181,7 @@ impl RenderState {
 			ui_texture: None,
 			bind_group: None,
 			overlays_scene: None,
+			overlays_canvas: VelloCanvas::default(),
 			surface_outdated: true,
 		}
 	}
@@ -217,18 +220,17 @@ impl RenderState {
 		self.viewport_offset = offset;
 	}
 
-	pub(crate) fn set_overlays_scene(&mut self, scene: vello::Scene) {
+	pub(crate) fn set_overlays_scene(&mut self, scene: VelloSceneBuilder) {
 		self.surface_outdated = true;
 		self.overlays_scene = Some(scene);
 	}
 
-	fn render_overlays(&mut self, scene: vello::Scene) {
-		let Some(viewport_texture) = self.viewport_texture.as_ref() else {
+	fn render_overlays(&mut self, scene: VelloSceneBuilder) {
+		if self.viewport_texture.is_none() {
 			tracing::warn!("No viewport texture bound, cannot render overlays");
 			return;
-		};
-		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = self.executor.render_vello_scene(&scene, size, &Default::default(), None);
+		}
+		let result = self.executor.render_vello_scene_on_canvas(&mut self.overlays_canvas, scene);
 		match result {
 			Ok(texture) => {
 				self.overlays_texture = Some(texture);

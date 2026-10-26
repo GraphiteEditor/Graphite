@@ -55,8 +55,12 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		patchLayout(get(store).documentBarLayout, data);
 	});
 
+	// Notifies subscribers too, since the Document panel counts the shelf's tools from the store
 	subscriptions.subscribeLayoutUpdate("ToolShelf", (data) => {
-		patchLayout(get(store).toolShelfLayout, data);
+		update((state) => {
+			patchLayout(state.toolShelfLayout, data);
+			return state;
+		});
 	});
 
 	subscriptions.subscribeLayoutUpdate("WorkingColors", (data) => {

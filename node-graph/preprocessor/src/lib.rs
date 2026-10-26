@@ -162,12 +162,18 @@ impl Preprocessor {
 			let NodeMetadata {
 				fields,
 				memoize,
+				footprint_invariant,
 				inject_scope,
 				asynchronous,
 				output_fields,
+				context_features,
 				..
 			} = metadata;
-			context_dependencies.insert(id.clone(), ContextDependencies::from(metadata.context_features.as_slice()));
+			let dependencies = ContextDependencies {
+				footprint_invariant: *footprint_invariant,
+				..ContextDependencies::from(context_features.as_slice())
+			};
+			context_dependencies.insert(id.clone(), dependencies);
 
 			let Some(implementations) = node_registry.get(&id) else { continue };
 			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
@@ -491,7 +497,7 @@ mod destructure_tests {
 	}
 
 	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
-		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed");
+		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed").network;
 		let executor = DynamicExecutor::new(proto_network).expect("The executor should type check and build");
 
 		let context: core_types::Context = None;
@@ -740,6 +746,7 @@ mod tests {
 		let context_dependencies = ContextDependencies {
 			extract: ContextFeatures::FOOTPRINT,
 			inject: ContextFeatures::INDEX,
+			..Default::default()
 		};
 		let mut network = NodeNetwork {
 			nodes: [(

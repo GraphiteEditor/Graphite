@@ -5,7 +5,7 @@ import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
 import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
-import { patchLayout } from "/src/utility-functions/widgets";
+import { deepEqual, patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
@@ -40,6 +40,8 @@ const { subscribe, update } = store;
 export const welcomeScreenButtonsLayout = persistedLayout("welcomeScreenButtonsLayout");
 export const inspectorLayout = persistedLayout("inspectorLayout");
 export const dataPanelLayout = persistedLayout("dataPanelLayout");
+export const dataPanelContextLayout = persistedLayout("dataPanelContextLayout");
+export const dataPanelPathLayout = persistedLayout("dataPanelPathLayout");
 export const layersPanelControlBarLeftLayout = persistedLayout("layersPanelControlBarLeftLayout");
 export const layersPanelBottomBarLeftLayout = persistedLayout("layersPanelBottomBarLeftLayout");
 export const layersPanelBottomBarRightLayout = persistedLayout("layersPanelBottomBarRightLayout");
@@ -136,6 +138,14 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		patchLayout(dataPanelLayout, data);
 	});
 
+	subscriptions.subscribeLayoutUpdate("DataPanelContext", (data) => {
+		patchLayout(dataPanelContextLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("DataPanelPath", (data) => {
+		patchLayout(dataPanelPathLayout, data);
+	});
+
 	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 		patchLayout(layersPanelControlBarLeftLayout, data);
 	});
@@ -171,17 +181,6 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	return { subscribe };
 }
 
-// Whether two values built from plain objects, arrays and primitives are structurally equal
-function deepEqual(first: unknown, second: unknown): boolean {
-	if (Object.is(first, second)) return true;
-	if (typeof first !== "object" || typeof second !== "object" || !first || !second) return false;
-	if (Array.isArray(first) !== Array.isArray(second)) return false;
-
-	const firstEntries = Object.entries(first);
-	if (firstEntries.length !== Object.keys(second).length) return false;
-	return firstEntries.every(([key, value]) => Object.hasOwn(second, key) && deepEqual(value, Reflect.get(second, key)));
-}
-
 // Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document
 export function retainLayerDetails(layerIds: Set<string>, otherDocument: boolean) {
 	layersWithDetails = layerIds;
@@ -208,6 +207,8 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("Inspector");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
+	subscriptions.unsubscribeLayoutUpdate("DataPanelContext");
+	subscriptions.unsubscribeLayoutUpdate("DataPanelPath");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");

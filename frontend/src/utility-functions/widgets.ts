@@ -78,9 +78,15 @@ function isPlainContainer(value: unknown): value is object {
 }
 
 // Sets `container[key]` to `value`, changing the existing value in place where it keeps its shape so a reactive layout only invalidates what changed.
-// A value that changes shape (like a widget changing kind) is replaced whole, so readers never see an object half-changed.
+// A value that changes shape (like a row becoming a column) is replaced whole, so readers never see an object half-changed.
 function reconcileEntry(container: object, key: PropertyKey, value: unknown) {
 	const existing: unknown = Reflect.get(container, key);
+
+	// A changed widget is replaced whole, giving its component new props instead of changes deep within them that it may not pick up
+	if (isWidgetInstance(existing) && isWidgetInstance(value)) {
+		if (!deepEqual(existing, value)) Reflect.set(container, key, value);
+		return;
+	}
 
 	if (isPlainContainer(existing) && isPlainContainer(value) && haveSameShape(existing, value)) {
 		reconcile(existing, value);
@@ -93,6 +99,21 @@ function reconcileEntry(container: object, key: PropertyKey, value: unknown) {
 function reconcile(target: object, source: object) {
 	if (Array.isArray(target) && Array.isArray(source) && target.length > source.length) target.length = source.length;
 	Object.entries(source).forEach(([key, value]) => reconcileEntry(target, key, value));
+}
+
+function isWidgetInstance(value: unknown): value is WidgetInstance {
+	return isPlainContainer(value) && !Array.isArray(value) && "widgetId" in value && "widget" in value;
+}
+
+// Whether two values built from plain objects, arrays and primitives are structurally equal
+export function deepEqual(first: unknown, second: unknown): boolean {
+	if (Object.is(first, second)) return true;
+	if (typeof first !== "object" || typeof second !== "object" || !first || !second) return false;
+	if (Array.isArray(first) !== Array.isArray(second)) return false;
+
+	const firstEntries = Object.entries(first);
+	if (firstEntries.length !== Object.keys(second).length) return false;
+	return firstEntries.every(([key, value]) => Object.hasOwn(second, key) && deepEqual(value, Reflect.get(second, key)));
 }
 
 function haveSameShape(first: object, second: object): boolean {

@@ -4,48 +4,145 @@ on:
   pull_request: {}
   merge_group: {}
 
+# Cancel a PR's in-progress checks once a newer commit is pushed to it (merge queue refs are unique per entry, so those never cancel each other)
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Check if CI can be skipped (for merge queue deduplication)
+  # Skip a merge queue run's checks when another Check run already passed them on the exact same content (Git tree)
   skip-check:
     runs-on: ubuntu-latest
+    permissions:
+      # Read the trees of the merge queue commit and of the commits other runs tested
+      contents: read
+      # Find the head commit of the PR being merged
+      pull-requests: read
+      # List this workflow's other runs
+      actions: read
     outputs:
-      skip: ${{ steps.check.outputs.skip-check }}
+      skip: ${{ steps.check.outputs.skip }}
     steps:
-      - name: 📥 Clone repository
-        uses: actions/checkout@v6
-
       - name: 🚦 Check if CI can be skipped
         id: check
-        uses: cariad-tech/merge-queue-ci-skipper@cf80db21fc70244e36487acc531b3f1118889b0a
+        # A failed or hung step leaves the output unset, which runs the checks
+        continue-on-error: true
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+          MERGE_GROUP_HEAD_SHA: ${{ github.event.merge_group.head_sha }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != "merge_group" ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "Not a merge queue run, so the checks will run"
+            exit 0
+          fi
+
+          # Records the decision and shows its reason on the run's summary page
+          decide() {
+            echo "skip=$1" >> "$GITHUB_OUTPUT"
+            echo "::notice::$2"
+            exit 0
+          }
+
+          # Prints the tree of a commit, which is the hash of its exact file content
+          tree_of() {
+            local tree
+            tree=$(gh api "$repository_api/git/commits/$1" --jq '.tree.sha') && [[ "$tree" =~ ^[0-9a-f]{40}$ ]] && echo "$tree"
+          }
+
+          repository_api="repos/$GITHUB_REPOSITORY"
+          workflow_path="${GITHUB_WORKFLOW_REF%%@*}"
+          workflow_runs_api="$repository_api/actions/workflows/${workflow_path##*/}/runs"
+          merge_queue_branch="${MERGE_GROUP_HEAD_REF#refs/heads/}"
+
+          merge_group_tree=$(tree_of "$MERGE_GROUP_HEAD_SHA") || decide false "Running the checks since the merge queue commit $MERGE_GROUP_HEAD_SHA couldn't be read"
+          echo "The merge queue commit $MERGE_GROUP_HEAD_SHA has tree $merge_group_tree"
+
+          [[ "$merge_queue_branch" =~ ^gh-readonly-queue/.+/pr-([0-9]+)-[0-9a-f]+$ ]] || decide false "Running the checks since the merge queue branch '$merge_queue_branch' doesn't name a PR"
+          pr_number="${BASH_REMATCH[1]}"
+          pr_head_sha=$(gh api "$repository_api/pulls/$pr_number" --jq '.head.sha') || decide false "Running the checks since PR #$pr_number couldn't be read"
+
+          # The PR's own runs check out the PR merged into its base branch at that moment, which matches this content if the PR was up to date or its base hasn't moved since.
+          # Each run records the commit it loaded the local build.yml from (called by the build job below), and that is the merge commit it checked out.
+          export PR_MERGE_REF="refs/pull/$pr_number/merge"
+          pr_run=$(gh api -X GET "$workflow_runs_api" -f event=pull_request -f head_sha="$pr_head_sha" -f exclude_pull_requests=true -f per_page=100 --jq '
+            [.workflow_runs[] | select(.conclusion != "cancelled")] | max_by(.created_at) // empty
+            | "\(.html_url) \(.conclusion // .status) \([.referenced_workflows[]? | select(.ref == $ENV.PR_MERGE_REF) | .sha] | first // "unknown")"
+          ') || decide false "Running the checks since the Check runs of PR #$pr_number couldn't be listed"
+
+          if [ -z "$pr_run" ]; then
+            echo "PR #$pr_number's head commit $pr_head_sha has no Check run that wasn't cancelled"
+          else
+            read -r pr_run_url pr_run_result pr_tested_sha <<< "$pr_run"
+            echo "The newest Check run of PR #$pr_number's head commit $pr_head_sha is $pr_run_url ($pr_run_result), which tested commit $pr_tested_sha"
+
+            if [ "$pr_run_result" != "success" ]; then
+              echo "That run hasn't succeeded"
+            elif ! pr_tested_tree=$(tree_of "$pr_tested_sha"); then
+              echo "The commit that run tested couldn't be read"
+            elif [ "$pr_tested_tree" = "$merge_group_tree" ]; then
+              decide true "Skipping the checks since $pr_run_url already passed on commit $pr_tested_sha, which has this exact content"
+            else
+              echo "That run tested different content (tree $pr_tested_tree)"
+            fi
+          fi
+
+          # A merge queue branch name pairs the PR with the commit it's built on, so an earlier run with this name may have passed on the same content before the PR was queued again
+          earlier_runs=$(gh api -X GET "$workflow_runs_api" -f event=merge_group -f status=success -f branch="$merge_queue_branch" -f exclude_pull_requests=true -f per_page=100 --jq '
+            .workflow_runs[] | select(.id | tostring != $ENV.GITHUB_RUN_ID) | "\(.head_sha) \(.html_url)"
+          ') || decide false "Running the checks since the earlier merge queue runs couldn't be listed"
+
+          while read -r earlier_sha earlier_url; do
+            [ -n "$earlier_sha" ] || continue
+            if earlier_tree=$(tree_of "$earlier_sha") && [ "$earlier_tree" = "$merge_group_tree" ]; then
+              decide true "Skipping the checks since $earlier_url already passed on merge queue commit $earlier_sha, which has this exact content"
+            fi
+          done <<< "$earlier_runs"
+
+          decide false "Running the checks since no successful Check run has tested this exact content"
 
   # Build the web app via the shared build workflow
   build:
     needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+    # Always called with the skip decision passed in, since a skipped caller job reports only as `build` and leaves the required `build / web` check missing.
+    # Like the jobs below, the checks still run if `skip-check` itself fails, since a skipped job counts as passing for required checks.
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/build.yml
+    # The called workflow's jobs can only narrow these, so this grants the union of what they request
+    permissions:
+      actions: write
+      contents: write
+      deployments: write
+      id-token: write
+      pull-requests: write
     secrets: inherit
     with:
-      web: true
+      web: ${{ needs.skip-check.outputs.skip != 'true' }}
       merge_queue: ${{ github.event_name == 'merge_group' }}
 
   # Run the Rust tests on the self-hosted native runner
   test:
     needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
     runs-on: [self-hosted, target/native]
+    permissions:
+      contents: read
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
+      # sccache deletes the oldest files in its folder once past its size cap, so it gets a folder apart from rust-gpu's codegen backend
+      SCCACHE_DIR: /var/lib/github-actions/.cache/sccache
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
           override: true
@@ -64,14 +161,16 @@ jobs:
   # Rust format check on GitHub runner
   rust-fmt:
     needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
           override: true
@@ -85,19 +184,21 @@ jobs:
   # License compatibility check on GitHub runner
   check-licenses:
     needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: 📜 Check crate license compatibility for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check bans licenses sources
 
       - name: 📜 Check crate license compatibility for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           command: check bans licenses sources
           manifest-path: libraries/rawkit/Cargo.toml

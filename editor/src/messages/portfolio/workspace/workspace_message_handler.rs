@@ -389,7 +389,7 @@ impl WorkspaceMessageHandler {
 		let targets: &[LayoutTarget] = match panel_type {
 			PanelType::Inspector => &[LayoutTarget::Inspector],
 			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
-			PanelType::Data => &[LayoutTarget::DataPanel],
+			PanelType::Data => &[LayoutTarget::DataPanel, LayoutTarget::DataPanelContext, LayoutTarget::DataPanelPath],
 			PanelType::Document | PanelType::Welcome => return,
 		};
 

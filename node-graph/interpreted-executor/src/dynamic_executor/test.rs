@@ -916,7 +916,7 @@ fn executor_panics_reach_the_host_with_the_original_payload() {
 	let missing_output = (&executor).execute(()).unwrap_err();
 	assert_eq!(missing_output.to_string(), "Output node not found in executor");
 
-	executor.tree.store_node(NodeContainer::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
+	executor.tree.store_node(ObservedNode::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
 	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (&executor).execute(()))).unwrap_err();
 	assert_eq!(*payload.downcast::<u32>().unwrap(), 42);
 }
@@ -1003,4 +1003,52 @@ fn a_node_error_names_the_node_that_raised_it() {
 		.map(|(path, _)| path.to_vec())
 		.collect();
 	assert_eq!(paths, [vec![NodeId(2)]]);
+}
+
+#[test]
+fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
+	use core_types::context::{ExtractAnimationTime, ExtractFootprint, ExtractIndex};
+	use core_types::transform::Footprint;
+	use core_types::{OwnedContextImpl, Poll};
+
+	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(item!(Vector)));
+	let frame: Context = OwnedContextImpl::empty().with_animation_time(1.).with_index(3).into_context();
+	let _: Option<Item<Vector>> = tree.eval(NodeId(1), &frame);
+
+	let last = tree.last_context(NodeId(1)).unwrap().flatten().unwrap();
+	let normalized: Context = last.with_replaced_footprint_and_time(Some(Footprint::default()), Some(0.)).into_context();
+	assert_eq!(normalized.try_animation_time(), Some(0.));
+	assert!(normalized.try_footprint().is_none());
+	assert_eq!(normalized.try_index().map(|index| index.collect::<Vec<_>>()), Some(vec![3]));
+
+	// Neither the node nor the one upstream of it keeps the context it's evaluated with again
+	assert!(matches!(tree.evaluate(NodeId(1), &normalized).unwrap(), Poll::Final(_)));
+	for node in [NodeId(0), NodeId(1)] {
+		let last_time = tree.last_context(node).unwrap().flatten().and_then(|context| context.try_animation_time());
+		assert_eq!(last_time, Some(1.));
+	}
+}
+
+#[test]
+fn a_document_node_made_of_several_proto_nodes_resolves_to_the_one_used_outside_of_it() {
+	// Document node 5 became two proto nodes, the second of them used by document node 6
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(Vector)).into()), vec![NodeId(5), NodeId(0)]);
+	let mut inner_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(5), NodeId(1)]);
+	inner_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+	let mut outer_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(6)]);
+	outer_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(2),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), inner_node), (NodeId(2), outer_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).unwrap();
+	let tree = BorrowTree::new(network, &typing_context).unwrap();
+
+	assert_eq!(tree.output_node(&[NodeId(5)], NodeId(2)), Some(NodeId(1)));
+	assert_eq!(tree.output_node(&[NodeId(5), NodeId(0)], NodeId(2)), Some(NodeId(0)));
+	assert_eq!(tree.output_node(&[NodeId(6)], NodeId(2)), Some(NodeId(2)));
+	assert_eq!(tree.output_node(&[NodeId(7)], NodeId(2)), None);
 }
