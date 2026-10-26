@@ -1,5 +1,7 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
+use crate::gpu_params;
 use crate::parallel_rows::fill_rows;
+use crate::raster_kernel::{KernelFrame, RasterKernel, Wgsl, raster_kernel_pipeline, raster_placement, run_raster_kernel, union_frame};
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
@@ -7,6 +9,7 @@ use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
+use core_types::{Interrupt, NodeError};
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, UVec2, Vec2};
@@ -14,10 +17,11 @@ use graphene_resource::Resource;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use raster_types::{Bitmap, BitmapMut};
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, GPU, Raster};
 use raster_types::{Image, ImageError};
 use std::fmt::Debug;
 use std::hash::Hash;
+use wgpu_executor::WgpuPipelineCache;
 
 #[derive(Debug, DynAny)]
 pub enum Error {
@@ -42,14 +46,27 @@ pub struct SizeMismatchError {
 }
 
 #[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"), memoize)]
-fn channels_to_image(
+fn channels_to_image<T: PlacedRaster>(
 	_: impl Ctx,
 	_primary: (),
-	#[expose] red: Item<Raster<CPU>>,
-	#[expose] green: Item<Raster<CPU>>,
-	#[expose] blue: Item<Raster<CPU>>,
-	#[expose] alpha: Item<Raster<CPU>>,
-) -> Result<Item<Raster<CPU>>, SizeMismatchError> {
+	#[expose]
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	red: Item<T>,
+	#[expose]
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	green: Item<T>,
+	#[expose]
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	blue: Item<T>,
+	#[expose]
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	alpha: Item<T>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	Ok(T::channels_to_image([red, green, blue, alpha], pipeline.element())?)
+}
+
+fn channels_to_image_cpu(red: Item<Raster<CPU>>, green: Item<Raster<CPU>>, blue: Item<Raster<CPU>>, alpha: Item<Raster<CPU>>) -> Result<Item<Raster<CPU>>, SizeMismatchError> {
 	// An unconnected channel arrives as the default zero-sized raster, which counts as absent
 	let present = |channel: Item<Raster<CPU>>| (channel.element().width > 0 && channel.element().height > 0).then_some(channel);
 	let (red, green, blue, alpha) = (present(red), present(green), present(blue), present(alpha));
@@ -104,14 +121,21 @@ fn channels_to_image(
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMask"), memoize)]
-fn mask(
+fn mask<T: PlacedRaster>(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: Item<Raster<CPU>>,
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	image: Item<T>,
 	/// The stencil to be used for masking.
 	#[expose]
-	stencil: Item<Raster<CPU>>,
-) -> Item<Raster<CPU>> {
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	stencil: Item<T>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	Ok(T::mask(image, stencil, pipeline.element())?)
+}
+
+fn mask_cpu(image: Item<Raster<CPU>>, stencil: Item<Raster<CPU>>) -> Item<Raster<CPU>> {
 	// An absent stencil arrives as the default empty raster, leaving the image unmasked
 	if stencil.element().width == 0 || stencil.element().height == 0 {
 		return image;
@@ -150,9 +174,16 @@ fn mask(
 }
 
 #[node_macro::node(category(""))]
-fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Result<Item<Raster<CPU>>, (Item<Raster<CPU>>, ImageError)> {
-	let bounds = *bounds.element();
+fn extend_image_to_bounds<T: PlacedRaster>(
+	_: impl Ctx,
+	#[implementations(Raster<CPU>, Raster<GPU>)] image: Item<T>,
+	bounds: Item<DAffine2>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, (Item<T>, NodeError)> {
+	T::extend_image_to_bounds(image, *bounds.element(), pipeline.element())
+}
 
+fn extend_image_to_bounds_cpu(image: Item<Raster<CPU>>, bounds: DAffine2) -> Result<Item<Raster<CPU>>, (Item<Raster<CPU>>, ImageError)> {
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let image_aabb = Bbox::unit().affine_transform(image_transform).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
@@ -207,6 +238,170 @@ fn empty_image(transform: DAffine2, color: Color) -> Result<Item<Raster<CPU>>, I
 	let image = Image::try_new(width, height, color)?;
 
 	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+}
+
+/// A raster the Channels to Image, Mask, and Extend Image to Bounds nodes process, on the CPU or the GPU.
+pub trait PlacedRaster: Sized {
+	fn channels_to_image(channels: [Item<Self>; 4], pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError>;
+	fn mask(image: Item<Self>, stencil: Item<Self>, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError>;
+	fn extend_image_to_bounds(image: Item<Self>, bounds: DAffine2, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, (Item<Self>, NodeError)>;
+}
+
+impl PlacedRaster for Raster<CPU> {
+	fn channels_to_image([red, green, blue, alpha]: [Item<Self>; 4], _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		channels_to_image_cpu(red, green, blue, alpha).map_err(NodeError::new)
+	}
+
+	fn mask(image: Item<Self>, stencil: Item<Self>, _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		Ok(mask_cpu(image, stencil))
+	}
+
+	fn extend_image_to_bounds(image: Item<Self>, bounds: DAffine2, _: &WgpuPipelineCache) -> Result<Item<Self>, (Item<Self>, NodeError)> {
+		extend_image_to_bounds_cpu(image, bounds).map_err(|(image, error)| (image, NodeError::new(error)))
+	}
+}
+
+impl PlacedRaster for Raster<GPU> {
+	/// Each channel is placed by its transform into their [`union_frame`], which takes the red channel's other attributes, and gives its luminance weighted by its alpha.
+	fn channels_to_image(channels: [Item<Self>; 4], pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		let frame = union_frame(&channels.each_ref().map(raster_placement)).ok_or_else(|| NodeError::new("Every channel must be placed by an invertible transform"))?;
+		let raster = run_raster_kernel(&CombineChannels {}, frame.kernel_inputs(&channels.each_ref().map(Item::element)), frame.size, pipeline)?;
+
+		let [red, ..] = channels;
+		let (_, mut attributes) = red.into_parts();
+		attributes.insert(ATTR_TRANSFORM, frame.transform);
+		Ok(Item::from_parts(raster, attributes))
+	}
+
+	/// The stencil is sampled bilinearly where each image pixel's center lies, extending its edge pixels beyond it.
+	fn mask(image: Item<Self>, stencil: Item<Self>, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		let (image_size, image_transform) = raster_placement(&image);
+		let (stencil_size, stencil_transform) = raster_placement(&stencil);
+		if image_transform.matrix2.determinant() == 0. || stencil_transform.matrix2.determinant() == 0. {
+			return Ok(image);
+		}
+
+		let frame = KernelFrame::new(image_size, image_transform, &[(image_size, image_transform), (stencil_size, stencil_transform)]);
+		let to_stencil = frame.output_to_texel[1];
+		let kernel = MaskStencil {
+			stencil_axes: to_stencil.matrix2.to_cols_array().map(|value| value as f32),
+			stencil_translation: to_stencil.translation.to_array().map(|value| value as f32),
+		};
+		let raster = run_raster_kernel(&kernel, frame.kernel_inputs(&[image.element(), stencil.element()]), frame.size, pipeline)?;
+
+		let (_, attributes) = image.into_parts();
+		Ok(Item::from_parts(raster, attributes))
+	}
+
+	fn extend_image_to_bounds(image: Item<Self>, bounds: DAffine2, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, (Item<Self>, NodeError)> {
+		let (image_size, image_transform) = raster_placement(&image);
+		let image_aabb = Bbox::unit().affine_transform(image_transform).to_axis_aligned_bbox();
+		let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
+		if image_transform.matrix2.determinant() == 0. || (image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end)) {
+			return Ok(image);
+		}
+
+		let orig_image_scale = image_size.as_dvec2();
+		let layer_to_image_space = DAffine2::from_scale(orig_image_scale) * image_transform.inverse();
+		let bounds_in_image_space = Bbox::unit().affine_transform(layer_to_image_space * bounds).to_axis_aligned_bbox();
+		let new_start = bounds_in_image_space.start.floor().min(DVec2::ZERO);
+		let new_scale = bounds_in_image_space.end.ceil().max(orig_image_scale) - new_start;
+		let transform = image_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
+
+		let frame = KernelFrame::new(new_scale.as_uvec2(), transform, &[(image_size, image_transform)]);
+		let offset = new_start.as_ivec2();
+		let kernel = ExtendToBounds {
+			offset_x: offset.x,
+			offset_y: offset.y,
+		};
+		let raster = match run_raster_kernel(&kernel, frame.kernel_inputs(&[image.element()]), frame.size, pipeline) {
+			Ok(raster) => raster,
+			Err(error) => return Err((image, error)),
+		};
+
+		let (_, mut attributes) = image.into_parts();
+		attributes.insert(ATTR_TRANSFORM, transform);
+		Ok(Item::from_parts(raster, attributes))
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct CombineChannels {}
+}
+
+impl RasterKernel for CombineChannels {
+	const INPUTS: usize = 4;
+	fn wgsl() -> Wgsl {
+		Wgsl::body(
+			r#"
+			let red = input_0_at(coord);
+			let green = input_1_at(coord);
+			let blue = input_2_at(coord);
+			let alpha = input_3_at(coord);
+			return vec4<f32>(luminance_rec_709(red) * red.a, luminance_rec_709(green) * green.a, luminance_rec_709(blue) * blue.a, luminance_rec_709(alpha) * alpha.a);
+			"#,
+		)
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct MaskStencil {
+		stencil_axes: [f32; 4],
+		stencil_translation: [f32; 2],
+	}
+}
+
+impl RasterKernel for MaskStencil {
+	const INPUTS: usize = 2;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(
+			r#"
+fn stencil_luminance(texel: vec2<i32>) -> f32 {
+	return luminance_rec_709(input_1_load(texel));
+}
+
+fn kernel(coord: vec2<i32>) -> vec4<f32> {
+	let parameters = params();
+	let axes = parameters.stencil_axes;
+	let translation = parameters.stencil_translation;
+	let center = vec2<f32>(coord) + 0.5;
+	let texel = vec2<f32>(axes[0], axes[1]) * center.x + vec2<f32>(axes[2], axes[3]) * center.y + vec2<f32>(translation[0], translation[1]) - 0.5;
+	let base = floor(texel);
+	let t = texel - base;
+	let corner = vec2<i32>(base);
+	let top = mix(stencil_luminance(corner), stencil_luminance(corner + vec2<i32>(1, 0)), t.x);
+	let bottom = mix(stencil_luminance(corner + vec2<i32>(0, 1)), stencil_luminance(corner + vec2<i32>(1, 1)), t.x);
+	let color = input_0_load(coord);
+	return vec4<f32>(color.rgb, color.a * mix(top, bottom, t.y));
+}
+"#,
+		)
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct ExtendToBounds {
+		offset_x: i32,
+		offset_y: i32,
+	}
+}
+
+impl RasterKernel for ExtendToBounds {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::body(
+			r#"
+			let texel = coord + vec2<i32>(offset_x, offset_y);
+			if any(texel < vec2<i32>(0)) || any(texel >= input_0_size()) {
+				return vec4<f32>(0.);
+			}
+			return input_0_load(texel);
+			"#,
+		)
+	}
 }
 
 /// Displays an image from a file.

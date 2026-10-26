@@ -5817,6 +5817,7 @@ dependencies = [
  "tsify",
  "vector-types",
  "wasm-bindgen",
+ "wgpu-executor",
 ]
 
 [[package]]
