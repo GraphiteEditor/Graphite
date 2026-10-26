@@ -9,6 +9,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompiledNetwork, Compiler};
 use graph_craft::proto::GraphErrors;
+use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::list::{Item, List};
@@ -56,7 +57,7 @@ pub struct NodeRuntime {
 	/// The layers whose thumbnails the frontend shows, the only ones rendered.
 	thumbnails_in_view: HashSet<NodeId>,
 
-	/// Which node is inspected and which monitor node is used (if any) for the current execution.
+	/// The node the Data panel inspects.
 	inspect_state: Option<InspectState>,
 
 	preprocessor: preprocessor::Preprocessor,
@@ -65,6 +66,8 @@ pub struct NodeRuntime {
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, VectorGeometry>,
+	/// The node and the hash of the context each layer's vector data was last evaluated from, to evaluate it again only when either changes.
+	vector_evaluations: HashMap<NodeId, (NodeId, u64)>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -80,16 +83,19 @@ pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
 	EditorPreferencesUpdate(EditorPreferences),
-	ThumbnailsInView { layers: HashSet<NodeId>, document_id: DocumentId },
+	ThumbnailsInView {
+		layers: HashSet<NodeId>,
+		document_id: DocumentId,
+	},
+	/// The full path from the root network to the node the Data panel inspects, or empty for none.
+	Inspect(Vec<NodeId>),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	pub(super) resources: ResourceRegistry,
-	/// Full path from the root network to the node that should be temporarily inspected during execution.
-	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
-	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
+	/// Full path from the root network to the node the Data panel inspects.
 	pub(super) node_to_inspect: Vec<NodeId>,
 }
 
@@ -140,6 +146,7 @@ impl NodeRuntime {
 
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
+			vector_evaluations: Default::default(),
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
@@ -181,6 +188,11 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => thumbnails_in_view = Some((layers, document_id)),
+				// A graph update applied after this loop would otherwise inspect what was selected before
+				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
+					Some(GraphRuntimeRequest::GraphUpdate(update)) => update.node_to_inspect = node_to_inspect,
+					_ => self.inspect_state = InspectState::new(node_to_inspect),
+				},
 			}
 		}
 
@@ -212,7 +224,7 @@ impl NodeRuntime {
 
 		for request in requests {
 			match request {
-				GraphRuntimeRequest::ThumbnailsInView { .. } => {}
+				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) => {}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = PlatformEditorApi {
@@ -225,13 +237,8 @@ impl NodeRuntime {
 						let _ = self.update_network(graph);
 					}
 				}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
-					mut network,
-					resources,
-					node_to_inspect,
-				}) => {
-					// Insert the monitor node to manage the inspection
-					self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }) => {
+					self.inspect_state = InspectState::new(node_to_inspect);
 
 					self.old_graph = Some(network.clone());
 					self.resources = resources;
@@ -301,8 +308,7 @@ impl NodeRuntime {
 					let mut responses = VecDeque::new();
 					let dropped_thumbnails = if !render_config.for_eyedropper { self.process_monitor_nodes(&mut responses) } else { Vec::new() };
 
-					// Resolve the result from the inspection by accessing the monitor node
-					let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor));
 
 					let output = match &mut result {
 						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
@@ -467,17 +473,32 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Vector monitors feed the path editing tools from the output they recorded in this frame
-			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else { continue };
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
-				let geometry = VectorGeometry::new(
-					io.output.element(0).cloned().unwrap_or_default(),
-					paths_from_list_row_attributes(&io.output, 0).cloned().unwrap_or_default(),
-				);
-				self.vector_modify.insert(parent_network_node_id, geometry);
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Vector>>>() {
-				self.vector_modify.insert(parent_network_node_id, VectorGeometry::from_item(&io.output));
+			// Vector monitors feed the path editing tools, from their content evaluated again whenever it or the context it was evaluated with changes
+			if !records_vector(&self.executor, monitor_node_path) {
+				continue;
 			}
+			let tree = self.executor.tree();
+			let Ok(content_node) = tree.input_node(monitor_node_path, 0) else { continue };
+			let Ok(Some(context)) = tree.last_context(content_node) else { continue };
+			let context_hash = context_hash(&context);
+			if self.vector_evaluations.get(&parent_network_node_id) == Some(&(content_node, context_hash)) {
+				continue;
+			}
+
+			let output = match tree.evaluate(content_node, &context) {
+				Ok(Poll::Final(output) | Poll::Partial(output)) => output,
+				Ok(Poll::Fallback(boxed)) => boxed.0,
+				_ => continue,
+			};
+			let geometry = match output.downcast::<List<Vector>>() {
+				Ok(list) => VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(&list, 0).cloned().unwrap_or_default()),
+				Err(output) => match output.downcast::<Item<Vector>>() {
+					Ok(item) => VectorGeometry::from_item(&item),
+					Err(_) => continue,
+				},
+			};
+			self.vector_modify.insert(parent_network_node_id, geometry);
+			self.vector_evaluations.insert(parent_network_node_id, (content_node, context_hash));
 		}
 
 		self.render_stale_thumbnails(responses);
@@ -490,9 +511,8 @@ impl NodeRuntime {
 		for monitor_node_path in std::mem::take(&mut self.stale_thumbnails) {
 			let Some(parent_network_node_id) = monitor_parent_node(&monitor_node_path) else { continue };
 
-			// The inspect monitor node and vector monitors have no thumbnail
-			let inspected = self.inspect_state.as_ref().is_some_and(|inspect_state| monitor_node_path.last() == Some(&inspect_state.monitor_node));
-			if inspected || records_vector(&self.executor, &monitor_node_path) {
+			// Vector monitors have no thumbnail
+			if records_vector(&self.executor, &monitor_node_path) {
 				continue;
 			}
 
@@ -592,11 +612,24 @@ fn monitor_parent_node(monitor_node_path: &[NodeId]) -> Option<NodeId> {
 	monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied()
 }
 
-/// Whether the monitor node records vector data for the path editing tools, rather than a layer's content for its thumbnail.
 fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> bool {
+	// TODO: Tell this from the monitor node's type once the types the borrow tree records can be compared with concrete ones
 	executor
 		.introspect(monitor_node_path)
 		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
+}
+
+fn context_hash(context: &Context) -> u64 {
+	let mut hasher = std::hash::DefaultHasher::new();
+	context.cache_hash(&mut hasher);
+	std::hash::Hasher::finish(&hasher)
+}
+
+/// The context a node was last evaluated with, and its hash for telling whether evaluating the node again would give something new.
+fn latest_context(executor: &DynamicExecutor, node: NodeId) -> Option<(Context<'static>, u64)> {
+	let context = executor.tree().last_context(node).ok()??;
+	let hash = context_hash(&context);
+	Some((context, hash))
 }
 
 /// The time that thumbnails are evaluated at, so they don't depend on where the playhead was when they were rendered.
@@ -728,15 +761,15 @@ impl Spawn for NodeTaskExecutor {
 	}
 }
 
-/// Which node is inspected and which monitor node is used (if any) for the current execution
-#[derive(Debug, Clone)]
+/// The node the Data panel inspects, which is evaluated again from the context it was last evaluated with.
 struct InspectState {
-	inspect_node: NodeId,
-	monitor_node: NodeId,
-	/// Path of the subnetwork the monitor was inserted into (i.e., the parent of `inspect_node`).
-	/// Used to construct the full node path when introspecting the monitor's value.
-	monitor_parent_path: Vec<NodeId>,
+	inspect_node_path: Vec<NodeId>,
+	/// The proto node and the hash of the context the inspected node was last evaluated again with, and the result.
+	last_evaluation: Option<(NodeId, u64, Option<InspectedData>)>,
 }
+
+type InspectedData = Arc<dyn std::any::Any + Send + Sync + 'static>;
+
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
 pub struct InspectResult {
@@ -761,77 +794,39 @@ impl PartialEq for InspectResult {
 }
 
 impl InspectState {
-	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
-	/// Returns `None` if the path is empty, doesn't resolve to a node inside a reachable subnetwork, or the target has no
-	/// flatten-safe primary output to monitor (e.g. an empty merged subnetwork), which would otherwise leave the monitor's
-	/// input dangling once the subnetwork is flattened away.
-	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
-		let (inspect_node, parent_path) = inspect_path.split_last()?;
-		let inspect_node = *inspect_node;
-		let target_network = navigate_to_network_mut(network, parent_path)?;
-
-		// A subnetwork's primary output only survives flattening if its first export is a node
-		let monitorable = match &target_network.nodes.get(&inspect_node)?.implementation {
-			DocumentNodeImplementation::Network(inner) => matches!(inner.exports.first(), Some(NodeInput::Node { .. })),
-			_ => true,
-		};
-		if !monitorable {
-			return None;
-		}
-
-		let monitor_id = NodeId::new();
-
-		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
-		for input in target_network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut target_network.exports) {
-			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
-			// We only care about the primary output of our inspect node
-			if *output_index != 0 || *node_id != inspect_node {
-				continue;
-			}
-
-			*node_id = monitor_id;
-		}
-
-		let monitor_node = DocumentNode {
-			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-			call_argument: graph_craft::generic!(T),
-			skip_deduplication: true,
-			..Default::default()
-		};
-		target_network.nodes.insert(monitor_id, monitor_node);
-
-		Some(Self {
-			inspect_node,
-			monitor_node: monitor_id,
-			monitor_parent_path: parent_path.to_vec(),
+	fn new(inspect_node_path: Vec<NodeId>) -> Option<Self> {
+		(!inspect_node_path.is_empty()).then_some(Self {
+			inspect_node_path,
+			last_evaluation: None,
 		})
 	}
-	/// Resolve the result from the inspection by accessing the monitor node
-	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		// The executor's source map indexes by full path from root, so prepend the subnetwork path to the monitor ID.
-		let mut monitor_path = self.monitor_parent_path.clone();
-		monitor_path.push(self.monitor_node);
-		let introspected_data = executor.introspect(&monitor_path).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
-		// TODO: Consider displaying the error instead of ignoring it
 
-		let mut inspect_node_path = self.monitor_parent_path.clone();
-		inspect_node_path.push(self.inspect_node);
-		Some(InspectResult { inspect_node_path, introspected_data })
+	/// Evaluates the inspected node again with the context it was last evaluated with, unless neither the node nor that context changed since.
+	fn access(&mut self, executor: &DynamicExecutor) -> InspectResult {
+		let inspect_node_path = self.inspect_node_path.clone();
+		let introspected_data = self.evaluate(executor);
+		InspectResult { introspected_data, inspect_node_path }
 	}
-}
 
-/// Walks `network` down through `path`, returning a mutable reference to the nested `NodeNetwork`
-/// at the end. Each path element must name a `DocumentNode` whose implementation is `Network(...)`.
-/// Returns `None` if any step is missing or doesn't refer to a subnetwork.
-fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) -> Option<&'a mut NodeNetwork> {
-	let mut current = network;
-	for node_id in path {
-		let node = current.nodes.get_mut(node_id)?;
-		current = match &mut node.implementation {
-			DocumentNodeImplementation::Network(nested) => nested,
-			_ => return None,
+	fn evaluate(&mut self, executor: &DynamicExecutor) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
+		let tree = executor.tree();
+		let node = tree.output_node(&self.inspect_node_path, executor.output())?;
+		let (context, context_hash) = latest_context(executor, node)?;
+
+		if let Some((last_node, last_context_hash, data)) = &self.last_evaluation
+			&& (*last_node, *last_context_hash) == (node, context_hash)
+		{
+			return data.clone();
+		}
+
+		let output = match tree.evaluate(node, &context).ok()? {
+			Poll::Final(output) | Poll::Partial(output) => output,
+			Poll::Fallback(boxed) => boxed.0,
+			Poll::Pending | Poll::Error(_) => return None,
 		};
+		// Output the Data panel can't show is remembered too, so it isn't evaluated again for nothing
+		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
+		self.last_evaluation = Some((node, context_hash, data.clone()));
+		data
 	}
-	Some(current)
 }

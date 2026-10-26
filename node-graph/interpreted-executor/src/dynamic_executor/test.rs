@@ -1028,3 +1028,27 @@ fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
 		assert_eq!(last_time, Some(1.));
 	}
 }
+
+#[test]
+fn a_document_node_made_of_several_proto_nodes_resolves_to_the_one_used_outside_of_it() {
+	// Document node 5 became a value and a Bounding Box, which document node 6 takes as its input
+	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(Vector)).into()), vec![NodeId(5), NodeId(0)]);
+	let mut inner_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(5), NodeId(1)]);
+	inner_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+	let mut outer_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(6)]);
+	outer_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+
+	let network = ProtoNetwork {
+		inputs: vec![],
+		output: NodeId(2),
+		nodes: vec![(NodeId(0), value_node), (NodeId(1), inner_node), (NodeId(2), outer_node)],
+	};
+	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
+	typing_context.update(&network).unwrap();
+	let tree = BorrowTree::new(network, &typing_context).unwrap();
+
+	assert_eq!(tree.output_node(&[NodeId(5)], NodeId(2)), Some(NodeId(1)));
+	assert_eq!(tree.output_node(&[NodeId(5), NodeId(0)], NodeId(2)), Some(NodeId(0)));
+	assert_eq!(tree.output_node(&[NodeId(6)], NodeId(2)), Some(NodeId(2)));
+	assert_eq!(tree.output_node(&[NodeId(7)], NodeId(2)), None);
+}

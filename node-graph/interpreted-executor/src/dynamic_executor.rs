@@ -322,6 +322,27 @@ impl BorrowTree {
 		self.context_features.get(&id).copied().unwrap_or_default()
 	}
 
+	/// The node giving the output of the document node at this path: its own proto node, or for a document node that became several proto
+	/// nodes (like a subnetwork, or a node the preprocessor wrapped), the one among them whose output is used outside of them.
+	pub fn output_node(&self, node_path: &[NodeId], graph_output: NodeId) -> Option<NodeId> {
+		if let Some((id, _)) = self.source_map.get(node_path) {
+			return Some(*id);
+		}
+
+		let within = |path: &[NodeId]| path.starts_with(node_path);
+		let inner_nodes: HashSet<NodeId> = self.nodes.iter().filter(|(_, (_, path, _))| within(path)).map(|(id, _)| *id).collect();
+		if inner_nodes.contains(&graph_output) {
+			return Some(graph_output);
+		}
+		self.nodes
+			.values()
+			.filter(|(_, path, _)| !within(path))
+			.flat_map(|(_, _, inputs)| inputs.iter())
+			.filter(|input| inner_nodes.contains(input))
+			.min()
+			.copied()
+	}
+
 	pub fn input_node(&self, node_path: &[NodeId], input_index: usize) -> Result<NodeId, IntrospectError> {
 		let (id, _) = self.source_map.get(node_path).ok_or_else(|| IntrospectError::PathNotFound(node_path.to_vec()))?;
 		let (_, _, inputs) = self.nodes.get(id).ok_or(IntrospectError::ProtoNodeNotFound(*id))?;
