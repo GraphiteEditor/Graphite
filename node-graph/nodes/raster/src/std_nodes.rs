@@ -17,7 +17,7 @@ use graphene_resource::Resource;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use raster_types::{Bitmap, BitmapMut};
-use raster_types::{CPU, GPU, Raster};
+use raster_types::{CPU, GPU, Raster, Storage};
 use raster_types::{Image, ImageError};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -263,7 +263,12 @@ impl PlacedRaster for Raster<CPU> {
 
 impl PlacedRaster for Raster<GPU> {
 	/// Each channel is placed by its transform into their [`union_frame`], which takes the red channel's other attributes, and gives its luminance weighted by its alpha.
+	/// An empty channel gives zero, or full opacity for the alpha channel.
 	fn channels_to_image(channels: [Item<Self>; 4], pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		if channels.iter().all(|channel| channel.element().is_empty()) {
+			return Ok(Item::default());
+		}
+
 		let frame = union_frame(&channels.each_ref().map(raster_placement)).ok_or_else(|| NodeError::new("Every channel must be placed by an invertible transform"))?;
 		let raster = run_raster_kernel(&CombineChannels {}, frame.kernel_inputs(&channels.each_ref().map(Item::element)), frame.size, pipeline)?;
 
@@ -275,6 +280,10 @@ impl PlacedRaster for Raster<GPU> {
 
 	/// The stencil is sampled bilinearly where each image pixel's center lies, extending its edge pixels beyond it.
 	fn mask(image: Item<Self>, stencil: Item<Self>, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		if image.element().is_empty() || stencil.element().is_empty() {
+			return Ok(image);
+		}
+
 		let (image_size, image_transform) = raster_placement(&image);
 		let (stencil_size, stencil_transform) = raster_placement(&stencil);
 		if image_transform.matrix2.determinant() == 0. || stencil_transform.matrix2.determinant() == 0. {
@@ -294,6 +303,10 @@ impl PlacedRaster for Raster<GPU> {
 	}
 
 	fn extend_image_to_bounds(image: Item<Self>, bounds: DAffine2, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, (Item<Self>, NodeError)> {
+		if image.element().is_empty() {
+			return Ok(image);
+		}
+
 		let (image_size, image_transform) = raster_placement(&image);
 		let image_aabb = Bbox::unit().affine_transform(image_transform).to_axis_aligned_bbox();
 		let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
@@ -338,7 +351,7 @@ impl RasterKernel for CombineChannels {
 			let red = input_0_at(coord);
 			let green = input_1_at(coord);
 			let blue = input_2_at(coord);
-			let alpha = input_3_at(coord);
+			let alpha = select(input_3_at(coord), vec4<f32>(1.), any(input_3_size() == vec2<i32>(0)));
 			return vec4<f32>(luminance_rec_709(red) * red.a, luminance_rec_709(green) * green.a, luminance_rec_709(blue) * blue.a, luminance_rec_709(alpha) * alpha.a);
 			"#,
 		)

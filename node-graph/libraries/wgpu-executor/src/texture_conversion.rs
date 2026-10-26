@@ -5,30 +5,16 @@ use core_types::list::{Item, List};
 use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
 use raster_types::Image;
-use raster_types::{CPU, GPU, Raster, Texture};
+use raster_types::{CPU, GPU, Raster, Storage};
 use wgpu::Extent3d;
 
 /// Uploads CPU image data to a GPU texture
-fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
-	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), crate::RASTER_FORMAT);
-
-	if image.width == 0 || image.height == 0 {
-		queue.write_texture(
-			texture.as_image_copy(),
-			bytemuck::bytes_of(&Color::TRANSPARENT),
-			wgpu::TexelCopyBufferLayout {
-				offset: 0,
-				bytes_per_row: Some(16),
-				rows_per_image: Some(1),
-			},
-			Extent3d {
-				width: 1,
-				height: 1,
-				depth_or_array_layers: 1,
-			},
-		);
-		return texture;
+fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Raster<GPU> {
+	if image.is_empty() {
+		return Raster::default();
 	}
+
+	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), crate::RASTER_FORMAT);
 
 	queue.write_texture(
 		texture.as_image_copy(),
@@ -44,7 +30,7 @@ fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raste
 			depth_or_array_layers: 1,
 		},
 	);
-	texture
+	Raster::new_gpu(texture)
 }
 
 /// Converts a Raster<GPU> texture to Raster<CPU> by downloading the underlying texture data.
@@ -63,8 +49,8 @@ struct RasterGpuToRasterCpuConverter {
 	_source: raster_types::Texture,
 }
 impl RasterGpuToRasterCpuConverter {
-	fn new(executor: &WgpuExecutor, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
-		let texture = data_gpu.data();
+	fn new(executor: &WgpuExecutor, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Option<Self> {
+		let texture = data_gpu.texture()?;
 		let width = texture.width();
 		let height = texture.height();
 		let format = texture.format();
@@ -103,7 +89,7 @@ impl RasterGpuToRasterCpuConverter {
 			},
 		);
 
-		Self {
+		Some(Self {
 			buffer,
 			width,
 			height,
@@ -111,8 +97,8 @@ impl RasterGpuToRasterCpuConverter {
 			unpadded_bytes_per_row,
 			padded_bytes_per_row,
 			// Keep source texture alive
-			_source: data_gpu.texture.clone(),
-		}
+			_source: texture.clone(),
+		})
 	}
 
 	async fn convert(self, device: &wgpu::Device) -> Result<Raster<CPU>, wgpu::BufferAsyncError> {
@@ -232,9 +218,7 @@ impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<CPU>> {
 			.into_iter()
 			.map(|row| {
 				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(&executor, &queue, &image);
-
-				Item::from_parts(Raster::new_gpu(texture), attributes)
+				Item::from_parts(upload_to_texture(&executor, &queue, &image), attributes)
 			})
 			.collect();
 
@@ -247,10 +231,10 @@ impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<CPU>> {
 impl Convert<Raster<GPU>, WgpuExecutor> for Raster<CPU> {
 	fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<GPU> {
 		let queue = executor.context().queue.lock();
-		let texture = upload_to_texture(&executor, &queue, &self);
+		let raster = upload_to_texture(&executor, &queue, &self);
 
 		queue.submit([]);
-		Raster::new_gpu(texture)
+		raster
 	}
 }
 
@@ -284,7 +268,12 @@ impl ConvertAsync<List<Raster<CPU>>, WgpuExecutor> for List<Raster<GPU>> {
 
 		let mut map_futures = Vec::new();
 		for converter in converters {
-			map_futures.push(converter.convert(device));
+			map_futures.push(async move {
+				match converter {
+					Some(converter) => converter.convert(device).await,
+					None => Ok(Raster::default()),
+				}
+			});
 		}
 
 		let map_results = futures::future::try_join_all(map_futures)
@@ -317,6 +306,7 @@ impl ConvertAsync<Raster<CPU>, WgpuExecutor> for Raster<GPU> {
 
 		queue.submit([encoder.finish()]);
 
+		let Some(converter) = converter else { return Raster::default() };
 		converter.convert(device).await.expect("Failed to download texture data")
 	}
 }
