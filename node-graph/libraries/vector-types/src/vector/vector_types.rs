@@ -11,7 +11,6 @@ use super::style::{Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use super::vector_attributes::{PointId, SegmentId};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_GEOMETRY_CACHE, ATTR_ID, ATTR_PATHS, ATTR_SMOOTH, Item, List};
-use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, PathSeg, Rect, Shape};
@@ -956,23 +955,6 @@ impl BoundingBox for Vector {
 	}
 }
 
-impl RenderComplexity for Vector {
-	fn render_complexity_in_item(item: &Item<Self>) -> usize {
-		segment_count(paths_from_item_attributes(item))
-	}
-
-	fn render_complexity_in_list(list: &List<Self>, index: usize) -> usize {
-		segment_count(paths_from_list_row_attributes(list, index))
-	}
-}
-
-/// How many segments the paths draw, which is what their vector costs to render.
-fn segment_count(paths: Option<&List<Path>>) -> usize {
-	let Some(paths) = paths else { return 0 };
-
-	paths.iter_element_values().zip(curve_types_of(paths)).map(|(path, curve_type)| path.segment_count(curve_type)).sum()
-}
-
 // Note: BoundingBox for List<Vector> is handled by blanket impl in core-types
 
 #[cfg(test)]
@@ -990,17 +972,6 @@ mod tests {
 
 	fn lone_anchor(position: DVec2) -> Vector {
 		<Vector as core_types::ops::FromAnchorPosition>::from_anchor_position(position)
-	}
-
-	// A layer is too dense for a thumbnail by the segments it draws, whatever handles those bring to the pool
-	#[test]
-	fn render_complexity_counts_segments() {
-		let (vector, paths) = Vector::from_bezpath(&ellipse_bezpath(DVec2::NEG_ONE, DVec2::ONE));
-		assert_eq!(vector.0.len(), 12);
-
-		let item = Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths);
-		assert_eq!(item.render_complexity(), 4);
-		assert_eq!(List::new_from_item(item).render_complexity(), 4);
 	}
 
 	// Bezpaths appended together come out as they do appended one at a time, IDs included, with the spans each one added counted

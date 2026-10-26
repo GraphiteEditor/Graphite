@@ -1018,6 +1018,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
+			PortfolioMessage::SubmitInspectContextOverrides { overrides } => {
+				self.executor.submit_inspect_context_overrides(overrides);
+			}
 			PortfolioMessage::SubmitThumbnailsInView => {
 				if let Some(document_id) = self.active_document_id
 					&& let Some(document) = self.documents.get(&document_id)

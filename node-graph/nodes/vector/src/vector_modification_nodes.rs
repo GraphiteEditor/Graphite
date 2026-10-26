@@ -8,7 +8,7 @@ use vector_types::kurbo::BezPath;
 use vector_types::vector::{GeometryCache, VectorModification, edit_item_geometry, ensure_paths_attribute, shared_paths_from_item_attributes};
 
 /// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), memoize)]
 fn path_modify(_ctx: impl Ctx, vector: Item<Vector>, modification: Item<Box<VectorModification>>, node_path: Item<NodeIdPath>) -> Item<Vector> {
 	let mut vector = vector;
 	let modification = modification.into_element();

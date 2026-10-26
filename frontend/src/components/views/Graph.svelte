@@ -5,6 +5,8 @@
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import ThumbnailCanvas from "/src/components/views/ThumbnailCanvas.svelte";
+	import ThumbnailImage from "/src/components/views/ThumbnailImage.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
@@ -26,6 +28,7 @@
 	const nodeGraphTransform = nodeGraph.transformStore;
 	const nodeGraphImportsExports = nodeGraph.importsExportsStore;
 	const visibleNodes = nodeGraph.visibleNodesStore;
+	const thumbnailImages = nodeGraph.thumbnailImagesStore;
 	const nodeGraphWires = nodeGraph.wiresStore;
 	const wireInsertionPreview = nodeGraph.wireInsertionPreviewStore;
 	const nodeGlideOffsets = nodeGraph.glideOffsetsStore;
@@ -800,8 +803,10 @@
 				data-node={node.id}
 			>
 				<div class="thumbnail">
-					{#if $nodeGraph.thumbnails.has(node.id)}
-						{@html $nodeGraph.thumbnails.get(node.id)}
+					{#if $nodeGraph.thumbnailCanvases.has(node.id)}
+						<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(node.id)?.nodeGraphCanvasId} />
+					{:else if $thumbnailImages.has(node.id)}
+						<ThumbnailImage image={$thumbnailImages.get(node.id)} />
 					{/if}
 					<!-- Layer stacking top output -->
 					{#if node.primaryOutput}
@@ -1572,7 +1577,7 @@
 				}
 
 				&::before,
-				svg:not(.connector) {
+				canvas {
 					pointer-events: none;
 					position: absolute;
 					margin: auto;

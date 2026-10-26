@@ -698,15 +698,46 @@ impl Hash for Box<dyn AnyHash + Send + Sync> {
 pub trait AnyHash: DynHash + Any {}
 impl<T: DynHash + Any> AnyHash for T {}
 
+/// Values replacing features of a context, for evaluating a node again with a modified context.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ContextOverrides {
+	pub footprint: Option<Footprint>,
+	pub real_time: Option<f64>,
+	pub animation_time: Option<f64>,
+	pub pointer_position: Option<DVec2>,
+	pub index: Option<Vec<usize>>,
+}
+
+impl ContextOverrides {
+	pub fn is_empty(&self) -> bool {
+		*self == Self::default()
+	}
+}
+
 impl OwnedContextImpl {
-	/// A copy of this context with its footprint and times replaced where it has them, keeping everything else like its varargs and indices.
-	/// Features it lacks stay absent, so whatever was nullified upstream keeps hitting the same caches.
-	pub fn with_replaced_footprint_and_time(&self, footprint: Footprint, time: f64) -> Self {
+	/// This context with the overrides replacing its features.
+	pub fn with_overrides(&self, overrides: &ContextOverrides) -> Self {
 		Self {
 			parent: self.parent.clone(),
-			footprint: self.footprint.map(|_| footprint),
-			real_time: self.real_time.map(|_| time),
-			animation_time: self.animation_time.map(|_| time),
+			footprint: overrides.footprint.or(self.footprint),
+			real_time: overrides.real_time.or(self.real_time),
+			animation_time: overrides.animation_time.or(self.animation_time),
+			pointer_position: overrides.pointer_position.or(self.pointer_position),
+			position: self.position.clone(),
+			index: overrides.index.clone().or_else(|| self.index.clone()),
+			varargs: self.varargs.clone(),
+			generations: self.generations.clone(),
+		}
+	}
+
+	/// This context with its footprint and times replaced where it has them, so features nullified upstream stay absent.
+	pub fn with_replaced_footprint_and_time(&self, footprint: Option<Footprint>, time: Option<f64>) -> Self {
+		Self {
+			parent: self.parent.clone(),
+			footprint: self.footprint.map(|current| footprint.unwrap_or(current)),
+			real_time: self.real_time.map(|current| time.unwrap_or(current)),
+			animation_time: self.animation_time.map(|current| time.unwrap_or(current)),
 			pointer_position: self.pointer_position,
 			position: self.position.clone(),
 			index: self.index.clone(),

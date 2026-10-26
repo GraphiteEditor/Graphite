@@ -203,6 +203,42 @@ impl ProtoNode {
 	}
 }
 
+const fn parameter<P: NodeParameter>() -> (ProtoNodeIdentifier, usize) {
+	(P::NODE_IDENTIFIER, P::INDEX)
+}
+
+static ATTRIBUTE_NAME_INPUTS: [(ProtoNodeIdentifier, usize); 16] = {
+	use graphic_nodes::graphic::*;
+	[
+		parameter::<write_attribute::NameInput>(),
+		parameter::<read_attribute_vector::NameInput>(),
+		parameter::<read_attribute_number::NameInput>(),
+		parameter::<read_attribute_bool::NameInput>(),
+		parameter::<read_attribute_string::NameInput>(),
+		parameter::<read_attribute_transform::NameInput>(),
+		parameter::<read_attribute_color::NameInput>(),
+		parameter::<read_attribute_blend_mode::NameInput>(),
+		parameter::<read_attribute_gradient_form::NameInput>(),
+		parameter::<read_attribute_gradient_spread::NameInput>(),
+		parameter::<read_attribute_gradient_space::NameInput>(),
+		parameter::<read_attribute_gradient_interpolation::NameInput>(),
+		parameter::<read_attribute_gradient_hue_direction::NameInput>(),
+		parameter::<read_attribute_gradient_stops::NameInput>(),
+		parameter::<read_attribute_artboard::NameInput>(),
+		parameter::<read_attribute_raster::NameInput>(),
+	]
+};
+
+fn is_transparent(identifier: &ProtoNodeIdentifier) -> bool {
+	let pass_through_nodes = [
+		graphene_core::ops::passthrough::IDENTIFIER,
+		graphene_core::memo::memoize::IDENTIFIER,
+		graphene_core::memo::monitor::IDENTIFIER,
+		graphene_core::context_modification::context_modification::IDENTIFIER,
+	];
+	pass_through_nodes.contains(identifier) || identifier.as_str().starts_with("input_adapter<")
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum NodeState {
 	Unvisited,
@@ -299,6 +335,35 @@ impl ProtoNetwork {
 			.filter(|(_, node)| node.context_dependencies.footprint_invariant && node.upstream_context_features.contains(ContextFeatures::FOOTPRINT))
 			.map(|(_, node)| GraphError::new(node, GraphErrorType::FootprintDependentInput))
 			.collect()
+	}
+
+	pub(crate) fn non_constant_attribute_names(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter_map(|(_, node)| {
+				let (_, name_index) = ATTRIBUTE_NAME_INPUTS.iter().find(|(identifier, _)| *identifier == node.identifier)?;
+				let ConstructionArgs::Nodes(inputs) = &node.construction_args else { return None };
+				let name_input = *inputs.get(*name_index)?;
+
+				(!self.resolves_to_value(name_input)).then(|| GraphError::new(node, GraphErrorType::NonConstantAttributeName))
+			})
+			.collect()
+	}
+
+	fn resolves_to_value(&self, mut id: NodeId) -> bool {
+		loop {
+			let Some((node_id, node)) = self.nodes.get(id.0 as usize) else { return false };
+			debug_assert_eq!(*node_id, id, "Node IDs must be dense indices");
+
+			match &node.construction_args {
+				ConstructionArgs::Value(_) => return true,
+				ConstructionArgs::Nodes(inputs) if is_transparent(&node.identifier) => match inputs.first() {
+					Some(&input) => id = input,
+					None => return false,
+				},
+				_ => return false,
+			}
+		}
 	}
 
 	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
@@ -576,6 +641,7 @@ pub enum GraphErrorType {
 		valid: Vec<NodeIOTypes>,
 	},
 	FootprintDependentInput,
+	NonConstantAttributeName,
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -623,6 +689,7 @@ impl Debug for GraphErrorType {
 				f,
 				"Warning: an upstream node adapts to the visible canvas area, so this node's output changes when the view is panned or zoomed"
 			),
+			GraphErrorType::NonConstantAttributeName => write!(f, "The attribute name must be a fixed value rather than computed by other nodes"),
 		}
 	}
 }
@@ -1240,6 +1307,37 @@ mod test {
 		assert!(violations[0].error == GraphErrorType::FootprintDependentInput);
 
 		assert!(warnings(true).is_empty());
+	}
+
+	#[test]
+	fn attribute_names_must_resolve_to_values_through_transparent_nodes() {
+		let value = || ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("name".into()).into()), vec![]);
+		let node = |identifier: ProtoNodeIdentifier, inputs: Vec<NodeId>| ProtoNode {
+			identifier,
+			construction_args: ConstructionArgs::Nodes(inputs),
+			..Default::default()
+		};
+		let errors = |name_wrapper: ProtoNodeIdentifier| {
+			let network = ProtoNetwork {
+				inputs: vec![],
+				output: NodeId(5),
+				nodes: vec![
+					(NodeId(0), value()),
+					(NodeId(1), value()),
+					(NodeId(2), node(name_wrapper, vec![NodeId(1)])),
+					(NodeId(3), node(ProtoNodeIdentifier::new("input_adapter<String>"), vec![NodeId(2)])),
+					(NodeId(4), value()),
+					(NodeId(5), node(graphic_nodes::graphic::write_attribute::IDENTIFIER, vec![NodeId(0), NodeId(3), NodeId(4)])),
+				],
+			};
+			network.non_constant_attribute_names()
+		};
+
+		assert!(errors(graphene_core::memo::memoize::IDENTIFIER).is_empty());
+
+		let computed = errors(ProtoNodeIdentifier::new("string_concatenate"));
+		assert_eq!(computed.len(), 1);
+		assert!(computed[0].error == GraphErrorType::NonConstantAttributeName);
 	}
 
 	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {
