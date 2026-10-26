@@ -335,7 +335,7 @@ fn convert_node(
 		visible: node.attributes.get_or(node::VISIBLE, true),
 		skip_deduplication: node.attributes.get_or(node::SKIP_DEDUPLICATION, false),
 		// Regenerated during compilation; not stored.
-		context_dependencies: None,
+		compile_metadata: None,
 		original_location: Default::default(),
 	})
 }

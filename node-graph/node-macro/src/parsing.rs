@@ -41,6 +41,17 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
+/// Mirrors `core_types::registry::NodeFlags`, which this proc-macro crate cannot depend on.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct NodeFlags {
+	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork.
+	pub(crate) memoize: bool,
+	pub(crate) footprint_invariant: bool,
+	pub(crate) forwards_input: bool,
+	/// Whether this node provides a scope.
+	pub(crate) inject_scope: bool,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
@@ -55,11 +66,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
-	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork
-	pub(crate) memoize: bool,
-	pub(crate) footprint_invariant: bool,
-	/// Whether this node provides a scope
-	pub(crate) inject_scope: bool,
+	pub(crate) flags: NodeFlags,
 	/// Fn producing an placeholder value used while node evaluation is pending
 	pub(crate) placeholder: Option<Path>,
 	/// Whether the node refuses placeholder data
@@ -130,6 +137,7 @@ pub struct ParsedField {
 	pub unit: Option<LitStr>,
 	pub multiline: bool,
 	pub progression: bool,
+	pub constant: bool,
 	pub is_data_field: bool,
 }
 
@@ -164,6 +172,7 @@ impl ParsedField {
 			unit: None,
 			multiline: false,
 			progression: false,
+			constant: false,
 			is_data_field: false,
 		}
 	}
@@ -455,9 +464,7 @@ impl Parse for NodeFnAttributes {
 		let mut cfg = None;
 		let mut shader_node = None;
 		let mut serialize = None;
-		let mut memoize = false;
-		let mut footprint_invariant = false;
-		let mut inject_scope = false;
+		let mut flags = NodeFlags::default();
 		let mut placeholder = None;
 		let mut no_partial = false;
 
@@ -595,36 +602,23 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., memoize, ...)]
-				"memoize" => {
-					let path = meta.require_path_only()?;
-					if memoize {
-						return Err(Error::new_spanned(path, "Multiple 'memoize' attributes are not allowed"));
-					}
-					memoize = true;
-				}
+				"memoize" => set_flag(&mut flags.memoize, meta, "memoize")?,
 				// Warns at compile time when an upstream node of this node reads the footprint.
 				//
 				// Example usage:
 				// #[node_macro::node(..., footprint_invariant, ...)]
-				"footprint_invariant" => {
-					let path = meta.require_path_only()?;
-					if footprint_invariant {
-						return Err(Error::new_spanned(path, "Multiple 'footprint_invariant' attributes are not allowed"));
-					}
-					footprint_invariant = true;
-				}
+				"footprint_invariant" => set_flag(&mut flags.footprint_invariant, meta, "footprint_invariant")?,
+				// Marks the node's output as its first input's value, so a compile-time constant stays constant through it.
+				//
+				// Example usage:
+				// #[node_macro::node(..., forwards_input, ...)]
+				"forwards_input" => set_flag(&mut flags.forwards_input, meta, "forwards_input")?,
 				// Instructs the preprocessor to make this node available as a scope.
 				// Other nodes can then access it with `#[scope(node::IDENTIFIER)]`.
 				//
 				// Example usage:
 				// #[node_macro::node(..., inject_scope, ...)]
-				"inject_scope" => {
-					let path = meta.require_path_only()?;
-					if inject_scope {
-						return Err(Error::new_spanned(path, "Multiple 'inject_scope' attributes are not allowed"));
-					}
-					inject_scope = true;
-				}
+				"inject_scope" => set_flag(&mut flags.inject_scope, meta, "inject_scope")?,
 				// The placeholder value used while a node's evaluation is pending.
 				//
 				// Example usage:
@@ -655,7 +649,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'footprint_invariant', 'inject_scope', 'placeholder', and 'no_partial'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -688,14 +682,21 @@ impl Parse for NodeFnAttributes {
 			cfg,
 			shader_node,
 			serialize,
-			memoize,
-			footprint_invariant,
-			inject_scope,
+			flags,
 			placeholder,
 			no_partial,
 			destructure_extractor: false,
 		})
 	}
+}
+
+fn set_flag(flag: &mut bool, meta: &Meta, name: &str) -> syn::Result<()> {
+	let path = meta.require_path_only()?;
+	if *flag {
+		return Err(Error::new_spanned(path, format!("Multiple '{name}' attributes are not allowed")));
+	}
+	*flag = true;
+	Ok(())
 }
 
 pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
@@ -970,6 +971,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	let multiline = extract_attribute(attrs, "multiline").is_some();
 	let progression = extract_attribute(attrs, "progression").is_some();
 
+	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time
+	let constant = extract_attribute(attrs, "constant").is_some();
+
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
 		.map(|attr| {
 			attr.parse_args::<LitInt>().map_err(|e| {
@@ -1051,6 +1055,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			unit,
 			multiline,
 			progression,
+			constant,
 			is_data_field,
 		})
 	} else {
@@ -1104,6 +1109,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			unit,
 			multiline,
 			progression,
+			constant,
 			is_data_field,
 		})
 	}
@@ -1432,9 +1438,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,
@@ -1476,6 +1480,7 @@ mod tests {
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1511,9 +1516,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,
@@ -1549,6 +1552,7 @@ mod tests {
 					unit: None,
 					multiline: false,
 					progression: false,
+					constant: false,
 					is_data_field: false,
 				},
 				ParsedField {
@@ -1574,6 +1578,7 @@ mod tests {
 					unit: None,
 					multiline: false,
 					progression: false,
+					constant: false,
 					is_data_field: false,
 				},
 			],
@@ -1607,9 +1612,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,
@@ -1651,6 +1654,7 @@ mod tests {
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1682,9 +1686,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,
@@ -1731,6 +1733,7 @@ mod tests {
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1769,9 +1772,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,
@@ -1813,6 +1814,7 @@ mod tests {
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1859,9 +1861,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,
@@ -1903,6 +1903,7 @@ mod tests {
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1934,9 +1935,7 @@ mod tests {
 				cfg: None,
 				shader_node: None,
 				serialize: None,
-				memoize: false,
-				footprint_invariant: false,
-				inject_scope: false,
+				flags: Default::default(),
 				placeholder: None,
 				no_partial: false,
 				destructure_extractor: false,

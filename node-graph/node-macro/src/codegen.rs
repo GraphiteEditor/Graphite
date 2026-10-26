@@ -323,6 +323,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(#progression)
 		})
 		.collect();
+	let constant: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let constant = field.constant;
+			quote!(#constant)
+		})
+		.collect();
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
@@ -855,10 +862,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let inspector = &attributes.inspector_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let icon = &attributes.icon.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
-	let memoize_flag = attributes.memoize;
-	let footprint_invariant_flag = attributes.footprint_invariant;
+	let NodeFlags {
+		memoize,
+		footprint_invariant,
+		forwards_input,
+		inject_scope,
+	} = attributes.flags;
 	let asynchronous_flag = parsed.is_async;
-	let inject_scope_flag = attributes.inject_scope;
 	// A node returning a `Destructure` struct records its fields as output connectors
 	let output_fields = match may_return_destructure_struct(parsed) {
 		true => {
@@ -1083,9 +1093,12 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					description: #description,
 					inspector: #inspector,
 					context_features: vec![#(ContextFeature::#context_features,)*],
-					memoize: #memoize_flag,
-					footprint_invariant: #footprint_invariant_flag,
-					inject_scope: #inject_scope_flag,
+					flags: gcore::registry::NodeFlags {
+						memoize: #memoize,
+						footprint_invariant: #footprint_invariant,
+						forwards_input: #forwards_input,
+						inject_scope: #inject_scope,
+					},
 					asynchronous: #asynchronous_flag,
 					output_fields: #output_fields,
 					fields: vec![
@@ -1109,6 +1122,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								unit: #unit_suffix,
 								multiline: #multiline,
 								progression: #progression,
+								constant: #constant,
 							},
 						)*
 					],
