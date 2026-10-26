@@ -344,6 +344,55 @@ impl Lut {
 			None => result,
 		}
 	}
+
+	/// The mapping as one grid, which [`Lut::apply`] matches by tetrahedral interpolation of the input normalized over the grid's domain:
+	/// the 3D table itself when the mapping is nothing more, otherwise the whole mapping sampled at `GRID_SIZE` points per axis across 0 to 1.
+	pub fn grid(&self) -> LutGrid {
+		if self.lab_encoding.is_none()
+			&& self.input_curves.is_none()
+			&& self.output_stages.is_empty()
+			&& let Some(LutTable::ThreeDimensional { size, red_fastest, entries }) = &self.table
+			&& size[0] == size[1]
+			&& size[1] == size[2]
+		{
+			let size = size[0];
+			let entries = if *red_fastest {
+				entries.clone()
+			} else {
+				(0..size.pow(3))
+					.map(|index| entries[((index % size) * size + index / size % size) * size + index / (size * size)])
+					.collect()
+			};
+			return LutGrid {
+				domain_min: self.domain_min,
+				domain_max: self.domain_max,
+				size,
+				entries,
+			};
+		}
+
+		let last = (GRID_SIZE - 1) as f32;
+		let entries = (0..GRID_SIZE.pow(3))
+			.map(|index| self.apply([index % GRID_SIZE, index / GRID_SIZE % GRID_SIZE, index / (GRID_SIZE * GRID_SIZE)].map(|step| step as f32 / last)))
+			.collect();
+		LutGrid {
+			domain_min: [0.; 3],
+			domain_max: [1.; 3],
+			size: GRID_SIZE,
+			entries,
+		}
+	}
+}
+
+/// The points per axis of the grid that samples a mapping holding more than one 3D table.
+const GRID_SIZE: usize = 33;
+
+/// A cube of `size` entries per axis, red fastest, then green, then blue, spanning the input range `domain_min..domain_max`.
+pub struct LutGrid {
+	pub domain_min: [f32; 3],
+	pub domain_max: [f32; 3],
+	pub size: usize,
+	pub entries: Vec<[f32; 3]>,
 }
 
 /// Gamma-encoded sRGB to CIELAB against the D50 white of the ICC profile connection space.

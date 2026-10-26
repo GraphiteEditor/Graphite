@@ -29,11 +29,9 @@ std = [
 	"dep:vector-types",
 	"dep:image",
 	"dep:ndarray",
-	"dep:rand",
-	"dep:rand_chacha",
-	"dep:fastnoise-lite",
 	"dep:kurbo",
 	"dep:color",
+	"dep:wgpu-executor",
 ]
 wasm = [
 	"core-types/wasm",
@@ -69,9 +67,6 @@ num_enum = { workspace = true }
 # Workspace std dependencies
 image = { workspace = true, optional = true }
 ndarray = { workspace = true, optional = true }
-rand = { workspace = true, optional = true }
-rand_chacha = { workspace = true, optional = true }
-fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 color = { workspace = true, optional = true }

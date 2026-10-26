@@ -4,6 +4,8 @@ pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
 pub mod fullscreen_vertex;
+#[cfg(feature = "std")]
+pub mod raster_kernel;
 
 /// required by shader macro
 #[cfg(feature = "shader-nodes")]

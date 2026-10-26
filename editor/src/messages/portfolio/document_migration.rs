@@ -497,6 +497,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::BlackAndWhiteNode",
 			"graphene_core::raster::adjustments::BlackAndWhiteNode",
 			"graphene_core::raster::BlackAndWhiteNode",
+			"raster_nodes::adjustments::black_and_white_shader_node::BlackAndWhiteShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -522,6 +523,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::adjustments::BrightnessContrastNode",
 			"graphene_raster_nodes::adjustments::brightness_contrast_classic",
 			"graphene_raster_nodes::adjustments::BrightnessContrastClassicNode",
+			"raster_nodes::adjustments::brightness_contrast_shader_node::BrightnessContrastShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -530,7 +532,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::ChannelMixerNode",
 			"graphene_core::raster::adjustments::ChannelMixerNode",
 			"graphene_core::raster::ChannelMixerNode",
+			"raster_nodes::adjustments::channel_mixer_shader_node::ChannelMixerShaderNodeNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::color_balance::IDENTIFIER,
+		aliases: &["raster_nodes::adjustments::color_balance_shader_node::ColorBalanceShaderNodeNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
@@ -541,6 +548,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::adjustments::ColorOverlayNode",
 			"raster_nodes::generate_curves::ColorOverlayNode",
 			"graphene_raster_nodes::blending_nodes::ColorOverlayNode",
+			"raster_nodes::blending_nodes::color_overlay_shader_node::ColorOverlayShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -561,6 +569,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::ExposureNode",
 			"graphene_core::raster::adjustments::ExposureNode",
 			"graphene_core::raster::ExposureNode",
+			"raster_nodes::adjustments::exposure_shader_node::ExposureShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -569,7 +578,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::gamma_correction::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::adjustments::GammaCorrectionNode", "graphene_core::raster::adjustments::GammaCorrectionNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::GammaCorrectionNode",
+			"graphene_core::raster::adjustments::GammaCorrectionNode",
+			"raster_nodes::adjustments::gamma_correction_shader_node::GammaCorrectionShaderNodeNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::gradient_map::IDENTIFIER,
@@ -588,6 +601,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::HueSaturationNode",
 			"graphene_core::raster::adjustments::HueSaturationNode",
 			"graphene_core::raster::HueSaturationNode",
+			"raster_nodes::adjustments::hue_saturation_shader_node::HueSaturationShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -613,6 +627,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::adjustments::InvertNode",
 			"graphene_core::raster::InvertNode",
 			"graphene_core::raster::InvertRGBNode",
+			"raster_nodes::adjustments::invert_shader_node::InvertShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -621,6 +636,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::LevelsNode",
 			"graphene_core::raster::adjustments::LevelsNode",
 			"graphene_core::raster::LevelsNode",
+			"raster_nodes::adjustments::levels_shader_node::LevelsShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -630,6 +646,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::LuminanceNode",
 			"graphene_core::raster::adjustments::LuminanceNode",
 			"graphene_core::raster::LuminanceNode",
+			"raster_nodes::adjustments::desaturate_shader_node::DesaturateShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -638,6 +655,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::MakeOpaqueNode",
 			"graphene_core::raster::adjustments::MakeOpaqueNode",
 			"graphene_core::raster::ExtractOpaqueNode",
+			"raster_nodes::adjustments::make_opaque_shader_node::MakeOpaqueShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -649,11 +667,16 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_raster_nodes::std_nodes::MaskNode", "graphene_std::raster::MaskNode", "graphene_std::raster::MaskImageNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::raster_nodes::adjustments::photo_filter::IDENTIFIER,
+		aliases: &["raster_nodes::adjustments::photo_filter_shader_node::PhotoFilterShaderNodeNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::posterize::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::PosterizeNode",
 			"graphene_core::raster::adjustments::PosterizeNode",
 			"graphene_core::raster::PosterizeNode",
+			"raster_nodes::adjustments::posterize_shader_node::PosterizeShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -662,7 +685,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::selective_color::IDENTIFIER,
-		aliases: &["graphene_raster_nodes::adjustments::SelectiveColorNode", "graphene_core::raster::adjustments::SelectiveColorNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::SelectiveColorNode",
+			"graphene_core::raster::adjustments::SelectiveColorNode",
+			"raster_nodes::adjustments::selective_color_shader_node::SelectiveColorShaderNodeNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER,
@@ -670,6 +697,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::ThresholdNode",
 			"graphene_core::raster::adjustments::ThresholdNode",
 			"graphene_core::raster::ThresholdNode",
+			"raster_nodes::adjustments::threshold_shader_node::ThresholdShaderNodeNode",
 		],
 	},
 	NodeReplacement {
@@ -678,6 +706,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_raster_nodes::adjustments::VibranceNode",
 			"graphene_core::raster::adjustments::VibranceNode",
 			"graphene_core::raster::VibranceNode",
+			"raster_nodes::adjustments::vibrance_shader_node::VibranceShaderNodeNode",
 		],
 	},
 	// ================================
@@ -3457,6 +3486,50 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				NodeInput::Scope("graphene_std::platform_application_io::WgpuExecutorNode".into()),
 				network_path,
 			);
+		}
+	}
+
+	let raster_kernel_pipeline = NodeInput::scope(graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline::IDENTIFIER.as_str().to_string());
+	let raster_kernel_nodes = {
+		use graphene_std::raster_nodes::adjustments::*;
+		[
+			desaturate::IDENTIFIER,
+			gamma_correction::IDENTIFIER,
+			make_opaque::IDENTIFIER,
+			brightness_contrast::IDENTIFIER,
+			levels::IDENTIFIER,
+			curves::IDENTIFIER,
+			black_and_white::IDENTIFIER,
+			hue_saturation::IDENTIFIER,
+			invert::IDENTIFIER,
+			threshold::IDENTIFIER,
+			gradient_map::IDENTIFIER,
+			vibrance::IDENTIFIER,
+			channel_mixer::IDENTIFIER,
+			selective_color::IDENTIFIER,
+			posterize::IDENTIFIER,
+			exposure::IDENTIFIER,
+			color_balance::IDENTIFIER,
+			photo_filter::IDENTIFIER,
+			color_lookup::IDENTIFIER,
+			image_to_channels::IDENTIFIER,
+			graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::channels_to_image::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::extend_image_to_bounds::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER,
+			graphene_std::raster_nodes::filter::median_filter::IDENTIFIER,
+			graphene_std::raster_nodes::filter::blur::IDENTIFIER,
+		]
+	};
+	if raster_kernel_nodes.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && node.inputs.last() != Some(&raster_kernel_pipeline) {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let value_inputs = node_template.inputs.len() - 1;
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.into_iter().take(value_inputs).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
 		}
 	}
 

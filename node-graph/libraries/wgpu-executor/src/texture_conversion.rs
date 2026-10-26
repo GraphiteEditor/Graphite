@@ -6,19 +6,17 @@ use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
 use raster_types::Image;
 use raster_types::{CPU, GPU, Raster, Texture};
-use wgpu::{Extent3d, TextureFormat};
+use wgpu::Extent3d;
 
 /// Uploads CPU image data to a GPU texture
 fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
-	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
-
-	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), TextureFormat::Rgba8UnormSrgb);
+	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), crate::RASTER_FORMAT);
 	queue.write_texture(
 		texture.as_image_copy(),
-		bytemuck::cast_slice(rgba8_data.as_slice()),
+		bytemuck::cast_slice(image.data.as_slice()),
 		wgpu::TexelCopyBufferLayout {
 			offset: 0,
-			bytes_per_row: Some(4 * image.width),
+			bytes_per_row: Some(16 * image.width),
 			rows_per_image: Some(image.height),
 		},
 		Extent3d {
@@ -34,12 +32,13 @@ fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raste
 ///
 /// Assumptions:
 /// - 2D texture, mip level 0
-/// - 4 bytes-per-pixel RGBA8
+/// - 4 bytes-per-pixel RGBA8, or `RASTER_FORMAT`
 /// - Texture has COPY_SRC usage
 struct RasterGpuToRasterCpuConverter {
 	buffer: Buffer,
 	width: u32,
 	height: u32,
+	format: wgpu::TextureFormat,
 	unpadded_bytes_per_row: u32,
 	padded_bytes_per_row: u32,
 	_source: raster_types::Texture,
@@ -49,7 +48,8 @@ impl RasterGpuToRasterCpuConverter {
 		let texture = data_gpu.data();
 		let width = texture.width();
 		let height = texture.height();
-		let bytes_per_pixel = 4; // RGBA8
+		let format = texture.format();
+		let bytes_per_pixel = if format == crate::RASTER_FORMAT { 16 } else { 4 };
 		let unpadded_bytes_per_row = width * bytes_per_pixel;
 		let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 		let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
@@ -88,6 +88,7 @@ impl RasterGpuToRasterCpuConverter {
 			buffer,
 			width,
 			height,
+			format,
 			unpadded_bytes_per_row,
 			padded_bytes_per_row,
 			// Keep source texture alive
@@ -136,8 +137,12 @@ impl RasterGpuToRasterCpuConverter {
 		for row in 0..self.height as usize {
 			let start = row * row_stride;
 			let row_slice = &view[start..start + row_bytes];
-			for px in row_slice.chunks_exact(4) {
-				cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+			if self.format == crate::RASTER_FORMAT {
+				cpu_data.extend(bytemuck::pod_collect_to_vec::<u8, Color>(row_slice));
+			} else {
+				for px in row_slice.chunks_exact(4) {
+					cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+				}
 			}
 		}
 

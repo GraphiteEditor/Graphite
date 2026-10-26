@@ -26,6 +26,7 @@ pub use raster_types::Texture;
 pub use rendering::vello_scene_builder::VelloSceneBuilder;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
+pub use wgpu::TextureFormat as WgpuTextureFormat;
 pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
 pub use wgpu_sync::Instance as WgpuInstance;
 pub use wgpu_sync::Queue as WgpuQueue;
@@ -35,6 +36,9 @@ pub use wgpu_sync::Surface as WgpuSurface;
 const TEXTURE_CACHE_SIZE: u64 = 1024 * 1024 * 1024; // 1GB
 #[cfg(target_family = "wasm")]
 const TEXTURE_CACHE_SIZE: u64 = 512 * 1024 * 1024; // 512MB
+
+/// The format of every raster texture, holding linear-light straight-alpha values.
+pub const RASTER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
 
 #[derive(dyn_any::DynAny, Clone)]
 pub struct WgpuExecutor {

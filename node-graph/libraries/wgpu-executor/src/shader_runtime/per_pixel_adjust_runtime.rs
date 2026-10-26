@@ -11,7 +11,7 @@ use wgpu::util::BufferInitDescriptor;
 use wgpu::{
 	BindGroupDescriptor, BindGroupEntry, BindGroupLayoutDescriptor, BindGroupLayoutEntry, BindingResource, BindingType, BufferBinding, BufferBindingType, BufferUsages, ColorTargetState, Face,
 	FragmentState, FrontFace, LoadOp, Operations, PipelineLayoutDescriptor, PolygonMode, PrimitiveState, PrimitiveTopology, RenderPassColorAttachment, RenderPassDescriptor, RenderPipelineDescriptor,
-	ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureFormat, TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
+	ShaderModuleDescriptor, ShaderSource, ShaderStages, StoreOp, TextureSampleType, TextureViewDescriptor, TextureViewDimension, VertexState,
 };
 
 pub struct PerPixelAdjustShaderRuntime {
@@ -146,7 +146,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				entry_point: Some(&fragment_name),
 				compilation_options: Default::default(),
 				targets: &[Some(ColorTargetState {
-					format: TextureFormat::Rgba8UnormSrgb,
+					format: crate::RASTER_FORMAT,
 					blend: None,
 					write_mask: Default::default(),
 				})],
@@ -173,7 +173,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				let element = textures.element(index).unwrap();
 				let tex_in = &element.texture;
 				let view_in = tex_in.create_view(&TextureViewDescriptor::default());
-				let format = tex_in.format();
+				let format = crate::RASTER_FORMAT;
 
 				let entries: &[_] = if let Some(arg_buffer) = arg_buffer.as_ref() {
 					&[

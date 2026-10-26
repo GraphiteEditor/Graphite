@@ -33,6 +33,12 @@ impl PipelineCache {
 			.unwrap_or_else(|| panic!("PipelineCache type mismatch: run::<{}>() but init used a different pipeline type", std::any::type_name::<P>(),));
 		pipeline.run(executor, args)
 	}
+
+	/// Runs the pipeline, or returns `None` when it was never initialized because no GPU is available.
+	pub fn try_run<P: Pipeline>(&self, args: &P::Args<'_>) -> Option<P::Out> {
+		self.executor.get()?;
+		Some(self.run::<P>(args))
+	}
 }
 
 impl std::fmt::Debug for PipelineCache {
