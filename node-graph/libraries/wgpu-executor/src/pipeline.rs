@@ -33,6 +33,11 @@ impl PipelineCache {
 		Ok(pipeline.run(executor, args))
 	}
 
+	/// The executor the cache was initialized with, or `None` when no GPU is available.
+	pub fn executor(&self) -> Option<&WgpuExecutor> {
+		self.executor.get()
+	}
+
 	/// Runs the pipeline, or returns `None` when it was never initialized because no GPU is available.
 	pub fn try_run<P: Pipeline>(&self, args: &P::Args<'_>) -> Option<P::Out> {
 		self.executor.get()?;

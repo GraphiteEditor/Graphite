@@ -1,22 +1,39 @@
+use crate::gpu_params;
+use crate::raster_kernel::{RasterKernel, Wgsl, raster_kernel_pipeline, run_raster_kernel};
+use core_types::NodeError;
+use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::Item;
+use core_types::ops::ConvertAsync;
+use core_types::transform::Footprint;
+use glam::{DAffine2, UVec2};
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use raster_types::Image;
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, GPU, Raster};
 use std::cmp::{max, min};
+use wgpu_executor::WgpuPipelineCache;
+use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 
-#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), memoize)]
-fn dehaze(
+#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), placeholder = pending_dehaze)]
+async fn dehaze<T: DehazeRaster + Clone>(
 	_: impl Ctx,
-	image_frame: Item<Raster<CPU>>,
+	#[implementations(Raster<CPU>, Raster<GPU>)] image_frame: Item<T>,
 	#[unit("%")]
 	#[range]
 	#[hard(0..100)]
 	strength: Item<f64>,
-) -> Item<Raster<CPU>> {
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, NodeError> {
 	let strength = *strength.element();
+	T::dehaze(image_frame, strength, pipeline.element()).await
+}
 
+fn pending_dehaze<T: Clone>(image_frame: &Item<T>, _strength: &Item<f64>, _pipeline: &Item<WgpuPipelineCache>) -> Item<T> {
+	image_frame.clone()
+}
+
+fn dehaze_cpu(image_frame: Item<Raster<CPU>>, strength: f64) -> Item<Raster<CPU>> {
 	let (image, attributes) = image_frame.into_parts();
 	let (width, height) = (image.width, image.height);
 
@@ -34,6 +51,157 @@ fn dehaze(
 	let dehazed_image = Image { width, height, data: color_vec };
 
 	Item::from_parts(Raster::new_cpu(dehazed_image), attributes)
+}
+
+/// A raster the Dehaze node processes, on the CPU or the GPU.
+pub trait DehazeRaster: Sized {
+	fn dehaze(image: Item<Self>, strength: f64, pipeline: &WgpuPipelineCache) -> impl Future<Output = Result<Item<Self>, NodeError>> + Send;
+}
+
+impl DehazeRaster for Raster<CPU> {
+	async fn dehaze(image: Item<Self>, strength: f64, _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		Ok(dehaze_cpu(image, strength))
+	}
+}
+
+fn dehaze_input(raster: &Raster<GPU>) -> RasterKernelInput<'_> {
+	RasterKernelInput {
+		raster,
+		output_to_texel: DAffine2::IDENTITY,
+	}
+}
+
+impl DehazeRaster for Raster<GPU> {
+	/// Runs the CPU's algorithm in float without its 8-bit quantization, downloading the dark channel to choose the atmospheric light exactly as the CPU does.
+	/// The guided filter's intermediates stay in [`wgpu_executor::RASTER_FORMAT`] since its variances lose their precision at half-float.
+	async fn dehaze(image: Item<Self>, strength: f64, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		let executor = pipeline.executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to process a GPU raster"))?;
+		let (raster, attributes) = image.into_parts();
+		let size = UVec2::new(raster.texture.width(), raster.texture.height());
+
+		let radius = (PATCH_SIZE / 2) as i32;
+		let eroded = run_raster_kernel(&DehazeErode { radius, vertical: false }, vec![dehaze_input(&raster)], size, pipeline)?;
+		let dark_channel = run_raster_kernel(&DehazeErode { radius, vertical: true }, vec![dehaze_input(&eroded)], size, pipeline)?;
+		let atmospheric_light = estimate_atmospheric_light_gpu(&dark_channel.clone().convert(Footprint::DEFAULT, executor).await);
+
+		let radius = RADIUS as i32;
+		let guide = DehazeGuideHorizontal {
+			radius,
+			strength: (strength / 100.) as f32,
+		};
+		let guide = run_raster_kernel(&guide, vec![dehaze_input(&dark_channel)], size, pipeline)?;
+		let coefficients = DehazeGuideVertical { radius, epsilon: EPSILON as f32 };
+		let coefficients = run_raster_kernel(&coefficients, vec![dehaze_input(&guide)], size, pipeline)?;
+		let coefficients = run_raster_kernel(&DehazeCoefficientsHorizontal { radius }, vec![dehaze_input(&coefficients)], size, pipeline)?;
+		let recover = DehazeRecover {
+			radius,
+			minimum_transmission: TX,
+			atmospheric_light,
+		};
+		let dehazed = run_raster_kernel(&recover, vec![dehaze_input(&coefficients), dehaze_input(&raster)], size, pipeline)?;
+
+		Ok(Item::from_parts(dehazed, attributes))
+	}
+}
+
+/// The average color of the pixels with the brightest dark channel, chosen like [`estimate_atmospheric_light`], from each pixel's color with its dark channel as alpha.
+fn estimate_atmospheric_light_gpu(dark_channel: &Raster<CPU>) -> Color {
+	let pixels = &dark_channel.data;
+	let num_pixels = ((TOP_PERCENT / 100.) * pixels.len() as f64).ceil() as usize;
+
+	let mut order: Vec<usize> = (0..pixels.len()).collect();
+	order.select_nth_unstable_by(num_pixels - 1, |&a, &b| pixels[b].a().total_cmp(&pixels[a].a()).then(a.cmp(&b)));
+
+	let mut atm_sum = [0., 0., 0.];
+	for &index in &order[..num_pixels] {
+		let pixel = pixels[index];
+		atm_sum[0] += pixel.r() as f64;
+		atm_sum[1] += pixel.g() as f64;
+		atm_sum[2] += pixel.b() as f64;
+	}
+
+	let num_pixels = num_pixels as f64;
+	Color::from_rgbaf32_unchecked((atm_sum[0] / num_pixels) as f32, (atm_sum[1] / num_pixels) as f32, (atm_sum[2] / num_pixels) as f32, 1.)
+}
+
+gpu_params! {
+	/// One axis of the dark channel's erosion, the horizontal pass eroding each pixel's darkest channel and the vertical pass the horizontal pass's alpha,
+	/// both writing the pixel's color clamped to 0 to 1 with the eroded value as alpha.
+	#[derive(Clone)]
+	struct DehazeErode {
+		radius: i32,
+		vertical: bool,
+	}
+}
+
+impl RasterKernel for DehazeErode {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/dehaze_erode.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// Horizontal means of the guidance luma, the transmission, the luma squared, and the luma times the transmission.
+	#[derive(Clone)]
+	struct DehazeGuideHorizontal {
+		radius: i32,
+		strength: f32,
+	}
+}
+
+impl RasterKernel for DehazeGuideHorizontal {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/dehaze_guide_horizontal.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// Completes the guided filter's means vertically into its linear coefficients.
+	#[derive(Clone)]
+	struct DehazeGuideVertical {
+		radius: i32,
+		epsilon: f32,
+	}
+}
+
+impl RasterKernel for DehazeGuideVertical {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/dehaze_guide_vertical.wgsl"))
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct DehazeCoefficientsHorizontal {
+		radius: i32,
+	}
+}
+
+impl RasterKernel for DehazeCoefficientsHorizontal {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/dehaze_coefficients_horizontal.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// Completes the coefficients' means vertically into the refined transmission, recovering the image from its haze.
+	#[derive(Clone)]
+	struct DehazeRecover {
+		radius: i32,
+		minimum_transmission: f32,
+		atmospheric_light: Color,
+	}
+}
+
+impl RasterKernel for DehazeRecover {
+	const INPUTS: usize = 2;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/dehaze_recover.wgsl"))
+	}
 }
 
 // There is no real point in modifying these values because they do not change the final result all that much.

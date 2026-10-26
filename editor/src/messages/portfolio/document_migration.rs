@@ -3543,11 +3543,13 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER,
 			graphene_std::raster_nodes::filter::median_filter::IDENTIFIER,
 			graphene_std::raster_nodes::filter::blur::IDENTIFIER,
+			graphene_std::raster_nodes::image_color_palette::image_color_palette::IDENTIFIER,
+			graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
 		]
 	};
-	if raster_kernel_nodes.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && node.inputs.last() != Some(&raster_kernel_pipeline) {
+	if raster_kernel_nodes.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && !node.inputs.contains(&raster_kernel_pipeline) {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
-		let value_inputs = node_template.inputs.len() - 1;
+		let value_inputs = node_template.inputs.iter().position(|input| *input == raster_kernel_pipeline)?;
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		for (index, input) in old_inputs.into_iter().take(value_inputs).enumerate() {
