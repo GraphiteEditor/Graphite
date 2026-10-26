@@ -30,6 +30,16 @@ fn unpremultiply(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f3
 }
 
 @fragment
+fn unpremultiply_to_linear(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
+	let color = textureLoad(source, vec2<i32>(position.xy), 0);
+	if color.a <= 0. {
+		return vec4<f32>(0.);
+	}
+
+	return vec4<f32>(srgb_to_linear(color.rgb / color.a), color.a);
+}
+
+@fragment
 fn premultiply(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
 	var color = textureLoad(source, vec2<i32>(position.xy), 0);
 	if parameters.source_is_srgb != 0u {
@@ -43,4 +53,10 @@ fn linear_to_srgb(linear: vec3<f32>) -> vec3<f32> {
 	let low = linear * 12.92;
 	let high = 1.055 * pow(linear, vec3<f32>(1. / 2.4)) - 0.055;
 	return select(high, low, linear <= vec3<f32>(0.0031308));
+}
+
+fn srgb_to_linear(srgb: vec3<f32>) -> vec3<f32> {
+	let low = srgb / 12.92;
+	let high = pow((srgb + 0.055) / 1.055, vec3<f32>(2.4));
+	return select(high, low, srgb <= vec3<f32>(0.04045));
 }

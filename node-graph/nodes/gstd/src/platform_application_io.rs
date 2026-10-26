@@ -248,24 +248,22 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let view = DAffine2::from_scale(resolution.as_dvec2() / aabb.size()) * DAffine2::from_translation(-aabb.start);
 	let render_params = RenderParams {
-		footprint,
+		footprint: Footprint { transform: view, ..footprint },
+		render_output_type: rendering::RenderOutputType::Vello,
 		for_export: true,
 		..Default::default()
 	};
-	let texture = match executor.render_vello(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) {
+	let texture = match executor.render_vello_raster(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) {
 		Ok(texture) => texture,
 		Err(error) => {
 			log::error!("Failed to rasterize: {error}");
 			return List::new();
 		}
 	};
-	// Downloaded and uploaded again since Vello renders the texture in an 8-bit format rather than the format of GPU rasters
-	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor.clone()).await;
-	let raster = raster.convert(Footprint::DEFAULT, executor);
 
 	// The input's layers stay reachable so the renderer can expose their click targets to the editor's tools
 	List::new_from_item(
-		Item::new_from_element(raster)
+		Item::new_from_element(Raster::new_gpu(texture))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, data),
 	)

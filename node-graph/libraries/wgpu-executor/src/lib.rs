@@ -75,12 +75,21 @@ impl WgpuExecutor {
 	/// Renders the document scene `draw` draws, with its content placed by `view`, into a new texture of `size` with straight alpha.
 	/// A render with more content than Vello GPU can hold calls `draw` again for each part it splits into.
 	pub fn render_vello(&self, size: UVec2, view: DAffine2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> Result<Texture> {
+		self.render_vello_with_format(size, view, draw, wgpu::TextureFormat::Rgba8Unorm)
+	}
+
+	/// Renders like [`Self::render_vello`], but into a new [`RASTER_FORMAT`] texture holding linear-light values, as a GPU raster's.
+	pub fn render_vello_raster(&self, size: UVec2, view: DAffine2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> Result<Texture> {
+		self.render_vello_with_format(size, view, draw, RASTER_FORMAT)
+	}
+
+	fn render_vello_with_format(&self, size: UVec2, view: DAffine2, draw: &mut dyn FnMut(&mut VelloSceneBuilder), format: wgpu::TextureFormat) -> Result<Texture> {
 		let limit = self.context().device.limits().max_texture_dimension_2d;
 		if size.x > limit || size.y > limit {
 			anyhow::bail!("Render size {size} exceeds the GPU's texture size limit of {limit}");
 		}
 
-		let texture = self.request_texture(size);
+		let texture = self.request_texture_with_format(size, format);
 		let view = vello_gpu::kurbo::Affine::new(view.to_cols_array());
 
 		let mut canvas = self.inner.document_canvas.lock().unwrap_or_else(PoisonError::into_inner);
