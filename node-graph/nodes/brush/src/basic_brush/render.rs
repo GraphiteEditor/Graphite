@@ -183,7 +183,7 @@ pub(super) fn render(pipeline: &BasicBrushPipeline, executor: &WgpuExecutor, fra
 	let updated = (!missing.is_empty()).then(|| executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT));
 	let composite = executor.request_texture_with_format(crop.size, COMPOSITE_FORMAT);
 	let scratch = Field::request(executor, region.size);
-	let output = executor.request_texture_with_format(crop.size, wgpu_executor::RASTER_FORMAT);
+	let output = executor.request_texture_with_format(crop.size, executor.raster_format());
 	let mut recorder = Recorder::new(pipeline, executor, &region);
 
 	if let Some(updated) = &updated {

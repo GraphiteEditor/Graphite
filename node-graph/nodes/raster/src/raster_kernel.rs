@@ -411,12 +411,16 @@ fn run<K: ToGpuParams + 'static>(
 		.ok_or_else(|| NodeError::new("A GPU is required to process a GPU raster"))
 }
 
-/// Runs `kernel` on its inputs, each placed by the affine from output pixel coordinates to its texel coordinates, into a raster of `output_size`.
-pub fn run_raster_kernel<K: RasterKernel>(kernel: &K, inputs: Vec<RasterKernelInput<'_>>, output_size: UVec2, pipeline: &WgpuPipelineCache) -> Result<Raster<GPU>, NodeError> {
-	run_raster_kernel_with_format(kernel, inputs, output_size, RASTER_FORMAT, pipeline)
+fn raster_format(pipeline: &WgpuPipelineCache) -> WgpuTextureFormat {
+	pipeline.executor().map_or(RASTER_FORMAT, WgpuExecutor::raster_format)
 }
 
-/// Runs `kernel` like [`run_raster_kernel`] into a texture of `output_format` instead of [`RASTER_FORMAT`], such as a [`FILTERABLE_FORMAT`] intermediate a [`RasterKernel::FILTERED`] kernel can read.
+/// Runs `kernel` on its inputs, each placed by the affine from output pixel coordinates to its texel coordinates, into a raster of `output_size`.
+pub fn run_raster_kernel<K: RasterKernel>(kernel: &K, inputs: Vec<RasterKernelInput<'_>>, output_size: UVec2, pipeline: &WgpuPipelineCache) -> Result<Raster<GPU>, NodeError> {
+	run_raster_kernel_with_format(kernel, inputs, output_size, raster_format(pipeline), pipeline)
+}
+
+/// Runs `kernel` like [`run_raster_kernel`] into a texture of `output_format` instead of the executor's raster format, such as a [`FILTERABLE_FORMAT`] intermediate a [`RasterKernel::FILTERED`] kernel can read.
 pub fn run_raster_kernel_with_format<K: RasterKernel>(
 	kernel: &K,
 	inputs: Vec<RasterKernelInput<'_>>,
@@ -464,7 +468,7 @@ impl Adjust for Raster<GPU> {
 			raster: &self,
 			output_to_texel: DAffine2::IDENTITY,
 		};
-		run(kernel, map_color_module::<K>, false, vec![input], size, RASTER_FORMAT, pipeline)
+		run(kernel, map_color_module::<K>, false, vec![input], size, raster_format(pipeline), pipeline)
 	}
 }
 
