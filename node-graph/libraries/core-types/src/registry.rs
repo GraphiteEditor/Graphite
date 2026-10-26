@@ -16,6 +16,7 @@ pub struct NodeMetadata {
 	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
 	pub memoize: bool,
+	pub footprint_invariant: bool,
 	pub inject_scope: bool,
 	pub asynchronous: bool,
 	pub output_fields: Option<DestructureMetadata>,

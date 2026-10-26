@@ -219,6 +219,8 @@ impl ContextFeatures {
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub footprint_invariant: bool,
 }
 
 impl From<&[ContextFeature]> for ContextDependencies {
@@ -247,7 +249,11 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				_ => ContextFeatures::empty(),
 			};
 		}
-		Self { extract, inject }
+		Self {
+			extract,
+			inject,
+			footprint_invariant: false,
+		}
 	}
 }
 

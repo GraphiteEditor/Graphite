@@ -293,6 +293,14 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
+	pub(crate) fn footprint_invariance_violations(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter(|(_, node)| node.context_dependencies.footprint_invariant && node.upstream_context_features.contains(ContextFeatures::FOOTPRINT))
+			.map(|(_, node)| GraphError::new(node, GraphErrorType::FootprintDependentInput))
+			.collect()
+	}
+
 	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
@@ -567,6 +575,7 @@ pub enum GraphErrorType {
 		inputs: String,
 		valid: Vec<NodeIOTypes>,
 	},
+	FootprintDependentInput,
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -610,6 +619,10 @@ impl Debug for GraphErrorType {
 				)
 			}
 			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
+			GraphErrorType::FootprintDependentInput => write!(
+				f,
+				"Warning: an upstream node adapts to the visible canvas area, so this node's output changes when the view is panned or zoomed"
+			),
 		}
 	}
 }
@@ -1148,7 +1161,11 @@ mod test {
 			identifier: ProtoNodeIdentifier::new(name),
 			call_argument: concrete!(()),
 			construction_args,
-			context_dependencies: ContextDependencies { extract, inject },
+			context_dependencies: ContextDependencies {
+				extract,
+				inject,
+				..Default::default()
+			},
 			..Default::default()
 		};
 		let none = ContextFeatures::empty();
@@ -1178,6 +1195,51 @@ mod test {
 			features_of(graphene_core::context_modification::context_modification::IDENTIFIER.as_str()),
 			ContextFeatures::ANIMATION_TIME
 		);
+	}
+
+	#[test]
+	fn footprint_invariant_nodes_warn_only_when_their_inputs_read_the_footprint() {
+		let node = |name: &'static str, inputs: Vec<NodeId>, dependencies: ContextDependencies| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			context_dependencies: dependencies,
+			..Default::default()
+		};
+		let reader = ContextDependencies {
+			extract: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let footprint_injector = ContextDependencies {
+			inject: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let invariant = ContextDependencies {
+			footprint_invariant: true,
+			..Default::default()
+		};
+		let warnings = |with_injector: bool| {
+			let mut nodes = vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2).into()), vec![])),
+				(NodeId(1), node("reader", vec![NodeId(0)], reader)),
+			];
+			if with_injector {
+				nodes.push((NodeId(2), node("injector", vec![NodeId(1)], footprint_injector)));
+			}
+			let output = NodeId(nodes.len() as u64);
+			nodes.push((output, node("invariant", vec![NodeId(output.0 - 1)], invariant)));
+
+			let mut network = ProtoNetwork { inputs: vec![], output, nodes };
+			network.insert_context_nullification_nodes().unwrap();
+			network.footprint_invariance_violations()
+		};
+
+		let violations = warnings(false);
+		assert_eq!(violations.len(), 1);
+		assert_eq!(violations[0].identifier, "invariant");
+		assert!(violations[0].error == GraphErrorType::FootprintDependentInput);
+
+		assert!(warnings(true).is_empty());
 	}
 
 	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {

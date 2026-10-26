@@ -59,6 +59,7 @@ pub type EvaluationError = Box<[(Arc<dyn std::error::Error + Send + Sync>, Box<[
 pub struct CompilationResponse {
 	result: Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)>,
 	node_graph_errors: GraphErrors,
+	node_graph_warnings: GraphErrors,
 }
 
 pub enum NodeGraphUpdate {
@@ -506,7 +507,11 @@ impl NodeGraphExecutor {
 					}
 				}
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
-					let CompilationResponse { node_graph_errors, result } = execution_response;
+					let CompilationResponse {
+						node_graph_errors,
+						node_graph_warnings,
+						result,
+					} = execution_response;
 
 					// TODO: Eventually remove this document upgrade code
 					// The migration's temporary redirected-export compilations must not push types or a graph view to the frontend
@@ -530,6 +535,7 @@ impl NodeGraphExecutor {
 							responses.add(NodeGraphMessage::UpdateTypes {
 								resolved_types: incomplete_delta,
 								node_graph_errors,
+								node_graph_warnings,
 							});
 
 							responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
@@ -541,6 +547,7 @@ impl NodeGraphExecutor {
 					responses.add(NodeGraphMessage::UpdateTypes {
 						resolved_types: type_delta,
 						node_graph_errors,
+						node_graph_warnings,
 					});
 				}
 				NodeGraphUpdate::EyedropperPreview(raster) => {
