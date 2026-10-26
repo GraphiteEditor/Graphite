@@ -678,10 +678,12 @@ impl RasterKernel for Mandelbrot {
 			r#"
 			let c = vec2<f32>(coord) * vec2<f32>(texel[0], texel[1]) + vec2<f32>(corner[0], corner[1]);
 			var z = vec2<f32>(0.);
-			for (var iteration = 0u; iteration < 255u; iteration++) {
+			for (var iteration = 0u; iteration < 1024u; iteration++) {
 				z = vec2<f32>(z.x * z.x - z.y * z.y, 2. * z.x * z.y) + c;
-				if dot(z, z) > 4. {
-					return vec4<f32>(vec3<f32>(f32(iteration) / 255.), 1.);
+				let magnitude_squared = dot(z, z);
+				if magnitude_squared > 65536. {
+					let smooth_iteration = f32(iteration) + 1. - log2(0.5 * log2(magnitude_squared));
+					return vec4<f32>(vec3<f32>(clamp(smooth_iteration / 255., 0., 1.)), 1.);
 				}
 			}
 			return vec4<f32>(1.);
