@@ -1121,9 +1121,11 @@ impl PathToolData {
 						Some((opp_handle_pos - opp_anchor_pos).length())
 					});
 
-					// Make handles colinear if opposite handle is zero length
+					// A retracted opposite handle is joined to this one, so from the next move on the drag pulls the pair out symmetrically
 					if opposite_handle_length == Some(0.) {
-						shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
+						let modification_type = VectorModificationType::SetG1Continuous { handles: handle_pair, enabled: true };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						self.opposing_handle_lengths = Some(shape_editor.opposing_handle_lengths(document));
 						return true;
 					}
 				}
@@ -4085,6 +4087,37 @@ mod test_path_tool {
 		assert!(
 			matches!(selected[..], [ManipulatorPointId::Anchor(_)]),
 			"only the Alt-clicked anchor should be selected, not {selected:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn alt_dragging_a_sharp_anchor_pulls_out_a_symmetric_pair_of_handles() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		// Alt is held from the press on the middle corner through a drag sideways
+		let pulled = B + DVec2::new(60., 0.);
+		editor.select_tool(ToolType::Path).await;
+		editor.move_mouse(B.x, B.y, ModifierKeys::ALT, MouseKeys::empty()).await;
+		editor.left_mousedown(B.x, B.y, ModifierKeys::ALT).await;
+		editor.move_mouse(B.x + 30., B.y, ModifierKeys::ALT, MouseKeys::LEFT).await;
+		editor.move_mouse(pulled.x, pulled.y, ModifierKeys::ALT, MouseKeys::LEFT).await;
+		editor.left_mouseup(pulled.x, pulled.y, ModifierKeys::ALT).await;
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		let anchor = vector.anchor_points().nth(1).expect("the path should have a middle anchor");
+		let handles: Vec<DVec2> = vector
+			.all_connected(anchor)
+			.filter_map(|handle| vector.position_of(handle.to_manipulator_point()))
+			.map(|position| to_viewport.transform_point2(position) - B)
+			.collect();
+		assert_eq!(handles.len(), 2, "the corner should have two handles, not {handles:?}");
+		assert!(
+			handles[0].length() > 10. && (handles[0] + handles[1]).length() < 1e-6,
+			"the handles should be pulled out mirroring each other, not {handles:?}"
 		);
 	}
 
