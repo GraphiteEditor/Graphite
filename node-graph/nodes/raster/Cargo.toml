@@ -42,8 +42,6 @@ wgpu-executor = { workspace = true }
 bytemuck = { workspace = true }
 glam = { workspace = true }
 num_enum = { workspace = true }
-image = { workspace = true }
-ndarray = { workspace = true }
 serde = { workspace = true, optional = true }
 color = { workspace = true }
 thiserror = { workspace = true }

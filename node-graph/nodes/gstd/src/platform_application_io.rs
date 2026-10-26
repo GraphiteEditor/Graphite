@@ -13,8 +13,8 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster};
-use raster_nodes::raster_kernel::{ReadPixels, raster_kernel_pipeline};
+use graphic_types::raster_types::{CPU, GPU, Raster, Storage};
+use raster_nodes::raster_kernel::raster_kernel_pipeline;
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
@@ -174,7 +174,13 @@ fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"), placeholder = pending_image_bytes)]
 async fn image_to_bytes(_: impl Ctx, image: Item<Raster<GPU>>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Resource>, NodeError> {
-	let image = image.into_element().read_pixels(pipeline.element()).await?;
+	let image = image.into_element();
+	if image.is_empty() {
+		return Ok(Item::new_from_element(Resource::empty()));
+	}
+
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to read a GPU raster"))?;
+	let image = image.convert(Footprint::DEFAULT, executor).await;
 	let bytes: Vec<u8> = image
 		.data
 		.iter()
