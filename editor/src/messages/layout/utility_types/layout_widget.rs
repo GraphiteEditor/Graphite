@@ -56,11 +56,11 @@ define_layout_target!(
 	DataPanelContext,
 	/// The inspected node and the path to the data shown, at the left of the Data panel's top bar.
 	DataPanelPath,
-	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `DialogMessage::Display` message.
 	DialogButtons,
-	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the contents of the dialog's primary column. Must be shown with the `DialogMessage::Display` message.
 	DialogColumn1,
-	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `DialogMessage::Display` message.
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
@@ -127,7 +127,7 @@ pub trait DialogLayoutHolder: LayoutHolder {
 		self.send_layout(responses, LayoutTarget::DialogColumn1);
 		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
 		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
-		responses.add(FrontendMessage::DisplayDialog {
+		responses.add(DialogMessage::Display {
 			icon: Self::ICON.into(),
 			title: Self::TITLE.into(),
 		});

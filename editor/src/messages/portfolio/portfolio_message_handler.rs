@@ -187,6 +187,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(document_id) = self.active_document_id {
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
+
+				responses.add(DialogMessage::Redisplay);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
