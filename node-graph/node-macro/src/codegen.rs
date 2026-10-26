@@ -856,6 +856,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let inspector = &attributes.inspector_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let icon = &attributes.icon.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let memoize_flag = attributes.memoize;
+	let footprint_invariant_flag = attributes.footprint_invariant;
 	let asynchronous_flag = parsed.is_async;
 	let inject_scope_flag = attributes.inject_scope;
 	// A node returning a `Destructure` struct records its fields as output connectors
@@ -1083,6 +1084,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					inspector: #inspector,
 					context_features: vec![#(ContextFeature::#context_features,)*],
 					memoize: #memoize_flag,
+					footprint_invariant: #footprint_invariant_flag,
 					inject_scope: #inject_scope_flag,
 					asynchronous: #asynchronous_flag,
 					output_fields: #output_fields,

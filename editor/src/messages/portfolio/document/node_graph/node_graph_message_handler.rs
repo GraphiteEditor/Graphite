@@ -2064,7 +2064,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					{
 						nodes.push(*node_id);
 					}
-					for error in &network_interface.resolved_types.node_graph_errors {
+					let resolved_types = &network_interface.resolved_types;
+					for error in resolved_types.node_graph_errors.iter().chain(&resolved_types.node_graph_warnings) {
 						if error.node_path.contains(node_id) {
 							nodes.push(*node_id);
 						}
@@ -2596,7 +2597,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
+			NodeGraphMessage::UpdateTypes {
+				resolved_types,
+				node_graph_errors,
+				node_graph_warnings,
+			} => {
 				// Hidden passthrough nodes let a wire borrow its color and rank from an upstream node, so any type change can restyle wires whose own node is unchanged.
 				// Compare each displayed wire's style (color, rank) across the update and unload only those that changed, so value-only recompiles keep their built wire paths.
 				let types_changed = !resolved_types.add.is_empty() || !resolved_types.remove.is_empty();
@@ -2617,7 +2622,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.collect::<Vec<_>>()
 				});
 
-				network_interface.resolved_types.update(resolved_types, node_graph_errors);
+				network_interface.resolved_types.update(resolved_types, node_graph_errors, node_graph_warnings);
 
 				if let Some(styles_before) = styles_before {
 					for (input, style_before) in styles_before {
@@ -3816,7 +3821,7 @@ impl NodeGraphMessageHandler {
 			})
 			.collect();
 		// Evaluation errors come from the last graph that compiled, so a type error hides them
-		let errors = match graph_errors.is_empty() {
+		let mut errors: Vec<_> = match graph_errors.is_empty() {
 			true => self
 				.evaluation_errors
 				.iter()
@@ -3828,6 +3833,16 @@ impl NodeGraphMessageHandler {
 				.collect(),
 			false => graph_errors,
 		};
+		let warnings = network_interface
+			.resolved_types
+			.node_graph_warnings
+			.iter()
+			.filter(|warning| inside(&warning.node_path))
+			.map(|warning| match warning.node_path.len() == depth + 1 {
+				true => (warning.node_path[depth], format!("{:?}", warning.error)),
+				false => (warning.node_path[depth], "Node graph warning within this node".to_string()),
+			});
+		errors.extend(warnings);
 
 		let mut shown = HashSet::new();
 		errors

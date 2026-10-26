@@ -57,6 +57,7 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) serialize: Option<Path>,
 	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork
 	pub(crate) memoize: bool,
+	pub(crate) footprint_invariant: bool,
 	/// Whether this node provides a scope
 	pub(crate) inject_scope: bool,
 	/// Fn producing an placeholder value used while node evaluation is pending
@@ -455,6 +456,7 @@ impl Parse for NodeFnAttributes {
 		let mut shader_node = None;
 		let mut serialize = None;
 		let mut memoize = false;
+		let mut footprint_invariant = false;
 		let mut inject_scope = false;
 		let mut placeholder = None;
 		let mut no_partial = false;
@@ -600,6 +602,17 @@ impl Parse for NodeFnAttributes {
 					}
 					memoize = true;
 				}
+				// Warns at compile time when an upstream node of this node reads the footprint.
+				//
+				// Example usage:
+				// #[node_macro::node(..., footprint_invariant, ...)]
+				"footprint_invariant" => {
+					let path = meta.require_path_only()?;
+					if footprint_invariant {
+						return Err(Error::new_spanned(path, "Multiple 'footprint_invariant' attributes are not allowed"));
+					}
+					footprint_invariant = true;
+				}
 				// Instructs the preprocessor to make this node available as a scope.
 				// Other nodes can then access it with `#[scope(node::IDENTIFIER)]`.
 				//
@@ -642,7 +655,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'inject_scope', 'placeholder', and 'no_partial'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'footprint_invariant', 'inject_scope', 'placeholder', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -676,6 +689,7 @@ impl Parse for NodeFnAttributes {
 			shader_node,
 			serialize,
 			memoize,
+			footprint_invariant,
 			inject_scope,
 			placeholder,
 			no_partial,
@@ -1419,6 +1433,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
@@ -1497,6 +1512,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
@@ -1592,6 +1608,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
@@ -1666,6 +1683,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
@@ -1752,6 +1770,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
@@ -1841,6 +1860,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
@@ -1915,6 +1935,7 @@ mod tests {
 				shader_node: None,
 				serialize: None,
 				memoize: false,
+				footprint_invariant: false,
 				inject_scope: false,
 				placeholder: None,
 				no_partial: false,
