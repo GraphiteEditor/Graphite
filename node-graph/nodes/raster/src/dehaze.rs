@@ -40,7 +40,7 @@ async fn dehaze(
 	let dark_channel = run_raster_kernel(&DehazeErode { radius, vertical: true }, vec![dehaze_input(&eroded)], size, pipeline)?;
 	let atmospheric_light = estimate_atmospheric_light(&dark_channel.clone().convert(Footprint::DEFAULT, executor).await);
 
-	// The guided filter's intermediates stay in `wgpu_executor::RASTER_FORMAT` since its variances lose their precision at half-float
+	// The guided filter's intermediates stay in the executor's raster format rather than `FILTERABLE_FORMAT` since its variances lose their precision at half-float
 	let radius = RADIUS as i32;
 	let guide = DehazeGuideHorizontal {
 		radius,
