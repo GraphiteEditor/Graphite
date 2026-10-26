@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
 	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
-	replaceable_paint_chain, reverse_direction_tooltip_description,
+	paint_target_layer, replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snap_session::{Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use glam::DMat2;
@@ -1486,7 +1486,8 @@ impl Fsm for GradientToolFsmState {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
 					// List-based gradients and blank layers render no geometry, so a click on empty canvas yields no layer.
 					// Fall back to a selected gradient list layer, or one blank enough to take a fresh whole-expanse gradient.
-					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
+					let clicked_layer = document.click_based_on_position(document_mouse).map(|layer| paint_target_layer(layer, &document.network_interface));
+					let selected_layer = clicked_layer.or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()

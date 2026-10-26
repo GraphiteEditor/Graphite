@@ -1110,6 +1110,23 @@ pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, network_interfac
 	NodeGraphLayer::new(layer, network_interface).find_node_inputs(identifier).is_some()
 }
 
+/// The layer a paint tool's click on `layer` should paint. A Boolean Operation's children draw only as its combined result,
+/// so a click on one paints the outermost boolean layer containing it, where the color is seen.
+pub fn paint_target_layer(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> LayerNodeIdentifier {
+	let boolean_operation = DefinitionIdentifier::ProtoNode(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER);
+
+	layer
+		.ancestors(network_interface.document_metadata())
+		.filter(|&ancestor| ancestor != LayerNodeIdentifier::ROOT_PARENT)
+		.filter(|&ancestor| {
+			NodeGraphLayer::new(ancestor, network_interface)
+				.upstream_visible_node_id_from_name_in_layer(&boolean_operation)
+				.is_some()
+		})
+		.last()
+		.unwrap_or(layer)
+}
+
 /// An immutable reference to a layer within the document node graph for easy access.
 pub struct NodeGraphLayer<'a> {
 	network_interface: &'a NodeNetworkInterface,

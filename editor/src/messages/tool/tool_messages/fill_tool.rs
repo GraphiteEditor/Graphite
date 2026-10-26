@@ -3,7 +3,9 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::tool::common_functionality::color_selector::solid;
-use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, replaceable_paint_chain};
+use crate::messages::tool::common_functionality::graph_modification_utils::{
+	NodeGraphLayer, get_upstream_color_value_node_id, gradient_chain_target_input, paint_target_layer, replaceable_paint_chain,
+};
 use graphene_std::color::SRGBA8;
 use graphene_std::raster::color::Color;
 use graphene_std::vector::misc::dvec2_to_point;
@@ -246,7 +248,7 @@ fn routes_to_color_chain(layer: LayerNodeIdentifier, network_interface: &NodeNet
 /// The layer the fill acts on: the one under the cursor, or else a selected, unlocked layer with no geometry of its own
 /// (blank, or painted whole by a color chain), since such a layer renders nothing a click could land on.
 fn fill_target_layer(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<LayerNodeIdentifier> {
-	document.click(input, viewport).or_else(|| {
+	document.click(input, viewport).map(|layer| paint_target_layer(layer, &document.network_interface)).or_else(|| {
 		document
 			.network_interface
 			.selected_nodes()
@@ -334,6 +336,48 @@ mod test_fill {
 		assert_eq!(fills.len(), 1);
 		let color = fills.first().unwrap().element();
 		assert_eq!(SRGBA8::from(*color), SRGBA8::from(Color::YELLOW));
+	}
+
+	#[tokio::test]
+	async fn boolean_child_click_fills_the_boolean_layer() {
+		use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+		use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::vector::misc::BooleanOperation;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Ellipse, 50., 50., 150., 150., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::BooleanOperation(BooleanOperation::Union),
+			})
+			.await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// Inside the rectangle child only, away from the ellipse
+		editor.select_primary_color(Color::GREEN).await;
+		editor.click_tool(ToolType::Fill, MouseKeys::LEFT, DVec2::new(10., 10.), ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let boolean_layer = document
+			.metadata()
+			.all_layers()
+			.find(|layer| layer.has_children(document.metadata()))
+			.expect("the union should be a layer with children");
+		let fill_id = NodeGraphLayer::new(boolean_layer, &document.network_interface)
+			.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::ProtoNode(fill::IDENTIFIER))
+			.expect("the boolean layer should get a Fill after its operation");
+		let paint = document
+			.network_interface
+			.document_network()
+			.nodes
+			.get(&fill_id)
+			.and_then(|node| node.input(fill::PaintInput))
+			.and_then(|input| input.as_value());
+		assert!(matches!(paint, Some(TaggedValue::Color(color)) if *color == Color::GREEN));
 	}
 
 	#[tokio::test]
