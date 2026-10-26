@@ -285,10 +285,19 @@
 
 			// As wide as its contents, unlike the Inspector's buttons that share their row, and flush within an outline like the sections'
 			.text-button {
+				position: relative;
 				flex-basis: auto;
 				padding-left: calc(var(--wire-center) - 16px / 2);
 				--button-background-color: none;
-				box-shadow: inset 0 0 0 1px var(--section-outline);
+
+				&::after {
+					content: "";
+					position: absolute;
+					inset: 0;
+					border: 1px solid var(--section-outline);
+					border-radius: 2px;
+					pointer-events: none;
+				}
 
 				&:hover:not(.disabled) {
 					--button-background-color: var(--color-5-dullgray);
@@ -359,24 +368,31 @@
 		}
 
 		.header {
+			position: relative;
 			text-align: left;
 			align-items: center;
 			display: flex;
 			flex: 0 0 24px;
 			padding: 0;
 			border: 0;
-			border-radius: 4px;
 			background: none;
+
 			// The section's outline, continuing up around the header without changing its size
-			box-shadow: inset 0 0 0 1px var(--section-outline);
+			&::after {
+				content: "";
+				position: absolute;
+				inset: 0;
+				border: 1px solid var(--section-outline);
+				border-radius: 4px;
+				pointer-events: none;
+			}
 
 			&.expanded {
-				border-radius: 4px 4px 0 0;
 				// Open at the bottom, where the body's sides carry on
-				box-shadow:
-					inset 1px 0 0 var(--section-outline),
-					inset -1px 0 0 var(--section-outline),
-					inset 0 1px 0 var(--section-outline);
+				&::after {
+					border-bottom: none;
+					border-radius: 4px 4px 0 0;
+				}
 
 				.expand-arrow::after {
 					transform: rotate(90deg);
@@ -459,18 +475,16 @@
 
 		> .body {
 			padding: 0 7px;
-			padding-top: 1px;
-			margin-top: -1px;
 			background: var(--color-3-darkgray);
 			border: 1px solid var(--section-outline);
 			// No line between it and the header, which shares its outline
-			border-top-color: transparent;
+			border-top: none;
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 
 			> .widget-span.row {
 				&:first-child {
-					margin-top: calc(4px - 1px);
+					margin-top: 4px;
 				}
 
 				&:last-child {
