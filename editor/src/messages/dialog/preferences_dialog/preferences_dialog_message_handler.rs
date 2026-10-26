@@ -405,7 +405,7 @@ impl PreferencesDialogMessageHandler {
 					\n\
 					Disabling UI acceleration may slightly degrade performance, so this should be used as a workaround only if issues are observed with displaying the UI. This setting may become enabled automatically if Graphite launches, detects that it cannot draw the UI normally, and restarts in compatibility mode.\n\
 					\n\
-					*Default: Off.*
+					*Default: On.*
 					"
 				.trim();
 
@@ -416,14 +416,11 @@ impl PreferencesDialogMessageHandler {
 					CheckboxInput::new(preferences.disable_ui_acceleration)
 						.tooltip_label("Disable UI Acceleration")
 						.tooltip_description(ui_acceleration_description)
-						.on_update(|number_input: &CheckboxInput| Message::Batched {
-							messages: Box::new([
-								PreferencesDialogMessage::MayRequireRestart.into(),
-								PreferencesMessage::DisableUIAcceleration {
-									disable_ui_acceleration: number_input.checked,
-								}
-								.into(),
-							]),
+						.on_update(|number_input: &CheckboxInput| {
+							PreferencesMessage::DisableUIAcceleration {
+								disable_ui_acceleration: number_input.checked,
+							}
+							.into()
 						})
 						.for_label(checkbox_id)
 						.widget_instance(),
@@ -442,8 +439,6 @@ impl PreferencesDialogMessageHandler {
 				let vsync_description = "
 					Render frames with vertical synchronization (v-sync) to prevent visual tearing within Graphite and the operating system compositor. This introduces increased input latency which is more noticeable on lower refresh rate displays. Future versions of Graphite will aim to reduce the macOS-specific latency without tearing artifacts.\n\
 					\n\
-					The application will restart for this change to take effect.\n\
-					\n\
 					*Default: Off.*
 					"
 				.trim();
@@ -457,9 +452,7 @@ impl PreferencesDialogMessageHandler {
 					CheckboxInput::new(vsync_checked)
 						.tooltip_label("Enable V-Sync")
 						.tooltip_description(vsync_description)
-						.on_update(|checkbox_input: &CheckboxInput| Message::Batched {
-							messages: Box::new([PreferencesDialogMessage::MayRequireRestart.into(), PreferencesMessage::VSync { vsync: checkbox_input.checked }.into()]),
-						})
+						.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VSync { vsync: checkbox_input.checked }.into())
 						.for_label(checkbox_id)
 						.widget_instance(),
 					TextLabel::new("Enable V-Sync")

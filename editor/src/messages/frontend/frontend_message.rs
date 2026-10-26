@@ -126,7 +126,7 @@ pub enum FrontendMessage {
 	},
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerSavePreferences {
+	TriggerUpdatePreferences {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
 	},

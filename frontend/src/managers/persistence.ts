@@ -22,7 +22,7 @@ export function createPersistenceManager(subscriptions: SubscriptionsRouter, edi
 		return next;
 	};
 
-	subscriptions.subscribeFrontendMessage("TriggerSavePreferences", (data) => enqueue(() => saveEditorPreferences(data.preferences)));
+	subscriptions.subscribeFrontendMessage("TriggerUpdatePreferences", (data) => enqueue(() => saveEditorPreferences(data.preferences)));
 
 	subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", () => enqueue(() => loadEditorPreferences(editor)));
 
@@ -39,7 +39,7 @@ export function destroyPersistenceManager() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
-	subscriptions.unsubscribeFrontendMessage("TriggerSavePreferences");
+	subscriptions.unsubscribeFrontendMessage("TriggerUpdatePreferences");
 	subscriptions.unsubscribeFrontendMessage("TriggerLoadPreferences");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceWriteState");
 	subscriptions.unsubscribeFrontendMessage("TriggerPersistenceReadState");

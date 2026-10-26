@@ -28,7 +28,7 @@ pub(crate) struct RenderState {
 }
 
 impl RenderState {
-	pub(crate) fn new(window: &Window, executor: WgpuExecutor, present_mode: Option<PresentMode>) -> Self {
+	pub(crate) fn new(window: &Window, executor: WgpuExecutor) -> Self {
 		let context = executor.context();
 		let size = window.surface_size();
 		let surface = window.create_surface(&context.instance);
@@ -42,7 +42,7 @@ impl RenderState {
 			color_space: wgpu::SurfaceColorSpace::Auto,
 			width: size.width,
 			height: size.height,
-			present_mode: present_mode.unwrap_or(surface_caps.present_modes[0]),
+			present_mode: surface_caps.present_modes[0],
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
 			desired_maximum_frame_latency: 1,
@@ -223,6 +223,13 @@ impl RenderState {
 	pub(crate) fn set_overlays_scene(&mut self, scene: VelloSceneBuilder) {
 		self.surface_outdated = true;
 		self.overlays_scene = Some(scene);
+	}
+
+	pub(crate) fn set_present_mode(&mut self, present_mode: Option<PresentMode>) {
+		let context = self.executor.context();
+		self.config.present_mode = present_mode.unwrap_or(self.surface.get_capabilities(&context.adapter).present_modes[0]);
+		self.surface.configure(&context.device, &self.config);
+		self.surface_outdated = true;
 	}
 
 	fn render_overlays(&mut self, scene: VelloSceneBuilder) {

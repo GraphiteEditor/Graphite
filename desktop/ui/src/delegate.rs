@@ -56,4 +56,8 @@ impl BrowserDelegate {
 	pub(crate) fn receive_web_message(&self, message: &[u8]) {
 		self.send(EventMessage::WebMessage(message.to_vec()));
 	}
+
+	pub(crate) fn render_process_terminated(&self) {
+		self.send(EventMessage::RenderProcessTerminated);
+	}
 }

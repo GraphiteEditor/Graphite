@@ -26,11 +26,6 @@ impl EventQueue {
 		let _ = self.sender.send(event);
 	}
 
-	pub(crate) fn terminate(&self, event: UiEvent) {
-		let _ = self.sender.send(event);
-		self.terminated.store(true, Ordering::SeqCst);
-	}
-
 	pub(crate) fn mark_terminated(&self) {
 		self.terminated.store(true, Ordering::SeqCst);
 	}

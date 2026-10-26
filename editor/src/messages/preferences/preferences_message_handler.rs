@@ -32,15 +32,10 @@ pub struct PreferencesMessageHandler {
 
 impl PreferencesMessageHandler {
 	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
-		let mut requiring_restart = Vec::new();
-		if self.disable_ui_acceleration != other.disable_ui_acceleration {
-			requiring_restart.push("Disable UI Acceleration");
-		}
-		#[cfg(target_os = "macos")]
-		if self.vsync != other.vsync {
-			requiring_restart.push("Enable V-Sync");
-		}
-		requiring_restart.into_iter().map(String::from).collect()
+		let requiring_restart: Vec<String> = Vec::new();
+		let _ = other;
+
+		requiring_restart
 	}
 
 	pub fn get_selection_mode(&self) -> SelectionMode {
@@ -153,7 +148,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 		}
 
-		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
+		responses.add(FrontendMessage::TriggerUpdatePreferences { preferences: self.clone() });
 	}
 
 	advertise_actions!(PreferencesMessageDiscriminant;

@@ -183,6 +183,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					node_icons: document_node_definitions::collect_node_icons(),
 					node_types: document_node_definitions::collect_node_types(),
 				});
+
+				if let Some(document_id) = self.active_document_id {
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+				}
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {

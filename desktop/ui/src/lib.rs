@@ -1,7 +1,7 @@
 use std::process::ExitCode;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use crate::remote::messages::HostControlMessage;
@@ -47,7 +47,7 @@ impl UiContext<Setup> {
 	}
 
 	pub fn start(self, config: UiConfig) -> Result<UiContext<Started>, UiError> {
-		let acceleration = platform::accelerated_paint(matches!(config.acceleration, Acceleration::Disabled));
+		let acceleration = platform::accelerated_paint(config.acceleration);
 		let handle = remote::spawn::spawn_host(acceleration)?;
 		Ok(UiContext { inner: Arc::new(handle) })
 	}
@@ -65,14 +65,14 @@ impl UiContext<Started> {
 		let surface = frames::FrameSurface::new(device.clone(), queue.clone());
 
 		let (queue, events) = events::EventQueue::new();
-		let shutdown_complete = remote::spawn::start_instance(&self.inner, surface, queue.clone())?;
+		remote::spawn::start_instance(&self.inner, surface.clone(), queue.clone())?;
 
 		Ok(UiInstance {
 			inner: Arc::new(UiInstanceInner {
-				host: self.inner.clone(),
+				host: Mutex::new(self.inner.clone()),
+				surface,
 				events: Mutex::new(events),
 				queue,
-				shutdown_complete: Mutex::new(shutdown_complete),
 				shutdown_started: AtomicBool::new(false),
 			}),
 		})
@@ -142,22 +142,24 @@ pub struct UiInstance {
 }
 
 pub(crate) struct UiInstanceInner {
-	host: Arc<HostHandle>,
+	host: Mutex<Arc<HostHandle>>,
+	surface: frames::FrameSurface,
 	events: Mutex<Receiver<UiEvent>>,
 	queue: events::EventQueue,
-	shutdown_complete: Mutex<Receiver<()>>,
 	shutdown_started: AtomicBool,
 }
 
 impl UiInstance {
 	pub fn send(&self, command: UiCommand) {
-		let shared = &self.inner;
+		let Ok(host) = self.inner.host.lock() else {
+			return;
+		};
 		match command {
-			UiCommand::Input(event) => shared.host.send(HostControlMessage::Input(event)),
-			UiCommand::Resized { width, height } => shared.host.send(HostControlMessage::UpdateViewInfo(view::ViewInfoUpdate::Size { width, height })),
-			UiCommand::ScaleChanged(scale) => shared.host.send(HostControlMessage::UpdateViewInfo(view::ViewInfoUpdate::Scale(scale))),
-			UiCommand::Refresh => shared.host.send(HostControlMessage::RefreshViewInfo),
-			UiCommand::Message(message) => shared.host.send(HostControlMessage::SendWebMessage(message)),
+			UiCommand::Input(event) => host.send(HostControlMessage::Input(event)),
+			UiCommand::Resized { width, height } => host.send(HostControlMessage::UpdateViewInfo(view::ViewInfoUpdate::Size { width, height })),
+			UiCommand::ScaleChanged(scale) => host.send(HostControlMessage::UpdateViewInfo(view::ViewInfoUpdate::Scale(scale))),
+			UiCommand::Refresh => host.send(HostControlMessage::RefreshViewInfo),
+			UiCommand::Message(message) => host.send(HostControlMessage::SendWebMessage(message)),
 		}
 	}
 
@@ -179,6 +181,17 @@ impl UiInstance {
 		}
 	}
 
+	pub fn restart(&self, config: UiConfig) -> Result<(), UiError> {
+		let shared = &self.inner;
+		let mut host = shared.host.lock().unwrap_or_else(PoisonError::into_inner);
+		host.shutdown();
+
+		let restarted = remote::spawn::spawn_host(platform::accelerated_paint(config.acceleration))?;
+		remote::spawn::start_instance(&restarted, shared.surface.clone(), shared.queue.clone())?;
+		*host = Arc::new(restarted);
+		Ok(())
+	}
+
 	pub fn shutdown(&self) {
 		self.inner.shutdown();
 	}
@@ -195,8 +208,8 @@ impl UiInstanceInner {
 		if self.shutdown_started.swap(true, Ordering::SeqCst) {
 			return;
 		}
-		if let Ok(receiver) = self.shutdown_complete.lock() {
-			self.host.shutdown(&receiver);
+		if let Ok(host) = self.host.lock() {
+			host.shutdown();
 		}
 		self.queue.mark_terminated();
 	}

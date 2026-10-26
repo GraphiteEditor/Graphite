@@ -337,21 +337,16 @@ impl ViewportInfo {
 	}
 }
 
-/// Counts clicks the way the operating system does, so a single click is never taken as the end of a double-click.
-/// The count is decided when a button is pressed and reported again when it's released.
 #[derive(Default)]
 struct ClickTracker {
-	/// The latest press of any button, since pressing another button in between ends a chain of clicks.
 	latest_press: Option<Press>,
 }
 
-/// A button press, kept to tell whether the next press continues its chain of clicks.
 struct Press {
 	button: MouseButton,
 	time: Instant,
 	position: (i32, i32),
 	count: u32,
-	/// Whether the button was released away from where it was pressed, which makes the press a drag rather than a click.
 	dragged: bool,
 }
 
@@ -362,7 +357,6 @@ impl ClickTracker {
 		let within_travel = |from: (i32, i32)| from.0.abs_diff(position.0) as usize <= MULTICLICK_ALLOWED_TRAVEL && from.1.abs_diff(position.1) as usize <= MULTICLICK_ALLOWED_TRAVEL;
 
 		match state {
-			// A press continues the chain when it comes soon after a click of the same button and lands near it
 			ElementState::Pressed => {
 				let count = match &self.latest_press {
 					Some(previous) if previous.button == button && !previous.dragged && now.saturating_duration_since(previous.time) <= MULTICLICK_TIMEOUT && within_travel(previous.position) => {
@@ -379,7 +373,6 @@ impl ClickTracker {
 				});
 				count
 			}
-			// A release reports the count of its press, unless the pointer traveled away in between, which makes it a drag that ends the chain
 			ElementState::Released => {
 				let Some(press) = self.latest_press.as_mut().filter(|press| press.button == button) else {
 					return 1;
