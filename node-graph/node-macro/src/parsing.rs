@@ -908,6 +908,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
+	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time
+	let constant = extract_attribute(attrs, "constant").is_some();
+
 	// Validate data field attributes
 	if is_data_field {
 		if default_value.is_some() {
@@ -923,6 +926,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			return Err(Error::new_spanned(
 				&pat_ident,
 				"Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters",
+			));
+		}
+		if constant {
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot be #[constant]. They are internal state, not node parameters",
 			));
 		}
 	}
@@ -970,9 +979,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	// splits a number into fractional-progress and whole-element-number fields
 	let multiline = extract_attribute(attrs, "multiline").is_some();
 	let progression = extract_attribute(attrs, "progression").is_some();
-
-	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time
-	let constant = extract_attribute(attrs, "constant").is_some();
 
 	let number_display_decimal_places = extract_attribute(attrs, "display_decimal_places")
 		.map(|attr| {
@@ -1993,6 +1999,24 @@ mod tests {
 		let input = quote!(
 			fn invalid_node(_: (), #[default(())] node: impl Node<(), Output = i32>) -> i32 {
 				node.eval(())
+			}
+		);
+		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	#[should_panic(expected = "Data fields (#[data]) cannot be #[constant]")]
+	fn test_constant_data_field() {
+		let attr = quote!(category("Invalid"));
+		let input = quote!(
+			fn invalid_node(
+				_: impl Ctx,
+				input: i32,
+				#[data]
+				#[constant]
+				cache: i32,
+			) -> i32 {
+				input
 			}
 		);
 		parse_node_fn(attr, input).unwrap();
