@@ -75,7 +75,7 @@ impl D3D11Importer {
 			)
 		};
 
-		Ok(texture)
+		Ok(texture.into())
 	}
 
 	fn import_via_vulkan(&self, device: &wgpu::Device) -> TextureImportResult {
@@ -122,7 +122,7 @@ impl D3D11Importer {
 			)
 		};
 
-		Ok(texture)
+		Ok(texture.into())
 	}
 
 	fn import_d3d11_handle_to_d3d12(&self, hal_device: &<wgpu::hal::api::Dx12 as wgpu::hal::Api>::Device) -> Result<windows::Win32::Graphics::Direct3D12::ID3D12Resource, TextureImportError> {

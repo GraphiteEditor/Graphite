@@ -1,5 +1,7 @@
 use cef::sys::cef_color_type_t;
 
+use super::resample::Resampler;
+
 #[cfg(target_os = "windows")]
 pub(crate) mod d3d11;
 #[cfg(target_os = "linux")]
@@ -7,7 +9,7 @@ pub(crate) mod dmabuf;
 #[cfg(target_os = "macos")]
 pub(crate) mod iosurface;
 
-pub(crate) type TextureImportResult = Result<wgpu::Texture, TextureImportError>;
+pub(crate) type TextureImportResult = Result<ImportedTexture, TextureImportError>;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum TextureImportError {
@@ -18,9 +20,6 @@ pub(crate) enum TextureImportError {
 	#[cfg(not(target_os = "macos"))]
 	#[error("Hardware acceleration not available: {reason}")]
 	HardwareUnavailable { reason: String },
-	#[error("Vulkan operation failed: {operation}")]
-	#[cfg(target_os = "linux")]
-	VulkanError { operation: String },
 	#[error("Platform-specific error: {message}")]
 	PlatformError { message: String },
 }
@@ -89,6 +88,115 @@ impl TryFrom<&cef::AcceleratedPaintInfo> for ContentRect {
 
 pub(crate) trait TextureImporter {
 	fn import_to_wgpu(&self, device: &wgpu::Device) -> TextureImportResult;
+}
+
+pub(crate) struct ImportedTexture {
+	texture: wgpu::Texture,
+	ownership: Option<OwnershipTransfer>,
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+struct OwnershipTransfer {
+	acquire: wgpu::CommandBuffer,
+	release: wgpu::CommandBuffer,
+	state: wgpu::TextureUses,
+}
+
+impl From<wgpu::Texture> for ImportedTexture {
+	fn from(texture: wgpu::Texture) -> Self {
+		Self { texture, ownership: None }
+	}
+}
+
+impl ImportedTexture {
+	pub(super) fn copy(self, device: &wgpu::Device, queue: &wgpu_sync::Queue, resampler: &Resampler, content_rect: ContentRect) -> wgpu::Texture {
+		let imported = self.texture;
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+			label: Some("CEF Frame Copy Encoder"),
+		});
+		let output = match content_rect.mapping(imported.width(), imported.height()) {
+			ContentMapping::Identity => {
+				let output = device.create_texture(&wgpu::TextureDescriptor {
+					label: Some("CEF Imported Frame Copy"),
+					size: imported.size(),
+					mip_level_count: 1,
+					sample_count: 1,
+					dimension: wgpu::TextureDimension::D2,
+					format: imported.format(),
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
+					view_formats: &[],
+				});
+				encoder.copy_texture_to_texture(
+					wgpu::TexelCopyTextureInfo {
+						texture: &imported,
+						mip_level: 0,
+						origin: wgpu::Origin3d::ZERO,
+						aspect: wgpu::TextureAspect::All,
+					},
+					wgpu::TexelCopyTextureInfo {
+						texture: &output,
+						mip_level: 0,
+						origin: wgpu::Origin3d::ZERO,
+						aspect: wgpu::TextureAspect::All,
+					},
+					imported.size(),
+				);
+				output
+			}
+			ContentMapping::Scaled(content_rect) => {
+				let output = device.create_texture(&wgpu::TextureDescriptor {
+					label: Some("CEF Imported Scaled Frame Copy"),
+					size: wgpu::Extent3d {
+						width: content_rect.source_width,
+						height: content_rect.source_height,
+						depth_or_array_layers: 1,
+					},
+					mip_level_count: 1,
+					sample_count: 1,
+					dimension: wgpu::TextureDimension::D2,
+					format: imported.format(),
+					usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::RENDER_ATTACHMENT,
+					view_formats: &[],
+				});
+				let size = wgpu::Extent3d {
+					width: content_rect.width,
+					height: content_rect.height,
+					depth_or_array_layers: 1,
+				};
+				resampler.encode(
+					&mut encoder,
+					&imported,
+					wgpu::Origin3d {
+						x: content_rect.x,
+						y: content_rect.y,
+						z: 0,
+					},
+					size,
+					&output,
+				);
+				output
+			}
+		};
+
+		match self.ownership {
+			Some(OwnershipTransfer { acquire, release, state }) => {
+				encoder.transition_resources(
+					std::iter::empty(),
+					std::iter::once(wgpu::TextureTransition {
+						texture: &imported,
+						selector: None,
+						state,
+					}),
+				);
+				queue.submit([acquire, encoder.finish(), release]);
+			}
+			None => {
+				queue.submit([encoder.finish()]);
+			}
+		}
+
+		output
+	}
 }
 
 fn wgpu_format(format: cef_color_type_t) -> Result<wgpu::TextureFormat, TextureImportError> {
