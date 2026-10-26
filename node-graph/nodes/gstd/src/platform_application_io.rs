@@ -16,7 +16,7 @@ use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use rendering::{Render, RenderParams};
-use raster_nodes::raster_kernel::raster_kernel_pipeline;
+use raster_nodes::raster_kernel::{ReadPixels, raster_kernel_pipeline};
 use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
@@ -173,10 +173,10 @@ fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
-#[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
+#[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"), placeholder = pending_image_bytes)]
+async fn image_to_bytes(_: impl Ctx, image: Item<Raster<GPU>>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Resource>, NodeError> {
+	let image = image.into_element().read_pixels(pipeline.element()).await?;
 	let bytes: Vec<u8> = image
-		.element()
 		.data
 		.iter()
 		.flat_map(|color| {
@@ -185,7 +185,11 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 		})
 		.collect();
 
-	Item::new_from_element(Resource::new(bytes))
+	Ok(Item::new_from_element(Resource::new(bytes)))
+}
+
+fn pending_image_bytes(_image: &Item<Raster<GPU>>, _pipeline: &Item<::wgpu_executor::WgpuPipelineCache>) -> Item<Resource> {
+	Item::new_from_element(Resource::empty())
 }
 
 /// Loads binary from URLs and local asset paths.

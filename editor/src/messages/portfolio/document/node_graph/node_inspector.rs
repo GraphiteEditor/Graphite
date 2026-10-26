@@ -1368,8 +1368,8 @@ fn type_choice_sections(offered: &[Type]) -> Vec<Vec<Type>> {
 		vec![
 			concrete!(Graphic),
 			concrete!(Vector),
-			concrete!(Raster<CPU>),
 			concrete!(Raster<GPU>),
+			concrete!(Raster<CPU>),
 			concrete!(Color),
 			concrete!(Gradient),
 			concrete!(String),
