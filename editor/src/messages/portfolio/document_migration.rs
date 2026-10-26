@@ -3511,6 +3511,50 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	let raster_kernel_pipeline = NodeInput::scope(graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline::IDENTIFIER.as_str().to_string());
+	let raster_kernel_nodes = {
+		use graphene_std::raster_nodes::adjustments::*;
+		[
+			desaturate::IDENTIFIER,
+			gamma_correction::IDENTIFIER,
+			make_opaque::IDENTIFIER,
+			brightness_contrast::IDENTIFIER,
+			levels::IDENTIFIER,
+			curves::IDENTIFIER,
+			black_and_white::IDENTIFIER,
+			hue_saturation::IDENTIFIER,
+			invert::IDENTIFIER,
+			threshold::IDENTIFIER,
+			gradient_map::IDENTIFIER,
+			vibrance::IDENTIFIER,
+			channel_mixer::IDENTIFIER,
+			selective_color::IDENTIFIER,
+			posterize::IDENTIFIER,
+			exposure::IDENTIFIER,
+			color_balance::IDENTIFIER,
+			photo_filter::IDENTIFIER,
+			color_lookup::IDENTIFIER,
+			image_to_channels::IDENTIFIER,
+			graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::channels_to_image::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::extend_image_to_bounds::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER,
+			graphene_std::raster_nodes::filter::median_filter::IDENTIFIER,
+			graphene_std::raster_nodes::filter::blur::IDENTIFIER,
+		]
+	};
+	if raster_kernel_nodes.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && node.inputs.last() != Some(&raster_kernel_pipeline) {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let value_inputs = node_template.inputs.len() - 1;
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		for (index, input) in old_inputs.into_iter().take(value_inputs).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+		}
+	}
+
 	// A value input stored as a List-form TypeDefault adopts the definition's current default when the connector's declared default has since changed (e.g. the connector was ranked down to Item).
 	// The red-slash no-paint choice shares that stored form but is a deliberate value, not a stale disconnect default, so it is exempt.
 	if let Some(definition) = resolve_document_node_type(&reference) {
@@ -4114,7 +4158,8 @@ mod tests {
 
 		let desaturate_node = node(1);
 		assert_eq!(desaturate_node.implementation, DocumentNodeImplementation::ProtoNode(desaturate::IDENTIFIER));
-		assert_eq!(desaturate_node.inputs, [NodeInput::node(NodeId(0), 0), method]);
+		let pipeline = NodeInput::scope(graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline::IDENTIFIER.as_str().to_string());
+		assert_eq!(desaturate_node.inputs, [NodeInput::node(NodeId(0), 0), method, pipeline]);
 
 		let brightness_contrast = node(2);
 		assert_eq!(

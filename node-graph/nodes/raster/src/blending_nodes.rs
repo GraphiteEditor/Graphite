@@ -1,10 +1,13 @@
-use crate::adjust::Adjust;
+use crate::raster_kernel::{Adjust, MapColor, Wgsl, raster_kernel_pipeline};
+use crate::{gpu_param_enum, gpu_params};
+use core_types::Interrupt;
 use core_types::list::Item;
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
 use no_std_types::color::Color;
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
+use wgpu_executor::WgpuPipelineCache;
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
@@ -31,10 +34,11 @@ fn mix_colors(
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
 #[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
-fn color_overlay<T: Adjust<Color>>(
+fn color_overlay<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
+		Raster<GPU>,
 		Color,
 		Gradient,
 	)]
@@ -46,19 +50,38 @@ fn color_overlay<T: Adjust<Color>>(
 	#[hard(0..100)]
 	#[default(100.)]
 	opacity: Item<f64>,
-) -> Item<T> {
-	let mut image = image;
-	let color = color.into_element();
-	let blend_mode = blend_mode.into_element();
-	let opacity = (opacity.into_element() / 100.) as f32;
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	let kernel = ColorOverlay {
+		color: color.into_element(),
+		blend_mode: blend_mode.into_element(),
+		opacity: (opacity.into_element() / 100.) as f32,
+	};
+	Ok(image.adjust(&kernel, pipeline.element())?)
+}
 
-	image.element_mut().adjust(|pixel| {
-		let overlay = apply_blend_mode(color, *pixel, blend_mode);
-		let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity;
+gpu_param_enum!(i32: BlendMode);
+
+gpu_params! {
+	#[derive(Clone)]
+	struct ColorOverlay {
+		color: Color,
+		blend_mode: BlendMode,
+		opacity: f32,
+	}
+}
+
+impl MapColor for ColorOverlay {
+	fn map_cpu(&self, pixel: Color) -> Color {
+		let overlay = apply_blend_mode(self.color, pixel, self.blend_mode);
+		let mix = |image: f32, overlay: f32| image + (overlay - image) * self.opacity;
 
 		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
-	});
-	image
+	}
+
+	fn wgsl() -> Wgsl {
+		Wgsl::function(format!("{}\n{}", include_str!("wgsl/blending.wgsl"), include_str!("wgsl/color_overlay.wgsl")))
+	}
 }
 
 #[cfg(test)]
@@ -86,8 +109,9 @@ mod test {
 			overlay_color.into(),
 			BlendMode::Multiply.into(),
 			opacity.into(),
+			Item::default(),
 		);
-		let result = result.into_element();
+		let result = result.unwrap().into_element();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
