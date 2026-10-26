@@ -16,24 +16,6 @@ fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raste
 
 	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), crate::RASTER_FORMAT);
 
-	if image.width == 0 || image.height == 0 {
-		queue.write_texture(
-			texture.as_image_copy(),
-			bytemuck::bytes_of(&Color::TRANSPARENT),
-			wgpu::TexelCopyBufferLayout {
-				offset: 0,
-				bytes_per_row: Some(16),
-				rows_per_image: Some(1),
-			},
-			Extent3d {
-				width: 1,
-				height: 1,
-				depth_or_array_layers: 1,
-			},
-		);
-		return texture;
-	}
-
 	queue.write_texture(
 		texture.as_image_copy(),
 		bytemuck::cast_slice(image.data.as_slice()),
