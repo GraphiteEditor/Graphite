@@ -14,9 +14,9 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster, Storage};
-use rendering::{Render, RenderParams};
+use graphic_types::raster_types::{GPU, Raster, Storage};
 use raster_nodes::raster_kernel::raster_kernel_pipeline;
+use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
@@ -327,20 +327,12 @@ fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: I
 	Item::new_from_element(executor)
 }
 
-/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Raster"), icon("NodeUploadTexture"), memoize)]
-fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
-	let executor = executor.into_element();
-	let (raster, attributes) = content.into_parts();
-
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use core_types::Color;
 	use glam::DVec2;
+	use graphic_types::raster_types::CPU;
 
 	#[tokio::test]
 	async fn rasterize_renders_the_footprint_area_at_its_resolution() {
@@ -354,9 +346,11 @@ mod tests {
 			..Default::default()
 		};
 
-		let output = rasterize_with_vello(data, footprint, executor).await;
+		let output = rasterize_with_vello(data, footprint, executor.clone()).await;
 
-		let image = output.iter_element_values().next().expect("Rasterize should output one image").data();
+		let raster = output.iter_element_values().next().expect("Rasterize should output one image").clone();
+		let raster: Raster<CPU> = raster.convert(Footprint::DEFAULT, executor).await;
+		let image = raster.data();
 		assert_eq!((image.width, image.height), (4, 4));
 		for x in 0..4 {
 			let pixel = image.data[(4 + x) as usize];

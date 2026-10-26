@@ -3880,11 +3880,13 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
-	// The Upload Texture node's old wrapper-network form maps onto its proto node form, which draws the executor from scope
-	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
-		&& name == "Upload Texture"
+	// The removed Upload Texture node, in its proto node form or its old wrapper-network form, degrades to a passthrough of its content since rasters now load onto the GPU
+	if matches!(
+		document.network_interface.reference(node_id, network_path),
+		Some(DefinitionIdentifier::ProtoNode(identifier)) if identifier.as_str().ends_with("::UploadTextureNode")
+	) || matches!(document.network_interface.reference(node_id, network_path), Some(DefinitionIdentifier::Network(name)) if name == "Upload Texture")
 	{
-		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(content) = old_inputs.first() {
@@ -4101,7 +4103,6 @@ mod tests {
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
-		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
 	}
 
 	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead
@@ -4620,6 +4621,28 @@ mod tests {
 			"the CPU raster default should become the GPU raster default"
 		);
 		assert!(matches!(migrated, NodeInput::Value { exposed: true, .. }), "the exposed flag should be kept");
+	}
+
+	#[test]
+	fn upload_texture_becomes_passthrough() {
+		let node_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		let mut template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)
+			.expect("the definition should exist")
+			.default_node_template();
+		template.implementation = NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::platform_application_io::UploadTextureNode"));
+		template.inputs = vec![
+			NodeInput::type_default(item!(Raster<GPU>), true),
+			NodeInput::scope("graphene_std::platform_application_io::WgpuExecutorNode"),
+		];
+		document.network_interface.insert_node(node_id, template, &[]);
+
+		migrate(&mut document);
+
+		let node = &document.network_interface.document_network().nodes[&node_id];
+		assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
+		assert_eq!(node.inputs.len(), 1, "the executor scope input should be dropped");
+		assert_eq!(node.inputs[0].as_value(), Some(&TaggedValue::TypeDefault(item!(Raster<GPU>))), "the content should be kept");
 	}
 
 	#[test]
