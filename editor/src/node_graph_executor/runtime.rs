@@ -23,7 +23,7 @@ use graphene_std::runtime::AsyncRuntime;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
-use graphene_std::{Artboard, Context, Graphic, NodeError, Poll};
+use graphene_std::{Artboard, Context, ContextFeatures, ContextOverrides, Graphic, NodeError, OwnedContextImpl, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::sync::Arc;
@@ -54,7 +54,6 @@ pub struct NodeRuntime {
 	node_graph_warnings: GraphErrors,
 	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
 	stale_thumbnails: HashSet<Vec<NodeId>>,
-	/// The layers whose thumbnails the frontend shows, the only ones rendered.
 	thumbnails_in_view: HashSet<NodeId>,
 
 	/// The node the Data panel inspects.
@@ -66,7 +65,6 @@ pub struct NodeRuntime {
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, VectorGeometry>,
-	/// The node and the hash of the context each layer's vector data was last evaluated from, to evaluate it again only when either changes.
 	vector_evaluations: HashMap<NodeId, (NodeId, u64)>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
@@ -89,6 +87,7 @@ pub enum GraphRuntimeRequest {
 	},
 	/// The full path from the root network to the node the Data panel inspects, or empty for none.
 	Inspect(Vec<NodeId>),
+	InspectContextOverrides(ContextOverrides),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -167,6 +166,7 @@ impl NodeRuntime {
 		let mut eyedropper = None;
 		let mut execution = None;
 		let mut thumbnails_in_view = None;
+		let mut inspect_again = false;
 
 		for request in self.pending_export.is_none().then_some(&self.receiver).into_iter().flat_map(Receiver::try_iter) {
 			match request {
@@ -193,10 +193,16 @@ impl NodeRuntime {
 					Some(GraphRuntimeRequest::GraphUpdate(update)) => update.node_to_inspect = node_to_inspect,
 					_ => self.inspect_state = InspectState::new(node_to_inspect),
 				},
+				GraphRuntimeRequest::InspectContextOverrides(overrides) => {
+					if let Some(inspect_state) = &mut self.inspect_state {
+						inspect_state.overrides = overrides;
+						inspect_again = true;
+					}
+				}
 			}
 		}
 
-		// An execution renders the thumbnails that came into view, otherwise they're rendered on their own without evaluating the graph
+		// Without an execution to render them along with, the thumbnails that came into view are rendered on their own
 		if let Some((layers, document_id)) = thumbnails_in_view {
 			self.thumbnails_in_view = layers;
 			if execution.is_none() && graph.is_none() {
@@ -224,7 +230,7 @@ impl NodeRuntime {
 
 		for request in requests {
 			match request {
-				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) => {}
+				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
 				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
 					self.editor_preferences = preferences.clone();
 					self.editor_api = PlatformEditorApi {
@@ -238,7 +244,10 @@ impl NodeRuntime {
 					}
 				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }) => {
-					self.inspect_state = InspectState::new(node_to_inspect);
+					match &mut self.inspect_state {
+						Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
+						_ => self.inspect_state = InspectState::new(node_to_inspect),
+					}
 
 					self.old_graph = Some(network.clone());
 					self.resources = resources;
@@ -380,6 +389,13 @@ impl NodeRuntime {
 				}
 			}
 		}
+
+		// Without an execution to send it along with, the inspected node is evaluated again with its new overrides once the graph is up to date
+		if inspect_again && let Some(inspect_state) = &mut self.inspect_state {
+			let inspect_result = inspect_state.access(&self.executor);
+			self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
+		}
+
 		None
 	}
 
@@ -419,7 +435,6 @@ impl NodeRuntime {
 			(types, format!("{e:?}"))
 		});
 		self.async_runtime().retain_sources(self.executor.sources());
-
 		result
 	}
 
@@ -473,7 +488,6 @@ impl NodeRuntime {
 				continue;
 			};
 
-			// Vector monitors feed the path editing tools, from their content evaluated again whenever it or the context it was evaluated with changes
 			if !records_vector(&self.executor, monitor_node_path) {
 				continue;
 			}
@@ -485,17 +499,15 @@ impl NodeRuntime {
 				continue;
 			}
 
-			let output = match tree.evaluate(content_node, &context) {
-				Ok(Poll::Final(output) | Poll::Partial(output)) => output,
-				Ok(Poll::Fallback(boxed)) => boxed.0,
-				_ => continue,
+			let Some(output) = tree.evaluate(content_node, &context).ok().and_then(evaluated_output) else {
+				continue;
 			};
-			let geometry = match output.downcast::<List<Vector>>() {
-				Ok(list) => VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(&list, 0).cloned().unwrap_or_default()),
-				Err(output) => match output.downcast::<Item<Vector>>() {
-					Ok(item) => VectorGeometry::from_item(&item),
-					Err(_) => continue,
-				},
+			let geometry = if let Some(list) = output.downcast_ref::<List<Vector>>() {
+				VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(list, 0).cloned().unwrap_or_default())
+			} else if let Some(item) = output.downcast_ref::<Item<Vector>>() {
+				VectorGeometry::from_item(item)
+			} else {
+				continue;
 			};
 			self.vector_modify.insert(parent_network_node_id, geometry);
 			self.vector_evaluations.insert(parent_network_node_id, (content_node, context_hash));
@@ -511,11 +523,9 @@ impl NodeRuntime {
 		for monitor_node_path in std::mem::take(&mut self.stale_thumbnails) {
 			let Some(parent_network_node_id) = monitor_parent_node(&monitor_node_path) else { continue };
 
-			// Vector monitors have no thumbnail
 			if records_vector(&self.executor, &monitor_node_path) {
 				continue;
 			}
-
 			if !self.thumbnails_in_view.contains(&parent_network_node_id) {
 				self.stale_thumbnails.insert(monitor_node_path);
 				continue;
@@ -619,20 +629,38 @@ fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> b
 		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
 }
 
+fn context_features(context: &OwnedContextImpl) -> InspectedContext {
+	use graphene_std::{ExtractAnimationTime, ExtractFootprint, ExtractIndex, ExtractPointerPosition, ExtractPosition, ExtractRealTime, ExtractVarArgs};
+
+	InspectedContext {
+		features: ContextOverrides {
+			footprint: context.try_footprint().copied(),
+			real_time: context.try_real_time(),
+			animation_time: context.try_animation_time(),
+			pointer_position: context.try_pointer_position(),
+			index: context.try_index().map(|index| index.collect()),
+		},
+		positions: context.try_position().map(|positions| positions.collect()).unwrap_or_default(),
+		variables: context.varargs_len().unwrap_or_default(),
+		..Default::default()
+	}
+}
+
+fn evaluated_output(poll: Poll<graphene_std::registry::Any>) -> Option<graphene_std::registry::Any> {
+	match poll {
+		Poll::Final(output) | Poll::Partial(output) => Some(output),
+		Poll::Fallback(boxed) => Some(boxed.0),
+		Poll::Pending | Poll::Error(_) => None,
+	}
+}
+
 fn context_hash(context: &Context) -> u64 {
 	let mut hasher = std::hash::DefaultHasher::new();
 	context.cache_hash(&mut hasher);
 	std::hash::Hasher::finish(&hasher)
 }
 
-/// The context a node was last evaluated with, and its hash for telling whether evaluating the node again would give something new.
-fn latest_context(executor: &DynamicExecutor, node: NodeId) -> Option<(Context<'static>, u64)> {
-	let context = executor.tree().last_context(node).ok()??;
-	let hash = context_hash(&context);
-	Some((context, hash))
-}
-
-/// The time that thumbnails are evaluated at, so they don't depend on where the playhead was when they were rendered.
+/// The time thumbnails are evaluated at, so they don't depend on the playhead.
 const THUMBNAIL_TIME: f64 = 0.;
 
 enum ThumbnailContent {
@@ -641,48 +669,36 @@ enum ThumbnailContent {
 	Text(List<String>),
 }
 
-/// Evaluates the content node a monitor node watches again, from the context it was last evaluated with but with a boundless footprint
-/// and a fixed time, so thumbnails stay consistent regardless of the view and playhead while keeping the varargs and indices they were evaluated with.
+/// Evaluates the content a monitor node watches again from its last context, normalized so thumbnails don't depend on the view or playhead.
 fn thumbnail_content(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> Option<ThumbnailContent> {
 	let tree = executor.tree();
 	let content_node = tree.input_node(monitor_node_path, 0).ok()?;
 	let context = tree.last_context(content_node).ok()??;
-	let normalized: Context = context.map(|context| Arc::new(context.with_replaced_footprint_and_time(Footprint::BOUNDLESS, THUMBNAIL_TIME)));
 
-	let output = match tree.evaluate(content_node, &normalized).ok()? {
-		Poll::Final(output) | Poll::Partial(output) => output,
-		Poll::Fallback(boxed) => boxed.0,
-		Poll::Pending | Poll::Error(_) => return None,
-	};
+	// Replacing a feature the content doesn't read would only miss its caches
+	let reads = tree.context_features(content_node);
+	let footprint = reads.contains(ContextFeatures::FOOTPRINT).then_some(Footprint::BOUNDLESS);
+	let time = reads.intersects(ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME).then_some(THUMBNAIL_TIME);
+	let normalized: Context = context.map(|context| Arc::new(context.with_replaced_footprint_and_time(footprint, time)));
+	let output = evaluated_output(tree.evaluate(content_node, &normalized).ok()?)?;
 
-	// Rank-0 content is raised to a single-item list, so each kind renders through the same list path
-	let output = match output.downcast::<List<Graphic>>() {
-		Ok(graphics) => return Some(ThumbnailContent::Graphics(*graphics)),
-		Err(output) => output,
+	let content = if output.is::<List<Graphic>>() {
+		ThumbnailContent::Graphics(*output.downcast().ok()?)
+	} else if output.is::<Item<Graphic>>() {
+		ThumbnailContent::Graphics(List::new_from_item(*output.downcast().ok()?))
+	} else if output.is::<List<Artboard>>() {
+		ThumbnailContent::Artboards(*output.downcast().ok()?)
+	} else if output.is::<Item<Artboard>>() {
+		ThumbnailContent::Artboards(List::new_from_item(*output.downcast().ok()?))
+	} else if output.is::<List<String>>() {
+		ThumbnailContent::Text(*output.downcast().ok()?)
+	} else if output.is::<Item<String>>() {
+		ThumbnailContent::Text(List::new_from_item(*output.downcast().ok()?))
+	} else {
+		log::warn!("Failed to downcast the content of monitor node {monitor_node_path:?} for its thumbnail");
+		return None;
 	};
-	let output = match output.downcast::<Item<Graphic>>() {
-		Ok(graphic) => return Some(ThumbnailContent::Graphics(List::new_from_item(*graphic))),
-		Err(output) => output,
-	};
-	let output = match output.downcast::<List<Artboard>>() {
-		Ok(artboards) => return Some(ThumbnailContent::Artboards(*artboards)),
-		Err(output) => output,
-	};
-	let output = match output.downcast::<Item<Artboard>>() {
-		Ok(artboard) => return Some(ThumbnailContent::Artboards(List::new_from_item(*artboard))),
-		Err(output) => output,
-	};
-	let output = match output.downcast::<List<String>>() {
-		Ok(text) => return Some(ThumbnailContent::Text(*text)),
-		Err(output) => output,
-	};
-	match output.downcast::<Item<String>>() {
-		Ok(text) => Some(ThumbnailContent::Text(List::new_from_item(*text))),
-		Err(_) => {
-			log::warn!("Failed to downcast the content of monitor node {monitor_node_path:?} for its thumbnail");
-			None
-		}
-	}
+	Some(content)
 }
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
@@ -764,7 +780,7 @@ impl Spawn for NodeTaskExecutor {
 /// The node the Data panel inspects, which is evaluated again from the context it was last evaluated with.
 struct InspectState {
 	inspect_node_path: Vec<NodeId>,
-	/// The proto node and the hash of the context the inspected node was last evaluated again with, and the result.
+	overrides: ContextOverrides,
 	last_evaluation: Option<(NodeId, u64, Option<InspectedData>)>,
 }
 
@@ -778,6 +794,18 @@ pub struct InspectResult {
 	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
 	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
 	pub inspect_node_path: Vec<NodeId>,
+	pub context: InspectedContext,
+}
+
+/// The features of the context an inspected node was evaluated with, after the overrides replaced some of them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InspectedContext {
+	pub features: ContextOverrides,
+	/// The positions the context carries, from the outermost level in.
+	pub positions: Vec<DVec2>,
+	pub variables: usize,
+	pub overrides: ContextOverrides,
+	pub dependencies: ContextFeatures,
 }
 
 impl InspectResult {
@@ -797,33 +825,51 @@ impl InspectState {
 	fn new(inspect_node_path: Vec<NodeId>) -> Option<Self> {
 		(!inspect_node_path.is_empty()).then_some(Self {
 			inspect_node_path,
+			overrides: ContextOverrides::default(),
 			last_evaluation: None,
 		})
 	}
 
-	/// Evaluates the inspected node again with the context it was last evaluated with, unless neither the node nor that context changed since.
 	fn access(&mut self, executor: &DynamicExecutor) -> InspectResult {
-		let inspect_node_path = self.inspect_node_path.clone();
-		let introspected_data = self.evaluate(executor);
-		InspectResult { introspected_data, inspect_node_path }
+		let node = executor.tree().output_node(&self.inspect_node_path, executor.output());
+		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
+
+		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));
+		let features = context.as_ref().and_then(|context| context.as_deref()).map(context_features).unwrap_or_default();
+		let context = InspectedContext {
+			overrides: self.overrides.clone(),
+			dependencies: node.map(|node| executor.tree().context_features(node)).unwrap_or_default(),
+			..features
+		};
+
+		InspectResult {
+			introspected_data,
+			inspect_node_path: self.inspect_node_path.clone(),
+			context,
+		}
 	}
 
-	fn evaluate(&mut self, executor: &DynamicExecutor) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
-		let tree = executor.tree();
-		let node = tree.output_node(&self.inspect_node_path, executor.output())?;
-		let (context, context_hash) = latest_context(executor, node)?;
+	fn with_overrides(&self, context: Context<'static>) -> Context<'static> {
+		if self.overrides.is_empty() {
+			return context;
+		}
+		let context = context
+			.as_deref()
+			.map(|context| context.with_overrides(&self.overrides))
+			.unwrap_or_else(|| OwnedContextImpl::empty().with_overrides(&self.overrides));
+		Some(Arc::new(context))
+	}
 
+	/// Evaluates the node with the context, reusing the last result if neither changed.
+	fn evaluate(&mut self, executor: &DynamicExecutor, node: NodeId, context: Context<'static>) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
+		let context_hash = context_hash(&context);
 		if let Some((last_node, last_context_hash, data)) = &self.last_evaluation
 			&& (*last_node, *last_context_hash) == (node, context_hash)
 		{
 			return data.clone();
 		}
 
-		let output = match tree.evaluate(node, &context).ok()? {
-			Poll::Final(output) | Poll::Partial(output) => output,
-			Poll::Fallback(boxed) => boxed.0,
-			Poll::Pending | Poll::Error(_) => return None,
-		};
+		let output = evaluated_output(executor.tree().evaluate(node, &context).ok()?)?;
 		// Output the Data panel can't show is remembered too, so it isn't evaluated again for nothing
 		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
 		self.last_evaluation = Some((node, context_hash, data.clone()));

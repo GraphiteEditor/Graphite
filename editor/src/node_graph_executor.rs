@@ -65,11 +65,8 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
-	/// Thumbnails rendered for layers that came into view, from the network of the given document.
-	Thumbnails {
-		responses: VecDeque<FrontendMessage>,
-		document_id: DocumentId,
-	},
+	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
+	InspectResult(Box<InspectResult>),
 }
 
 #[derive(Debug)]
@@ -155,7 +152,10 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
-	/// Tells the graph runtime which of the document's layers have their thumbnails in view, so it renders only those.
+	pub fn submit_inspect_context_overrides(&self, overrides: graphene_std::ContextOverrides) {
+		self.sender.send(GraphRuntimeRequest::InspectContextOverrides(overrides)).expect("Failed to send the context overrides");
+	}
+
 	pub fn submit_thumbnails_in_view(&self, document: &DocumentMessageHandler, document_id: DocumentId) {
 		// The runtime renders thumbnails from the network it has, which may still be another document's
 		if self.node_graph_document != Some(document_id) {
@@ -197,8 +197,6 @@ impl NodeGraphExecutor {
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.network_hash();
-
-		// Refresh the graph when it changes, or only which node is inspected when just that changes, which doesn't need a recompile
 		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
@@ -523,7 +521,9 @@ impl NodeGraphExecutor {
 
 					// Update the Data panel on the frontend using the value of the inspect result.
 					if let Some(inspect_result) = (!self.previous_node_to_inspect.is_empty()).then_some(inspect_result).flatten() {
-						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+						responses.add(DataPanelMessage::UpdateLayout {
+							inspect_result: Box::new(inspect_result),
+						});
 					} else {
 						responses.add(DataPanelMessage::ClearLayout);
 					}
@@ -575,6 +575,11 @@ impl NodeGraphExecutor {
 				NodeGraphUpdate::EyedropperPreview(raster) => {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
+				}
+				NodeGraphUpdate::InspectResult(inspect_result) => {
+					if inspect_result.inspect_node_path == self.previous_node_to_inspect {
+						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+					}
 				}
 				NodeGraphUpdate::Thumbnails {
 					responses: thumbnails,
