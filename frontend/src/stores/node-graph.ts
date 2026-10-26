@@ -99,8 +99,9 @@ if (import.meta.hot) import.meta.hot.data.thumbnailImagesStore = thumbnailImages
 const visibleNodesStore: Writable<Set<bigint>> = import.meta.hot?.data?.visibleNodesStore || writable(new Set());
 if (import.meta.hot) import.meta.hot.data.visibleNodesStore = visibleNodesStore;
 
-// Separate wires store so wire path updates (e.g. export connector movement during pan) don't trigger node re-renders
-const wiresStore: Writable<Map<bigint, Map<number, WirePath>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
+// Separate wires store so wire path updates (e.g. export connector movement during pan) don't trigger node re-renders.
+// It only changes when wires are added or removed, since each wire's path is kept in its own store so updating it only re-renders that wire.
+const wiresStore: Writable<Map<bigint, Map<number, Writable<WirePath>>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
 if (import.meta.hot) import.meta.hot.data.wiresStore = wiresStore;
 
 // Separate wire insertion preview store so the wires don't re-render with every node graph update
@@ -235,23 +236,28 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
-		if (data.wires.length === 0) return;
+		const wires = get(wiresStore);
+		let wiresChanged = false;
 
-		wiresStore.update((wires) => {
-			data.wires.forEach((wireUpdate) => {
-				let inputMap = wires.get(wireUpdate.id);
+		data.wires.forEach(({ id, inputIndex, wirePathUpdate }) => {
+			let inputMap = wires.get(id);
+			const wire = inputMap?.get(inputIndex);
+
+			if (wirePathUpdate === undefined) {
+				if (inputMap?.delete(inputIndex)) wiresChanged = true;
+			} else if (wire) {
+				wire.set(wirePathUpdate);
+			} else {
 				if (!inputMap) {
 					inputMap = new Map();
-					wires.set(wireUpdate.id, inputMap);
+					wires.set(id, inputMap);
 				}
-				if (wireUpdate.wirePathUpdate !== undefined) {
-					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
-				} else {
-					inputMap.delete(wireUpdate.inputIndex);
-				}
-			});
-			return wires;
+				inputMap.set(inputIndex, writable(wirePathUpdate));
+				wiresChanged = true;
+			}
 		});
+
+		if (wiresChanged) wiresStore.set(wires);
 	});
 
 	subscriptions.subscribeFrontendMessage("ClearAllNodeGraphWires", () => {
