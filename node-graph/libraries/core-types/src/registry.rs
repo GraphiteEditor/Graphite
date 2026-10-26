@@ -1,5 +1,5 @@
 use crate::poll::Poll;
-use crate::{Color, ContextFeature, Node, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{Color, ContextFeature, Node, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -237,9 +237,18 @@ pub type TypeErasedNode<'n> = dyn Node<AnyInput, Output = Any> + 'n;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
 
-pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
+pub type SharedNodeContainer = std::sync::Arc<dyn SharedNode>;
 
 pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> TypeErasedBox<'static>;
+
+/// A node as the nodes taking its output as an input hold it, evaluated through whatever owns it.
+pub trait SharedNode: WasmNotSend + WasmNotSync {
+	/// Evaluates the node, along with whatever its owner does around that.
+	fn eval(&self, input: &AnyInput) -> Poll<Any>;
+
+	/// The node being shared.
+	fn node(&self) -> &TypeErasedNode<'static>;
+}
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -285,10 +294,19 @@ impl std::fmt::Debug for NodeContainer {
 	}
 }
 
+impl SharedNode for NodeContainer {
+	fn eval(&self, input: &AnyInput) -> Poll<Any> {
+		(**self).eval(input)
+	}
+
+	fn node(&self) -> &TypeErasedNode<'static> {
+		&**self
+	}
+}
+
 impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
-		let node = Box::leak(node);
-		Self { node }.into()
+	pub fn new(node: TypeErasedBox<'static>) -> Self {
+		Self { node: Box::leak(node) }
 	}
 
 	#[cfg(feature = "dealloc_nodes")]
@@ -318,12 +336,12 @@ where
 		self.node.eval(input).map(|output| {
 			*output
 				.downcast::<O>()
-				.unwrap_or_else(|_| panic!("DowncastBothNode wrong output type: expected {} in: \n{}", std::any::type_name::<O>(), self.node.node_name()))
+				.unwrap_or_else(|_| panic!("DowncastBothNode wrong output type: expected {} in: \n{}", std::any::type_name::<O>(), self.node.node().node_name()))
 		})
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
+		self.node.node().serialize()
 	}
 }
 impl<I, O> DowncastBothNode<I, O> {

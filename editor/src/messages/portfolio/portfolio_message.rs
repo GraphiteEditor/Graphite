@@ -150,6 +150,7 @@ pub enum PortfolioMessage {
 	},
 	SubmitEyedropperPreviewRender,
 	PollNodeGraphEvaluation,
+	SubmitThumbnailsInView,
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,

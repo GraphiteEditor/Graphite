@@ -21,16 +21,23 @@ impl LayersInView {
 		&self.layers_panel
 	}
 
+	/// The layers in view in either the Layers panel or the node graph.
+	pub fn all_in_view(&self) -> HashSet<NodeId> {
+		self.layers_panel.union(&self.node_graph).copied().collect()
+	}
+
 	/// Sets the layers with a row in view in the Layers panel, sending the thumbnails it lacks for them.
 	pub fn set_layers_panel(&mut self, layers: HashSet<NodeId>, responses: &mut VecDeque<Message>) {
 		self.layers_panel = layers;
 		self.send_thumbnails_in_view(responses);
+		responses.add(PortfolioMessage::SubmitThumbnailsInView);
 	}
 
 	/// Sets the nodes in view in the node graph, sending the thumbnails it lacks for those that are layers.
 	pub fn set_node_graph(&mut self, nodes: HashSet<NodeId>, responses: &mut VecDeque<Message>) {
 		self.node_graph = nodes;
 		self.send_thumbnails_in_view(responses);
+		responses.add(PortfolioMessage::SubmitThumbnailsInView);
 	}
 
 	/// Keeps a layer's newly rendered thumbnail, sending it to the frontend only if the layer is in view.
