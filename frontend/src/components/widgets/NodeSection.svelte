@@ -183,6 +183,7 @@
 		&.chain-wire {
 			--chain-wire-corner-radius: 4px;
 			--chain-wire-width: 2px;
+			--chain-wire-line: 2px;
 			--chain-section-indent: 8px;
 			// Within the body's border, the wire's centerline rises in line with the indented chain sections' icons
 			--chain-wire-x: calc(var(--chain-section-indent) + var(--wire-center) - 1px);
@@ -190,6 +191,7 @@
 			// Like in the graph, a list's wire is a 1px line, 2px gap, and 1px line
 			&.chain-wire-list {
 				--chain-wire-width: 4px;
+				--chain-wire-line: 1px;
 			}
 
 			// The body continues down into the frame around the chain's sections, the first right beneath its rows
@@ -225,16 +227,16 @@
 				}
 			}
 
-			// Outer and inner 1px lines, which touch as one solid line unless the wire is a list, rising from the body's bottom and turning at the connector's middle to end at its left
-			> .body::before,
-			> .body::after {
+			// One line, or a list's outer and inner lines, rising from the body's bottom and turning at the connector's middle to end at its left
+			> .body::after,
+			&.chain-wire-list > .body::before {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
 				right: anchor(--chain-input left);
 				bottom: 0;
-				border-left: 1px solid var(--chain-wire-color);
-				border-top: 1px solid var(--chain-wire-color);
+				border-left: var(--chain-wire-line) solid var(--chain-wire-color);
+				border-top: var(--chain-wire-line) solid var(--chain-wire-color);
 				pointer-events: none;
 			}
 
@@ -245,7 +247,7 @@
 			}
 
 			// Inset to stay concentric with the outer line around the corner
-			> .body::before {
+			&.chain-wire-list > .body::before {
 				left: calc(var(--chain-wire-x) + var(--chain-wire-width) / 2 - 1px);
 				top: calc(anchor(--chain-input center) + var(--chain-wire-width) / 2 - 1px);
 				border-top-left-radius: max(0px, var(--chain-wire-corner-radius) - var(--chain-wire-width) + 1px);
@@ -255,13 +257,19 @@
 		// A section in such a chain, with a wire rising across the gap to the section above, in line with the containing section's wire
 		&.output-wire {
 			--output-wire-width: 2px;
+			--output-wire-line: 2px;
 			position: relative;
 
+			// Two 1px lines, like the layer section's wire
 			&.output-wire-list {
 				--output-wire-width: 4px;
+				--output-wire-line: 1px;
+
+				&::before {
+					border-right: var(--output-wire-line) solid var(--output-wire-color);
+				}
 			}
 
-			// Two 1px lines, like the layer section's wire
 			&::before {
 				content: "";
 				position: absolute;
@@ -270,8 +278,7 @@
 				top: calc(-1 * var(--section-gap));
 				width: var(--output-wire-width);
 				height: var(--section-gap);
-				border-left: 1px solid var(--output-wire-color);
-				border-right: 1px solid var(--output-wire-color);
+				border-left: var(--output-wire-line) solid var(--output-wire-color);
 				pointer-events: none;
 			}
 		}
@@ -309,24 +316,26 @@
 		// Layers taking the wire rising from the section below into their content, indented so it turns in from the left at the middle of their buttons
 		&.content-wire {
 			--content-wire-width: 2px;
+			--content-wire-line: 2px;
 			--content-wire-indent: 20px;
 			position: relative;
 			padding-left: var(--content-wire-indent);
 
 			&.content-wire-list {
 				--content-wire-width: 4px;
+				--content-wire-line: 1px;
 			}
 
-			// Outer and inner 1px lines, rising from the bottom and turning toward the buttons, like the wire into a shown chain's input
-			&::before,
-			&::after {
+			// One line, or a list's outer and inner lines, rising from the bottom and turning toward the buttons, like the wire into a shown chain's input
+			&::after,
+			&.content-wire-list::before {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
 				right: calc(100% - var(--content-wire-indent));
 				bottom: 0;
-				border-left: 1px solid var(--content-wire-color);
-				border-top: 1px solid var(--content-wire-color);
+				border-left: var(--content-wire-line) solid var(--content-wire-color);
+				border-top: var(--content-wire-line) solid var(--content-wire-color);
 				pointer-events: none;
 			}
 
@@ -336,7 +345,7 @@
 				border-top-left-radius: 4px;
 			}
 
-			&::before {
+			&.content-wire-list::before {
 				left: calc(var(--wire-center) + var(--content-wire-width) / 2 - 1px);
 				top: calc(50% + var(--content-wire-width) / 2 - 1px);
 				border-top-left-radius: max(0px, 4px - var(--content-wire-width) + 1px);
@@ -351,9 +360,12 @@
 					width: var(--content-wire-width);
 					top: calc(-1 * var(--section-gap));
 					bottom: 0;
-					border-left: 1px solid var(--content-wire-color);
-					border-right: 1px solid var(--content-wire-color);
+					border-left: var(--content-wire-line) solid var(--content-wire-color);
 					pointer-events: none;
+				}
+
+				&.content-wire-list .content-wire-continuation {
+					border-right: var(--content-wire-line) solid var(--content-wire-color);
 				}
 
 				&::after {
