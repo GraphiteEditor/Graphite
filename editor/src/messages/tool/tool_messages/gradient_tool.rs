@@ -40,6 +40,7 @@ pub enum GradientToolMessage {
 	Abort,
 	Overlays { context: OverlayContext },
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -159,6 +160,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 				self.data.color_picker_editing_color_stop = None;
 			}
+			ToolMessage::Gradient(GradientToolMessage::SwitchedToAnotherTool) => {
+				// Returning to the tool starts fresh from the working colors
+				self.data.default_gradient_stops = None;
+			}
 			ToolMessage::Gradient(GradientToolMessage::WorkingColorChanged) => {
 				let primary = context.global_tool_data.primary_color;
 				let secondary = context.global_tool_data.secondary_color;
@@ -259,20 +264,12 @@ impl LayoutHolder for GradientTool {
 		let gradient_form = RadioInput::new(gradient_form_entries).selected_index(Some(self.options.gradient_form as u32)).widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
-		let stops_value = self.data.current_gradient_stops.clone().or_else(|| self.data.default_gradient_stops.clone()).unwrap_or_else(|| {
-			Gradient::new([
-				GradientStop {
-					position: 0.,
-					midpoint: 0.5,
-					color: self.data.primary_color,
-				},
-				GradientStop {
-					position: 1.,
-					midpoint: 0.5,
-					color: self.data.secondary_color,
-				},
-			])
-		});
+		let stops_value = self
+			.data
+			.current_gradient_stops
+			.clone()
+			.or_else(|| self.data.default_gradient_stops.clone())
+			.unwrap_or_else(|| working_color_gradient(self.data.primary_color, self.data.secondary_color));
 		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value).with_settings(self.options.settings)))
 			.allow_none(false)
 			.narrow(true)
@@ -341,6 +338,23 @@ impl Default for GradientToolFsmState {
 			selected: GradientSelectedTarget::None,
 		}
 	}
+}
+
+/// The gradient a new one starts as unless its stops were customized, running primary → secondary so the default
+/// working colors (primary = black, secondary = white) produce the expected black-to-white gradient.
+fn working_color_gradient(primary: Color, secondary: Color) -> Gradient {
+	Gradient::new([
+		GradientStop {
+			position: 0.,
+			midpoint: 0.5,
+			color: primary,
+		},
+		GradientStop {
+			position: 1.,
+			midpoint: 0.5,
+			color: secondary,
+		},
+	])
 }
 
 /// Computes the transform from gradient space to viewport space.
@@ -867,6 +881,7 @@ impl ToolTransition for GradientTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),
+			switched_to_another_tool: Some(GradientToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(GradientToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(GradientToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| GradientToolMessage::Overlays { context }.into()),
@@ -892,7 +907,7 @@ struct GradientToolData {
 	current_gradient_stops: Option<Gradient>,
 	/// User-customized default gradient stop colors: used when nothing that has a gradient is selected.
 	/// `None` means to follow the working colors.
-	/// Cleared on tool deactivation so each fresh activation starts from the working colors again.
+	/// Cleared on switching to another tool so each fresh activation starts from the working colors again.
 	default_gradient_stops: Option<Gradient>,
 	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
 	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
@@ -1497,21 +1512,12 @@ impl Fsm for GradientToolFsmState {
 						let (gradient, appearance, source) = match resolve_gradient(layer, &document.network_interface) {
 							// Use the already existing gradient if it exists
 							Some(gradient) => gradient,
-							// Generate a new gradient running primary → secondary so the default working colors
-							// (primary = black, secondary = white) produce the expected black-to-white gradient
+							// Generate a new gradient from the stops shown in the control bar
 							None => (
-								Gradient::new([
-									GradientStop {
-										position: 0.,
-										midpoint: 0.5,
-										color: global_tool_data.primary_color,
-									},
-									GradientStop {
-										position: 1.,
-										midpoint: 0.5,
-										color: global_tool_data.secondary_color,
-									},
-								]),
+								tool_data
+									.default_gradient_stops
+									.clone()
+									.unwrap_or_else(|| working_color_gradient(global_tool_data.primary_color, global_tool_data.secondary_color)),
 								GradientAppearance {
 									transform: DAffine2::IDENTITY,
 									gradient_form: tool_options.gradient_form,
@@ -1671,8 +1677,6 @@ impl Fsm for GradientToolFsmState {
 			}
 			(_, GradientToolMessage::Abort) => {
 				dismiss_color_stop_color_picker(tool_data, responses);
-				// Clear the tool-default gradient override so re-activating the tool starts fresh from the working colors
-				tool_data.default_gradient_stops = None;
 
 				// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
 				snap_session.sleep_all();
@@ -2020,7 +2024,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
-	// Save those stops so the widget keeps showing them until the tool is deactivated.
+	// Save those stops so the widget keeps showing them until switching to another tool.
 	if !updated_any_layer {
 		data.default_gradient_stops = Some(new_gradient);
 	}
@@ -2903,6 +2907,85 @@ mod test_gradient {
 			gradient_spread,
 			..GradientRamp::from(stops)
 		})
+	}
+
+	#[tokio::test]
+	async fn customized_stops_start_the_next_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// With nothing selected, editing the control bar's stops sets up the next gradient
+		let custom = Gradient::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::RED,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: Color::BLUE,
+			},
+		]);
+		editor.select_tool(ToolType::Gradient).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&custom, GradientSpread::Pad),
+			})
+			.await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		let colors: Vec<_> = gradient.stops.iter().map(|stop| SRGBA8::from(stop.color)).collect();
+		assert_eq!(colors, vec![SRGBA8::from(Color::RED), SRGBA8::from(Color::BLUE)], "the new gradient should use the customized stops");
+	}
+
+	#[tokio::test]
+	async fn customized_stops_survive_esc_until_switching_tools() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		let custom = Gradient::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::RED,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: Color::BLUE,
+			},
+		]);
+		editor.select_tool(ToolType::Gradient).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&custom, GradientSpread::Pad),
+			})
+			.await;
+
+		// Esc while idle keeps the customized stops
+		editor.handle_message(GradientToolMessage::Abort).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		let colors: Vec<_> = gradient.stops.iter().map(|stop| SRGBA8::from(stop.color)).collect();
+		assert_eq!(colors, vec![SRGBA8::from(Color::RED), SRGBA8::from(Color::BLUE)], "Esc should keep the customized stops");
+
+		// Switching to another tool and back returns to the working colors
+		editor.handle_message(DocumentMessage::Undo).await;
+		editor.select_tool(ToolType::Select).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		let colors: Vec<_> = gradient.stops.iter().map(|stop| SRGBA8::from(stop.color)).collect();
+		assert_eq!(
+			colors,
+			vec![SRGBA8::from(Color::BLACK), SRGBA8::from(Color::WHITE)],
+			"switching tools should discard the customized stops"
+		);
 	}
 
 	#[tokio::test]

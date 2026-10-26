@@ -46,6 +46,7 @@ pub enum FreehandToolMessage {
 	Overlays { context: OverlayContext },
 	Abort,
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -154,11 +155,10 @@ impl LayoutHolder for FreehandTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
-		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
-		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::Abort)) && self.fsm_state == FreehandToolFsmState::Ready {
+		// Switching to another tool resets the fill/stroke colors so the next activation starts from the working colors (the swap state persists)
+		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::SwitchedToAnotherTool)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+			return;
 		}
 
 		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::SelectionChanged)) {
@@ -223,6 +223,7 @@ impl ToolTransition for FreehandTool {
 		EventToMessageMap {
 			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
+			switched_to_another_tool: Some(FreehandToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			graph_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),

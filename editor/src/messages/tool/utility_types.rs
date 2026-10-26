@@ -163,6 +163,8 @@ pub struct EventToMessageMap {
 	/// `selection_changed`, so a graph edit re-syncs the widgets the same way reselecting would.
 	pub graph_changed: Option<ToolMessage>,
 	pub tool_abort: Option<ToolMessage>,
+	/// Sent when the user switches from this tool to another, unlike `tool_abort`, which Esc also sends.
+	pub switched_to_another_tool: Option<ToolMessage>,
 	pub working_color_changed: Option<ToolMessage>,
 	pub overlay_provider: Option<OverlayProvider>,
 }

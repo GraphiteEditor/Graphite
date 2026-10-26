@@ -166,6 +166,26 @@ impl ToolMessageHandler {
 				send_abort_to_tool(old_tool, old_tool, false);
 				send_abort_to_tool(old_tool, tool_type, true);
 
+				// Tell the old tool it's being switched away from, which its abort alone can't signal
+				if tool_type != old_tool
+					&& let Some(tool) = tool_data.tools.get_mut(&old_tool)
+					&& let Some(switched_message) = tool.event_to_message_map().switched_to_another_tool
+				{
+					let mut data = ToolActionMessageContext {
+						document,
+						document_id,
+						global_tool_data: &self.tool_state.document_tool_data,
+						input,
+						shape_editor: &mut self.shape_editor,
+						snap_session: &mut self.snap_session,
+						node_graph,
+						preferences,
+						viewport,
+						fonts,
+					};
+					tool.process_message(switched_message, responses, &mut data);
+				}
+
 				// Nothing a tool was snapping, or had woken, carries over to the next tool
 				self.snap_session.end_gesture();
 				self.snap_session.sleep_all();
