@@ -1,5 +1,5 @@
+use crate::document::value;
 use crate::document::value::TaggedValue;
-use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
 pub use core_types::registry::*;
 use core_types::*;
@@ -51,10 +51,6 @@ impl core::fmt::Display for ProtoNetwork {
 						write_node(f, network, *id, indent + 1)?;
 					}
 				}
-				ConstructionArgs::Inline(inline) => {
-					f.write_str(&"\t".repeat(indent + 1))?;
-					f.write_fmt(format_args!("Inline construction argument: {inline:?}"))?
-				}
 			}
 			f.write_str(&"\t".repeat(indent))?;
 			f.write_str("}\n")?;
@@ -75,8 +71,6 @@ pub enum ConstructionArgs {
 	/// The bool indicates whether to treat the node as lambda node.
 	// TODO: use a struct for clearer naming.
 	Nodes(Vec<NodeId>),
-	/// Used for GPU computation to work around the limitations of rust-gpu.
-	Inline(InlineRust),
 }
 
 impl Eq for ConstructionArgs {}
@@ -109,7 +103,6 @@ impl CacheHash for ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.cache_hash(state),
-			Self::Inline(inline) => inline.hash(state),
 		}
 	}
 }
@@ -119,7 +112,6 @@ impl ConstructionArgs {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
-			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
@@ -440,7 +432,7 @@ impl ProtoNetwork {
 					Some(id),
 				);
 			}
-			ConstructionArgs::Value(_) | ConstructionArgs::Inline(_) => return (dependencies.extract.into(), Some(id)),
+			ConstructionArgs::Value(_) => return (dependencies.extract.into(), Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
@@ -877,7 +869,6 @@ impl TypingContext {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, GraphErrors>>()?,
-			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
 		// Get the node input type from the proto node declaration

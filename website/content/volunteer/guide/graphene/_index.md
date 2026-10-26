@@ -66,9 +66,9 @@ The three regimes have thus far been only a description of the eventual architec
 
 Without a compile server, all the nodes are precompiled when Graphite is built. The node registry (in the file `node_registry.rs`) currently exists to allow the interpreted executor to find the Rust functions that correspond to each node with its appropriate type signature. Nodes support generics, so it's currently necessary to list every forseeable concrete type signature in the registry until the compile server can generate bytecode for less common type combinations on-the-fly.
 
-### GPU compute shaders
+### GPU shaders
 
-Further building upon the Rust compiler toolchain, we employ the [`rust-gpu`](https://github.com/EmbarkStudios/rust-gpu) compiler backend for `rustc` which generates compute shaders that get executed on the GPU. This means we can write the same code to implement nodes that run on both CPU and GPU. (Although in practice, some nodes may need GPU-specific versions suited for the architectural limitations of GPU programming.) And we don't have to use a separate shader language!
+Raster nodes process their images on the GPU with shaders written in [WGSL](https://www.w3.org/TR/WGSL/) and run through [`wgpu`](https://wgpu.rs/). Each node's shader is a fragment pass over its output texture, which keeps it compatible with every platform Graphite runs on, including WebGL2 in browsers. Per-pixel adjustments also keep a Rust implementation that applies the same math to colors and gradients on the CPU.
 
 ### A language within a language
 

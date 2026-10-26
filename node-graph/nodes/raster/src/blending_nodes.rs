@@ -1,27 +1,18 @@
-#[cfg(feature = "std")]
-use crate::raster_kernel::{Adjust as MapColorAdjust, MapColor, Wgsl, raster_kernel_pipeline};
-#[cfg(feature = "std")]
+use crate::raster_kernel::{Adjust, MapColor, Wgsl, raster_kernel_pipeline};
 use crate::{gpu_param_enum, gpu_params};
-#[cfg(feature = "std")]
 use core_types::list::Item;
-#[cfg(feature = "std")]
 use core_types::Interrupt;
-#[cfg(feature = "std")]
 use no_std_types::Ctx;
-#[cfg(feature = "std")]
 use no_std_types::blending::BlendMode;
 use no_std_types::color::Color;
-#[cfg(feature = "std")]
 use raster_types::{CPU, GPU, Raster};
-#[cfg(feature = "std")]
 use vector_types::Gradient;
-#[cfg(feature = "std")]
 use wgpu_executor::WgpuPipelineCache;
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
 /// Mixes the over color onto the under color by a blend mode and opacity, as if they were stacked layers.
-#[node_macro::node(category("Color"), icon("NodeMixColors"), cfg(feature = "std"))]
+#[node_macro::node(category("Color"), icon("NodeMixColors"))]
 fn mix_colors(
 	_: impl Ctx,
 	under: Item<Color>,
@@ -42,9 +33,8 @@ fn mix_colors(
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
-fn color_overlay<T: MapColorAdjust>(
+fn color_overlay<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
@@ -70,10 +60,8 @@ fn color_overlay<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_param_enum!(i32: BlendMode);
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct ColorOverlay {
@@ -83,7 +71,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for ColorOverlay {
 	fn map_cpu(&self, pixel: Color) -> Color {
 		let overlay = apply_blend_mode(self.color, pixel, self.blend_mode);
@@ -97,7 +84,7 @@ impl MapColor for ColorOverlay {
 	}
 }
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;

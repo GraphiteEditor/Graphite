@@ -1,48 +1,29 @@
 #![allow(clippy::too_many_arguments)]
 
-#[cfg(feature = "std")]
 use crate::color_lookup_table::{Lut, LutCache};
-#[cfg(feature = "std")]
-use crate::raster_kernel::{Adjust as MapColorAdjust, Lut1d, Lut3d, MapColor, ToGpuParams, Wgsl, raster_kernel_pipeline};
-#[cfg(feature = "std")]
+use crate::raster_kernel::{Adjust, Lut1d, Lut3d, MapColor, ToGpuParams, Wgsl, raster_kernel_pipeline};
 use crate::{gpu_param_enum, gpu_params};
 use core::fmt::Debug;
-#[cfg(feature = "std")]
 use core_types::Interrupt;
-#[cfg(feature = "std")]
 use core_types::list::{Item, List};
-#[cfg(feature = "std")]
 use core_types::transfer_curve::{TransferCurve, TransferCurveEvaluator};
-#[cfg(feature = "std")]
 use glam::DVec2;
-#[cfg(feature = "std")]
 use glam::Vec3;
-#[cfg(feature = "std")]
 use graphene_resource::Resource;
 use no_std_types::color::Color;
-#[cfg(feature = "std")]
 use no_std_types::color::{linear_to_srgb, set_luminosity, srgb_to_linear};
 use no_std_types::context::Ctx;
-#[cfg(not(feature = "std"))]
-use no_std_types::list::ShaderItem as Item;
-use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
-#[cfg(not(feature = "std"))]
-use num_traits::float::Float;
-#[cfg(feature = "std")]
 use raster_types::{CPU, GPU, Raster};
-#[cfg(feature = "std")]
 use std::sync::Arc;
-#[cfg(feature = "std")]
 use vector_types::Gradient;
-#[cfg(feature = "std")]
 use wgpu_executor::WgpuPipelineCache;
 
 /// Conversion from a color to grayscale.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 #[repr(u32)]
 pub enum DesaturateMethod {
@@ -84,12 +65,10 @@ pub enum DesaturateMethod {
 	LightnessHsl,
 }
 
-#[cfg(feature = "std")]
 gpu_param_enum!(u32: DesaturateMethod);
 
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeDesaturate"))]
-fn desaturate<T: MapColorAdjust>(
+fn desaturate<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	method: Item<DesaturateMethod>,
@@ -99,7 +78,6 @@ fn desaturate<T: MapColorAdjust>(
 	Ok(input.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Desaturate {
@@ -107,7 +85,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Desaturate {
 	fn map_cpu(&self, color: Color) -> Color {
 		// Gamma-encoded formulas are decoded as if they were a gray
@@ -145,9 +122,8 @@ impl MapColor for Desaturate {
 	}
 }
 
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGammaCorrection"))]
-fn gamma_correction<T: MapColorAdjust>(
+fn gamma_correction<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[default(2.2)]
@@ -166,7 +142,6 @@ fn gamma_correction<T: MapColorAdjust>(
 	Ok(input.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct GammaCorrection {
@@ -174,7 +149,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for GammaCorrection {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.apply_gamma_exponent(self.exponent)
@@ -186,7 +160,6 @@ impl MapColor for GammaCorrection {
 }
 
 /// The red, green, blue, and alpha channels of an image, split into separate node outputs.
-#[cfg(feature = "std")]
 #[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destructure)]
 pub struct ImageChannels {
 	/// The red channel of the image, as a grayscale image.
@@ -200,7 +173,6 @@ pub struct ImageChannels {
 }
 
 /// Separates an image into its red, green, blue, and alpha channels, each provided as a grayscale image.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster"), icon("NodeImageToChannels"), name("Image to Channels"))]
 fn image_to_channels(_: impl Ctx, image: Item<Raster<GPU>>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>) -> Result<ImageChannels, Interrupt> {
 	let [red, green, blue, alpha] = [0, 1, 2, 3].map(|channel| image.clone().adjust(&ExtractChannel { channel }, pipeline.element()));
@@ -213,7 +185,6 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<GPU>>, #[scope(raster_kerne
 	})
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct ExtractChannel {
@@ -221,7 +192,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for ExtractChannel {
 	fn map_cpu(&self, color: Color) -> Color {
 		let value = [color.r(), color.g(), color.b(), color.a()][self.channel as usize];
@@ -238,9 +208,8 @@ impl MapColor for ExtractChannel {
 	}
 }
 
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeMakeOpaque"))]
-fn make_opaque<T: MapColorAdjust>(
+fn make_opaque<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
@@ -248,13 +217,11 @@ fn make_opaque<T: MapColorAdjust>(
 	Ok(input.adjust(&MakeOpaque {}, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct MakeOpaque {}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for MakeOpaque {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.with_alpha(1.)
@@ -266,7 +233,6 @@ impl MapColor for MakeOpaque {
 }
 
 /// Remaps a gamma-space channel through the stages of a Levels adjustment: the input range, the midtones gamma, and the output range.
-#[cfg(feature = "std")]
 fn apply_levels(value: f32, input_shadows: f32, input_highlights: f32, inverse_gamma: f32, output_minimum: f32, output_maximum: f32) -> f32 {
 	let highlights_minus_shadows = (input_highlights - input_shadows).clamp(f32::EPSILON, 1.);
 	let value = ((value - input_shadows).max(0.) / highlights_minus_shadows).min(1.);
@@ -277,7 +243,6 @@ fn apply_levels(value: f32, input_shadows: f32, input_highlights: f32, inverse_g
 
 /// The classic Brightness/Contrast algorithm: a Levels remap around the pivot, adding the brightness before a positive
 /// contrast stretch and after a negative contrast squeeze.
-#[cfg(feature = "std")]
 fn brightness_contrast_classic(value: f32, brightness: f32, contrast: f32, pivot: f32) -> f32 {
 	// Full contrast is a hard step, sending values at the pivot or above to white (with half a 16-bit step of slack for float ties)
 	if contrast >= 1. {
@@ -295,7 +260,6 @@ fn brightness_contrast_classic(value: f32, brightness: f32, contrast: f32, pivot
 	result.clamp(0., 1.)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	/// One brightness curve of the current algorithm, for a magnitude in 0..100: a line of slope 2^(b/110) up to an output of 0.5,
 	/// continued by a cubic Hermite segment that eases into (1, 1).
@@ -307,7 +271,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl BrightnessCurve {
 	fn new(brightness: f32) -> Self {
 		let slope = 2_f32.powf(brightness / 110.);
@@ -374,9 +337,8 @@ impl BrightnessCurve {
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
 //
 // TODO: A Lab-only mode once Graphite supports the CIE Lab color space.
-#[cfg(feature = "std")]
 #[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), icon("NodeBrightnessContrast"), inspector("brightness_contrast_inspector"))]
-fn brightness_contrast<T: MapColorAdjust>(
+fn brightness_contrast<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[unit("%")]
@@ -418,7 +380,6 @@ fn brightness_contrast<T: MapColorAdjust>(
 	Ok(input.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct BrightnessContrast {
@@ -431,7 +392,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for BrightnessContrast {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.map_gamma_rgb(|c| {
@@ -459,9 +419,9 @@ impl MapColor for BrightnessContrast {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 /// The channel whose settings are shown, with RGB adjusting all three color channels together.
 pub enum AdjustmentChannel {
@@ -475,7 +435,6 @@ pub enum AdjustmentChannel {
 }
 
 /// One Levels record in the node's units: percentage input and output points and the gamma value.
-#[cfg(feature = "std")]
 #[derive(Clone, Copy)]
 struct LevelsRecord {
 	shadows: f32,
@@ -485,7 +444,6 @@ struct LevelsRecord {
 	output_maximums: f32,
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	/// A record's input curve followed by its output range.
 	#[derive(Clone, Copy)]
@@ -496,7 +454,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl LevelsRecord {
 	fn new(shadows: f32, midtones: f32, highlights: f32, output_minimums: f32, output_maximums: f32) -> Self {
 		Self {
@@ -517,14 +474,12 @@ impl LevelsRecord {
 	}
 }
 
-#[cfg(feature = "std")]
 impl LevelsStage {
 	fn apply(&self, value: f32) -> f32 {
 		self.curve.apply(value) * (self.output_maximum - self.output_minimum) + self.output_minimum
 	}
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	/// A channel's record followed by the composite record.
 	#[derive(Clone, Copy)]
@@ -535,7 +490,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl LevelsChain {
 	fn new(channel: LevelsRecord, composite: LevelsRecord) -> Self {
 		// For PSD interop, two power functions with nothing between them (the composite's input points and the
@@ -573,9 +527,8 @@ impl LevelsChain {
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeLevels"), inspector("levels_inspector"))]
-fn levels<T: MapColorAdjust>(
+fn levels<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	#[unit("%")]
@@ -773,7 +726,6 @@ fn levels<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Levels {
@@ -784,7 +736,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Levels {
 	fn map_cpu(&self, color: Color) -> Color {
 		// Levels math operates in gamma space
@@ -806,9 +757,8 @@ impl MapColor for Levels {
 // points, and the per-channel curves apply before the composite one, like Levels. The value between those two stages
 // stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
 // Needs the heap for its curves, so it stays off the shader build for now.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), inspector("transfer_curves_inspector"))]
-fn curves<T: MapColorAdjust>(
+fn curves<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	curve: Item<TransferCurve>,
@@ -829,7 +779,6 @@ fn curves<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 struct Curves {
 	composite: TransferCurveEvaluator,
 	red: TransferCurveEvaluator,
@@ -838,7 +787,6 @@ struct Curves {
 	alpha: TransferCurveEvaluator,
 }
 
-#[cfg(feature = "std")]
 impl Curves {
 	fn apply(&self, [r, g, b, a]: [f32; 4]) -> [f32; 4] {
 		let map = |channel: &TransferCurveEvaluator, value: f32| self.composite.evaluate(channel.evaluate(value as f64).clamp(0., 1.)).clamp(0., 1.) as f32;
@@ -850,14 +798,12 @@ impl Curves {
 	}
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	struct CurvesTable {
 		curves: Lut1d,
 	}
 }
 
-#[cfg(feature = "std")]
 impl ToGpuParams for Curves {
 	type Params = CurvesTable;
 	fn to_params(&self) -> CurvesTable {
@@ -872,7 +818,6 @@ impl ToGpuParams for Curves {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Curves {
 	fn map_cpu(&self, color: Color) -> Color {
 		// Curves math operates in gamma space
@@ -891,7 +836,6 @@ impl MapColor for Curves {
 }
 
 /// Builds a transfer curve from a `Vec2[]` of control points, each mapping the input value at its x to the output value at its y. A smooth spline runs through them, holding the outermost points' values beyond them.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePointsToTransferCurve"), name("Points to Transfer Curve"))]
 fn points_to_transfer_curve(
 	_: impl Ctx,
@@ -909,9 +853,8 @@ fn points_to_transfer_curve(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-#[cfg(feature = "std")]
 #[node_macro::node(name("Black & White"), category("Raster: Adjustment"), icon("NodeBlackAndWhite"), inspector("black_and_white_inspector"))]
-fn black_and_white<T: MapColorAdjust>(
+fn black_and_white<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	use_tint: Item<bool>,
@@ -961,7 +904,6 @@ fn black_and_white<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct BlackAndWhite {
@@ -976,7 +918,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for BlackAndWhite {
 	fn map_cpu(&self, color: Color) -> Color {
 		let BlackAndWhite {
@@ -1030,9 +971,9 @@ impl MapColor for BlackAndWhite {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 pub enum HueSaturationRange {
 	#[default]
@@ -1046,7 +987,6 @@ pub enum HueSaturationRange {
 }
 
 /// HSL of gamma-encoded channels: hue in degrees, saturation and lightness in 0..1.
-#[cfg(feature = "std")]
 fn gamma_rgb_to_hsl(r: f32, g: f32, b: f32) -> [f32; 3] {
 	let maximum = r.max(g).max(b);
 	let minimum = r.min(g).min(b);
@@ -1061,7 +1001,6 @@ fn gamma_rgb_to_hsl(r: f32, g: f32, b: f32) -> [f32; 3] {
 }
 
 /// Hexagon hue in degrees of three channels in any encoding, 0 for gray.
-#[cfg(feature = "std")]
 fn hexagon_hue_degrees(r: f32, g: f32, b: f32) -> f32 {
 	let maximum = r.max(g).max(b);
 	let chroma = maximum - r.min(g).min(b);
@@ -1080,13 +1019,11 @@ fn hexagon_hue_degrees(r: f32, g: f32, b: f32) -> f32 {
 }
 
 /// `value` wrapped into the range from 0 to `modulus`.
-#[cfg(feature = "std")]
 fn wrap_positive(value: f32, modulus: f32) -> f32 {
 	value - (value / modulus).floor() * modulus
 }
 
 /// Gamma-encoded channels from a hue in degrees and saturation and lightness in 0..1.
-#[cfg(feature = "std")]
 fn hsl_to_gamma_rgb(hue: f32, saturation: f32, lightness: f32) -> [f32; 3] {
 	let chroma = (1. - (2. * lightness - 1.).abs()) * saturation;
 	let sector = wrap_positive(hue, 360.) / 60.;
@@ -1109,7 +1046,6 @@ fn hsl_to_gamma_rgb(hue: f32, saturation: f32, lightness: f32) -> [f32; 3] {
 	[(r + m).clamp(0., 1.), (g + m).clamp(0., 1.), (b + m).clamp(0., 1.)]
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	/// One set of Hue/Saturation sliders: a hue shift in degrees and saturation and lightness amounts in -1..1.
 	#[derive(Clone, Copy)]
@@ -1121,7 +1057,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl HueSaturationSettings {
 	fn new(hue: f32, saturation_percent: f32, lightness_percent: f32) -> Self {
 		let saturation = saturation_percent / 100.;
@@ -1134,7 +1069,6 @@ impl HueSaturationSettings {
 	}
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	/// A hue range with its falloff: full weight from `range_start` to `range_end`, fading linearly to zero at the falloff ends.
 	#[derive(Clone, Copy)]
@@ -1147,7 +1081,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl HueSaturationRangeSettings {
 	fn new(falloff_start: f32, range_start: f32, range_end: f32, falloff_end: f32, settings: HueSaturationSettings) -> Self {
 		// For PSD interop, each edge rounds to 1536 hue units per turn over 359 rather than 360 degrees, landing up to a degree late
@@ -1180,7 +1113,6 @@ impl HueSaturationRangeSettings {
 }
 
 /// The six ranges' combined effect on one pixel, gathered before the master sliders apply.
-#[cfg(feature = "std")]
 struct HueSaturationRangeEffect {
 	hue_shift: f32,
 	saturation_factor: f32,
@@ -1188,7 +1120,6 @@ struct HueSaturationRangeEffect {
 	rgb: [f32; 3],
 }
 
-#[cfg(feature = "std")]
 impl HueSaturationRangeEffect {
 	fn apply(&mut self, range: &HueSaturationRangeSettings, original_hue: f32, original_saturation: f32) {
 		// Range weights come from the original hue, and grays belong to no range
@@ -1209,7 +1140,6 @@ impl HueSaturationRangeEffect {
 }
 
 /// The factor a saturation amount in -1..1 applies to HSL saturation, quantized for PSD interop: 1 - trunc(256 a) / 256 below zero and floor(65280 / (255 - trunc(254 a))) / 256 above.
-#[cfg(feature = "std")]
 fn saturation_gain(amount: f32) -> f32 {
 	if amount < 0. {
 		1. - (-amount * 256.).trunc() / 256.
@@ -1219,13 +1149,11 @@ fn saturation_gain(amount: f32) -> f32 {
 }
 
 /// Blends toward white for a positive amount and toward black for a negative one, as the master lightness slider does.
-#[cfg(feature = "std")]
 fn lightness_toward_white_or_black(value: f32, amount: f32) -> f32 {
 	if amount >= 0. { value + (1. - value) * amount } else { value * (1. + amount) }
 }
 
 /// A range's lightness moves the channels toward the color's own maximum (positive) or minimum (negative) instead.
-#[cfg(feature = "std")]
 fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
 	let maximum = rgb[0].max(rgb[1]).max(rgb[2]);
 	let minimum = rgb[0].min(rgb[1]).min(rgb[2]);
@@ -1239,9 +1167,8 @@ fn lightness_toward_max_or_min(rgb: [f32; 3], amount: f32) -> [f32; 3] {
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
 //
 // TODO: Residuals in 8-bit PSD interop: the byte-hue colorize table, the colorize lightness slider (up to 2.5 levels), and the range edges (a few tenths of a degree)
-#[cfg(feature = "std")]
 #[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), icon("NodeHueSaturation"), inspector("hue_saturation_inspector"))]
-fn hue_saturation<T: MapColorAdjust>(
+fn hue_saturation<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[unit("°")]
@@ -1574,7 +1501,6 @@ fn hue_saturation<T: MapColorAdjust>(
 	Ok(input.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone, Copy)]
 	struct HueSaturation {
@@ -1590,7 +1516,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for HueSaturation {
 	fn map_cpu(&self, color: Color) -> Color {
 		let Self {
@@ -1665,9 +1590,8 @@ impl MapColor for HueSaturation {
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeInvert"))]
-fn invert<T: MapColorAdjust>(
+fn invert<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
@@ -1675,13 +1599,11 @@ fn invert<T: MapColorAdjust>(
 	Ok(input.adjust(&Invert {}, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Invert {}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Invert {
 	fn map_cpu(&self, color: Color) -> Color {
 		color.map_gamma_rgb(|channel| 1. - channel)
@@ -1699,9 +1621,8 @@ impl MapColor for Invert {
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeThreshold"), inspector("threshold_inspector"))]
-fn threshold<T: MapColorAdjust>(
+fn threshold<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	#[unit("%")]
@@ -1723,7 +1644,6 @@ fn threshold<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Threshold {
@@ -1732,7 +1652,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Threshold {
 	fn map_cpu(&self, color: Color) -> Color {
 		// For PSD interop, we compare this 14-bit fixed-point Rec. 601 luma against the level unrounded
@@ -1772,9 +1691,8 @@ impl MapColor for Threshold {
 // TODO: - Linear lerps the interval's stop colors by the fraction of p. Smooth is a cubic Hermite over the stop index with tangent
 // TODO:   `(c[i + 1] - c[i - 1]) / 2`, the end stops repeated past the ends, so two stops give `0.5 p + 1.5 p^2 - p^3`.
 // TODO: - The ramp is `(1 - s) * linear + s * smooth` for smoothness s, clamped per interval to its two stop colors.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeGradientMap"))]
-fn gradient_map<T: MapColorAdjust>(
+fn gradient_map<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	#[default(Color::BLACK, Color::WHITE)] gradient: Item<Gradient>,
@@ -1796,7 +1714,6 @@ fn gradient_map<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 struct GradientMap {
 	evaluator: vector_types::gradient::GradientEvaluator,
 	/// The gradient across 0 to 1 without its spread, which the GPU applies before reading the table.
@@ -1806,7 +1723,6 @@ struct GradientMap {
 	reverse: bool,
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	struct GradientMapTable {
 		reverse: bool,
@@ -1816,7 +1732,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl ToGpuParams for GradientMap {
 	type Params = GradientMapTable;
 	fn to_params(&self) -> GradientMapTable {
@@ -1831,7 +1746,6 @@ impl ToGpuParams for GradientMap {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for GradientMap {
 	fn map_cpu(&self, color: Color) -> Color {
 		// The classic 0.3/0.59/0.11 luma of the gamma-encoded channels picks the position along the gradient
@@ -1851,9 +1765,8 @@ impl MapColor for GradientMap {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27-,vibA%27%20%3D%20Vibrance,-%27hue%20%27%20%3D%20Old
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Vibrance%20(Photoshop%20CS3)
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeVibrance"), inspector("vibrance_inspector"))]
-fn vibrance<T: MapColorAdjust>(
+fn vibrance<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	#[unit("%")]
@@ -1873,7 +1786,6 @@ fn vibrance<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Vibrance {
@@ -1882,7 +1794,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Vibrance {
 	fn map_cpu(&self, color: Color) -> Color {
 		// Vibrance then saturation, both in linear light, which equals applying each alone in turn
@@ -1906,18 +1817,15 @@ impl MapColor for Vibrance {
 	}
 }
 
-#[cfg(feature = "std")]
 fn scale_about_maximum(channel: f32, maximum: f32, chroma_factor: f32, brightness_factor: f32) -> f32 {
 	(brightness_factor * (maximum + chroma_factor * (channel - maximum))).clamp(0., 1.)
 }
 
 /// Share of the vibrance boost the skin-tone protection removes at full weight, a fitted constant.
-#[cfg(feature = "std")]
 const VIBRANCE_PROTECTION_LOSS: f32 = 0.4857;
 
 /// Vibrance on linear SDR channels as `[chroma factor about the max, brightness multiply]` for an amount in -1..1, both fading out toward black.
 /// Negative desaturates and darkens low-chroma colors most. Positive boosts them, brightens a little, and spares reds.
-#[cfg(feature = "std")]
 fn vibrance_factors(r: f32, g: f32, b: f32, amount: f32) -> [f32; 2] {
 	let maximum = r.max(g).max(b);
 	let minimum = r.min(g).min(b);
@@ -1944,7 +1852,6 @@ fn vibrance_factors(r: f32, g: f32, b: f32, amount: f32) -> [f32; 2] {
 }
 
 /// How fully a hue falls under the skin-tone protection: all of it from red to 30 degrees, fading out by 45, and back in from 300.
-#[cfg(feature = "std")]
 fn skin_tone_window(hue: f32) -> f32 {
 	if hue < 45. {
 		((45. - hue) / 15.).min(1.)
@@ -1957,9 +1864,9 @@ fn skin_tone_window(hue: f32) -> f32 {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -1969,7 +1876,7 @@ pub enum RedGreenBlue {
 }
 
 // Kept only to deserialize the channel input of old Extract Channel nodes for document migration
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
 pub enum RedGreenBlueAlpha {
@@ -1982,7 +1889,7 @@ pub enum RedGreenBlueAlpha {
 
 /// Style of noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[widget(Dropdown)]
@@ -2001,7 +1908,7 @@ pub enum NoiseType {
 
 /// Style of layered levels of the noise pattern.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum FractalType {
@@ -2019,7 +1926,7 @@ pub enum FractalType {
 
 /// Distance function used by the cellular noise.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum CellularDistanceFunction {
@@ -2032,7 +1939,7 @@ pub enum CellularDistanceFunction {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 pub enum CellularReturnType {
@@ -2053,7 +1960,7 @@ pub enum CellularReturnType {
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[widget(Dropdown)]
@@ -2072,9 +1979,8 @@ pub enum DomainWarpType {
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
 //
 // TODO: CMYK source channels once Graphite supports the CMYK color space.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeChannelMixer"), inspector("channel_mixer_inspector"))]
-fn channel_mixer<T: MapColorAdjust>(
+fn channel_mixer<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 
@@ -2225,7 +2131,6 @@ fn channel_mixer<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct ChannelMixer {
@@ -2249,7 +2154,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for ChannelMixer {
 	fn map_cpu(&self, color: Color) -> Color {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
@@ -2276,9 +2180,9 @@ impl MapColor for ChannelMixer {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -2286,14 +2190,13 @@ pub enum RelativeAbsolute {
 	Absolute,
 }
 
-#[cfg(feature = "std")]
 gpu_param_enum!(u32: RelativeAbsolute);
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -2309,7 +2212,6 @@ pub enum SelectiveColorChoice {
 	Blacks,
 }
 
-#[cfg(feature = "std")]
 gpu_param_enum!(u32: SelectiveColorChoice);
 
 // Aims for interoperable compatibility with:
@@ -2318,9 +2220,8 @@ gpu_param_enum!(u32: SelectiveColorChoice);
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeSelectiveColor"), inspector("selective_color_inspector"))]
-fn selective_color<T: MapColorAdjust>(
+fn selective_color<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 
@@ -2566,7 +2467,6 @@ fn selective_color<T: MapColorAdjust>(
 	Ok(image.adjust(&SelectiveColor { mode, groups }, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone, Copy)]
 	struct SelectiveColorGroup {
@@ -2576,7 +2476,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct SelectiveColor {
@@ -2585,7 +2484,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for SelectiveColor {
 	fn map_cpu(&self, color: Color) -> Color {
 		let [r, g, b, a] = color.to_gamma_srgb_channels();
@@ -2662,9 +2560,8 @@ impl MapColor for SelectiveColor {
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=nvrt%27%20%3D%20Invert-,%27post%27%20%3D%20Posterize,-%27thrs%27%20%3D%20Threshold
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePosterize"))]
-fn posterize<T: MapColorAdjust>(
+fn posterize<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[default(4)]
@@ -2678,7 +2575,6 @@ fn posterize<T: MapColorAdjust>(
 	Ok(input.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Posterize {
@@ -2686,7 +2582,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Posterize {
 	fn map_cpu(&self, color: Color) -> Color {
 		let levels = self.levels as f32;
@@ -2717,9 +2612,8 @@ impl MapColor for Posterize {
 //
 // The exposure, offset, and gamma operations follow:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeExposure"), inspector("exposure_inspector"))]
-fn exposure<T: MapColorAdjust>(
+fn exposure<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] input: Item<T>,
 	#[range]
@@ -2743,7 +2637,6 @@ fn exposure<T: MapColorAdjust>(
 	Ok(input.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct Exposure {
@@ -2753,7 +2646,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for Exposure {
 	fn map_cpu(&self, color: Color) -> Color {
 		// Linearizes with a 2.2 power above a straight toe of slope 1/32, the two meeting at this constant
@@ -2777,9 +2669,9 @@ impl MapColor for Exposure {
 
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
+#[derive(dyn_any::DynAny)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 pub enum TonalRange {
 	Shadows,
@@ -2788,7 +2680,6 @@ pub enum TonalRange {
 	Highlights,
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	/// A Levels-style tone curve: input black and white points on a 0..255 scale and a gamma exponent. For gamma above 1 the
 	/// power curve's slope is unbounded at black, so a cubic toe holds it to 2^gamma until past where that line meets the curve.
@@ -2804,7 +2695,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl LevelsCurve {
 	fn new(black: i32, white: i32, gamma: f32) -> Self {
 		Self::from_points(black as f32, white as f32, gamma)
@@ -2858,7 +2748,6 @@ impl LevelsCurve {
 
 /// One channel's Levels parameters from its own slider values, and (with preserve_luminosity) the slider
 /// extremes across all three channels. The halvings truncate toward zero, as PSD interop requires.
-#[cfg(feature = "std")]
 fn color_balance_curve(s: i32, m: i32, h: i32, s_max: i32, m_max: i32, m_min: i32, h_min: i32, preserve_luminosity: bool) -> LevelsCurve {
 	let (black, white, tone) = if preserve_luminosity {
 		(s_max - s, 255 - (h - h_min), m - (m_max + m_min) / 2)
@@ -2876,9 +2765,8 @@ fn color_balance_curve(s: i32, m: i32, h: i32, s_max: i32, m_max: i32, m_min: i3
 //
 // Every channel is a Levels curve whose black point, white point, and two-decimal gamma are derived from
 // the nine sliders, see `color_balance_curve`.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorBalance"), inspector("color_balance_inspector"))]
-fn color_balance<T: MapColorAdjust>(
+fn color_balance<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 
@@ -2968,7 +2856,6 @@ fn color_balance<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct ColorBalance {
@@ -2978,7 +2865,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for ColorBalance {
 	fn map_cpu(&self, color: Color) -> Color {
 		// The curves operate on gamma-space channel values
@@ -2994,9 +2880,8 @@ impl MapColor for ColorBalance {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27phfl%27%20%3D%20Photo%20Filter
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=of%20the%20file.-,Photo%20Filter,-Key%20is%20%27phfl
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePhotoFilter"))]
-fn photo_filter<T: MapColorAdjust>(
+fn photo_filter<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)] image: Item<T>,
 	#[default("#ec8a00")] color: Item<Color>,
@@ -3024,7 +2909,6 @@ fn photo_filter<T: MapColorAdjust>(
 	Ok(image.adjust(&kernel, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	#[derive(Clone)]
 	struct PhotoFilter {
@@ -3033,7 +2917,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for PhotoFilter {
 	fn map_cpu(&self, pixel: Color) -> Color {
 		let PhotoFilter { factor, preserve_luminosity } = *self;
@@ -3059,14 +2942,10 @@ impl MapColor for PhotoFilter {
 }
 
 // sRGB colorants adapted to D50 as in the sRGB IEC61966-2.1 ICC profile, row major, and their inverse
-#[cfg(feature = "std")]
 pub(crate) const SRGB_TO_XYZ_D50: [[f32; 3]; 3] = [[0.43607, 0.38515, 0.14307], [0.22249, 0.71687, 0.06061], [0.01392, 0.09708, 0.71410]];
-#[cfg(feature = "std")]
 pub(crate) const XYZ_D50_TO_SRGB: [[f32; 3]; 3] = [[3.134096, -1.6174, -0.490638], [-0.978793, 1.916295, 0.033454], [0.071971, -0.228987, 1.40538]];
-#[cfg(feature = "std")]
 pub(crate) const WHITE_XYZ_D50: [f32; 3] = [0.96420, 1., 0.82491];
 
-#[cfg(feature = "std")]
 pub(crate) fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32; 3] {
 	[
 		matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
@@ -3076,7 +2955,6 @@ pub(crate) fn multiply_matrix(matrix: &[[f32; 3]; 3], vector: [f32; 3]) -> [f32;
 }
 
 /// The Rec. 601 luma in the 14-bit fixed point that PSD interop depends on.
-#[cfg(feature = "std")]
 fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 	(4915. * r + 9667. * g + 1802. * b) / 16384.
 }
@@ -3087,9 +2965,8 @@ fn luma_rec_601_fixed_point(r: f32, g: f32, b: f32) -> f32 {
 //
 // TODO: Support dither, which needs the pixel position that a per-color adjustment never sees.
 // TODO: Verify the tetrahedral interpolation, which is unconfirmed against other implementations.
-#[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeColorLookup"))]
-fn color_lookup<T: MapColorAdjust>(
+fn color_lookup<T: Adjust>(
 	_: impl Ctx,
 	/// The image whose colors are remapped by the LUT (lookup table).
 	#[implementations(Raster<CPU>, Raster<GPU>, Color, Gradient)]
@@ -3105,12 +2982,10 @@ fn color_lookup<T: MapColorAdjust>(
 	Ok(image.adjust(&ColorLookup { lut }, pipeline.element())?)
 }
 
-#[cfg(feature = "std")]
 struct ColorLookup {
 	lut: Arc<Lut>,
 }
 
-#[cfg(feature = "std")]
 gpu_params! {
 	struct ColorLookupTable {
 		domain_min: [f32; 3],
@@ -3119,7 +2994,6 @@ gpu_params! {
 	}
 }
 
-#[cfg(feature = "std")]
 impl ToGpuParams for ColorLookup {
 	type Params = ColorLookupTable;
 	fn to_params(&self) -> ColorLookupTable {
@@ -3135,7 +3009,6 @@ impl ToGpuParams for ColorLookup {
 	}
 }
 
-#[cfg(feature = "std")]
 impl MapColor for ColorLookup {
 	fn map_cpu(&self, color: Color) -> Color {
 		// Lookup tables address the gamma-encoded channels
@@ -3150,7 +3023,6 @@ impl MapColor for ColorLookup {
 	}
 }
 
-#[cfg(feature = "std")]
 mod _graphene_hash_impls {
 	use super::{
 		AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha,
@@ -3173,7 +3045,7 @@ mod _graphene_hash_impls {
 	);
 }
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod tests {
 	use super::*;
 

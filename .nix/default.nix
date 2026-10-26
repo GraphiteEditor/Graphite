@@ -31,7 +31,6 @@ let
 
         deps = {
           crane = lib.call ./deps/crane.nix;
-          rustGPU = lib.call ./deps/rust-gpu.nix;
           cargoAbout = lib.call ./deps/cargo-about.nix;
         };
 
@@ -57,7 +56,6 @@ in
       default = graphite;
       graphite = (lib.call ./pkgs/graphite.nix) { };
       graphite-dev = (lib.call ./pkgs/graphite.nix) { dev = true; };
-      graphite-raster-nodes-shaders = lib.call ./pkgs/graphite-raster-nodes-shaders.nix;
       graphite-branding = lib.call ./pkgs/graphite-branding.nix;
       graphite-bundle = (lib.call ./pkgs/graphite-bundle.nix) { };
       graphite-bundle-dev = (lib.call ./pkgs/graphite-bundle.nix) { graphite = graphite-dev; };

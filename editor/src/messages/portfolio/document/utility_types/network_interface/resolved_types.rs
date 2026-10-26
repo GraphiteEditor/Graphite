@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
+use graph_craft::document::{DocumentNodeImplementation, NodeInput};
 use graph_craft::proto::{GraphErrorType, GraphErrors, Promotion};
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use graphene_std::NodeIOTypes;
@@ -257,7 +257,6 @@ impl NodeNetworkInterface {
 			}
 			NodeInput::Scope(_) => TypeSource::Compiled(concrete!(())),
 			NodeInput::Reflection(document_node_metadata) => TypeSource::Compiled(document_node_metadata.ty()),
-			NodeInput::Inline(_) => TypeSource::Compiled(concrete!(InlineRust)),
 		}
 	}
 
