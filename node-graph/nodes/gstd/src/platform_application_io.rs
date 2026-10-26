@@ -2,9 +2,9 @@ use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::ops::ConvertAsync;
+use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, NodeError};
+use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, Interrupt, NodeError};
 use glam::{DAffine2, UVec2};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -12,8 +12,9 @@ pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
-use graphic_types::raster_types::{CPU, Raster};
-use graphic_types::raster_types::{Image, ImageError};
+use graphic_types::raster_types::Image;
+use graphic_types::raster_types::{CPU, GPU, Raster};
+use raster_nodes::raster_kernel::raster_kernel_pipeline;
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
@@ -207,15 +208,16 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
-#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
-fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>, ImageError> {
+#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"), memoize)]
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Raster<GPU>>, Interrupt> {
 	let data = data.into_element();
 	if data.is_empty() {
 		return Ok(Item::default());
 	}
-	let image = Image::from_encoded(data.as_ref())?;
+	let image = Image::from_encoded(data.as_ref()).map_err(NodeError::new)?;
 
-	Ok(Item::new_from_element(Raster::new_cpu(image)))
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to load an image"))?;
+	Ok(Item::new_from_element(Raster::new_cpu(image).convert(Footprint::DEFAULT, executor)))
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
@@ -225,11 +227,11 @@ async fn rasterize(
 	data: List<Graphic>,
 	footprint: Item<Footprint>,
 	#[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>,
-) -> Result<List<Raster<CPU>>, NodeError> {
+) -> Result<List<Raster<GPU>>, NodeError> {
 	rasterize_with_vello(data, footprint.into_element(), executor.into_element()).await
 }
 
-async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> Result<List<Raster<CPU>>, NodeError> {
+async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> Result<List<Raster<GPU>>, NodeError> {
 	let resolution = footprint.resolution;
 	if footprint.transform.matrix2.determinant() == 0. || resolution.cmpeq(UVec2::ZERO).any() {
 		log::trace!("Invalid footprint received for rasterization");
@@ -246,7 +248,9 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	let texture = executor
 		.render_vello(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params))
 		.map_err(NodeError::new)?;
-	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor).await;
+	// Downloaded and uploaded again since Vello renders the texture in an 8-bit format rather than the format of GPU rasters
+	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor.clone()).await;
+	let raster = raster.convert(Footprint::DEFAULT, executor);
 
 	// The input's layers stay reachable so the renderer can expose their click targets to the editor's tools
 	Ok(List::new_from_item(
@@ -256,7 +260,7 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	))
 }
 
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<::wgpu_executor::WgpuExecutor>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<::wgpu_executor::WgpuExecutor>) -> List<Raster<GPU>> {
 	List::new()
 }
 
@@ -326,9 +330,11 @@ mod tests {
 			..Default::default()
 		};
 
-		let output = rasterize_with_vello(data, footprint, executor).await.expect("Rasterize should render");
+		let output = rasterize_with_vello(data, footprint, executor.clone()).await.expect("Rasterize should render");
 
-		let image = output.iter_element_values().next().expect("Rasterize should output one image").data();
+		let raster = output.iter_element_values().next().expect("Rasterize should output one image").clone();
+		let raster: Raster<CPU> = ConvertAsync::convert(raster, Footprint::DEFAULT, executor).await;
+		let image = raster.data();
 		assert_eq!((image.width, image.height), (4, 4));
 		for x in 0..4 {
 			let pixel = image.data[(4 + x) as usize];
