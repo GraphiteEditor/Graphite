@@ -1029,14 +1029,20 @@ impl ShapeState {
 		// Check if the anchor is connected to linear segments and has no handles
 		let linear_segments = vector.connected_linear_segments(point_id) != 0;
 
-		// Grab the next and previous manipulator groups by simply looking at the next / previous index
+		// Grab the next and previous manipulator groups, leaving out any on top of this anchor since its segment has no direction to smooth along
 		let points = handles.iter().map(|handle| vector.other_point(handle.segment, point_id));
-		let anchor_positions = points.map(|point| point.and_then(|point| vector.position_of(ManipulatorPointId::Anchor(point)))).collect::<Vec<_>>();
+		let anchor_positions = points
+			.map(|point| point.and_then(|point| vector.position_of(ManipulatorPointId::Anchor(point))))
+			.map(|position| position.filter(|position| !position.abs_diff_eq(anchor_position, 1e-6)))
+			.collect::<Vec<_>>();
+		if !anchor_positions.is_empty() && anchor_positions.iter().all(Option::is_none) {
+			return;
+		}
 
 		let mut segment_angle = 0.;
 		let mut segment_count = 0.;
 
-		for segment in &handle_segments {
+		for (segment, _) in handle_segments.iter().zip(&anchor_positions).filter(|(_, other_anchor)| other_anchor.is_some()) {
 			let Some(angle) = calculate_segment_angle(point_id, *segment, vector, false) else {
 				continue;
 			};
@@ -1437,6 +1443,17 @@ impl ShapeState {
 		Some([(handles[0], start), (handles[1], end)])
 	}
 
+	/// Places a handle on top of its anchor, which ends its colinearity with the opposite handle.
+	fn retract_handle(handle: HandleId, layer: LayerNodeIdentifier, colinear_pairs: &[[HandleId; 2]], responses: &mut VecDeque<Message>) {
+		let modification_type = handle.set_relative_position(DVec2::ZERO);
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+		for &handles in colinear_pairs.iter().filter(|handles| handles.contains(&handle)) {
+			let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
+	}
+
 	/// Dissolve the selected points.
 	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) {
 		let mut transaction_started = false;
@@ -1468,18 +1485,7 @@ impl ShapeState {
 					}
 					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
 						let Some(handle) = point.as_handle() else { continue };
-
-						// Place the handle on top of the anchor
-						let modification_type = handle.set_relative_position(DVec2::ZERO);
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-
-						// Disable the g1 continuous
-						for &handles in &colinear_pairs {
-							if handles.contains(&handle) {
-								let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-								responses.add(GraphOperationMessage::Vector { layer, modification_type });
-							}
-						}
+						Self::retract_handle(handle, layer, &colinear_pairs, responses);
 					}
 				}
 			}
@@ -1600,6 +1606,7 @@ impl ShapeState {
 		}
 	}
 
+	/// Cut the path at each selected anchor, giving every segment there its own anchor. Selected handles are ignored.
 	/// Note: this also adds a history transaction if there is some change in state.
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let mut transaction_started = false;
@@ -1608,8 +1615,7 @@ impl ShapeState {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 			let colinear_pairs = vector.colinear_pairs();
 
-			for &delete in &state.selected_points {
-				let Some(point) = vector.anchor_of(delete) else { continue };
+			for point in state.selected_points.iter().filter_map(|point| point.as_anchor()) {
 				let Some(pos) = vector.position_from_id(point) else { continue };
 
 				let mut used_initial_point = false;
@@ -1653,29 +1659,49 @@ impl ShapeState {
 		}
 	}
 
-	/// Delete point(s) and adjacent segments.
+	/// Delete the selected anchors and their adjacent segments, without joining their neighbors, and retract the selected handles as [`Self::delete_selected_points`] does.
 	/// Note: this also adds a history transaction if there is some change in state, and true is returned if so.
 	pub fn delete_point_and_break_path(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		let mut transaction_started = false;
 
 		for (&layer, state) in &mut self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
+			let colinear_pairs = vector.colinear_pairs();
 
-			for delete in std::mem::take(&mut state.selected_points) {
-				let Some(point) = vector.anchor_of(delete) else { continue };
+			let selected_points = std::mem::take(&mut state.selected_points);
+			let deleted_anchors = selected_points.iter().filter_map(|point| point.as_anchor()).collect::<HashSet<_>>();
+
+			// A handle has no anchor of its own to delete, so it's only retracted, unless a deleted anchor takes its segment with it
+			let segment_survives = |segment: SegmentId| {
+				vector
+					.segment_points_from_id(segment)
+					.is_some_and(|(start, end, _)| !deleted_anchors.contains(&start) && !deleted_anchors.contains(&end))
+			};
+
+			for point in selected_points {
+				if point.as_handle().is_some_and(|handle| !segment_survives(handle.segment)) {
+					continue;
+				}
 
 				if !transaction_started {
 					responses.add(DocumentMessage::AddTransaction);
 					transaction_started = true;
 				}
-				// Delete point
-				let modification_type = VectorModificationType::RemovePoint { id: point };
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 
-				// Delete connected segments
-				for HandleId { segment, .. } in vector.all_connected(point) {
-					let modification_type = VectorModificationType::RemoveSegment { id: segment };
-					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				match point {
+					ManipulatorPointId::Anchor(anchor) => {
+						let modification_type = VectorModificationType::RemovePoint { id: anchor };
+						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+						for HandleId { segment, .. } in vector.all_connected(anchor) {
+							let modification_type = VectorModificationType::RemoveSegment { id: segment };
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+						}
+					}
+					ManipulatorPointId::PrimaryHandle(_) | ManipulatorPointId::EndHandle(_) => {
+						let Some(handle) = point.as_handle() else { continue };
+						Self::retract_handle(handle, layer, &colinear_pairs, responses);
+					}
 				}
 			}
 		}

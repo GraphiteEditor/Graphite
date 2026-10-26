@@ -630,7 +630,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				self.mouse_position = input.mouse.position;
 			}
 			TransformLayerMessage::SelectionChanged => {
-				let target_layers = document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface).collect();
+				let target_layers = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => {
@@ -1045,6 +1045,7 @@ mod test_transform_layer {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
+	use graphene_std::vector::misc::pathseg_points;
 	use std::collections::VecDeque;
 
 	async fn get_layer_transform(editor: &mut EditorTestUtils, layer: LayerNodeIdentifier) -> Option<DAffine2> {
@@ -1843,6 +1844,54 @@ mod test_transform_layer {
 			anchors[0].distance(first) < 1e-6 && anchors[1].distance(DVec2::new(400., 300.)) < 1e-6,
 			"unexpected anchors {anchors:?}"
 		);
+	}
+
+	#[tokio::test]
+	async fn scaling_two_path_anchors_scales_their_handles_with_them() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// A Pen path whose middle anchor is smooth, with handles reaching 50 px to either side
+		let (start, middle, end) = (DVec2::new(100., 300.), DVec2::new(250., 150.), DVec2::new(400., 300.));
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, start, ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Pen, middle.x, middle.y, middle.x + 50., middle.y, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, end, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		let layer = editor.get_selected_layer().await.expect("the drawn path should be selected");
+
+		// The middle and last anchors are selected with the Path tool and scaled 2× about their center
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, middle, ModifierKeys::empty()).await;
+		editor.click_tool(ToolType::Path, MouseKeys::LEFT, end, ModifierKeys::SHIFT).await;
+		editor.handle_message(TransformLayerMessage::BeginScale).await;
+		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 2 }).await;
+		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
+		let center = (middle + end) / 2.;
+		let scaled_middle = center + (middle - center) * 2.;
+		let middle_id = vector
+			.anchor_points()
+			.find(|&id| {
+				vector
+					.position_from_id(id)
+					.is_some_and(|position| to_viewport.transform_point2(position).distance(scaled_middle) < 1e-6)
+			})
+			.expect("the middle anchor should be twice as far from the center");
+
+		// Both of the middle anchor's handles double in length, to 100 px
+		let handles: Vec<DVec2> = vector
+			.segment_iter()
+			.flat_map(|(_, segment, segment_start, segment_end)| {
+				let points = pathseg_points(segment);
+				[points.p1.filter(|_| segment_start == middle_id), points.p2.filter(|_| segment_end == middle_id)]
+			})
+			.flatten()
+			.map(|handle| to_viewport.transform_point2(handle))
+			.collect();
+		assert_eq!(handles.len(), 2, "unexpected handles {handles:?}");
+		assert!(handles.iter().all(|handle| (handle.distance(scaled_middle) - 100.).abs() < 1e-6), "unexpected handles {handles:?}");
 	}
 
 	#[tokio::test]

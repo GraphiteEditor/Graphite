@@ -18,6 +18,8 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: PointerState,
+	/// Whether the latest key press is the keyboard repeating a held key.
+	pub key_repeat: bool,
 	pointer_down_time: f64,
 	/// Double-tap detection state, timed as one gesture from the first tap's key-down.
 	double_tap_state: DoubleTapState,
@@ -60,6 +62,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 				self.keyboard.set(key as usize);
+				self.key_repeat = key_repeat;
 
 				if !key_repeat {
 					// A press that arrives with a mouse button or modifier held can neither open nor close a double tap,
