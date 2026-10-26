@@ -1,12 +1,12 @@
 use crate::adjust::Adjust;
+use core_types::Ctx;
+use core_types::blending::BlendMode;
+use core_types::color::Color;
 use core_types::list::Item;
-use no_std_types::Ctx;
-use no_std_types::blending::BlendMode;
-use no_std_types::color::Color;
 use raster_types::{CPU, Raster};
 use vector_types::Gradient;
 
-pub use no_std_types::blending::{apply_blend_mode, blend_colors};
+pub use core_types::blending::{apply_blend_mode, blend_colors};
 
 /// Mixes the over color onto the under color by a blend mode and opacity, as if they were stacked layers.
 #[node_macro::node(category("Color"), icon("NodeMixColors"), version(2))]
