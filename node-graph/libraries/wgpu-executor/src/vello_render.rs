@@ -361,7 +361,7 @@ impl ImageTextures {
 
 		if let SceneImage::Texture(source) = image {
 			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-			let loads_linear_light = source.format().is_srgb() || source.format() == crate::RASTER_FORMAT;
+			let loads_linear_light = source.format().is_srgb() || matches!(source.format(), crate::RASTER_FORMAT | crate::FALLBACK_RASTER_FORMAT);
 			alpha_conversion.premultiply(device, encoder, &source_view, loads_linear_light, &view);
 		}
 

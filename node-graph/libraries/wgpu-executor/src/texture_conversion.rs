@@ -4,6 +4,7 @@ use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
+use half::f16;
 use raster_types::Image;
 use raster_types::{CPU, GPU, Raster, Storage};
 use wgpu::Extent3d;
@@ -14,14 +15,21 @@ fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raste
 		return Raster::default();
 	}
 
-	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), crate::RASTER_FORMAT);
-
+	let format = executor.raster_format();
+	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), format);
+	let half_floats: Vec<[f16; 4]>;
+	let (bytes, bytes_per_pixel) = if format == crate::FALLBACK_RASTER_FORMAT {
+		half_floats = image.data.iter().map(|color| color.to_vec4().to_array().map(f16::from_f32)).collect();
+		(bytemuck::cast_slice(half_floats.as_slice()), 8)
+	} else {
+		(bytemuck::cast_slice(image.data.as_slice()), 16)
+	};
 	queue.write_texture(
 		texture.as_image_copy(),
-		bytemuck::cast_slice(image.data.as_slice()),
+		bytes,
 		wgpu::TexelCopyBufferLayout {
 			offset: 0,
-			bytes_per_row: Some(16 * image.width),
+			bytes_per_row: Some(bytes_per_pixel * image.width),
 			rows_per_image: Some(image.height),
 		},
 		Extent3d {
@@ -37,7 +45,7 @@ fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raste
 ///
 /// Assumptions:
 /// - 2D texture, mip level 0
-/// - 4 bytes-per-pixel RGBA8, or `RASTER_FORMAT`
+/// - 4 bytes-per-pixel RGBA8, or `RASTER_FORMAT` or `FALLBACK_RASTER_FORMAT`
 /// - Texture has COPY_SRC usage
 struct RasterGpuToRasterCpuConverter {
 	buffer: Buffer,
@@ -54,7 +62,11 @@ impl RasterGpuToRasterCpuConverter {
 		let width = texture.width();
 		let height = texture.height();
 		let format = texture.format();
-		let bytes_per_pixel = if format == crate::RASTER_FORMAT { 16 } else { 4 };
+		let bytes_per_pixel = match format {
+			crate::RASTER_FORMAT => 16,
+			crate::FALLBACK_RASTER_FORMAT => 8,
+			_ => 4,
+		};
 		let unpadded_bytes_per_row = width * bytes_per_pixel;
 		let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 		let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
@@ -142,11 +154,19 @@ impl RasterGpuToRasterCpuConverter {
 		for row in 0..self.height as usize {
 			let start = row * row_stride;
 			let row_slice = &view[start..start + row_bytes];
-			if self.format == crate::RASTER_FORMAT {
-				cpu_data.extend(bytemuck::pod_collect_to_vec::<u8, Color>(row_slice));
-			} else {
-				for px in row_slice.chunks_exact(4) {
-					cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+			match self.format {
+				crate::RASTER_FORMAT => cpu_data.extend(bytemuck::pod_collect_to_vec::<u8, Color>(row_slice)),
+				crate::FALLBACK_RASTER_FORMAT => {
+					let pixels = bytemuck::pod_collect_to_vec::<u8, [f16; 4]>(row_slice);
+					cpu_data.extend(pixels.iter().map(|pixel| {
+						let [red, green, blue, alpha] = pixel.map(f16::to_f32);
+						Color::from_rgbaf32_unchecked(red, green, blue, alpha)
+					}));
+				}
+				_ => {
+					for px in row_slice.chunks_exact(4) {
+						cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+					}
 				}
 			}
 		}

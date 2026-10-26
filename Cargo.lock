@@ -8701,6 +8701,7 @@ dependencies = [
  "futures",
  "glam",
  "graphene-application-io",
+ "half",
  "log",
  "node-macro",
  "raster-types",

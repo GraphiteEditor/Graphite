@@ -73,7 +73,7 @@ fn dehaze_input(raster: &Raster<GPU>) -> RasterKernelInput<'_> {
 
 impl DehazeRaster for Raster<GPU> {
 	/// Runs the CPU's algorithm in float without its 8-bit quantization, downloading the dark channel to choose the atmospheric light exactly as the CPU does.
-	/// The guided filter's intermediates stay in [`wgpu_executor::RASTER_FORMAT`] since its variances lose their precision at half-float.
+	/// The guided filter's intermediates stay in the executor's raster format rather than `FILTERABLE_FORMAT` since its variances lose their precision at half-float.
 	async fn dehaze(image: Item<Self>, strength: f64, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
 		if image.element().is_empty() {
 			return Ok(image);
