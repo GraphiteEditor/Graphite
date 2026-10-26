@@ -764,165 +764,165 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<!-- Layers -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => node.isLayer && $visibleNodes.has(nodeId))
-			.map(([_, node]) => node) as node (node.id)}
-			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const stackDataInput = node.exposedInputs[0]}
-			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
-			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
-			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
-			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
-			<div
-				class="layer"
-				class:selected={$nodeGraph.selected.includes(node.id)}
-				class:in-selected-network={$nodeGraph.inSelectedNetwork}
-				class:previewed={node.previewed}
-				class:disabled={!node.visible}
-				class:locked={node.locked}
-				style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
-				style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
-				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				style:--layer-area-width={layerAreaWidth}
-				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip-label={nodeNameTooltipLabel(node)}
-				data-tooltip-description={(description || "").trim()}
-				data-node={node.id}
-			>
-				<div class="thumbnail">
-					{#if $nodeGraph.thumbnailCanvases.has(node.id)}
-						<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(node.id)?.nodeGraphCanvasId} />
-					{:else if $thumbnailImages.has(node.id)}
-						<ThumbnailImage image={$thumbnailImages.get(node.id)} />
-					{/if}
-					<!-- Layer stacking top output -->
-					{#if node.primaryOutput}
+		{#each Array.from($nodeGraph.nodes.values()).filter((node) => node.isLayer) as node (node.id)}
+			{#if $visibleNodes.has(node.id)}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const stackDataInput = node.exposedInputs[0]}
+				{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
+				{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
+				{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
+				{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
+				<div
+					class="layer"
+					class:selected={$nodeGraph.selected.includes(node.id)}
+					class:in-selected-network={$nodeGraph.inSelectedNetwork}
+					class:previewed={node.previewed}
+					class:disabled={!node.visible}
+					class:locked={node.locked}
+					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+					style:--layer-area-width={layerAreaWidth}
+					style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
+					data-tooltip-label={nodeNameTooltipLabel(node)}
+					data-tooltip-description={(description || "").trim()}
+					data-node={node.id}
+				>
+					<div class="thumbnail">
+						{#if $nodeGraph.thumbnailCanvases.has(node.id)}
+							<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(node.id)?.nodeGraphCanvasId} />
+						{:else if $thumbnailImages.has(node.id)}
+							<ThumbnailImage image={$thumbnailImages.get(node.id)} />
+						{/if}
+						<!-- Layer stacking top output -->
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 12"
+								class="connector top"
+								data-connector="output"
+								data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
+								data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if node.primaryOutput.connected}
+									<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
+									{#if node.primaryOutputConnectedToLayer}
+										<path
+											class="stack-wire-end"
+											d="M0,4.5 C0,4.5 0,-3.5 0,-3.5 C0,-3.5 3,-3.5 3,-3.5 C3,-3.5 3,2.565 3,2.565 C2.834,2.632 2.673,2.717 2.52,2.819 C2.52,2.819 0,4.5 0,4.5 ZM5,2.566 C5,2.566 5,-3.5 5,-3.5 C5,-3.5 8,-3.5 8,-3.5 C8,-3.5 8,4.5 8,4.5 C8,4.5 5.479,2.819 5.479,2.819 C5.326,2.717 5.166,2.633 5,2.566 Z"
+											fill="var(--data-color-dim)"
+										/>
+									{/if}
+								{:else}
+									<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						{/if}
+						<!-- Layer stacking bottom input -->
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
-							class="connector top"
-							data-connector="output"
-							data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
-							data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							class="connector bottom"
+							data-connector="input"
+							data-tooltip-label={node.primaryInput ? connectorTooltipLabel(node.primaryInput) : ""}
+							data-tooltip-description={node.primaryInput ? inputTooltipDescription(node.primaryInput) : ""}
+							data-datatype={node.primaryInput?.dataType}
+							style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 						>
-							{#if node.primaryOutput.connected}
-								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if node.primaryOutputConnectedToLayer}
+							{#if node.primaryInput?.connected}
+								<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
+								{#if node.primaryInputConnectedToLayer}
 									<path
 										class="stack-wire-end"
-										d="M0,4.5 C0,4.5 0,-3.5 0,-3.5 C0,-3.5 3,-3.5 3,-3.5 C3,-3.5 3,2.565 3,2.565 C2.834,2.632 2.673,2.717 2.52,2.819 C2.52,2.819 0,4.5 0,4.5 ZM5,2.566 C5,2.566 5,-3.5 5,-3.5 C5,-3.5 8,-3.5 8,-3.5 C8,-3.5 8,4.5 8,4.5 C8,4.5 5.479,2.819 5.479,2.819 C5.326,2.717 5.166,2.633 5,2.566 Z"
+										d="M2.512,9.26 C2.673,9.157 2.834,9.072 3,9 C3,9 3,16 3,16 C3,16 0,16 0,16 C0,16 0,10.95 0,10.95 C0,10.95 2.512,9.26 2.512,9.26 ZM5,16 C5,16 5,9 5,9 C5.166,9.073 5.327,9.158 5.48,9.26 C5.48,9.26 8,10.95 8,10.95 C8,10.95 8,16 8,16 C8,16 5,16 5,16 Z"
 										fill="var(--data-color-dim)"
 									/>
 								{/if}
 							{:else}
-								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
-					<!-- Layer stacking bottom input -->
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 12"
-						class="connector bottom"
-						data-connector="input"
-						data-tooltip-label={node.primaryInput ? connectorTooltipLabel(node.primaryInput) : ""}
-						data-tooltip-description={node.primaryInput ? inputTooltipDescription(node.primaryInput) : ""}
-						data-datatype={node.primaryInput?.dataType}
-						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
-					>
-						{#if node.primaryInput?.connected}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if node.primaryInputConnectedToLayer}
-								<path
-									class="stack-wire-end"
-									d="M2.512,9.26 C2.673,9.157 2.834,9.072 3,9 C3,9 3,16 3,16 C3,16 0,16 0,16 C0,16 0,10.95 0,10.95 C0,10.95 2.512,9.26 2.512,9.26 ZM5,16 C5,16 5,9 5,9 C5.166,9.073 5.327,9.158 5.48,9.26 C5.48,9.26 8,10.95 8,10.95 C8,10.95 8,16 8,16 C8,16 5,16 5,16 Z"
-									fill="var(--data-color-dim)"
-								/>
-							{/if}
-						{:else}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-				</div>
-				<!-- Layer input connector (from left) -->
-				{#if node.exposedInputs.length > 0}
-					<div class="input connectors">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector"
-							data-tooltip-label={connectorTooltipLabel(stackDataInput)}
-							data-tooltip-description={inputTooltipDescription(stackDataInput)}
-							data-connector="input"
-							data-datatype={stackDataInput.dataType}
-							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
-						>
-							{#if stackDataInput.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
 							{/if}
 						</svg>
 					</div>
-				{/if}
-				<div class="details">
-					{#if editingName?.kind === "Layer" && editingName.nodeId === node.id}
-						<input
-							class="name-input"
-							type="text"
-							bind:this={inputElement}
-							bind:value={editingNameText}
-							on:pointerdown|stopPropagation
-							on:dblclick|stopPropagation
-							on:blur={commitEditingName}
-							on:keydown={onNameInputKeyDown}
-						/>
-					{:else}
-						<TextLabel>{node.displayName}</TextLabel>
+					<!-- Layer input connector (from left) -->
+					{#if node.exposedInputs.length > 0}
+						<div class="input connectors">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector"
+								data-tooltip-label={connectorTooltipLabel(stackDataInput)}
+								data-tooltip-description={inputTooltipDescription(stackDataInput)}
+								data-connector="input"
+								data-datatype={stackDataInput.dataType}
+								style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if stackDataInput.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						</div>
 					{/if}
-				</div>
-				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
-				{#if node.locked}
+					<div class="details">
+						{#if editingName?.kind === "Layer" && editingName.nodeId === node.id}
+							<input
+								class="name-input"
+								type="text"
+								bind:this={inputElement}
+								bind:value={editingNameText}
+								on:pointerdown|stopPropagation
+								on:dblclick|stopPropagation
+								on:blur={commitEditingName}
+								on:keydown={onNameInputKeyDown}
+							/>
+						{:else}
+							<TextLabel>{node.displayName}</TextLabel>
+						{/if}
+					</div>
+					<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
+					{#if node.locked}
+						<IconButton
+							class="lock"
+							data-lock-button
+							size={24}
+							icon="PadlockLocked"
+							hoverIcon="PadlockUnlocked"
+							action={() => {
+								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+							}}
+							tooltipLabel="Unlock"
+						/>
+					{/if}
 					<IconButton
-						class="lock"
-						data-lock-button
+						class="visibility"
+						data-visibility-button
 						size={24}
-						icon="PadlockLocked"
-						hoverIcon="PadlockUnlocked"
+						icon={node.visible ? "EyeVisible" : "EyeHidden"}
+						hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
 						action={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
-						tooltipLabel="Unlock"
+						tooltipLabel={node.visible ? "Hide" : "Show"}
 					/>
-				{/if}
-				<IconButton
-					class="visibility"
-					data-visibility-button
-					size={24}
-					icon={node.visible ? "EyeVisible" : "EyeHidden"}
-					hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-					tooltipLabel={node.visible ? "Hide" : "Show"}
-				/>
 
-				<svg class="border-mask" width="0" height="0">
-					<defs>
-						<clipPath id={clipPathId}>
-							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
-						</clipPath>
-					</defs>
-				</svg>
-			</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
+								<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
+							</clipPath>
+						</defs>
+					</svg>
+				</div>
+			{/if}
 		{/each}
 
 		<!-- Node connection wires -->
@@ -946,75 +946,116 @@
 		</div>
 
 		<!-- Nodes -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => !node.isLayer && !node.isRedirectDot && $visibleNodes.has(nodeId))
-			.map(([_, node]) => node) as node (node.id)}
-			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
-			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
-			{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
-			<div
-				class="node"
-				class:selected={$nodeGraph.selected.includes(node.id)}
-				class:previewed={node.previewed}
-				class:disabled={!node.visible}
-				style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
-				style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
-				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={nodeNameTooltipLabel(node)}
-				data-tooltip-description={(description || "").trim()}
-				data-node={node.id}
-			>
-				<!-- Primary row -->
-				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
-					<IconLabel {icon} />
-					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
-				</div>
-				<!-- Secondary rows -->
-				{#if exposedInputsOutputs.length > 0}
-					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
-						{#each exposedInputsOutputs as [input, output]}
-							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltipLabel={input !== undefined ? input.name : output.name} tooltipDescription={input !== undefined ? input.description : output.description}>
-									{input !== undefined ? input.name : output.name}
-								</TextLabel>
-							</div>
+		{#each Array.from($nodeGraph.nodes.values()).filter((node) => !node.isLayer && !node.isRedirectDot) as node (node.id)}
+			{#if $visibleNodes.has(node.id)}
+				{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
+				{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
+				<div
+					class="node"
+					class:selected={$nodeGraph.selected.includes(node.id)}
+					class:previewed={node.previewed}
+					class:disabled={!node.visible}
+					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+					data-tooltip-label={nodeNameTooltipLabel(node)}
+					data-tooltip-description={(description || "").trim()}
+					data-node={node.id}
+				>
+					<!-- Primary row -->
+					<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+						<IconLabel {icon} />
+						<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+						<TextLabel>{node.displayName}</TextLabel>
+					</div>
+					<!-- Secondary rows -->
+					{#if exposedInputsOutputs.length > 0}
+						<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
+							{#each exposedInputsOutputs as [input, output]}
+								<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
+									<TextLabel tooltipLabel={input !== undefined ? input.name : output.name} tooltipDescription={input !== undefined ? input.description : output.description}>
+										{input !== undefined ? input.name : output.name}
+									</TextLabel>
+								</div>
+							{/each}
+						</div>
+					{/if}
+					<!-- Input connectors -->
+					<div class="input connectors">
+						{#if node.primaryInput?.dataType}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector primary-connector"
+								data-connector="input"
+								data-tooltip-label={connectorTooltipLabel(node.primaryInput)}
+								data-tooltip-description={inputTooltipDescription(node.primaryInput)}
+								data-datatype={node.primaryInput?.dataType}
+								style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if node.primaryInput.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						{/if}
+						{#each node.exposedInputs as secondary, index}
+							{#if index < node.exposedInputs.length}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="connector"
+									data-connector="input"
+									data-tooltip-label={connectorTooltipLabel(secondary)}
+									data-tooltip-description={inputTooltipDescription(secondary)}
+									data-datatype={secondary.dataType}
+									style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
+								>
+									{#if secondary.connected}
+										<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+									{:else}
+										<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+									{/if}
+								</svg>
+							{/if}
 						{/each}
 					</div>
-				{/if}
-				<!-- Input connectors -->
-				<div class="input connectors">
-					{#if node.primaryInput?.dataType}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector primary-connector"
-							data-connector="input"
-							data-tooltip-label={connectorTooltipLabel(node.primaryInput)}
-							data-tooltip-description={inputTooltipDescription(node.primaryInput)}
-							data-datatype={node.primaryInput?.dataType}
-							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
-						>
-							{#if node.primaryInput.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
-					{#each node.exposedInputs as secondary, index}
-						{#if index < node.exposedInputs.length}
+					<!-- Output connectors -->
+					<div class="output connectors">
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector primary-connector"
+								data-connector="output"
+								data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
+								data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if node.primaryOutput.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						{/if}
+						{#each node.exposedOutputs as secondary}
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="connector"
-								data-connector="input"
+								data-connector="output"
 								data-tooltip-label={connectorTooltipLabel(secondary)}
-								data-tooltip-description={inputTooltipDescription(secondary)}
+								data-tooltip-description={outputTooltipDescription(secondary)}
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -1025,91 +1066,50 @@
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 								{/if}
 							</svg>
-						{/if}
-					{/each}
+						{/each}
+					</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path
+									clip-rule="evenodd"
+									d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+								/>
+							</clipPath>
+						</defs>
+					</svg>
 				</div>
-				<!-- Output connectors -->
-				<div class="output connectors">
-					{#if node.primaryOutput}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector primary-connector"
-							data-connector="output"
-							data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
-							data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-						>
-							{#if node.primaryOutput.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
-					{#each node.exposedOutputs as secondary}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector"
-							data-connector="output"
-							data-tooltip-label={connectorTooltipLabel(secondary)}
-							data-tooltip-description={outputTooltipDescription(secondary)}
-							data-datatype={secondary.dataType}
-							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-						>
-							{#if secondary.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/each}
-				</div>
-				<svg class="border-mask" width="0" height="0">
-					<defs>
-						<clipPath id={clipPathId}>
-							<path
-								clip-rule="evenodd"
-								d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
-							/>
-						</clipPath>
-					</defs>
-				</svg>
-			</div>
+			{/if}
 		{/each}
 
 		<!-- Redirect dots, which are Passthrough nodes bending the wires running through them -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => node.isRedirectDot && $visibleNodes.has(nodeId))
-			.map(([_, node]) => node) as node (node.id)}
-			<div
-				class="redirect-dot"
-				class:selected={$nodeGraph.selected.includes(node.id)}
-				class:previewed={node.previewed}
-				style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
-				style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={node.primaryOutput ? connectorTooltipLabel(node.primaryOutput) : node.displayName}
-				data-tooltip-description={node.primaryOutput ? outputTooltipDescription(node.primaryOutput) : ""}
-				data-node={node.id}
-			>
-				<!-- The hover zones mirror the click targets in the backend: the middle and (once wired) left gutter move the dot, and the right gutter pulls out a new wire -->
-				<div class="zone move"></div>
-				{#if !node.primaryInput?.connected}
-					<div class="zone wire-in"></div>
-				{/if}
-				<div class="zone wire-out"></div>
-				<!-- Where both its wires attach, so it stands in for its connectors as the end of a wire being dragged -->
-				<div class="dot" class:unwired={!node.primaryInput?.connected && !node.primaryOutput?.connected} data-connector="dot"></div>
-				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="wire-out-port">
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				</svg>
-			</div>
+		{#each Array.from($nodeGraph.nodes.values()).filter((node) => node.isRedirectDot) as node (node.id)}
+			{#if $visibleNodes.has(node.id)}
+				<div
+					class="redirect-dot"
+					class:selected={$nodeGraph.selected.includes(node.id)}
+					class:previewed={node.previewed}
+					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
+					style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+					data-tooltip-label={node.primaryOutput ? connectorTooltipLabel(node.primaryOutput) : node.displayName}
+					data-tooltip-description={node.primaryOutput ? outputTooltipDescription(node.primaryOutput) : ""}
+					data-node={node.id}
+				>
+					<!-- The hover zones mirror the click targets in the backend: the middle and (once wired) left gutter move the dot, and the right gutter pulls out a new wire -->
+					<div class="zone move"></div>
+					{#if !node.primaryInput?.connected}
+						<div class="zone wire-in"></div>
+					{/if}
+					<div class="zone wire-out"></div>
+					<!-- Where both its wires attach, so it stands in for its connectors as the end of a wire being dragged -->
+					<div class="dot" class:unwired={!node.primaryInput?.connected && !node.primaryOutput?.connected} data-connector="dot"></div>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="wire-out-port">
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+					</svg>
+				</div>
+			{/if}
 		{/each}
 	</div>
 </div>
