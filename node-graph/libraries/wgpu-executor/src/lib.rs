@@ -8,12 +8,13 @@ mod vello_render;
 
 use crate::shader_runtime::ShaderRuntime;
 use crate::texture_cache::TextureCache;
+pub use crate::vello_render::VelloCanvas;
 use crate::vello_render::VelloRenderer;
 use anyhow::Result;
 use glam::{DAffine2, UVec2};
 use graphene_application_io::{ApplicationIo, EditorApi};
 use std::sync::Arc;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use wgpu::util::DeviceExt;
 
 pub use buffer::Buffer;
@@ -50,7 +51,9 @@ impl WgpuExecutor {
 pub struct WgpuExecutorInner {
 	context: WgpuContext,
 	texture_cache: std::sync::Mutex<TextureCache>,
-	vello_renderer: Mutex<VelloRenderer>,
+	vello_renderer: VelloRenderer,
+	/// The canvas the node graph renders documents on.
+	document_canvas: Mutex<VelloCanvas>,
 	shader_runtime: ShaderRuntime,
 }
 
@@ -67,19 +70,25 @@ impl<'a, T: ApplicationIo<Executor = WgpuExecutor>> From<&'a EditorApi<T>> for &
 }
 
 impl WgpuExecutor {
-	/// An empty scene of `size` to draw into, with its content placed by `view`.
+	/// An empty document scene of `size` to draw into, with its content placed by `view`.
 	pub fn vello_scene(&self, size: UVec2, view: DAffine2) -> Result<VelloSceneBuilder> {
 		let view = vello_gpu::kurbo::Affine::new(view.to_cols_array());
-		self.inner.vello_renderer.lock().unwrap().scene(&self.context().device, size, view)
+		let mut canvas = self.inner.document_canvas.lock().unwrap_or_else(PoisonError::into_inner);
+		canvas.scene(&self.context().device, size, view)
 	}
 
-	/// Renders a scene into a new texture of the scene's size with straight alpha.
+	/// Renders a document scene into a new texture of the scene's size with straight alpha.
 	pub fn render_vello_scene(&self, scene: VelloSceneBuilder) -> Result<Texture> {
+		let mut canvas = self.inner.document_canvas.lock().unwrap_or_else(PoisonError::into_inner);
+		self.render_vello_scene_on_canvas(&mut canvas, scene)
+	}
+
+	/// Renders a scene like [`Self::render_vello_scene`], but on a canvas the caller owns.
+	pub fn render_vello_scene_on_canvas(&self, canvas: &mut VelloCanvas, scene: VelloSceneBuilder) -> Result<Texture> {
 		let texture = self.request_texture(UVec2::new(scene.width() as u32, scene.height() as u32));
 
-		let mut renderer = self.inner.vello_renderer.lock().unwrap();
 		let queue = self.context().queue.lock();
-		renderer.render(&self.context().device, &queue, scene, &texture);
+		self.inner.vello_renderer.render(canvas, &self.context().device, &queue, scene, &texture);
 
 		Ok(texture)
 	}
@@ -122,7 +131,8 @@ impl WgpuExecutor {
 			inner: Arc::new(WgpuExecutorInner {
 				context,
 				texture_cache: texture_cache.into(),
-				vello_renderer: vello_renderer.into(),
+				vello_renderer,
+				document_canvas: Mutex::default(),
 				shader_runtime,
 			}),
 		})

@@ -1,6 +1,7 @@
 use glam::UVec2;
 use rendering::vello_scene_builder::{SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
+use std::sync::{Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
 use vello_gpu::peniko;
 use vello_gpu::{ClearSettings, RenderSize, RenderTargetConfig, Renderer, Resources, TargetInit, TextureBindings, TextureId};
@@ -11,37 +12,24 @@ const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 /// How many renders a GPU texture's premultiplied copy survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
 
-/// Renders scenes through Vello GPU into straight-alpha textures, keeping the uploaded images and GPU state between renders.
+/// Vello GPU's renderer and GPU resources, shared by every [`VelloCanvas`] so their memory and pipelines exist once.
 pub(crate) struct VelloRenderer {
-	renderer: Renderer,
-	resources: Resources,
+	/// Locked only while a scene is rendered and submitted, so one canvas drawing its scene on the CPU doesn't hold up another's render.
+	gpu: Mutex<(Renderer, Resources)>,
+	alpha_conversion: AlphaConversion,
+}
+
+/// A stream of frames rendered through the shared Vello renderer, such as the document or the overlays, keeping what its frames reuse.
+#[derive(Default)]
+pub struct VelloCanvas {
 	/// The Vello GPU scene of the last render, handed out again to keep its allocations.
 	spare_scene: Option<vello_gpu::Scene>,
-	alpha_conversion: AlphaConversion,
 	/// The premultiplied texture Vello GPU renders into before conversion to straight alpha, kept while the render size stays the same.
 	premultiplied_target: Option<wgpu::Texture>,
 	images: ImageTextures,
 }
 
-impl VelloRenderer {
-	pub(crate) fn new(device: &wgpu::Device) -> Self {
-		let render_target_config = RenderTargetConfig {
-			format: TEXTURE_FORMAT,
-			width: 1,
-			height: 1,
-		};
-		let (renderer, resources) = Renderer::new(device, &render_target_config);
-
-		Self {
-			renderer,
-			resources,
-			spare_scene: None,
-			alpha_conversion: AlphaConversion::new(device),
-			premultiplied_target: None,
-			images: ImageTextures::default(),
-		}
-	}
-
+impl VelloCanvas {
 	/// An empty scene of `size` to draw into, with its content placed by `view`.
 	pub(crate) fn scene(&mut self, device: &wgpu::Device, size: UVec2, view: Affine) -> anyhow::Result<VelloSceneBuilder> {
 		let (Ok(width), Ok(height)) = (u16::try_from(size.x), u16::try_from(size.y)) else {
@@ -52,27 +40,42 @@ impl VelloRenderer {
 		scene.reset_and_resize(width, height);
 		Ok(VelloSceneBuilder::from_vello(scene, view, device.limits().max_texture_dimension_2d))
 	}
+}
 
-	/// Renders `scene` into `target` (an `Rgba8Unorm` texture of the scene's size with straight alpha).
-	pub(crate) fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, scene: VelloSceneBuilder, target: &wgpu::Texture) {
+impl VelloRenderer {
+	pub(crate) fn new(device: &wgpu::Device) -> Self {
+		let render_target_config = RenderTargetConfig {
+			format: TEXTURE_FORMAT,
+			width: 1,
+			height: 1,
+		};
+
+		Self {
+			gpu: Mutex::new(Renderer::new(device, &render_target_config)),
+			alpha_conversion: AlphaConversion::new(device),
+		}
+	}
+
+	/// Renders `scene` on `canvas` into `target` (an `Rgba8Unorm` texture of the scene's size with straight alpha).
+	pub(crate) fn render(&self, canvas: &mut VelloCanvas, device: &wgpu::Device, queue: &wgpu::Queue, scene: VelloSceneBuilder, target: &wgpu::Texture) {
 		let (width, height) = (scene.width(), scene.height());
 		let max_texture_size = scene.max_texture_size();
 		let (scene, images) = scene.finish();
 
-		self.images.render_count += 1;
+		canvas.images.render_count += 1;
 		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("vello_gpu_render") });
 
 		// Supply the textures of the images the scene draws, under the IDs it drew them with
 		let mut texture_bindings = TextureBindings::new();
 		for (id, image) in images.iter().enumerate() {
-			if let Some(view) = self.images.prepare(device, queue, &mut encoder, &self.alpha_conversion, image, max_texture_size) {
+			if let Some(view) = canvas.images.prepare(device, queue, &mut encoder, &self.alpha_conversion, image, max_texture_size) {
 				texture_bindings.insert(TextureId(id as u64), view);
 			}
 		}
 
 		// Render premultiplied, then convert to the straight alpha the rest of Graphite expects
 		let size = UVec2::new(width as u32, height as u32);
-		let premultiplied_target = match &self.premultiplied_target {
+		let premultiplied_target = match &canvas.premultiplied_target {
 			Some(texture) if texture.width() == size.x && texture.height() == size.y => texture.clone(),
 			_ => {
 				let texture = create_texture(
@@ -81,16 +84,19 @@ impl VelloRenderer {
 					size,
 					wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
 				);
-				self.premultiplied_target = Some(texture.clone());
+				canvas.premultiplied_target = Some(texture.clone());
 				texture
 			}
 		};
 		let premultiplied_view = premultiplied_target.create_view(&wgpu::TextureViewDescriptor::default());
 		let target_init = TargetInit::Clear(ClearSettings::Viewport { color: peniko::Color::TRANSPARENT });
 
-		let rendered = self.renderer.render(
+		// Vello GPU stages this render's uploads into resources every render shares, so another can't stage its own until this one is submitted
+		let mut gpu = self.gpu.lock().unwrap_or_else(PoisonError::into_inner);
+		let (renderer, resources) = &mut *gpu;
+		let rendered = renderer.render(
 			&scene,
-			&mut self.resources,
+			resources,
 			device,
 			queue,
 			&mut encoder,
@@ -112,8 +118,9 @@ impl VelloRenderer {
 		}
 
 		queue.submit([encoder.finish()]);
-		self.images.free_unused();
-		self.spare_scene = Some(scene);
+		drop(gpu);
+		canvas.images.free_unused();
+		canvas.spare_scene = Some(scene);
 	}
 }
 
