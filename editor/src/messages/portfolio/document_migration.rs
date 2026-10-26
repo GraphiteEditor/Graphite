@@ -3578,7 +3578,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
 			graphene_std::platform_application_io::bytes_to_image::IDENTIFIER,
 			graphene_std::platform_application_io::image_to_bytes::IDENTIFIER,
-			#[cfg(target_family = "wasm")]
 			graphene_std::platform_application_io::rasterize::IDENTIFIER,
 		]
 	};
