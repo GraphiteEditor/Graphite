@@ -157,7 +157,9 @@
 		// Between neighboring sections, which the wires joining them cross
 		--section-gap: 8px;
 		flex: 0 0 auto;
+		position: relative;
 		margin: 0 4px;
+		border-radius: 4px;
 
 		+ .node-section {
 			margin-top: var(--section-gap);
@@ -179,13 +181,24 @@
 			}
 		}
 
+		// The outline, as a border (which snaps to device pixels) over the 1px edge the contents leave clear
+		&:not(.node-reference)::before,
+		&.node-reference .text-button::after {
+			content: "";
+			position: absolute;
+			inset: 0;
+			border: 1px solid var(--section-outline);
+			border-radius: inherit;
+			pointer-events: none;
+		}
+
 		// A section showing the chain feeding one of its inputs, which it frames below its rows, with a wire rising from them through its body into that input
 		&.chain-wire {
 			--chain-wire-corner-radius: 4px;
 			--chain-wire-width: 2px;
 			--chain-wire-line: 2px;
 			--chain-section-indent: 8px;
-			// Within the body's border, the wire's centerline rises in line with the indented chain sections' icons
+			// Within the body, inset by the outline, the wire's centerline rises in line with the indented chain sections' icons
 			--chain-wire-x: calc(var(--chain-section-indent) + var(--wire-center) - 1px);
 
 			// Like in the graph, a list's wire is a 1px line, 2px gap, and 1px line
@@ -197,7 +210,7 @@
 			// The body continues down into the frame around the chain's sections, the first right beneath its rows
 			> .body {
 				position: relative;
-				border-bottom: none;
+				margin-bottom: 0;
 				border-radius: 0;
 				anchor-scope: --chain-input;
 
@@ -209,20 +222,19 @@
 
 			// The chain's sections, indented on the left and sharing the right edge, with the wire to the body crossing the gap atop the first
 			> .chain-sections {
+				margin: 0 1px 1px;
 				padding: 0 0 calc(var(--chain-section-indent) - 1px) calc(var(--chain-section-indent) - 1px);
 				background: var(--color-3-darkgray);
-				border: 1px solid var(--section-outline);
-				border-top: none;
 				border-radius: 0 0 4px 4px;
 
-				// Over the frame's right border, so the shared edge is one line
+				// Over the outline's right edge, so the shared edge is one line
 				> .node-section {
 					margin-left: 0;
 					margin-right: -1px;
 				}
 
 				// With no gap above the first to cross, the body's wire meets it directly
-				> .node-section:first-child::before {
+				> .node-section:first-child::after {
 					display: none;
 				}
 			}
@@ -258,19 +270,18 @@
 		&.output-wire {
 			--output-wire-width: 2px;
 			--output-wire-line: 2px;
-			position: relative;
 
 			// Two 1px lines, like the layer section's wire
 			&.output-wire-list {
 				--output-wire-width: 4px;
 				--output-wire-line: 1px;
 
-				&::before {
+				&::after {
 					border-right: var(--output-wire-line) solid var(--output-wire-color);
 				}
 			}
 
-			&::before {
+			&::after {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
@@ -297,15 +308,6 @@
 				padding-left: calc(var(--wire-center) - 16px / 2);
 				--button-background-color: none;
 
-				&::after {
-					content: "";
-					position: absolute;
-					inset: 0;
-					border: 1px solid var(--section-outline);
-					border-radius: 2px;
-					pointer-events: none;
-				}
-
 				&:hover:not(.disabled) {
 					--button-background-color: var(--color-5-dullgray);
 					--section-outline: var(--color-4-dimgray);
@@ -318,7 +320,6 @@
 			--content-wire-width: 2px;
 			--content-wire-line: 2px;
 			--content-wire-indent: 20px;
-			position: relative;
 			padding-left: var(--content-wire-indent);
 
 			&.content-wire-list {
@@ -380,7 +381,6 @@
 		}
 
 		.header {
-			position: relative;
 			text-align: left;
 			align-items: center;
 			display: flex;
@@ -389,23 +389,7 @@
 			border: 0;
 			background: none;
 
-			// The section's outline, continuing up around the header without changing its size
-			&::after {
-				content: "";
-				position: absolute;
-				inset: 0;
-				border: 1px solid var(--section-outline);
-				border-radius: 4px;
-				pointer-events: none;
-			}
-
 			&.expanded {
-				// Open at the bottom, where the body's sides carry on
-				&::after {
-					border-bottom: none;
-					border-radius: 4px 4px 0 0;
-				}
-
 				.expand-arrow::after {
 					transform: rotate(90deg);
 				}
@@ -486,11 +470,10 @@
 		}
 
 		> .body {
+			// Clear of the outline, which its background would otherwise cover
+			margin: 0 1px 1px;
 			padding: 0 7px;
 			background: var(--color-3-darkgray);
-			border: 1px solid var(--section-outline);
-			// No line between it and the header, which shares its outline
-			border-top: none;
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 
