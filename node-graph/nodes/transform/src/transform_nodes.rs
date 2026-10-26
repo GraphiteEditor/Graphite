@@ -18,8 +18,8 @@ fn transform<T: Send + 'static>(
 		Context -> Item<Graphic>,
 		Context -> Item<String>,
 		Context -> Item<Vector>,
-		Context -> Item<Raster<CPU>>,
 		Context -> Item<Raster<GPU>>,
+		Context -> Item<Raster<CPU>>,
 		Context -> Item<Color>,
 		Context -> Item<Gradient>,
 	)]
@@ -95,8 +95,8 @@ fn reset_transform<T>(
 	#[implementations(
 		Graphic,
 		Vector,
-		Raster<CPU>,
 		Raster<GPU>,
+		Raster<CPU>,
 		Color,
 		Gradient,
 		String,
@@ -138,8 +138,8 @@ fn replace_transform<T>(
 	#[implementations(
 		Graphic,
 		Vector,
-		Raster<CPU>,
 		Raster<GPU>,
+		Raster<CPU>,
 		Color,
 		Gradient,
 		String,
@@ -156,7 +156,7 @@ fn replace_transform<T>(
 
 /// Obtains the transform of the input content.
 #[node_macro::node(category("Transform"), icon("NodeExtractTransform"), path(core_types::vector))]
-fn extract_transform<T: Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
+fn extract_transform<T: Send>(_: impl Ctx, #[implementations(Graphic, Vector, Raster<GPU>, Raster<CPU>, Color, Gradient, String, Artboard)] content: Item<T>) -> Item<DAffine2> {
 	Item::new_from_element(content.attribute_cloned_or_default(ATTR_TRANSFORM))
 }
 

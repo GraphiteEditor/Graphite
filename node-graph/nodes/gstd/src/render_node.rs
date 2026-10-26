@@ -30,6 +30,7 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 		Context -> List<Artboard>,
 		Context -> List<Graphic>,
 		Context -> List<Vector>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,

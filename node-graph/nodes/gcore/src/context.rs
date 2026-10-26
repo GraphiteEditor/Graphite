@@ -4,7 +4,7 @@ use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
-use raster_types::{CPU, Raster};
+use raster_types::{GPU, Raster};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReadContextError {
@@ -29,7 +29,7 @@ fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Result<Item<Vector>, ReadConte
 }
 
 #[node_macro::node(category("Data: Context"), icon("NodeReadContext"), path(graphene_core::vector))]
-fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Result<Item<Raster<CPU>>, ReadContextError> {
+fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Result<Item<Raster<GPU>>, ReadContextError> {
 	ctx.vararg(0).ok().and_then(|var_arg| var_arg.downcast_ref().cloned()).ok_or(ReadContextError::NoLoopItem("raster"))
 }
 

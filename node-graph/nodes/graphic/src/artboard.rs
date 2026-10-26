@@ -16,8 +16,8 @@ fn create_artboard<T: IntoGraphicList>(
 		Context -> List<Graphic>,
 		Context -> List<Vector>,
 		Context -> List<String>,
-		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
+		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
 		Context -> Item<DAffine2>, // TODO: Remove this

@@ -27,8 +27,8 @@ fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -61,6 +61,7 @@ fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
+		List<Raster<GPU>>,
 		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
@@ -98,8 +99,8 @@ fn filter<T: Send + Sync + Clone + 'static>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -131,8 +132,8 @@ fn reverse<T: Send + Sync + Clone + 'static>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -156,8 +157,8 @@ fn shift<T: Send + Sync + Clone + 'static>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -201,8 +202,8 @@ fn shuffle<T: Send + Sync + Clone + 'static>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -273,8 +274,8 @@ fn slice<T: Send + Sync + Clone + 'static>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -347,9 +348,9 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	_: impl Ctx,
 	/// The list of data to reorder.
 	#[implementations(
-		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
-		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<GPU>>, List<Raster<CPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<GPU>>, List<Raster<CPU>>, List<Color>, List<Gradient>, List<Artboard>,
+		List<String>, List<bool>, List<f64>, List<i64>, List<DVec2>, List<DAffine2>, List<Vector>, List<Graphic>, List<Raster<GPU>>, List<Raster<CPU>>, List<Color>, List<Gradient>, List<Artboard>,
 	)]
 	list: List<T>,
 	/// The optional list of orderable values, corresponding item-to-item with the input list, to sort by instead of the items' own values.
@@ -408,8 +409,8 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -424,8 +425,8 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 		Context -> List<DAffine2>,
 		Context -> List<Vector>,
 		Context -> List<Graphic>,
-		Context -> List<Raster<CPU>>,
 		Context -> List<Raster<GPU>>,
+		Context -> List<Raster<CPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
 		Context -> List<Artboard>,
@@ -485,8 +486,8 @@ fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	#[implementations(
 		Graphic,
 		Vector,
-		Raster<CPU>,
 		Raster<GPU>,
+		Raster<CPU>,
 		Color,
 		Gradient,
 		String,
@@ -579,8 +580,8 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -868,11 +869,11 @@ fn read_attribute_raster(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<Raster<CPU>> {
+) -> List<Raster<GPU>> {
 	let name = name.into_element();
 	let mut result = List::with_capacity(content.len());
 	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
+		let Some(value) = content.attribute::<Raster<GPU>>(&name, index) else { continue };
 		result.push(Item::new_from_element(value.clone()));
 	}
 	result
@@ -892,8 +893,8 @@ fn extend<T: Send + Clone>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -911,8 +912,8 @@ fn extend<T: Send + Clone>(
 		List<DAffine2>,
 		List<Vector>,
 		List<Graphic>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,
@@ -932,9 +933,9 @@ fn extend<T: Send + Clone>(
 #[node_macro::node(category(""))]
 fn legacy_layer_extend<T: Send + Clone>(
 	_: impl Ctx,
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)] base: List<T>,
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<GPU>>, List<Raster<CPU>>, List<Color>, List<Gradient>)] base: List<T>,
 	#[expose]
-	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
+	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<GPU>>, List<Raster<CPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
 	nested_node_path: Item<NodeIdPath>,
 ) -> List<T> {
@@ -962,8 +963,8 @@ fn into_group<T: Into<Graphic>>(
 	#[implementations(
 		List<Graphic>,
 		List<Vector>,
-		List<Raster<CPU>>,
 		List<Raster<GPU>>,
+		List<Raster<CPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<String>,
@@ -1062,29 +1063,29 @@ pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlattenRasterError {
-	#[error("GPU rasters such as brush strokes can't be flattened yet, so they were left out")]
-	GpuRasters,
+	#[error("CPU rasters such as images can't be flattened yet, so they were left out")]
+	CpuRasters,
 }
 
-/// Whether the content holds GPU rasters, which flattening to CPU rasters leaves out.
-fn has_gpu_raster(graphic: &Graphic) -> bool {
+/// Whether the content holds CPU rasters, which flattening to GPU rasters leaves out.
+fn has_cpu_raster(graphic: &Graphic) -> bool {
 	match graphic {
-		Graphic::RasterGPU(_) => true,
-		Graphic::RasterGPUList(list) => !list.is_empty(),
-		Graphic::Graphic(item) => has_gpu_raster(item.element()),
-		Graphic::GraphicList(list) => list.iter_element_values().any(has_gpu_raster),
+		Graphic::RasterCPU(_) => true,
+		Graphic::RasterCPUList(list) => !list.is_empty(),
+		Graphic::Graphic(item) => has_cpu_raster(item.element()),
+		Graphic::GraphicList(list) => list.iter_element_values().any(has_cpu_raster),
 		_ => false,
 	}
 }
 
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Graphic"), icon("NodeFlattenRaster"))]
-fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> Result<List<Raster<CPU>>, (List<Raster<CPU>>, FlattenRasterError)> {
-	let has_gpu_rasters = content.iter_element_values().any(has_gpu_raster);
+fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> Result<List<Raster<GPU>>, (List<Raster<GPU>>, FlattenRasterError)> {
+	let has_cpu_rasters = content.iter_element_values().any(has_cpu_raster);
 	let rasters = content.into_flattened_list();
 
-	if has_gpu_rasters {
-		return Err((rasters, FlattenRasterError::GpuRasters));
+	if has_cpu_rasters {
+		return Err((rasters, FlattenRasterError::CpuRasters));
 	}
 	Ok(rasters)
 }
