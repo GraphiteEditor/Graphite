@@ -42,7 +42,7 @@ pub struct VelloCanvas {
 }
 
 impl VelloRenderer {
-	pub(crate) fn new(device: &wgpu::Device) -> Self {
+	pub(crate) fn new(device: &wgpu::Device, raster_format: wgpu::TextureFormat) -> Self {
 		let render_target_config = RenderTargetConfig {
 			format: TEXTURE_FORMAT,
 			width: 1,
@@ -59,11 +59,11 @@ impl VelloRenderer {
 
 		Self {
 			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
-			alpha_conversion: AlphaConversion::new(device),
+			alpha_conversion: AlphaConversion::new(device, raster_format),
 		}
 	}
 
-	/// Renders the scene `draw` draws on `canvas`, with its content placed by `view`, into `target`, a texture of `size` with straight alpha that is either `Rgba8Unorm` holding sRGB values or [`crate::RASTER_FORMAT`] holding linear-light values.
+	/// Renders the scene `draw` draws on `canvas`, with its content placed by `view`, into `target`, a texture of `size` with straight alpha that is either `Rgba8Unorm` holding sRGB values or the executor's raster format holding linear-light values.
 	/// A render with more content than Vello GPU can hold calls `draw` again for each part it splits into.
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn render(
@@ -363,7 +363,7 @@ impl ImageTextures {
 
 		if let SceneImage::Texture(source) = image {
 			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-			let loads_linear_light = source.format().is_srgb() || source.format() == crate::RASTER_FORMAT;
+			let loads_linear_light = source.format().is_srgb() || matches!(source.format(), crate::RASTER_FORMAT | crate::FALLBACK_RASTER_FORMAT);
 			alpha_conversion.premultiply(device, encoder, &source_view, loads_linear_light, &view);
 		}
 
@@ -509,7 +509,7 @@ fn create_texture_with_format(device: &wgpu::Device, label: &str, size: UVec2, f
 struct AlphaConversion {
 	bind_group_layout: wgpu::BindGroupLayout,
 	unpremultiply_pipeline: wgpu::RenderPipeline,
-	/// Unpremultiplies into a linear-light [`crate::RASTER_FORMAT`] target.
+	/// Unpremultiplies into a linear-light target in the executor's raster format.
 	unpremultiply_to_linear_pipeline: wgpu::RenderPipeline,
 	premultiply_pipeline: wgpu::RenderPipeline,
 	/// The parameters for a source whose format stores linear values.
@@ -519,7 +519,7 @@ struct AlphaConversion {
 }
 
 impl AlphaConversion {
-	fn new(device: &wgpu::Device) -> Self {
+	fn new(device: &wgpu::Device, raster_format: wgpu::TextureFormat) -> Self {
 		use wgpu::util::DeviceExt;
 
 		let shader = device.create_shader_module(wgpu::include_wgsl!("vello_alpha.wgsl"));
@@ -596,7 +596,7 @@ impl AlphaConversion {
 
 		Self {
 			unpremultiply_pipeline: create_pipeline("vello_unpremultiply_pipeline", "unpremultiply", TEXTURE_FORMAT),
-			unpremultiply_to_linear_pipeline: create_pipeline("vello_unpremultiply_to_linear_pipeline", "unpremultiply_to_linear", crate::RASTER_FORMAT),
+			unpremultiply_to_linear_pipeline: create_pipeline("vello_unpremultiply_to_linear_pipeline", "unpremultiply_to_linear", raster_format),
 			premultiply_pipeline: create_pipeline("vello_premultiply_pipeline", "premultiply", TEXTURE_FORMAT),
 			linear_source_parameters: create_parameters("vello_alpha_linear_source", 0),
 			srgb_source_parameters: create_parameters("vello_alpha_srgb_source", 1),
@@ -605,10 +605,10 @@ impl AlphaConversion {
 	}
 
 	fn unpremultiply(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, target: &wgpu::TextureView, target_format: wgpu::TextureFormat) {
-		let pipeline = if target_format == crate::RASTER_FORMAT {
-			&self.unpremultiply_to_linear_pipeline
-		} else {
+		let pipeline = if target_format == TEXTURE_FORMAT {
 			&self.unpremultiply_pipeline
+		} else {
+			&self.unpremultiply_to_linear_pipeline
 		};
 		self.run(device, encoder, pipeline, &self.linear_source_parameters, source, target);
 	}
