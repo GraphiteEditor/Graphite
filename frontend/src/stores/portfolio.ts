@@ -5,7 +5,7 @@ import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
 import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
-import { patchLayout } from "/src/utility-functions/widgets";
+import { deepEqual, patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
@@ -169,17 +169,6 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	return { subscribe };
-}
-
-// Whether two values built from plain objects, arrays and primitives are structurally equal
-function deepEqual(first: unknown, second: unknown): boolean {
-	if (Object.is(first, second)) return true;
-	if (typeof first !== "object" || typeof second !== "object" || !first || !second) return false;
-	if (Array.isArray(first) !== Array.isArray(second)) return false;
-
-	const firstEntries = Object.entries(first);
-	if (firstEntries.length !== Object.keys(second).length) return false;
-	return firstEntries.every(([key, value]) => Object.hasOwn(second, key) && deepEqual(value, Reflect.get(second, key)));
 }
 
 // Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document

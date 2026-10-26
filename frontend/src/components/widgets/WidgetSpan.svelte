@@ -87,8 +87,7 @@
 	// The overload declares the precise correlated return type while the implementation uses broader types.
 	function unwrapWidget(widgetInstance: WidgetInstance): UnwrappedWidget | undefined;
 	function unwrapWidget(widgetInstance: WidgetInstance) {
-		// Copied because legacy-mode widget components miss a change nested within a prop unless the prop becomes a new object
-		const entry = Object.entries($state.snapshot(widgetInstance.widget))[0];
+		const entry = Object.entries(widgetInstance.widget)[0];
 		if (!entry || !(entry[0] in widgetResolvers)) return undefined;
 		return entry;
 	}
