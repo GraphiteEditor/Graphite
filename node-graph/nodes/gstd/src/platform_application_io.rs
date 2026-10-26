@@ -13,7 +13,7 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster, Storage};
+use graphic_types::raster_types::{GPU, Raster, Storage};
 use raster_nodes::raster_kernel::raster_kernel_pipeline;
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
@@ -325,6 +325,7 @@ mod tests {
 	use super::*;
 	use core_types::Color;
 	use glam::DVec2;
+	use graphic_types::raster_types::CPU;
 
 	#[tokio::test]
 	async fn rasterize_renders_the_footprint_area_at_its_resolution() {

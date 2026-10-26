@@ -1,13 +1,21 @@
 use crate::runtime::{Generations, SourceId};
 use crate::transform::Footprint;
 use glam::DVec2;
-pub use no_std_types::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
 use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 use std::panic::Location;
 use std::sync::Arc;
+
+pub trait Ctx: Clone + Send {}
+
+impl<T: Ctx> Ctx for Option<T> {}
+impl<T: Ctx + Sync> Ctx for &T {}
+impl Ctx for () {}
+
+pub trait ArcCtx: Send + Sync {}
+impl<T: ArcCtx> Ctx for Arc<T> {}
 
 // ==============
 // EXTRACT TRAITS

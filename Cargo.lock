@@ -893,13 +893,15 @@ dependencies = [
  "futures",
  "glam",
  "graphene-hash",
+ "half",
  "image",
  "kurbo",
  "log",
  "lyon_geom",
- "no-std-types",
  "node-macro",
+ "num-derive",
  "num-traits",
+ "num_enum",
  "parley",
  "petgraph",
  "polycool",
@@ -3690,25 +3692,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "no-std-types"
-version = "0.0.0"
-dependencies = [
- "bytemuck",
- "core-types",
- "dyn-any",
- "glam",
- "graphene-hash",
- "half",
- "log",
- "num-derive",
- "num-traits",
- "num_enum",
- "serde",
- "tsify",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "node-docs"
 version = "0.0.0"
 dependencies = [
@@ -3727,7 +3710,6 @@ dependencies = [
  "convert_case 0.12.0",
  "core-types",
  "indoc",
- "no-std-types",
  "proc-macro-crate",
  "proc-macro-error2",
  "proc-macro2",
@@ -4652,7 +4634,6 @@ dependencies = [
  "graphene-core",
  "graphene-hash",
  "graphene-resource",
- "no-std-types",
  "node-macro",
  "num_enum",
  "raster-types",

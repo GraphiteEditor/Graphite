@@ -81,7 +81,6 @@ graphene-application-io = { path = "node-graph/libraries/application-io" }
 graphene-resource = { path = "node-graph/libraries/resources" }
 graphene-animation = { path = "node-graph/libraries/animation" }
 core-types = { path = "node-graph/libraries/core-types" }
-no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
 vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
@@ -265,7 +264,6 @@ zip = { version = "8", default-features = false }
 opt-level = 1
 
 [profile.dev.package]
-no-std-types = { opt-level = 1 }
 core-types= { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }

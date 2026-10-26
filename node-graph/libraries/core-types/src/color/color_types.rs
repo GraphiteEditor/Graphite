@@ -7,7 +7,8 @@ use glam::Vec4;
 use half::f16;
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, PartialEq, Pod, Zeroable, Debug, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Default, Clone, Copy, PartialEq, Pod, Zeroable, Debug, dyn_any::DynAny)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct RGBA16F {
 	red: f16,
 	green: f16,
@@ -81,7 +82,8 @@ impl Pixel for RGBA16F {}
 /// the linear-light [`Color`] type. Convert via [`From<SRGBA8> for Color`] and [`From<Color> for SRGBA8`].
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Pod, Zeroable, dyn_any::DynAny, serde::Serialize, serde::Deserialize, graphene_hash::CacheHash)]
+#[derive(dyn_any::DynAny, graphene_hash::CacheHash, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Pod, Zeroable)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SRGBA8 {
 	pub red: u8,
 	pub green: u8,
@@ -202,7 +204,8 @@ impl From<SRGBA8> for Color {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(dyn_any::DynAny, Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Luma(pub f32);
 
 impl Luminance for Luma {
@@ -249,6 +252,7 @@ pub struct Color {
 impl Eq for Color {}
 
 // TODO: Eventually remove this document upgrade code
+#[cfg(feature = "serde")]
 impl serde::Serialize for Color {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		use serde::ser::SerializeStruct;
@@ -265,6 +269,7 @@ impl serde::Serialize for Color {
 }
 
 // TODO: Eventually remove this document upgrade code
+#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Color {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		// Documents from before the linear-storage migration lack the `linear` marker and stored gamma-encoded floats; convert them on load.
