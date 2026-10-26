@@ -2683,6 +2683,12 @@ impl Fsm for PathToolFsmState {
 
 			// Delete key
 			(_, PathToolMessage::Delete) => {
+				// With no points or segments to delete, Delete removes the selected layers as it does with every other tool
+				if shape_editor.selected_points().next().is_none() && shape_editor.selected_segments().next().is_none() {
+					responses.add(DocumentMessage::DeleteSelectedLayers);
+					return PathToolFsmState::Ready;
+				}
+
 				// Delete the selected points and clean up overlays
 				let point_mode = tool_options.path_editing_mode.point_editing_mode;
 				let segment_mode = tool_options.path_editing_mode.segment_editing_mode;
@@ -4674,5 +4680,23 @@ mod test_path_tool {
 		editor.drag_path(&loop_points, ModifierKeys::CONTROL).await;
 
 		assert_eq!(selected_points(&editor).len(), 1, "the lasso should select the anchor it encloses");
+	}
+
+	#[tokio::test]
+	async fn delete_without_selected_points_deletes_the_selected_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		// A selected point is deleted on its own, leaving the layer
+		press_at(&mut editor, B).await;
+		editor.left_mouseup(B.x, B.y, ModifierKeys::empty()).await;
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		assert_anchors(&editor, layer, &[A, C]);
+
+		// With nothing selected left to delete, the layer itself goes
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		assert!(editor.get_selected_layer().await.is_none(), "the layer should have been deleted");
+		assert!(editor.active_document().metadata().all_layers().next().is_none(), "the layer is still in the document");
 	}
 }
