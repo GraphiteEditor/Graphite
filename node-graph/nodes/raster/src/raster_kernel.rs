@@ -5,7 +5,7 @@ use core_types::transform::Footprint;
 use core_types::{Ctx, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 use no_std_types::color::Color;
-use raster_types::{CPU, GPU, Raster};
+use raster_types::{CPU, GPU, Raster, Storage};
 use std::any::{TypeId, type_name};
 use vector_types::Gradient;
 pub use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelLookup;
@@ -455,7 +455,11 @@ impl Adjust for Raster<CPU> {
 
 impl Adjust for Raster<GPU> {
 	fn adjust<K: MapColor>(self, kernel: &K, pipeline: &WgpuPipelineCache) -> Result<Self, NodeError> {
-		let size = UVec2::new(self.texture.width(), self.texture.height());
+		if self.is_empty() {
+			return Ok(self);
+		}
+
+		let size = self.size();
 		let input = RasterKernelInput {
 			raster: &self,
 			output_to_texel: DAffine2::IDENTITY,
@@ -521,30 +525,29 @@ impl KernelFrame {
 
 /// A raster item's size in pixels and its `ATTR_TRANSFORM`, as [`union_frame`] and [`KernelFrame::new`] take each input.
 pub fn raster_placement(raster: &Item<Raster<GPU>>) -> (UVec2, DAffine2) {
-	let size = UVec2::new(raster.element().texture.width(), raster.element().texture.height());
-	(size, raster.attribute_cloned_or_default(ATTR_TRANSFORM))
+	(raster.element().size(), raster.attribute_cloned_or_default(ATTR_TRANSFORM))
 }
 
 /// The frame covering the union of `inputs`, each a raster's size and transform, on the finest of their pixel grids.
 ///
 /// The grid's axes follow the first input's, with the smallest pixel step along each that any input has, anchored at the first input's origin.
-/// Each side is capped at [`MAX_FRAME_SIDE`] pixels. `None` without inputs or with an empty or non-invertible one.
+/// Each side is capped at [`MAX_FRAME_SIDE`] pixels. Empty inputs are ignored. `None` without a non-empty input or with a non-invertible one.
 pub fn union_frame(inputs: &[(UVec2, DAffine2)]) -> Option<KernelFrame> {
-	let placeable = |(size, transform): &(UVec2, DAffine2)| size.x > 0 && size.y > 0 && transform.matrix2.determinant() != 0.;
-	let first = inputs.first()?.1;
-	if !inputs.iter().all(placeable) {
+	let placed = inputs.iter().copied().filter(|(size, _)| size.x > 0 && size.y > 0).collect::<Vec<_>>();
+	let first = placed.first()?.1;
+	if placed.iter().any(|(_, transform)| transform.matrix2.determinant() == 0.) {
 		return None;
 	}
 
 	let axes = DMat2::from_cols(first.matrix2.x_axis.normalize(), first.matrix2.y_axis.normalize());
 	let to_axes = axes.inverse();
 
-	let corners = inputs
+	let corners = placed
 		.iter()
 		.flat_map(|(_, transform)| [DVec2::ZERO, DVec2::X, DVec2::Y, DVec2::ONE].map(|corner| to_axes * transform.transform_point2(corner)));
 	let (min, max) = corners.fold((DVec2::INFINITY, DVec2::NEG_INFINITY), |(min, max), corner| (min.min(corner), max.max(corner)));
 
-	let step = inputs
+	let step = placed
 		.iter()
 		.map(|(size, transform)| {
 			let to_texels = DMat2::from_diagonal(size.as_dvec2()) * transform.matrix2.inverse() * axes;
@@ -582,6 +585,10 @@ impl ReadPixels for Raster<GPU> {
 	fn read_pixels(self, pipeline: &WgpuPipelineCache) -> impl Future<Output = Result<Raster<CPU>, NodeError>> + Send {
 		let executor = pipeline.executor().cloned();
 		async move {
+			if self.is_empty() {
+				return Ok(Raster::default());
+			}
+
 			let executor = executor.ok_or_else(|| NodeError::new("A GPU is required to read a GPU raster"))?;
 			Ok(self.convert(Footprint::DEFAULT, executor).await)
 		}
