@@ -670,7 +670,7 @@
 
 <LayoutCol
 	class="slider-input"
-	classes={{ narrow, disabled, "range-slider": rangeSlider }}
+	classes={{ narrow, disabled, "range-slider": rangeSlider, "with-midpoints": showMidpoints }}
 	styles={{
 		"--gradient-start": trackStartCSS,
 		"--gradient-end": trackEndCSS,
@@ -830,11 +830,17 @@
 			opacity: 0.5;
 		}
 
+		// Room for the diamonds above the strip, inside the widget so rows that clip their overflow still show them
+		&.with-midpoints {
+			padding-top: 8px;
+		}
+
 		.midpoint-track {
 			position: absolute;
 			top: 0;
 			left: var(--marker-half-width);
 			right: var(--marker-half-width);
+			height: 8px;
 
 			.midpoint {
 				position: absolute;

@@ -84,10 +84,12 @@
 			--row-height: 24px;
 
 			&:has(.slider-input) {
-				margin-top: 16px;
+				margin-top: 8px;
 
 				.number-input {
 					flex: 0 0 auto;
+					// Level with the gradient strip, below the slider's room for its midpoint diamonds
+					margin-top: 8px;
 					margin-left: 8px;
 					min-width: 0;
 					width: calc(24px + 8px + 24px);
