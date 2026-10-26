@@ -17,7 +17,6 @@ workspace = true
 [features]
 default = ["serde"]
 serde = ["dep:serde"]
-nightly = []
 type_id_logging = []
 dealloc_nodes = []
 wasm = ["tsify", "wasm-bindgen", "no-std-types/wasm"]
