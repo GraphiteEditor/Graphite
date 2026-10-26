@@ -1,11 +1,9 @@
 use core_types::ATTR_TRANSFORM;
 use core_types::list::Item;
-use core_types::ops::ConvertAsync;
-use core_types::transform::Footprint;
 use core_types::{Ctx, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 use no_std_types::color::Color;
-use raster_types::{CPU, GPU, Raster, Storage};
+use raster_types::{GPU, Raster, Storage};
 use std::any::{TypeId, type_name};
 use vector_types::Gradient;
 pub use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelLookup;
@@ -444,15 +442,6 @@ impl Adjust for Gradient {
 	}
 }
 
-impl Adjust for Raster<CPU> {
-	fn adjust<K: MapColor>(mut self, kernel: &K, _: &WgpuPipelineCache) -> Result<Self, NodeError> {
-		for color in self.data_mut().data.iter_mut() {
-			*color = kernel.map_cpu(*color);
-		}
-		Ok(self)
-	}
-}
-
 impl Adjust for Raster<GPU> {
 	fn adjust<K: MapColor>(self, kernel: &K, pipeline: &WgpuPipelineCache) -> Result<Self, NodeError> {
 		if self.is_empty() {
@@ -568,29 +557,4 @@ pub fn union_frame(inputs: &[(UVec2, DAffine2)]) -> Option<KernelFrame> {
 
 	let transform = DAffine2::from_mat2_translation(axes * DMat2::from_diagonal(cells * step), axes * start);
 	Some(KernelFrame::new(cells.as_uvec2(), transform, inputs))
-}
-
-/// A raster whose pixels can be read on the CPU, downloading them when they're on the GPU.
-pub trait ReadPixels: Sized {
-	fn read_pixels(self, pipeline: &WgpuPipelineCache) -> impl Future<Output = Result<Raster<CPU>, NodeError>> + Send;
-}
-
-impl ReadPixels for Raster<CPU> {
-	async fn read_pixels(self, _: &WgpuPipelineCache) -> Result<Raster<CPU>, NodeError> {
-		Ok(self)
-	}
-}
-
-impl ReadPixels for Raster<GPU> {
-	fn read_pixels(self, pipeline: &WgpuPipelineCache) -> impl Future<Output = Result<Raster<CPU>, NodeError>> + Send {
-		let executor = pipeline.executor().cloned();
-		async move {
-			if self.is_empty() {
-				return Ok(Raster::default());
-			}
-
-			let executor = executor.ok_or_else(|| NodeError::new("A GPU is required to read a GPU raster"))?;
-			Ok(self.convert(Footprint::DEFAULT, executor).await)
-		}
-	}
 }

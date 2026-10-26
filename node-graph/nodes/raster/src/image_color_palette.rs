@@ -1,10 +1,12 @@
-use crate::raster_kernel::{ReadPixels, raster_kernel_pipeline};
+use crate::raster_kernel::raster_kernel_pipeline;
 use color::{ColorSpace, Oklab};
 use core_types::NodeError;
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::{Item, List};
-use raster_types::{CPU, GPU, Image, Raster};
+use core_types::ops::ConvertAsync;
+use core_types::transform::Footprint;
+use raster_types::{GPU, Image, Raster, Storage};
 use std::collections::BinaryHeap;
 use std::ops::{AddAssign, SubAssign};
 use wgpu_executor::WgpuPipelineCache;
@@ -18,22 +20,27 @@ const OKLAB_GAMUT_RANGES: [(f32, f32); 3] = [(0., 1.), (-0.24, 0.28), (-0.32, 0.
 
 /// Finds the colors that best represent the distinct color ranges in an image, ignoring transparent areas.
 #[node_macro::node(category("Color"), icon("NodeImageColorPalette"), footprint_invariant, placeholder = pending_palette)]
-async fn image_color_palette<T: ReadPixels + Send + 'static>(
+async fn image_color_palette(
 	_: impl Ctx,
 	/// The image to find colors in.
-	#[implementations(Raster<CPU>, Raster<GPU>)]
-	image: Item<T>,
+	image: Item<Raster<GPU>>,
 	/// How many colors to find. Raising it adds a color at the end and may adjust one existing color, leaving the rest as they were.
 	#[default(4)]
 	#[hard(1..)]
 	count: Item<i64>,
 	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> Result<List<Color>, NodeError> {
-	let image = image.into_element().read_pixels(pipeline.element()).await?;
+	let image = image.into_element();
+	if image.is_empty() {
+		return Ok(List::new());
+	}
+
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to read a GPU raster"))?;
+	let image = image.convert(Footprint::DEFAULT, executor).await;
 	Ok(palette_colors(image.data(), *count.element() as usize))
 }
 
-fn pending_palette<T>(_image: &Item<T>, _count: &Item<i64>, _pipeline: &Item<WgpuPipelineCache>) -> List<Color> {
+fn pending_palette(_image: &Item<Raster<GPU>>, _count: &Item<i64>, _pipeline: &Item<WgpuPipelineCache>) -> List<Color> {
 	List::new()
 }
 
@@ -238,17 +245,16 @@ fn table_index(position: [usize; 3]) -> usize {
 #[cfg(test)]
 mod test {
 	use super::*;
-	use raster_types::Image;
 
 	fn palette(runs: &[(Color, usize)], count: i64) -> Vec<Color> {
 		let data = runs.iter().flat_map(|&(color, length)| std::iter::repeat_n(color, length)).collect::<Vec<_>>();
-		let image = Raster::new_cpu(Image {
+		let image = Image {
 			width: data.len() as u32,
 			height: 1,
 			data,
-		});
+		};
 
-		let palette = palette_colors(image.data(), count as usize);
+		let palette = palette_colors(&image, count as usize);
 		palette.iter_element_values().copied().collect()
 	}
 
