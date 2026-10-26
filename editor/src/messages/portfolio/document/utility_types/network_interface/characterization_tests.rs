@@ -2,7 +2,7 @@ use super::{
 	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata,
 	OutputConnector, Previewing, RootNode, TransactionStatus,
 };
-use crate::consts::GRID_SIZE;
+use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
@@ -3262,4 +3262,82 @@ async fn entering_a_node_while_its_network_glides_settles_it() {
 	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 
 	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
+}
+
+#[tokio::test]
+async fn resting_a_wire_on_an_exposed_input_reveals_nothing_that_would_move_it_from_under_the_pointer() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	// A viewport around the graph keeps auto-panning from moving the view while the wire rests
+	editor.set_viewport_size(DVec2::ZERO, DVec2::splat(4000.)).await;
+
+	let number = editor
+		.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::number_value::IDENTIFIER), 0, 10)
+		.await;
+	let transform = editor
+		.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), 20, 0)
+		.await;
+	let [translation, rotation, scale] = [1, 2, 3].map(|input_index| InputConnector::node_at_index(transform, input_index));
+	editor
+		.handle_message(NodeGraphMessage::ExposeInput {
+			input_connector: rotation,
+			set_to_exposed: true,
+			start_transaction: true,
+		})
+		.await;
+
+	let exposed = |editor: &EditorTestUtils, input_connector: InputConnector| {
+		matches!(
+			editor.active_document().network_interface.input_from_connector(&input_connector, &[]),
+			Some(NodeInput::Value { exposed: true, .. })
+		)
+	};
+	let viewport_position = |editor: &EditorTestUtils, position: Option<DVec2>| {
+		let network_interface = &editor.active_document().network_interface;
+		let node_graph_to_viewport = network_interface
+			.network_metadata(&[])
+			.expect("the network should have metadata")
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport;
+		node_graph_to_viewport.transform_point2(position.expect("the connector should have a position"))
+	};
+
+	// Drag a wire from Number Value's output and rest it on Rotation, which Translation would be revealed above
+	let output = viewport_position(&editor, editor.active_document().network_interface.output_position(&OutputConnector::node(number, 0), &[]));
+	let on_rotation = viewport_position(&editor, editor.active_document().network_interface.input_position(&rotation, &[]));
+	editor.animation_frame(1000).await;
+	editor.move_mouse(output.x, output.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(on_rotation.x, on_rotation.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.animation_frame(1000 + WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS).await;
+	assert!(!exposed(&editor, translation), "resting on Rotation shouldn't reveal Translation above it");
+
+	// Resting on the node's title instead reveals the hidden inputs that can take a number
+	let on_title = viewport_position(&editor, editor.active_document().network_interface.input_position(&InputConnector::node_at_index(transform, 0), &[])) + DVec2::new(48., 0.);
+	editor.move_mouse(on_title.x, on_title.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.animation_frame(1000 + 2 * WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS).await;
+	assert!(exposed(&editor, translation) && exposed(&editor, scale), "resting on the title should reveal Translation and Scale");
+
+	// Dropping on Rotation, now a row lower, wires it and hides the revealed inputs again
+	let on_rotation = viewport_position(&editor, editor.active_document().network_interface.input_position(&rotation, &[]));
+	editor.move_mouse(on_rotation.x, on_rotation.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&rotation, &[]),
+		Some(OutputConnector::node(number, 0)),
+		"the wire should connect Rotation"
+	);
+	assert!(!exposed(&editor, translation) && !exposed(&editor, scale), "the unused revealed inputs should hide again");
 }
