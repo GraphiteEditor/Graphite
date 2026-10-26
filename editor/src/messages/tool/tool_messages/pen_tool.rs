@@ -3407,4 +3407,29 @@ mod test_pen_tool {
 
 		assert_anchors(&editor, &[A, B + travel]);
 	}
+
+	#[tokio::test]
+	async fn the_transform_sits_before_the_fill_and_stroke_so_resizing_keeps_the_stroke_weight() {
+		use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+		use graph_craft::ProtoNodeIdentifier;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+
+		let (layer, _) = drawn_path(&editor).expect("Expected a drawn path");
+		let network_interface = &editor.active_document().network_interface;
+		let chain = network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
+			.filter_map(|node_id| network_interface.reference(&node_id, &[]))
+			.collect::<Vec<_>>();
+		let position = |identifier: ProtoNodeIdentifier| chain.iter().position(|reference| *reference == DefinitionIdentifier::ProtoNode(identifier.clone()));
+
+		let transform = position(graphene_std::transform_nodes::transform::IDENTIFIER).expect("The path should have a Transform node");
+		let fill = position(graphene_std::vector_nodes::fill::IDENTIFIER).expect("The path should have a Fill node");
+		let stroke = position(graphene_std::vector_nodes::stroke::IDENTIFIER).expect("The path should have a Stroke node");
+		assert!(transform > fill && transform > stroke, "the Transform should be upstream of the Fill and Stroke in {chain:?}");
+	}
 }
