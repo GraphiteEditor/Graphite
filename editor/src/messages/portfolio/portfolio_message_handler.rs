@@ -1018,6 +1018,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
+			PortfolioMessage::SubmitThumbnailsInView => {
+				if let Some(document_id) = self.active_document_id
+					&& let Some(document) = self.documents.get(&document_id)
+				{
+					self.executor.submit_thumbnails_in_view(document, document_id);
+				}
+			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
 				responses.add(MenuBarMessage::SendLayout);

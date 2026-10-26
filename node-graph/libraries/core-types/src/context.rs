@@ -699,6 +699,22 @@ pub trait AnyHash: DynHash + Any {}
 impl<T: DynHash + Any> AnyHash for T {}
 
 impl OwnedContextImpl {
+	/// A copy of this context with its footprint and times replaced where it has them, keeping everything else like its varargs and indices.
+	/// Features it lacks stay absent, so whatever was nullified upstream keeps hitting the same caches.
+	pub fn with_replaced_footprint_and_time(&self, footprint: Footprint, time: f64) -> Self {
+		Self {
+			parent: self.parent.clone(),
+			footprint: self.footprint.map(|_| footprint),
+			real_time: self.real_time.map(|_| time),
+			animation_time: self.animation_time.map(|_| time),
+			pointer_position: self.pointer_position,
+			position: self.position.clone(),
+			index: self.index.clone(),
+			varargs: self.varargs.clone(),
+			generations: self.generations.clone(),
+		}
+	}
+
 	pub fn set_footprint(&mut self, footprint: Footprint) {
 		self.footprint = Some(footprint);
 	}

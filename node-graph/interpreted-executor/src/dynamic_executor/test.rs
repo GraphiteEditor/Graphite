@@ -916,7 +916,7 @@ fn executor_panics_reach_the_host_with_the_original_payload() {
 	let missing_output = (&executor).execute(()).unwrap_err();
 	assert_eq!(missing_output.to_string(), "Output node not found in executor");
 
-	executor.tree.store_node(NodeContainer::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
+	executor.tree.store_node(ObservedNode::new(Box::new(Panics)), NodeId(0), Box::default(), Box::default());
 	let payload = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (&executor).execute(()))).unwrap_err();
 	assert_eq!(*payload.downcast::<u32>().unwrap(), 42);
 }
@@ -1003,4 +1003,28 @@ fn a_node_error_names_the_node_that_raised_it() {
 		.map(|(path, _)| path.to_vec())
 		.collect();
 	assert_eq!(paths, [vec![NodeId(2)]]);
+}
+
+#[test]
+fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
+	use core_types::context::{ExtractAnimationTime, ExtractFootprint, ExtractIndex};
+	use core_types::transform::Footprint;
+	use core_types::{OwnedContextImpl, Poll};
+
+	let tree = compile_bounding_box_network(TaggedValue::TypeDefault(item!(Vector)));
+	let frame: Context = OwnedContextImpl::empty().with_animation_time(1.).with_index(3).into_context();
+	let _: Option<Item<Vector>> = tree.eval(NodeId(1), &frame);
+
+	let last = tree.last_context(NodeId(1)).unwrap().flatten().unwrap();
+	let normalized: Context = last.with_replaced_footprint_and_time(Footprint::default(), 0.).into_context();
+	assert_eq!(normalized.try_animation_time(), Some(0.));
+	assert!(normalized.try_footprint().is_none());
+	assert_eq!(normalized.try_index().map(|index| index.collect::<Vec<_>>()), Some(vec![3]));
+
+	// Neither the node nor the one upstream of it keeps the context it's evaluated with again
+	assert!(matches!(tree.evaluate(NodeId(1), &normalized).unwrap(), Poll::Final(_)));
+	for node in [NodeId(0), NodeId(1)] {
+		let last_time = tree.last_context(node).unwrap().flatten().and_then(|context| context.try_animation_time());
+		assert_eq!(last_time, Some(1.));
+	}
 }

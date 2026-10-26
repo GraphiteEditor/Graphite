@@ -66,6 +66,11 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
+	/// Thumbnails rendered for layers that came into view, from the network of the given document.
+	Thumbnails {
+		responses: VecDeque<FrontendMessage>,
+		document_id: DocumentId,
+	},
 }
 
 #[derive(Debug)]
@@ -76,6 +81,8 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	pending: Option<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
+	/// The document whose network the graph runtime was last sent.
+	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	/// The last element is the inspect target itself; preceding elements identify the nested subnetwork the node lives in,
 	/// so the runtime can splice its monitor node alongside the target rather than only at the top level.
@@ -126,6 +133,7 @@ impl NodeGraphExecutor {
 			sender: request_sender,
 			receiver: response_receiver,
 			node_graph_hash: 0,
+			node_graph_document: None,
 			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
 			gradient_migration: None,
@@ -149,6 +157,19 @@ impl NodeGraphExecutor {
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
+	}
+
+	/// Tells the graph runtime which of the document's layers have their thumbnails in view, so it renders only those.
+	pub fn submit_thumbnails_in_view(&self, document: &DocumentMessageHandler, document_id: DocumentId) {
+		// The runtime renders thumbnails from the network it has, which may still be another document's
+		if self.node_graph_document != Some(document_id) {
+			return;
+		}
+
+		let layers = document.layers_in_view.all_in_view();
+		self.sender
+			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
+			.expect("Failed to send the thumbnails in view");
 	}
 
 	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
@@ -178,13 +199,14 @@ impl NodeGraphExecutor {
 	}
 
 	/// Update the cached network if necessary.
-	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
+	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, node_to_inspect: Vec<NodeId>, ignore_hash: bool) -> Result<(), String> {
 		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
-		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
+		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
 			let network = document.network_interface.document_network().clone();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
+			self.node_graph_document = Some(document_id);
 
 			let resources = document.resources.registry.clone();
 
@@ -251,7 +273,7 @@ impl NodeGraphExecutor {
 		ignore_hash: bool,
 		pointer: DVec2,
 	) -> Result<Message, String> {
-		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
+		self.update_node_graph(document, document_id, node_to_inspect, ignore_hash)?;
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
@@ -554,20 +576,45 @@ impl NodeGraphExecutor {
 					let (data, width, height) = raster.to_flat_u8();
 					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 				}
+				NodeGraphUpdate::Thumbnails {
+					responses: thumbnails,
+					document_id: thumbnails_document,
+				} => {
+					if thumbnails_document == document_id {
+						Self::receive_thumbnails(document, thumbnails, responses);
+					}
+				}
 			}
 		}
 
-		// An error leaves the later responses unapplied, but the runtime still dropped their thumbnails
+		// An error leaves the later responses unapplied, but the runtime still dropped and rendered their thumbnails
 		for response in results {
-			if let NodeGraphUpdate::ExecutionResponse(execution_response) = response {
-				if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
-					document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
+			match response {
+				NodeGraphUpdate::ExecutionResponse(execution_response) => {
+					if self.document_of_execution(execution_response.execution_id) == Some(document_id) {
+						document.layers_in_view.forget_thumbnails(&execution_response.dropped_thumbnails, responses);
+					}
+					all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
 				}
-				all_dropped_thumbnails.extend(execution_response.dropped_thumbnails);
+				NodeGraphUpdate::Thumbnails {
+					responses: thumbnails,
+					document_id: thumbnails_document,
+				} if thumbnails_document == document_id => {
+					Self::receive_thumbnails(document, thumbnails, responses);
+				}
+				_ => {}
 			}
 		}
 
 		all_dropped_thumbnails
+	}
+
+	fn receive_thumbnails(document: &mut DocumentMessageHandler, thumbnails: VecDeque<FrontendMessage>, responses: &mut VecDeque<Message>) {
+		for thumbnail in thumbnails {
+			if let FrontendMessage::UpdateNodeThumbnail { id, value } = thumbnail {
+				document.layers_in_view.receive_thumbnail(id, value, responses);
+			}
+		}
 	}
 
 	/// The document an execution was submitted for, while it's still queued or pending.
