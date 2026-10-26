@@ -114,7 +114,7 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_dependencies: _,
+			compile_metadata: _,
 			original_location: _,
 		} = document_node;
 		let DocumentNodePersistentMetadata {
@@ -198,7 +198,7 @@ impl NodeTemplate {
 			implementation,
 			visible,
 			skip_deduplication,
-			context_dependencies: None,
+			compile_metadata: None,
 			original_location: Default::default(),
 		};
 		let persistent_node_metadata = DocumentNodePersistentMetadata {

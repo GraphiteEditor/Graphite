@@ -539,6 +539,7 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	)]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
+	#[constant]
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
 	value: impl Node<Context<'static>, Output = Item<AttributeValueDyn>>,
@@ -561,6 +562,7 @@ fn read_attribute_vector(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Vector> {
 	let name = name.into_element();
@@ -578,6 +580,7 @@ fn read_attribute_number(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<f64> {
 	let name = name.into_element();
@@ -596,6 +599,7 @@ fn read_attribute_bool(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<bool> {
 	let name = name.into_element();
@@ -613,6 +617,7 @@ fn read_attribute_string(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<String> {
 	let name = name.into_element();
@@ -630,6 +635,7 @@ fn read_attribute_transform(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<DAffine2> {
 	let name = name.into_element();
@@ -647,6 +653,7 @@ fn read_attribute_color(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Color> {
 	let name = name.into_element();
@@ -664,6 +671,7 @@ fn read_attribute_blend_mode(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<BlendMode> {
 	let name = name.into_element();
@@ -681,6 +689,7 @@ fn read_attribute_gradient_form(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientForm> {
 	let name = name.into_element();
@@ -698,6 +707,7 @@ fn read_attribute_gradient_spread(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientSpread> {
 	let name = name.into_element();
@@ -715,6 +725,7 @@ fn read_attribute_gradient_space(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientSpace> {
 	let name = name.into_element();
@@ -732,6 +743,7 @@ fn read_attribute_gradient_interpolation(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientInterpolation> {
 	let name = name.into_element();
@@ -749,6 +761,7 @@ fn read_attribute_gradient_hue_direction(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientHueDirection> {
 	let name = name.into_element();
@@ -766,6 +779,7 @@ fn read_attribute_gradient_stops(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Gradient> {
 	let name = name.into_element();
@@ -783,6 +797,7 @@ fn read_attribute_artboard(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Artboard> {
 	let name = name.into_element();
@@ -800,6 +815,7 @@ fn read_attribute_raster(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Raster<CPU>> {
 	let name = name.into_element();

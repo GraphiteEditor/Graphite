@@ -11,7 +11,7 @@ use raster_types::{CPU, GPU, Raster};
 
 /// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
-#[node_macro::node(category("_Context Nullification"))]
+#[node_macro::node(category("_Context Nullification"), forwards_input)]
 fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	/// The data to pass through, evaluated with the stripped down context.

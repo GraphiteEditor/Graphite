@@ -15,11 +15,18 @@ pub struct NodeMetadata {
 	pub description: &'static str,
 	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
+	pub flags: NodeFlags,
+	pub output_fields: Option<DestructureMetadata>,
+}
+
+/// Boolean node properties from `#[node_macro::node(...)]` and the node function's signature.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NodeFlags {
 	pub memoize: bool,
 	pub footprint_invariant: bool,
+	pub forwards_input: bool,
 	pub inject_scope: bool,
 	pub asynchronous: bool,
-	pub output_fields: Option<DestructureMetadata>,
 }
 
 // Translation struct between macro and definition
@@ -49,6 +56,8 @@ pub struct FieldMetadata {
 	pub multiline: bool,
 	/// Whether a number parameter uses the progression widget, which splits the value into fractional-progress and whole-element-number fields, from `#[progression]`.
 	pub progression: bool,
+	/// Whether the input must be fed by a value known at compile time, from `#[constant]`.
+	pub constant: bool,
 }
 
 #[derive(Clone, Debug)]

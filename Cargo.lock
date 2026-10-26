@@ -2073,7 +2073,6 @@ dependencies = [
  "graphene-canvas-utils",
  "graphene-core",
  "graphene-hash",
- "graphic-nodes",
  "graphic-types",
  "gungraun",
  "js-sys",

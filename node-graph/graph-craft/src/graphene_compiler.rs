@@ -48,7 +48,7 @@ impl Compiler {
 		proto_networks.map(move |mut proto_network| {
 			proto_network.insert_context_nullification_nodes()?;
 
-			let errors = proto_network.non_constant_attribute_names();
+			let errors = proto_network.non_constant_inputs();
 			if !errors.is_empty() {
 				return Err(CompileError::Graph(errors));
 			}

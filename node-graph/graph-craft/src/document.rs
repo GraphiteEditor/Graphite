@@ -5,7 +5,7 @@ use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
 use core_types::memo::MemoHashGuard;
 pub use core_types::uuid::NodeId;
 pub use core_types::uuid::generate_uuid;
-use core_types::{Context, ContextDependencies, Cow, MemoHash, NodeParameter, ProtoNodeIdentifier, Type};
+use core_types::{Context, Cow, MemoHash, NodeCompileMetadata, NodeParameter, ProtoNodeIdentifier, Type};
 use dyn_any::DynAny;
 use glam::IVec2;
 use log::Metadata;
@@ -58,7 +58,7 @@ pub struct DocumentNode {
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	#[serde(skip)]
-	pub context_dependencies: Option<ContextDependencies>,
+	pub compile_metadata: Option<NodeCompileMetadata>,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.
 	#[serde(skip)]
 	pub original_location: OriginalLocation,
@@ -92,7 +92,7 @@ impl Default for DocumentNode {
 			visible: true,
 			skip_deduplication: Default::default(),
 			original_location: OriginalLocation::default(),
-			context_dependencies: Default::default(),
+			compile_metadata: Default::default(),
 		}
 	}
 }
@@ -166,7 +166,7 @@ impl DocumentNode {
 			construction_args,
 			original_location: self.original_location,
 			skip_deduplication: self.skip_deduplication,
-			context_dependencies: self.context_dependencies.unwrap_or_default(),
+			compile_metadata: self.compile_metadata.unwrap_or_default(),
 			upstream_context_features: Default::default(),
 		}
 	}
@@ -961,9 +961,9 @@ impl NodeNetwork {
 			return;
 		};
 		debug_assert!(
-			node.context_dependencies.is_none(),
-			"Network {id} should not have context dependencies: {deps:#?}",
-			deps = node.context_dependencies
+			node.compile_metadata.is_none(),
+			"Network {id} should not have compile metadata: {compile_metadata:#?}",
+			compile_metadata = node.compile_metadata
 		);
 
 		// Replace value and reflection imports with value nodes, added inside nested network
@@ -1337,7 +1337,7 @@ impl core_types::graphene_hash::CacheHash for DocumentNode {
 		self.implementation.cache_hash(state);
 		self.visible.cache_hash(state);
 		self.skip_deduplication.cache_hash(state);
-		self.context_dependencies.cache_hash(state);
+		self.compile_metadata.cache_hash(state);
 	}
 }
 

@@ -210,20 +210,30 @@ impl ContextFeatures {
 	}
 }
 
-// ====================
-// CONTEXT DEPENDENCIES
-// ====================
+// =====================
+// NODE COMPILE METADATA
+// =====================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ContextDependencies {
+pub struct NodeCompileMetadata {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
 	#[cfg_attr(feature = "serde", serde(default))]
 	pub footprint_invariant: bool,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub forwards_input: bool,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub constant_inputs: u64,
 }
 
-impl From<&[ContextFeature]> for ContextDependencies {
+impl NodeCompileMetadata {
+	pub fn requires_constant_input(&self, index: usize) -> bool {
+		index < u64::BITS as usize && self.constant_inputs & (1 << index) != 0
+	}
+}
+
+impl From<&[ContextFeature]> for NodeCompileMetadata {
 	fn from(features: &[ContextFeature]) -> Self {
 		let mut extract = ContextFeatures::empty();
 		let mut inject = ContextFeatures::empty();
@@ -252,7 +262,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 		Self {
 			extract,
 			inject,
-			footprint_invariant: false,
+			..Default::default()
 		}
 	}
 }
