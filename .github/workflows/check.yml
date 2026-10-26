@@ -109,8 +109,9 @@ jobs:
   # Build the web app via the shared build workflow
   build:
     needs: skip-check
-    # These jobs still run if `skip-check` itself fails, since a skipped job counts as passing for required checks
-    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
+    # Always called with the skip decision passed in, since a skipped caller job reports only as `build` and leaves the required `build / web` check missing.
+    # Like the jobs below, the checks still run if `skip-check` itself fails, since a skipped job counts as passing for required checks.
+    if: ${{ !cancelled() }}
     uses: ./.github/workflows/build.yml
     # The called workflow's jobs can only narrow these, so this grants the union of what they request
     permissions:
@@ -121,7 +122,7 @@ jobs:
       pull-requests: write
     secrets: inherit
     with:
-      web: true
+      web: ${{ needs.skip-check.outputs.skip != 'true' }}
       merge_queue: ${{ github.event_name == 'merge_group' }}
 
   # Run the Rust tests on the self-hosted native runner
