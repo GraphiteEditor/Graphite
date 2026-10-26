@@ -497,7 +497,7 @@ mod destructure_tests {
 	}
 
 	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
-		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed");
+		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed").network;
 		let executor = DynamicExecutor::new(proto_network).expect("The executor should type check and build");
 
 		let context: core_types::Context = None;

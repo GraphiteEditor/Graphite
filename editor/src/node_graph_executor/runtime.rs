@@ -7,7 +7,7 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
-use graph_craft::graphene_compiler::Compiler;
+use graph_craft::graphene_compiler::{CompiledNetwork, Compiler};
 use graph_craft::proto::GraphErrors;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig, Texture};
 use graphene_std::bounds::RenderBoundingBox;
@@ -51,6 +51,7 @@ pub struct NodeRuntime {
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
+	node_graph_warnings: GraphErrors,
 	monitor_nodes: Vec<Vec<NodeId>>,
 
 	/// Which node is inspected and which monitor node is used (if any) for the current execution.
@@ -128,6 +129,7 @@ impl NodeRuntime {
 			.into(),
 
 			node_graph_errors: Vec::new(),
+			node_graph_warnings: Vec::new(),
 			monitor_nodes: Vec::new(),
 
 			preprocessor: preprocessor::Preprocessor::new(),
@@ -216,13 +218,19 @@ impl NodeRuntime {
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
+					self.node_graph_warnings.clear();
 					let result = self.update_network(network);
 					let node_graph_errors = self.node_graph_errors.clone();
+					let node_graph_warnings = self.node_graph_warnings.clone();
 
 					self.update_thumbnails = true;
 
 					self.sender
-						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse { result, node_graph_errors }))
+						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
+							result,
+							node_graph_errors,
+							node_graph_warnings,
+						}))
 						.expect("Failed to send response");
 				}
 				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
@@ -369,10 +377,11 @@ impl NodeRuntime {
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
 		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network) {
-			Ok(network) => network,
+		let CompiledNetwork { network: proto_network, warnings } = match c.compile_single(scoped_network) {
+			Ok(compiled_network) => compiled_network,
 			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
 		};
+		self.node_graph_warnings = warnings;
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
@@ -381,12 +390,10 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		let footprint_invariance_violations = proto_network.footprint_invariance_violations();
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		});
-		self.node_graph_errors.extend(footprint_invariance_violations);
 		self.async_runtime().retain_sources(self.executor.sources());
 		result
 	}

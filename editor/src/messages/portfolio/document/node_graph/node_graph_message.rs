@@ -338,6 +338,8 @@ pub enum NodeGraphMessage {
 		resolved_types: ResolvedDocumentNodeTypesDelta,
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
+		#[serde(skip)]
+		node_graph_warnings: GraphErrors,
 	},
 	UpdateEvaluationErrors {
 		errors: Vec<NodeEvaluationError>,

@@ -286,7 +286,11 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 	}
 
 	let compiler = Compiler {};
-	compiler.compile_single(network).map_err(|x| x.into())
+	let compiled_network = compiler.compile_single(network)?;
+	for warning in &compiled_network.warnings {
+		eprintln!("{warning:?}");
+	}
+	Ok(compiled_network.network)
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {

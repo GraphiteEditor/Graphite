@@ -293,14 +293,10 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	pub fn footprint_invariance_violations(&self) -> GraphErrors {
-		let upstream_features: FxHashMap<NodeId, ContextFeatures> = self.nodes.iter().map(|(id, node)| (*id, node.upstream_context_features)).collect();
-		let reads_footprint = |input: &NodeId| upstream_features.get(input).is_some_and(|features| features.contains(ContextFeatures::FOOTPRINT));
-
+	pub(crate) fn footprint_invariance_violations(&self) -> GraphErrors {
 		self.nodes
 			.iter()
-			.filter(|(_, node)| node.context_dependencies.footprint_invariant)
-			.filter(|(_, node)| matches!(&node.construction_args, ConstructionArgs::Nodes(inputs) if inputs.iter().any(reads_footprint)))
+			.filter(|(_, node)| node.context_dependencies.footprint_invariant && node.upstream_context_features.contains(ContextFeatures::FOOTPRINT))
 			.map(|(_, node)| GraphError::new(node, GraphErrorType::FootprintDependentInput))
 			.collect()
 	}

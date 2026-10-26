@@ -99,10 +99,11 @@ fn type_feeds_input(source: &Type, connector: &Type, conversions: Option<&Adapte
 pub struct ResolvedDocumentNodeTypes {
 	pub types: HashMap<Vec<NodeId>, NodeTypes>,
 	pub node_graph_errors: GraphErrors,
+	pub node_graph_warnings: GraphErrors,
 }
 
 impl ResolvedDocumentNodeTypes {
-	pub fn update(&mut self, delta: ResolvedDocumentNodeTypesDelta, errors: GraphErrors) {
+	pub fn update(&mut self, delta: ResolvedDocumentNodeTypesDelta, errors: GraphErrors, warnings: GraphErrors) {
 		for (path, node_type) in delta.add {
 			self.types.insert(path.to_vec(), node_type);
 		}
@@ -110,6 +111,7 @@ impl ResolvedDocumentNodeTypes {
 			self.types.remove(&path.to_vec());
 		}
 		self.node_graph_errors = errors;
+		self.node_graph_warnings = warnings;
 	}
 }
 
