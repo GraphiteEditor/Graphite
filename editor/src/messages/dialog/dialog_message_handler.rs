@@ -15,6 +15,7 @@ pub struct DialogMessageContext<'a> {
 #[derive(Debug, Default, Clone, ExtractField)]
 pub struct DialogMessageHandler {
 	on_dismiss: Option<Message>,
+	redisplay: Option<Message>,
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
 	preferences_dialog: PreferencesDialogMessageHandler,
@@ -30,6 +31,21 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
 			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
 
+			DialogMessage::Display { title, icon } => {
+				self.redisplay = Some(
+					DialogMessage::Display {
+						title: title.clone(),
+						icon: icon.clone(),
+					}
+					.into(),
+				);
+				responses.add(FrontendMessage::DisplayDialog { title, icon });
+			}
+			DialogMessage::Redisplay => {
+				if let Some(message) = self.redisplay.clone() {
+					responses.add(message);
+				}
+			}
 			DialogMessage::Dismiss => {
 				if let Some(message) = self.on_dismiss.take() {
 					responses.add(message);
@@ -37,6 +53,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			}
 			DialogMessage::Close => {
 				self.on_dismiss = None;
+				self.redisplay = None;
 				responses.add(FrontendMessage::DialogClose)
 			}
 			DialogMessage::CloseAndThen { followups } => {
@@ -134,6 +151,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			}
 			DialogMessage::RequestPreferencesDialog => {
 				self.on_dismiss = Some(PreferencesDialogMessage::Confirm.into());
+				self.redisplay = Some(DialogMessage::RequestPreferencesDialog.into());
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
 			}
 			DialogMessage::RequestConfirmRestartDialog { preferences_requiring_restart } => {

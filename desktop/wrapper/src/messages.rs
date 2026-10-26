@@ -37,14 +37,11 @@ pub enum DesktopFrontendMessage {
 		width: f64,
 		height: f64,
 	},
-	UpdateUIScale {
-		scale: f64,
-	},
 	WindowUpdateDirectInput {
 		enabled: bool,
 	},
-	UpdateOverlays(wgpu_executor::VelloSceneBuilder),
-	PersistenceWritePreferences {
+	UpdateOverlays(Box<wgpu_executor::VelloSceneBuilder>),
+	PersistenceUpdatePreferences {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,

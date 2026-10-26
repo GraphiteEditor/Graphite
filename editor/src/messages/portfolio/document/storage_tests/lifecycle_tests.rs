@@ -70,6 +70,24 @@ async fn session_state_restores_order_names_and_selection() {
 }
 
 #[tokio::test]
+async fn reloaded_frontend_gets_the_active_document_instead_of_the_session_state() {
+	let mut editor = EditorTestUtils::create();
+	dispatch(&mut editor, PersistentStateMessage::LoadState { state: PersistedState::default() });
+	new_document(&mut editor, "First");
+	let active = new_document(&mut editor, "Second");
+
+	let responses = dispatch(&mut editor, PortfolioMessage::Init);
+
+	let reads_session = responses.iter().any(|message| matches!(message, FrontendMessage::TriggerPersistenceReadState));
+	let resends_active = responses
+		.iter()
+		.any(|message| matches!(message, FrontendMessage::UpdateActiveDocument { document_id } if *document_id == active));
+	assert!(!reads_session);
+	assert!(resends_active);
+	assert_eq!(portfolio(&editor).active_document_id, Some(active));
+}
+
+#[tokio::test]
 async fn session_entries_without_stored_content_are_dropped() {
 	let mut editor = EditorTestUtils::create();
 	let kept = new_document(&mut editor, "Kept");
