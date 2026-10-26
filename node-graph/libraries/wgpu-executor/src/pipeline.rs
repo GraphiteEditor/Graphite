@@ -32,6 +32,12 @@ impl PipelineCache {
 		let pipeline = (**entry).downcast_ref::<P>().ok_or(PipelineError::TypeMismatch { expected: std::any::type_name::<P>() })?;
 		Ok(pipeline.run(executor, args))
 	}
+
+	/// Runs the pipeline, or returns `None` when it was never initialized because no GPU is available.
+	pub fn try_run<P: Pipeline>(&self, args: &P::Args<'_>) -> Option<P::Out> {
+		self.executor.get()?;
+		self.run::<P>(args).ok()
+	}
 }
 
 impl std::fmt::Debug for PipelineCache {

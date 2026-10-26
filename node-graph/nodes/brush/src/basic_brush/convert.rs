@@ -37,7 +37,7 @@ impl Convert {
 				module: &shader,
 				entry_point: Some("fs_main"),
 				compilation_options: Default::default(),
-				targets: &[Some(wgpu::TextureFormat::Rgba8Unorm.into())],
+				targets: &[Some(wgpu_executor::RASTER_FORMAT.into())],
 			}),
 			primitive: wgpu::PrimitiveState {
 				topology: wgpu::PrimitiveTopology::TriangleList,
