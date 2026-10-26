@@ -6,11 +6,11 @@ use core_types::context::Ctx;
 use core_types::list::Item;
 use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
-use glam::{DAffine2, UVec2};
+use glam::DAffine2;
 use image::{DynamicImage, GenericImage, GenericImageView, GrayImage, ImageBuffer, Luma, Rgba, RgbaImage};
 use ndarray::{Array2, ArrayBase, Dim, OwnedRepr};
 use raster_types::Image;
-use raster_types::{CPU, GPU, Raster};
+use raster_types::{CPU, GPU, Raster, Storage};
 use std::cmp::{max, min};
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelInput;
@@ -75,9 +75,13 @@ impl DehazeRaster for Raster<GPU> {
 	/// Runs the CPU's algorithm in float without its 8-bit quantization, downloading the dark channel to choose the atmospheric light exactly as the CPU does.
 	/// The guided filter's intermediates stay in [`wgpu_executor::RASTER_FORMAT`] since its variances lose their precision at half-float.
 	async fn dehaze(image: Item<Self>, strength: f64, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		if image.element().is_empty() {
+			return Ok(image);
+		}
+
 		let executor = pipeline.executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to process a GPU raster"))?;
 		let (raster, attributes) = image.into_parts();
-		let size = UVec2::new(raster.texture.width(), raster.texture.height());
+		let size = raster.size();
 
 		let radius = (PATCH_SIZE / 2) as i32;
 		let eroded = run_raster_kernel(&DehazeErode { radius, vertical: false }, vec![dehaze_input(&raster)], size, pipeline)?;

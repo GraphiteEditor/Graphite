@@ -69,6 +69,7 @@ impl RasterKernelLookup<'_> {
 /// With `filtered`, it may also call `input_i_sample(texel)`, sampling the input bilinearly at texel coordinates, whose texel centers lie at +0.5, clamped to its edge,
 /// which requires every input to be in a filterable format such as `Rgba16Float` rather than [`crate::RASTER_FORMAT`].
 /// It declares the texture of each of the `lookups` itself, the `k`th at binding `2 + inputs + k`.
+/// An empty input reads as transparent with a size of zero, and an empty `output_size` gives the empty raster without running the kernel.
 /// Every run of the same `kernel` must have the same number of inputs, the same kinds of lookups, and the same `filtered`.
 pub struct RasterKernelArgs<'a> {
 	pub kernel: TypeId,
@@ -94,6 +95,7 @@ pub struct RasterKernelRuntime {
 	pipelines: Mutex<HashMap<(TypeId, wgpu::TextureFormat), KernelPipeline>>,
 	lookups: Mutex<VecDeque<(u64, wgpu::Texture)>>,
 	sampler: wgpu::Sampler,
+	empty_input: wgpu::Texture,
 }
 
 impl RasterKernelRuntime {
@@ -147,14 +149,33 @@ impl WgpuPipeline for RasterKernelRuntime {
 			min_filter: wgpu::FilterMode::Linear,
 			..Default::default()
 		});
+		let empty_input = executor.context().device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("raster_kernel_empty_input"),
+			size: wgpu::Extent3d {
+				width: 1,
+				height: 1,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			format: wgpu::TextureFormat::Rgba16Float,
+			usage: wgpu::TextureUsages::TEXTURE_BINDING,
+			view_formats: &[],
+		});
 		Self {
 			pipelines: Mutex::default(),
 			lookups: Mutex::default(),
 			sampler,
+			empty_input,
 		}
 	}
 
 	fn run(&self, executor: &WgpuExecutor, args: &RasterKernelArgs<'_>) -> Raster<GPU> {
+		if args.output_size.x == 0 || args.output_size.y == 0 {
+			return Raster::default();
+		}
+
 		let device = &executor.context().device;
 		let param_slots = slots(args.params.len());
 
@@ -177,7 +198,7 @@ impl WgpuPipeline for RasterKernelRuntime {
 		let input_views = args
 			.inputs
 			.iter()
-			.map(|input| input.raster.texture.create_view(&wgpu::TextureViewDescriptor::default()))
+			.map(|input| input.raster.texture().map_or(&self.empty_input, |texture| texture).create_view(&wgpu::TextureViewDescriptor::default()))
 			.collect::<Vec<_>>();
 		let lookup_views = args
 			.lookups
@@ -328,9 +349,9 @@ fn frame_data(args: &RasterKernelArgs<'_>) -> Vec<f32> {
 	let mut data = vec![args.output_size.x as f32, args.output_size.y as f32, 0., 0.];
 	for input in &args.inputs {
 		let affine = input.output_to_texel;
-		let texture = &input.raster.texture;
+		let size = input.raster.size();
 		data.extend([affine.matrix2.x_axis.x, affine.matrix2.x_axis.y, affine.matrix2.y_axis.x, affine.matrix2.y_axis.y].map(|value| value as f32));
-		data.extend([affine.translation.x as f32, affine.translation.y as f32, texture.width() as f32, texture.height() as f32]);
+		data.extend([affine.translation.x as f32, affine.translation.y as f32, size.x as f32, size.y as f32]);
 	}
 	data
 }

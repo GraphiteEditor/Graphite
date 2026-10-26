@@ -6,11 +6,11 @@ use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
 use core_types::list::Item;
 use core_types::{Interrupt, NodeError};
-use glam::{DAffine2, UVec2};
+use glam::DAffine2;
 use num_enum::IntoPrimitive;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
-use raster_types::{CPU, GPU, Raster};
+use raster_types::{CPU, GPU, Raster, Storage};
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 
@@ -174,7 +174,11 @@ impl MedianFilterRaster for Raster<CPU> {
 
 impl MedianFilterRaster for Raster<GPU> {
 	fn median_filter(image: Self, radius: u32, pipeline: &WgpuPipelineCache) -> Result<Self, NodeError> {
-		let size = UVec2::new(image.texture.width(), image.texture.height());
+		if image.is_empty() {
+			return Ok(image);
+		}
+
+		let size = image.size();
 		let kernel = MedianWindow {
 			radius: radius.min(size.max_element()),
 		};
@@ -389,12 +393,12 @@ impl BlurRaster for Raster<GPU> {
 	/// Each pass sums premultiplied colors into a [`FILTERABLE_FORMAT`] intermediate, and a kernel reaching past [`MAX_BLUR_REACH`] runs on the image halved
 	/// until it fits, weighing each halved texel by how much of the image it covers, then is scaled back up bilinearly, approximating the CPU's blur.
 	fn blur(image: Item<Self>, radius: f64, box_blur: bool, gamma: bool, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
-		if radius < 0.1 {
+		if radius < 0.1 || image.element().is_empty() {
 			return Ok(image);
 		}
 		let (raster, attributes) = image.into_parts();
 		let space = if gamma { BlurSpace::Gamma } else { BlurSpace::Linear };
-		let size = UVec2::new(raster.texture.width(), raster.texture.height());
+		let size = raster.size();
 		let full_size = size.as_ivec2().to_array();
 
 		let mut levels = 0;
