@@ -56,23 +56,13 @@ impl ToolColorOptions {
 		self.fill_choice.as_ref()?.as_solid()
 	}
 
-	pub fn apply_fill(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		if !self.is_active() {
-			return;
-		}
-		if let Some(FillChoice::Solid(color)) = &self.fill_choice {
-			responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(*color) });
-		}
-	}
-
-	pub fn apply_stroke(&self, weight: f64, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		if !self.is_active() {
-			return;
-		}
-		if let Some(FillChoice::Solid(color)) = &self.fill_choice {
-			let color = Some(*color);
-			let stroke = graphene_std::vector::style::Stroke::new(weight);
-			responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
+	/// The paint a new shape takes from this swatch, or `None` for no paint. A mixed checkbox or color describes the selection rather than
+	/// a choice, so it falls back to what the tool gives new shapes with nothing selected: `natural_enabled`, in the working color.
+	pub fn new_shape_paint(&self, natural_enabled: bool, working_color: Color) -> Option<FillChoice> {
+		match self.enabled {
+			Some(true) => Some(self.fill_choice.clone().unwrap_or(solid(working_color))),
+			Some(false) => None,
+			None => natural_enabled.then_some(solid(working_color)),
 		}
 	}
 
@@ -108,12 +98,40 @@ impl ToolColorOptions {
 	}
 }
 
+/// The stroke options new shapes get with nothing selected, updated when the user edits them while no layer is selected.
+#[derive(Clone, Debug, PartialEq)]
+pub struct StrokeDefaults {
+	pub weight: f64,
+	pub align: StrokeAlign,
+	pub cap: StrokeCap,
+	pub join: StrokeJoin,
+	pub miter_limit: f64,
+	pub paint_order: PaintOrder,
+	pub dash_lengths: Vec<f64>,
+	pub dash_offset: f64,
+}
+
+impl Default for StrokeDefaults {
+	fn default() -> Self {
+		Self {
+			weight: DEFAULT_STROKE_WIDTH,
+			align: StrokeAlign::default(),
+			cap: StrokeCap::default(),
+			join: StrokeJoin::default(),
+			miter_limit: 4.,
+			paint_order: PaintOrder::default(),
+			dash_lengths: Vec::new(),
+			dash_offset: 0.,
+		}
+	}
+}
+
 /// Shared per-tool state for drawing tools that produce a stroked-and-filled shape (Shape, Pen, Freehand, Spline).
 pub struct DrawingToolState {
 	/// The current stroke weight. `None` = mixed across selected layers.
 	pub line_weight: Option<f64>,
-	/// Persistent default weight, updated when the user edits the weight while no layer is selected.
-	pub default_line_weight: f64,
+	/// What the stroke options return to when nothing is selected, and what new shapes get where the selection's options are mixed.
+	pub stroke_defaults: StrokeDefaults,
 	/// Stroke alignment from the selection. `None` = mixed.
 	pub stroke_align: Option<StrokeAlign>,
 	/// Stroke cap from the selection. `None` = mixed.
@@ -137,6 +155,10 @@ pub struct DrawingToolState {
 	pub fill: ToolColorOptions,
 	/// The stroke swatch's color, checkbox, and mixed state.
 	pub stroke: ToolColorOptions,
+	/// Whether the tool's Fill is ticked with nothing selected, which new shapes fall back to while the selection's fills are mixed.
+	pub natural_fill_enabled: bool,
+	/// Whether the tool's Stroke is ticked with nothing selected, which new shapes fall back to while the selection's strokes are mixed.
+	pub natural_stroke_enabled: bool,
 	/// When false (default), fill follows the secondary working color and stroke follows the primary; when true, the routing is reversed.
 	/// Persisted per-tool. The Shape tool additionally persists it for each shape mode via its options.
 	pub colors_swapped: bool,
@@ -144,59 +166,91 @@ pub struct DrawingToolState {
 
 impl DrawingToolState {
 	pub fn new(fill_enabled: bool) -> Self {
+		let stroke_defaults = StrokeDefaults::default();
+
 		Self {
-			line_weight: Some(DEFAULT_STROKE_WIDTH),
-			default_line_weight: DEFAULT_STROKE_WIDTH,
-			stroke_align: Some(StrokeAlign::default()),
-			stroke_cap: Some(StrokeCap::default()),
-			stroke_join: Some(StrokeJoin::default()),
-			miter_limit: Some(4.),
-			paint_order: Some(PaintOrder::default()),
+			line_weight: Some(stroke_defaults.weight),
+			stroke_align: Some(stroke_defaults.align),
+			stroke_cap: Some(stroke_defaults.cap),
+			stroke_join: Some(stroke_defaults.join),
+			miter_limit: Some(stroke_defaults.miter_limit),
+			paint_order: Some(stroke_defaults.paint_order),
 			paint_order_applicable: true,
-			dash_lengths: Some(Vec::new()),
-			dash_offset: Some(0.),
+			dash_lengths: Some(stroke_defaults.dash_lengths.clone()),
+			dash_offset: Some(stroke_defaults.dash_offset),
+			stroke_defaults,
 			last_synced_selection: Vec::new(),
 			fill: if fill_enabled { ToolColorOptions::new_enabled() } else { ToolColorOptions::new_disabled() },
 			stroke: ToolColorOptions::new_enabled(),
+			natural_fill_enabled: fill_enabled,
+			natural_stroke_enabled: true,
 			colors_swapped: false,
 		}
 	}
 
-	/// The line weight to apply, falling back to the persistent default when [`Self::line_weight`] is `None` (mixed).
+	/// The line weight to apply, falling back to the default when [`Self::line_weight`] is `None` (mixed).
 	pub fn effective_line_weight(&self) -> f64 {
-		self.line_weight.unwrap_or(self.default_line_weight)
+		self.line_weight.unwrap_or(self.stroke_defaults.weight)
 	}
 
-	/// Dash lengths to apply, falling back to empty when [`Self::dash_lengths`] is `None` (mixed).
-	pub fn effective_dash_lengths(&self) -> Vec<f64> {
-		self.dash_lengths.clone().unwrap_or_default()
-	}
-
-	/// Applies a stroke to a freshly created `layer` using the tool's currently selected color, weight, and stroke options (align, cap, join, etc.).
-	/// Used by the drawing tools at shape-creation time so new shapes inherit the popover's options instead of defaulting to the `Stroke` struct's defaults.
-	pub fn apply_stroke_to_new_layer(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		if !self.stroke.is_active() {
-			return;
+	/// Makes the stroke options shown in the popover the defaults for new shapes, for edits made while nothing is selected.
+	pub fn store_stroke_defaults(&mut self) {
+		let defaults = &mut self.stroke_defaults;
+		defaults.weight = self.line_weight.unwrap_or(defaults.weight);
+		defaults.align = self.stroke_align.unwrap_or(defaults.align);
+		defaults.cap = self.stroke_cap.unwrap_or(defaults.cap);
+		defaults.join = self.stroke_join.unwrap_or(defaults.join);
+		defaults.miter_limit = self.miter_limit.unwrap_or(defaults.miter_limit);
+		defaults.paint_order = self.paint_order.unwrap_or(defaults.paint_order);
+		if let Some(dash_lengths) = &self.dash_lengths {
+			defaults.dash_lengths.clone_from(dash_lengths);
 		}
-		let Some(FillChoice::Solid(color)) = &self.stroke.fill_choice else { return };
-		let color = Some(*color);
+		defaults.dash_offset = self.dash_offset.unwrap_or(defaults.dash_offset);
+	}
+
+	/// Applies a fill to a freshly created `layer` from the tool's Fill swatch, or the tool's default where the selection's fills are mixed.
+	pub fn apply_fill_to_new_layer(&self, layer: LayerNodeIdentifier, global: &DocumentToolData, responses: &mut VecDeque<Message>) {
+		let working_color = fill_working_color(global, self.colors_swapped);
+		match self.fill.new_shape_paint(self.natural_fill_enabled, working_color) {
+			Some(FillChoice::Solid(color)) => responses.add(GraphOperationMessage::FillColorSet { layer, color: Some(color) }),
+			// Without a transform, the gradient covers the new layer's bounding box as it's drawn
+			Some(FillChoice::Gradient(ramp)) => responses.add(GraphOperationMessage::FillGradientSet {
+				layer,
+				gradient: graphene_std::vector::Gradient::from(&ramp),
+				gradient_form: Default::default(),
+				gradient_settings: (&ramp).into(),
+				transform: None,
+			}),
+			Some(FillChoice::None) | None => {}
+		}
+	}
+
+	/// Applies a stroke to a freshly created `layer` from the tool's Stroke swatch and popover options (weight, align, cap, join, etc.).
+	/// Anything the selection leaves mixed takes the tool's default instead.
+	pub fn apply_stroke_to_new_layer(&self, layer: LayerNodeIdentifier, global: &DocumentToolData, responses: &mut VecDeque<Message>) {
+		let working_color = stroke_working_color(global, self.colors_swapped);
+		let Some(FillChoice::Solid(color)) = self.stroke.new_shape_paint(self.natural_stroke_enabled, working_color) else {
+			return;
+		};
+
+		let defaults = &self.stroke_defaults;
 		let stroke = graphene_std::vector::style::Stroke {
 			weight: self.effective_line_weight(),
-			align: self.stroke_align.unwrap_or_default(),
-			cap: self.stroke_cap.unwrap_or_default(),
-			join: self.stroke_join.unwrap_or_default(),
-			join_miter_limit: self.miter_limit.unwrap_or(4.),
-			dash_lengths: self.effective_dash_lengths(),
-			dash_offset: self.dash_offset.unwrap_or(0.),
+			align: self.stroke_align.unwrap_or(defaults.align),
+			cap: self.stroke_cap.unwrap_or(defaults.cap),
+			join: self.stroke_join.unwrap_or(defaults.join),
+			join_miter_limit: self.miter_limit.unwrap_or(defaults.miter_limit),
+			dash_lengths: self.dash_lengths.clone().unwrap_or_else(|| defaults.dash_lengths.clone()),
+			dash_offset: self.dash_offset.unwrap_or(defaults.dash_offset),
 			transform: glam::DAffine2::IDENTITY,
 		};
-		responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
+		responses.add(GraphOperationMessage::StrokeSet { layer, color: Some(color), stroke });
 	}
 
 	/// Queues the paint order rewrite for a freshly created `layer`. The order is the relative position of the
 	/// Stroke and Fill nodes in the chain, so this must run after both the stroke and fill have been applied.
 	pub fn apply_stroke_order_to_new_layer(&self, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-		let paint_order = self.paint_order.unwrap_or_default();
+		let paint_order = self.paint_order.unwrap_or(self.stroke_defaults.paint_order);
 		if paint_order != PaintOrder::default() {
 			responses.add(GraphOperationMessage::StrokeOrderSet { layer, paint_order });
 		}
@@ -233,6 +287,9 @@ pub fn sync_color_options(
 	let fill_fallback = solid(fill_working_color(global, drawing.colors_swapped));
 	let stroke_fallback = solid(stroke_working_color(global, drawing.colors_swapped));
 
+	drawing.natural_fill_enabled = natural_fill_enabled;
+	drawing.natural_stroke_enabled = natural_stroke_enabled;
+
 	let mut changed = false;
 
 	// FILL
@@ -247,10 +304,15 @@ pub fn sync_color_options(
 		};
 		(state.enabled, display_choice, tracks_working)
 	} else {
-		// On a real deselect, revert to the working color; otherwise preserve the displayed value.
+		// A real deselect reverts to the natural state and the working color, while anything else keeps what's shown
+		let enabled = if selection_changed {
+			Some(natural_fill_enabled)
+		} else {
+			drawing.fill.enabled.or(Some(natural_fill_enabled))
+		};
 		let display_choice = if selection_changed { Some(fill_fallback) } else { drawing.fill.fill_choice.clone() };
 		let tracks_working = if selection_changed { true } else { drawing.fill.tracks_working_color };
-		(Some(natural_fill_enabled), display_choice, tracks_working)
+		(enabled, display_choice, tracks_working)
 	};
 	if drawing.fill.enabled != new_fill.0 || drawing.fill.fill_choice != new_fill.1 || drawing.fill.tracks_working_color != new_fill.2 {
 		drawing.fill.enabled = new_fill.0;
@@ -271,9 +333,14 @@ pub fn sync_color_options(
 		};
 		(state.enabled, display_choice, tracks_working)
 	} else {
+		let enabled = if selection_changed {
+			Some(natural_stroke_enabled)
+		} else {
+			drawing.stroke.enabled.or(Some(natural_stroke_enabled))
+		};
 		let display_choice = if selection_changed { Some(stroke_fallback) } else { drawing.stroke.fill_choice.clone() };
 		let tracks_working = if selection_changed { true } else { drawing.stroke.tracks_working_color };
-		(Some(natural_stroke_enabled), display_choice, tracks_working)
+		(enabled, display_choice, tracks_working)
 	};
 	if drawing.stroke.enabled != new_stroke.0 || drawing.stroke.fill_choice != new_stroke.1 || drawing.stroke.tracks_working_color != new_stroke.2 {
 		drawing.stroke.enabled = new_stroke.0;
@@ -296,7 +363,7 @@ pub fn sync_drawing_state(drawing: &mut DrawingToolState, natural_fill_enabled: 
 		// On a real selection change, revert to the default; otherwise preserve.
 		WeightSyncOutcome::NoStrokes | WeightSyncOutcome::NoSelection => {
 			if selection_changed {
-				Some(drawing.default_line_weight)
+				Some(drawing.stroke_defaults.weight)
 			} else {
 				drawing.line_weight
 			}
@@ -307,14 +374,14 @@ pub fn sync_drawing_state(drawing: &mut DrawingToolState, natural_fill_enabled: 
 		needs_refresh = true;
 	}
 
-	needs_refresh |= sync_stroke_options(drawing, document);
+	needs_refresh |= sync_stroke_options(drawing, document, selection_changed);
 
 	needs_refresh
 }
 
 /// Reads the stroke proto-node inputs (align, cap, join, miter limit, paint order, dash lengths, dash offset) across the selection and updates
-/// the matching fields on `drawing`. Each field becomes `None` (mixed) when selected strokes disagree. With no selection, fields are left as-is.
-fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessageHandler) -> bool {
+/// the matching fields on `drawing`. Each field becomes `None` (mixed) when selected strokes disagree. Without any, a selection change restores the defaults.
+fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessageHandler, selection_changed: bool) -> bool {
 	let layers = graph_modification_utils::paintable_selected_layers(document);
 
 	// The order radio only swaps a layer's lone adjacent Fill/Stroke pair, so it grays out when no selected
@@ -330,7 +397,7 @@ fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessag
 		.into_iter()
 		.filter_map(|layer| graph_modification_utils::get_stroke_options(layer, &document.network_interface))
 		.collect();
-	if strokes.is_empty() {
+	if strokes.is_empty() && !selection_changed {
 		return applicability_changed;
 	}
 
@@ -340,13 +407,28 @@ fn sync_stroke_options(drawing: &mut DrawingToolState, document: &DocumentMessag
 		iter.all(|v| v == first).then_some(first)
 	}
 
-	let new_align = unanimous(strokes.iter().map(|s| s.align));
-	let new_cap = unanimous(strokes.iter().map(|s| s.cap));
-	let new_join = unanimous(strokes.iter().map(|s| s.join));
-	let new_miter = unanimous(strokes.iter().map(|s| s.miter_limit));
-	let new_paint_order = unanimous(strokes.iter().map(|s| s.paint_order));
-	let new_dash_lengths = unanimous(strokes.iter().map(|s| &s.dash_lengths)).cloned();
-	let new_dash_offset = unanimous(strokes.iter().map(|s| s.dash_offset));
+	let (new_align, new_cap, new_join, new_miter, new_paint_order, new_dash_lengths, new_dash_offset) = if strokes.is_empty() {
+		let defaults = &drawing.stroke_defaults;
+		(
+			Some(defaults.align),
+			Some(defaults.cap),
+			Some(defaults.join),
+			Some(defaults.miter_limit),
+			Some(defaults.paint_order),
+			Some(defaults.dash_lengths.clone()),
+			Some(defaults.dash_offset),
+		)
+	} else {
+		(
+			unanimous(strokes.iter().map(|s| s.align)),
+			unanimous(strokes.iter().map(|s| s.cap)),
+			unanimous(strokes.iter().map(|s| s.join)),
+			unanimous(strokes.iter().map(|s| s.miter_limit)),
+			unanimous(strokes.iter().map(|s| s.paint_order)),
+			unanimous(strokes.iter().map(|s| &s.dash_lengths)).cloned(),
+			unanimous(strokes.iter().map(|s| s.dash_offset)),
+		)
+	};
 
 	let mut changed = applicability_changed;
 
@@ -505,12 +587,9 @@ pub fn apply_stroke_enabled(drawing: &mut DrawingToolState, enabled: bool, globa
 	}
 }
 
-/// Applies a user-edited stroke weight to the selection, also persisting it as the no-selection default.
+/// Applies a user-edited stroke weight to the selection.
 pub fn apply_line_weight(drawing: &mut DrawingToolState, line_weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.line_weight = Some(line_weight);
-	if !has_paintable_selection(document) {
-		drawing.default_line_weight = line_weight;
-	}
 	graph_modification_utils::set_stroke_weight_for_selected_layers(line_weight, document, responses);
 }
 

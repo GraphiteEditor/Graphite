@@ -16,6 +16,7 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, is_almost_colinear, should_extend};
+use crate::messages::tool::utility_types::DocumentToolData;
 use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
@@ -53,6 +54,7 @@ pub enum PenToolMessage {
 	// Standard messages
 	Abort,
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 	Overlays {
 		context: OverlayContext,
@@ -247,12 +249,13 @@ impl LayoutHolder for PenTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
-		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
-		if matches!(&message, ToolMessage::Pen(PenToolMessage::Abort)) && self.fsm_state == PenToolFsmState::Ready {
+		// Switching to another tool resets the fill/stroke colors so the next activation starts from the working colors (the swap state persists)
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::SwitchedToAnotherTool)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+			return;
+		}
 
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::Abort)) && self.fsm_state == PenToolFsmState::Ready {
 			// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
 			context.snap_session.sleep_all();
 			responses.add(OverlaysMessage::Draw);
@@ -339,6 +342,7 @@ impl ToolTransition for PenTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(PenToolMessage::Abort.into()),
+			switched_to_another_tool: Some(PenToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 			graph_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
@@ -1357,6 +1361,7 @@ impl PenToolData {
 		viewport: &ViewportMessageHandler,
 		responses: &mut VecDeque<Message>,
 		tool_options: &PenOptions,
+		global_tool_data: &DocumentToolData,
 		append: bool,
 		shape_editor: &mut ShapeState,
 		start: DVec2,
@@ -1435,8 +1440,8 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.drawing.fill.apply_fill(layer, responses);
-		tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+		tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, responses);
+		tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, responses);
 		tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
@@ -1603,6 +1608,7 @@ impl Fsm for PenToolFsmState {
 		let ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			shape_editor,
 			snap_session,
@@ -1981,7 +1987,7 @@ impl Fsm for PenToolFsmState {
 				let start = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
 
 				tool_data.store_clicked_endpoint(document, start);
-				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor, start);
+				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, global_tool_data, append, shape_editor, start);
 				tool_data.begin_snapping_gesture(snap_session, view, Some(drawn_layer));
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
@@ -2789,6 +2795,33 @@ mod test_pen_tool {
 		vector.anchor_positions().into_iter().map(|position| layer_to_viewport.transform_point2(position)).collect()
 	}
 
+	#[tokio::test]
+	async fn a_path_drawn_with_fill_unticked_gets_no_fill() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_id;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(300., 300., 400., 400.).await;
+		deselect_all(&mut editor).await;
+		editor.select_tool(ToolType::Pen).await;
+		editor
+			.handle_message(PenToolMessage::UpdateOptions {
+				options: super::PenOptionsUpdate::FillEnabled(false),
+			})
+			.await;
+
+		// Clicking without reselecting the tool, since that would sync the options afresh
+		for point in [A, DVec2::new(150., 200.), B] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+			editor.left_mousedown(point.x, point.y, ModifierKeys::empty()).await;
+			editor.left_mouseup(point.x, point.y, ModifierKeys::empty()).await;
+		}
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let (layer, _) = drawn_path(&editor).expect("Expected a drawn path");
+		assert!(get_fill_id(layer, &editor.active_document().network_interface).is_none(), "the path should have no Fill node");
+	}
+
 	async fn set_space_held(editor: &mut EditorTestUtils, held: bool) {
 		let (key, modifier_keys, key_repeat) = (Key::Space, ModifierKeys::empty(), false);
 		let message = if held {
@@ -3373,5 +3406,30 @@ mod test_pen_tool {
 		editor.press(Key::Enter, ModifierKeys::empty()).await;
 
 		assert_anchors(&editor, &[A, B + travel]);
+	}
+
+	#[tokio::test]
+	async fn the_transform_sits_before_the_fill_and_stroke_so_resizing_keeps_the_stroke_weight() {
+		use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+		use graph_craft::ProtoNodeIdentifier;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+
+		let (layer, _) = drawn_path(&editor).expect("Expected a drawn path");
+		let network_interface = &editor.active_document().network_interface;
+		let chain = network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
+			.filter_map(|node_id| network_interface.reference(&node_id, &[]))
+			.collect::<Vec<_>>();
+		let position = |identifier: ProtoNodeIdentifier| chain.iter().position(|reference| *reference == DefinitionIdentifier::ProtoNode(identifier.clone()));
+
+		let transform = position(graphene_std::transform_nodes::transform::IDENTIFIER).expect("The path should have a Transform node");
+		let fill = position(graphene_std::vector_nodes::fill::IDENTIFIER).expect("The path should have a Fill node");
+		let stroke = position(graphene_std::vector_nodes::stroke::IDENTIFIER).expect("The path should have a Stroke node");
+		assert!(transform > fill && transform > stroke, "the Transform should be upstream of the Fill and Stroke in {chain:?}");
 	}
 }

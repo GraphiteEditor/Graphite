@@ -448,7 +448,7 @@ impl<'a> ModifyInputsContext<'a> {
 		}
 	}
 
-	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: DAffine2) {
+	pub fn fill_gradient_set(&mut self, gradient: Gradient, gradient_form: GradientForm, settings: GradientSettings, transform: Option<DAffine2>) {
 		let existing_fill_node_id = self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, false);
 		let Some(fill_node_id) = existing_fill_node_id.or_else(|| self.existing_chain_hosted_node_id(graphene_std::vector_nodes::fill::IDENTIFIER, true)) else {
 			return;
@@ -476,14 +476,16 @@ impl<'a> ModifyInputsContext<'a> {
 		if transform_is_value {
 			self.set_input_with_refresh(
 				InputConnector::node(fill_node_id, graphene_std::vector::fill::HasTransformInput),
-				NodeInput::value(TaggedValue::Bool(true), false),
+				NodeInput::value(TaggedValue::Bool(transform.is_some()), false),
 				true,
 			);
-			self.set_input_with_refresh(
-				InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
-				NodeInput::value(TaggedValue::DAffine2(transform), false),
-				true,
-			);
+			if let Some(transform) = transform {
+				self.set_input_with_refresh(
+					InputConnector::node(fill_node_id, graphene_std::vector::fill::TransformInput),
+					NodeInput::value(TaggedValue::DAffine2(transform), false),
+					true,
+				);
+			}
 		}
 
 		self.set_input_with_refresh(
@@ -950,8 +952,7 @@ impl<'a> ModifyInputsContext<'a> {
 				return None;
 			}
 
-			// Create the Transform node
-			self.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, true)
+			self.create_transform_node()
 		}) else {
 			return;
 		};
@@ -964,6 +965,32 @@ impl<'a> ModifyInputsContext<'a> {
 		if !skip_rerender {
 			self.responses.add(NodeGraphMessage::RunDocumentGraph);
 		}
+	}
+
+	/// Creates the layer's Transform node upstream of its Fill and Stroke, as the Shape tools build it,
+	/// so transforming the layer resizes its geometry and leaves its stroke weight as set.
+	fn create_transform_node(&mut self) -> Option<NodeId> {
+		let output_layer = self.get_output_layer()?;
+		let paint_nodes = [graphene_std::vector_nodes::fill::IDENTIFIER, graphene_std::vector_nodes::stroke::IDENTIFIER].map(DefinitionIdentifier::ProtoNode);
+
+		// The most upstream Fill or Stroke in the layer's own chain
+		let upstream_paint_node = self
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![output_layer.to_node()], &[], FlowType::HorizontalFlow)
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.filter(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| paint_nodes.contains(&reference)))
+			.last();
+		let Some(paint_node) = upstream_paint_node else {
+			return self.existing_proto_node_id(graphene_std::transform_nodes::transform::IDENTIFIER, true);
+		};
+
+		let transform_definition = resolve_proto_node_type(graphene_std::transform_nodes::transform::IDENTIFIER)?;
+		let node_id = NodeId::new();
+		self.network_interface.insert_node(node_id, transform_definition.default_node_template(), &[]);
+		self.network_interface.insert_node_before_input(&node_id, &InputConnector::primary_input(paint_node), &[]);
+
+		Some(node_id)
 	}
 
 	pub fn vector_modify(&mut self, modification_type: VectorModificationType) {

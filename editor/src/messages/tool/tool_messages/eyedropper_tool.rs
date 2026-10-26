@@ -147,14 +147,18 @@ impl Fsm for EyedropperToolFsmState {
 
 				self
 			}
-			// Sampling -> Ready
-			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::SamplePrimaryColorEnd) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::SampleSecondaryColorEnd) => {
-				let set_color_choice = match self {
-					EyedropperToolFsmState::SamplingPrimary => PrimarySecondary::Primary,
-					EyedropperToolFsmState::SamplingSecondary => PrimarySecondary::Secondary,
-					_ => unreachable!(),
+			// Sampling -> Ready, into the color the press chose even if Shift has changed since, and only when released over the viewport
+			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::SamplePrimaryColorEnd | EyedropperToolMessage::SampleSecondaryColorEnd) => {
+				let set_color_choice = if self == EyedropperToolFsmState::SamplingPrimary {
+					PrimarySecondary::Primary
+				} else {
+					PrimarySecondary::Secondary
 				};
-				update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice), render_mode);
+
+				let mouse_position = viewport.logical(input.mouse.position);
+				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
+					update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice), render_mode);
+				}
 				disable_cursor_preview(responses, tool_data);
 
 				EyedropperToolFsmState::Ready
@@ -244,4 +248,42 @@ fn update_cursor_preview_common(
 		secondary_color: SRGBA8::from(global_tool_data.secondary_color).to_css_hex(),
 		set_color_choice,
 	});
+}
+
+#[cfg(test)]
+mod test_eyedropper {
+	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+	pub use crate::test_utils::test_prelude::*;
+
+	// Whether a batch of frontend messages hides the sampling preview, which ends a sample
+	fn ends_sampling(messages: &[FrontendMessage]) -> bool {
+		messages
+			.iter()
+			.any(|message| matches!(message, FrontendMessage::UpdateEyedropperSamplingState { mouse_position: None, .. }))
+	}
+
+	#[tokio::test]
+	async fn changing_shift_mid_sample_still_ends_it_on_release() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.select_tool(ToolType::Eyedropper).await;
+
+		for (press, release) in [(ModifierKeys::empty(), ModifierKeys::SHIFT), (ModifierKeys::SHIFT, ModifierKeys::empty())] {
+			editor.left_mousedown(50., 50., press).await;
+			let messages = editor
+				.handle_message(InputPreprocessorMessage::PointerUp {
+					editor_mouse_state: EditorPointerState {
+						editor_position: (50., 50.).into(),
+						mouse_keys: MouseKeys::empty(),
+						..Default::default()
+					},
+					modifier_keys: release,
+				})
+				.await;
+			assert!(
+				ends_sampling(&messages),
+				"releasing with Shift {press:?} at the press and {release:?} at the release should end the sample"
+			);
+		}
+	}
 }

@@ -119,6 +119,7 @@ pub enum ShapeToolMessage {
 	Overlays { context: OverlayContext },
 	Abort,
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -541,12 +542,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		use graphene_std::vector::generator_nodes::*;
 
-		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
-		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		// Guarded on `Ready(_)` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
-		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::Abort)) && matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
+		// Switching to another tool resets the fill/stroke colors so the next activation starts from the working colors (the swap state persists)
+		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::SwitchedToAnotherTool)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+			return;
+		}
 
+		if matches!(&message, ToolMessage::Shape(ShapeToolMessage::Abort)) && matches!(self.fsm_state, ShapeToolFsmState::Ready(_)) {
 			// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
 			context.snap_session.sleep_all();
 			responses.add(OverlaysMessage::Draw);
@@ -767,6 +769,7 @@ impl ToolTransition for ShapeTool {
 		EventToMessageMap {
 			overlay_provider: Some(|context| ShapeToolMessage::Overlays { context }.into()),
 			tool_abort: Some(ShapeToolMessage::Abort.into()),
+			switched_to_another_tool: Some(ShapeToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(ShapeToolMessage::SelectionChanged.into()),
 			graph_changed: Some(ShapeToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(ShapeToolMessage::WorkingColorChanged.into()),
@@ -875,6 +878,7 @@ impl Fsm for ShapeToolFsmState {
 		ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			shape_editor,
 			snap_session,
@@ -1193,8 +1197,8 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
-						tool_options.drawing.fill.apply_fill(layer, defered_responses);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, defered_responses);
 						tool_options.drawing.apply_stroke_order_to_new_layer(layer, defered_responses);
 					}
 					ShapeType::Arrow => {
@@ -1208,8 +1212,8 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.fill.apply_fill(layer, defered_responses);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, defered_responses);
 						tool_options.drawing.apply_stroke_order_to_new_layer(layer, defered_responses);
 					}
 					ShapeType::Line => {
@@ -1223,7 +1227,7 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_data.line_data.weight = tool_options.drawing.effective_line_weight();
 						tool_data.line_data.editing_layer = Some(layer);
-						tool_options.drawing.apply_stroke_to_new_layer(layer, defered_responses);
+						tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, defered_responses);
 					}
 				}
 
