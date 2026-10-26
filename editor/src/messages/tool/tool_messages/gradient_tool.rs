@@ -1484,8 +1484,8 @@ impl Fsm for GradientToolFsmState {
 					GradientToolFsmState::Drawing { drag_hint: hint }
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-					// List-based gradients and blank layers render no geometry, so a click on empty canvas yields no layer.
-					// Fall back to a selected gradient list layer, or one blank enough to take a fresh whole-expanse gradient.
+					// A press on empty canvas falls back to a selected layer with a gradient, letting its line start or end outside the shape,
+					// or to one blank enough for a whole-expanse gradient, since blank layers and list gradients have nothing to press
 					let clicked_layer = document.click_based_on_position(document_mouse).map(|layer| paint_target_layer(layer, &document.network_interface));
 					let selected_layer = clicked_layer.or_else(|| {
 						document
