@@ -6,6 +6,7 @@ use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
 use glam::{DAffine2, UVec2};
+use core_types::{Interrupt, NodeError};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
@@ -15,6 +16,7 @@ use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use rendering::{Render, RenderParams};
+use raster_nodes::raster_kernel::raster_kernel_pipeline;
 use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
@@ -207,17 +209,18 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
-#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
-fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"), memoize)]
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Raster<GPU>>, Interrupt> {
 	let data = data.into_element();
-	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
+	let Some(image) = Image::from_encoded(data.as_ref()) else { return Ok(Item::default()) };
 
-	Item::new_from_element(Raster::new_cpu(image))
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to load an image"))?;
+	Ok(Item::new_from_element(Raster::new_cpu(image).convert(Footprint::DEFAULT, executor)))
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[node_macro::node(category(""), placeholder = pending_raster)]
-async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(try_wgpu_executor::IDENTIFIER)] executor: Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
+async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(try_wgpu_executor::IDENTIFIER)] executor: Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<GPU>> {
 	let Some(executor) = executor.into_element() else {
 		log::error!("Rasterizing requires a GPU executor");
 		return List::new();
@@ -225,7 +228,7 @@ async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>,
 	rasterize_with_vello(data, footprint.into_element(), executor).await
 }
 
-async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> List<Raster<CPU>> {
+async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> List<Raster<GPU>> {
 	let resolution = footprint.resolution;
 	if footprint.transform.matrix2.determinant() == 0. || resolution.cmpeq(UVec2::ZERO).any() {
 		log::trace!("Invalid footprint received for rasterization");
@@ -246,7 +249,9 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 			return List::new();
 		}
 	};
-	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor).await;
+	// Downloaded and uploaded again since Vello renders the texture in an 8-bit format rather than the format of GPU rasters
+	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor.clone()).await;
+	let raster = raster.convert(Footprint::DEFAULT, executor);
 
 	// The input's layers stay reachable so the renderer can expose their click targets to the editor's tools
 	List::new_from_item(
@@ -256,7 +261,7 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	)
 }
 
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<GPU>> {
 	List::new()
 }
 

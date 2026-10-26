@@ -3523,6 +3523,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			graphene_std::raster_nodes::filter::blur::IDENTIFIER,
 			graphene_std::raster_nodes::image_color_palette::image_color_palette::IDENTIFIER,
 			graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
+			graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
+			graphene_std::platform_application_io::bytes_to_image::IDENTIFIER,
+			#[cfg(target_family = "wasm")]
+			graphene_std::platform_application_io::rasterize::IDENTIFIER,
 		]
 	};
 	if raster_kernel_nodes.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && !node.inputs.contains(&raster_kernel_pipeline) {
@@ -4532,7 +4536,7 @@ mod tests {
 			migrate(&mut document);
 
 			let image_node = &document.network_interface.document_network().nodes[&image_id];
-			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
+			assert_eq!(image_node.inputs.len(), 3, "the image node should gain its placeholder primary input and pipeline scope input");
 			let migrated = &image_node.inputs[1];
 			match legacy_input.as_value() {
 				None => assert_eq!(migrated.as_node(), Some(upstream_id), "the wire should sit at input 1"),

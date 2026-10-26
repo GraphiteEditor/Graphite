@@ -7,7 +7,8 @@ use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBM
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
-use core_types::transform::Transform;
+use core_types::ops::Convert;
+use core_types::transform::{Footprint, Transform};
 use core_types::{Interrupt, NodeError};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, UVec2, Vec2};
@@ -397,11 +398,13 @@ fn image(
 	/// The image file to display.
 	#[widget(ParsedWidgetOverride::Custom = "image_file")]
 	resource: Item<Resource>,
-) -> Item<Raster<CPU>> {
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<Raster<GPU>>, Interrupt> {
 	let resource = resource.into_element();
-	let Some(image) = Image::from_encoded(resource.as_ref()) else { return Item::default() };
+	let Some(image) = Image::from_encoded(resource.as_ref()) else { return Ok(Item::default()) };
 
-	Item::new_from_element(Raster::new_cpu(image))
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to load an image"))?;
+	Ok(Item::new_from_element(Raster::new_cpu(image).convert(Footprint::DEFAULT, executor)))
 }
 
 /// Generates customizable procedural noise patterns.
