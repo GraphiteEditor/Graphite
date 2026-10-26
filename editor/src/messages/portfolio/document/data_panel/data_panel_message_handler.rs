@@ -18,7 +18,7 @@ use graphene_std::raster::{
 	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RelativeAbsolute,
 	SelectiveColorChoice, TonalRange,
 };
-use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::raster_types::{CPU, GPU, Raster, Storage};
 use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
@@ -944,9 +944,15 @@ impl TableItemLayout for Raster<GPU> {
 		"Raster"
 	}
 	fn identifier(&self) -> String {
-		format!("Raster ({} x {})", self.data().width(), self.data().height())
+		let size = self.size();
+		format!("Raster ({} x {})", size.x, size.y)
 	}
 	fn value_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
+		if self.is_empty() {
+			let widgets = vec![TextLabel::new("Image has no area").widget_instance()];
+			return vec![LayoutGroup::row(widgets)];
+		}
+
 		let widgets = vec![TextLabel::new("This raster data is a texture on the GPU. It currently cannot be displayed here.").widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}

@@ -2570,7 +2570,7 @@ impl Render for List<Raster<GPU>> {
 
 /// Draws one item of GPU raster content into the Vello scene.
 fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-	let Some(raster) = item.element() else { return };
+	let Some(texture) = item.element().and_then(|raster| raster.texture()) else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -2610,12 +2610,12 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 		return;
 	}
 
-	let width = raster.data().width();
-	let height = raster.data().height();
+	let width = texture.width();
+	let height = texture.height();
 
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
-	scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
+	scene.draw_texture(texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
 
 	if layer {
 		scene.pop_layer()
