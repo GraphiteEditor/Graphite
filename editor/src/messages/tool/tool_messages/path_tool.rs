@@ -2459,7 +2459,13 @@ impl Fsm for PathToolFsmState {
 				};
 				tool_data.started_drawing_from_inside = false;
 
-				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
+				// A lasso closed back on its start still encloses an area, so only one that never left the press is a click
+				let clicked = match selection_shape {
+					SelectionShapeType::Box => tool_data.drag_start_pos.distance(previous_mouse) < 1e-8,
+					SelectionShapeType::Lasso => tool_data.lasso_polygon.iter().all(|point| point.distance(tool_data.drag_start_pos) < 1e-8),
+				};
+
+				if clicked {
 					// Clicked inside or outside the shape then deselect all of the points/segments
 					if document.click(input, viewport).is_some() && tool_data.stored_selection.is_none() {
 						tool_data.stored_selection = Some(shape_editor.selected_shape_state.clone());
@@ -4653,5 +4659,20 @@ mod test_path_tool {
 			.await;
 		drag(&mut editor, B, B + DVec2::new(40., 60.)).await;
 		assert_anchors(&editor, layer, &[A, B + DVec2::new(40., 60.), C]);
+	}
+
+	#[tokio::test]
+	async fn a_lasso_released_on_its_start_selects_what_it_encloses() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		draw_path(&mut editor, &[A, B, C]).await;
+		editor.select_tool(ToolType::Path).await;
+
+		// A Ctrl-drag loop around the middle anchor, started away from the segments and released exactly where it began
+		let start = B + DVec2::new(-50., 50.);
+		let loop_points = [start, B + DVec2::new(50., 50.), B + DVec2::new(50., -50.), B + DVec2::new(-50., -50.), start];
+		editor.drag_path(&loop_points, ModifierKeys::CONTROL).await;
+
+		assert_eq!(selected_points(&editor).len(), 1, "the lasso should select the anchor it encloses");
 	}
 }
