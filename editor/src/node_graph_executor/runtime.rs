@@ -7,7 +7,7 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
-use graph_craft::graphene_compiler::{CompiledNetwork, Compiler};
+use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
 use graph_craft::proto::GraphErrors;
 use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig, Texture};
@@ -411,7 +411,12 @@ impl NodeRuntime {
 		let c = Compiler {};
 		let CompiledNetwork { network: proto_network, warnings } = match c.compile_single(scoped_network) {
 			Ok(compiled_network) => compiled_network,
-			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
+			Err(CompileError::Graph(errors)) => {
+				let message = format!("{errors:?}");
+				self.node_graph_errors = errors;
+				return Err((ResolvedDocumentNodeTypesDelta::default(), message));
+			}
+			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings = warnings;
 		let previous_monitor_ids: HashMap<Vec<NodeId>, NodeId> = std::mem::take(&mut self.monitor_nodes).into_iter().collect();
