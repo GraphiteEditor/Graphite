@@ -1,6 +1,6 @@
 use super::{
 	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata,
-	OutputConnector, Previewing, RootNode, TransactionStatus,
+	OutputConnector, Previewing, RootNode, TransactionStatus, resolve_proto_node_type,
 };
 use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
@@ -3262,4 +3262,81 @@ async fn entering_a_node_while_its_network_glides_settles_it() {
 	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 
 	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
+}
+
+#[tokio::test]
+async fn inserting_map_node_into_chain_auto_creates_read_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, ..) = layer_with_chain(&mut editor).await;
+
+	editor.active_document_mut().network_interface.create_wire(&OutputConnector::primary_output(layer), &InputConnector::Export(0), &[]);
+	editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
+
+	let map_template = resolve_proto_node_type(graphene_std::graphic::map::IDENTIFIER)
+		.expect("Map node definition should exist")
+		.default_node_template();
+	let map_node_id = NodeId::new();
+	editor.active_document_mut().network_interface.insert_node(map_node_id, map_template, &[]);
+
+	editor.active_document_mut().network_interface.insert_node_between(
+		&map_node_id,
+		&InputConnector::layer_secondary_input(layer),
+		0,
+		&[],
+	);
+
+	let network_interface = &editor.active_document().network_interface;
+	let mapped_input = network_interface.input_from_connector(&InputConnector::node_at_index(map_node_id, 1), &[]);
+	let Some(NodeInput::Node { node_id: read_node_id, .. }) = mapped_input else {
+		panic!("Map node's mapped input should be wired to a newly created node");
+	};
+
+	assert_eq!(
+		network_interface.reference(read_node_id, &[]),
+		Some(DefinitionIdentifier::ProtoNode(graphene_std::context::read_vector::IDENTIFIER))
+	);
+
+	let map_pos = network_interface.position(&map_node_id, &[]).unwrap();
+	let read_pos = network_interface.position(read_node_id, &[]).unwrap();
+	assert_eq!(read_pos, map_pos + IVec2::new(-crate::consts::NODE_CHAIN_WIDTH, 2));
+}
+
+#[tokio::test]
+async fn inserting_configured_map_node_preserves_existing_mapped_input() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, ..) = layer_with_chain(&mut editor).await;
+
+	editor.active_document_mut().network_interface.create_wire(&OutputConnector::primary_output(layer), &InputConnector::Export(0), &[]);
+	editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
+
+	let map_template = resolve_proto_node_type(graphene_std::graphic::map::IDENTIFIER)
+		.expect("Map node definition should exist")
+		.default_node_template();
+	let map_node_id = NodeId::new();
+	editor.active_document_mut().network_interface.insert_node(map_node_id, map_template, &[]);
+
+	// Pre-wire a dummy node into mapped input (index 1)
+	let existing_node_id = NodeId::new();
+	let read_template = resolve_proto_node_type(graphene_std::context::read_graphic::IDENTIFIER)
+		.expect("Read Graphic definition should exist")
+		.default_node_template();
+	editor.active_document_mut().network_interface.insert_node(existing_node_id, read_template, &[]);
+	editor.active_document_mut().network_interface.create_wire(
+		&OutputConnector::primary_output(existing_node_id),
+		&InputConnector::node_at_index(map_node_id, 1),
+		&[],
+	);
+
+	editor.active_document_mut().network_interface.insert_node_between(
+		&map_node_id,
+		&InputConnector::layer_secondary_input(layer),
+		0,
+		&[],
+	);
+
+	let network_interface = &editor.active_document().network_interface;
+	let mapped_input = network_interface.input_from_connector(&InputConnector::node_at_index(map_node_id, 1), &[]);
+	assert_eq!(mapped_input, Some(&NodeInput::node(existing_node_id, 0)));
 }

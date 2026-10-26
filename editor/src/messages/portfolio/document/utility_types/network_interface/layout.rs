@@ -1154,6 +1154,61 @@ impl NodeNetworkInterface {
 
 		// Connect the new node to the previous node
 		self.create_wire(&upstream_output, &InputConnector::node_at_index(*node_id, insert_node_input_index), network_path);
+
+		self.auto_create_read_node_for_map(node_id, network_path);
+	}
+
+	/// If `node_id` is a Map node whose "Mapped" input (index 1) is unconnected, inspects the type feeding its primary
+	/// input (index 0) and creates a matching "Read X" node wired into the "Mapped" input.
+	pub fn auto_create_read_node_for_map(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		let is_map_node = matches!(
+			self.implementation(node_id, network_path),
+			Some(DocumentNodeImplementation::ProtoNode(id)) if *id == graphene_std::graphic::map::IDENTIFIER
+		);
+		if !is_map_node {
+			return;
+		}
+
+		let mapped_input_connector = InputConnector::node_at_index(*node_id, 1);
+		if matches!(self.input_from_connector(&mapped_input_connector, network_path), Some(NodeInput::Node { .. })) {
+			return;
+		}
+
+		let primary_input = InputConnector::primary_input(*node_id);
+		let Some(upstream_output) = self.upstream_output_connector(&primary_input, network_path) else {
+			return;
+		};
+		let upstream_type = self.output_type(&upstream_output, network_path);
+		let element_name = upstream_type.compiled_element_name().or_else(|| {
+			self.potential_output_types(&upstream_output, network_path).first().map(|ty| match ty.nested_type() {
+				Type::Item(element) | Type::List(element) => element.identifier_name(),
+				other => other.identifier_name(),
+			})
+		});
+
+		let read_proto_id = match element_name.as_deref() {
+			Some("Vector") => graphene_std::context::read_vector::IDENTIFIER,
+			Some("Graphic") => graphene_std::context::read_graphic::IDENTIFIER,
+			Some("Raster" | "Raster<CPU>") => graphene_std::context::read_raster::IDENTIFIER,
+			Some("Color") => graphene_std::context::read_color::IDENTIFIER,
+			Some("Gradient") => graphene_std::context::read_gradient::IDENTIFIER,
+			Some("f64" | "i64" | "Number" | "Integer") => graphene_std::context::read_number::IDENTIFIER,
+			Some("String") => graphene_std::text_nodes::read_string::IDENTIFIER,
+			_ => return,
+		};
+
+		let Some(read_definition) = resolve_proto_node_type(read_proto_id) else {
+			return;
+		};
+
+		let mut read_template = read_definition.default_node_template();
+		let map_position = self.position(node_id, network_path).unwrap_or_default();
+		let read_position = map_position + IVec2::new(-NODE_CHAIN_WIDTH, 2);
+		read_template.node_type_metadata = NodeTypePersistentMetadata::node(read_position);
+
+		let read_node_id = NodeId::new();
+		self.insert_node(read_node_id, read_template, network_path);
+		self.create_wire(&OutputConnector::primary_output(read_node_id), &mapped_input_connector, network_path);
 	}
 
 	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
@@ -1180,19 +1235,30 @@ impl NodeNetworkInterface {
 
 		// If `set_input` chain-positioned the node (it joined a layer chain), there's nothing more to do
 		if !self.is_absolute(node_id, network_path) {
+			self.auto_create_read_node_for_map(node_id, network_path);
 			return;
 		}
 
 		// Otherwise place the node where the displaced feeder was, then shift the feeder's branch left to make room
-		let Some(feeder) = feeder else { return };
-		let Some(node_position) = self.position(node_id, network_path) else { return };
-		let Some(feeder_position) = self.position(&feeder, network_path) else { return };
+		let Some(feeder) = feeder else {
+			self.auto_create_read_node_for_map(node_id, network_path);
+			return;
+		};
+		let Some(node_position) = self.position(node_id, network_path) else {
+			self.auto_create_read_node_for_map(node_id, network_path);
+			return;
+		};
+		let Some(feeder_position) = self.position(&feeder, network_path) else {
+			self.auto_create_read_node_for_map(node_id, network_path);
+			return;
+		};
 
 		self.shift_node(node_id, feeder_position - node_position, network_path);
 
 		// A chain feeder derives its position from its distance to the layer, which this insertion already grew,
 		// so shifting it would move it twice and cost it its place in the chain
 		if !self.is_absolute(&feeder, network_path) {
+			self.auto_create_read_node_for_map(node_id, network_path);
 			return;
 		}
 
@@ -1201,6 +1267,8 @@ impl NodeNetworkInterface {
 		for upstream_node in &upstream_nodes {
 			self.shift_node(upstream_node, IVec2::new(-NODE_CHAIN_WIDTH, 0), network_path);
 		}
+
+		self.auto_create_read_node_for_map(node_id, network_path);
 	}
 
 	/// Moves a node to the start of a layer chain (feeding into the secondary input of the layer).
