@@ -26,10 +26,10 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
 
       - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
           override: true
@@ -37,7 +37,7 @@ jobs:
           rustflags: ""
 
       - name: 📦 Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.6
+        uses: mozilla-actions/sccache-action@9e326ebed976843c9932b3aa0e021c6f50310eb4 # v0.0.6
         continue-on-error: true
 
       - name: 🔧 Fallback if sccache fails

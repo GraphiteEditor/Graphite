@@ -52,7 +52,6 @@ jobs:
       contents: write
       deployments: write
       pull-requests: write
-      actions: write
     env:
       CARGO_TERM_COLOR: always
       RUSTC_WRAPPER: /usr/bin/sccache
@@ -64,18 +63,18 @@ jobs:
       BINARYEN_VERSION: "130"
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: ${{ inputs.checkout_repo || github.repository }}
           ref: ${{ inputs.checkout_ref || '' }}
 
       - name: 🟢 Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
 
       - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
           override: true
@@ -85,14 +84,26 @@ jobs:
 
       - name: 🚧 Install wasm-bindgen-cli and Binaryen wasm-opt
         run: |
-          if ! wasm-bindgen --version 2>/dev/null | grep -qF "$WASM_BINDGEN_CLI_VERSION"; then
-            cargo install -f "wasm-bindgen-cli@$WASM_BINDGEN_CLI_VERSION"
+          # Extracts into a temporary folder first so a cancelled download can't leave a truncated binary that later runs mistake for a finished install
+          install_release_archive() {
+            local url="$1" destination="$2"
+            rm -rf "$destination.partial"
+            mkdir -p "$destination.partial"
+            curl -sSfL "$url" | tar xz -C "$destination.partial" --strip-components=1
+            rm -rf "$destination"
+            mv "$destination.partial" "$destination"
+          }
+
+          # Each version gets its own folder so branches pinning different versions don't keep replacing each other's install
+          WASM_BINDGEN_DIR="$HOME/.cache/wasm-bindgen-$WASM_BINDGEN_CLI_VERSION"
+          if [ ! -x "$WASM_BINDGEN_DIR/wasm-bindgen" ]; then
+            install_release_archive "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/$WASM_BINDGEN_CLI_VERSION/wasm-bindgen-$WASM_BINDGEN_CLI_VERSION-x86_64-unknown-linux-musl.tar.gz" "$WASM_BINDGEN_DIR"
           fi
+          echo "$WASM_BINDGEN_DIR" >> "$GITHUB_PATH"
 
           BINARYEN_DIR="$HOME/.cache/binaryen-version_$BINARYEN_VERSION"
           if [ ! -x "$BINARYEN_DIR/bin/wasm-opt" ]; then
-            mkdir -p "$BINARYEN_DIR"
-            curl -sSfL "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-x86_64-linux.tar.gz" | tar xz -C "$BINARYEN_DIR" --strip-components=1
+            install_release_archive "https://github.com/WebAssembly/binaryen/releases/download/version_$BINARYEN_VERSION/binaryen-version_$BINARYEN_VERSION-x86_64-linux.tar.gz" "$BINARYEN_DIR"
           fi
           echo "$BINARYEN_DIR/bin" >> "$GITHUB_PATH"
 
@@ -125,6 +136,8 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Passed through the environment so a branch name can't inject shell syntax
+          HEAD_BRANCH: ${{ inputs.checkout_ref || github.head_ref || github.ref_name }}
         run: |
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
             echo "No Cloudflare API token available (fork PR), skipping deploy."
@@ -134,7 +147,7 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             DEPLOY_BRANCH="master"
           else
-            DEPLOY_BRANCH="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
+            DEPLOY_BRANCH="$HEAD_BRANCH"
             if [ "$DEPLOY_BRANCH" = "master" ] || [ -z "$DEPLOY_BRANCH" ]; then
               DEPLOY_BRANCH="preview-${{ github.run_id }}"
             fi
@@ -166,6 +179,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CF_URL: ${{ steps.cloudflare.outputs.url }}
+          # Passed through the environment so a branch name can't inject shell syntax
+          HEAD_BRANCH: ${{ inputs.checkout_ref || github.head_ref || github.ref_name }}
         run: |
           if [ -z "$CF_URL" ]; then
             echo "No Cloudflare URL available, skipping deployment."
@@ -182,7 +197,7 @@ jobs:
             AUTO_INACTIVE="true"
             TRANSIENT_ENVIRONMENT="false"
           else
-            REF="${{ inputs.checkout_ref || github.head_ref || github.ref_name }}"
+            REF="$HEAD_BRANCH"
             ENVIRONMENT="graphite-dev (Preview)"
             AUTO_INACTIVE="false"
             TRANSIENT_ENVIRONMENT="true"
@@ -272,7 +287,7 @@ jobs:
 
       - name: 📦 Upload web bundle artifact
         if: github.event_name != 'pull_request' && inputs.merge_queue == false
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-web-bundle
           path: frontend/dist
@@ -284,11 +299,24 @@ jobs:
           cd frontend
           npm run check
 
+  # Runs on a GitHub-hosted runner to keep the self-hosted one free for web builds
+  code-docs:
+    if: github.event_name == 'push' && github.ref != 'refs/tags/latest-stable'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
       - name: 📃 Trigger website rebuild if auto-generated code docs are stale
-        if: github.event_name == 'push' && github.ref != 'refs/tags/latest-stable'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          rustup update stable
           cargo run -p editor-message-tree -- website/generated
           TREE=volunteer/guide/codebase-overview/hierarchical-message-system-tree
           curl -sf "https://graphite.art/$TREE.txt" -o "website/static/$TREE.live.txt" \
@@ -312,13 +340,13 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: ${{ inputs.checkout_repo || github.repository }}
           ref: ${{ inputs.checkout_ref || '' }}
 
       - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
           override: true
@@ -327,7 +355,7 @@ jobs:
           target: wasm32-unknown-unknown
 
       - name: 💾 Set up Cargo cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -336,7 +364,7 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: 🟢 Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -345,7 +373,7 @@ jobs:
             frontend/package-lock.json
 
       - name: 📦 Install Cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.23.0
+        uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
         with:
           version: ${{ env.CARGO_BINSTALL_VERSION }}
 
@@ -386,7 +414,7 @@ jobs:
 
       - name: 📦 Upload Windows bundle
         if: github.event_name != 'push'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-windows-bundle
           path: target/artifacts
@@ -413,7 +441,7 @@ jobs:
 
       - name: 🔑 Azure login
         if: github.event_name == 'push'
-        uses: azure/login@v1
+        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -422,7 +450,7 @@ jobs:
 
       - name: 🔏 Sign
         if: github.event_name == 'push'
-        uses: azure/artifact-signing-action@v1
+        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
         with:
           endpoint: https://eus.codesigning.azure.net/
           signing-account-name: Graphite
@@ -488,7 +516,7 @@ jobs:
 
       - name: 📦 Upload signed Windows bundle
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-windows-bundle-signed
           path: target/artifacts
@@ -509,13 +537,13 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: ${{ inputs.checkout_repo || github.repository }}
           ref: ${{ inputs.checkout_ref || '' }}
 
       - name: 🦀 Install Rust
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
         with:
           toolchain: stable
           override: true
@@ -524,7 +552,7 @@ jobs:
           target: wasm32-unknown-unknown
 
       - name: 💾 Set up Cargo cache
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -533,7 +561,7 @@ jobs:
           key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
 
       - name: 🟢 Install Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version-file: .nvmrc
           cache: npm
@@ -542,7 +570,7 @@ jobs:
             frontend/package-lock.json
 
       - name: 📦 Install Cargo-binstall
-        uses: cargo-bins/cargo-binstall@v1.23.0
+        uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
         with:
           version: ${{ env.CARGO_BINSTALL_VERSION }}
 
@@ -586,7 +614,7 @@ jobs:
 
       - name: 📦 Upload Mac bundle
         if: github.event_name != 'push'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-mac-bundle
           path: target/artifacts
@@ -682,7 +710,7 @@ jobs:
 
       - name: 📦 Upload signed Mac bundle
         if: github.event_name == 'push'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-mac-bundle-signed
           path: target/artifacts
@@ -696,13 +724,13 @@ jobs:
 
     steps:
       - name: 📥 Clone repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: ${{ inputs.checkout_repo || github.repository }}
           ref: ${{ inputs.checkout_ref || '' }}
 
       - name: ❄ Install Nix
-        uses: DeterminateSystems/nix-installer-action@main
+        uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
         with:
           extra-conf: |
             extra-substituters = https://graphite.cachix.org https://graphite-dev.cachix.org
@@ -734,7 +762,7 @@ jobs:
         run: nix build .#graphite-bundle${{ inputs.debug && '-dev' || '' }}.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
 
       - name: 📦 Upload Linux bundle
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-linux-bundle
           path: graphite-linux-bundle.tar.xz
@@ -784,7 +812,7 @@ jobs:
           flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: 📦 Upload Flatpak package
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: graphite-flatpak
           path: .flatpak/Graphite.flatpak
