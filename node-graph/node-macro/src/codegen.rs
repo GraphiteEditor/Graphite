@@ -552,7 +552,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#(#unwrap_args)*
 		#(#min_max_args)*
 	};
-	let cell_ctor = match attributes.no_partial {
+	let cell_ctor = match attributes.flags.no_partial {
 		true => quote!(#core_types::Status::no_partial()),
 		false => quote!(#core_types::Status::new()),
 	};
@@ -867,8 +867,9 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		footprint_invariant,
 		forwards_input,
 		inject_scope,
+		..
 	} = attributes.flags;
-	let asynchronous_flag = parsed.is_async;
+	let asynchronous = parsed.is_async;
 	// A node returning a `Destructure` struct records its fields as output connectors
 	let output_fields = match may_return_destructure_struct(parsed) {
 		true => {
@@ -1098,8 +1099,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						footprint_invariant: #footprint_invariant,
 						forwards_input: #forwards_input,
 						inject_scope: #inject_scope,
+						asynchronous: #asynchronous,
 					},
-					asynchronous: #asynchronous_flag,
 					output_fields: #output_fields,
 					fields: vec![
 						#(
@@ -1162,7 +1163,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, field_idents: &[&PatIde
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
 	let mut generated_input_accessor = Vec::new();
-	if !parsed.attributes.skip_impl {
+	if !parsed.attributes.flags.skip_impl {
 		for (input_index, input_ident) in field_idents.iter().enumerate() {
 			// TODO: figure out a better name that doesn't conflict with so many types
 			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
@@ -1231,7 +1232,7 @@ impl RegisterVariant {
 /// connector's `Output = Item<T>`), which marks the node as element-wise.
 fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	// Manually registered nodes control their own variants
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return None;
 	}
 
@@ -1272,7 +1273,7 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 
 /// Whether the node is a `()`-primary generator that frames over its ranked params: a unit primary with at least one ranked (`Item<T>`) param.
 fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return false;
 	}
 
@@ -1326,7 +1327,7 @@ fn generate_register_node_impl(
 	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
 	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
 	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-	let register_node_call = if parsed.attributes.skip_impl { quote!() } else { quote!(register_node();) };
+	let register_node_call = if parsed.attributes.flags.skip_impl { quote!() } else { quote!(register_node();) };
 	let wasm_shim = quote! {
 		#[cfg(target_family = "wasm")]
 		#[unsafe(no_mangle)]
@@ -1336,7 +1337,7 @@ fn generate_register_node_impl(
 		}
 	};
 
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return Ok(wasm_shim);
 	}
 

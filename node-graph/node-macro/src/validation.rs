@@ -28,7 +28,7 @@ pub fn validate_node_fn(parsed: &ParsedNodeFn) -> syn::Result<()> {
 }
 
 fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return;
 	}
 
@@ -75,7 +75,7 @@ fn validate_no_item_parameters(parsed: &ParsedNodeFn) {
 }
 
 fn validate_element_wise(parsed: &ParsedNodeFn) {
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return;
 	}
 	let output = output_payload(&parsed.output_type);
@@ -134,7 +134,7 @@ fn validate_ranked_inputs(parsed: &ParsedNodeFn) {
 fn ranked_input_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
 	let mut violations = Vec::new();
 	// A `Destructure` derive's extractor takes the struct itself rather than an `Item` or `List`
-	if parsed.attributes.skip_impl || parsed.attributes.destructure_extractor {
+	if parsed.attributes.flags.skip_impl || parsed.attributes.flags.destructure_extractor {
 		return violations;
 	}
 
@@ -239,7 +239,7 @@ fn validate_implementations_row_counts(parsed: &ParsedNodeFn) {
 }
 
 fn implementations_row_count_violations(parsed: &ParsedNodeFn) -> Vec<(proc_macro2::Span, String)> {
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return Vec::new();
 	}
 
@@ -399,7 +399,7 @@ fn validate_primary_input_expose(parsed: &ParsedNodeFn) {
 }
 
 fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
-	let has_skip_impl = parsed.attributes.skip_impl;
+	let has_skip_impl = parsed.attributes.flags.skip_impl;
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {
 		for field in &parsed.fields {

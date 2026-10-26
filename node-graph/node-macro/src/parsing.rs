@@ -41,7 +41,7 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
-/// Mirrors `core_types::registry::NodeFlags`, which this proc-macro crate cannot depend on.
+/// Boolean node attributes. The registry-facing subset is emitted as `core_types::registry::NodeFlags`, which this proc-macro crate cannot depend on.
 #[derive(Debug, Default, Clone, Copy)]
 pub(crate) struct NodeFlags {
 	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork.
@@ -50,6 +50,11 @@ pub(crate) struct NodeFlags {
 	pub(crate) forwards_input: bool,
 	/// Whether this node provides a scope.
 	pub(crate) inject_scope: bool,
+	pub(crate) skip_impl: bool,
+	/// Whether the node refuses placeholder data.
+	pub(crate) no_partial: bool,
+	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct rather than an `Item` or `List`. Not parsed from source.
+	pub(crate) destructure_extractor: bool,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -58,7 +63,6 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) display_name: Option<LitStr>,
 	pub(crate) icon: Option<LitStr>,
 	pub(crate) path: Option<Path>,
-	pub(crate) skip_impl: bool,
 	pub(crate) inspector_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
@@ -69,10 +73,6 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) flags: NodeFlags,
 	/// Fn producing an placeholder value used while node evaluation is pending
 	pub(crate) placeholder: Option<Path>,
-	/// Whether the node refuses placeholder data
-	pub(crate) no_partial: bool,
-	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct rather than an `Item` or `List`. Not parsed from source.
-	pub(crate) destructure_extractor: bool,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -459,14 +459,12 @@ impl Parse for NodeFnAttributes {
 		let mut display_name = None;
 		let mut icon = None;
 		let mut path = None;
-		let mut skip_impl = false;
 		let mut inspector_string = None;
 		let mut cfg = None;
 		let mut shader_node = None;
 		let mut serialize = None;
 		let mut flags = NodeFlags::default();
 		let mut placeholder = None;
-		let mut no_partial = false;
 
 		let content = input;
 		// let content;
@@ -538,13 +536,7 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., skip_impl, ...)]
-				"skip_impl" => {
-					let path = meta.require_path_only()?;
-					if skip_impl {
-						return Err(Error::new_spanned(path, "Multiple 'skip_impl' attributes are not allowed"));
-					}
-					skip_impl = true;
-				}
+				"skip_impl" => set_flag(&mut flags.skip_impl, meta, "skip_impl")?,
 				// Override UI layout generator function name defined in `node_inspector.rs` that returns a custom Inspector layout for this node.
 				// This is used to create custom UI for the input parameters of the node in cases where the defaults generated from the type and attributes are insufficient.
 				//
@@ -636,13 +628,7 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., no_partial, ...)]
-				"no_partial" => {
-					let path = meta.require_path_only()?;
-					if no_partial {
-						return Err(Error::new_spanned(path, "Multiple 'no_partial' attributes are not allowed"));
-					}
-					no_partial = true;
-				}
+				"no_partial" => set_flag(&mut flags.no_partial, meta, "no_partial")?,
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
@@ -677,15 +663,12 @@ impl Parse for NodeFnAttributes {
 			display_name,
 			icon,
 			path,
-			skip_impl,
 			inspector_string,
 			cfg,
 			shader_node,
 			serialize,
 			flags,
 			placeholder,
-			no_partial,
-			destructure_extractor: false,
 		})
 	}
 }
@@ -1236,7 +1219,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 /// exempt from the ranked-input validation.
 pub(crate) fn new_destructure_extractor_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
 	let mut parsed_node = parse_node_fn(attr, item).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
-	parsed_node.attributes.destructure_extractor = true;
+	parsed_node.attributes.flags.destructure_extractor = true;
 	generate_parsed_node_fn(parsed_node)
 }
 
@@ -1349,7 +1332,7 @@ mod tests {
 		assert_eq!(parsed.attributes.category, expected.attributes.category);
 		assert_eq!(parsed.attributes.display_name, expected.attributes.display_name);
 		assert_eq!(parsed.attributes.path, expected.attributes.path);
-		assert_eq!(parsed.attributes.skip_impl, expected.attributes.skip_impl);
+		assert_eq!(parsed.attributes.flags.skip_impl, expected.attributes.flags.skip_impl);
 		assert_eq!(parsed.fields.len(), expected.fields.len());
 		assert_eq!(parsed.description, expected.description);
 
@@ -1436,18 +1419,12 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
-				display_name: None,
-				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
-				skip_impl: true,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				flags: NodeFlags {
+					skip_impl: true,
+					..Default::default()
+				},
+				..Default::default()
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1514,18 +1491,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("General")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1610,18 +1576,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector: Shape")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1684,18 +1639,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster: Adjustment")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1770,18 +1714,8 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
-				display_name: None,
-				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1859,18 +1793,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1934,17 +1857,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				flags: Default::default(),
-				placeholder: None,
-				no_partial: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

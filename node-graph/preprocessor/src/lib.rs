@@ -166,8 +166,8 @@ impl Preprocessor {
 					footprint_invariant,
 					forwards_input,
 					inject_scope,
+					asynchronous,
 				},
-				asynchronous,
 				output_fields,
 				context_features,
 				..

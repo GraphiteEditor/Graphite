@@ -16,17 +16,17 @@ pub struct NodeMetadata {
 	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
 	pub flags: NodeFlags,
-	pub asynchronous: bool,
 	pub output_fields: Option<DestructureMetadata>,
 }
 
-/// Boolean node attributes from `#[node_macro::node(...)]`.
+/// Boolean node properties from `#[node_macro::node(...)]` and the node function's signature.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeFlags {
 	pub memoize: bool,
 	pub footprint_invariant: bool,
 	pub forwards_input: bool,
 	pub inject_scope: bool,
+	pub asynchronous: bool,
 }
 
 // Translation struct between macro and definition
