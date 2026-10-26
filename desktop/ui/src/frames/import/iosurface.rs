@@ -89,6 +89,6 @@ impl IOSurfaceImporter {
 			texture
 		};
 
-		Ok(unsafe { device.create_texture_from_hal::<wgpu::wgc::api::Metal>(hal_tex, &texture_desc, wgpu::TextureUses::UNINITIALIZED) })
+		Ok(unsafe { device.create_texture_from_hal::<wgpu::wgc::api::Metal>(hal_tex, &texture_desc, wgpu::TextureUses::UNINITIALIZED) }.into())
 	}
 }
