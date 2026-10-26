@@ -1,4 +1,5 @@
 use crate::messages::layout::utility_types::layout_widget::LayoutTarget;
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::portfolio::persistent_state::PersistentStateMessage;
 use crate::messages::portfolio::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::messages::prelude::*;
@@ -427,9 +428,7 @@ impl WorkspaceMessageHandler {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
 			}
 			PanelType::Palette => {
-				// TODO: Add update functionality if a connected node with palette
-				// triggers a color change event, that should be reflected back
-				// in the palette panel
+				responses.add(PaletteMessage::Refresh);
 			}
 			PanelType::Document | PanelType::Welcome => {
 				// Re-send the welcome screen buttons layout to repopulate after a remount

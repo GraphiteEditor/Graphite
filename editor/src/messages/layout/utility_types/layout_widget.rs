@@ -70,6 +70,8 @@ define_layout_target!(
 	LayersPanelBottomRightBar,
 	/// Blending options at the top of the Layers panel.
 	LayersPanelControlLeftBar,
+	// Main Palette section for editing, adding colors and using palettes.
+	Palette,
 	/// Adding palette, naming/editing the palette
 	PalettePanelBottomRightBar,
 	/// Showcasing currently focused active palette

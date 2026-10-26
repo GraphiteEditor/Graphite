@@ -1505,6 +1505,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					PanelType::Layers => self.selection_network_path = vec![],
 					_ => {}
 				}
+				responses.add(PaletteMessage::Refresh);
 				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
