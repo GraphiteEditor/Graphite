@@ -21,11 +21,18 @@ const FOOTPRINT: u32 = 1 << 0;
 struct ConvertImplementation {
 	from: String,
 	to: String,
-	converter: Option<String>,
+	converter: Option<ConverterDeclaration>,
 	#[serde(default)]
 	asynchronous: bool,
 	#[serde(default)]
 	reads_footprint: bool,
+}
+
+#[derive(Deserialize)]
+struct ConverterDeclaration {
+	#[serde(rename = "type")]
+	ty: String,
+	scope: String,
 }
 
 #[derive(Deserialize)]
@@ -61,8 +68,8 @@ pub enum ConversionKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ConversionNode {
 	pub identifier: IdentifierId,
-	/// The `Converter` the implementation needs as a second input, like the `WgpuExecutor` for CPU and GPU rasters.
-	pub converter: Option<TypeId>,
+	/// The scope key providing the `Converter` the implementation needs as a second input, like the `WgpuExecutor`.
+	pub converter_scope: Option<u32>,
 	pub kind: ConversionKind,
 	pub reads_footprint: bool,
 }
@@ -127,7 +134,7 @@ pub fn load(types: &mut TypeInterner, strings: &mut Strings, registry: &mut Regi
 
 	for conversion in &data.conversions {
 		let (from, to) = (types.concrete(&conversion.from), types.concrete(&conversion.to));
-		let converter = conversion.converter.as_deref().map(|converter| types.concrete(converter));
+		let converter = conversion.converter.as_ref().map(|converter| (types.concrete(&converter.ty), strings.intern(&converter.scope)));
 		let kind = if coercions.equivalent.contains(&(from, to)) {
 			ConversionKind::Representation
 		} else {
@@ -146,7 +153,7 @@ pub fn load(types: &mut TypeInterner, strings: &mut Strings, registry: &mut Regi
 
 			let (from_wire, to_wire) = (types.intern(wrap(from)), types.intern(wrap(to)));
 			let mut inputs = vec![types.function(context, from_wire)];
-			if let Some(converter) = converter {
+			if let Some((converter, _)) = converter {
 				let converter_wire = types.intern(TypeData::Item(converter));
 				inputs.push(types.function(context, converter_wire));
 			}
@@ -155,7 +162,7 @@ pub fn load(types: &mut TypeInterner, strings: &mut Strings, registry: &mut Regi
 				(from, to, rank),
 				ConversionNode {
 					identifier,
-					converter,
+					converter_scope: converter.map(|(_, scope)| scope),
 					kind,
 					reads_footprint: conversion.reads_footprint,
 				},

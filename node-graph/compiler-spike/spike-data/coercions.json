@@ -19,12 +19,12 @@
 		{
 			"from": "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>",
 			"to": "raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>",
-			"converter": "wgpu_executor::WgpuExecutor"
+			"converter": { "type": "wgpu_executor::WgpuExecutor", "scope": "graphene_std::platform_application_io::WgpuExecutorNode" }
 		},
 		{
 			"from": "raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>",
 			"to": "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>",
-			"converter": "wgpu_executor::WgpuExecutor",
+			"converter": { "type": "wgpu_executor::WgpuExecutor", "scope": "graphene_std::platform_application_io::WgpuExecutorNode" },
 			"asynchronous": true
 		}
 	],

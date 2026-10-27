@@ -8,6 +8,7 @@ use super::checks::Checks;
 use super::context::{Builder, ContextAnalysis};
 use super::document::{Definition, DefinitionId, IdentifierId, Implementation, Input, Node, Substitution};
 use super::ir::{Ir, IrValue, NewNode};
+use super::registry::Conversion;
 use super::typing::Typing;
 use super::{Builtins, Document};
 use crate::workload::{CompileMetadata, Reflection};
@@ -72,56 +73,18 @@ pub struct Passes<'a> {
 	pub typing: &'a mut Typing,
 	pub checks: &'a mut Checks,
 	pub context: &'a mut ContextAnalysis,
-	pub value_node: IdentifierId,
-	pub context_type: super::types::TypeId,
 }
 
 impl Passes<'_> {
 	fn builder(&mut self) -> (Builder<'_>, &mut ContextAnalysis) {
-		let Passes { ir, typing, checks, context, .. } = self;
+		let Passes { ir, typing, checks, context } = self;
 		(Builder { ir, typing, checks }, context)
 	}
 
-	/// Builds a node through the passes, inserting the conversion nodes typing asks for on its inputs first.
-	fn build(&mut self, node: NewNode, inputs: &mut [u32]) -> Result<u32, String> {
+	/// Builds a node through the passes, or returns the conversions its inputs need first.
+	fn build(&mut self, node: NewNode, inputs: &mut [u32]) -> Result<Result<u32, Box<[Conversion]>>, String> {
 		let (mut builder, context) = self.builder();
-		let conversions = match context.build(&mut builder, node, inputs)? {
-			Ok(id) => return Ok(id),
-			Err(conversions) => conversions,
-		};
-
-		for conversion in conversions.iter() {
-			let mut conversion_inputs = vec![inputs[conversion.input as usize]];
-			if let Some(converter) = conversion.node.converter {
-				// Stands in for the scope-provided converter, like the editor's `WgpuExecutor`
-				let converter_wire = self.typing.types.intern(super::types::TypeData::Item(converter));
-				let converter_value = NewNode {
-					identifier: self.value_node,
-					call_argument: self.context_type,
-					value: Some(super::ir::IrValue {
-						ty: converter_wire,
-						hash: converter.0 as u64,
-						source: None,
-					}),
-					skip_deduplication: None,
-					compile_metadata: CompileMetadata::default(),
-					origin: node.origin,
-				};
-				conversion_inputs.push(self.build_value(converter_value)?);
-			}
-			let conversion_node = NewNode {
-				identifier: conversion.node.identifier,
-				call_argument: self.context_type,
-				value: None,
-				skip_deduplication: None,
-				compile_metadata: conversion.node.compile_metadata(),
-				origin: node.origin,
-			};
-			inputs[conversion.input as usize] = self.build(conversion_node, &mut conversion_inputs)?;
-		}
-
-		let (mut builder, context) = self.builder();
-		context.build(&mut builder, node, inputs)?.map_err(|_| "Converted inputs still need conversions".to_string())
+		context.build(&mut builder, node, inputs)
 	}
 
 	fn build_value(&mut self, node: NewNode) -> Result<u32, String> {
@@ -422,6 +385,37 @@ impl<'a> Walk<'a, '_> {
 		})
 	}
 
+	/// Builds the node reading the inputs in `scratch[start..]`, first inserting the conversions typing asks for.
+	fn build_converting(&mut self, frame: &Frame, node: NewNode, start: usize) -> Result<u32, String> {
+		let conversions = match self.passes.build(node, &mut self.state.scratch[start..])? {
+			Ok(id) => return Ok(id),
+			Err(conversions) => conversions,
+		};
+
+		for conversion in conversions.iter() {
+			let slot = start + conversion.input as usize;
+			let mut conversion_inputs = vec![self.state.scratch[slot]];
+			if let Some(scope) = conversion.node.converter_scope {
+				conversion_inputs.push(self.lower_input(frame, &Input::Scope(scope), ROOT_PATH)?);
+			}
+
+			let conversion_node = NewNode {
+				identifier: conversion.node.identifier,
+				call_argument: self.tables.builtins.context,
+				value: None,
+				skip_deduplication: None,
+				compile_metadata: conversion.node.compile_metadata(),
+				origin: node.origin,
+			};
+			let converted = self.passes.build(conversion_node, &mut conversion_inputs)?;
+			self.state.scratch[slot] = converted.map_err(|_| "Conversions do not chain".to_string())?;
+		}
+
+		self.passes
+			.build(node, &mut self.state.scratch[start..])?
+			.map_err(|_| "Converted inputs still need conversions".to_string())
+	}
+
 	/// Resolves a scope key from `frame` outward, returning the frame depth providing it and the node it lowers to.
 	fn resolve_scope(&mut self, frame: &Frame, key: u32) -> Option<Result<(u32, u32), String>> {
 		let mut scope = Some(frame);
@@ -565,7 +559,7 @@ impl<'a> Walk<'a, '_> {
 					compile_metadata,
 					origin: self.origin(frame.path, node.id),
 				};
-				let id = self.passes.build(new_node, &mut self.state.scratch[start..]);
+				let id = self.build_converting(frame, new_node, start);
 				self.state.scratch.truncate(start);
 				Ok(Lowered::Single(id?))
 			}

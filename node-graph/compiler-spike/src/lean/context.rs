@@ -3,8 +3,9 @@
 
 use super::Builtins;
 use super::checks::Checks;
+use super::document::IdentifierId;
 use super::ir::{Ir, IrValue, NewNode};
-use super::registry::Conversion;
+use super::registry::{Conversion, Promotion};
 use super::typing::{Inferred, Typing};
 use crate::workload::CompileMetadata;
 use rustc_hash::{FxHashMap, FxHasher};
@@ -184,6 +185,21 @@ impl ContextAnalysis {
 		Ok(nullification)
 	}
 
+	/// Adapters only change an input's rank, so they share its analysis.
+	fn promotion_adapter(&mut self, builder: &mut Builder, input: u32, adapter: IdentifierId) -> Result<u32, String> {
+		let node = NewNode {
+			identifier: adapter,
+			call_argument: self.builtins.context,
+			value: None,
+			skip_deduplication: None,
+			compile_metadata: CompileMetadata::default(),
+			origin: builder.ir.nodes[input as usize].origin,
+		};
+		let (id, _) = builder.build_direct(node, &[input])?;
+		self.record(id, self.analysis[input as usize]);
+		Ok(id)
+	}
+
 	/// Replaces `inputs` with what the node reads after nullification, builds the node, and records its own analysis.
 	/// Returns the conversions instead, with `inputs` untouched, when typing finds the inputs need some first.
 	pub fn build(&mut self, builder: &mut Builder, node: NewNode, inputs: &mut [u32]) -> Result<Result<u32, Box<[Conversion]>>, String> {
@@ -213,6 +229,17 @@ impl ContextAnalysis {
 			let differs = introduces_new_dependencies || child.features != combined_features || child.sources != combined_sources;
 			if !is_value && (child.supplies || differs) {
 				*input = self.nullification(builder, *input, child)?;
+			}
+		}
+
+		if let Some(selection) = selected {
+			let promotions = builder.typing.promotions(selection)?;
+			if !promotions.is_empty() {
+				let promotions: Box<[Promotion]> = promotions.into();
+				for promotion in promotions.iter() {
+					let input = &mut inputs[promotion.input as usize];
+					*input = self.promotion_adapter(builder, *input, promotion.adapter)?;
+				}
 			}
 		}
 

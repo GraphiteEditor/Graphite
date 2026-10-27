@@ -1,7 +1,7 @@
 //! Implementation selection over interned types, memoized per identifier and input types.
 
 use super::coercion::{Coercions, ConversionKind, ConversionNode};
-use super::document::IdentifierId;
+use super::document::{IdentifierId, Strings};
 use super::types::{TypeData, TypeId, TypeInterner};
 use rustc_hash::FxHashMap;
 
@@ -13,18 +13,26 @@ pub struct Signature {
 	pub generics: Vec<u32>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum PromotionKind {
 	ItemToList,
 	Bundle,
 	Unbundle,
 }
 
+impl PromotionKind {
+	const ADAPTER_PREFIXES: [(&str, PromotionKind); 3] = [
+		("graphene_core::ops::ItemToListNode<", PromotionKind::ItemToList),
+		("graphene_core::ops::BundleNode<", PromotionKind::Bundle),
+		("graphene_core::ops::UnbundleNode<", PromotionKind::Unbundle),
+	];
+}
+
+/// An adapter node to insert on an input after context analysis nullified it.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Promotion {
 	pub input: u32,
-	pub kind: PromotionKind,
-	pub element: TypeId,
+	pub adapter: IdentifierId,
 }
 
 /// A conversion node to insert on an input before the node can be built.
@@ -48,6 +56,8 @@ pub struct Selection {
 pub struct Registry {
 	pub implementations: FxHashMap<IdentifierId, Vec<Signature>>,
 	pub coercions: Coercions,
+	/// Keyed by the element of the adapter's `List` side.
+	promotion_adapters: FxHashMap<(PromotionKind, TypeId), IdentifierId>,
 	selection_indices: FxHashMap<Box<[u32]>, u32>,
 	selections: Vec<Result<Selection, String>>,
 	key: Vec<u32>,
@@ -73,6 +83,22 @@ impl Registry {
 			output,
 			generics,
 		});
+	}
+
+	pub fn index_promotion_adapters(&mut self, types: &TypeInterner, strings: &Strings) {
+		for (&identifier, signatures) in &self.implementations {
+			let name = strings.name(identifier.0);
+			let Some(&(_, kind)) = PromotionKind::ADAPTER_PREFIXES.iter().find(|(prefix, _)| name.starts_with(prefix)) else {
+				continue;
+			};
+			let [signature] = signatures.as_slice() else { continue };
+			let [input] = signature.inputs.as_slice() else { continue };
+
+			let list_side = if kind == PromotionKind::Bundle { types.nested(*input) } else { signature.output };
+			if let TypeData::List(element) = types.get(list_side) {
+				self.promotion_adapters.insert((kind, element), identifier);
+			}
+		}
 	}
 
 	pub fn clear_selections(&mut self) {
@@ -219,7 +245,8 @@ impl Registry {
 				let Some((kind, element)) = promotion_between(types, provided, expected) else {
 					continue 'implementations;
 				};
-				promotions.push(Promotion { input: input as u32, kind, element });
+				let adapter = self.promotion_adapters.get(&(kind, element)).copied().ok_or("No promotion adapter node")?;
+				promotions.push(Promotion { input: input as u32, adapter });
 			}
 			candidates.push((index, promotions));
 		}

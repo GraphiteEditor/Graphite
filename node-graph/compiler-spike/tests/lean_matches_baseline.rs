@@ -1,4 +1,5 @@
 use compiler_spike::baseline::Baseline;
+use compiler_spike::baseline::proto::ConstructionArgs;
 use compiler_spike::lean::Lean;
 use compiler_spike::lean::executor::Executor;
 use compiler_spike::workload::{DEMO_ART, load_expected, load_network};
@@ -18,6 +19,21 @@ fn lean_matches_the_memoized_baseline() {
 		let unique: HashSet<_> = proto_network.nodes.iter().map(|(id, node)| (*id, node.identifier.to_string())).collect();
 		let mut baseline_counts: BTreeMap<String, usize> = BTreeMap::new();
 		for (_, identifier) in unique {
+			*baseline_counts.entry(identifier).or_default() += 1;
+		}
+
+		// The baseline applies promotions while constructing the executor, where lean has an adapter node per promoted input
+		let executor = baseline.build_executor(proto_network.clone()).unwrap_or_else(|error| panic!("{name} failed to type: {error}"));
+		let mut adapters = HashSet::new();
+		for (id, node) in &proto_network.nodes {
+			let (Some(promotions), ConstructionArgs::Nodes(inputs)) = (executor.typing_context.promotions(*id), &node.construction_args) else {
+				continue;
+			};
+			for (index, promotion) in promotions {
+				adapters.insert((inputs[*index], promotion.adapter_identifier()));
+			}
+		}
+		for (_, identifier) in adapters {
 			*baseline_counts.entry(identifier).or_default() += 1;
 		}
 

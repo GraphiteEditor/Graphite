@@ -12,6 +12,7 @@
 //! Every pass stores its per-node results in a table indexed by the IR node ID, and the IR store hash-conses nodes as they are built.
 
 pub mod checks;
+pub mod codegen;
 pub mod coercion;
 pub mod context;
 pub mod document;
@@ -143,6 +144,7 @@ impl Lean {
 			}
 		}
 
+		registry.index_promotion_adapters(&types, &strings);
 		coercion::load(&mut types, &mut strings, &mut registry, builtins.context);
 
 		let tables = workload::load_preprocessor_tables();
@@ -283,8 +285,6 @@ impl Lean {
 			typing: &mut self.typing,
 			checks: &mut self.checks,
 			context: &mut self.context,
-			value_node: self.builtins.value_node,
-			context_type: self.builtins.context,
 		};
 		let output = self.elaboration.run(tables, document, dirty, passes)?;
 

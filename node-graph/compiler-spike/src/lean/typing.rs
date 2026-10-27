@@ -15,7 +15,6 @@ pub struct TypeInfo {
 	pub return_type: TypeId,
 	pub fn_type: TypeId,
 	pub implementation: u32,
-	pub promotions: (u32, u32),
 }
 
 pub struct Typing {
@@ -23,7 +22,6 @@ pub struct Typing {
 	pub registry: Registry,
 	/// Indexed by IR node ID.
 	pub info: Vec<TypeInfo>,
-	pub promotions: Vec<Promotion>,
 	context: TypeId,
 	scratch: Vec<TypeId>,
 }
@@ -34,7 +32,6 @@ impl Typing {
 			types,
 			registry,
 			info: Vec::new(),
-			promotions: Vec::new(),
 			context,
 			scratch: Vec::new(),
 		}
@@ -42,12 +39,6 @@ impl Typing {
 
 	pub fn clear(&mut self) {
 		self.info.clear();
-		self.promotions.clear();
-	}
-
-	pub fn promotions(&self, id: u32) -> &[Promotion] {
-		let (start, end) = self.info[id as usize].promotions;
-		&self.promotions[start as usize..end as usize]
 	}
 
 	/// Selects the implementation for a node with these inputs, returning the selection's index for `infer`.
@@ -62,6 +53,11 @@ impl Typing {
 		self.registry.selection(selection).map(|selection| selection.conversions.as_slice())
 	}
 
+	/// The promotion adapters a selection needs inserted on its inputs after context analysis.
+	pub fn promotions(&self, selection: u32) -> Result<&[Promotion], String> {
+		self.registry.selection(selection).map(|selection| selection.promotions.as_slice())
+	}
+
 	/// Types a node, using `selected` when typing already selected its implementation for inputs of the same types.
 	pub fn infer(&mut self, ir: &Ir, node: &NewNode, inputs: &[u32], selected: Option<u32>) -> Result<Inferred, String> {
 		if let Some(value) = node.value {
@@ -70,7 +66,6 @@ impl Typing {
 				return_type: value.ty,
 				fn_type,
 				implementation: 0,
-				promotions: (0, 0),
 			}));
 		}
 
@@ -81,13 +76,10 @@ impl Typing {
 			return Ok(Inferred::NeedsConversions(selection.conversions.as_slice().into()));
 		}
 
-		let start = self.promotions.len() as u32;
-		self.promotions.extend_from_slice(&selection.promotions);
 		Ok(Inferred::Typed(TypeInfo {
 			return_type: selection.return_type,
 			fn_type: selection.fn_type,
 			implementation: selection.implementation,
-			promotions: (start, self.promotions.len() as u32),
 		}))
 	}
 }

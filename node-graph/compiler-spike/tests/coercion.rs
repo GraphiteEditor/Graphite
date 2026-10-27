@@ -14,7 +14,7 @@ const RASTER_GPU: &str = "raster_types::raster_types::Raster<raster_types::raste
 struct Coerced {
 	output: Type,
 	feeding: String,
-	feeding_inputs: usize,
+	feeding_inputs: Vec<String>,
 	feeding_reads_footprint: bool,
 }
 
@@ -52,7 +52,12 @@ fn feed(element: &str, node: &str) -> Result<Coerced, String> {
 	Ok(Coerced {
 		output: lean.typing.types.to_workload(lean.typing.info[output as usize].return_type),
 		feeding: lean.identifier_name(lean.ir.nodes[feeding as usize].identifier).to_string(),
-		feeding_inputs: lean.ir.inputs(feeding).len(),
+		feeding_inputs: lean
+			.ir
+			.inputs(feeding)
+			.iter()
+			.map(|&input| lean.identifier_name(lean.ir.nodes[input as usize].identifier).to_string())
+			.collect(),
 		feeding_reads_footprint: lean.ir.nodes[feeding as usize].compile_metadata.extract != 0,
 	})
 }
@@ -100,7 +105,7 @@ fn representation_changes_convert_with_their_converter() {
 	let coerced = feed(RASTER_CPU, "spike::GpuOnly").unwrap();
 	assert_eq!(coerced.output, item(RASTER_GPU));
 	assert_eq!(coerced.feeding, format!("graphene_core::ops::ConvertItemNode<{RASTER_GPU}>"));
-	assert_eq!(coerced.feeding_inputs, 2, "The conversion should receive the converter");
+	assert_eq!(coerced.feeding_inputs, ["core_types::value::ClonedNode", "graphene_std::platform_application_io::WgpuExecutorNode"]);
 }
 
 #[test]
