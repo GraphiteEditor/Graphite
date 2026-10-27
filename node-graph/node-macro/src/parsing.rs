@@ -180,14 +180,7 @@ impl ParsedField {
 	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
 	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
 	pub(crate) fn is_environment(&self) -> bool {
-		self.is_data_field
-			|| matches!(
-				self.ty.regular(),
-				Some(RegularParsedField {
-					value_source: ParsedValueSource::Scope(_) | ParsedValueSource::SourceId,
-					..
-				})
-			)
+		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId)
 	}
 }
 
@@ -248,6 +241,13 @@ impl ParsedFieldType {
 		match self {
 			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => Some(field),
 			ParsedFieldType::Node(_) => None,
+		}
+	}
+
+	pub fn value_source(&self) -> &ParsedValueSource {
+		match self {
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => &field.value_source,
+			ParsedFieldType::Node(field) => &field.value_source,
 		}
 	}
 
@@ -403,6 +403,8 @@ pub struct NodeParsedField {
 	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
 	pub output_element: Option<Type>,
 	pub implementations: Punctuated<Implementation, Comma>,
+	/// Either `None` or the `#[scope]` wire the lazy input reads.
+	pub value_source: ParsedValueSource,
 }
 
 #[derive(Clone, Debug)]
@@ -1018,7 +1020,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
-		if !matches!(&value_source, ParsedValueSource::None) {
+		if !matches!(&value_source, ParsedValueSource::None | ParsedValueSource::Scope(_)) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
@@ -1035,6 +1037,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				output_type,
 				output_element,
 				implementations,
+				value_source,
 			}),
 			name,
 			description,
@@ -1518,6 +1521,7 @@ mod tests {
 						output_type: parse_quote!(T),
 						output_element: None,
 						implementations: Punctuated::new(),
+						value_source: ParsedValueSource::None,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
@@ -1915,6 +1919,20 @@ mod tests {
 			}
 		);
 		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	fn test_scope_for_impl_node() {
+		let attr = quote!(category(""));
+		let input = quote!(
+			fn scoped_node(_: impl Ctx, content: Item<f64>, #[scope("pipeline")] pipeline: impl Node<Context<'static>, Output = Item<u32>>) -> Item<f64> {
+				content
+			}
+		);
+		let parsed = parse_node_fn(attr, input).unwrap();
+		let pipeline = &parsed.fields[1];
+		assert!(matches!(pipeline.ty.value_source(), ParsedValueSource::Scope(_)));
+		assert!(pipeline.is_environment());
 	}
 
 	#[test]

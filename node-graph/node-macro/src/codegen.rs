@@ -197,28 +197,25 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let value_sources: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField { value_source, .. }) => match value_source {
-				ParsedValueSource::Default(data) => {
-					// Check if the data is a string literal by parsing the token stream
-					let data_str = data.to_string();
-					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
-						quote!(RegistryValueSource::Default(#data))
-					} else {
-						quote!(RegistryValueSource::Default(stringify!(#data)))
-					}
+		.map(|field| match field.ty.value_source() {
+			ParsedValueSource::Default(data) => {
+				// Check if the data is a string literal by parsing the token stream
+				let data_str = data.to_string();
+				if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+					quote!(RegistryValueSource::Default(#data))
+				} else {
+					quote!(RegistryValueSource::Default(stringify!(#data)))
 				}
-				ParsedValueSource::Scope(data) => {
-					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
-						quote!(RegistryValueSource::Scope(#data))
-					} else {
-						quote!(RegistryValueSource::Scope(#data.as_static_str()))
-					}
+			}
+			ParsedValueSource::Scope(data) => {
+				if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
+					quote!(RegistryValueSource::Scope(#data))
+				} else {
+					quote!(RegistryValueSource::Scope(#data.as_static_str()))
 				}
-				ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
-				_ => quote!(RegistryValueSource::None),
-			},
-			None => quote!(RegistryValueSource::None),
+			}
+			ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
+			_ => quote!(RegistryValueSource::None),
 		})
 		.collect();
 
@@ -335,7 +332,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.map(|field| match field.ty.regular() {
 			Some(RegularParsedField { exposed, .. }) => quote!(#exposed),
-			None => quote!(true),
+			None => {
+				let exposed = !field.is_environment();
+				quote!(#exposed)
+			}
 		})
 		.collect();
 
@@ -732,7 +732,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		// The frame index is stamped onto each slot's context so lazy connectors can generate uniquely per slot.
 		// A `()` generator frames purely over its param values (no stamp), so its kernel needs no context-extraction bounds.
-		let has_lazy_connectors = regular_fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)));
+		let has_lazy_connectors = regular_fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)) && !field.is_environment());
 		let slot_context = match has_lazy_connectors {
 			true => quote!(#core_types::OwnedContextImpl::from(__input.clone()).with_index(__slot_index).into_context()),
 			false => quote!(__input.clone()),
