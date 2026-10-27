@@ -966,6 +966,7 @@ dependencies = [
  "serde",
  "serde_json",
  "skrifa",
+ "thiserror 2.0.18",
  "tinyvec",
  "tsify",
  "wasm-bindgen",

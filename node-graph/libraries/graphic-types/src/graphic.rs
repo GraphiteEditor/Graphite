@@ -2,7 +2,7 @@ use crate::appearance::{Appearance, Cover, Coverage};
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
-use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, List, NodeIdPath};
+use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, AttributeTypeConflictError, Item, ItemAttributeValues, List, NodeIdPath};
 use core_types::math::quad::Quad;
 use core_types::none;
 use core_types::ops::FromAnchorPosition;
@@ -180,15 +180,16 @@ pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
 
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::GraphicList` sub-`List`s composes transforms and opacity.
-fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
+/// Also gives the first attribute that the flattened lists have with values of different types.
+fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> (List<T>, Option<AttributeTypeConflictError>) {
 	// Its list is already the flat answer, so hand it back rather than rebuilding it item by item
 	if is_lone_anonymous_leaf(&content) {
-		let Some(item) = content.into_iter().next() else { return List::new() };
+		let Some(item) = content.into_iter().next() else { return (List::new(), None) };
 
-		return extract_variant(item.into_element()).unwrap_or_default();
+		return (extract_variant(item.into_element()).unwrap_or_default(), None);
 	}
 
-	fn flatten_recursive<T: Clone>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
+	fn flatten_recursive<T: Clone>(output: &mut List<T>, conflict: &mut Option<AttributeTypeConflictError>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
 			// Whether the parent carries each composed attribute: a structural fact (attribute presence), never a value comparison.
 			// Flattening composes a parent attribute onto its children only when the parent has it,
@@ -244,7 +245,7 @@ fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Gr
 						}
 					}
 
-					flatten_recursive(output, sub_list, extract_variant);
+					flatten_recursive(output, conflict, sub_list, extract_variant);
 				}
 				// Extract the target variant and push its items, composing the parent's attributes onto each
 				other => {
@@ -273,7 +274,9 @@ fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Gr
 								item.set_attribute(ATTR_APPEARANCE, appearance.clone());
 							}
 
-							output.push(item);
+							if let Some(item_conflict) = output.push_reporting_conflict(item) {
+								conflict.get_or_insert(item_conflict);
+							}
 						}
 					}
 				}
@@ -282,8 +285,9 @@ fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Gr
 	}
 
 	let mut output = List::new();
-	flatten_recursive(&mut output, content, extract_variant);
-	output
+	let mut conflict = None;
+	flatten_recursive(&mut output, &mut conflict, content, extract_variant);
+	(output, conflict)
 }
 
 /// Whether a normalized paint graphic list actually carries renderable paint.
@@ -405,7 +409,19 @@ pub trait IntoGraphicList: Clone + Send + Sync + Default + std::fmt::Debug + Par
 	where
 		Self: std::marker::Sized,
 	{
-		flatten_graphic_list(self.into_graphic_list(), T::try_from_graphic)
+		flatten_graphic_list(self.into_graphic_list(), T::try_from_graphic).0
+	}
+
+	/// Deeply flattens any content of type `T`, failing with the flattened list and the first attribute that holds values of different
+	/// types in the flattened lists (their later items hold the first type's default).
+	fn try_into_flattened_list<T: TryFromGraphic>(self) -> Result<List<T>, (List<T>, AttributeTypeConflictError)>
+	where
+		Self: std::marker::Sized,
+	{
+		match flatten_graphic_list(self.into_graphic_list(), T::try_from_graphic) {
+			(list, None) => Ok(list),
+			(list, Some(conflict)) => Err((list, conflict)),
+		}
 	}
 }
 
@@ -1047,6 +1063,27 @@ mod tests {
 
 		assert_eq!(color_of(0), Some(Color::BLACK), "a declared item should keep its own appearance");
 		assert_eq!(color_of(1), Some(Color::WHITE), "a padded item should inherit the parent appearance");
+	}
+
+	// Flattening lists that hold an attribute with different types keeps the first type, and says which attribute lost values
+	#[test]
+	fn flatten_reports_an_attribute_holding_different_types() {
+		let tagged = |value: Item<Vector>| Item::new_from_element(Graphic::VectorList(List::new_from_item(value)));
+		let mut graphics = List::new();
+		graphics.push(tagged(Item::new_from_element(Vector::default()).with_attribute("tag", 1_f64)));
+		graphics.push(tagged(Item::new_from_element(Vector::default()).with_attribute("tag", String::from("two"))));
+
+		let Err((flattened, conflict)) = graphics.clone().try_into_flattened_list::<Vector>() else {
+			panic!("expected the conflicting tag to be reported")
+		};
+		assert_eq!(conflict.name, "tag");
+		assert_eq!(flattened, graphics.clone().into_flattened_list::<Vector>());
+		assert_eq!(flattened.attribute::<f64>("tag", 1), Some(&0.));
+
+		let mut matching = List::new();
+		matching.push(tagged(Item::new_from_element(Vector::default()).with_attribute("tag", 1_f64)));
+		matching.push(tagged(Item::new_from_element(Vector::default()).with_attribute("tag", 2_f64)));
+		assert!(matching.try_into_flattened_list::<Vector>().is_ok());
 	}
 
 	#[test]

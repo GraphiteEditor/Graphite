@@ -1,3 +1,4 @@
+use crate::TypeDescriptor;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::transform::ApplyTransform;
@@ -203,6 +204,12 @@ fn implicit_default_value(key: &str) -> Option<Box<dyn AnyAttributeValue>> {
 	}
 }
 
+/// What pushing and extending lists pad a missing `key` attribute with: `key`'s implicit default if it has type `T`, otherwise
+/// `T::default()`.
+pub fn implicit_default<T: Clone + Default + 'static>(key: &str) -> T {
+	implicit_default_value(key).and_then(|default| default.as_any().downcast_ref::<T>().cloned()).unwrap_or_default()
+}
+
 /// Appends `count` copies of `key`'s implicit default to `attribute` (see [`implicit_default_value`]).
 fn pad_with_implicit_default(key: &str, attribute: &mut dyn AnyAttribute, count: usize) {
 	match implicit_default_value(key) {
@@ -398,8 +405,8 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	/// Converts the shared attribute into one that can be downcast to its concrete type.
 	fn into_any_arc(self: Arc<Self>) -> Arc<dyn std::any::Any + Send + Sync>;
 
-	/// Pushes a scalar attribute value onto the end of this attribute.
-	fn push(&mut self, value: Arc<dyn AnyAttributeValue>);
+	/// Pushes a scalar attribute value onto the end of this attribute, or a default if it has another type, which returns `false`.
+	fn push(&mut self, value: Arc<dyn AnyAttributeValue>) -> bool;
 
 	/// Pushes a default value onto the end of this attribute.
 	fn push_default(&mut self);
@@ -409,8 +416,8 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	fn push_repeated(&mut self, value: &dyn AnyAttributeValue, count: usize);
 
 	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
-	/// Falls back to a default if the value's type doesn't match.
-	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>);
+	/// Hands the value back if it has another type.
+	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>) -> Result<(), Box<dyn AnyAttributeValue>>;
 
 	/// Creates a new attribute of the same type filled with `count` number of default values.
 	fn new_with_defaults(&self, count: usize) -> Arc<dyn AnyAttribute>;
@@ -423,8 +430,8 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 		self.len() == 0
 	}
 
-	/// Appends all values from another attribute of the same type.
-	fn extend(&mut self, other: Arc<dyn AnyAttribute>);
+	/// Appends all values from another attribute of the same type, or defaults for them if it has another type, which returns `false` unless it is empty.
+	fn extend(&mut self, other: Arc<dyn AnyAttribute>) -> bool;
 
 	/// Returns a shared reference to the value at the requested index.
 	fn get_any(&self, index: usize) -> Option<&dyn std::any::Any>;
@@ -444,6 +451,9 @@ pub trait AnyAttribute: std::any::Any + Send + Sync {
 	/// Compares this attribute to another for value-by-value equality (object-safe wrapper around `PartialEq`).
 	/// Returns `false` if the underlying types differ.
 	fn eq_dyn(&self, other: &dyn AnyAttribute) -> bool;
+
+	/// The type of this attribute's values.
+	fn value_type(&self) -> TypeDescriptor;
 }
 
 /// Adapts a `&mut dyn Hasher` so generic `CacheHash::cache_hash<H>` calls (which require `H: Sized + Hasher`) can
@@ -542,9 +552,11 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 
 	/// Pushes an attribute value onto the end of this attribute's list, downcasting it to `T`.
 	/// Falls back to a default value if the type doesn't match, to maintain the attribute-length invariant.
-	fn push(&mut self, value: Arc<dyn AnyAttributeValue>) {
-		let value = value.into_any_arc().downcast::<T>().map(Arc::unwrap_or_clone).unwrap_or_default();
-		self.0.push(value);
+	fn push(&mut self, value: Arc<dyn AnyAttributeValue>) -> bool {
+		let value = value.into_any_arc().downcast::<T>().map(Arc::unwrap_or_clone);
+		let matches = value.is_ok();
+		self.0.push(value.unwrap_or_default());
+		matches
 	}
 
 	/// Pushes a default `T` value onto the end of this attribute list.
@@ -559,8 +571,11 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	}
 
 	/// Sets the value at the given index, padding with defaults if the attribute is shorter than `index`.
-	/// Falls back to a default if the value's type doesn't match.
-	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>) {
+	/// Hands the value back if it isn't a `T`.
+	fn set_at(&mut self, index: usize, value: Box<dyn AnyAttributeValue>) -> Result<(), Box<dyn AnyAttributeValue>> {
+		if !value.as_any().is::<T>() {
+			return Err(value);
+		}
 		while self.0.len() < index {
 			self.0.push(T::default());
 		}
@@ -570,6 +585,7 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 		} else {
 			self.0[index] = value;
 		}
+		Ok(())
 	}
 
 	/// Creates a new attribute filled with `count` default `T` values.
@@ -585,14 +601,18 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 
 	/// Appends all values from another attribute, downcasting it to the same `Attribute<T>` type.
 	/// Falls back to padding with defaults if the type doesn't match, to maintain the attribute-length invariant.
-	fn extend(&mut self, other: Arc<dyn AnyAttribute>) {
+	fn extend(&mut self, other: Arc<dyn AnyAttribute>) -> bool {
 		let other_len = other.len();
 
 		match other.into_any_arc().downcast::<Self>().map(Arc::try_unwrap) {
 			Ok(Ok(other)) => self.0.extend(other.0),
 			Ok(Err(shared)) => self.0.extend_from_slice(&shared.0),
-			Err(_) => self.0.extend(std::iter::repeat_with(T::default).take(other_len)),
+			Err(_) => {
+				self.0.extend(std::iter::repeat_with(T::default).take(other_len));
+				return other_len == 0;
+			}
 		}
+		true
 	}
 
 	/// Returns a shared reference to the value at the given index as a type-erased `Any`.
@@ -628,6 +648,10 @@ impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static>
 	/// Compares this attribute to another for value-by-value equality (object-safe wrapper around `PartialEq`).
 	fn eq_dyn(&self, other: &dyn AnyAttribute) -> bool {
 		other.as_any().downcast_ref::<Self>().is_some_and(|other| self.0 == other.0)
+	}
+
+	fn value_type(&self) -> TypeDescriptor {
+		crate::descriptor!(T)
 	}
 }
 
@@ -699,6 +723,11 @@ impl ListDyn {
 	/// Returns a reference to the attribute value at the given key and item index, downcast to `U`, if present and matching.
 	pub fn attribute<U: 'static>(&self, key: &str, index: usize) -> Option<&U> {
 		self.attributes.get_value(key, index)
+	}
+
+	/// Returns the type of the values the attribute for the given key holds, or `None` if absent.
+	pub fn attribute_type(&self, key: &str) -> Option<TypeDescriptor> {
+		self.attributes.value_type(key)
 	}
 }
 
@@ -1081,23 +1110,31 @@ impl Attributes {
 	/// Pushes an item's scalar attributes into this attribute store.
 	/// Existing attributes that the item lacks receive a default value.
 	/// New attribute keys create a new attribute padded with defaults for all prior items.
-	fn push_item(&mut self, item: ItemAttributeValues) {
+	/// Returns the first attribute that holds another type than the item's value for it, which gets the default instead.
+	fn push_item(&mut self, item: ItemAttributeValues) -> Option<AttributeTypeConflictError> {
 		let len = self.len;
 		self.len += 1;
 
 		if self.attributes.is_empty() && item.0.is_none() {
-			return;
+			return None;
 		}
 
 		let mut item_entries = item.into_entries();
+		let mut conflict = None;
 
 		// Push values into existing attributes, or the implicit default if the item lacks that attribute
 		for (attribute_key, attribute) in self.attributes.as_mut_slice() {
-			let attribute = unshared(attribute);
-
 			match item_entries.iter().position(|(key, _)| key == attribute_key) {
-				Some(position) => attribute.push(item_entries.swap_remove(position).1),
-				None => pad_with_implicit_default(attribute_key.as_str(), attribute, 1),
+				// An attribute without values holds no type to keep
+				Some(position) if len == 0 => *attribute = item_entries.swap_remove(position).1.into_attribute(attribute_key.as_str(), 0),
+				Some(position) => {
+					if !unshared(attribute).push(item_entries.swap_remove(position).1) {
+						conflict.get_or_insert_with(|| AttributeTypeConflictError {
+							name: attribute_key.as_str().to_string(),
+						});
+					}
+				}
+				None => pad_with_implicit_default(attribute_key.as_str(), unshared(attribute), 1),
 			}
 		}
 
@@ -1106,33 +1143,41 @@ impl Attributes {
 			let attribute = value.into_attribute(key.as_str(), len);
 			self.attributes.push((key, attribute));
 		}
+
+		conflict
 	}
 
 	/// Appends all attribute data from another attribute store into this one.
 	/// Attributes present in only one side are padded with defaults for the other side's items.
-	fn extend(&mut self, other: Attributes) {
+	/// Returns the first attribute both stores hold with values of different types, where the other store's items get the default.
+	fn extend(&mut self, other: Attributes) -> Option<AttributeTypeConflictError> {
 		let (len, other_len) = (self.len, other.len);
 		self.len += other_len;
 
 		// An empty store takes on the other's attributes whole, sharing them
 		if len == 0 && self.entries().is_empty() {
 			self.attributes = other.attributes;
-			return;
+			return None;
 		}
 		// Nothing to add or pad, so self's attributes can stay shared
 		if other.attributes.is_empty() && (other_len == 0 || self.attributes.is_empty()) {
-			return;
+			return None;
 		}
 
 		let mut other_entries = other.attributes.into_vec();
+		let mut conflict = None;
 
 		// Extend matching attributes, or pad self's attributes with implicit defaults for the other's item count
 		for (key, self_attribute) in self.attributes.as_mut_slice() {
-			let self_attribute = unshared(self_attribute);
-
 			match other_entries.iter().position(|(other_key, _)| other_key == key) {
-				Some(position) => self_attribute.extend(other_entries.swap_remove(position).1),
-				None => pad_with_implicit_default(key.as_str(), self_attribute, other_len),
+				// An attribute without values holds no type to keep
+				Some(position) if len == 0 => *self_attribute = other_entries.swap_remove(position).1,
+				Some(position) => {
+					if !unshared(self_attribute).extend(other_entries.swap_remove(position).1) {
+						conflict.get_or_insert_with(|| AttributeTypeConflictError { name: key.as_str().to_string() });
+					}
+				}
+				None => pad_with_implicit_default(key.as_str(), unshared(self_attribute), other_len),
 			}
 		}
 
@@ -1145,6 +1190,13 @@ impl Attributes {
 
 			self.attributes.push((key, combined));
 		}
+
+		conflict
+	}
+
+	/// The type of the values the attribute for the given key holds, if present.
+	fn value_type(&self, key: &str) -> Option<TypeDescriptor> {
+		self.entries().iter().find(|(k, _)| k.is(key)).map(|(_, attribute)| attribute.value_type())
 	}
 
 	/// Gets a reference to the value at the given index from the attribute for the given key.
@@ -1221,18 +1273,24 @@ impl Attributes {
 	}
 
 	/// Sets a single type-erased value at the given index of a list of `item_count` items, creating the attribute from the
-	/// value's type if the key holds none.
-	fn set_value_dyn(&mut self, key: &str, index: usize, value: Box<dyn AnyAttributeValue>, item_count: usize) {
-		let position = self.position(key);
-
-		if let Some((_, attribute)) = position.and_then(|position| self.attributes.as_mut_slice().get_mut(position)) {
-			unshared(attribute).set_at(index, value);
-		} else {
-			let mut new_attribute = Arc::<dyn AnyAttributeValue>::from(value).into_attribute(key, index);
-			let trailing_defaults = item_count.saturating_sub(new_attribute.len());
-			pad_with_implicit_default(key, unshared(&mut new_attribute), trailing_defaults);
-			self.attributes.push((AttributeKey::new(key), new_attribute));
+	/// value's type if the key holds none. An attribute of another type is replaced, padded with implicit defaults.
+	fn set_value_dyn(&mut self, key: &str, index: usize, mut value: Box<dyn AnyAttributeValue>, item_count: usize) {
+		if let Some(position) = self.position(key)
+			&& let Some((_, attribute)) = self.attributes.as_mut_slice().get_mut(position)
+		{
+			match unshared(attribute).set_at(index, value) {
+				Ok(()) => return,
+				Err(mistyped) => {
+					self.attributes.remove(position);
+					value = mistyped;
+				}
+			}
 		}
+
+		let mut new_attribute = Arc::<dyn AnyAttributeValue>::from(value).into_attribute(key, index);
+		let trailing_defaults = item_count.saturating_sub(new_attribute.len());
+		pad_with_implicit_default(key, unshared(&mut new_attribute), trailing_defaults);
+		self.attributes.push((AttributeKey::new(key), new_attribute));
 	}
 
 	/// Returns a debug-formatted string for the value at the given index in the attribute for the given key.
@@ -1325,6 +1383,12 @@ impl Attributes {
 			attribute.cache_hash_dyn(state);
 		}
 	}
+}
+
+#[derive(Clone, Debug, PartialEq, thiserror::Error)]
+#[error("The \"{name}\" attribute holds different types of values in the lists being combined")]
+pub struct AttributeTypeConflictError {
+	pub name: String,
 }
 
 // =======
@@ -1488,7 +1552,7 @@ impl<T> List<T> {
 	}
 
 	/// Sets a single type-erased attribute value at the given index, creating the attribute from the value's underlying type if it doesn't exist (padded with defaults to match the list's length).
-	/// Falls back to default if the value's type doesn't match an existing attribute.
+	/// An existing attribute of another type is replaced the same way.
 	pub fn set_attribute_value_dyn(&mut self, key: impl AsRef<str>, index: usize, value: AttributeValueDyn) {
 		self.attributes.set_value_dyn(key.as_ref(), index, value.0, self.element.len());
 	}
@@ -1547,12 +1611,24 @@ impl<T: Clone> List<T> {
 
 	/// Appends an item to the end of this list.
 	pub fn push(&mut self, item: Item<T>) {
+		self.push_reporting_conflict(item);
+	}
+
+	/// Appends an item like [`List::push`], returning the first attribute the list holds with another type than the item's value for it.
+	/// The list keeps its type for it, giving the item its default.
+	pub fn push_reporting_conflict(&mut self, item: Item<T>) -> Option<AttributeTypeConflictError> {
 		self.elements_mut().push(item.element);
-		self.attributes.push_item(item.attributes);
+		self.attributes.push_item(item.attributes)
 	}
 
 	/// Appends all items from another list into this one.
 	pub fn extend(&mut self, list: List<T>) {
+		self.extend_reporting_conflict(list);
+	}
+
+	/// Appends all items from another list like [`List::extend`], returning the first attribute both lists have with values of different
+	/// types. This list keeps its type for it, giving the other list's items its default.
+	pub fn extend_reporting_conflict(&mut self, list: List<T>) -> Option<AttributeTypeConflictError> {
 		// An empty list adopts the other's elements without copying them
 		if self.element.is_empty() {
 			self.element = list.element;
@@ -1563,7 +1639,7 @@ impl<T: Clone> List<T> {
 				Err(shared) => elements.extend_from_slice(&shared),
 			}
 		}
-		self.attributes.extend(list.attributes);
+		self.attributes.extend(list.attributes)
 	}
 
 	/// Returns an iterator over mutable references to all element values.
@@ -2177,6 +2253,78 @@ mod tests {
 
 		assert_eq!(starts(&original), [10, 20]);
 		assert_eq!(starts(&rebuilt), [11, 21, 10, 20, 0]);
+	}
+
+	// Combining lists keeps only the first type of an attribute both have, and reports the attribute whose values were lost
+	#[test]
+	fn combining_lists_reports_attribute_type_conflicts() {
+		let mut base = List::new_from_elements(vec![1_u32, 2]);
+		base.set_attribute_values(ATTR_START, vec![10_u64, 20]);
+		base.set_attribute_values(ATTR_NAME, vec![String::from("a"), String::from("b")]);
+
+		let mut matching = List::new_from_elements(vec![3_u32]);
+		matching.set_attribute_values(ATTR_START, vec![30_u64]);
+		matching.set_attribute_values(ATTR_END, vec![1.5_f64]);
+		assert_eq!(base.extend_reporting_conflict(matching), None);
+
+		let mut empty = List::new();
+		empty.set_attribute_values(ATTR_NAME, Vec::<i64>::new());
+		assert_eq!(base.extend_reporting_conflict(empty), None, "an empty list loses no values");
+
+		let mut mistyped = List::new_from_elements(vec![4_u32]);
+		mistyped.set_attribute_values(ATTR_NAME, vec![7_i64]);
+		let conflict = AttributeTypeConflictError { name: ATTR_NAME.to_string() };
+		assert_eq!(base.extend_reporting_conflict(mistyped), Some(conflict.clone()));
+		assert_eq!(conflict.to_string(), "The \"name\" attribute holds different types of values in the lists being combined");
+		assert_eq!(base.attribute::<String>(ATTR_NAME, 3), Some(&String::new()));
+
+		assert_eq!(base.push_reporting_conflict(Item::new_from_element(5).with_attribute(ATTR_START, 50_u64)), None);
+		let mistyped_item = Item::new_from_element(6).with_attribute(ATTR_START, 60_f64);
+		assert_eq!(base.push_reporting_conflict(mistyped_item), Some(AttributeTypeConflictError { name: ATTR_START.to_string() }));
+		assert_eq!(base.attribute::<u64>(ATTR_START, 5), Some(&0));
+	}
+
+	#[test]
+	fn an_attribute_without_values_takes_the_type_of_the_values_added_to_it() {
+		let mut mistyped = List::new_from_elements(vec![1_u32]);
+		mistyped.set_attribute_values(ATTR_NAME, vec![7_i64]);
+		let mut extended = List::<u32>::new();
+		extended.set_attribute_values(ATTR_NAME, Vec::<String>::new());
+		assert_eq!(extended.extend_reporting_conflict(mistyped), None);
+		assert_eq!(extended.attribute::<i64>(ATTR_NAME, 0), Some(&7));
+
+		let mut pushed = List::<u32>::new();
+		pushed.set_attribute_values(ATTR_NAME, Vec::<String>::new());
+		assert_eq!(pushed.push_reporting_conflict(Item::new_from_element(1).with_attribute(ATTR_NAME, 7_i64)), None);
+		assert_eq!(pushed.attribute::<i64>(ATTR_NAME, 0), Some(&7));
+	}
+
+	// An attribute's type reads back from a list's type-erased view, and a missing value reads as what padding fills in
+	#[test]
+	fn attribute_types_and_implicit_defaults_read_back() {
+		let mut list = List::new_from_elements(vec![1_u32]);
+		list.set_attribute(ATTR_OPACITY, 0, 0.5_f64);
+		let list = ListDyn::from(list);
+		assert_eq!(list.attribute_type(ATTR_OPACITY), Some(crate::descriptor!(f64)));
+		assert_eq!(list.attribute_type(ATTR_OPACITY).map(|value_type| value_type.to_string()), Some("Number".to_string()));
+		assert_eq!(list.attribute_type(ATTR_START), None);
+
+		assert_eq!(implicit_default::<f64>(ATTR_OPACITY), 1.);
+		assert_eq!(implicit_default::<f64>(ATTR_START), 0.);
+		assert_eq!(implicit_default::<i64>(ATTR_OPACITY), 0);
+	}
+
+	// A type-erased value of another type replaces the attribute, as a typed one does, instead of becoming the old type's default
+	#[test]
+	fn setting_a_value_of_another_type_replaces_the_attribute() {
+		let mut list = List::new_from_elements(vec![1_u32, 2]);
+		list.set_attribute_values(ATTR_OPACITY, vec![0.5_f64, 0.25]);
+
+		list.set_attribute_value_dyn(ATTR_OPACITY, 1, AttributeValueDyn(Box::new(3_i64)));
+		assert_eq!(list.iter_attribute_values::<i64>(ATTR_OPACITY).map(|values| values.copied().collect::<Vec<_>>()), Some(vec![0, 3]));
+
+		list.set_attribute_value_dyn(ATTR_OPACITY, 0, AttributeValueDyn(Box::new(0.75_f64)));
+		assert_eq!(list.iter_attribute_values::<f64>(ATTR_OPACITY).map(|values| values.copied().collect::<Vec<_>>()), Some(vec![0.75, 1.]));
 	}
 
 	// Keys are stored inline up to a length limit and shared beyond it, which reads the same either way
