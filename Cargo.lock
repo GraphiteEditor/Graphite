@@ -2177,6 +2177,7 @@ dependencies = [
  "node-macro",
  "raster-types",
  "serde",
+ "thiserror 2.0.18",
  "tsify",
  "wasm-bindgen",
 ]
@@ -2264,6 +2265,7 @@ dependencies = [
  "rand",
  "raster-types",
  "serde",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
