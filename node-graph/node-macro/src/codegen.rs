@@ -996,7 +996,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		quote! {
 			#(#description_doc_attrs)*
 			#[inline]
-			#[allow(clippy::too_many_arguments)]
+			#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 			#vis #async_keyword fn #fn_name <#(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 		}
 	};

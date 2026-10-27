@@ -285,7 +285,7 @@ impl NodeRuntime {
 							ExecutionResult::Fallback(value, self.resolve_errors(&error))
 						}
 						Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
-						Ok(Err(error)) => ExecutionResult::Error(Box::new([(Arc::clone(NodeError::new(error).error()), Box::default())])),
+						Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error).error()), NodeErrorTrace::default())]))),
 						Err(payload) => {
 							let response = ExecutionResponse {
 								execution_id,
@@ -450,23 +450,24 @@ impl NodeRuntime {
 		}
 	}
 
-	fn resolve_errors(&self, error: &NodeError) -> EvaluationError {
+	fn resolve_errors(&self, error: &NodeError) -> EvaluationErrors {
 		let source_map = self.executor.tree().source_map();
+		let paths = |node: NodeId| -> NodePaths {
+			let mut paths: Vec<_> = source_map.iter().filter(|(_, (id, _))| *id == node).map(|(path, _)| path.clone()).collect();
+			paths.sort_unstable();
+			paths.into()
+		};
 		let mut errors = Vec::new();
-		let mut pending = vec![(Some(self.executor.output()), error)];
-		while let Some((node, error)) = pending.pop() {
-			let origin = node.and_then(|node| self.executor.find_origin(node, error));
-			let start = errors.len();
-			if let Some(origin) = origin {
-				errors.extend(source_map.iter().filter(|(_, (node, _))| *node == origin).map(|(path, _)| (Arc::clone(error.error()), path.clone())));
-				errors[start..].sort_unstable_by(|(_, a), (_, b)| a.cmp(b));
-			}
-			if errors.len() == start {
-				errors.push((Arc::clone(error.error()), Box::default()));
-			}
-			pending.extend(error.upstream().iter().rev().map(|upstream| (origin, upstream)));
+		let output = self.executor.output();
+		let mut pending = vec![(vec![paths(output)], output, error)];
+		while let Some((mut trace, node, error)) = pending.pop() {
+			let passed = self.executor.trace_error(node, error);
+			let origin = passed.last().copied().unwrap_or(node);
+			trace.extend(passed.into_iter().map(&paths));
+			pending.extend(error.upstream().iter().rev().map(|upstream| (trace.clone(), origin, upstream)));
+			errors.push((Arc::clone(error.error()), trace.into()));
 		}
-		errors.into_boxed_slice()
+		EvaluationErrors(errors.into())
 	}
 
 	/// Updates state data, giving back the layers whose thumbnails were dropped because they're no longer monitored.

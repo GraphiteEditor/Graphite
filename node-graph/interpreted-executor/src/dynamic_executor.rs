@@ -144,7 +144,8 @@ impl DynamicExecutor {
 	// Only really needed due to the runtime not knowing about rank adapters.
 	// Once we reworked that we should be able to move this resolution into the runtime.
 	// Also remember to remove `BorrowTree::nodes.3` at that point
-	pub fn find_origin(&self, mut node: NodeId, error: &NodeError) -> Option<NodeId> {
+	pub fn trace_error(&self, mut node: NodeId, error: &NodeError) -> Box<[NodeId]> {
+		let mut passed = Vec::new();
 		let mut trace = error.trace().iter().rev();
 		while let Some(&index) = trace.next() {
 			// Hack to undo rank promotion while traversing the graph
@@ -152,9 +153,13 @@ impl DynamicExecutor {
 				trace.next();
 			}
 
-			node = *self.tree.nodes.get(&node).map(|(_, _, inputs)| &**inputs)?.get(index)?;
+			let Some(&input) = self.tree.nodes.get(&node).and_then(|(_, _, inputs)| inputs.get(index)) else {
+				break;
+			};
+			node = input;
+			passed.push(node);
 		}
-		Some(node)
+		passed.into_boxed_slice()
 	}
 }
 

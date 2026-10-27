@@ -3830,10 +3830,7 @@ impl NodeGraphMessageHandler {
 				.evaluation_errors
 				.iter()
 				.filter(|error| inside(&error.node_path))
-				.map(|error| match error.node_path.len() == depth + 1 {
-					true => (error.node_path[depth], error.message.clone()),
-					false => (error.node_path[depth], "Node graph error within this node".to_string()),
-				})
+				.map(|error| (error.node_path[depth], error.message.clone()))
 				.collect(),
 			false => graph_errors,
 		};
