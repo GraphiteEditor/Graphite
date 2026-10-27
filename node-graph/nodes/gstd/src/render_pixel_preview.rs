@@ -1,6 +1,6 @@
 use core_types::list::Item;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, Interrupt, NodeError, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
@@ -62,11 +62,15 @@ fn render_pixel_preview(
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
 	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
-	let resampled = pipeline.eval(Context::default())?.into_element().run::<PixelPreview>(&PixelPreviewArgs {
-		source: source_texture.as_ref(),
-		transform: &transform,
-		size: physical_resolution,
-	});
+	let resampled = pipeline
+		.eval(Context::default())?
+		.into_element()
+		.run::<PixelPreview>(&PixelPreviewArgs {
+			source: source_texture.as_ref(),
+			transform: &transform,
+			size: physical_resolution,
+		})
+		.map_err(NodeError::from)?;
 
 	result.data = RenderOutputType::Texture(resampled);
 

@@ -3,7 +3,7 @@ use core_types::color::Linear;
 use core_types::list::Item;
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
-use core_types::{Context, Ctx, ExtractFootprint, Interrupt};
+use core_types::{Context, Ctx, ExtractFootprint, Interrupt, NodeError};
 use glam::{Affine2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
@@ -35,12 +35,16 @@ fn render_background(
 	let data = match foreground_data {
 		RenderOutputType::Texture(foreground_texture) => {
 			let doc_to_screen = render_params.footprint.transform.as_affine2();
-			let blended = pipeline.eval(Context::default())?.into_element().run::<CompositeBackground>(&CompositeBackgroundArgs {
-				foreground: foreground_texture.as_ref(),
-				backgrounds: &metadata.backgrounds,
-				document_to_screen: doc_to_screen,
-				zoom: render_params.viewport_zoom.unwrap_or(1.).to_f32(),
-			});
+			let blended = pipeline
+				.eval(Context::default())?
+				.into_element()
+				.run::<CompositeBackground>(&CompositeBackgroundArgs {
+					foreground: foreground_texture.as_ref(),
+					backgrounds: &metadata.backgrounds,
+					document_to_screen: doc_to_screen,
+					zoom: render_params.viewport_zoom.unwrap_or(1.).to_f32(),
+				})
+				.map_err(NodeError::from)?;
 
 			RenderOutputType::Texture(blended)
 		}
