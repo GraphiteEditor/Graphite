@@ -245,7 +245,7 @@ pub fn derive_destructure_impl(item: TokenStream2) -> syn::Result<TokenStream2> 
 			use super::*;
 			use #gcore::ctor::ctor;
 
-			#[cfg_attr(not(target_family = "wasm"), ctor)]
+			#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = core_types::ctor))]
 			fn register_memoize_and_monitor() {
 				#graphene_core::memo::register_memoize_and_monitor::<#struct_ident>();
 				#graphene_core::memo::register_memoize_and_monitor::<#mapped_ident>();
