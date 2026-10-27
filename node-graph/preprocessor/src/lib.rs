@@ -451,6 +451,9 @@ pub enum PreprocessorError {
 }
 
 #[cfg(test)]
+mod spike_export;
+
+#[cfg(test)]
 mod destructure_tests {
 	use super::*;
 	use core_types::list::{Item, List};

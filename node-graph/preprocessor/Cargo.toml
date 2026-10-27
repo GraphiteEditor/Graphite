@@ -29,4 +29,6 @@ core-types = { workspace = true }
 dyn-any = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
+graph-craft = { workspace = true, features = ["loading"] }
 node-macro = { workspace = true }
+serde_json = { workspace = true }

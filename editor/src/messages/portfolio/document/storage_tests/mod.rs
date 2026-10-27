@@ -4,6 +4,7 @@
 //!
 //! Shared fixtures live in [`test_support`].
 
+mod compiler_spike_templates;
 mod lifecycle_tests;
 mod metadata_tests;
 mod round_trip_tests;

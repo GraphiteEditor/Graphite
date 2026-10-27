@@ -1,5 +1,6 @@
 use criterion::BenchmarkGroup;
 use criterion::measurement::Measurement;
+use graph_craft::document::NodeNetwork;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile, load_from_name};
 use graphene_std::application_io::EditorApi;
@@ -7,10 +8,16 @@ use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 
-pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
+/// The demo's document network, wrapped in the editor's scope like the editor runtime does before preprocessing.
+pub fn scoped_network(name: &str) -> NodeNetwork {
 	let network = load_from_name(name);
 	let editor_api = std::sync::Arc::new(EditorApi::default());
-	let mut network = wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle());
+	wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle())
+}
+
+#[allow(dead_code, reason = "shared by the bench targets, only some of which call it, and each compiles this module separately")]
+pub fn setup_network(name: &str) -> (DynamicExecutor, ProtoNetwork) {
+	let mut network = scoped_network(name);
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);

@@ -1,0 +1,57 @@
+{
+	"purity": [
+		["no_std_types::color::color_types::Color", "vector_types::gradient::Gradient"],
+		["vector_types::gradient::Gradient", "vector_types::vector::vector_types::Vector"],
+		["vector_types::vector::vector_types::Vector", "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>"],
+		["no_std_types::color::color_types::Color", "alloc::string::String"]
+	],
+	"equivalent": [
+		["raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>", "raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>"]
+	],
+	"conversions": [
+		{ "from": "no_std_types::color::color_types::Color", "to": "vector_types::vector::vector_types::Vector" },
+		{ "from": "no_std_types::color::color_types::Color", "to": "vector_types::gradient::Gradient" },
+		{ "from": "vector_types::gradient::Gradient", "to": "vector_types::vector::vector_types::Vector" },
+		{ "from": "vector_types::vector::vector_types::Vector", "to": "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>", "reads_footprint": true },
+		{ "from": "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>", "to": "vector_types::vector::vector_types::Vector" },
+		{ "from": "no_std_types::color::color_types::Color", "to": "alloc::string::String" },
+		{ "from": "f64", "to": "no_std_types::color::color_types::Color" },
+		{
+			"from": "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>",
+			"to": "raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>",
+			"converter": "wgpu_executor::WgpuExecutor"
+		},
+		{
+			"from": "raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>",
+			"to": "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>",
+			"converter": "wgpu_executor::WgpuExecutor",
+			"asynchronous": true
+		}
+	],
+	"nodes": [
+		{
+			"identifier": "spike::Blur",
+			"element_types": ["vector_types::vector::vector_types::Vector", "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>"]
+		},
+		{
+			"identifier": "spike::Shade",
+			"element_types": ["vector_types::vector::vector_types::Vector", "vector_types::gradient::Gradient"]
+		},
+		{
+			"identifier": "spike::VectorOnly",
+			"element_types": ["vector_types::vector::vector_types::Vector"]
+		},
+		{
+			"identifier": "spike::RasterOnly",
+			"element_types": ["raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>"]
+		},
+		{
+			"identifier": "spike::GpuOnly",
+			"element_types": ["raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>"]
+		},
+		{
+			"identifier": "spike::Ambiguous",
+			"element_types": ["vector_types::vector::vector_types::Vector", "alloc::string::String"]
+		}
+	]
+}

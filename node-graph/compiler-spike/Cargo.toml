@@ -1,0 +1,28 @@
+[package]
+name = "compiler-spike"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# Standalone workspace so the spike builds without Graphite's dependency tree
+[workspace]
+
+[dependencies]
+rustc-hash = "2.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[dev-dependencies]
+criterion = "0.7"
+
+[[bench]]
+name = "pipeline"
+harness = false
+
+[profile.release]
+debug = true
+codegen-units = 1
+
+[profile.bench]
+debug = true
+codegen-units = 1

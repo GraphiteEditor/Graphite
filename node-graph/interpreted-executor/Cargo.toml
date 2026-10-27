@@ -44,6 +44,10 @@ preprocessor = { workspace = true }
 
 # Benchmarks
 [[bench]]
+name = "compile_pipeline"
+harness = false
+
+[[bench]]
 name = "update_executor"
 harness = false
 

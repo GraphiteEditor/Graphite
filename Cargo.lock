@@ -5408,6 +5408,7 @@ dependencies = [
  "interpreted-executor",
  "log",
  "node-macro",
+ "serde_json",
 ]
 
 [[package]]
