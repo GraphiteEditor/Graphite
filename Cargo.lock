@@ -6529,6 +6529,7 @@ dependencies = [
  "node-macro",
  "rand",
  "serde",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
@@ -6790,6 +6791,7 @@ dependencies = [
  "repeat-nodes",
  "rustc-hash 2.1.1",
  "serde",
+ "thiserror 2.0.18",
  "tokio",
  "tsify",
  "vector-types",
@@ -6819,6 +6821,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tinyvec",
  "tsify",
  "wasm-bindgen",

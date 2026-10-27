@@ -480,7 +480,8 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(star_polygon_bezpath(DVec2::ZERO, points, radius1, radius2))];
+	let Ok(star) = star_polygon_bezpath(DVec2::ZERO, points, radius1, radius2) else { return };
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(star)];
 
 	overlay_context.outline(targets.iter(), viewport, None);
 }
@@ -495,7 +496,8 @@ pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMe
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(regular_polygon_bezpath(DVec2::ZERO, points, radius))];
+	let Ok(polygon) = regular_polygon_bezpath(DVec2::ZERO, points, radius) else { return };
+	let targets: Vec<ClickTargetType> = vec![ClickTargetType::Path(polygon)];
 
 	overlay_context.outline(targets.iter(), viewport, None);
 }

@@ -797,9 +797,11 @@ impl Vector {
 	pub fn concat(&mut self, paths: &mut List<Path>, additional: &Self, additional_paths: &List<Path>, transform_of_additional: DAffine2, collision_hash_seed: u64, taken_ids: &mut IdCollisionSet) {
 		let offset = self.0.len() as u32;
 
+		// If the pool lacks the ID column, appending IDs pads its points with a default one, which is then taken too
+		let first_untaken_point = if self.0.iter_attribute_values::<PointId>(ATTR_ID).is_some() { self.0.len() } else { 0 };
+
 		// Remap colliding stable IDs so both sides stay addressable after the merge.
 		// Appended IDs are only checked against the IDs taken before this call.
-		let mut appended_point_ids = Vec::new();
 		for index in 0..additional.0.len() {
 			let Some(&position) = additional.0.element(index) else { continue };
 			let mut item = Item::new_from_element(transform_of_additional.transform_point2(position));
@@ -811,7 +813,6 @@ impl Vector {
 					id
 				};
 				item.set_attribute(ATTR_ID, id);
-				appended_point_ids.push(id);
 			}
 
 			self.0.push(item);
@@ -837,7 +838,9 @@ impl Vector {
 			paths.push(item);
 		}
 
-		taken_ids.points.extend(appended_point_ids);
+		// Read back from the pool, since appending points without IDs to a pool with the column pads them with a default one
+		let appended_point_ids = self.0.iter_attribute_values::<PointId>(ATTR_ID).into_iter().flatten().skip(first_untaken_point);
+		taken_ids.points.extend(appended_point_ids.copied());
 		taken_ids.segments.extend(appended_segment_ids);
 	}
 
@@ -1036,6 +1039,36 @@ mod tests {
 		assert_eq!(vector.point_id_at(1), Some(PointId::ZERO.generate_from_hash(7)));
 		assert_eq!(vector.point_id_at(2), Some(PointId::ZERO.generate_from_hash(8)));
 		assert_eq!(vector.index_of_point_id(PointId::ZERO), Some(0));
+	}
+
+	#[test]
+	fn concat_with_tracked_ids_matches_collecting_them_anew() {
+		let triangle = BezPath::from_vec(vec![
+			PathEl::MoveTo((0., 0.).into()),
+			PathEl::LineTo((1., 0.).into()),
+			PathEl::LineTo((0., 1.).into()),
+			PathEl::ClosePath,
+		]);
+		let (triangle, triangle_paths) = Vector::from_bezpath(&triangle);
+		let (curve, curve_paths) = Vector::from_bezpath(&open_curve_bezpath());
+		let unnamed = Vector(List::new_from_element(DVec2::ONE));
+		let parts = [
+			(&unnamed, &List::new()),
+			(&triangle, &triangle_paths),
+			(&lone_anchor(DVec2::X), &List::new()),
+			(&curve, &curve_paths),
+			(&triangle, &triangle_paths),
+		];
+
+		let (mut each, mut each_paths) = (Vector::default(), List::new());
+		let (mut tracked, mut tracked_paths, mut ids) = (Vector::default(), List::new(), IdCollisionSet::default());
+		for (seed, (part, part_paths)) in parts.into_iter().enumerate() {
+			let mut collected = IdCollisionSet::of(&each, &each_paths);
+			each.concat(&mut each_paths, part, part_paths, DAffine2::IDENTITY, seed as u64, &mut collected);
+			tracked.concat(&mut tracked_paths, part, part_paths, DAffine2::IDENTITY, seed as u64, &mut ids);
+		}
+
+		assert_eq!((tracked, tracked_paths), (each, each_paths));
 	}
 
 	// Handles carry the unnamed filler, so a zero-named anchor behind them is still the one found by ID

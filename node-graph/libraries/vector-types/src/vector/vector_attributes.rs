@@ -333,7 +333,7 @@ impl SegmentGraph {
 					let tangent = self.segment(side.segment_index, side.reversed).tangent_at_start();
 					tangent.y.atan2(tangent.x)
 				});
-				angle[0].partial_cmp(&angle[1]).unwrap_or(std::cmp::Ordering::Equal)
+				angle[0].total_cmp(&angle[1])
 			})
 		}
 
@@ -1518,5 +1518,21 @@ mod tests {
 			/ 2.;
 		assert!(loop_area > 0., "the inner loop should wind positively after normalization");
 		assert_eq!(references(&paths), vec![vec![0, 1, 4, 3, 2, 1, 5]], "the path stays whole around its flipped loop");
+	}
+
+	// Sorting more than 20 segment ends around a junction by their angles mustn't panic where NaN geometry gives no angle
+	#[test]
+	fn faces_around_a_junction_with_nan_spokes() {
+		// The spokes are stored out of angle order, since the sort only notices the inconsistent comparisons when it has to reorder
+		let spokes = 24;
+		let ring = (0..spokes).map(|index| match index % 3 {
+			0 => DVec2::NAN,
+			_ => DVec2::from_angle((index * 7 % spokes) as f64 / spokes as f64 * std::f64::consts::TAU) * 10.,
+		});
+		let points: Vec<DVec2> = std::iter::once(DVec2::ZERO).chain(ring).collect();
+		let segments: Vec<(usize, usize)> = (1..=spokes).flat_map(|index| [(0, index), (index, index % spokes + 1)]).collect();
+		let (vector, paths) = build_vector(&points, &segments);
+
+		vector.construct_faces(&paths);
 	}
 }
