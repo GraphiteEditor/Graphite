@@ -34,6 +34,7 @@ std = [
 	"dep:fastnoise-lite",
 	"dep:kurbo",
 	"dep:color",
+	"dep:thiserror",
 ]
 wasm = [
 	"core-types/wasm",
@@ -75,6 +76,7 @@ fastnoise-lite = { workspace = true, optional = true }
 serde = { workspace = true, optional = true }
 kurbo = { workspace = true, optional = true }
 color = { workspace = true, optional = true }
+thiserror = { workspace = true, optional = true }
 
 # Workspace Wasm dependencies
 tsify = { workspace = true, optional = true }

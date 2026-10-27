@@ -623,13 +623,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
+				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String(String::new()), false)],
 				input_metadata: vec![
 					("Empty", "Has no effect, since the image is loaded from the URL.").into(),
 					("URL", "The web address or local asset path of the image to load.").into(),
 				],
 				output_names: vec!["Image".to_string()],
-				output_descriptions: vec!["The loaded image, which is empty if it fails to load or decode.".to_string()],
+				output_descriptions: vec!["The loaded image.".to_string()],
 				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),

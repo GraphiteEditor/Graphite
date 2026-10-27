@@ -40,13 +40,16 @@ impl LutCache {
 }
 
 /// Why a file could not be read as a lookup table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum LutParseError {
 	/// An ICC profile that describes a device's colors, not an "abstract" or "device link" profile that remaps them.
+	#[error("The ICC profile describes a device's colors, but only abstract and device link profiles work as LUTs")]
 	IccProfileClass,
 	/// An ICC "abstract" profile that does not map Lab to Lab, or a "device link" profile that does not map RGB to RGB.
+	#[error("The ICC profile's color spaces are unsupported, as a device link profile must map RGB to RGB and an abstract profile Lab to Lab")]
 	IccColorSpaces,
 	/// Not a lookup table in any of the formats, or one that is damaged.
+	#[error("The file is not a LUT in a supported format, or it is damaged")]
 	Unreadable,
 }
 
@@ -93,7 +96,8 @@ impl Curve {
 					return outputs[count - 1];
 				}
 
-				let upper = inputs.partition_point(|&input| input <= value).min(count - 1);
+				// A NaN value leaves the search without a segment, so the clamp keeps it in bounds
+				let upper = inputs.partition_point(|&input| input <= value).clamp(1, count - 1);
 				let lower = upper - 1;
 				let t = (value - inputs[lower]) / (inputs[upper] - inputs[lower]).max(f32::EPSILON);
 				outputs[lower] + t * (outputs[upper] - outputs[lower])
