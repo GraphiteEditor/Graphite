@@ -1,6 +1,6 @@
 //! Implementation selection over interned types, memoized per identifier and input types.
 
-use super::coercion::{Coercions, ConversionKind, ConversionNode};
+use super::coercion::{Coercions, ConversionKind, ConversionNode, Rank};
 use super::document::{IdentifierId, Strings};
 use super::types::{TypeData, TypeId, TypeInterner};
 use rustc_hash::FxHashMap;
@@ -48,7 +48,8 @@ pub struct Selection {
 	pub return_type: TypeId,
 	pub fn_type: TypeId,
 	pub promotions: Vec<Promotion>,
-	/// When not empty, the node is only buildable after inserting these conversions, and the other fields are unset.
+	/// When not empty, the node is only buildable after inserting these conversions, which changes its input types and so
+	/// its selection.
 	pub conversions: Vec<Conversion>,
 }
 
@@ -64,14 +65,30 @@ pub struct Registry {
 }
 
 fn collect_generics(types: &TypeInterner, call_argument: TypeId, inputs: &[TypeId], output: TypeId) -> Vec<u32> {
-	let mut generics: Vec<u32> = [call_argument]
-		.into_iter()
-		.chain(inputs.iter().map(|&input| types.nested(input)))
-		.filter_map(|ty| types.generic_name(ty))
-		.collect();
-	generics.extend(types.generic_name(output));
-	generics.dedup();
+	let mut generics = Vec::new();
+	for ty in [call_argument].into_iter().chain(inputs.iter().copied()).chain([output]) {
+		types.collect_generics(ty, &mut generics);
+	}
 	generics
+}
+
+/// Binds the generics in `expected` to the matching parts of `provided`, failing when one generic would bind two types.
+/// Concrete parts are not compared, since `TypeInterner::valid` checks them.
+fn bind_generics(types: &TypeInterner, expected: TypeId, provided: TypeId, bindings: &mut Vec<(u32, TypeId)>) -> bool {
+	match (types.get(expected), types.get(provided)) {
+		(TypeData::Generic(name), _) => match bindings.iter().find(|(generic, _)| *generic == name) {
+			Some(&(_, bound)) => bound == provided,
+			None => {
+				bindings.push((name, provided));
+				true
+			}
+		},
+		(TypeData::Fn(expected_input, expected_output), TypeData::Fn(provided_input, provided_output)) => {
+			bind_generics(types, expected_input, provided_input, bindings) && bind_generics(types, expected_output, provided_output, bindings)
+		}
+		(TypeData::Item(expected), TypeData::Item(provided)) | (TypeData::List(expected), TypeData::List(provided)) => bind_generics(types, expected, provided, bindings),
+		_ => true,
+	}
 }
 
 impl Registry {
@@ -153,7 +170,7 @@ impl Registry {
 		}
 
 		let selected = match valid.as_slice() {
-			[] => return self.resolve_with_promotions(types, implementations, call_argument, inputs),
+			[] => return self.resolve_adapted(types, implementations, call_argument, inputs),
 			[single] => *single,
 			[first, second] => {
 				let unit = types.concrete(crate::baseline::types::UNIT_NAME);
@@ -175,123 +192,205 @@ impl Registry {
 		})
 	}
 
-	/// Finds the implementation reachable by converting inputs, at most one automatic conversion per input, preferring the
-	/// fewest purity-losing conversions, then the fewest representation changes, then the purest converted data.
-	/// Incomparable best candidates are ambiguous.
-	fn resolve_with_coercions(&self, types: &TypeInterner, implementations: &[Signature], call_argument: TypeId, inputs: &[TypeId]) -> Result<Selection, String> {
-		// Each candidate is an implementation index with its conversions and the element type each converted input receives
-		let mut candidates: Vec<(usize, Vec<Conversion>, Vec<TypeId>)> = Vec::new();
-		'implementations: for (index, signature) in implementations.iter().enumerate() {
-			if !signature.generics.is_empty() || !types.valid(signature.call_argument, call_argument) || inputs.len() != signature.inputs.len() {
-				continue;
-			}
-			let (mut conversions, mut targets) = (Vec::new(), Vec::new());
-			for (input, (&provided, &expected)) in inputs.iter().zip(&signature.inputs).enumerate() {
-				if types.valid(provided, expected) {
-					continue;
+	/// Plans how one input reaches its connector: unchanged, promoted, converted, or converted at its own rank and then
+	/// promoted. Conversions need a concrete connector element, since the target must be known to pick one.
+	fn plan_edge(&self, types: &mut TypeInterner, provided: TypeId, expected: TypeId) -> Option<EdgePlan> {
+		if types.valid(provided, expected) {
+			return Some(EdgePlan::unchanged(provided));
+		}
+		let call_argument = types.fn_input(provided)?;
+		if !types.valid(call_argument, types.fn_input(expected)?) {
+			return None;
+		}
+		let concrete_connector = !contains_generic(types, expected);
+
+		if let Some((kind, element)) = promotion_between(types, provided, expected) {
+			let element = match (kind, types.get(types.nested(provided))) {
+				(PromotionKind::ItemToList, TypeData::Item(provided_element)) if !concrete_connector => provided_element,
+				_ if concrete_connector => element,
+				_ => return None,
+			};
+			let adapter = *self.promotion_adapters.get(&(kind, element))?;
+			let adapted = match concrete_connector {
+				true => expected,
+				false => {
+					let list = types.intern(TypeData::List(element));
+					types.function(call_argument, list)
 				}
-				let (Some((from_rank, from)), Some((to_rank, to))) = (Coercions::ranked_element(types, provided), Coercions::ranked_element(types, expected)) else {
-					continue 'implementations;
-				};
-				let conversion = (from_rank == to_rank).then(|| self.coercions.automatic_conversion(from, to, from_rank)).flatten();
-				let Some(node) = conversion else { continue 'implementations };
-				conversions.push(Conversion { input: input as u32, node });
-				targets.push(to);
-			}
-			candidates.push((index, conversions, targets));
+			};
+			return Some(EdgePlan {
+				adapted,
+				conversion: None,
+				promotion: Some(adapter),
+				target: None,
+			});
+		}
+		if !concrete_connector {
+			return None;
 		}
 
-		let cost = |conversions: &[Conversion]| {
-			let count = |kind| conversions.iter().filter(|conversion| conversion.node.kind == kind).count();
-			(count(ConversionKind::PurityLosing), count(ConversionKind::Representation))
-		};
-		let cheapest = candidates
-			.iter()
-			.map(|(_, conversions, _)| cost(conversions))
-			.min()
-			.ok_or("No implementation is reachable through automatic conversions")?;
-		candidates.retain(|(_, conversions, _)| cost(conversions) == cheapest);
+		let (provided_wire, expected_wire) = (types.nested(provided), types.nested(expected));
+		if let Some(conversion) = self.coercions.wire_conversion(provided_wire, expected_wire) {
+			return Some(EdgePlan {
+				adapted: expected,
+				conversion: Some(conversion),
+				promotion: None,
+				target: Some(expected_wire),
+			});
+		}
 
-		// A candidate is better when every converted input receives data at least as pure, and some purer
-		let at_least_as_pure = |a: &[TypeId], b: &[TypeId]| a.iter().zip(b).all(|(&a, &b)| a == b || self.coercions.is_purer(a, b));
-		let best: Vec<_> = candidates
-			.iter()
-			.filter(|(_, _, targets)| candidates.iter().all(|(_, _, other)| at_least_as_pure(targets, other)))
-			.collect();
-		let [(_, conversions, _)] = best.as_slice() else {
-			return Err("Ambiguous automatic conversions".to_string());
+		let (from_rank, from) = Coercions::ranked_element(types, provided)?;
+		let (to_rank, to) = Coercions::ranked_element(types, expected)?;
+		let conversion = self.coercions.automatic_conversion(from, to, from_rank)?;
+		let promotion = match (from_rank, to_rank) {
+			(from_rank, to_rank) if from_rank == to_rank => None,
+			(Rank::Item, Rank::List) => Some(*self.promotion_adapters.get(&(PromotionKind::ItemToList, to))?),
+			_ => return None,
 		};
-
-		Ok(Selection {
-			implementation: 0,
-			return_type: TypeId::default(),
-			fn_type: TypeId::default(),
-			promotions: Vec::new(),
-			conversions: conversions.clone(),
+		Some(EdgePlan {
+			adapted: expected,
+			conversion: Some(conversion),
+			promotion,
+			target: Some(to),
 		})
 	}
 
-	fn resolve_with_promotions(&self, types: &mut TypeInterner, implementations: &[Signature], call_argument: TypeId, inputs: &[TypeId]) -> Result<Selection, String> {
-		let mut candidates: Vec<(usize, Vec<Promotion>)> = Vec::new();
+	/// Selects among all implementations reachable by adapting inputs, each input taking at most one conversion followed by at
+	/// most one promotion. Candidates rank by fewest lossy conversions, then purity-losing ones, then representation changes,
+	/// then promotions. Remaining ties go to the candidate whose converted inputs receive the purest data, or are ambiguous.
+	fn resolve_adapted(&self, types: &mut TypeInterner, implementations: &[Signature], call_argument: TypeId, inputs: &[TypeId]) -> Result<Selection, String> {
+		let mut candidates: Vec<Candidate> = Vec::new();
 		'implementations: for (index, signature) in implementations.iter().enumerate() {
-			if !signature.generics.is_empty() || !types.valid(signature.call_argument, call_argument) || inputs.len() != signature.inputs.len() {
+			if !types.valid(signature.call_argument, call_argument) || inputs.len() != signature.inputs.len() {
 				continue;
 			}
-			let mut promotions = Vec::new();
+
+			let mut candidate = Candidate {
+				implementation: index,
+				..Default::default()
+			};
 			for (input, (&provided, &expected)) in inputs.iter().zip(&signature.inputs).enumerate() {
-				if types.valid(provided, expected) {
-					continue;
+				let Some(plan) = self.plan_edge(types, provided, expected) else { continue 'implementations };
+				candidate.adapted.push(plan.adapted);
+				candidate.targets.push(plan.target);
+				if let Some(node) = plan.conversion {
+					candidate.conversions.push(Conversion { input: input as u32, node });
 				}
-				let Some((kind, element)) = promotion_between(types, provided, expected) else {
-					continue 'implementations;
-				};
-				let adapter = self.promotion_adapters.get(&(kind, element)).copied().ok_or("No promotion adapter node")?;
-				promotions.push(Promotion { input: input as u32, adapter });
+				if let Some(adapter) = plan.promotion {
+					candidate.promotions.push(Promotion { input: input as u32, adapter });
+				}
 			}
-			candidates.push((index, promotions));
+			let Some((call, output)) = substitute_generics(types, signature, call_argument, &candidate.adapted) else {
+				continue;
+			};
+			candidate.substituted = (call, output);
+			candidates.push(candidate);
 		}
 
-		candidates.sort_by_key(|(_, promotions)| promotions.len());
-		let minimum = candidates.first().map(|(_, promotions)| promotions.len());
-		let tied = candidates.iter().take_while(|(_, promotions)| Some(promotions.len()) == minimum).count();
-		match tied {
-			0 => return self.resolve_with_coercions(types, implementations, call_argument, inputs),
-			1 => {}
-			_ => return Err("Invalid implementations".to_string()),
-		}
+		let Some(cheapest) = candidates.iter().map(Candidate::cost).min() else {
+			let provided: Vec<_> = inputs.iter().map(|&input| types.to_workload(types.nested(input))).collect();
+			return Err(format!("No implementation is reachable through automatic adaptation from {provided:?}"));
+		};
+		candidates.retain(|candidate| candidate.cost() == cheapest);
 
-		let (index, promotions) = candidates.swap_remove(0);
-		let signature = &implementations[index];
+		let at_least_as_pure = |a: &Candidate, b: &Candidate| {
+			a.targets.iter().zip(&b.targets).all(|pair| match pair {
+				(Some(a), Some(b)) => a == b || self.coercions.is_purer(*a, *b),
+				_ => true,
+			})
+		};
+		let best: Vec<_> = candidates.iter().filter(|candidate| candidates.iter().all(|other| at_least_as_pure(candidate, other))).collect();
+		let [best] = best.as_slice() else {
+			return Err(if cheapest.0 + cheapest.1 + cheapest.2 > 0 {
+				"Ambiguous automatic conversions"
+			} else {
+				"Invalid implementations"
+			}
+			.to_string());
+		};
+
+		let (call, output) = best.substituted;
 		Ok(Selection {
-			implementation: index as u32,
-			return_type: signature.output,
-			fn_type: types.function(signature.call_argument, signature.output),
-			promotions,
-			conversions: Vec::new(),
+			implementation: best.implementation as u32,
+			return_type: output,
+			fn_type: types.function(call, output),
+			promotions: best.promotions.clone(),
+			conversions: best.conversions.clone(),
 		})
+	}
+}
+
+struct EdgePlan {
+	adapted: TypeId,
+	conversion: Option<ConversionNode>,
+	promotion: Option<IdentifierId>,
+	/// The element a conversion produces, which ranks candidates by purity.
+	target: Option<TypeId>,
+}
+
+impl EdgePlan {
+	fn unchanged(provided: TypeId) -> Self {
+		Self {
+			adapted: provided,
+			conversion: None,
+			promotion: None,
+			target: None,
+		}
+	}
+}
+
+#[derive(Default)]
+struct Candidate {
+	implementation: usize,
+	adapted: Vec<TypeId>,
+	targets: Vec<Option<TypeId>>,
+	conversions: Vec<Conversion>,
+	promotions: Vec<Promotion>,
+	substituted: (TypeId, TypeId),
+}
+
+impl Candidate {
+	fn cost(&self) -> (usize, usize, usize, usize) {
+		let count = |kind| self.conversions.iter().filter(|conversion| conversion.node.kind == kind).count();
+		(
+			count(ConversionKind::Lossy),
+			count(ConversionKind::PurityLosing),
+			count(ConversionKind::Representation),
+			self.promotions.len(),
+		)
+	}
+}
+
+fn contains_generic(types: &TypeInterner, ty: TypeId) -> bool {
+	match types.get(ty) {
+		TypeData::Generic(_) => true,
+		TypeData::Concrete(_) => false,
+		TypeData::Item(element) | TypeData::List(element) => contains_generic(types, element),
+		TypeData::Fn(input, output) => contains_generic(types, input) || contains_generic(types, output),
 	}
 }
 
 /// Resolves the signature's generics against the provided types like `check_generic` and `replace_generics`, returning the substituted call argument and output.
 fn substitute_generics(types: &mut TypeInterner, signature: &Signature, call_argument: TypeId, inputs: &[TypeId]) -> Option<(TypeId, TypeId)> {
-	let mut lookup: Vec<(u32, TypeId)> = Vec::with_capacity(signature.generics.len());
-	for &generic in &signature.generics {
-		let pairs = [(Some(signature.call_argument), Some(call_argument))]
-			.into_iter()
-			.chain(signature.inputs.iter().map(|&input| types.fn_input(input)).zip(inputs.iter().map(|&input| types.fn_input(input))))
-			.chain(signature.inputs.iter().map(|&input| types.fn_output(input)).zip(inputs.iter().map(|&input| types.fn_output(input))));
-		let mut outputs = pairs
-			.filter(|(expected, _)| expected.and_then(|ty| types.generic_name(ty)) == Some(generic))
-			.filter_map(|(_, provided)| provided);
-		let first = outputs.next()?;
-		if outputs.any(|ty| ty != first) {
-			return None;
-		}
-		lookup.push((generic, first));
+	if signature.generics.is_empty() {
+		return Some((signature.call_argument, signature.output));
 	}
 
-	let replace = |name: u32| lookup.iter().find(|(generic, _)| *generic == name).map(|(_, ty)| *ty);
-	Some((types.replace_nested(signature.call_argument, &replace), types.replace_nested(signature.output, &replace)))
+	let mut bindings: Vec<(u32, TypeId)> = Vec::with_capacity(signature.generics.len());
+	let pairs = [(signature.call_argument, call_argument)]
+		.into_iter()
+		.chain(signature.inputs.iter().copied().zip(inputs.iter().copied()));
+	for (expected, provided) in pairs {
+		if !bind_generics(types, expected, provided, &mut bindings) {
+			return None;
+		}
+	}
+	if signature.generics.iter().any(|generic| !bindings.iter().any(|(bound, _)| bound == generic)) {
+		return None;
+	}
+
+	let replace = |name: u32| bindings.iter().find(|(generic, _)| *generic == name).map(|(_, ty)| *ty);
+	Some((types.substitute(signature.call_argument, &replace), types.substitute(signature.output, &replace)))
 }
 
 fn promotion_between(types: &TypeInterner, provided: TypeId, expected: TypeId) -> Option<(PromotionKind, TypeId)> {

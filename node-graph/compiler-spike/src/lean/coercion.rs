@@ -38,7 +38,14 @@ struct ConverterDeclaration {
 #[derive(Deserialize)]
 struct NodeDeclaration {
 	identifier: String,
+	/// Concrete type names, or `generic:T` for a generic parameter.
 	element_types: Vec<String>,
+	#[serde(default = "both_ranks")]
+	ranks: Vec<Rank>,
+}
+
+fn both_ranks() -> Vec<Rank> {
+	vec![Rank::Item, Rank::List]
 }
 
 /// The spike's stand-in for purity declarations on Graphite's types, the `Convert` implementations, and test nodes.
@@ -50,7 +57,7 @@ struct CoercionData {
 	nodes: Vec<NodeDeclaration>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Deserialize)]
 pub enum Rank {
 	Item,
 	List,
@@ -62,6 +69,8 @@ pub enum ConversionKind {
 	Representation,
 	/// From purer data to less pure data.
 	PurityLosing,
+	/// A registered conversion on a cycle of registered conversions, like `f64` and `i64`, so neither side is purer.
+	Lossy,
 }
 
 /// The conversion node turning one element type into another at a rank, like `convert_item` over `Convert<To, Converter>`.
@@ -72,12 +81,14 @@ pub struct ConversionNode {
 	pub converter_scope: Option<u32>,
 	pub kind: ConversionKind,
 	pub reads_footprint: bool,
+	pub forwards_input: bool,
 }
 
 impl ConversionNode {
 	pub fn compile_metadata(&self) -> CompileMetadata {
 		CompileMetadata {
 			extract: if self.reads_footprint { FOOTPRINT } else { 0 },
+			forwards_input: self.forwards_input,
 			..Default::default()
 		}
 	}
@@ -89,9 +100,15 @@ pub struct Coercions {
 	purer: FxHashSet<(TypeId, TypeId)>,
 	equivalent: FxHashSet<(TypeId, TypeId)>,
 	conversions: FxHashMap<(TypeId, TypeId, Rank), ConversionNode>,
+	/// Registered conversions that change a wire's whole type rather than its element, like `List<T>` into `ListDyn`.
+	wire_conversions: FxHashMap<(TypeId, TypeId), ConversionNode>,
 }
 
 impl Coercions {
+	pub fn wire_conversion(&self, from: TypeId, to: TypeId) -> Option<ConversionNode> {
+		self.wire_conversions.get(&(from, to)).copied()
+	}
+
 	pub fn is_purer(&self, a: TypeId, b: TypeId) -> bool {
 		self.purer.contains(&(a, b))
 	}
@@ -102,6 +119,7 @@ impl Coercions {
 		let allowed = match conversion.kind {
 			ConversionKind::Representation => true,
 			ConversionKind::PurityLosing => self.is_purer(from, to),
+			ConversionKind::Lossy => true,
 		};
 		allowed.then_some(*conversion)
 	}
@@ -165,39 +183,93 @@ pub fn load(types: &mut TypeInterner, strings: &mut Strings, registry: &mut Regi
 					converter_scope: converter.map(|(_, scope)| scope),
 					kind,
 					reads_footprint: conversion.reads_footprint,
+					forwards_input: false,
 				},
 			);
 		}
 	}
 
+	// Graphite's input adapter rows are the conversions node authors registered, each into the adapter's element type
+	let mut registered = Vec::new();
+	for (&identifier, signatures) in &registry.implementations {
+		if !strings.name(identifier.0).starts_with("input_adapter<") {
+			continue;
+		}
+		for signature in signatures {
+			let [input] = signature.inputs.as_slice() else { continue };
+			match (Coercions::ranked_element(types, *input), Coercions::ranked_element(types, signature.output)) {
+				(Some((from_rank, from)), Some((to_rank, to))) if from_rank == to_rank => {
+					if from != to {
+						registered.push((from, to, from_rank, identifier));
+					}
+				}
+				_ => {
+					let wire_conversion = ConversionNode {
+						identifier,
+						converter_scope: None,
+						kind: ConversionKind::PurityLosing,
+						reads_footprint: false,
+						forwards_input: true,
+					};
+					coercions.wire_conversions.insert((types.nested(*input), signature.output), wire_conversion);
+				}
+			}
+		}
+	}
+	let reachable = transitive_closure(registered.iter().map(|&(from, to, _, _)| (from, to)).collect());
+	let mut registered_purity = Vec::new();
+	for (from, to, rank, identifier) in registered {
+		let lossy = reachable.contains(&(to, from));
+		if !lossy {
+			registered_purity.push((from, to));
+		}
+		coercions.conversions.entry((from, to, rank)).or_insert(ConversionNode {
+			identifier,
+			converter_scope: None,
+			kind: if lossy { ConversionKind::Lossy } else { ConversionKind::PurityLosing },
+			reads_footprint: false,
+			forwards_input: true,
+		});
+	}
+
 	for node in &data.nodes {
 		let identifier = IdentifierId(strings.intern(&node.identifier));
 		for element in &node.element_types {
-			let element = types.concrete(element);
-			for wrap in [TypeData::Item as fn(TypeId) -> TypeData, TypeData::List] {
-				let wire = types.intern(wrap(element));
+			let element = match element.strip_prefix("generic:") {
+				Some(name) => types.convert(&crate::workload::Type::Generic(name.to_string())),
+				None => types.concrete(element),
+			};
+			for &rank in &node.ranks {
+				let wire = types.intern(match rank {
+					Rank::Item => TypeData::Item(element),
+					Rank::List => TypeData::List(element),
+				});
 				let input = types.function(context, wire);
 				registry.add(types, identifier, context, vec![input], wire);
 			}
 		}
 	}
 
-	let mut purer: FxHashSet<(TypeId, TypeId)> = data.purity.iter().map(|(a, b)| (types.concrete(a), types.concrete(b))).collect();
-	// Transitive closure, O(n³) over the handful of declared types
-	loop {
-		let derived: Vec<_> = purer
-			.iter()
-			.flat_map(|&(a, b)| purer.iter().filter(move |&&(c, _)| c == b).map(move |&(_, d)| (a, d)))
-			.filter(|pair| !purer.contains(pair))
-			.collect();
-		if derived.is_empty() {
-			break;
-		}
-		purer.extend(derived);
-	}
+	let declared = data.purity.iter().map(|(a, b)| (types.concrete(a), types.concrete(b)));
+	let purer = transitive_closure(declared.chain(registered_purity).collect());
 	if let Some(&(cycle, _)) = purer.iter().find(|&&(a, b)| a == b) {
 		panic!("The purity relation has a cycle through {}", types.concrete_name(cycle).unwrap_or("a type"));
 	}
 	coercions.purer = purer;
 	registry.coercions = coercions;
+}
+
+/// O(n³) in the worst case over the few dozen convertible types.
+fn transitive_closure(mut pairs: FxHashSet<(TypeId, TypeId)>) -> FxHashSet<(TypeId, TypeId)> {
+	loop {
+		let derived: Vec<_> = pairs
+			.iter()
+			.flat_map(|&(a, b)| pairs.iter().filter(move |&&(c, _)| c == b).map(move |&(_, d)| (a, d)))
+			.filter(|pair| !pairs.contains(pair))
+			.collect();
+		if derived.is_empty() {
+			return pairs;
+		}
+		pairs.extend(derived);
+	}
 }

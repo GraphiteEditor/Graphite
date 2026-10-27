@@ -22,6 +22,7 @@ pub mod ir;
 pub mod registry;
 pub mod types;
 pub mod typing;
+pub mod varargs;
 
 use crate::baseline::{CONTEXT_MODIFICATION, MEMOIZE, PASSTHROUGH, VALUE_NODE};
 use crate::workload::{self, CompileMetadata};
@@ -47,6 +48,8 @@ pub struct Builtins {
 	pub value_node: IdentifierId,
 	pub memoize: IdentifierId,
 	pub context_modification_node: IdentifierId,
+	pub inject_vararg: IdentifierId,
+	pub read_vararg: IdentifierId,
 }
 
 pub struct Document {
@@ -111,8 +114,31 @@ pub struct Lean {
 	elaboration: Elaboration,
 }
 
+/// Where inputs get converted to the types their connectors accept.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InputAdapters {
+	/// The preprocessor's `input_adapter<T>` wrapper on every input of a substituted node, as Graphite does today.
+	Preprocessed,
+	/// Typing inserts conversion nodes only on the inputs that need them, selecting among all of the node's implementations.
+	Resolved,
+}
+
+fn strip_input_adapters(network: &mut workload::Network) {
+	for (_, node) in &mut network.nodes {
+		match &mut node.implementation {
+			workload::Implementation::Proto(identifier) if identifier.starts_with("input_adapter<") => *identifier = PASSTHROUGH.to_string(),
+			workload::Implementation::Network(nested) => strip_input_adapters(nested),
+			_ => {}
+		}
+	}
+}
+
 impl Lean {
 	pub fn load() -> Self {
+		Self::load_with(InputAdapters::Resolved)
+	}
+
+	pub fn load_with(input_adapters: InputAdapters) -> Self {
 		let mut types = TypeInterner::default();
 		let mut strings = Strings::default();
 
@@ -131,6 +157,8 @@ impl Lean {
 			value_node: IdentifierId(strings.intern(VALUE_NODE)),
 			memoize: IdentifierId(strings.intern(MEMOIZE)),
 			context_modification_node: IdentifierId(strings.intern(CONTEXT_MODIFICATION)),
+			inject_vararg: IdentifierId(strings.intern(varargs::INJECT_VARARG)),
+			read_vararg: IdentifierId(strings.intern(varargs::READ_VARARG)),
 		};
 
 		let mut registry = Registry::default();
@@ -146,6 +174,7 @@ impl Lean {
 
 		registry.index_promotion_adapters(&types, &strings);
 		coercion::load(&mut types, &mut strings, &mut registry, builtins.context);
+		varargs::load(&mut types, &mut registry, builtins.inject_vararg, builtins.context);
 
 		let tables = workload::load_preprocessor_tables();
 		let mut templates = Vec::new();
@@ -153,6 +182,16 @@ impl Lean {
 		for substitution in &tables.substitutions {
 			let workload::Implementation::Network(network) = &substitution.node.implementation else {
 				continue;
+			};
+			let stripped;
+			let network = match input_adapters {
+				InputAdapters::Preprocessed => network,
+				InputAdapters::Resolved => {
+					let mut copy = network.clone();
+					strip_input_adapters(&mut copy);
+					stripped = copy;
+					&stripped
+				}
 			};
 			let mut converter = Converter {
 				types: &mut types,
@@ -285,6 +324,7 @@ impl Lean {
 			typing: &mut self.typing,
 			checks: &mut self.checks,
 			context: &mut self.context,
+			strings: &mut self.strings,
 		};
 		let output = self.elaboration.run(tables, document, dirty, passes)?;
 

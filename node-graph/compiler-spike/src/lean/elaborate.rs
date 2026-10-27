@@ -6,16 +6,19 @@
 
 use super::checks::Checks;
 use super::context::{Builder, ContextAnalysis};
-use super::document::{Definition, DefinitionId, IdentifierId, Implementation, Input, Node, Substitution};
+use super::document::{Definition, DefinitionId, IdentifierId, Implementation, Input, Node, Strings, Substitution};
 use super::ir::{Ir, IrValue, NewNode};
 use super::registry::Conversion;
 use super::typing::Typing;
+use super::varargs::{self, Environments};
 use super::{Builtins, Document};
 use crate::workload::{CompileMetadata, Reflection};
 use rustc_hash::{FxHashMap, FxHasher};
 use std::hash::{Hash, Hasher};
 
 const UNLOWERED: u32 = u32::MAX;
+/// Marks a slot whose lowering read no vararg binding from outside itself, so every environment can share it.
+const ENVIRONMENT_INDEPENDENT: u32 = u32::MAX;
 const ROOT_PATH: u32 = 0;
 /// Marks a slot pointing into its instance's slot cache's export lists rather than this compile's export stack.
 const PERSISTED: u32 = 1 << 31;
@@ -73,11 +76,13 @@ pub struct Passes<'a> {
 	pub typing: &'a mut Typing,
 	pub checks: &'a mut Checks,
 	pub context: &'a mut ContextAnalysis,
+	/// For naming nodes monomorphized during elaboration, like vararg readers.
+	pub strings: &'a mut Strings,
 }
 
 impl Passes<'_> {
 	fn builder(&mut self) -> (Builder<'_>, &mut ContextAnalysis) {
-		let Passes { ir, typing, checks, context } = self;
+		let Passes { ir, typing, checks, context, .. } = self;
 		(Builder { ir, typing, checks }, context)
 	}
 
@@ -139,6 +144,12 @@ struct ActiveInstance {
 #[derive(Default)]
 pub struct Elaboration {
 	slots: Vec<u32>,
+	/// Parallel to `slots`: the vararg environment a slot's lowering depends on.
+	slot_environments: Vec<u32>,
+	environments: Environments,
+	environment: u32,
+	/// The deepest outer vararg binding the node being lowered has read so far, or 0 for none.
+	vararg_read_depth: u32,
 	exports: Vec<u32>,
 	arguments: Vec<u32>,
 	/// Parent and hash of each path.
@@ -183,6 +194,9 @@ impl Elaboration {
 	/// When memoizing, instances containing `dirty` edits recompute those nodes with their dependents and reuse the rest.
 	pub fn run(&mut self, tables: Tables, document: &Document, dirty: &[(u32, u32)], passes: Passes) -> Result<u32, String> {
 		self.slots.clear();
+		self.slot_environments.clear();
+		self.environment = varargs::ROOT;
+		self.vararg_read_depth = 0;
 		self.exports.clear();
 		self.arguments.clear();
 		self.paths.clear();
@@ -296,6 +310,7 @@ impl<'a> Walk<'a, '_> {
 		let definition = self.definition(definition_id);
 		let base = self.state.slots.len();
 		self.state.slots.resize(base + definition.nodes.len(), UNLOWERED);
+		self.state.slot_environments.resize(base + definition.nodes.len(), ENVIRONMENT_INDEPENDENT);
 
 		let DefinitionId::Document(index) = definition_id else { return Ok(None) };
 		if !self.state.memoize_instances {
@@ -358,6 +373,9 @@ impl<'a> Walk<'a, '_> {
 		let mut slots = Vec::with_capacity(definition.nodes.len());
 		for (local, node) in definition.nodes.iter().enumerate() {
 			let mut slot = self.state.slots[frame.slots + local];
+			if self.state.slot_environments[frame.slots + local] != ENVIRONMENT_INDEPENDENT {
+				slot = UNLOWERED;
+			}
 			if slot != UNLOWERED
 				&& slot & PERSISTED == 0
 				&& let Some(count) = self.export_count(definition, local, node)
@@ -459,12 +477,19 @@ impl<'a> Walk<'a, '_> {
 	}
 
 	fn lower_output(&mut self, frame: &Frame, local: u32, output: u32) -> Result<u32, String> {
-		let slot = self.state.slots[frame.slots + local as usize];
+		let index = frame.slots + local as usize;
+		let slot = self.state.slots[index];
 		let definition = self.definition(frame.definition);
 		let node = &definition.nodes[local as usize];
 		let multiple_outputs = self.export_count(definition, local as usize, node).is_some();
 
-		if slot != UNLOWERED {
+		let slot_environment = self.state.slot_environments[index];
+		let reusable = slot_environment == ENVIRONMENT_INDEPENDENT || slot_environment == self.state.environment;
+		if slot != UNLOWERED && reusable {
+			if slot_environment != ENVIRONMENT_INDEPENDENT {
+				let depth = self.state.environments.depth(slot_environment);
+				self.state.vararg_read_depth = self.state.vararg_read_depth.max(depth);
+			}
 			return Ok(match (multiple_outputs, slot & PERSISTED != 0) {
 				(false, _) => slot,
 				(true, true) => {
@@ -475,11 +500,17 @@ impl<'a> Walk<'a, '_> {
 			});
 		}
 
-		let (slot, result) = match self.lower_node(frame, local)? {
+		let outer_read_depth = std::mem::replace(&mut self.state.vararg_read_depth, 0);
+		let lowered = self.lower_node(frame, local);
+		let read_depth = self.state.vararg_read_depth;
+		self.state.vararg_read_depth = outer_read_depth.max(read_depth);
+
+		let (slot, result) = match lowered? {
 			Lowered::Single(id) => (id, id),
 			Lowered::Exports(start) => (start, self.state.exports[(start + output) as usize]),
 		};
-		self.state.slots[frame.slots + local as usize] = slot;
+		self.state.slots[index] = slot;
+		self.state.slot_environments[index] = if read_depth > 0 { self.state.environment } else { ENVIRONMENT_INDEPENDENT };
 		Ok(result)
 	}
 
@@ -522,6 +553,8 @@ impl<'a> Walk<'a, '_> {
 				let path = self.node_path(frame, node.id);
 				Ok(Lowered::Single(self.lower_input(frame, &inputs[0], path)?))
 			}
+			Implementation::Proto(identifier) if identifier == builtins.inject_vararg => Ok(Lowered::Single(self.lower_vararg_injection(frame, node, inputs)?)),
+			Implementation::Proto(identifier) if identifier == builtins.read_vararg => Ok(Lowered::Single(self.lower_vararg_read(frame, node, inputs)?)),
 			Implementation::Proto(identifier) if self.is_substituted(definition, node) => {
 				let substitution = self.substitution(identifier).expect("checked by `is_substituted`");
 				let metadata = node.compile_metadata.or_else(|| self.registered_metadata(identifier)).unwrap_or_default();
@@ -572,6 +605,76 @@ impl<'a> Walk<'a, '_> {
 			}
 			Implementation::Extract => Err("Extract nodes are not supported".to_string()),
 		}
+	}
+
+	fn constant_hash(&self, id: u32) -> Result<u64, String> {
+		let value = self.passes.ir.nodes[id as usize].value;
+		value.map(|value| value.hash).ok_or_else(|| "Vararg names must be compile-time constants".to_string())
+	}
+
+	/// Lowers the name and value in the current environment and the body with the name bound to the value's type.
+	fn lower_vararg_injection(&mut self, frame: &Frame, node: &Node, inputs: &[Input]) -> Result<u32, String> {
+		let [name, value, body] = inputs else {
+			return Err("Injecting a vararg takes a name, a value, and a body".to_string());
+		};
+		let path = self.node_path(frame, node.id);
+		let name = self.lower_input(frame, name, path)?;
+		let name_hash = self.constant_hash(name)?;
+		let value = self.lower_input(frame, value, path)?;
+
+		let outer = self.state.environment;
+		let value_type = self.passes.typing.info[value as usize].return_type;
+		self.state.environment = self.state.environments.bind(outer, name_hash, value_type);
+		let body = self.lower_input(frame, body, path);
+		self.state.environment = outer;
+		// Reads of this binding do not reach outside the injector
+		let outer_depth = self.state.environments.depth(outer);
+		self.state.vararg_read_depth = self.state.vararg_read_depth.min(outer_depth);
+		let body = body?;
+
+		let start = self.state.scratch.len();
+		self.state.scratch.extend_from_slice(&[name, value, body]);
+		let injection = NewNode {
+			identifier: self.tables.builtins.inject_vararg,
+			call_argument: node.call_argument,
+			value: None,
+			skip_deduplication: None,
+			compile_metadata: varargs::INJECTION_METADATA,
+			origin: self.origin(frame.path, node.id),
+		};
+		let id = self.build_converting(frame, injection, start);
+		self.state.scratch.truncate(start);
+		id
+	}
+
+	/// Lowers a reader to the reader monomorphized for the type its name is bound to.
+	fn lower_vararg_read(&mut self, frame: &Frame, node: &Node, inputs: &[Input]) -> Result<u32, String> {
+		let [name] = inputs else {
+			return Err("Reading a vararg takes a name".to_string());
+		};
+		let path = self.node_path(frame, node.id);
+		let name = self.lower_input(frame, name, path)?;
+		let name_hash = self.constant_hash(name)?;
+		let (depth, ty) = self.state.environments.resolve(self.state.environment, name_hash).ok_or_else(|| "Unbound vararg".to_string())?;
+		self.state.vararg_read_depth = self.state.vararg_read_depth.max(depth);
+
+		let name_type = self.passes.typing.info[name as usize].return_type;
+		let context = self.tables.builtins.context;
+		let typing = &mut *self.passes.typing;
+		let identifier = varargs::monomorphized_reader(&mut typing.types, self.passes.strings, &mut typing.registry, context, name_type, ty);
+		let read = NewNode {
+			identifier,
+			call_argument: node.call_argument,
+			value: None,
+			skip_deduplication: None,
+			compile_metadata: varargs::READ_METADATA,
+			origin: self.origin(frame.path, node.id),
+		};
+		let start = self.state.scratch.len();
+		self.state.scratch.push(name);
+		let id = self.build_converting(frame, read, start);
+		self.state.scratch.truncate(start);
+		id
 	}
 
 	fn instance_key(&self, deep_hash: u64, path_hash: u64, wrapped_metadata: Option<(u32, CompileMetadata)>, arguments: &[u32]) -> u64 {
@@ -633,8 +736,9 @@ impl<'a> Walk<'a, '_> {
 		let definition = self.definition(definition_id);
 		let path_hash = self.path_hash(path);
 		let key = self.instance_key(definition.deep_hash, path_hash, wrapped_metadata, &self.state.arguments[arguments.0..arguments.1]);
-		// Substitution templates are a handful of nodes, cheaper to elaborate again than to look up
-		let memoize = self.state.memoize_instances && matches!(definition_id, DefinitionId::Document(_));
+		// Substitution templates are a handful of nodes, cheaper to elaborate again than to look up. Inside a vararg binding the
+		// instance's results can depend on the binding, so only instances outside every binding are cached.
+		let memoize = self.state.memoize_instances && matches!(definition_id, DefinitionId::Document(_)) && self.state.environment == varargs::ROOT;
 		if memoize {
 			if let Some(start) = self.cached_instance(parent, key, definition.deep_hash, path_hash, wrapped_metadata, arguments)? {
 				self.state.statistics.instance_hits += 1;
@@ -649,6 +753,7 @@ impl<'a> Walk<'a, '_> {
 			true => self.prepare_slots(definition_id, path, arguments, Some(parent))?,
 			false => {
 				self.state.slots.resize(slots + definition.nodes.len(), UNLOWERED);
+				self.state.slot_environments.resize(slots + definition.nodes.len(), ENVIRONMENT_INDEPENDENT);
 				None
 			}
 		};
@@ -690,6 +795,7 @@ impl<'a> Walk<'a, '_> {
 			self.state.instances.entry(key).or_default().push(entry);
 		}
 		self.state.slots.truncate(slots);
+		self.state.slot_environments.truncate(slots);
 		Ok(start as u32)
 	}
 }

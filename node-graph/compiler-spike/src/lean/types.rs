@@ -123,15 +123,28 @@ impl TypeInterner {
 		}
 	}
 
-	/// Replaces the generic at `id` or at the end of its function output chain, as `Type::replace_nested`.
-	pub fn replace_nested(&mut self, id: TypeId, replace: &impl Fn(u32) -> Option<TypeId>) -> TypeId {
+	/// Replaces every generic anywhere in `id`, such as the `T` in `Fn(Context, List<T>)`.
+	pub fn substitute(&mut self, id: TypeId, replace: &impl Fn(u32) -> Option<TypeId>) -> TypeId {
+		let data = match self.get(id) {
+			TypeData::Generic(name) => return replace(name).unwrap_or(id),
+			TypeData::Concrete(_) => return id,
+			TypeData::Fn(input, output) => TypeData::Fn(self.substitute(input, replace), self.substitute(output, replace)),
+			TypeData::Item(element) => TypeData::Item(self.substitute(element, replace)),
+			TypeData::List(element) => TypeData::List(self.substitute(element, replace)),
+		};
+		self.intern(data)
+	}
+
+	/// Collects every generic name anywhere in `id`.
+	pub fn collect_generics(&self, id: TypeId, generics: &mut Vec<u32>) {
 		match self.get(id) {
-			TypeData::Generic(name) => replace(name).unwrap_or(id),
+			TypeData::Generic(name) if !generics.contains(&name) => generics.push(name),
+			TypeData::Generic(_) | TypeData::Concrete(_) => {}
 			TypeData::Fn(input, output) => {
-				let new_output = self.replace_nested(output, replace);
-				if new_output == output { id } else { self.intern(TypeData::Fn(input, new_output)) }
+				self.collect_generics(input, generics);
+				self.collect_generics(output, generics);
 			}
-			_ => id,
+			TypeData::Item(element) | TypeData::List(element) => self.collect_generics(element, generics),
 		}
 	}
 

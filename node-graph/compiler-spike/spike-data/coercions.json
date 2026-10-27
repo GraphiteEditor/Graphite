@@ -50,6 +50,26 @@
 			"element_types": ["raster_types::raster_types::Raster<raster_types::raster_types::gpu::GPU>"]
 		},
 		{
+			"identifier": "spike::NumberList",
+			"element_types": ["f64"],
+			"ranks": ["List"]
+		},
+		{
+			"identifier": "spike::Integer",
+			"element_types": ["i64"],
+			"ranks": ["Item"]
+		},
+		{
+			"identifier": "spike::NumberOrText",
+			"element_types": ["f64", "alloc::string::String"],
+			"ranks": ["Item"]
+		},
+		{
+			"identifier": "spike::GenericList",
+			"element_types": ["generic:T"],
+			"ranks": ["List"]
+		},
+		{
 			"identifier": "spike::Ambiguous",
 			"element_types": ["vector_types::vector::vector_types::Vector", "alloc::string::String"]
 		}

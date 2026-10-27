@@ -16,6 +16,8 @@ struct Coerced {
 	feeding: String,
 	feeding_inputs: Vec<String>,
 	feeding_reads_footprint: bool,
+	/// The identifiers from the consumer's input down to the value, following first inputs.
+	chain: Vec<String>,
 }
 
 fn feed(element: &str, node: &str) -> Result<Coerced, String> {
@@ -49,7 +51,14 @@ fn feed(element: &str, node: &str) -> Result<Coerced, String> {
 		return Err("The consumer should have one input".to_string());
 	};
 	let feeding = *feeding;
+	let mut chain = Vec::new();
+	let mut current = Some(feeding);
+	while let Some(id) = current {
+		chain.push(lean.identifier_name(lean.ir.nodes[id as usize].identifier).to_string());
+		current = lean.ir.inputs(id).first().copied();
+	}
 	Ok(Coerced {
+		chain,
 		output: lean.typing.types.to_workload(lean.typing.info[output as usize].return_type),
 		feeding: lean.identifier_name(lean.ir.nodes[feeding as usize].identifier).to_string(),
 		feeding_inputs: lean
@@ -112,6 +121,34 @@ fn representation_changes_convert_with_their_converter() {
 fn only_rasterizing_conversions_read_the_footprint() {
 	assert!(!feed(COLOR, "spike::Blur").unwrap().feeding_reads_footprint);
 	assert!(feed(VECTOR, "spike::RasterOnly").unwrap().feeding_reads_footprint);
+}
+
+#[test]
+fn conversions_apply_before_promotion() {
+	let coerced = feed("i64", "spike::NumberList").unwrap();
+	assert_eq!(coerced.output, Type::List(Box::new(Type::Concrete("f64".to_string()))));
+	assert_eq!(coerced.chain, ["graphene_core::ops::ItemToListNode<f64>", "input_adapter<f64>", "core_types::value::ClonedNode"]);
+}
+
+#[test]
+fn registered_conversions_on_a_cycle_are_lossy_but_automatic() {
+	let coerced = feed("f64", "spike::Integer").unwrap();
+	assert_eq!(coerced.output, item("i64"));
+	assert_eq!(coerced.feeding, "input_adapter<i64>");
+}
+
+#[test]
+fn lossy_conversions_rank_below_purity_losing_ones() {
+	// Integers convert to numbers only lossily but to text without loss, so the text implementation wins
+	let coerced = feed("i64", "spike::NumberOrText").unwrap();
+	assert_eq!(coerced.output, item("alloc::string::String"));
+}
+
+#[test]
+fn promotion_reaches_generic_implementations() {
+	let coerced = feed(COLOR, "spike::GenericList").unwrap();
+	assert_eq!(coerced.output, Type::List(Box::new(Type::Concrete(COLOR.to_string()))));
+	assert_eq!(coerced.feeding, "graphene_core::ops::ItemToListNode<Color>");
 }
 
 #[test]
