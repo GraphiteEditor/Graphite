@@ -403,7 +403,6 @@ pub struct NodeParsedField {
 	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
 	pub output_element: Option<Type>,
 	pub implementations: Punctuated<Implementation, Comma>,
-	/// Either `None` or the `#[scope]` wire the lazy input reads.
 	pub value_source: ParsedValueSource,
 }
 

@@ -7309,6 +7309,7 @@ dependencies = [
  "node-macro",
  "raster-types",
  "rendering",
+ "thiserror 2.0.18",
  "vello_gpu",
  "web-sys",
  "wgpu",

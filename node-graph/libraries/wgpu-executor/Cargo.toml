@@ -32,3 +32,4 @@ log = { workspace = true }
 web-sys = { workspace = true }
 vello_gpu = { workspace = true }
 bytemuck = { workspace = true }
+thiserror = { workspace = true }

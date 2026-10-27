@@ -217,12 +217,8 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[node_macro::node(category(""), placeholder = pending_raster)]
-async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(try_wgpu_executor::IDENTIFIER)] executor: Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
-	let Some(executor) = executor.into_element() else {
-		log::error!("Rasterizing requires a GPU executor");
-		return List::new();
-	};
-	rasterize_with_vello(data, footprint.into_element(), executor).await
+async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>) -> List<Raster<CPU>> {
+	rasterize_with_vello(data, footprint.into_element(), executor.into_element()).await
 }
 
 async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> List<Raster<CPU>> {
@@ -256,7 +252,7 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	)
 }
 
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<::wgpu_executor::WgpuExecutor>) -> List<Raster<CPU>> {
 	List::new()
 }
 
@@ -296,22 +292,9 @@ fn pending_stored_resource(_editor_api: &Item<Arc<PlatformEditorApi>>, _hash: &I
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<::wgpu_executor::WgpuExecutor> {
-	let executor = editor_api
-		.into_element()
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not available")
-		.gpu_executor()
-		.expect("GPU executor not available")
-		.clone();
-	Item::new_from_element(executor)
-}
-
-#[node_macro::node(category(""), inject_scope)]
-fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Option<::wgpu_executor::WgpuExecutor>> {
+fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Result<Item<::wgpu_executor::WgpuExecutor>, ::wgpu_executor::NoGpuError> {
 	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor()).cloned();
-	Item::new_from_element(executor)
+	executor.map(Item::new_from_element).ok_or(::wgpu_executor::NoGpuError)
 }
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.

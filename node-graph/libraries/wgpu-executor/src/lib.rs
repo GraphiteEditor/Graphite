@@ -188,3 +188,7 @@ impl WgpuExecutor {
 		})
 	}
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("No GPU is available")]
+pub struct NoGpuError;

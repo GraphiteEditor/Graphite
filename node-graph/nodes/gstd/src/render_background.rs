@@ -3,7 +3,7 @@ use core_types::color::Linear;
 use core_types::list::Item;
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
-use core_types::{Ctx, ExtractFootprint};
+use core_types::{Context, Ctx, ExtractFootprint, Interrupt};
 use glam::{Affine2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
@@ -14,9 +14,9 @@ use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 #[node_macro::node(category(""))]
 fn render_background(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 	data: Item<RenderOutput>,
-) -> Item<RenderOutput> {
+) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -25,7 +25,7 @@ fn render_background(
 		.expect("Downcasting render params yielded invalid type");
 
 	if !render_params.to_canvas() || render_params.viewport_zoom.unwrap_or(1.) <= 0.0 {
-		return data;
+		return Ok(data);
 	}
 
 	let RenderOutput { data: foreground_data, metadata } = data.into_element();
@@ -35,7 +35,7 @@ fn render_background(
 	let data = match foreground_data {
 		RenderOutputType::Texture(foreground_texture) => {
 			let doc_to_screen = render_params.footprint.transform.as_affine2();
-			let blended = pipeline.into_element().run::<CompositeBackground>(&CompositeBackgroundArgs {
+			let blended = pipeline.eval(Context::default())?.into_element().run::<CompositeBackground>(&CompositeBackgroundArgs {
 				foreground: foreground_texture.as_ref(),
 				backgrounds: &metadata.backgrounds,
 				document_to_screen: doc_to_screen,
@@ -115,18 +115,16 @@ fn render_background(
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};
 
-	Item::new_from_element(RenderOutput { data, metadata })
+	Ok(Item::new_from_element(RenderOutput { data, metadata }))
 }
 
 #[node_macro::node(category(""), inject_scope)]
 fn composite_background_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: Item<WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
-	if let Some(executor) = executor.into_element() {
-		executor.pipeline_init::<CompositeBackground>(pipeline);
-	}
+	executor.into_element().pipeline_init::<CompositeBackground>(pipeline);
 	Item::new_from_element(pipeline.clone())
 }
 
