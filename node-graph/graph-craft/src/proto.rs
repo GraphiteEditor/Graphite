@@ -284,7 +284,7 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		let (output_dependencies, _) = self.find_context_dependencies(self.output);
+		let (output_dependencies, _) = self.find_context_dependencies(self.output, &mut FxHashMap::default());
 		self.nodes[self.output.0 as usize].1.upstream_context_features = output_dependencies.features;
 
 		// Perform topological sort a second time to integrate the new nodes
@@ -411,7 +411,17 @@ impl ProtoNetwork {
 		})
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
+	fn find_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
+		if let Some(result) = analyzed.get(&id) {
+			return result.clone();
+		}
+
+		let result = self.analyze_context_dependencies(id, analyzed);
+		analyzed.insert(id, result.clone());
+		result
+	}
+
+	fn analyze_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
@@ -435,7 +445,7 @@ impl ProtoNetwork {
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
-			let branch = self.find_context_dependencies(node);
+			let branch = self.find_context_dependencies(node, analyzed);
 			self.nodes[node.0 as usize].1.upstream_context_features = branch.0.features;
 
 			combined_deps.features |= branch.0.features;
@@ -1197,6 +1207,49 @@ mod test {
 				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
 			})
 			.collect()
+	}
+
+	#[test]
+	fn shared_nodes_are_wrapped_in_one_nullification() {
+		let node = |name: &'static str, inputs: Vec<NodeId>, extract: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata: NodeCompileMetadata { extract, ..Default::default() },
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(6),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2).into()), vec![])),
+				(NodeId(1), node("reader", vec![NodeId(0)], ContextFeatures::ANIMATION_TIME)),
+				(NodeId(2), node("plain", vec![NodeId(0)], none)),
+				(NodeId(3), node("shared", vec![NodeId(1), NodeId(2)], none)),
+				(NodeId(4), node("first_consumer", vec![NodeId(3)], none)),
+				(NodeId(5), node("second_consumer", vec![NodeId(3)], none)),
+				(NodeId(6), node("output", vec![NodeId(4), NodeId(5)], none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let nullification = graphene_core::context_modification::context_modification::IDENTIFIER;
+		let nullifications: Vec<_> = network.nodes.iter().filter(|(_, node)| node.identifier == nullification).collect();
+		assert_eq!(nullifications.len(), 1, "The plain branch of the shared node should be nullified once");
+
+		let ConstructionArgs::Nodes(inputs) = &nullifications[0].1.construction_args else {
+			panic!("A nullification node should have node inputs")
+		};
+		let ConstructionArgs::Nodes(memoized) = &network.nodes[inputs[0].0 as usize].1.construction_args else {
+			panic!("A memoize node should have node inputs")
+		};
+		assert_eq!(
+			network.nodes[memoized[0].0 as usize].1.identifier.as_str(),
+			"plain",
+			"The nullification should wrap the plain node, not another nullification"
+		);
 	}
 
 	#[test]
