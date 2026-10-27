@@ -1181,9 +1181,22 @@ pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_
 	let label_count = start_widgets(&parameter_widgets_info).len();
 	let exposed = parameter_widgets_info.is_exposed();
 
-	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
+	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button) else {
 		return LayoutGroup::row(Vec::new());
 	};
+
+	if enabled == Some(false) {
+		for widget in &mut row.widgets {
+			let Widget::ColorInput(color_input) = &mut *widget.widget else { continue };
+
+			let set_color = color_input.on_update.callback.clone();
+			let enable = update_value_at_index(|_: &ColorInput| TaggedValue::Bool(true), node_id, bool_input_index);
+			color_input.on_update = WidgetCallback::new(move |input: &ColorInput| Message::Batched {
+				messages: Box::new([set_color(input), enable(input)]),
+			});
+		}
+	}
+
 	if !exposed {
 		row.widgets.splice(label_count..label_count, optional_parameter_assist(enabled, node_id, bool_input_index));
 	}
