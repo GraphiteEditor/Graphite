@@ -43,39 +43,47 @@ pub async fn send(mut request: Request) -> Result<Response, Error> {
 	use reqwest::header::{ACCESS_CONTROL_ALLOW_ORIGIN, ACCESS_CONTROL_REQUEST_HEADERS, ACCESS_CONTROL_REQUEST_METHOD, HeaderValue};
 	use url::Host;
 
-	let url = request.url().clone();
-	let origin = url.origin();
-	let mut client = reqwest::Client::builder()
-		.dns_resolver(std::sync::Arc::new(PublicResolver))
-		.redirect(reqwest::redirect::Policy::custom(move |attempt| {
-			let private = match attempt.url().host() {
-				Some(Host::Ipv4(ip)) => is_private_network(ip.into()),
-				Some(Host::Ipv6(ip)) => is_private_network(ip.into()),
-				_ => false,
-			};
-			if attempt.previous().len() > 10 {
-				attempt.error("too many redirects")
-			} else if private && attempt.url().origin() != origin {
-				attempt.error("redirect to a private network address")
-			} else {
-				attempt.follow()
-			}
-		}));
+	let client_builder = || {
+		reqwest::Client::builder()
+			.dns_resolver(std::sync::Arc::new(PublicResolver))
+			.redirect(reqwest::redirect::Policy::custom(|attempt| {
+				let private = match attempt.url().host() {
+					Some(Host::Ipv4(ip)) => is_private_network(ip.into()),
+					Some(Host::Ipv6(ip)) => is_private_network(ip.into()),
+					_ => false,
+				};
+				if attempt.previous().len() > 10 {
+					attempt.error("too many redirects")
+				} else if private && attempt.previous().first().map(|url| url.origin()) != Some(attempt.url().origin()) {
+					attempt.error("redirect to a private network address")
+				} else {
+					attempt.follow()
+				}
+			}))
+	};
+	static PUBLIC_CLIENT: std::sync::OnceLock<reqwest::Result<reqwest::Client>> = std::sync::OnceLock::new();
 
-	let private_network = match url.host() {
+	let url = request.url().clone();
+
+	let pinned_client = match url.host() {
 		Some(Host::Domain(domain)) => {
 			let port = url.port_or_known_default().unwrap_or_default();
 			let addresses = tokio::net::lookup_host((domain, port)).await.map_err(Error::Lookup)?;
-			let (private, public): (Vec<_>, Vec<_>) = addresses.partition(|address| is_private_network(address.ip()));
-			let private_network = !private.is_empty();
-			client = client.resolve_to_addrs(domain, if private_network { &private } else { &public });
-			private_network
+			let private = addresses.filter(|address| is_private_network(address.ip())).collect::<Vec<_>>();
+			(!private.is_empty()).then(|| client_builder().resolve_to_addrs(domain, &private))
 		}
-		Some(Host::Ipv4(ip)) => is_private_network(ip.into()),
-		Some(Host::Ipv6(ip)) => is_private_network(ip.into()),
-		None => false,
+		Some(Host::Ipv4(ip)) => is_private_network(ip.into()).then(client_builder),
+		Some(Host::Ipv6(ip)) => is_private_network(ip.into()).then(client_builder),
+		None => None,
 	};
-	let client = client.build()?;
+	let private_network = pinned_client.is_some();
+	let client = match pinned_client {
+		Some(client) => client.build()?,
+		None => match PUBLIC_CLIENT.get_or_init(|| client_builder().build()) {
+			Ok(client) => client.clone(),
+			Err(_) => client_builder().build()?,
+		},
+	};
 
 	if private_network {
 		let mut preflight = client
