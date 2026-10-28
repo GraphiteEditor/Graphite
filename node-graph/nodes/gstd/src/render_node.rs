@@ -6,6 +6,7 @@ use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
+use rendering::vello_scene_builder::VelloSceneBuilder;
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use vector_types::Gradient;
@@ -106,10 +107,18 @@ fn render(
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
 			let executor = executor.into_element().expect("GPU executor not available");
 
-			let mut scene = executor.vello_scene(footprint.resolution, footprint.transform).expect("Failed to create Vello scene");
-			data.render_to_vello(&mut scene, Default::default(), &render_params);
-
-			let texture = executor.render_vello_scene(scene).expect("Failed to render Vello scene");
+			let mut draw = |scene: &mut VelloSceneBuilder| data.render_to_vello(scene, Default::default(), &render_params);
+			let texture = match executor.render_vello(footprint.resolution, footprint.transform, &mut draw) {
+				Ok(texture) => texture,
+				// Leave the output transparent, at a size the GPU can hold, rather than taking down the editor
+				Err(error) => {
+					log::error!("Failed to render Vello scene: {error}");
+					let limit = glam::UVec2::splat(executor.context().device.limits().max_texture_dimension_2d);
+					executor
+						.render_vello(footprint.resolution.min(limit), footprint.transform, &mut |_| {})
+						.expect("Failed to render an empty Vello scene")
+				}
+			};
 			RenderOutputType::Texture(texture)
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),

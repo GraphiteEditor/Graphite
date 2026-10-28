@@ -157,10 +157,7 @@ impl Thumbnails {
 		for layers in layers.chunks(cells_per_atlas) {
 			let layout = ThumbnailAtlasLayout::new(layers.to_vec(), self.scale);
 
-			let texture = executor.vello_scene(layout.size(), DAffine2::IDENTITY).and_then(|mut scene| {
-				atlas::draw_atlas(&mut scene, &layout, contents);
-				executor.render_vello_scene(scene)
-			});
+			let texture = executor.render_vello(layout.size(), DAffine2::IDENTITY, &mut |scene| atlas::draw_atlas(scene, &layout, contents));
 			let texture = match texture {
 				Ok(texture) => texture,
 				Err(error) => {

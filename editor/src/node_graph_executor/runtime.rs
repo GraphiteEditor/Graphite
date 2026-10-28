@@ -44,7 +44,6 @@ pub struct NodeRuntime {
 	dirty: Arc<AtomicBool>,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
-	editor_preferences: EditorPreferences,
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
 
@@ -76,7 +75,6 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	EditorPreferencesUpdate(EditorPreferences),
 	ThumbnailsInView {
 		layers: HashSet<NodeId>,
 		document_id: DocumentId,
@@ -115,14 +113,11 @@ impl NodeRuntime {
 			dirty: Default::default(),
 			pending: None,
 			pending_export: None,
-			editor_preferences: EditorPreferences::default(),
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
 
 			editor_api: PlatformEditorApi {
-				editor_preferences: Box::new(EditorPreferences::default()),
-
 				#[cfg(not(test))]
 				application_io: None,
 
@@ -155,7 +150,6 @@ impl NodeRuntime {
 	}
 
 	async fn handle_requests(&mut self) -> Option<Texture> {
-		let mut preferences = None;
 		let mut graph = None;
 		let mut eyedropper = None;
 		let mut execution = None;
@@ -180,7 +174,6 @@ impl NodeRuntime {
 						break;
 					}
 				}
-				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => thumbnails_in_view = Some((layers, document_id)),
 				// A graph update applied after this loop would otherwise inspect what was selected before
 				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
@@ -220,23 +213,11 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [preferences, graph, eyedropper, execution].into_iter().flatten();
+		let requests = [graph, eyedropper, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
-				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
-					self.editor_preferences = preferences.clone();
-					self.editor_api = PlatformEditorApi {
-						application_io: self.editor_api.application_io.clone(),
-						editor_preferences: Box::new(preferences),
-					}
-					.into();
-					if let Some(graph) = self.old_graph.clone() {
-						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph);
-					}
-				}
 				GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }) => {
 					match &mut self.inspect_state {
 						Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
@@ -558,7 +539,6 @@ impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
 		self.editor_api = PlatformEditorApi {
 			application_io: Some(application_io.into()),
-			editor_preferences: Box::new(self.editor_preferences.clone()),
 		}
 		.into();
 	}
