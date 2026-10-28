@@ -152,15 +152,21 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 	let location = |path: &[NodeId]| (1..=path.len()).map(|n| document[&path[..n]].0.as_str()).collect::<Vec<_>>().join("/");
 
 	let matching = |query: &str| {
-		let matches: Vec<_> = (0..nodes.len())
-			.filter(|&n| {
-				let node = &nodes[n];
-				format!("{:016x}", node.id).starts_with(query)
-					|| node.proto.identifier.as_str().contains(query)
-					|| node.origins.iter().all(|origin| !origin.is_empty() && location(origin).contains(query))
+		let located = |origin: &&[NodeId]| !origin.is_empty() && location(origin).contains(query);
+		[false, true]
+			.into_iter()
+			.map(|shared| {
+				(0..nodes.len())
+					.filter(|&n| {
+						let node = &nodes[n];
+						format!("{:016x}", node.id).starts_with(query)
+							|| node.proto.identifier.as_str().contains(query)
+							|| if shared { node.origins.iter().any(located) } else { node.origins.iter().all(located) }
+					})
+					.collect::<Vec<_>>()
 			})
-			.collect();
-		if matches.is_empty() { Err(format!("No proto node matches \"{query}\"")) } else { Ok(matches) }
+			.find(|matches| !matches.is_empty())
+			.ok_or_else(|| format!("No proto node matches \"{query}\""))
 	};
 	let mut selected = vec![upstream.is_none() && downstream.is_none(); nodes.len()];
 	if let Some(query) = upstream {
@@ -257,7 +263,6 @@ fn kind(proto: &ProtoNode, origin: &[NodeId], document: &Document) -> Kind {
 	let appended = path.len() > origin.len();
 	match &proto.construction_args {
 		ConstructionArgs::Value(value) if matches!(**value, TaggedValue::ContextModification(_)) => Kind::Nullify,
-		// `insert_context_nullification_node` appends `NodeId(10)` to the path of the node it caches
 		_ if appended && path.last() == Some(&NodeId(10)) => Kind::Nullify,
 		_ if proto.original_location.auto_convert_index.is_some() => Kind::Convert,
 		ConstructionArgs::Value(_) => Kind::Value,

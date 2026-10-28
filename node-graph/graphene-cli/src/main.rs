@@ -154,20 +154,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	}
 
 	// Build the runtime network: from the `.gdd` registry, or by loading a legacy `.graphite` document.
+	let print = matches!(app.command, Command::Compile { format: Some(_), .. });
 	let (node_network, names) = match &gdd {
 		Some(gdd) => {
 			let declarations = gdd.declarations(gdd).await;
 			let (node_network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations)?;
 			let references = networks.into_iter().filter_map(|network| Some((network.network_path, network.reference?)));
 			let names = nodes.into_iter().filter_map(|node| Some(([node.network_path, vec![node.local_id]].concat(), node.display_name?)));
-			(node_network, references.chain(names).filter(|(_, name)| !name.is_empty()).collect())
+			(node_network, print.then(|| references.chain(names).filter(|(_, name)| !name.is_empty()).collect()))
 		}
 		None => {
 			let document_string = std::fs::read_to_string(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
-			(load_network(&document_string), dump::legacy_names(&document_string))
+			(load_network(&document_string), print.then(|| dump::legacy_names(&document_string)))
 		}
 	};
-	let document = dump::document(&node_network, names);
+	let document = names.map(|names| dump::document(&node_network, names));
 
 	log::info!("Creating GPU context");
 	let mut application_io = PlatformApplicationIo::new().await;
@@ -196,7 +197,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		Command::Compile {
 			format, upstream, downstream, depth, ..
 		} => {
-			if let Some(format) = format {
+			if let Some((format, document)) = format.zip(document) {
 				dump::print(&proto_graph, &document, format, upstream.as_deref(), downstream.as_deref(), depth)?;
 			}
 		}
