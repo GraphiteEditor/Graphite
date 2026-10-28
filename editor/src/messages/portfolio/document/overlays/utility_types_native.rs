@@ -638,7 +638,7 @@ impl OverlayContextInternal {
 		let inner_circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
 		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
-		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &inner_circle);
 		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
 	}
 
@@ -775,19 +775,41 @@ impl OverlayContextInternal {
 	#[allow(clippy::too_many_arguments)]
 	fn dashed_ellipse(
 		&mut self,
-		_center: DVec2,
-		_radius_x: f64,
-		_radius_y: f64,
-		_rotation: Option<f64>,
-		_start_angle: Option<f64>,
-		_end_angle: Option<f64>,
-		_counterclockwise: Option<bool>,
-		_color_fill: Option<&str>,
-		_color_stroke: Option<&str>,
-		_dash_width: Option<f64>,
-		_dash_gap_width: Option<f64>,
-		_dash_offset: Option<f64>,
+		center: DVec2,
+		radius_x: f64,
+		radius_y: f64,
+		rotation: Option<f64>,
+		start_angle: Option<f64>,
+		end_angle: Option<f64>,
+		counterclockwise: Option<bool>,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
 	) {
+		let transform = self.get_transform();
+		let center = self.snap_to_physical_pixel(center);
+
+		let start_angle = start_angle.unwrap_or_default();
+		let end_angle = end_angle.unwrap_or(TAU);
+		let sweep_angle = match counterclockwise.unwrap_or_default() {
+			false if end_angle - start_angle >= TAU => TAU,
+			false => (end_angle - start_angle).rem_euclid(TAU),
+			true if start_angle - end_angle >= TAU => -TAU,
+			true => -(start_angle - end_angle).rem_euclid(TAU),
+		};
+		let arc = kurbo::Arc::new((center.x, center.y), (radius_x, radius_y), start_angle, sweep_angle, rotation.unwrap_or_default());
+
+		if let Some(color_fill) = color_fill {
+			self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &arc);
+		}
+
+		let mut stroke = kurbo::Stroke::new(1.);
+		if let Some(dash_width) = dash_width {
+			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap_width.unwrap_or(1.)]);
+		}
+		self.scene.stroke(&stroke, transform, Self::parse_color(color_stroke.unwrap_or(COLOR_OVERLAY_BLUE)), None, &arc);
 	}
 
 	fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
