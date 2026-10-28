@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::layers_in_view::LayersI
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::application_io::EditorPreferences;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use graph_craft::proto::GraphErrors;
@@ -183,12 +182,6 @@ impl NodeGraphExecutor {
 		self.sender
 			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
 			.expect("Failed to send the thumbnails in view");
-	}
-
-	pub fn update_editor_preferences(&self, editor_preferences: EditorPreferences) {
-		self.sender
-			.send(GraphRuntimeRequest::EditorPreferencesUpdate(editor_preferences))
-			.expect("Failed to send editor preferences");
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
@@ -876,8 +869,8 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
-			_ => {
-				log::error!("Invalid node graph output type: {:#?}", render_output.data);
+			RenderOutputType::Buffer { width, height, .. } => {
+				log::error!("Invalid node graph output type: a {width}×{height} pixel buffer");
 				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
 				return;
 			}
