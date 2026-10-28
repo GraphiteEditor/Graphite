@@ -2,10 +2,9 @@ use graph_craft::ProtoNodeIdentifier;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
-use graphene_std::{CacheHash, simplify_identifier_name};
+use graphene_std::simplify_identifier_name;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
 use std::error::Error;
-use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
 
 #[derive(Clone, Copy, Debug, clap::ValueEnum)]
@@ -80,7 +79,6 @@ struct Node<'a> {
 	inputs: Vec<usize>,
 	consumers: Vec<usize>,
 	constant: bool,
-	id: u64,
 }
 
 pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstream: Option<&str>, downstream: Option<&str>, depth: Option<usize>) -> Result<(), Box<dyn Error>> {
@@ -112,43 +110,11 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 			inputs,
 			consumers: Vec::new(),
 			constant,
-			id: 0,
 		});
 	}
 
-	let mut occurrences = HashMap::new();
-	for n in 0..nodes.len() {
-		let node = &nodes[n];
-		let mut hasher = DefaultHasher::new();
-		node.proto.identifier.as_str().hash(&mut hasher);
-		node.proto.call_argument.to_string().hash(&mut hasher);
-		match &node.proto.construction_args {
-			_ if node.origins.len() == 1 && node.kind != Kind::Nullify => {
-				node.origins[0].hash(&mut hasher);
-				node.proto.original_location.auto_convert_index.hash(&mut hasher);
-				if let Some(&consumer) = node.consumers.first().filter(|_| node.kind == Kind::Value) {
-					nodes[consumer].proto.original_location.auto_convert_index.hash(&mut hasher);
-					nodes[consumer].inputs.iter().position(|&input| input == n).hash(&mut hasher);
-				}
-			}
-			ConstructionArgs::Nodes(_) => node.inputs.iter().for_each(|&input| nodes[input].id.hash(&mut hasher)),
-			ConstructionArgs::Value(value) if matches!(**value, TaggedValue::EditorApi(_) | TaggedValue::Runtime(_)) => {}
-			ConstructionArgs::Value(value) => value.cache_hash(&mut hasher),
-			ConstructionArgs::Inline(inline) => inline.expr.hash(&mut hasher),
-		}
-		let key = hasher.finish();
-		let occurrence = occurrences.entry(key).or_insert(0_u64);
-		let mut hasher = DefaultHasher::new();
-		(key, *occurrence).hash(&mut hasher);
-		*occurrence += 1;
-		nodes[n].id = hasher.finish();
-	}
-
 	let output = position[&network.output];
-	let width = (8..16)
-		.find(|&width| nodes.iter().map(|node| node.id >> (64 - 4 * width)).collect::<HashSet<_>>().len() == nodes.len())
-		.unwrap_or(16);
-	let short = |n: usize| format!("{:0width$x}", nodes[n].id >> (64 - 4 * width));
+	let id = |n: usize| order[n].to_string();
 	let location = |path: &[NodeId]| (1..=path.len()).map(|n| document[&path[..n]].0.as_str()).collect::<Vec<_>>().join("/");
 
 	let matching = |query: &str| {
@@ -159,9 +125,7 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 				(0..nodes.len())
 					.filter(|&n| {
 						let node = &nodes[n];
-						format!("{:016x}", node.id).starts_with(query)
-							|| node.proto.identifier.as_str().contains(query)
-							|| if shared { node.origins.iter().any(located) } else { node.origins.iter().all(located) }
+						id(n).starts_with(query) || node.proto.identifier.as_str().contains(query) || if shared { node.origins.iter().any(located) } else { node.origins.iter().all(located) }
 					})
 					.collect::<Vec<_>>()
 			})
@@ -181,7 +145,7 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 		Format::Text => {
 			for (n, node) in nodes.iter().enumerate().filter(|(n, _)| selected[*n]) {
 				let arguments = match &node.proto.construction_args {
-					ConstructionArgs::Nodes(_) => format!("({})", node.inputs.iter().map(|&input| short(input)).collect::<Vec<_>>().join(", ")),
+					ConstructionArgs::Nodes(_) => format!("({})", node.inputs.iter().map(|&input| id(input)).collect::<Vec<_>>().join(", ")),
 					ConstructionArgs::Value(value) => format!("{{{}}}", summary(value, 80)),
 					ConstructionArgs::Inline(inline) => format!("{{{}}}", inline.expr),
 				};
@@ -192,7 +156,7 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 					.collect::<Vec<_>>()
 					.join(" ");
 				let identifier = simplify_identifier_name(node.proto.identifier.as_str());
-				writeln!(out, "{} = {identifier}{arguments} : {}  # {provenance}", short(n), node.proto.call_argument)?;
+				writeln!(out, "{} = {identifier}{arguments} : {}  # {provenance}", id(n), node.proto.call_argument)?;
 			}
 		}
 		Format::Dot => {
@@ -226,7 +190,7 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 					let identifier = simplify_identifier_name(node.proto.identifier.as_str());
 					let name = document.get(node.origins[0]).map_or("", |(name, _)| name.as_str());
 					let name = if name == identifier { "" } else { name };
-					let mut label = vec![identifier, format!("{} : {}", short(n), node.proto.call_argument)];
+					let mut label = vec![identifier, format!("{} : {}", id(n), node.proto.call_argument)];
 					let provenance = [node.kind.tag(), name].into_iter().filter(|part| !part.is_empty()).collect::<Vec<_>>().join(" ");
 					label.extend((!provenance.is_empty()).then_some(provenance));
 					for (index, &input) in node.inputs.iter().enumerate().filter(|(_, input)| nodes[**input].constant) {
@@ -234,7 +198,7 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 					}
 					let inserted = if node.kind == Kind::Document { "" } else { " style=\"filled,dashed\" fillcolor=lightgrey" };
 					let output = if n == output { " peripheries=2" } else { "" };
-					writeln!(out, "{indent}{:?} [label={:?}{inserted}{output}]", short(n), label.join("\n"))?;
+					writeln!(out, "{indent}{:?} [label={:?}{inserted}{output}]", id(n), label.join("\n"))?;
 				}
 				if !path.is_empty() {
 					writeln!(out, "\t}}")?;
@@ -245,10 +209,10 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 			for &n in networks.values().flatten() {
 				for (index, &input) in nodes[n].inputs.iter().enumerate().filter(|(_, input)| !nodes[**input].constant) {
 					if !selected[input] && stubs.insert(input) {
-						let label = format!("{}\n{}", simplify_identifier_name(nodes[input].proto.identifier.as_str()), short(input));
-						writeln!(out, "\t{:?} [label={label:?} style=dotted]", short(input))?;
+						let label = format!("{}\n{}", simplify_identifier_name(nodes[input].proto.identifier.as_str()), id(input));
+						writeln!(out, "\t{:?} [label={label:?} style=dotted]", id(input))?;
 					}
-					writeln!(out, "\t{:?} -> {:?} [headlabel={:?}]", short(input), short(n), field(&nodes[n], index))?;
+					writeln!(out, "\t{:?} -> {:?} [headlabel={:?}]", id(input), id(n), field(&nodes[n], index))?;
 				}
 			}
 			writeln!(out, "}}")?;
