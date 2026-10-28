@@ -21,6 +21,7 @@ desktop = ["dep:cef-dll-sys", "dep:scraper", "dep:lzma-rust2"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+tempfile = "3"
 
 # Optional workspace dependencies
 cef-dll-sys = { workspace = true, optional = true }
