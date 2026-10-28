@@ -2057,7 +2057,8 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 		let node_id = layer_path.iter_element_values().next_back().map(|node_id| node_id.0).unwrap_or_default();
 
 		let mut hasher = DefaultHasher::new();
-		(index, node_id).hash(&mut hasher);
+		// Hash as u32 to avoid platform differences
+		(index as u32, node_id).hash(&mut hasher);
 		let collision_hash_seed = hasher.finish();
 
 		let source_transform = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
