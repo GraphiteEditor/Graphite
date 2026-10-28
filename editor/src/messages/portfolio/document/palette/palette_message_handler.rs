@@ -37,8 +37,8 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 }
 
 impl PaletteMessageHandler {
-	pub fn refresh_palette(palette_panel_open: bool, responses: &mut VecDeque<Message>) {
-		if !palette_panel_open {
+	pub fn refresh_palette(palette_open: bool, responses: &mut VecDeque<Message>) {
+		if !palette_open {
 			return;
 		}
 
