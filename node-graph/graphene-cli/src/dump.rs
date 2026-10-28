@@ -79,42 +79,47 @@ struct Node<'a> {
 	inputs: Vec<usize>,
 	consumers: Vec<usize>,
 	constant: bool,
+	id: u64,
 }
 
 pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstream: Option<&str>, downstream: Option<&str>, depth: Option<usize>) -> Result<(), Box<dyn Error>> {
-	let mut protos: HashMap<NodeId, (&ProtoNode, Vec<&[NodeId]>)> = HashMap::new();
+	let mut position: HashMap<NodeId, usize> = HashMap::new();
+	let mut nodes: Vec<Node> = Vec::with_capacity(network.nodes.len());
 	for (id, proto) in &network.nodes {
 		let path = proto.original_location.path.as_deref().unwrap_or_default();
 		let origin = (1..=path.len()).rev().map(|n| &path[..n]).find(|prefix| document.contains_key(*prefix)).unwrap_or_default();
-		let (_, origins) = protos.entry(*id).or_insert((proto, Vec::new()));
-		if !origins.contains(&origin) {
-			origins.push(origin);
+		if let Some(&n) = position.get(id) {
+			let origins = &mut nodes[n].origins;
+			if !origins.contains(&origin) {
+				origins.push(origin);
+			}
+			continue;
 		}
-	}
 
-	let order = post_order(std::iter::once(network.output).chain(network.nodes.iter().map(|(id, _)| *id)), |id| inputs(protos[&id].0));
-	let position: HashMap<_, _> = order.iter().enumerate().map(|(position, id)| (*id, position)).collect();
-	let mut nodes: Vec<Node> = Vec::with_capacity(order.len());
-	for (n, id) in order.iter().enumerate() {
-		let (proto, origins) = protos.remove(id).unwrap();
-		let inputs: Vec<_> = inputs(proto).iter().map(|input| position[input]).collect();
+		let n = nodes.len();
+		position.insert(*id, n);
+		let inputs: Vec<_> = match &proto.construction_args {
+			ConstructionArgs::Nodes(ids) => ids.iter().map(|input| position[input]).collect(),
+			_ => Vec::new(),
+		};
 		for &input in &inputs {
 			nodes[input].consumers.push(n);
 		}
-		let kind = kind(proto, origins[0], document);
+		let kind = kind(proto, origin, document);
 		let constant = matches!(kind, Kind::Value | Kind::Convert | Kind::Nullify) && inputs.iter().all(|&input| nodes[input].constant);
 		nodes.push(Node {
 			proto,
 			kind,
-			origins,
+			origins: vec![origin],
 			inputs,
 			consumers: Vec::new(),
 			constant,
+			id: id.0,
 		});
 	}
 
 	let output = position[&network.output];
-	let id = |n: usize| order[n].to_string();
+	let id = |n: usize| nodes[n].id.to_string();
 	let location = |path: &[NodeId]| (1..=path.len()).map(|n| document[&path[..n]].0.as_str()).collect::<Vec<_>>().join("/");
 
 	let matching = |query: &str| {
@@ -231,15 +236,8 @@ fn kind(proto: &ProtoNode, origin: &[NodeId], document: &Document) -> Kind {
 		_ if proto.original_location.auto_convert_index.is_some() => Kind::Convert,
 		ConstructionArgs::Value(_) => Kind::Value,
 		_ if origin.is_empty() => Kind::Scope,
-		_ if !appended && document[origin].1.as_ref() == Some(&proto.identifier) => Kind::Document,
+		_ if document[origin].1.as_ref() == Some(&proto.identifier) => Kind::Document,
 		_ => Kind::Expand,
-	}
-}
-
-fn inputs(node: &ProtoNode) -> &[NodeId] {
-	match &node.construction_args {
-		ConstructionArgs::Nodes(ids) => ids,
-		_ => &[],
 	}
 }
 
@@ -251,32 +249,6 @@ fn constant<'a>(nodes: &[Node<'a>], mut n: usize) -> Option<&'a TaggedValue> {
 			ConstructionArgs::Inline(_) => return None,
 		}
 	}
-}
-
-fn post_order<'a>(roots: impl IntoIterator<Item = NodeId>, inputs: impl Fn(NodeId) -> &'a [NodeId]) -> Vec<NodeId> {
-	let mut order = Vec::new();
-	let mut visited = HashSet::new();
-	for root in roots {
-		if !visited.insert(root) {
-			continue;
-		}
-		let mut stack = vec![(root, 0)];
-		while let Some((id, next)) = stack.last_mut() {
-			match inputs(*id).get(*next) {
-				Some(&input) => {
-					*next += 1;
-					if visited.insert(input) {
-						stack.push((input, 0));
-					}
-				}
-				None => {
-					order.push(*id);
-					stack.pop();
-				}
-			}
-		}
-	}
-	order
 }
 
 fn reach<'a>(nodes: &'a [Node], seeds: Vec<usize>, depth: Option<usize>, edges: impl Fn(&'a Node) -> &'a [usize], selected: &mut [bool]) {
