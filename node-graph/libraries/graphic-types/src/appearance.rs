@@ -232,7 +232,9 @@ impl Appearance {
 
 		let row = cover_row(coverage, paint);
 		match placement {
-			CoverPlacement::Above => self.0.push(row),
+			CoverPlacement::Above => {
+				self.0.push(row);
+			}
 			CoverPlacement::Below => {
 				let mut reordered = List::new_from_item(row);
 				reordered.extend(std::mem::take(&mut self.0));

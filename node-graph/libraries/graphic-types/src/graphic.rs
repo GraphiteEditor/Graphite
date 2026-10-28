@@ -274,7 +274,7 @@ fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Gr
 								item.set_attribute(ATTR_APPEARANCE, appearance.clone());
 							}
 
-							if let Some(item_conflict) = output.push_reporting_conflict(item) {
+							if let Some(item_conflict) = output.push(item) {
 								conflict.get_or_insert(item_conflict);
 							}
 						}

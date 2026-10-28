@@ -566,6 +566,8 @@ fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath
 pub enum AttributeTypeError {
 	#[error("The \"{name}\" attribute holds {held} values, not {requested}")]
 	WrongType { name: String, held: String, requested: String },
+	#[error(transparent)]
+	Conflict(#[from] AttributeTypeConflictError),
 }
 
 /// Sets a named attribute on the input list, computing one value per item via the value-producing input. That input
@@ -829,7 +831,9 @@ fn read_list_attribute<T: Clone + Default + 'static>(content: &ListDyn, name: &s
 
 	let mut result = List::new();
 	for list in (0..content.len()).filter_map(|index| content.attribute::<List<T>>(name, index)) {
-		result.extend(list.clone());
+		if let Some(conflict) = result.extend(list.clone()) {
+			return Err(conflict.into());
+		}
 	}
 	Ok(result)
 }
@@ -877,7 +881,7 @@ fn extend<T: Send + Clone>(
 	new: List<T>,
 ) -> Result<List<T>, (List<T>, AttributeTypeConflictError)> {
 	let mut base = base;
-	match base.extend_reporting_conflict(new) {
+	match base.extend(new) {
 		Some(conflict) => Err((base, conflict)),
 		None => Ok(base),
 	}
@@ -906,7 +910,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 	let mut conflict = None;
 	for mut row in new.into_iter() {
 		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
-		if let Some(row_conflict) = base.push_reporting_conflict(row) {
+		if let Some(row_conflict) = base.push(row) {
 			conflict.get_or_insert(row_conflict);
 		}
 	}
@@ -979,7 +983,7 @@ fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool
 				// Push any leaf element: a group beyond the recursion depth, or any non-group variant
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
-					if let Some(item_conflict) = output_graphic_list.push_reporting_conflict(Item::from_parts(current_element, attributes)) {
+					if let Some(item_conflict) = output_graphic_list.push(Item::from_parts(current_element, attributes)) {
 						conflict.get_or_insert(item_conflict);
 					}
 				}
@@ -1218,6 +1222,18 @@ mod test {
 		let texts = with_values("words", vec![list_of(["a".to_string()])]);
 		let error = read_attribute_string((), texts, Item::new_from_element("words".to_string())).unwrap_err();
 		assert_eq!(error.to_string(), "The \"words\" attribute holds String[] values, not String");
+	}
+
+	#[test]
+	fn reading_list_attributes_with_differently_typed_attributes_fails() {
+		let mut first = list_of([Vector::default()]);
+		first.set_attribute("tag", 0, 5_f64);
+		let mut second = list_of([Vector::default()]);
+		second.set_attribute("tag", 0, "text".to_string());
+
+		let vectors = with_values("shapes", vec![first, second]);
+		let error = read_attribute_vector((), vectors, Item::new_from_element("shapes".to_string())).unwrap_err();
+		assert_eq!(error.to_string(), "The \"tag\" attribute holds different types of values in the lists being combined");
 	}
 
 	#[test]

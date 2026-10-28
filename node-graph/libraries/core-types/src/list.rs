@@ -1609,26 +1609,16 @@ impl<T: Clone> List<T> {
 		Arc::make_mut(&mut self.element)
 	}
 
-	/// Appends an item to the end of this list.
-	pub fn push(&mut self, item: Item<T>) {
-		self.push_reporting_conflict(item);
-	}
-
-	/// Appends an item like [`List::push`], returning the first attribute the list holds with another type than the item's value for it.
+	/// Appends an item to the end of this list, returning the first attribute the list holds with another type than the item's value for it.
 	/// The list keeps its type for it, giving the item its default.
-	pub fn push_reporting_conflict(&mut self, item: Item<T>) -> Option<AttributeTypeConflictError> {
+	pub fn push(&mut self, item: Item<T>) -> Option<AttributeTypeConflictError> {
 		self.elements_mut().push(item.element);
 		self.attributes.push_item(item.attributes)
 	}
 
-	/// Appends all items from another list into this one.
-	pub fn extend(&mut self, list: List<T>) {
-		self.extend_reporting_conflict(list);
-	}
-
-	/// Appends all items from another list like [`List::extend`], returning the first attribute both lists have with values of different
-	/// types. This list keeps its type for it, giving the other list's items its default.
-	pub fn extend_reporting_conflict(&mut self, list: List<T>) -> Option<AttributeTypeConflictError> {
+	/// Appends all items from another list into this one, returning the first attribute both lists have with values of different types.
+	/// This list keeps its type for it, giving the other list's items its default.
+	pub fn extend(&mut self, list: List<T>) -> Option<AttributeTypeConflictError> {
 		// An empty list adopts the other's elements without copying them
 		if self.element.is_empty() {
 			self.element = list.element;
@@ -2265,22 +2255,22 @@ mod tests {
 		let mut matching = List::new_from_elements(vec![3_u32]);
 		matching.set_attribute_values(ATTR_START, vec![30_u64]);
 		matching.set_attribute_values(ATTR_END, vec![1.5_f64]);
-		assert_eq!(base.extend_reporting_conflict(matching), None);
+		assert_eq!(base.extend(matching), None);
 
 		let mut empty = List::new();
 		empty.set_attribute_values(ATTR_NAME, Vec::<i64>::new());
-		assert_eq!(base.extend_reporting_conflict(empty), None, "an empty list loses no values");
+		assert_eq!(base.extend(empty), None, "an empty list loses no values");
 
 		let mut mistyped = List::new_from_elements(vec![4_u32]);
 		mistyped.set_attribute_values(ATTR_NAME, vec![7_i64]);
 		let conflict = AttributeTypeConflictError { name: ATTR_NAME.to_string() };
-		assert_eq!(base.extend_reporting_conflict(mistyped), Some(conflict.clone()));
+		assert_eq!(base.extend(mistyped), Some(conflict.clone()));
 		assert_eq!(conflict.to_string(), "The \"name\" attribute holds different types of values in the lists being combined");
 		assert_eq!(base.attribute::<String>(ATTR_NAME, 3), Some(&String::new()));
 
-		assert_eq!(base.push_reporting_conflict(Item::new_from_element(5).with_attribute(ATTR_START, 50_u64)), None);
+		assert_eq!(base.push(Item::new_from_element(5).with_attribute(ATTR_START, 50_u64)), None);
 		let mistyped_item = Item::new_from_element(6).with_attribute(ATTR_START, 60_f64);
-		assert_eq!(base.push_reporting_conflict(mistyped_item), Some(AttributeTypeConflictError { name: ATTR_START.to_string() }));
+		assert_eq!(base.push(mistyped_item), Some(AttributeTypeConflictError { name: ATTR_START.to_string() }));
 		assert_eq!(base.attribute::<u64>(ATTR_START, 5), Some(&0));
 	}
 
@@ -2290,12 +2280,12 @@ mod tests {
 		mistyped.set_attribute_values(ATTR_NAME, vec![7_i64]);
 		let mut extended = List::<u32>::new();
 		extended.set_attribute_values(ATTR_NAME, Vec::<String>::new());
-		assert_eq!(extended.extend_reporting_conflict(mistyped), None);
+		assert_eq!(extended.extend(mistyped), None);
 		assert_eq!(extended.attribute::<i64>(ATTR_NAME, 0), Some(&7));
 
 		let mut pushed = List::<u32>::new();
 		pushed.set_attribute_values(ATTR_NAME, Vec::<String>::new());
-		assert_eq!(pushed.push_reporting_conflict(Item::new_from_element(1).with_attribute(ATTR_NAME, 7_i64)), None);
+		assert_eq!(pushed.push(Item::new_from_element(1).with_attribute(ATTR_NAME, 7_i64)), None);
 		assert_eq!(pushed.attribute::<i64>(ATTR_NAME, 0), Some(&7));
 	}
 
