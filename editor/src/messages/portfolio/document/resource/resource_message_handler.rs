@@ -93,7 +93,7 @@ impl MessageHandler<ResourceMessage, ResourceMessageContext<'_>> for ResourceMes
 					.collect::<Vec<(DataSource, Option<ResourceHash>)>>();
 
 				async fn resolve_to_message(document_id: DocumentId, resource_id: ResourceId, source: DataSource, url: Url, client: &Client) -> Option<Message> {
-					let result = client.fetch(url.clone()).await;
+					let result = client.fetch(url.as_str()).await;
 					match result {
 						Some(data) => {
 							let hash = ResourceHash::from(data.as_ref());
