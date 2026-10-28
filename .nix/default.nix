@@ -32,6 +32,7 @@ let
         deps = {
           crane = lib.call ./deps/crane.nix;
           rustGPU = lib.call ./deps/rust-gpu.nix;
+          cargoAbout = lib.call ./deps/cargo-about.nix;
         };
 
         args = {
