@@ -2157,6 +2157,7 @@ dependencies = [
  "interpreted-executor",
  "log",
  "preprocessor",
+ "serde_json",
  "tokio",
  "wgpu",
  "wgpu-executor",

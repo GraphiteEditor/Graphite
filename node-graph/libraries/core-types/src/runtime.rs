@@ -58,9 +58,7 @@ impl PartialEq for RuntimeHandle {
 }
 
 impl graphene_hash::CacheHash for RuntimeHandle {
-	fn cache_hash<H: Hasher>(&self, state: &mut H) {
-		state.write_usize(Arc::as_ptr(&self.0) as usize);
-	}
+	fn cache_hash<H: Hasher>(&self, _state: &mut H) {}
 }
 
 pub struct AsyncRuntime(Arc<RuntimeInner>);
