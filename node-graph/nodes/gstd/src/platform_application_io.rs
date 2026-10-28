@@ -26,18 +26,72 @@ use graphic_types::raster_types::{CPU, GPU, Raster};
 use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
 
-fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
+#[derive(Debug, thiserror::Error)]
+pub enum HttpRequestError {
+	#[error("`{url}` is not a valid URL: {source}")]
+	InvalidUrl { url: String, source: url::ParseError },
+	#[error("The header line `{0}` is not a valid `Name: Value` pair")]
+	InvalidHeader(String),
+	#[error("Request to `{url}` failed: {}", error_chain(.source))]
+	Failed { url: String, source: reqwest::Error },
+	#[error(transparent)]
+	Unreachable(http::Error),
+	#[error("Request to `{url}` was answered with {status}: {body}")]
+	Status { url: String, status: reqwest::StatusCode, body: String },
+}
+
+impl HttpRequestError {
+	fn failed(url: &str, error: impl Into<http::Error>) -> Self {
+		match error.into() {
+			http::Error::Request(error) => Self::Failed {
+				url: url.to_string(),
+				source: error.without_url(),
+			},
+			#[cfg(not(target_family = "wasm"))]
+			error => Self::Unreachable(error),
+		}
+	}
+}
+
+fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+	std::iter::successors(Some(error), |error| error.source()).map(ToString::to_string).collect::<Vec<_>>().join(": ")
+}
+
+async fn send(url: &str, request: reqwest::Request) -> Result<reqwest::Response, HttpRequestError> {
+	let response = http::send(request).await.map_err(|error| HttpRequestError::failed(url, error))?;
+
+	let status = response.status();
+	if status.is_client_error() || status.is_server_error() {
+		let body = response.text().await.unwrap_or_default();
+		return Err(HttpRequestError::Status {
+			url: url.to_string(),
+			status,
+			body: body.trim().to_string(),
+		});
+	}
+
+	Ok(response)
+}
+
+fn new_request(method: reqwest::Method, url: &str) -> Result<reqwest::Request, HttpRequestError> {
+	let parsed_url = url.parse().map_err(|source| HttpRequestError::InvalidUrl { url: url.to_string(), source })?;
+	Ok(reqwest::Request::new(method, parsed_url))
+}
+
+fn parse_headers(headers: &str) -> Result<reqwest::header::HeaderMap, HttpRequestError> {
 	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 	let mut header_map = HeaderMap::new();
-	for line in headers.lines() {
-		if let Some((key, value)) = line.split_once(':') {
-			let Ok(header_name) = HeaderName::from_bytes(key.trim().as_bytes()) else { continue };
-			let Ok(header_value) = HeaderValue::from_str(value.trim()) else { continue };
-			header_map.insert(header_name, header_value);
-		}
+	for line in headers.lines().map(str::trim).filter(|line| !line.is_empty()) {
+		let header = line
+			.split_once(':')
+			.and_then(|(key, value)| Some((HeaderName::from_bytes(key.trim().as_bytes()).ok()?, HeaderValue::from_str(value.trim()).ok()?)));
+		let Some((header_name, header_value)) = header else {
+			return Err(HttpRequestError::InvalidHeader(line.to_string()));
+		};
+		header_map.insert(header_name, header_value);
 	}
-	header_map
+	Ok(header_map)
 }
 
 /// Sends an HTTP GET request to a specified URL and optionally waits for the response (unless discarded) which is output as a string.
@@ -51,22 +105,25 @@ async fn get_request(
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: Item<bool>,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
-) -> Item<String> {
+) -> Result<Item<String>, HttpRequestError> {
 	let (url, headers) = (url.into_element(), headers.into_element());
 	let discard_result = *discard_result.element();
 
-	let header_map = parse_headers(&headers);
-	let request = reqwest::Client::new().get(url).headers(header_map);
-
-	if discard_result {
-		let _ = request.send().await;
-		return Item::default();
+	if url.trim().is_empty() {
+		return Ok(Item::default());
 	}
 
-	let Ok(response) = request.send().await else {
-		return Item::default();
-	};
-	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+	let header_map = parse_headers(&headers)?;
+	let mut request = new_request(reqwest::Method::GET, &url)?;
+	*request.headers_mut() = header_map;
+
+	let response = send(&url, request).await?;
+	if discard_result {
+		return Ok(Item::default());
+	}
+
+	let text = response.text().await.map_err(|error| HttpRequestError::failed(&url, error))?;
+	Ok(Item::new_from_element(text))
 }
 
 fn pending_text(_primary: &(), _url: &Item<String>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
@@ -86,24 +143,30 @@ async fn post_request(
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: Item<bool>,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
-) -> Item<String> {
+) -> Result<Item<String>, HttpRequestError> {
 	let (url, headers) = (url.into_element(), headers.into_element());
 	let discard_result = *discard_result.element();
 
-	let mut header_map = parse_headers(&headers);
-	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let body_bytes: Vec<u8> = body.element().as_ref().to_vec();
-	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
-
-	if discard_result {
-		let _ = request.send().await;
-		return Item::default();
+	if url.trim().is_empty() {
+		return Ok(Item::default());
 	}
 
-	let Ok(response) = request.send().await else {
-		return Item::default();
-	};
-	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+	let mut header_map = parse_headers(&headers)?;
+	header_map
+		.entry(reqwest::header::CONTENT_TYPE)
+		.or_insert(reqwest::header::HeaderValue::from_static("application/octet-stream"));
+	let body_bytes: Vec<u8> = body.element().as_ref().to_vec();
+	let mut request = new_request(reqwest::Method::POST, &url)?;
+	*request.headers_mut() = header_map;
+	*request.body_mut() = Some(body_bytes.into());
+
+	let response = send(&url, request).await?;
+	if discard_result {
+		return Ok(Item::default());
+	}
+
+	let text = response.text().await.map_err(|error| HttpRequestError::failed(&url, error))?;
+	Ok(Item::new_from_element(text))
 }
 
 fn pending_post_text(_primary: &(), _url: &Item<String>, _body: &Item<Resource>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
@@ -132,27 +195,18 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 	Item::new_from_element(Resource::new(bytes))
 }
 
-/// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
+/// Loads binary from URLs and local asset paths.
 #[node_macro::node(category("Data: I/O"), icon("NodeLoadResource"), placeholder = pending_resource)]
-async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
+async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Result<Item<Resource>, HttpRequestError> {
 	let url = url.into_element();
-	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
 
-	let response = match reqwest::Client::new().get(&url).send().await {
-		Ok(response) => response,
-		Err(error) => {
-			log::error!("HTTP request for `{url}` failed: {error}");
-			return placeholder();
-		}
-	};
-
-	match response.bytes().await {
-		Ok(bytes) => Item::new_from_element(Resource::new(bytes)),
-		Err(error) => {
-			log::error!("Failed to read HTTP response for `{url}`: {error}");
-			placeholder()
-		}
+	if url.trim().is_empty() {
+		return Ok(Item::new_from_element(Resource::empty()));
 	}
+
+	let response = send(&url, new_request(reqwest::Method::GET, &url)?).await?;
+	let bytes = response.bytes().await.map_err(|error| HttpRequestError::failed(&url, error))?;
+	Ok(Item::new_from_element(Resource::new(bytes)))
 }
 
 fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {

@@ -69,6 +69,8 @@ image = { workspace = true }
 base64 = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
 
 # Optional local dependencies
 graphene-canvas-utils = { workspace = true, optional = true }
