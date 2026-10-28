@@ -10,7 +10,6 @@ use glam::Vec3;
 use graphene_resource::Resource;
 use no_std_types::color::{Color, linear_to_srgb, set_luminosity, srgb_to_linear};
 use no_std_types::context::Ctx;
-use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
 use raster_types::{CPU, Image, Raster};
 use vector_types::Gradient;
@@ -18,7 +17,7 @@ use vector_types::Gradient;
 /// Conversion from a color to grayscale.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, dyn_any::DynAny, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, dyn_any::DynAny, node_macro::ChoiceType, bytemuck::NoUninit, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 #[repr(u32)]
 pub enum DesaturateMethod {
@@ -320,7 +319,7 @@ fn brightness_contrast<T: Adjust<Color>>(
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 /// The channel whose settings are shown, with RGB adjusting all three color channels together.
 pub enum AdjustmentChannel {
@@ -783,7 +782,7 @@ fn black_and_white<T: Adjust<Color>>(
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 pub enum HueSaturationRange {
 	#[default]
@@ -1513,7 +1512,7 @@ fn skin_tone_window(hue: f32) -> f32 {
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -1779,7 +1778,7 @@ fn channel_mixer<T: Adjust<Color>>(
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -1790,7 +1789,7 @@ pub enum RelativeAbsolute {
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -2186,7 +2185,7 @@ fn exposure<T: Adjust<Color>>(
 #[repr(u32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, dyn_any::DynAny, node_macro::ChoiceType, FromPrimitive, IntoPrimitive)]
 #[widget(Dropdown)]
 pub enum TonalRange {
 	Shadows,

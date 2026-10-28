@@ -38,7 +38,6 @@ pub use no_std_types::AsU32;
 pub use no_std_types::blending;
 pub use no_std_types::choice_type;
 pub use no_std_types::color;
-pub use no_std_types::shaders;
 pub use num_traits;
 pub use poll::{Finality, Interrupt, LazyInput, NodeError, Poll, PollInput, Status};
 pub use runtime::{Generations, RuntimeHandle, SourceId};

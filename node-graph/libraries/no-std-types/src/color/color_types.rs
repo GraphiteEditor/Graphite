@@ -5,29 +5,14 @@ use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::Vec4;
 use half::f16;
-use node_macro::BufferStruct;
-#[cfg(not(feature = "std"))]
-use num_traits::Euclid;
-#[cfg(not(feature = "std"))]
-use num_traits::float::Float;
 
 #[repr(C)]
-#[derive(Default, Clone, Copy, PartialEq, Pod, Zeroable)]
-#[cfg_attr(not(target_arch = "spirv"), derive(Debug))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
+#[derive(Default, Clone, Copy, PartialEq, Pod, Zeroable, Debug, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RGBA16F {
 	red: f16,
 	green: f16,
 	blue: f16,
 	alpha: f16,
-}
-
-/// hack around half still masking out impl Debug for f16 on spirv
-#[cfg(target_arch = "spirv")]
-impl core::fmt::Debug for RGBA16F {
-	fn fmt(&self, _f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-		Ok(())
-	}
 }
 
 impl From<Color> for RGBA16F {
@@ -96,9 +81,7 @@ impl Pixel for RGBA16F {}
 /// the linear-light [`Color`] type. Convert via [`From<SRGBA8> for Color`] and [`From<Color> for SRGBA8`].
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Pod, Zeroable, dyn_any::DynAny, serde::Serialize, serde::Deserialize, graphene_hash::CacheHash)]
 pub struct SRGBA8 {
 	pub red: u8,
 	pub green: u8,
@@ -125,7 +108,6 @@ impl SRGBA8 {
 
 	/// Parse `RRGGBB` or `RRGGBBAA` (with or without a leading `#`). Returns `None` for any other format.
 	/// For full CSS Color 4 parsing (named colors, shorthand hex, `rgb(...)`, `hsl(...)`), parse in the caller and construct via [`Self::new`].
-	#[cfg(feature = "std")]
 	pub fn from_hex_str(hex: &str) -> Option<Self> {
 		let hex = hex.trim().trim_start_matches('#');
 		if hex.len() != 6 && hex.len() != 8 {
@@ -141,19 +123,16 @@ impl SRGBA8 {
 	}
 
 	/// `rrggbb` (lowercase, no `#` prefix, alpha discarded). Use where alpha is specified separately, e.g. SVG `fill="#..." fill-opacity="..."`.
-	#[cfg(feature = "std")]
 	pub fn to_rgb_hex(self) -> String {
 		format!("{:02x}{:02x}{:02x}", self.red, self.green, self.blue)
 	}
 
 	/// `rrggbbaa` (lowercase, no `#` prefix).
-	#[cfg(feature = "std")]
 	pub fn to_rgba_hex(self) -> String {
 		format!("{:02x}{:02x}{:02x}{:02x}", self.red, self.green, self.blue, self.alpha)
 	}
 
 	/// `#rrggbb` if fully opaque, `#rrggbbaa` otherwise. Suitable for direct insertion into a CSS property or SVG attribute.
-	#[cfg(feature = "std")]
 	pub fn to_css_hex(self) -> String {
 		if self.alpha == 255 {
 			format!("#{}", self.to_rgb_hex())
@@ -223,8 +202,7 @@ impl From<SRGBA8> for Color {
 
 #[repr(C)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, dyn_any::DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Luma(pub f32);
 
 impl Luminance for Luma {
@@ -259,9 +237,7 @@ impl Pixel for Luma {}
 ///
 /// Anything crossing the Wasm/JS boundary must go through [`SRGBA8`] instead.
 #[repr(C)]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny))]
-#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, dyn_any::DynAny, graphene_hash::CacheHash)]
 pub struct Color {
 	red: f32,
 	green: f32,
@@ -273,7 +249,6 @@ pub struct Color {
 impl Eq for Color {}
 
 // TODO: Eventually remove this document upgrade code
-#[cfg(feature = "std")]
 impl serde::Serialize for Color {
 	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 		use serde::ser::SerializeStruct;
@@ -290,7 +265,6 @@ impl serde::Serialize for Color {
 }
 
 // TODO: Eventually remove this document upgrade code
-#[cfg(feature = "std")]
 impl<'de> serde::Deserialize<'de> for Color {
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		// Documents from before the linear-storage migration lack the `linear` marker and stored gamma-encoded floats; convert them on load.
@@ -351,7 +325,6 @@ impl AlphaMut for Color {
 }
 
 impl Pixel for Color {
-	#[cfg(feature = "std")]
 	fn to_bytes(&self) -> Vec<u8> {
 		let SRGBA8 { red, green, blue, alpha } = (*self).into();
 		[red, green, blue, alpha].to_vec()
@@ -444,10 +417,7 @@ impl Color {
 			lightness + saturation - lightness * saturation
 		};
 		let temp2 = 2. * lightness - temp1;
-		#[cfg(feature = "std")]
 		let rem = |x: f32| x.rem_euclid(1.);
-		#[cfg(not(feature = "std"))]
-		let rem = |x: f32| x.rem_euclid(&1.);
 
 		let mut red = rem(hue + 1. / 3.);
 		let mut green = rem(hue);
@@ -823,10 +793,7 @@ impl Color {
 	/// Convert this color to HSV coordinates (all between 0 and 1).
 	/// HSV is defined on sRGB display values, so this color's linear RGB is gamma-encoded before the HSV math.
 	pub fn to_hsva(&self) -> [f32; 4] {
-		#[cfg(feature = "std")]
 		let rem = |x: f32, m: f32| x.rem_euclid(m);
-		#[cfg(not(feature = "std"))]
-		let rem = |x: f32, m: f32| x.rem_euclid(&m);
 
 		let [red, green, blue, alpha] = self.to_gamma_srgb_channels();
 		let max = red.max(green).max(blue);
@@ -873,10 +840,7 @@ impl Color {
 		} else {
 			4. + (red - green) / (max_channel - min_channel)
 		} / 6.;
-		#[cfg(feature = "std")]
 		let hue = hue.rem_euclid(1.);
-		#[cfg(not(feature = "std"))]
-		let hue = hue.rem_euclid(&1.);
 
 		[hue, saturation, lightness, alpha]
 	}

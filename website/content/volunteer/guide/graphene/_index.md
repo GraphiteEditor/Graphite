@@ -64,11 +64,11 @@ The fully compiled regime is used only when the user exports the procedural artw
 
 The three regimes have thus far been only a description of the eventual architecture direction. The interpreted regime is currently the only mode implemented in Graphene. The other two will require access to `rustc` which will necessitate the compile server that we will finish building and then publicly host for Graphite users in the future. Users of the desktop version of Graphite will be able to use an embedded `rustc` if the user has opted to download the Rust toolchain while installing Graphite.
 
-Without a compile server, all the nodes are precompiled when Graphite is built. The node registry (in the file `node_registry.rs`) currently exists to allow the interpreted executor to find the Rust functions that correspond to each node with its appropriate type signature. Nodes support generics, so it's currently necessary to list every forseeable concrete type signature in the registry until the compile server can generate bytecode for less common type combinations on-the-fly.
+Without a compile server, all the nodes are precompiled when Graphite is built. The node registry (in the file `node_registry.rs`) currently exists to allow the interpreted executor to find the Rust functions that correspond to each node with its appropriate type signature. Nodes support generics, so it's currently necessary to list every foreseeable concrete type signature in the registry until the compile server can generate bytecode for less common type combinations on-the-fly.
 
-### GPU compute shaders
+### GPU rendering
 
-Further building upon the Rust compiler toolchain, we employ the [`rust-gpu`](https://github.com/EmbarkStudios/rust-gpu) compiler backend for `rustc` which generates compute shaders that get executed on the GPU. This means we can write the same code to implement nodes that run on both CPU and GPU. (Although in practice, some nodes may need GPU-specific versions suited for the architectural limitations of GPU programming.) And we don't have to use a separate shader language!
+Nodes run on the CPU, and the renderer draws their results on the GPU with [Vello](https://github.com/linebender/vello) through [`wgpu`](https://wgpu.rs/) (WebGL2 in browsers). Raster nodes, like the adjustments and filters, process their pixels on the CPU.
 
 ### A language within a language
 

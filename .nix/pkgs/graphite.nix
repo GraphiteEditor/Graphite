@@ -35,7 +35,6 @@ let
         inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
         cargoLockList = [
           "${info.src}/Cargo.lock"
-          "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
         ];
       }
     );

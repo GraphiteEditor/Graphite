@@ -1,13 +1,10 @@
 use crate::color::Color;
 use core::fmt::Display;
-use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
 
 #[repr(i32)]
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[cfg_attr(feature = "std", derive(dyn_any::DynAny, serde::Serialize, serde::Deserialize))]
-#[cfg_attr(feature = "std", derive(graphene_hash::CacheHash))]
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, graphene_hash::CacheHash, FromPrimitive, IntoPrimitive)]
 pub enum BlendMode {
 	// Basic group
 	#[default]
@@ -132,7 +129,6 @@ impl BlendMode {
 	}
 
 	/// Renders the blend mode CSS style declaration.
-	#[cfg(feature = "std")]
 	pub fn render(&self) -> String {
 		format!(
 			r#" mix-blend-mode: {};"#,

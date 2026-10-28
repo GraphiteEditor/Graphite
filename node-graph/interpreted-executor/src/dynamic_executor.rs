@@ -503,7 +503,6 @@ impl BorrowTree {
 	/// - Updates the source map using [`update_source_map`](BorrowTree::update_source_map) before inserting the node.
 	/// - Handles different types of construction arguments:
 	///   - `Value`: Creates a node from a `TaggedValue`, with special handling for `EditorApi` values.
-	///   - `Inline`: Currently unimplemented. Only used for `rust-gpu` support.
 	///   - `Nodes`: Constructs a node using other nodes as dependencies.
 	/// - Uses the constructor function from the `typing_context` for `Nodes` construction arguments.
 	/// - Returns an error if no constructor is found for the given node ID.
@@ -518,7 +517,6 @@ impl BorrowTree {
 				let node = ObservedNode::new(Box::new(upcasted) as TypeErasedBox<'_>);
 				self.store_node(node, id, path.into(), Box::default());
 			}
-			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids = ids.to_vec();
 				let mut construction_nodes = self.node_deps(&ids);

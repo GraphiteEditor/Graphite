@@ -145,11 +145,7 @@ impl DocumentNode {
 
 		let mut construction_args = ConstructionArgs::Nodes(vec![]);
 
-		// If we have one input of the type inline, set it as the construction args
-		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
-			construction_args = ConstructionArgs::Inline(inline.clone());
-		}
-		// If we have one input of the type inline, set it as the construction args
+		// If we have one input of the type value, set it as the construction args
 		if let &[NodeInput::Value { ref tagged_value, .. }] = self.inputs.as_slice() {
 			construction_args = ConstructionArgs::Value(tagged_value.clone());
 		}
@@ -195,22 +191,6 @@ pub enum NodeInput {
 
 	/// Input that is replaced at graph compilation with introspective metadata about this node's location.
 	Reflection(DocumentNodeMetadata),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct InlineRust {
-	pub expr: String,
-	pub ty: Type,
-}
-
-impl InlineRust {
-	pub fn new(expr: String, ty: Type) -> Self {
-		Self { expr, ty }
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
@@ -263,7 +243,6 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Import { .. } => true,
-			NodeInput::Inline(_) => false,
 			NodeInput::Scope(_) => false,
 			NodeInput::Reflection(_) => false,
 		}
@@ -275,7 +254,6 @@ impl NodeInput {
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			// Stored import types are normalized to their structural form once at document migration
 			NodeInput::Import { import_type, .. } => import_type.clone(),
-			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
 			NodeInput::Reflection(_) => concrete!(Metadata),
 		}
@@ -335,13 +313,11 @@ pub enum DocumentNodeImplementation {
 	///
 	/// This is explained in more detail here: <https://www.youtube.com/watch?v=72KJa3jQClo>
 	///
-	/// Currently we use it for GPU execution, where a node has to get "extracted" to its source code representation and stored as a value that can be given to the GpuCompiler node at runtime
-	/// (to become a compute shader). Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
+	/// Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
 	/// We would use an assortment of nodes that operate on Graphene source code (just data, no different from any other data flowing through the graph) to make graph transformations.
 	///
 	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Just like we often deal with lambdas to represent a whole group of
-	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the GPU SPIR-V compiler the source code for a lambda,
-	/// not the executable logic of a lambda.
+	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, rather than its executable logic.
 	///
 	/// This is analogous to how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a
 	/// DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
@@ -1202,7 +1178,6 @@ impl NodeNetwork {
 							*import_index = parent_input_index;
 						}
 						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-						NodeInput::Inline(_) => (),
 						NodeInput::Scope(_) => unreachable!("Scope inputs should have been resolved by resolve_scope_inputs_recursive before flattening"),
 						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
 					}

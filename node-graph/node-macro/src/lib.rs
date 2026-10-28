@@ -1,8 +1,6 @@
-use crate::crate_ident::CrateIdent;
 use proc_macro::TokenStream;
 use proc_macro_error2::proc_macro_error;
 
-mod buffer_struct;
 mod codegen;
 mod crate_ident;
 mod derive_choice_type;
@@ -67,11 +65,4 @@ pub fn derive_destructure(input_item: TokenStream) -> TokenStream {
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
 pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
 	derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
-}
-
-/// Derive a struct to implement `ShaderStruct`, see that for docs.
-#[proc_macro_derive(BufferStruct)]
-pub fn derive_buffer_struct(input_item: TokenStream) -> TokenStream {
-	let crate_ident = CrateIdent::default();
-	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item).unwrap_or_else(|err| err.to_compile_error()))
 }

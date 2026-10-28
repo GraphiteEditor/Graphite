@@ -1,11 +1,7 @@
-#![cfg_attr(not(feature = "std"), no_std)]
-
 pub mod blending;
 pub mod choice_type;
 pub mod color;
 pub mod context;
-pub mod list;
-pub mod shaders;
 
 pub use context::Ctx;
 pub use glam;

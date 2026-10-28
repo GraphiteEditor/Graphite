@@ -22,8 +22,6 @@ members = [
 	"node-graph/libraries/graphene-hash",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
-	"node-graph/nodes/raster/shaders",
-	"node-graph/nodes/raster/shaders/entrypoint",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/nodes/gstd",
@@ -155,7 +153,6 @@ wgpu = { version = "30.0", default-features = false, features = [
 	"webgl",
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
-	"spirv",
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
@@ -255,11 +252,6 @@ rfd = "0.17"
 open = "5.3"
 spin = "0.10"
 clap = "4.5"
-
-# Ensure these are kept in sync with .nix/deps/rust-gpu.nix
-spirv-std = { version = "0.10.0", features = ["bytemuck"] }
-cargo-gpu-install = { version = "0.10.0", default-features = false }
-
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"
@@ -267,8 +259,7 @@ linesweeper = "0.4"
 smallvec = "1.13.2"
 zip = { version = "8", default-features = false }
 
-[workspace.lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+[workspace.lints]
 
 [profile.dev]
 opt-level = 1

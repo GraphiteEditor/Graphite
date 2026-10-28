@@ -48,7 +48,6 @@ let
         pkgs.graphviz
       ];
     }
-    deps.rustGPU
     (lib.optionalAttrs desktop (
       {
         libs = [
