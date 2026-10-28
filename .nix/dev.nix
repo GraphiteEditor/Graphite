@@ -23,7 +23,7 @@ let
         pkgs.nodejs
         pkgs.binaryen
         pkgs.wasm-bindgen-cli_0_2_127
-        pkgs.cargo-about
+        deps.cargoAbout
 
         pkgs.rustc
         pkgs.cargo
