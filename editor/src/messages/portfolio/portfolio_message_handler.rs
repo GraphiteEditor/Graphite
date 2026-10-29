@@ -409,12 +409,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
-
-					if let Some(storage) = document.storage() {
-						used_resources.extend(storage.all_referenced_resource_hashes());
-					}
-					// A step taken back on undo names resources nothing else refers to until it is redone.
-					used_resources.extend(document.retracted_resource_hashes());
+					used_resources.extend(document.resource_gc_roots());
 				}
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {

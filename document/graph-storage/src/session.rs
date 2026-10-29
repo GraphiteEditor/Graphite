@@ -1020,6 +1020,14 @@ impl Session {
 		hashes
 	}
 
+	/// The resource bytes garbage collection must keep: everything referenced, plus what `retracted` (the ops of steps
+	/// this peer took back, which a redo restages) names, since nothing else here refers to those.
+	pub fn resource_gc_roots<'a>(&self, retracted: impl IntoIterator<Item = &'a RegistryDelta>) -> HashSet<ResourceHash> {
+		let mut roots = self.all_referenced_resource_hashes();
+		roots.extend(retracted.into_iter().filter_map(RegistryDelta::resource_hash));
+		roots
+	}
+
 	/// Every proto-node declaration resource referenced by the current registry or anywhere in history,
 	/// with its content hash, or `None` where the hash never resolved.
 	pub fn all_declaration_resources(&self) -> HashMap<ResourceId, Option<ResourceHash>> {

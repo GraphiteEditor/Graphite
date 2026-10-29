@@ -963,8 +963,9 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	// Nothing in storage names the step's declaration bytes, so the step held for redo must keep them from garbage collection.
+	let storage = editor.active_document().storage().unwrap();
 	assert!(
-		editor.active_document().retracted_resource_hashes().next().is_some(),
+		!editor.active_document().resource_gc_roots().is_subset(&storage.all_referenced_resource_hashes()),
 		"the retracted step names its declaration resource"
 	);
 

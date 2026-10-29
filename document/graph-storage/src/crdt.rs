@@ -218,6 +218,18 @@ pub enum RegistryDelta {
 	Other(Value),
 }
 
+impl RegistryDelta {
+	/// The resource bytes this op needs on hand, which history keeps referencing even once the registry moves on.
+	pub fn resource_hash(&self) -> Option<ResourceHash> {
+		match self {
+			RegistryDelta::AddResource { entry, .. } => entry.hash,
+			RegistryDelta::RemoveResource { snapshot, .. } => snapshot.hash,
+			RegistryDelta::SetResourceHash { hash, .. } => *hash,
+			_ => None,
+		}
+	}
+}
+
 /// `value: None` means remove. The timestamp comes from the wrapping `Delta`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct AttributeDelta {

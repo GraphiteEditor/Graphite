@@ -74,14 +74,7 @@ impl History {
 	/// (idempotent re-apply) overwrites the existing entry in place rather than appending, so the
 	/// order and index are unchanged.
 	pub fn push(&mut self, delta: Delta) {
-		match &delta.kind {
-			RegistryDelta::AddResource { entry, .. } => self.resource_hashes.extend(entry.hash),
-			RegistryDelta::RemoveResource { snapshot, .. } => self.resource_hashes.extend(snapshot.hash),
-			RegistryDelta::SetResourceHash { hash: Some(hash), .. } => {
-				self.resource_hashes.insert(*hash);
-			}
-			_ => {}
-		}
+		self.resource_hashes.extend(delta.kind.resource_hash());
 		if let Some(&position) = self.index.get(&delta.id) {
 			self.deltas[position] = delta;
 			return;
