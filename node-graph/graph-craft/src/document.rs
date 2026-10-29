@@ -9,7 +9,7 @@ use core_types::{Context, Cow, MemoHash, NodeCompileMetadata, NodeParameter, Pro
 use dyn_any::DynAny;
 use glam::IVec2;
 use log::Metadata;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -949,6 +949,9 @@ impl NodeNetwork {
 		for node in self.nodes.values_mut() {
 			node.normalize_stored_types();
 		}
+		for definition in self.definitions.values_mut() {
+			definition.normalize_stored_types();
+		}
 	}
 
 	/// Replace all references in the graph of a node ID with a new node ID defined by the function `f`.
@@ -1441,7 +1444,11 @@ impl NodeNetwork {
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
 		let nodes = self.nodes.iter().map(|(id, node)| (id, node, Vec::new())).collect();
-		RecursiveNodeIter { nodes }
+		RecursiveNodeIter {
+			definitions: &self.definitions,
+			visited_definitions: FxHashSet::default(),
+			nodes,
+		}
 	}
 
 	/// Ensure the cached list of dependants exactly matches the real list of dependants
@@ -1479,6 +1486,8 @@ impl NodeNetwork {
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
+	definitions: &'a FxHashMap<DefinitionId, NodeNetwork>,
+	visited_definitions: FxHashSet<DefinitionId>,
 	nodes: Vec<(&'a NodeId, &'a DocumentNode, Vec<NodeId>)>,
 }
 
@@ -1486,7 +1495,12 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 	type Item = (&'a NodeId, &'a DocumentNode, Vec<NodeId>);
 	fn next(&mut self) -> Option<Self::Item> {
 		let (current_id, node, path) = self.nodes.pop()?;
-		if let DocumentNodeImplementation::Network(network) = &node.implementation {
+		let nested_network = match &node.implementation {
+			DocumentNodeImplementation::Network(network) => Some(network),
+			DocumentNodeImplementation::Definition(id) if self.visited_definitions.insert(*id) => self.definitions.get(id),
+			_ => None,
+		};
+		if let Some(network) = nested_network {
 			self.nodes.extend(network.nodes.iter().map(|(id, node)| {
 				let mut nested_path = path.clone();
 				nested_path.push(*current_id);
@@ -2200,5 +2214,23 @@ mod test {
 
 		network.definitions.get_mut(&ADD).unwrap().exports.push(NodeInput::node(NodeId(0), 0));
 		assert_ne!(network.current_hash(), before);
+	}
+
+	#[test]
+	fn recursive_nodes_visit_each_definition_once() {
+		let network = two_add_instances();
+		let body_paths = network.recursive_nodes().map(|(_, _, path)| path).filter(|path| !path.is_empty()).collect::<Vec<_>>();
+		assert_eq!(body_paths.len(), add_network().nodes.len());
+		assert!(body_paths.windows(2).all(|pair| pair[0] == pair[1]));
+
+		let (first, second) = (DefinitionId(2), DefinitionId(3));
+		let cyclic = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
+			[
+				(first, network_with([(NodeId(10), DocumentNodeImplementation::Definition(second))], [])),
+				(second, network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], [])),
+			],
+		);
+		assert_eq!(cyclic.recursive_nodes().count(), 3);
 	}
 }

@@ -1137,6 +1137,9 @@ pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl Fn
 	for node in network.nodes.values() {
 		visit_node_resources(node, visit);
 	}
+	for definition in network.definitions.values() {
+		visit_network_resources(definition, visit);
+	}
 }
 
 pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {

@@ -140,6 +140,9 @@ impl NodeNetworkInterface {
 	pub fn migrate_path_modify_node(&mut self) {
 		self.migrate_graph(fix_network);
 		fn fix_network(network: &mut NodeNetwork) {
+			for definition in network.definitions.values_mut() {
+				fix_network(definition);
+			}
 			for node in network.nodes.values_mut() {
 				if let Some(network) = node.implementation.get_network_mut() {
 					fix_network(network);
@@ -207,12 +210,14 @@ mod network_interface_tests {
 		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
 
 		let mut network_metadata = NodeNetworkMetadata::default();
+		let mut instance_metadata = DocumentNodeMetadata::default();
+		instance_metadata.persistent_metadata.output_names = vec![String::new()];
 		for id in instances {
-			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
+			network_metadata.persistent_metadata.node_metadata.insert(id, instance_metadata.clone());
 		}
 		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
 
-		let interface = NodeNetworkInterface::from_trees(network, network_metadata);
+		let interface = NodeNetworkInterface::from_trees(network.clone(), network_metadata.clone());
 
 		let paths = instances.map(|id| [id]);
 		let views = paths.each_ref().map(|path| interface.view(path).unwrap());
@@ -224,5 +229,18 @@ mod network_interface_tests {
 		assert_eq!(document_view.reference(&NodeId(10)), Ok(Some(DefinitionIdentifier::Network("Artboard".into()))));
 		assert_eq!(document_view.number_of_outputs(&NodeId(10)), Ok(1));
 		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
+
+		let mut mismatched_network = network;
+		mismatched_network.nodes.get_mut(&NodeId(11)).unwrap().inputs.push(NodeInput::value(TaggedValue::None, false));
+		network_metadata
+			.persistent_metadata
+			.node_metadata
+			.get_mut(&NodeId(11))
+			.unwrap()
+			.persistent_metadata
+			.input_metadata
+			.push(InputMetadata::default());
+		let mismatched = NodeNetworkInterface::from_trees(mismatched_network, network_metadata);
+		assert_eq!(mismatched.validate_invariants().len(), 1);
 	}
 }

@@ -198,6 +198,7 @@ impl NodeGraphExecutor {
 		// We should always invalidate the cache.
 		self.node_graph_hash = crate::application::generate_uuid();
 		let mut network = document.network_interface.document_network().clone();
+		network.inline_definitions().map_err(|error| error.to_string())?;
 		let instrumented = Instrumented::new(&mut network);
 
 		let resources = document.resources.registry.clone();
@@ -729,7 +730,7 @@ impl NodeGraphExecutor {
 		// On this throwaway clone, redirect each level's export down to the Fill, un-hiding the Fill and its enclosing subnetworks so it's measured as a real Fill rather than a passthrough.
 		// But upstream generators keep their visibility, so a hidden one intentionally contributes no geometry.
 		let full_path: Vec<NodeId> = network_path.iter().copied().chain(std::iter::once(fill_node_id)).collect();
-		if !redirect_export_chain(&mut network, &full_path) {
+		if network.inline_definitions().is_err() || !redirect_export_chain(&mut network, &full_path) {
 			// The fill was deleted or is otherwise unreachable, so drop its stale entry instead of retrying it on every open
 			log::warn!("Gradient migration: could not redirect the document network's export chain to fill node {fill_node_id:?}; dropping its pending gradient bake");
 			remove_pending_gradient_bake(document, &network_path, fill_node_id);

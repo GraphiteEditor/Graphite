@@ -3556,11 +3556,11 @@ fn modifications_following_turned_segments(network: &graph_craft::document::Node
 		};
 
 		// Where the output comes from: the node itself, or the nodes a network node exports
-		let sources: Vec<Location> = match &origin_node.implementation {
-			DocumentNodeImplementation::Network(nested) => (0..nested.exports.len())
+		let sources: Vec<Location> = match network.implementation_network(&origin_node.implementation) {
+			Some(nested) => (0..nested.exports.len())
 				.filter_map(|output| producing_node(network, origin_path, &NodeInput::node(*origin_id, output), 0))
 				.collect(),
-			_ => vec![origin.clone()],
+			None => vec![origin.clone()],
 		};
 
 		let mut reached = HashSet::new();
@@ -3618,9 +3618,9 @@ fn producing_node(network: &graph_craft::document::NodeNetwork, network_path: &[
 	match input {
 		NodeInput::Node { node_id, output_index } => {
 			let node = network.nested_network(network_path)?.nodes.get(node_id)?;
-			match &node.implementation {
-				DocumentNodeImplementation::Network(nested) => producing_node(network, &[network_path, &[*node_id]].concat(), nested.exports.get(*output_index)?, depth + 1),
-				_ => Some((network_path.to_vec(), *node_id)),
+			match network.implementation_network(&node.implementation) {
+				Some(nested) => producing_node(network, &[network_path, &[*node_id]].concat(), nested.exports.get(*output_index)?, depth + 1),
+				None => Some((network_path.to_vec(), *node_id)),
 			}
 		}
 		NodeInput::Import { import_index, .. } => {
