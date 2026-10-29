@@ -9,7 +9,7 @@ use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
-use crate::node_graph_executor::NodeRuntime;
+use crate::node_graph_executor::{EvaluationErrors, NodeRuntime};
 use crate::task::{Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use document_container::store::MemoryStore;
@@ -68,7 +68,7 @@ impl EditorTestUtils {
 	/// Submit an evaluation to the executor, run the runtime, and process the results.
 	///
 	/// If a deferred message triggers a second graph run, this will not occur. See [`Self::eval_graph_until_finished`] for this behaviour.
-	async fn eval_graph_once(&mut self) -> Result<Instrumented, String> {
+	async fn eval_graph_once(&mut self) -> Result<Instrumented, TestGraphError> {
 		let portfolio = &mut self.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
@@ -76,17 +76,23 @@ impl EditorTestUtils {
 
 		let instrumented = match executor.update_node_graph_instrumented(document) {
 			Ok(instrumented) => instrumented,
-			Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
+			Err(e) => return Err(TestGraphError::Other(format!("update_node_graph_instrumented failed\n\n{e}"))),
 		};
 
 		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
-			return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
+			return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
 		}
 		self.runtime.run().await;
 
 		let frontend_messages = self.dispatch(Message::Wake);
-		if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
-			return Err("Graph should render".to_string());
+		let evaluation_errors = self.portfolio_message_handler_mut().executor.take_evaluation_errors();
+		if evaluation_errors.is_none() && frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+			return Err(TestGraphError::Render);
+		}
+		#[cfg(feature = "gpu")]
+		let evaluation_errors = evaluation_errors.filter(|errors| !errors.iter().all(|(error, _)| error.is::<wgpu_executor::NoGpuError>()));
+		if let Some(errors) = evaluation_errors {
+			return Err(TestGraphError::Evaluation(errors));
 		}
 
 		for message in frontend_messages {
@@ -97,7 +103,7 @@ impl EditorTestUtils {
 	}
 
 	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
-	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, String> {
+	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, TestGraphError> {
 		const MAX_ITERATIONS: usize = 16;
 		for _iteration in 0..MAX_ITERATIONS {
 			let execution_id = self.portfolio_message_handler().executor.current_execution_id();
@@ -107,7 +113,7 @@ impl EditorTestUtils {
 				return Ok(result);
 			}
 		}
-		return Err(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping"));
+		return Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")));
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
@@ -416,6 +422,23 @@ impl FrontendMessageTestUtils for FrontendMessage {
 	}
 }
 
+#[derive(Debug)]
+pub enum TestGraphError {
+	Evaluation(EvaluationErrors),
+	Render,
+	Other(String),
+}
+
+impl std::fmt::Display for TestGraphError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Evaluation(errors) => write!(f, "Graph evaluation failed:\n{errors}"),
+			Self::Render => write!(f, "Graph should render"),
+			Self::Other(message) => write!(f, "{message}"),
+		}
+	}
+}
+
 thread_local! {
 	static CAPTURED_ERRORS: std::cell::RefCell<Option<Vec<String>>> = const { std::cell::RefCell::new(None) };
 }
@@ -491,7 +514,7 @@ pub mod test_prelude {
 	pub use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, is_layer_fed_by_node_of_name};
 	pub use crate::messages::tool::utility_types::ToolType;
 	pub use crate::node_graph_executor::NodeRuntime;
-	pub use crate::test_utils::EditorTestUtils;
+	pub use crate::test_utils::{EditorTestUtils, TestGraphError};
 	pub use core::f64;
 	pub use glam::{DVec2, IVec2};
 	pub use graph_craft::document::DocumentNode;

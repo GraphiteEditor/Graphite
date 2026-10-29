@@ -58,7 +58,7 @@ pub type NodeErrorTrace = Box<[NodePaths]>;
 pub type NodePaths = Box<[Box<[NodeId]>]>;
 
 impl EvaluationErrors {
-	fn iter(&self) -> impl Iterator<Item = (&(dyn std::error::Error + Send + Sync), &NodeErrorTrace)> {
+	pub(crate) fn iter(&self) -> impl Iterator<Item = (&(dyn std::error::Error + Send + Sync + 'static), &NodeErrorTrace)> {
 		self.0.iter().map(|(error, trace)| (&**error, trace))
 	}
 }
@@ -97,6 +97,11 @@ pub struct NodeGraphExecutor {
 	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	previous_node_to_inspect: Vec<NodeId>,
+	/// The canvas images the frontend holds, so a render sends only those it lacks.
+	canvas_images_sent: HashSet<u64>,
+	/// Evaluation errors of the last evaluation, used in tests
+	#[cfg(test)]
+	evaluation_errors: Option<EvaluationErrors>,
 	// TODO: Eventually remove this document upgrade code
 	/// In-progress one-time pre-pass that converts legacy bounding-box-relative gradients to absolute space, if any.
 	gradient_migration: Option<GradientMigration>,
@@ -104,8 +109,6 @@ pub struct NodeGraphExecutor {
 	/// Documents whose gradient migration pass already ran this session, so entries that failed to measure
 	/// (kept pending for a retry on the next open) don't re-run the pass on every render request.
 	gradient_migration_attempted: HashSet<DocumentId>,
-	/// The canvas images the frontend holds, so a render sends only those it lacks.
-	canvas_images_sent: HashSet<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -140,17 +143,19 @@ impl NodeGraphExecutor {
 		let node_runtime = NodeRuntime::new(request_receiver, response_sender, editor_wake);
 
 		let node_executor = Self {
-			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_receiver,
+			futures: Default::default(),
+			pending: None,
+			current_execution_id: 0,
 			node_graph_hash: 0,
 			node_graph_document: None,
-			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
+			canvas_images_sent: HashSet::new(),
+			#[cfg(test)]
+			evaluation_errors: None,
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
-			pending: None,
-			canvas_images_sent: HashSet::new(),
 		};
 		(node_executor, node_runtime)
 	}
@@ -164,6 +169,12 @@ impl NodeGraphExecutor {
 	#[cfg(test)]
 	pub fn current_execution_id(&self) -> u64 {
 		self.current_execution_id
+	}
+
+	/// Allows the test runner to access last executions evaluation errors.
+	#[cfg(test)]
+	pub fn take_evaluation_errors(&mut self) -> Option<EvaluationErrors> {
+		self.evaluation_errors.take()
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack.
@@ -519,10 +530,28 @@ impl NodeGraphExecutor {
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
 					}
 
+					#[cfg(test)]
+					{
+						self.evaluation_errors = None;
+					}
 					let node_graph_output = match result {
 						ExecutionResult::Pending => Ok(None),
-						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(Some(value)),
-						ExecutionResult::Error(errors) => Err(errors.to_string()),
+						ExecutionResult::Value(value) => Ok(Some(value)),
+						ExecutionResult::Fallback(value, _errors) => {
+							#[cfg(test)]
+							{
+								self.evaluation_errors = Some(_errors);
+							}
+							Ok(Some(value))
+						}
+						ExecutionResult::Error(errors) => {
+							let message = errors.to_string();
+							#[cfg(test)]
+							{
+								self.evaluation_errors = Some(errors);
+							}
+							Err(message)
+						}
 						ExecutionResult::Panic(payload) => {
 							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
 							Err(format!("Panicked: {}", message.unwrap_or("no message")))

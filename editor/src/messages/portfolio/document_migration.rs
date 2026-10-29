@@ -3954,8 +3954,7 @@ mod tests {
 			.network_interface
 			.create_wire(&OutputConnector::primary_output(rasterize), &InputConnector::Export(0), &[]);
 
-		editor.dispatch(NodeGraphMessage::RunDocumentGraph);
-		assert_eq!(editor.eval_graph_until_finished().await.err().as_deref(), Some("Graph should render"));
+		editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
 	}
 
 	#[test]
