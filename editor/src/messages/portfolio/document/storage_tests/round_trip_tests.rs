@@ -702,7 +702,7 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	// Second autosave verifies the round-trip again; retirement follows a policy, not the commit, so retire before expecting history.
+	// Second autosave verifies the round-trip again, and retiring turns the edit into history
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
@@ -962,7 +962,7 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
 	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
-	// Nothing in storage names the step's declaration bytes, so the step held for redo must keep them from garbage collection.
+	// The step held for redo keeps its declaration bytes, which nothing in storage names, from garbage collection
 	let storage = editor.active_document().storage().unwrap();
 	assert!(
 		!editor.active_document().resource_gc_roots().is_subset(&storage.all_referenced_resource_hashes()),

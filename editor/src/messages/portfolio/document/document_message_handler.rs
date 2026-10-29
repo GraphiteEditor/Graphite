@@ -1,5 +1,4 @@
 use super::document_diff::diff_networks;
-use super::document_history::UndoNote;
 use super::node_graph::{document_node_definitions, node_inspector};
 use super::utility_types::error::EditorError;
 use super::utility_types::layers_in_view::LayersInView;
@@ -37,11 +36,8 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use document_container::AnyContainer;
 use document_graph_storage::Declarations;
-
-/// The document attribute holding the document's name, so a session shares it and a rename reaches every peer.
-pub const DOCUMENT_NAME_ATTRIBUTE: &str = "name";
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::{ResourceId, ResourceStorage};
+use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceStorage};
 use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
@@ -59,6 +55,9 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// The document attribute holding the document's name, shared by a session so a rename reaches every peer.
+pub const DOCUMENT_NAME_ATTRIBUTE: &str = "name";
 
 #[derive(ExtractField)]
 pub struct DocumentMessageContext<'a> {
@@ -177,8 +176,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore")]
 	pub(crate) container: Option<AnyContainer>,
-	/// What peers changed in the working registry that the interface does not show yet, applied once every declaration it
-	/// needs is cached. Local edits are constructed against the registry, not diffed from the interface, so none reverts these.
+	/// What peers changed in the working registry that the interface does not show yet, held until every declaration it needs is cached.
 	#[serde(skip)]
 	pub(crate) pending_remote: document_format::network::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
@@ -2379,55 +2377,46 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
-	/// Path to the subnetwork that the user's selection is currently scoped to.
-	/// Empty when the selection lives in the root document network.
 	/// The network the node graph shows, from the document network down.
 	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
 		&self.breadcrumb_network_path
 	}
 
-	/// Write the document's name into its registry as [`DOCUMENT_NAME_ATTRIBUTE`]. No-op without a working copy or when the
-	/// registry already holds this name.
+	/// The name the working copy's registry holds as [`DOCUMENT_NAME_ATTRIBUTE`].
+	fn stored_name(&self) -> Option<&str> {
+		let attribute = self.storage()?.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE).filter(|attribute| !attribute.deleted)?;
+		match &attribute.value {
+			document_graph_storage::Value::Str(name) => Some(name),
+			_ => None,
+		}
+	}
+
+	/// Write the document's name into its registry as [`DOCUMENT_NAME_ATTRIBUTE`] unless it already holds it.
 	pub fn stage_name_attribute(&mut self) {
-		let name = self.name.clone();
-		let Some(gdd) = self.storage_mut() else { return };
-		if gdd
-			.registry()
-			.attributes
-			.get(DOCUMENT_NAME_ATTRIBUTE)
-			.is_some_and(|value| !value.deleted && matches!(&value.value, document_graph_storage::Value::Str(held) if *held == name))
-		{
+		if self.stored_name() == Some(self.name.as_str()) {
 			return;
 		}
 		let delta = document_graph_storage::AttributeDelta {
 			key: DOCUMENT_NAME_ATTRIBUTE.to_string(),
-			value: Some(document_graph_storage::Value::Str(name)),
+			value: Some(document_graph_storage::Value::Str(self.name.clone())),
 		};
+		let Some(gdd) = self.storage_mut() else { return };
 		if let Err(error) = gdd.stage_ops([document_graph_storage::RegistryDelta::ChangeDocumentAttribute { delta }]) {
 			log::error!("Staging the document name failed: {error}");
 		}
 	}
 
-	/// Take the name the registry holds, after peers changed it. Returns whether the name changed.
+	/// Take the name the registry holds. Returns whether the name changed.
 	pub fn adopt_name_from_storage(&mut self) -> bool {
-		let Some(name) = self
-			.storage()
-			.and_then(|gdd| gdd.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE))
-			.filter(|value| !value.deleted)
-			.and_then(|value| match &value.value {
-				document_graph_storage::Value::Str(name) => Some(name.clone()),
-				_ => None,
-			})
-		else {
+		let Some(name) = self.stored_name().filter(|name| *name != self.name).map(str::to_string) else {
 			return false;
 		};
-		if name == self.name {
-			return false;
-		}
 		self.name = name;
 		true
 	}
 
+	/// Path to the subnetwork that the user's selection is currently scoped to.
+	/// Empty when the selection lives in the root document network.
 	pub fn selection_network_path(&self) -> &[NodeId] {
 		&self.selection_network_path
 	}
@@ -2484,7 +2473,7 @@ impl DocumentMessageHandler {
 		let view_settings = self.storage_view_settings();
 		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
 
-		// The interface lags the registry by what peers changed, so the two only agree once that is applied.
+		// The interface lags the registry until what peers changed is applied
 		if validate && self.pending_remote.is_empty() {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
 		}
@@ -2552,8 +2541,8 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Rebuild the runtime resource registry from storage. The preprocessor resolves `Resource` inputs through it, so an
-	/// interface swapped in from storage needs it refreshed alongside. Keeps the current registry on failure.
+	/// Rebuild the runtime resource registry from storage, keeping the current one on failure. The preprocessor resolves
+	/// `Resource` inputs through it, so it must follow any interface change that comes from storage.
 	fn refresh_resource_registry(&mut self) {
 		let Some(storage) = self.history.storage() else { return };
 
@@ -2563,9 +2552,8 @@ impl DocumentMessageHandler {
 		}
 	}
 
-	/// Stages what the interface recorded since the last drain, so a session sends each movement in the frame it was made
-	/// rather than at the next commit. Nothing else a commit does is done here.
-	pub(crate) fn stage_pending_edits(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage) {
+	/// Stages what the interface recorded since the last drain, without the view state a commit also persists.
+	pub(crate) fn stage_pending_edits(&mut self, byte_store: &dyn ResourceStorage) {
 		let deltas = self.network_interface.take_deltas();
 		if deltas.is_empty() {
 			return;
@@ -2573,10 +2561,10 @@ impl DocumentMessageHandler {
 		self.history.stage_graph(&deltas, &self.network_interface, &self.resources.registry, byte_store);
 	}
 
-	/// Brings the interface into line with what peers changed in the registry. Returns whether nothing is
-	/// left pending: a declaration still on its way keeps the changes for a later call.
+	/// Brings the interface into line with what peers changed in the registry, reconciling the touched entities in place
+	/// and rebuilding it whole only when the registry was rederived or the reconcile failed.
 	///
-	/// The touched entities are reconciled in place; only a registry rederived wholesale or a failed reconcile rebuilds it all.
+	/// Returns false when a declaration is still on its way, keeping the changes for a later call.
 	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
 		let changes = std::mem::take(&mut self.pending_remote);
 		if changes.is_empty() {
@@ -2607,8 +2595,7 @@ impl DocumentMessageHandler {
 		true
 	}
 
-	/// What a rebuild does for the whole interface, for the networks a reconcile changed: drops what the
-	/// changed nodes feed and re-derives the layer structure.
+	/// Does for the networks a reconcile changed what a rebuild does for the whole interface.
 	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, responses: &mut VecDeque<Message>) {
 		for path in &reconciled.networks {
 			if self.network_interface.document_network().nested_network(path).is_none() {
@@ -2637,12 +2624,12 @@ impl DocumentMessageHandler {
 	}
 
 	/// Cache a resource received from a peer as a proto-node declaration, so a rebuild can resolve it.
-	pub(crate) fn cache_declaration_bytes(&mut self, hash: graph_craft::application_io::resource::ResourceHash, bytes: &[u8]) {
+	pub(crate) fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) {
 		self.history.cache_declaration_bytes(hash, bytes);
 	}
 
-	/// Declaration resources the working copy names whose bytes are on hand but not yet decoded.
-	pub(crate) fn undecoded_declaration_hashes(&self) -> Vec<graph_craft::application_io::resource::ResourceHash> {
+	/// The hashes of declaration resources the working copy names but holds no decoded declaration for.
+	pub(crate) fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
 		self.history.undecoded_declaration_hashes()
 	}
 
@@ -2981,51 +2968,32 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
-		// Settled first, since the storage-driven paths below move snapshots without going through `undo`
+		// The storage path below skips `undo`, which settles a glide before the snapshot moves
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
-		// A hot step is taken back and never becomes history. Its legacy snapshot predates what peers wrote since, so the
-		// interface follows the registry on just the entities the step named instead. Only a retired step moves the cursor.
-		if self.history.has_undo_step()
-			&& let Some(ops) = self.history.retract_storage_interaction()
-		{
-			if let Some(snapshot) = self.history.pop_undo() {
-				self.history.push_redo(snapshot);
-			}
-			self.history.note_undo(UndoNote::Retracted(ops));
+		// The legacy snapshot predates what peers wrote since, so the interface follows only the entities storage changed
+		if self.history.undo_in_storage(self.is_in_session()) {
 			self.follow_storage_changes(responses);
 			return;
 		}
-		// In a session a retired step is public: it is dropped out of the shared line, by the retirer or on
-		// request, and the room follows the head. Nothing else in a session may install a legacy snapshot.
+		// A session's history is shared, so no legacy snapshot may be installed
 		if self.is_in_session() {
-			if self.history.has_undo_step()
-				&& let Some(rev) = self.history.undo_retired_step()
-			{
-				if let Some(snapshot) = self.history.pop_undo() {
-					self.history.push_redo(snapshot);
-				}
-				self.history.note_undo(UndoNote::Dropped(rev));
-				self.follow_storage_changes(responses);
-			}
 			return;
 		}
 
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
+			self.history.note_cursor_undo();
 			true
 		} else {
 			false
 		};
-		if legacy_applied {
-			self.history.note_undo(UndoNote::Cursor);
-		}
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
-	/// An action from the History panel: storage performs it, the interface follows on the entities it named, and the
-	/// legacy snapshots go since they describe states off the head's line.
-	fn apply_history_action(&mut self, action: impl FnOnce(&mut super::document_history::DocumentHistory), responses: &mut VecDeque<Message>) {
+	/// Performs an action from the History panel in storage and has the interface follow it. The legacy snapshots are
+	/// dropped since they describe states off the head's line.
+	fn apply_history_action(&mut self, action: impl FnOnce(&mut DocumentHistory), responses: &mut VecDeque<Message>) {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
 		}
@@ -3038,18 +3006,13 @@ impl DocumentMessageHandler {
 		responses.add(EventMessage::SelectionChanged);
 	}
 
-	/// Bring the interface into line with what storage just changed under it by reconciling the entities those ops named,
-	/// as for remote changes. Anything a peer wrote meanwhile stays as the interface holds it.
+	/// Reconciles the interface with what storage just changed under it, as for remote changes.
 	fn follow_storage_changes(&mut self, responses: &mut VecDeque<Message>) {
 		if let Some(gdd) = self.history.storage_mut() {
 			let changes = gdd.take_remote_changes();
 			self.pending_remote.extend(changes);
 		}
 		self.apply_remote_changes(responses);
-		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-		responses.add(NodeGraphMessage::SelectedNodesUpdated);
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
 	}
 
 	fn is_in_session(&self) -> bool {
@@ -3090,19 +3053,9 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
-		// Settled first, as when undoing
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
-		// A step taken back is gone from every hot log, so its redo stages the ops afresh as a new edit, followed as for the undo.
-		if self.history.has_redo_step() && self.history.next_redo_is_storage_driven() {
-			if let Some(snapshot) = self.history.pop_redo() {
-				self.history.push_undo(snapshot);
-			}
-			match self.history.take_undo_note() {
-				UndoNote::Retracted(ops) => self.history.restage_ops(ops),
-				UndoNote::Dropped(rev) => self.history.redo_retired_step(rev),
-				UndoNote::Cursor => {}
-			}
+		if self.history.redo_in_storage() {
 			self.follow_storage_changes(responses);
 			return;
 		}
@@ -3112,13 +3065,11 @@ impl DocumentMessageHandler {
 
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
+			self.history.forget_undo_note();
 			true
 		} else {
 			false
 		};
-		if legacy_applied {
-			self.history.take_undo_note();
-		}
 		self.drive_storage_undo_redo(document_id, legacy_applied, false, validate, responses);
 	}
 
@@ -4352,8 +4303,8 @@ impl DocumentMessageHandler {
 		self.resources.collect_garbage(&used_resources);
 	}
 
-	/// See [`DocumentHistory::resource_gc_roots`].
-	pub fn resource_gc_roots(&self) -> HashSet<graph_craft::application_io::resource::ResourceHash> {
+	/// The resource bytes garbage collection must keep for the stored document.
+	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
 		self.history.resource_gc_roots()
 	}
 
