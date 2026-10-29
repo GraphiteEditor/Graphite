@@ -1,0 +1,13 @@
+[package]
+name = "migration-snapshot"
+description = "Freezes Graphite's stored document types into migration-formats and checks them against the latest frozen version"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+syn = { workspace = true }
+proc-macro2 = { workspace = true }
+quote = { workspace = true }

@@ -10,6 +10,7 @@ pub enum Action {
 	Build,
 	Explore(Option<String>),
 	Drive,
+	Migration,
 }
 
 pub enum Target {
@@ -37,6 +38,16 @@ impl Task {
 		if args.first() == Some(&"drive") {
 			return Some(Task {
 				action: Action::Drive,
+				target: Target::Web,
+				profile: Profile::Default,
+				args: args[1..].iter().map(|s| s.to_string()).collect(),
+			});
+		}
+
+		// Everything after `migration` belongs to the format snapshot tool
+		if args.first() == Some(&"migration") {
+			return Some(Task {
+				action: Action::Migration,
 				target: Target::Web,
 				profile: Profile::Default,
 				args: args[1..].iter().map(|s| s.to_string()).collect(),

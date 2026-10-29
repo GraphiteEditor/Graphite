@@ -10,10 +10,10 @@ use document_graph_storage::{HotOp, Rev, TimeStamp, Value};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
+use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
-use crate::session_state::SessionState;
 use crate::{Gdd, MANIFEST_CODEC, io};
 
 impl<L: Layout> Gdd<L> {

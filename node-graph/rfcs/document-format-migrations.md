@@ -246,7 +246,7 @@ Translation of later deltas falls out of the same formula. If a migration insert
 
 ## Two tiers
 
-**Format migrations** step the serialized payloads (registry, history records, session) from `format_version` `n` to `n + 1`. They freeze old struct shapes locally, and their history rewrite is per record. A format change that cannot be expressed per record uses `Truncate` (see below). History-only data that no state captures (annotations, authorship) is also format-tier territory.
+**Format migrations** step the serialized payloads (registry, history records, session) from `format_version` `n` to `n + 1`. They decode with the frozen types of version `n` and encode with those of `n + 1` (see "Frozen format versions"), never with the live types, and their history rewrite is per record. A format change that cannot be expressed per record uses `Truncate` (see below). History-only data that no state captures (annotations, authorship) is also format-tier territory.
 
 **Node migrations** run after the document is deserialized at the current format version, one history rewrite pass per migration, in dependency order.
 
@@ -384,6 +384,16 @@ Migrations register themselves the way nodes do. On native targets the generated
 
 Which migrations a binary ships is decided by which migration crates it links, selected with cargo features. A linked crate that nothing references can be discarded by the linker, so each binary references every enabled migration crate (`use nodes_2026 as _;` behind its feature).
 
+## Frozen format versions
+
+Every stored type lives in `graph-storage`'s `schema` module: the registry, deltas, hot ops, session state, and proto-node declarations, with the impls their encoding depends on. Behavior stays in the rest of the crate. `ResourceId` and `ResourceHash` stay in `graphene-resource`, whose encoding of them is fixed.
+
+`cargo run migration snapshot` freezes the module into `migration-formats` as `v<N>`. A version declares again only the types whose definition or impls changed, plus every type reaching one, since `v<N>::Node` must refer to `v<N>::NodeInput`. Everything else is re-exported from `v<N - 1>`, so an unchanged type is the same Rust type in both versions and a format step converts only what changed. Comparison ignores docs, visibility, and formatting. A change to a leaf like `Value` still declares almost every type again, while a new `Delta` field declares few.
+
+`cargo run migration check` fails in CI when the live module no longer matches `latest`, naming the changed types, or when `SUPPORTED_FORMAT_VERSION` isn't the latest frozen version. It also fails when a stored field names a type defined outside the module. A round-trip test encodes live documents through `latest` and compares the results, which catches what comparing definitions can't, such as a changed serde impl in a dependency.
+
+Format steps depend only on `migration-formats`, never on `graph-storage`, so the infrastructure can change without touching old migrations.
+
 ## API change detection
 
 A CLI subcommand dumps `NODE_METADATA` (identifier, version, input names and types, output type) as JSON. CI dumps it for the change and for the baseline (the merge base with `master`, cached from master builds), diffs the two, and checks the registered migrations:
@@ -410,11 +420,13 @@ Every migration ships with:
 document/migrations/
 ├── core/     migration-core: views, connectors, `decl!`, registry, Payload, errors, re-exporting `#[migration]` and `rename!`
 ├── macros/   migration-macros: `#[migration]` and `rename!`
+├── formats/  migration-formats: the frozen stored types of every format version
+├── snapshot/ migration-snapshot: `cargo run migration snapshot` and `check`
 ├── runner/   migration-runner: format chaining, ordering, history rewrite, fast path, settling, Rev mapping, translation of older peers' deltas
 └── <sets>    migration crates, one per era or area, selected per binary by cargo features
 ```
 
-`migration-core` depends on `serde`, `postcard`, `thiserror`, `ctor`, and `graph-storage` without default features. Migration crates depend only on `migration-core` and their own frozen mirrors and encoders.
+`migration-core` depends on `serde`, `postcard`, `thiserror`, `ctor`, and `graph-storage` without default features. Node migration crates depend only on `migration-core`, and format steps also on `migration-formats`.
 
 # Rationale and alternatives
 

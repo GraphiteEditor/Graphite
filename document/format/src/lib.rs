@@ -29,16 +29,15 @@ pub mod layout;
 pub mod manifest;
 pub mod persist;
 pub mod resource;
-pub mod session_state;
 
 pub use codec::{Codec, CodecError};
+pub use document_graph_storage::SessionState;
 pub use error::Error;
 pub use export::{ExportFormat, ExportOptions};
 pub use io::ReadError;
 pub use layout::{GddV1Layout, Layout};
 pub use manifest::{Manifest, PayloadCodecs};
 pub use resource::ResourceProxy;
-pub use session_state::SessionState;
 
 /// The default [`Layout`], so callers write `GddV1` for the common `Gdd<GddV1Layout>` handle.
 pub type GddV1 = Gdd<GddV1Layout>;

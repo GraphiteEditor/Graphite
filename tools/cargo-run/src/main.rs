@@ -18,6 +18,7 @@ fn usage() {
 	println!("  build        Build the selected target");
 	println!("  explore      Open an assortment of tools for exploring the codebase");
 	println!("  drive        Drive the web editor in an isolated browser (see `cargo run drive help`)");
+	println!("  migration    Freeze or check the stored document format (see `cargo run migration help`)");
 	println!("  help         Show this message");
 	println!("<target>:");
 	println!("  [web]        Web app (default)");
@@ -50,6 +51,9 @@ fn main() -> ExitCode {
 
 	if matches!(task.action, Action::Drive) {
 		return drive(&task);
+	}
+	if matches!(task.action, Action::Migration) {
+		return migration(&task);
 	}
 
 	if let Err(e) = run_task(&task) {
@@ -93,6 +97,18 @@ fn drive(task: &Task) -> ExitCode {
 	// Run from the caller's own folder, which relative paths in the arguments are written from
 	let driver = cmd!("cargo", "run", "--quiet", "--package", "web-editor-driver", "--").args(&task.args).unchecked();
 	match Expression::run(&driver) {
+		Ok(output) => ExitCode::from(output.status.code().and_then(|code| u8::try_from(code).ok()).unwrap_or(1)),
+		Err(e) => {
+			eprintln!("Error: {e}");
+			ExitCode::FAILURE
+		}
+	}
+}
+
+// Exits with the tool's own status, so CI reads a failed check from it
+fn migration(task: &Task) -> ExitCode {
+	let tool = cmd!("cargo", "run", "--quiet", "--package", "migration-snapshot", "--").args(&task.args).unchecked();
+	match Expression::run(&tool) {
 		Ok(output) => ExitCode::from(output.status.code().and_then(|code| u8::try_from(code).ok()).unwrap_or(1)),
 		Err(e) => {
 			eprintln!("Error: {e}");
@@ -145,7 +161,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				profile = match action {
 					Action::Run => &Profile::Debug,
 					Action::Build => &Profile::Release,
-					Action::Explore(_) | Action::Drive => unreachable!(),
+					Action::Explore(_) | Action::Drive | Action::Migration => unreachable!(),
 				}
 			}
 
@@ -172,7 +188,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 		(Action::Build, Target::Cli, Profile::Debug) => cmd!("cargo", "build", "-p", "graphene-cli").run()?,
 		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => cmd!("cargo", "build", "-r", "-p", "graphene-cli").run()?,
 
-		(Action::Explore(_) | Action::Drive, _, _) => unreachable!(),
+		(Action::Explore(_) | Action::Drive | Action::Migration, _, _) => unreachable!(),
 	}
 	Ok(())
 }

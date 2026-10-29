@@ -1,27 +1,5 @@
-use crate::{Attributes, NetworkId, NodeId, ResourceId, TimeStamp, Value, attributes_value_equal};
-use serde::{Deserialize, Serialize};
-use std::borrow::Cow;
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Node {
-	/// The latest addition or write, so a concurrent removal resolves by stamp; see [`Registry::removed_nodes`](crate::Registry::removed_nodes).
-	#[serde(default)]
-	pub(crate) presence: TimeStamp,
-	pub(crate) network: NetworkId,
-	/// When the node was last added, which decides its network between concurrent additions of one id.
-	#[serde(default)]
-	pub(crate) network_timestamp: TimeStamp,
-	pub(crate) implementation: Implementation,
-	/// When the implementation was last written, so a swap resolves by last-writer-wins rather than by
-	/// the order ops happen to arrive in. Absent from documents written before swaps were expressible.
-	#[serde(default)]
-	pub(crate) implementation_timestamp: TimeStamp,
-	pub(crate) inputs: Vec<InputSlot>,
-	/// When the input list last changed shape, so list and slot writes resolve alike in either order.
-	#[serde(default)]
-	pub(crate) inputs_timestamp: TimeStamp,
-	pub(crate) attributes: Attributes,
-}
+use crate::registry::attributes_value_equal;
+use crate::{Attributes, Implementation, InputSlot, Network, NetworkId, Node, NodeInput, TimeStamp, Value};
 
 impl Node {
 	pub fn implementation(&self) -> &Implementation {
@@ -89,17 +67,8 @@ impl Node {
 
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
-		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(ResourceId::new()), 0)
+		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(crate::ResourceId::new()), 0)
 	}
-}
-
-/// One positional input. The timestamp drives LWW on concurrent `ChangeNodeInput` ops targeting
-/// the same `(node_id, input_idx)`.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct InputSlot {
-	pub input: NodeInput,
-	pub timestamp: TimeStamp,
-	pub attributes: Attributes,
 }
 
 impl InputSlot {
@@ -116,47 +85,6 @@ impl InputSlot {
 			attributes: Attributes::empty_at(timestamp),
 		}
 	}
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum NodeInput {
-	Node {
-		id: NodeId,
-		index: u32,
-	},
-	Value {
-		value: Value,
-		exposed: bool,
-	},
-	Scope(Cow<'static, str>),
-	Import {
-		index: u32,
-	},
-	/// Marker; the `DocumentNodeMetadata` lives in `inputs_attributes`.
-	Reflection,
-	Other,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Implementation {
-	/// References a proto-node declaration resource (see [`ProtoNode`]); the binding to content lives
-	/// in `Registry.resources` like any other resource.
-	ProtoNode(ResourceId),
-	Network(NetworkId),
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Network {
-	/// The latest addition or write; see [`Node::presence`](crate::Node).
-	#[serde(default)]
-	pub(crate) presence: TimeStamp,
-	pub exports: Vec<ExportSlot>,
-	/// When the export list last changed shape; see [`Node::inputs_timestamp`](crate::Node).
-	#[serde(default)]
-	pub(crate) exports_timestamp: TimeStamp,
-	/// Per-network `ui::*` state (navigation, previewing). Separate from `Node.attributes` so
-	/// view-state edits LWW independently.
-	pub attributes: Attributes,
 }
 
 impl Network {
@@ -179,27 +107,10 @@ impl Network {
 	}
 }
 
-/// One positional export slot. `target == None` marks an empty/removed slot. Timestamp drives LWW
-/// on concurrent `SetExport` ops.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct ExportSlot {
-	pub target: Option<NodeInput>,
-	pub timestamp: TimeStamp,
-}
-
-/// Content of a proto-node declaration. Stored as a content-addressed resource (serialized bytes
-/// keyed by `ResourceHash`, held by the `Gdd` byte store) and referenced from
-/// `Implementation::ProtoNode(ResourceId)`. `document-graph-storage` itself only holds the reference.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ProtoNode {
-	pub identifier: String,
-	pub attributes: Attributes,
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::TimeStamp;
+	use crate::{ExportSlot, NodeId, TimeStamp};
 
 	fn target_slot(node_id: u64) -> ExportSlot {
 		ExportSlot {

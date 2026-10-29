@@ -10,6 +10,7 @@ pub mod model;
 mod prior;
 pub mod registry;
 pub mod resources;
+pub mod schema;
 pub mod session;
 mod touched;
 pub mod value;
@@ -22,17 +23,13 @@ pub mod metadata_source;
 pub mod to_runtime;
 
 pub use attributes::*;
-pub use crdt::*;
 pub use document::*;
 pub use history::{History, rehash_deltas};
 pub use ids::*;
-pub use model::*;
-pub use prior::{NetworkField, NodeField, Prior};
-pub use registry::*;
-pub use resources::*;
+pub use schema::*;
 pub use session::*;
 pub use touched::Touched;
-pub use value::{Value, ValueError, from_value, to_value};
+pub use value::{ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
 pub use from_runtime::{
