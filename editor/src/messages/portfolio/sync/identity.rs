@@ -1,16 +1,19 @@
-//! How a person is shown wherever the editor names one: the stand-in for someone unnamed, and the colour that
-//! follows a user id through the cursors, the Session panel and the History panel.
+//! How a person is shown: a stand-in name while unnamed, and a colour. Both derive from the user id alone, so every
+//! peer shows the same ones without anything on the wire.
 
 use document_graph_storage::UserId;
 
-/// A stand-in for a person who has not given a name, the same on every device of theirs and everywhere
-/// in the room, since it comes from the user id alone.
+/// Spreads user ids, which may be small or sequential, over the whole range.
+fn scramble(user: UserId) -> u64 {
+	user.0.wrapping_mul(0x9E37_79B9_7F4A_7C15)
+}
+
 pub(crate) fn anonymous_name(user: UserId) -> String {
-	let index = (user.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 40) as usize % ANONYMOUS_ANIMALS.len();
+	let index = (scramble(user) >> 40) as usize % ANONYMOUS_ANIMALS.len();
 	format!("Anonymous {}", ANONYMOUS_ANIMALS[index])
 }
 
-pub(crate) const ANONYMOUS_ANIMALS: [&str; 64] = [
+const ANONYMOUS_ANIMALS: [&str; 64] = [
 	"Alligator",
 	"Anteater",
 	"Armadillo",
@@ -77,10 +80,9 @@ pub(crate) const ANONYMOUS_ANIMALS: [&str; 64] = [
 	"Turtle",
 ];
 
-/// A colour for a person derived from their user id, so every peer sees the same one without anything on the
-/// wire, and one person has one colour across their tabs and in the history.
+/// A hue picked by the user id, at a fixed saturation and lightness, as `#rrggbb`.
 pub(crate) fn user_color(user: UserId) -> String {
-	let hue = (user.0.wrapping_mul(0x9E37_79B9_7F4A_7C15) >> 32) % 360;
+	let hue = (scramble(user) >> 32) % 360;
 	let (h, s, l): (f64, f64, f64) = (hue as f64 / 60., 0.65, 0.5);
 	let c = (1. - (2. * l - 1.).abs()) * s;
 	let x = c * (1. - (h % 2. - 1.).abs());

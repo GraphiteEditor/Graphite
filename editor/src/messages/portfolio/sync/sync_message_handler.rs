@@ -8,11 +8,17 @@ use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use crate::messages::viewport::Position;
+use document_format::GddV1;
 use document_graph_storage::{HistoryMetadata, UserId, user_attr};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
-use peer_transport::{CursorPosition, CursorSpace, DEFAULT_SIGNALING_SERVER, Event, Incoming, RemotePeer, Role, Room, SessionToken, SyncTarget};
+use peer_transport::{CursorPosition, CursorSpace, DEFAULT_SIGNALING_SERVER, Event, Incoming, MessageLoopFuture, RemotePeer, Role, Room, SessionToken, SyncTarget, TransportPeerId};
 use std::collections::HashSet;
+
+/// How long a peer in a room without a host waits for one to greet it before taking the role itself.
+const ROLE_GRACE_MS: f64 = 1_500.;
+/// How long a document whose transport went down waits before it tries its room again.
+const RECONNECT_AFTER_MS: f64 = 3_000.;
 
 #[derive(ExtractField)]
 pub struct SyncMessageContext<'a> {
@@ -25,31 +31,28 @@ pub struct SyncMessageContext<'a> {
 	pub current_tool_icon: String,
 }
 
-/// Drives every document's collaborative session: attaches transports, polls them once per frame and as
-/// packets arrive, and turns remote changes into interface rebuilds.
+/// Drives every document's collaborative session: connects them to their rooms, polls the rooms each frame and
+/// whenever a packet arrives, and applies remote changes to the interface.
 #[derive(Debug, Default, ExtractField)]
 pub struct SyncMessageHandler {
-	/// The session link waiting for the document created to join it.
+	/// The document being created to join a session link, with that link.
 	pending_join: Option<(DocumentId, SessionToken)>,
 	polling: bool,
-	/// Each connected document's room inbox, tagged with the connection it belongs to. One wake future is in
-	/// flight per entry: it resolves to a `Wake`, which polls and arms the next one.
+	/// Each connected document's room inbox, with the generation of its connection.
 	incoming: HashMap<DocumentId, (u32, Incoming)>,
 	connections: u32,
-	/// Documents whose registry changed remotely since their interface was last rebuilt.
+	/// Documents with remote changes not yet applied to their interface.
 	dirty: HashSet<DocumentId>,
-	/// Documents that just took the host's state on: once their interface follows and the graph has run, the
-	/// viewport is fitted to the document, so a guest sees what it joined rather than an empty canvas.
+	/// Documents that just synced with the host, whose viewport is fitted to the content once it is applied.
 	fit_after_sync: HashSet<DocumentId>,
-	/// When each document connected to its room still undecided, so the host role is taken once no host has
-	/// greeted it for the grace period.
+	/// When each document still without a host started waiting for one.
 	undecided_since: HashMap<DocumentId, f64>,
+	/// Why applying each dirty document waits, as last logged.
 	blocked_reason: HashMap<DocumentId, String>,
-	/// Declarations being read from the byte store to be decoded, so a document waiting on them asks once.
+	/// Held declarations being read from the byte store to be decoded.
 	decoding: HashSet<(DocumentId, ResourceHash)>,
-	/// The pointer position last sent for each connected document, so one is sent only when it moved.
+	/// The pointer position last sent for each connected document.
 	last_cursor: HashMap<DocumentId, Option<CursorPosition>>,
-	/// The other peers' pointers over the node graph as last sent to the frontend.
 	graph_cursors: Vec<FrontendRemoteCursor>,
 	document_cursors: Vec<FrontendRemoteCursor>,
 	/// When each document whose transport went down is next to be reconnected.
@@ -71,27 +74,22 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 
 		match message {
 			SyncMessage::Share => {
-				let Some(document) = active_document_id.and_then(|id| documents.get_mut(&id)) else { return };
-				let Some(gdd) = document.storage_mut() else {
+				let Some(document_id) = active_document_id else { return };
+				let Some(document) = documents.get_mut(&document_id) else { return };
+				let Some(gdd) = document.storage() else {
 					log::warn!("Cannot share a document before its working copy is mounted");
 					return;
 				};
 				if gdd.role().is_some() {
 					return;
 				}
-				// Guests learn the name from the registry.
 				document.stage_name_attribute();
 				let Some(gdd) = document.storage_mut() else { return };
-
-				let document_id = active_document_id.expect("checked above");
-				let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
-				// The panel shows the link; the clipboard gets it too, so sharing stays one step.
-				responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
-				responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
-				self.start_polling(responses);
+				self.host(document_id, gdd, preferences, responses);
 			}
 			SyncMessage::Join { token } => {
-				if token.trim().is_empty() {
+				let token = token.trim();
+				if token.is_empty() {
 					return;
 				}
 				let token = match token.parse::<SessionToken>() {
@@ -112,23 +110,18 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) else {
 					return;
 				};
-				// Retirement runs on the frame tick, so every document polls, shared or not.
+				// Every document polls, shared or not, since retirement runs on the frame tick
 				self.start_polling(responses);
 				if let Some((_, token)) = self.pending_join.take_if(|(join_id, _)| *join_id == document_id) {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 					let incoming = room.incoming();
 					gdd.join(room, UserId(preferences.user_id));
 					announce_name(gdd, &preferences.user_name);
-
-					self.attach(document_id, incoming, responses);
-					responses.add(driver_future(document_id, self.connections, driver));
+					self.attach(document_id, incoming, driver, responses);
 					refresh_session_views(responses);
-					self.start_polling(responses);
 				} else if gdd.is_shared() && gdd.role().is_none() {
-					// The document was in its room when it was last persisted: a reload rejoins on its own.
 					self.connect_document(document_id, gdd, preferences, responses);
 				} else {
-					// The panel may have shown the document still mounting.
 					responses.add(SyncMessage::RefreshPanel);
 				}
 			}
@@ -138,9 +131,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					return;
 				};
 				gdd.leave();
-				self.incoming.remove(&document_id);
-				self.last_cursor.remove(&document_id);
-				self.reconnect_at.remove(&document_id);
+				self.detach(document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::Fork => {
@@ -148,34 +139,26 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				let Some(document) = documents.get_mut(&document_id) else { return };
 				document.stage_name_attribute();
 				let Some(gdd) = document.storage_mut() else { return };
-				// The room is derived from the manifest's document id, so a fresh id is a fresh room. A guest
-				// already rewrites the id when it joins, and the working copy's directory is keyed by the editor's
-				// own id, so nothing moves on disk.
 				gdd.leave();
-				self.incoming.remove(&document_id);
-				self.last_cursor.remove(&document_id);
-				if let Err(error) = gdd.update_manifest(|manifest| manifest.document_id = crate::application::generate_uuid()) {
+				self.detach(document_id);
+				// The room derives from the manifest's document id, so a fresh id is a fresh room
+				if let Err(error) = gdd.update_manifest(|manifest| manifest.document_id = generate_uuid()) {
 					log::error!("Forking the session failed: {error}");
 					refresh_session_views(responses);
 					return;
 				}
-				let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
-				responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
-				responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
-				self.start_polling(responses);
+				self.host(document_id, gdd, preferences, responses);
 			}
 			SyncMessage::Disconnected { document_id, generation } => {
-				if self.incoming.get(&document_id).is_none_or(|(current, _)| *current != generation) {
+				if !self.is_current(document_id, generation) {
 					return;
 				}
-				// The transport went down under a document that meant to stay in its room: it stays shared, so
-				// the panel shows it disconnected and offers to reconnect, and a reopen reconnects on its own.
+				self.detach(document_id);
+				// The document stays shared, so it reconnects after a pause and when it is reopened
 				if let Some(gdd) = documents.get_mut(&document_id).and_then(|document| document.storage_mut()) {
 					gdd.disconnect();
 					self.reconnect_at.insert(document_id, now_ms() + RECONNECT_AFTER_MS);
 				}
-				self.incoming.remove(&document_id);
-				self.last_cursor.remove(&document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::RefreshPanel => {
@@ -185,200 +168,22 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					layout_target: LayoutTarget::SessionPanel,
 				});
 			}
-			SyncMessage::Poll | SyncMessage::Wake { .. } => {
-				// A wake names the connection it was armed for; one from a connection since left is nothing to act on.
-				let woken = match message {
-					SyncMessage::Wake { document_id, generation } => {
-						if self.incoming.get(&document_id).is_none_or(|(current, _)| *current != generation) {
-							return;
-						}
-						Some(document_id)
-					}
-					_ => None,
-				};
-				let resources = resource_storage.resources_mut();
-				for (&document_id, document) in documents.iter_mut() {
-					// Closed transactions retire by the working copy's policy, once enough have waited long enough, never on a gesture.
-					let idle = document.network_interface.transaction_status() == TransactionStatus::Finished;
-					if let Some(gdd) = document.storage_mut()
-						&& let Err(error) = gdd.retire_due(now_ms(), idle)
-					{
-						log::error!("Retirement failed: {error}");
-					}
-					// Record the person behind this copy in the document's users, so whoever opens it later can name every step's author.
-					if let Some(gdd) = document.storage_mut() {
-						record_profile(gdd, preferences);
-					}
-					// A document whose transport went down tries again after a pause, for as long as it is meant to be shared.
-					if self.reconnect_at.get(&document_id).is_some_and(|&due| now_ms() >= due)
-						&& let Some(gdd) = document.storage_mut()
-					{
-						self.reconnect_at.remove(&document_id);
-						if gdd.is_shared() && gdd.role().is_none() {
-							log::info!("Reconnecting {document_id:?} to its session");
-							self.connect_document(document_id, gdd, preferences, responses);
-						}
-					}
-					if document.storage().is_none_or(|gdd| gdd.role().is_none()) {
-						continue;
-					}
-					// A document without a host, connected that way or left that way by a host that went before
-					// syncing it, takes the role itself once no host has greeted it for the grace period.
-					if document.storage().is_some_and(|gdd| gdd.role() == Some(peer_transport::Role::Undecided)) {
-						let since = *self.undecided_since.entry(document_id).or_insert_with(now_ms);
-						if now_ms() - since >= ROLE_GRACE_MS
-							&& let Some(gdd) = document.storage_mut()
-							&& gdd.decide_role().is_some()
-						{
-							self.undecided_since.remove(&document_id);
-							refresh_session_views(responses);
-						}
-					} else {
-						self.undecided_since.remove(&document_id);
-					}
-					// Stage, and so broadcast, what the interface recorded since the last frame, so each movement reaches peers live.
-					document.stage_pending_edits(&resources);
-					// Presence rides outside the causal broadcast: the name whenever it changed, and the pointer
-					// over the active document once per frame when it moved, `None` for every other document.
-					let cursor = (Some(document_id) == active_document_id)
-						.then(|| cursor_position(document, ipp, viewport, &current_tool_icon))
-						.flatten();
-					let Some(gdd) = document.storage_mut() else { continue };
-					announce_name(gdd, &preferences.user_name);
-					if self.last_cursor.get(&document_id) != Some(&cursor) {
-						match gdd.send_cursor(cursor.clone()) {
-							Ok(()) => {
-								self.last_cursor.insert(document_id, cursor);
-							}
-							Err(error) => log::warn!("Sending the pointer position failed: {error}"),
-						}
-					}
-
-					let events = gdd.poll_peers();
-					// Taken every poll rather than on an event: a full sync a hello triggers can replace the
-					// registry with no change event to announce it.
-					let changes = gdd.take_remote_changes();
-					if !changes.is_empty() {
-						document.pending_remote.extend(changes);
-						self.dirty.insert(document_id);
-					}
-					for event in events {
-						match event {
-							Event::Synced => {
-								log::debug!("Join handshake: synced, applying the host's state");
-								refresh_session_views(responses);
-								self.dirty.insert(document_id);
-								self.fit_after_sync.insert(document_id);
-							}
-							Event::Changed => {
-								self.dirty.insert(document_id);
-							}
-							Event::ResourceRequested { from, hash } => {
-								log::debug!("Peer asked for resource {hash}");
-								responses.add(load_resource_future(document_id, from, hash, resources.clone()));
-							}
-							// The replica already put the bytes in the byte store; only the decoded form is missing.
-							Event::ResourceReceived { hash, bytes } => {
-								log::debug!("Received resource {hash} ({} bytes)", bytes.len());
-								document.cache_declaration_bytes(hash, &bytes);
-								self.dirty.insert(document_id);
-							}
-							Event::RoleChanged { role } => {
-								log::debug!("Session role is now {role:?}");
-								refresh_session_views(responses);
-							}
-							Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
-							Event::MetadataChanged => {
-								refresh_session_views(responses);
-								responses.add(HistoryMessage::Refresh);
-							}
-							// Cursors are gathered afresh below every poll, so a move needs no action of its own.
-							Event::CursorMoved { .. } => {}
-						}
-					}
+			SyncMessage::Poll => {
+				let cursor = active_cursor(documents, active_document_id, ipp, viewport, &current_tool_icon);
+				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, cursor, responses);
+			}
+			SyncMessage::Wake { document_id, generation } => {
+				if !self.is_current(document_id, generation) {
+					return;
 				}
-
-				// The other peers' pointers over the node graph go to the frontend as viewport points, like the box
-				// selection, whenever they change; the canvas overlay draws the ones over the document.
-				let graph_cursors = active_document_id
-					.and_then(|id| documents.get(&id))
-					.map(|document| graph_cursors(document, preferences))
-					.unwrap_or_default();
-				if graph_cursors != self.graph_cursors {
-					self.graph_cursors = graph_cursors.clone();
-					responses.add(FrontendMessage::UpdateNodeGraphCursors { cursors: graph_cursors });
-				}
-				let document_cursors = active_document_id
-					.and_then(|id| documents.get(&id))
-					.map(|document| document_cursors(document, preferences))
-					.unwrap_or_default();
-				if document_cursors != self.document_cursors {
-					self.document_cursors = document_cursors.clone();
-					responses.add(FrontendMessage::UpdateDocumentCursors { cursors: document_cursors });
-				}
-
-				// Apply only once every referenced resource is in the app cache, and never underneath an
-				// open transaction, whose tool state names nodes a peer may have removed.
-				for document_id in self.dirty.clone() {
-					let Some(document) = documents.get_mut(&document_id) else {
-						self.dirty.remove(&document_id);
-						continue;
-					};
-					let Some(gdd) = document.storage() else { continue };
-					let missing = SyncTarget::missing_resources(gdd).len();
-					let transaction = document.network_interface.transaction_status();
-					if missing > 0 || transaction != TransactionStatus::Finished {
-						let reason = format!("missing {missing} transaction {transaction:?}");
-						if self.blocked_reason.get(&document_id) != Some(&reason) {
-							log::debug!("Applying remote changes to {document_id:?} waits: {reason}");
-							self.blocked_reason.insert(document_id, reason);
-						}
-						continue;
-					}
-					// Every resource is on hand, but a declaration held since an earlier session was never received from
-					// a peer and so never decoded: read it from the byte store, and apply once it is cached.
-					let undecoded = document.undecoded_declaration_hashes();
-					if !undecoded.is_empty() {
-						let reason = format!("decoding {} held declarations", undecoded.len());
-						if self.blocked_reason.get(&document_id) != Some(&reason) {
-							log::debug!("Applying remote changes to {document_id:?} waits: {reason}");
-							self.blocked_reason.insert(document_id, reason);
-						}
-						for hash in undecoded {
-							if self.decoding.insert((document_id, hash)) {
-								responses.add(decode_declaration_future(document_id, hash, resources.clone()));
-							}
-						}
-						continue;
-					}
-					self.blocked_reason.remove(&document_id);
-
-					// Stays dirty while a declaration the changes need is still on its way.
-					if document.apply_remote_changes(responses) {
-						self.dirty.remove(&document_id);
-						if document.adopt_name_from_storage() {
-							responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-						}
-						if self.fit_after_sync.remove(&document_id) && Some(document_id) == active_document_id {
-							log::debug!("Join handshake: the host's state is applied, fitting the viewport after the graph runs");
-							// The bounds come from the render, so the fit waits for the graph to run on the new document.
-							responses.add(DeferMessage::AfterGraphRun {
-								messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
-							});
-						}
-					}
-					// The registry names resources this peer may still have to fetch or resolve.
-					responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
-				}
-
-				// The inbox was drained above; the next arrival wakes the next poll.
-				if let Some(document_id) = woken {
-					self.arm(document_id, responses);
-				}
+				let cursor = active_cursor(documents, active_document_id, ipp, viewport, &current_tool_icon);
+				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, cursor, responses);
+				// The poll drained the inbox, so the next arrival wakes the next poll
+				self.arm(document_id, responses);
 			}
 			SyncMessage::DeclarationLoaded { document_id, hash, bytes } => {
 				let Some(bytes) = bytes else {
-					// Stays in `decoding` so it is not asked for again every frame; the document waits on it.
+					// Left in `decoding` so it is not requested again every frame
 					log::warn!("Declaration {hash} is recorded as held but the byte store has no bytes for it");
 					return;
 				};
@@ -404,9 +209,15 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 }
 
 impl SyncMessageHandler {
-	/// Connect `document_id`'s working copy to the room every copy of the document shares, and hand the
-	/// frontend the link. Returns the token, `None` when the connection could not be set up.
-	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut document_format::GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
+	/// Connects the document to its room, copies the join link to the clipboard and shows the Session panel.
+	fn host(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) {
+		let Some(token) = self.connect_document(document_id, gdd, preferences, responses) else { return };
+		responses.add(FrontendMessage::TriggerSessionLinkCopy { token: token.to_string() });
+		responses.add(WorkspaceMessage::FocusPanel { panel_type: PanelType::Session });
+	}
+
+	/// Connects the document's working copy to the room every copy of the document shares.
+	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
 		let token = SessionToken::for_document(gdd.manifest().document_id);
 		let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 		let incoming = room.incoming();
@@ -417,28 +228,40 @@ impl SyncMessageHandler {
 		announce_name(gdd, &preferences.user_name);
 		self.undecided_since.insert(document_id, now_ms());
 		self.reconnect_at.remove(&document_id);
-		self.attach(document_id, incoming, responses);
-		responses.add(driver_future(document_id, self.connections, driver));
+		self.attach(document_id, incoming, driver, responses);
 		refresh_session_views(responses);
-		self.start_polling(responses);
 		Some(token)
 	}
 
-	/// Poll `document_id`'s room as packets arrive, not only per frame: a hidden browser tab gets about one frame a second,
-	/// which would delay each step of a join by that. The wake rides on the editor's future plumbing, so desktop works alike.
-	fn attach(&mut self, document_id: DocumentId, incoming: Incoming, responses: &mut VecDeque<Message>) {
+	/// Runs a new connection's transport and polls its room as packets arrive, not only per frame, since a hidden
+	/// browser tab gets about one frame a second.
+	fn attach(&mut self, document_id: DocumentId, incoming: Incoming, driver: MessageLoopFuture, responses: &mut VecDeque<Message>) {
 		self.connections += 1;
 		self.incoming.insert(document_id, (self.connections, incoming));
 		self.arm(document_id, responses);
+		responses.add(driver_future(document_id, self.connections, driver));
+		self.start_polling(responses);
 	}
 
-	/// Put one wake future in flight for `document_id`'s current connection.
+	fn detach(&mut self, document_id: DocumentId) {
+		self.incoming.remove(&document_id);
+		self.last_cursor.remove(&document_id);
+		self.reconnect_at.remove(&document_id);
+		self.undecided_since.remove(&document_id);
+	}
+
+	/// Whether `generation` is the document's current connection.
+	fn is_current(&self, document_id: DocumentId, generation: u32) -> bool {
+		self.incoming.get(&document_id).is_some_and(|(current, _)| *current == generation)
+	}
+
+	/// Puts one wake future in flight for the document's current connection.
 	fn arm(&mut self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		let Some((generation, incoming)) = self.incoming.get(&document_id).cloned() else { return };
 		let future = async move {
 			match incoming.wait().await {
-				true => Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Wake { document_id, generation })),
-				// The room's loop ended; its driver reports the disconnection.
+				true => SyncMessage::Wake { document_id, generation }.into(),
+				// The room's loop ended, and its driver reports the disconnection
 				false => Message::NoOp,
 			}
 		};
@@ -455,50 +278,217 @@ impl SyncMessageHandler {
 			send: Box::new(SyncMessage::Poll.into()),
 		});
 	}
+
+	fn poll(
+		&mut self,
+		documents: &mut HashMap<DocumentId, DocumentMessageHandler>,
+		active_document_id: Option<DocumentId>,
+		resources: ResourcesHandle,
+		preferences: &PreferencesMessageHandler,
+		active_cursor: Option<CursorPosition>,
+		responses: &mut VecDeque<Message>,
+	) {
+		for (&document_id, document) in documents.iter_mut() {
+			let cursor = (Some(document_id) == active_document_id).then(|| active_cursor.clone()).flatten();
+			self.poll_document(document_id, document, &resources, preferences, cursor, responses);
+		}
+
+		let active_document = active_document_id.and_then(|id| documents.get(&id));
+		let graph_cursors = active_document.map(|document| graph_cursors(document, preferences)).unwrap_or_default();
+		if graph_cursors != self.graph_cursors {
+			self.graph_cursors = graph_cursors.clone();
+			responses.add(FrontendMessage::UpdateNodeGraphCursors { cursors: graph_cursors });
+		}
+		let document_cursors = active_document.map(|document| document_cursors(document, preferences)).unwrap_or_default();
+		if document_cursors != self.document_cursors {
+			self.document_cursors = document_cursors.clone();
+			responses.add(FrontendMessage::UpdateDocumentCursors { cursors: document_cursors });
+		}
+
+		self.apply_dirty(documents, active_document_id, &resources, responses);
+	}
+
+	fn poll_document(
+		&mut self,
+		document_id: DocumentId,
+		document: &mut DocumentMessageHandler,
+		resources: &ResourcesHandle,
+		preferences: &PreferencesMessageHandler,
+		cursor: Option<CursorPosition>,
+		responses: &mut VecDeque<Message>,
+	) {
+		let idle = document.network_interface.transaction_status() == TransactionStatus::Finished;
+		let Some(gdd) = document.storage_mut() else { return };
+		if let Err(error) = gdd.retire_due(now_ms(), idle) {
+			log::error!("Retirement failed: {error}");
+		}
+		record_profile(gdd, preferences);
+		if self.reconnect_at.get(&document_id).is_some_and(|&due| now_ms() >= due) {
+			self.reconnect_at.remove(&document_id);
+			if gdd.is_shared() && gdd.role().is_none() {
+				log::info!("Reconnecting {document_id:?} to its session");
+				self.connect_document(document_id, gdd, preferences, responses);
+			}
+		}
+
+		match gdd.role() {
+			None => return,
+			Some(Role::Undecided) => {
+				let since = *self.undecided_since.entry(document_id).or_insert_with(now_ms);
+				if now_ms() - since >= ROLE_GRACE_MS && gdd.decide_role().is_some() {
+					self.undecided_since.remove(&document_id);
+					refresh_session_views(responses);
+				}
+			}
+			Some(_) => {
+				self.undecided_since.remove(&document_id);
+			}
+		}
+
+		// Broadcast the edits recorded since the last frame, so peers see each movement live
+		document.stage_pending_edits(resources);
+		let Some(gdd) = document.storage_mut() else { return };
+		announce_name(gdd, &preferences.user_name);
+		if self.last_cursor.get(&document_id) != Some(&cursor) {
+			match gdd.send_cursor(cursor.clone()) {
+				Ok(()) => {
+					self.last_cursor.insert(document_id, cursor);
+				}
+				Err(error) => log::warn!("Sending the pointer position failed: {error}"),
+			}
+		}
+
+		let events = gdd.poll_peers();
+		// Taken on every poll, since a full sync can replace the registry without a change event
+		let changes = gdd.take_remote_changes();
+		if !changes.is_empty() {
+			document.pending_remote.extend(changes);
+			self.dirty.insert(document_id);
+		}
+		for event in events {
+			match event {
+				Event::Synced => {
+					log::debug!("Synced with the host, applying its state");
+					refresh_session_views(responses);
+					self.dirty.insert(document_id);
+					self.fit_after_sync.insert(document_id);
+				}
+				Event::Changed => {
+					self.dirty.insert(document_id);
+				}
+				Event::ResourceRequested { from, hash } => {
+					log::debug!("Peer asked for resource {hash}");
+					responses.add(load_resource_future(document_id, from, hash, resources.clone()));
+				}
+				// The replica already put the bytes in the byte store, only the decoded declaration is missing
+				Event::ResourceReceived { hash, bytes } => {
+					log::debug!("Received resource {hash} ({} bytes)", bytes.len());
+					document.cache_declaration_bytes(hash, &bytes);
+					self.dirty.insert(document_id);
+				}
+				Event::RoleChanged { role } => {
+					log::debug!("Session role is now {role:?}");
+					refresh_session_views(responses);
+				}
+				Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
+				Event::MetadataChanged => {
+					refresh_session_views(responses);
+					responses.add(HistoryMessage::Refresh);
+				}
+				// Cursors are gathered afresh on every poll
+				Event::CursorMoved { .. } => {}
+			}
+		}
+	}
+
+	/// Applies the remote changes of each dirty document once every resource they reference is cached, and never
+	/// under an open transaction, whose tool state may name nodes a peer removed.
+	fn apply_dirty(&mut self, documents: &mut HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, resources: &ResourcesHandle, responses: &mut VecDeque<Message>) {
+		for document_id in self.dirty.clone() {
+			let Some(document) = documents.get_mut(&document_id) else {
+				self.dirty.remove(&document_id);
+				continue;
+			};
+			let Some(gdd) = document.storage() else { continue };
+			let missing = SyncTarget::missing_resources(gdd).len();
+			let transaction = document.network_interface.transaction_status();
+			if missing > 0 || transaction != TransactionStatus::Finished {
+				self.wait(document_id, format!("missing {missing} transaction {transaction:?}"));
+				continue;
+			}
+			// A declaration held since an earlier session was never received from a peer, so it is read from the byte store to be decoded
+			let undecoded = document.undecoded_declaration_hashes();
+			if !undecoded.is_empty() {
+				self.wait(document_id, format!("decoding {} held declarations", undecoded.len()));
+				for hash in undecoded {
+					if self.decoding.insert((document_id, hash)) {
+						responses.add(decode_declaration_future(document_id, hash, resources.clone()));
+					}
+				}
+				continue;
+			}
+			self.blocked_reason.remove(&document_id);
+
+			if document.apply_remote_changes(responses) {
+				self.dirty.remove(&document_id);
+				if document.adopt_name_from_storage() {
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				}
+				if self.fit_after_sync.remove(&document_id) && Some(document_id) == active_document_id {
+					// The bounds come from the render, so the fit waits for the graph to run
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+					});
+				}
+			}
+			responses.add(PortfolioMessage::ResolveDocumentResources { document_id });
+		}
+	}
+
+	fn wait(&mut self, document_id: DocumentId, reason: String) {
+		if self.blocked_reason.get(&document_id) != Some(&reason) {
+			log::debug!("Applying remote changes to {document_id:?} waits: {reason}");
+			self.blocked_reason.insert(document_id, reason);
+		}
+	}
 }
 
-fn driver_future(document_id: DocumentId, generation: u32, driver: peer_transport::MessageLoopFuture) -> Message {
+fn driver_future(document_id: DocumentId, generation: u32, driver: MessageLoopFuture) -> Message {
 	let future = async move {
 		if let Err(error) = driver.await {
 			log::warn!("Session transport for {document_id:?} ended: {error}");
 		}
-		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::Disconnected { document_id, generation }))
+		SyncMessage::Disconnected { document_id, generation }.into()
 	};
 	future.into()
 }
 
-/// Read a declaration the byte store already holds, so it can be decoded for a remote change that names it.
 fn decode_declaration_future(document_id: DocumentId, hash: ResourceHash, resources: ResourcesHandle) -> Message {
 	let future = async move {
 		let bytes = resources.load(hash).await.map(|resource| resource.as_ref().to_vec());
-		Message::Portfolio(PortfolioMessage::Sync(SyncMessage::DeclarationLoaded { document_id, hash, bytes }))
+		SyncMessage::DeclarationLoaded { document_id, hash, bytes }.into()
 	};
 	future.into()
 }
 
-fn load_resource_future(document_id: DocumentId, to: peer_transport::TransportPeerId, hash: ResourceHash, resources: ResourcesHandle) -> Message {
+fn load_resource_future(document_id: DocumentId, to: TransportPeerId, hash: ResourceHash, resources: ResourcesHandle) -> Message {
 	let future = async move {
-		match resources.load(hash).await {
-			Some(resource) => Message::Portfolio(PortfolioMessage::Sync(SyncMessage::ResourceLoaded {
-				document_id,
-				to,
-				hash,
-				bytes: resource.as_ref().to_vec(),
-			})),
-			None => {
-				log::warn!("A peer asked for resource {hash} which is not in the byte store");
-				Message::NoOp
-			}
+		let Some(resource) = resources.load(hash).await else {
+			log::warn!("A peer asked for resource {hash} which is not in the byte store");
+			return Message::NoOp;
+		};
+		SyncMessage::ResourceLoaded {
+			document_id,
+			to,
+			hash,
+			bytes: resource.as_ref().to_vec(),
 		}
+		.into()
 	};
 	future.into()
 }
 
-/// How long a peer that connected to an empty-looking room waits for a host's hello before it takes the
-/// role itself.
-const ROLE_GRACE_MS: f64 = 1_500.;
-
-/// A monotonic-enough millisecond clock for the retirement policy, which only ever compares differences.
+/// Wall-clock milliseconds since the Unix epoch.
 pub(crate) fn now_ms() -> f64 {
 	#[cfg(target_arch = "wasm32")]
 	{
@@ -513,19 +503,16 @@ pub(crate) fn now_ms() -> f64 {
 	}
 }
 
-/// The session state changed: the document tabs show it as a circle and the Session panel in full.
+/// Updates the session circle on the document tabs and the Session panel.
 fn refresh_session_views(responses: &mut VecDeque<Message>) {
 	responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 	responses.add(SyncMessage::RefreshPanel);
 }
 
-/// The Session panel for the active document: its state in words, the join link, the peers, and the actions
-/// that apply in that state.
 fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>, active_document_id: Option<DocumentId>, preferences: &PreferencesMessageHandler) -> Layout {
 	let heading = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).bold(true).widget_instance()]);
 	let note = |text: &str| LayoutGroup::row(vec![TextLabel::new(text).multiline(true).widget_instance()]);
 	let user_name = preferences.user_name.as_str();
-	// The name and the cursor switch are preferences, so they are the same in every session and asked for once.
 	let name_row = || {
 		LayoutGroup::row(vec![
 			TextLabel::new("Your name").table_align(true).sizing(WidgetSizing::fixed(90)).widget_instance(),
@@ -567,7 +554,6 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			.on_commit(|_| SyncMessage::Fork.into())
 			.widget_instance()
 	};
-	// The same shape in every state: the state, the actions that apply in it, then the detail.
 	let (state, actions, detail) = match gdd.role() {
 		None if gdd.is_shared() => (
 			"Disconnected, reconnecting",
@@ -596,15 +582,15 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 		Some(role) => {
 			let live = role == Role::Host || (role == Role::Guest && gdd.is_synced());
 			let token = SessionToken::for_document(gdd.manifest().document_id).to_string();
+			let copy_link_token = token.clone();
 			let copy_token = token.clone();
-			let bare_token = token.clone();
 			(
 				if live { "Live session" } else { "Connecting" },
 				vec![
 					TextButton::new("Copy Link")
 						.icon("Copy")
 						.emphasized(true)
-						.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_token.clone() }.into())
+						.on_commit(move |_| FrontendMessage::TriggerSessionLinkCopy { token: copy_link_token.clone() }.into())
 						.widget_instance(),
 					TextButton::new("Disconnect").on_commit(|_| SyncMessage::Leave.into()).widget_instance(),
 					fork(),
@@ -616,11 +602,9 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 						.tooltip_label("Session")
 						.tooltip_description("Opening the editor with this session in the link joins the room.")
 						.widget_instance(),
-					// The text itself, for the CLI or a message where a link is not wanted; the label is selectable but the
-					// editor owns the copy shortcut.
 					IconButton::new("Copy", 24)
 						.tooltip_label("Copy Session Token")
-						.on_update(move |_| FrontendMessage::TriggerClipboardWrite { content: bare_token.clone() }.into())
+						.on_update(move |_| FrontendMessage::TriggerClipboardWrite { content: copy_token.clone() }.into())
 						.widget_instance(),
 				]),
 			)
@@ -654,13 +638,13 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 	Layout(groups)
 }
 
-/// One peer in the list; an anonymous one shows its stand-in name in italics.
+/// An anonymous peer's stand-in name is shown in italics.
 fn peer_row(name: &str, anonymous: bool) -> LayoutGroup {
 	LayoutGroup::row(vec![TextLabel::new(name).italic(anonymous).widget_instance()])
 }
 
-/// Put this user's display name on the document's record of its users. An empty name is recorded only to clear one on record.
-fn record_profile(gdd: &mut document_format::GddV1, preferences: &PreferencesMessageHandler) {
+/// Puts this user's display name on the document's record of its users. An empty name is recorded only to clear one.
+fn record_profile(gdd: &mut GddV1, preferences: &PreferencesMessageHandler) {
 	let name = preferences.user_name.trim();
 	let user = UserId(preferences.user_id);
 	if name.is_empty() && gdd.metadata().user_name(user).is_none() {
@@ -671,15 +655,25 @@ fn record_profile(gdd: &mut document_format::GddV1, preferences: &PreferencesMes
 	}
 }
 
-/// Tell the room this peer's display name; a no-op when it has not changed.
-fn announce_name(gdd: &mut document_format::GddV1, name: &str) {
+fn announce_name(gdd: &mut GddV1, name: &str) {
 	if let Err(error) = gdd.set_name(name) {
 		log::warn!("Announcing the display name failed: {error}");
 	}
 }
 
-/// The pointer while it is over the viewport, in the space it is over: the node graph's network when the
-/// graph is open, the document otherwise. Rounded so jitter below a hundredth of a unit sends nothing.
+fn active_cursor(
+	documents: &HashMap<DocumentId, DocumentMessageHandler>,
+	active_document_id: Option<DocumentId>,
+	ipp: &InputPreprocessorMessageHandler,
+	viewport: &ViewportMessageHandler,
+	tool_icon: &str,
+) -> Option<CursorPosition> {
+	let document = documents.get(&active_document_id?)?;
+	cursor_position(document, ipp, viewport, tool_icon)
+}
+
+/// The pointer while it is over the viewport, in the node graph's network when the graph is open and in the document
+/// otherwise. Rounded to a hundredth of a unit, so jitter below that sends nothing.
 fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, tool_icon: &str) -> Option<CursorPosition> {
 	let mouse = ipp.mouse.position;
 	let size = viewport.size();
@@ -691,6 +685,9 @@ fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMes
 		false => (document.metadata().document_to_viewport, CursorSpace::Document),
 	};
 	let position = to_viewport.inverse().transform_point2(mouse);
+	if !position.is_finite() {
+		return None;
+	}
 	Some(CursorPosition {
 		position: [(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.],
 		space,
@@ -698,7 +695,7 @@ fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMes
 	})
 }
 
-/// The other peers' pointers over the document, in viewport pixels for the frontend, while the canvas is showing.
+/// The other peers' pointers over the document while the canvas is showing.
 fn document_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
 	if !preferences.show_remote_cursors || document.is_graph_overlay_open() {
 		return Vec::new();
@@ -708,13 +705,13 @@ fn document_cursors(document: &DocumentMessageHandler, preferences: &Preferences
 	gdd.peers()
 		.iter()
 		.filter_map(|remote| {
-			let cursor = remote.cursor.as_ref()?;
-			matches!(cursor.space, CursorSpace::Document).then(|| remote_cursor(remote, cursor, to_viewport, gdd.metadata()))
+			let cursor = remote.cursor.as_ref().filter(|cursor| matches!(cursor.space, CursorSpace::Document))?;
+			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
 		})
 		.collect()
 }
 
-/// The other peers' pointers over the network the node graph shows, in viewport pixels for the frontend.
+/// The other peers' pointers over the network the node graph shows.
 fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
 	if !preferences.show_remote_cursors || !document.is_graph_overlay_open() {
 		return Vec::new();
@@ -727,23 +724,26 @@ fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMes
 		.filter_map(|remote| {
 			let cursor = remote.cursor.as_ref()?;
 			let CursorSpace::Graph { network } = &cursor.space else { return None };
-			(*network == shown).then(|| remote_cursor(remote, cursor, to_viewport, gdd.metadata()))
+			if *network != shown {
+				return None;
+			}
+			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
 		})
 		.collect()
 }
 
-/// One pointer for the frontend: its position mapped into viewport pixels, with the peer's name, colour and tool.
-fn remote_cursor(remote: &RemotePeer, cursor: &CursorPosition, to_viewport: DAffine2, metadata: &HistoryMetadata) -> FrontendRemoteCursor {
+/// A peer's pointer in viewport pixels, `None` when the position it sent is not a finite point.
+fn remote_cursor(remote: &RemotePeer, cursor: &CursorPosition, to_viewport: DAffine2, metadata: &HistoryMetadata) -> Option<FrontendRemoteCursor> {
 	let [x, y] = cursor.position;
 	let point = to_viewport.transform_point2(DVec2::new(x, y));
-	FrontendRemoteCursor {
+	point.is_finite().then(|| FrontendRemoteCursor {
 		x: point.x,
 		y: point.y,
 		name: display_name(remote, metadata),
 		anonymous: is_anonymous(remote, metadata),
 		color: user_color(remote.user),
 		tool: cursor.tool.clone(),
-	}
+	})
 }
 
 fn graph_to_viewport(document: &DocumentMessageHandler) -> Option<DAffine2> {
@@ -755,8 +755,7 @@ fn shown_network(document: &DocumentMessageHandler) -> Vec<u64> {
 	document.breadcrumb_network_path().iter().map(|id| id.0).collect()
 }
 
-/// The one rule for a name shown anywhere: the document's record of the user, else what the peer announced
-/// for the room, else the stand-in.
+/// The document's record of the user, else the name the peer announced to the room, else the stand-in.
 fn display_name(remote: &RemotePeer, metadata: &HistoryMetadata) -> String {
 	if let Some(name) = metadata.user_name(remote.user) {
 		return name.to_string();
@@ -770,6 +769,3 @@ fn display_name(remote: &RemotePeer, metadata: &HistoryMetadata) -> String {
 fn is_anonymous(remote: &RemotePeer, metadata: &HistoryMetadata) -> bool {
 	metadata.user_name(remote.user).is_none() && remote.name.is_empty()
 }
-
-/// How long a document whose transport went down waits before it tries its room again.
-const RECONNECT_AFTER_MS: f64 = 3_000.;
