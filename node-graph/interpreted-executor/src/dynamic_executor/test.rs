@@ -1106,25 +1106,73 @@ fn a_node_keeps_its_last_context_and_evaluates_again_with_another() {
 }
 
 #[test]
-fn a_document_node_made_of_several_proto_nodes_resolves_to_the_one_used_outside_of_it() {
-	// Document node 5 became two proto nodes, the second of them used by document node 6
-	let value_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::TypeDefault(item!(Vector)).into()), vec![NodeId(5), NodeId(0)]);
-	let mut inner_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0)]), vec![NodeId(5), NodeId(1)]);
-	inner_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
-	let mut outer_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(6)]);
-	outer_node.identifier = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+fn a_network_node_resolves_to_the_proto_node_its_export_is_wired_to() {
+	use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput};
 
-	let network = ProtoNetwork {
+	let bounding_box = ProtoNodeIdentifier::new("core_types::vector::BoundingBoxNode");
+	let value = TaggedValue::TypeDefault(item!(Vector));
+
+	// Document network 5 exports its inner node 1, read by document node 6. Its inner value node 0 is identical to the one
+	// document node 7 reads, so the two compile into one proto node that's also used outside of network 5.
+	let value_node = DocumentNode {
+		inputs: vec![NodeInput::value(value.clone(), false)],
+		implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
+		..Default::default()
+	};
+	let bounding_box_node = |input: NodeInput| DocumentNode {
+		inputs: vec![input],
+		implementation: DocumentNodeImplementation::ProtoNode(bounding_box.clone()),
+		..Default::default()
+	};
+	let inner_network = NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(1), 0)],
+		nodes: [(NodeId(0), value_node), (NodeId(1), bounding_box_node(NodeInput::node(NodeId(0), 0)))].into_iter().collect(),
+		..Default::default()
+	};
+	let document_network = NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(6), 0)],
+		nodes: [
+			(
+				NodeId(5),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::Network(inner_network),
+					..Default::default()
+				},
+			),
+			(NodeId(6), bounding_box_node(NodeInput::node(NodeId(5), 0))),
+			(NodeId(7), bounding_box_node(NodeInput::value(value.clone(), false))),
+		]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
+
+	let value_proto_node = ProtoNode::value(ConstructionArgs::Value(value.into()), vec![NodeId(5), NodeId(0)]);
+	let bounding_box_proto_node = |input: NodeId, path: Vec<NodeId>| {
+		let mut node = ProtoNode::value(ConstructionArgs::Nodes(vec![input]), path);
+		node.identifier = bounding_box.clone();
+		node
+	};
+	let proto_network = ProtoNetwork {
 		inputs: vec![],
 		output: NodeId(2),
-		nodes: vec![(NodeId(0), value_node), (NodeId(1), inner_node), (NodeId(2), outer_node)],
+		nodes: vec![
+			(NodeId(0), value_proto_node),
+			(NodeId(1), bounding_box_proto_node(NodeId(0), vec![NodeId(5), NodeId(1)])),
+			(NodeId(2), bounding_box_proto_node(NodeId(1), vec![NodeId(6)])),
+			(NodeId(3), bounding_box_proto_node(NodeId(0), vec![NodeId(7)])),
+		],
 	};
 	let mut typing_context = TypingContext::new(&crate::node_registry::NODE_REGISTRY);
-	typing_context.update(&network).unwrap();
-	let tree = BorrowTree::new(network, &typing_context).unwrap();
+	typing_context.update(&proto_network).unwrap();
+	let tree = BorrowTree::new(proto_network, &typing_context).unwrap();
 
-	assert_eq!(tree.output_node(&[NodeId(5)], NodeId(2)), Some(NodeId(1)));
-	assert_eq!(tree.output_node(&[NodeId(5), NodeId(0)], NodeId(2)), Some(NodeId(0)));
-	assert_eq!(tree.output_node(&[NodeId(6)], NodeId(2)), Some(NodeId(2)));
-	assert_eq!(tree.output_node(&[NodeId(7)], NodeId(2)), None);
+	assert_eq!(
+		tree.output_node(&document_network, &[NodeId(5)]),
+		Some(NodeId(1)),
+		"Network 5 gives the output of what its export is wired to"
+	);
+	assert_eq!(tree.output_node(&document_network, &[NodeId(5), NodeId(0)]), Some(NodeId(0)));
+	assert_eq!(tree.output_node(&document_network, &[NodeId(6)]), Some(NodeId(2)));
+	assert_eq!(tree.output_node(&document_network, &[NodeId(8)]), None);
 }

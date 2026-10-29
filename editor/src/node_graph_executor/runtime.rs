@@ -45,6 +45,7 @@ pub struct NodeRuntime {
 	dirty: Arc<AtomicBool>,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
+	/// The network the executor was last compiled from, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
 
@@ -316,7 +317,7 @@ impl NodeRuntime {
 						Vec::new()
 					};
 
-					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
 
 					let output = match &mut result {
 						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
@@ -391,7 +392,7 @@ impl NodeRuntime {
 
 		// Without an execution to send it along with, the inspected node is evaluated again with its new overrides once the graph is up to date
 		if inspect_again && let Some(inspect_state) = &mut self.inspect_state {
-			let inspect_result = inspect_state.access(&self.executor);
+			let inspect_result = inspect_state.access(&self.executor, self.old_graph.as_ref());
 			self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
 		}
 
@@ -647,8 +648,8 @@ impl InspectState {
 		})
 	}
 
-	fn access(&mut self, executor: &DynamicExecutor) -> InspectResult {
-		let node = executor.tree().output_node(&self.inspect_node_path, executor.output());
+	fn access(&mut self, executor: &DynamicExecutor, network: Option<&NodeNetwork>) -> InspectResult {
+		let node = network.and_then(|network| executor.tree().output_node(network, &self.inspect_node_path));
 		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
 
 		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));
