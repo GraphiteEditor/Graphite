@@ -18,7 +18,7 @@ fn usage() {
 	println!("  build        Build the selected target");
 	println!("  explore      Open an assortment of tools for exploring the codebase");
 	println!("  drive        Drive the web editor in an isolated browser (see `cargo run drive help`)");
-	println!("  migration    Freeze or check the stored document format (see `cargo run migration help`)");
+	println!("  migration    Freeze the stored format or scaffold node migrations (see `cargo run migration help`)");
 	println!("  help         Show this message");
 	println!("<target>:");
 	println!("  [web]        Web app (default)");

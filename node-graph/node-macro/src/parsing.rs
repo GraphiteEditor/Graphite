@@ -73,6 +73,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) flags: NodeFlags,
 	/// Fn producing an placeholder value used while node evaluation is pending
 	pub(crate) placeholder: Option<Path>,
+	/// The declaration version, starting at 1 when absent. Bumping it requires a migration from the previous version.
+	pub(crate) version: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -466,6 +468,7 @@ impl Parse for NodeFnAttributes {
 		let mut serialize = None;
 		let mut flags = NodeFlags::default();
 		let mut placeholder = None;
+		let mut version = None;
 
 		let content = input;
 		// let content;
@@ -611,6 +614,23 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., inject_scope, ...)]
+				// The version of the node's declaration. Bump it whenever its inputs or behavior change in a way older documents
+				// would load wrongly, and add a migration from the previous version (`cargo run migration new <identifier>`).
+				//
+				// Example usage:
+				// #[node_macro::node(..., version(2), ...)]
+				"version" => {
+					let meta = meta.require_list()?;
+					if version.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'version' attributes are not allowed"));
+					}
+					let literal: LitInt = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected an integer for 'version', e.g., version(2)"))?;
+					let parsed: u32 = literal.base10_parse()?;
+					if parsed == 0 {
+						return Err(Error::new_spanned(literal, "Versions start at 1"));
+					}
+					version = Some(parsed);
+				}
 				"inject_scope" => set_flag(&mut flags.inject_scope, meta, "inject_scope")?,
 				// The placeholder value used while a node's evaluation is pending.
 				//
@@ -636,7 +656,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', and 'no_partial'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -670,6 +690,7 @@ impl Parse for NodeFnAttributes {
 			serialize,
 			flags,
 			placeholder,
+			version,
 		})
 	}
 }
@@ -1780,6 +1801,24 @@ mod tests {
 		assert!(result.is_err());
 		let error_message = result.unwrap_err().to_string();
 		assert!(error_message.contains("expected a range like `0..100`, `..100`, or `0..`"));
+	}
+
+	#[test]
+	fn test_version() {
+		let input = quote!(
+			fn add(a: f64, b: f64) -> f64 {
+				a + b
+			}
+		);
+
+		let unversioned = parse_node_fn(quote!(category("Math: Arithmetic")), input.clone()).unwrap();
+		assert_eq!(unversioned.attributes.version, None);
+
+		let versioned = parse_node_fn(quote!(category("Math: Arithmetic"), version(3)), input.clone()).unwrap();
+		assert_eq!(versioned.attributes.version, Some(3));
+
+		let error_message = parse_node_fn(quote!(category("Math: Arithmetic"), version(0)), input).unwrap_err().to_string();
+		assert!(error_message.contains("Versions start at 1"));
 	}
 
 	#[test]

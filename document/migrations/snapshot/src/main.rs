@@ -1,10 +1,13 @@
-//! Freezes the stored document types (`graph-storage`'s `schema` module) into `migration-formats` as one format version,
-//! and checks that the live types still match the latest frozen version.
+//! `cargo run migration`: freezes the stored document types (`graph-storage`'s `schema` module) into `migration-formats`
+//! as one format version with the step from the previous one, checks that the live types still match the latest frozen
+//! version, and scaffolds node migrations into `migration-nodes`.
 //!
 //! A new version declares again only the types that changed, plus every type reaching one, and re-exports the rest from
 //! the previous version. So format steps convert only what changed, and old versions never depend on the live crate.
 
+mod nodes;
 mod plan;
+mod scaffold;
 mod step;
 mod types;
 
@@ -26,7 +29,15 @@ fn usage() {
 	println!();
 	println!("<command>:");
 	println!("  check       Fail if the stored types changed since the latest frozen format version");
-	println!("  snapshot    Freeze the stored types as the next format version");
+	println!("  snapshot    Freeze the stored types as the next format version, with the step from the previous one");
+	println!("  new <identifier>");
+	println!("              Scaffold the migration of a node from the version before its current `version(N)`");
+	println!("  new <old identifier>@<version> <identifier>");
+	println!("              Scaffold the migration replacing a removed node by another");
+	println!("  rename <old identifier>@<version> <identifier>");
+	println!("              Register that a node only moved to a new identifier");
+	println!();
+	println!("A node is named by its full identifier, or by a function name or identifier suffix only one node has.");
 	println!();
 }
 
@@ -34,9 +45,11 @@ fn main() -> ExitCode {
 	let workspace = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../..");
 	let workspace = workspace.canonicalize().unwrap_or(workspace);
 
-	let result = match std::env::args().nth(1).as_deref() {
+	let arguments: Vec<String> = std::env::args().skip(1).collect();
+	let result = match arguments.first().map(String::as_str) {
 		Some("check") => check(&workspace),
 		Some("snapshot") => snapshot(&workspace),
+		Some(command @ ("new" | "rename")) => scaffold::scaffold(&workspace, command, &arguments[1..]),
 		Some("help" | "--help") => {
 			usage();
 			return ExitCode::SUCCESS;

@@ -870,6 +870,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		..
 	} = attributes.flags;
 	let asynchronous = parsed.is_async;
+	let version = attributes.version.unwrap_or(1);
 	// A node returning a `Destructure` struct records its fields as output connectors
 	let output_fields = match may_return_destructure_struct(parsed) {
 		true => {
@@ -1101,6 +1102,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						inject_scope: #inject_scope,
 						asynchronous: #asynchronous,
 					},
+					version: #version,
 					output_fields: #output_fields,
 					fields: vec![
 						#(

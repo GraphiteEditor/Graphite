@@ -1,6 +1,6 @@
 [package]
 name = "migration-snapshot"
-description = "Freezes Graphite's stored document types into migration-formats and checks them against the latest frozen version"
+description = "The `cargo run migration` CLI: freezes Graphite's stored document types per format version and scaffolds node migrations"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -11,3 +11,4 @@ publish = false
 syn = { workspace = true }
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
+convert_case = { workspace = true }

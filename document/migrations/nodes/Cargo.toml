@@ -1,0 +1,10 @@
+[package]
+name = "migration-nodes"
+description = "Node migrations of Graphite documents, scaffolded by `cargo run migration new`"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+migration-core = { workspace = true, features = ["typed"] }

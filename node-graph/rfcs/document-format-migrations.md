@@ -39,7 +39,7 @@ fn opacity<T>(/* ... */) -> Item<T> {
 }
 ```
 
-A declaration is identified by `identifier@version`. Declaration resources are content-addressed from that pair, so the same declaration has the same `ResourceId` on every peer, and a document states the exact version of every node it contains.
+The macro records the version in `NODE_METADATA` as `NodeMetadata::version`. A declaration is identified by `identifier@version`. Declaration resources are content-addressed from that pair, so the same declaration has the same `ResourceId` on every peer, and a document states the exact version of every node it contains.
 
 A node's **lineage** is the chain of declarations connected by migrations. Every migration bumps the version by one, including renames, so `identifier@version` never repeats within a lineage even if a node is renamed back and forth (`a@1 → b@2 → a@3`). The version declared on a node is its position in its lineage. It is declared rather than derived because a binary shipping only a subset of migration crates can't count the lineage.
 
@@ -430,7 +430,13 @@ A CLI subcommand dumps `NODE_METADATA` (identifier, version, input names and typ
 | Version bumped | A migration from the previous version is registered. |
 | Migration registered | `target.version == source.version + 1`, and the dependency order has no cycle. |
 
-The scaffold command printed by a failing check (`cargo run new-migration <identifier>`) generates the migration file with its attribute and registration. Migrations don't need input shapes: positions come from the anchor's instance, the source version guarantees the layout, and inserted nodes list every input explicitly.
+The scaffold commands, which a failing check prints, find the node in the `node-graph` sources with its identifier (the `path(...)` override or the module path, then the Pascal-case function name and `Node`) and its `version(N)`, and write into `migration-nodes`, a module per node crate and a file per step:
+
+- `cargo run migration new <identifier>` scaffolds `#[migration("<identifier>"@N-1 => @N)]`, refusing a node still at version 1.
+- `cargo run migration new <old>@<version> <identifier>` scaffolds the replacement of a removed node, checking that the new node is at `version + 1`.
+- `cargo run migration rename <old>@<version> <identifier>` appends a finished `rename!` to the crate module's `renames.rs`.
+
+A node is named by its full identifier, or by a function name or identifier suffix only one node has. The scaffolded body is a `compile_error!` naming the parameters a migration can take, so it can't ship unwritten. Migrations don't need input shapes: positions come from the anchor's instance, the source version guarantees the layout, and inserted nodes list every input explicitly.
 
 ## Testing
 
@@ -446,7 +452,8 @@ document/migrations/
 ├── core/     migration-core: views, connectors, `decl!`, registry, Payload, errors, re-exporting `#[migration]` and `rename!`
 ├── macros/   migration-macros: `#[migration]` and `rename!`
 ├── formats/  migration-formats: the frozen stored types of every format version
-├── snapshot/ migration-snapshot: `cargo run migration snapshot` and `check`
+├── snapshot/ migration-snapshot: the `cargo run migration` CLI (`snapshot`, `check`, `new`, `rename`)
+├── nodes/    migration-nodes: node migrations, scaffolded by `cargo run migration new`
 ├── runner/   migration-runner: format chaining, ordering, history rewrite, fast path, settling, Rev mapping, translation of older peers' deltas
 └── <sets>    migration crates, one per era or area, selected per binary by cargo features
 ```

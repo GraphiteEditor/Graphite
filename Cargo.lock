@@ -3706,6 +3706,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "migration-nodes"
+version = "0.0.0"
+dependencies = [
+ "migration-core",
+]
+
+[[package]]
 name = "migration-runner"
 version = "0.0.0"
 dependencies = [
@@ -3720,6 +3727,7 @@ dependencies = [
 name = "migration-snapshot"
 version = "0.0.0"
 dependencies = [
+ "convert_case 0.12.0",
  "proc-macro2",
  "quote",
  "syn 2.0.106",
