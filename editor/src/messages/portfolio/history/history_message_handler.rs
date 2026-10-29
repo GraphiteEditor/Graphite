@@ -13,27 +13,25 @@ use std::hash::{Hash, Hasher};
 pub struct HistoryMessageContext<'a> {
 	pub documents: &'a mut HashMap<DocumentId, DocumentMessageHandler>,
 	pub active_document_id: Option<DocumentId>,
-	/// Whether the History panel is showing; nothing is computed while it is not.
 	pub panel_open: bool,
 }
 
-/// Feeds the History panel with the active document's history as interactions along a line, sent again
-/// whenever it moved, and turns the panel's actions into moves of the document's head.
+/// Sends the History panel the active document's history as interactions along a line whenever it changes, and
+/// turns the panel's actions into moves of the document's head.
 #[derive(Debug, Default, ExtractField)]
 pub struct HistoryMessageHandler {
-	/// Whether the per-frame tick is subscribed.
 	ticking: bool,
 	/// Interactions shown with their deltas, by closing rev.
 	expanded: HashSet<Rev>,
-	/// How many interactions of the line to send; grows on request.
+	/// How many interactions of the line to send.
 	limit: usize,
 	/// The tip of the branch shown instead of the head's line.
 	following: Option<Rev>,
-	/// What the last send described, so a frame with no movement sends nothing.
+	/// The fingerprint of the content last sent.
 	last_sent: Option<u64>,
 }
 
-/// Interactions sent at first, and added per request for older ones.
+/// How many interactions are sent at first, and added each time older ones are requested.
 const PAGE: usize = 100;
 
 #[message_handler_data]
@@ -74,13 +72,10 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::GoBack { id } => {
 				let Some((gdd, rev)) = active_storage(&context).zip(parse_rev(&id)) else { return };
-				let session = gdd.session();
-				match place(session, rev) {
-					// Above the head: forward again over the undone interactions, one redo each.
+				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
-					// On the head's line: in a session one shared move for everyone; alone, the cursor walks back one
-					// interaction at a time so the editor's own undo stays in step.
 					Some(Place::Line(0)) => {}
+					// In a session the head moves for everyone at once, while alone each interaction is undone in turn so the editor's undo stays in step
 					Some(Place::Line(steps)) => match gdd.role().is_some() {
 						true => responses.add(DocumentMessage::HistoryMoveHead { rev }),
 						false => (0..steps).for_each(|_| responses.add(DocumentMessage::Undo)),
@@ -98,7 +93,6 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(_)) => {}
-					// Off the line: minted again on top of it.
 					None => responses.add(DocumentMessage::HistoryRestoreStep { rev }),
 				}
 			}
@@ -135,7 +129,6 @@ impl HistoryMessageHandler {
 			}
 			return;
 		};
-		// A branch whose tip this copy no longer holds is nothing to follow.
 		if self.following.is_some_and(|tip| gdd.session().delta(tip).is_none()) {
 			self.following = None;
 		}
@@ -164,9 +157,9 @@ fn parse_rev(id: &str) -> Option<Rev> {
 
 /// Where an interaction sits relative to the head.
 enum Place {
-	/// On the head's line, this many interactions back; zero is the head itself.
+	/// On the head's line, this many interactions back.
 	Line(usize),
-	/// Above the head on the undone line, this many redos forward.
+	/// Undone above the head, this many redos forward.
 	Undone(usize),
 }
 
@@ -183,7 +176,7 @@ fn place(session: &Session, rev: Rev) -> Option<Place> {
 	Some(Place::Undone(groups.len() - index))
 }
 
-/// Everything the panel's content depends on, hashed: cheap to take every frame.
+/// A hash of everything the panel's content depends on, cheap enough to take every frame.
 fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Option<Rev>) -> u64 {
 	let session = gdd.session();
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
@@ -195,9 +188,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 	gdd.role().is_some().hash(&mut hasher);
 	for record in gdd.metadata().users() {
 		record.user.hash(&mut hasher);
-		if let Some(name) = gdd.metadata().user_name(record.user) {
-			name.hash(&mut hasher);
-		}
+		gdd.metadata().user_name(record.user).hash(&mut hasher);
 	}
 	for remote in gdd.peers() {
 		remote.user.hash(&mut hasher);
@@ -224,7 +215,6 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 		peers: gdd.peers(),
 	};
 
-	// Where branches leave the lines shown: every delta's children, minus the lines themselves.
 	let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
 	for delta in session.history() {
 		for parent in delta.all_parents() {
@@ -236,31 +226,12 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 	let (head_line, _) = line(session, head, None, usize::MAX);
 	let head_line_revs: HashSet<Rev> = head_line.iter().map(|delta| delta.id).collect();
 
-	// Taken back and not yet redone: from the redo stack's top down to the head, shown above it. Not while
-	// following a branch, whose line is shown whole instead.
+	// Undone interactions are shown above the head, except while following a branch
 	let undone = match (following, session.redo_stack().last()) {
 		(None, Some(&checkpoint)) => line(session, Some(checkpoint), head, usize::MAX).0,
 		_ => Vec::new(),
 	};
-	let (shown, more) = match following {
-		Some(tip) => line(session, Some(tip), None, limit),
-		None => (
-			head_line
-				.iter()
-				.take_while({
-					let mut ends = 0;
-					move |delta| {
-						if delta.is_interaction_end() {
-							ends += 1;
-						}
-						ends <= limit
-					}
-				})
-				.cloned()
-				.collect::<Vec<_>>(),
-			interactions(&head_line).len() > limit,
-		),
-	};
+	let (shown, more) = line(session, following.or(head), None, limit);
 	let on_line: HashSet<Rev> = undone.iter().chain(&shown).map(|delta| delta.id).collect();
 
 	let view = View {
@@ -273,16 +244,11 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 		session,
 		metadata: gdd.metadata(),
 	};
-	let mut rows = Vec::new();
-	for group in interactions(&undone) {
-		rows.push(view.row(&group, true));
-	}
-	for group in interactions(&shown) {
-		rows.push(view.row(&group, false));
-	}
+	let undone_rows = interactions(&undone).into_iter().map(|group| view.row(&group, true));
+	let shown_rows = interactions(&shown).into_iter().map(|group| view.row(&group, false));
+	let rows = undone_rows.chain(shown_rows).collect();
 
-	// What has not entered history yet: every author's open interaction first, then each closed interaction
-	// waiting for the retirer as a step of its own, the newest first like the rows below.
+	// Work not yet in history: each author's open interaction, then the closed interactions waiting for the retirer, newest first
 	let hot_log = session.hot_log();
 	let closed = session.closed_interactions();
 	let in_closed: HashSet<HotOpId> = closed.iter().flat_map(|interaction| interaction.ops.iter().copied()).collect();
@@ -309,8 +275,8 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 	}
 }
 
-/// The deltas from `from` back along first parents to `until` exclusive, or the root, newest first.
-/// Stops after `limit` interaction ends and says so.
+/// The deltas from `from` back along first parents to `until` (exclusive) or the root, newest first, stopping
+/// after `limit` interaction ends. The flag tells whether it stopped early.
 fn line(session: &Session, from: Option<Rev>, until: Option<Rev>, limit: usize) -> (Vec<Delta>, bool) {
 	let mut deltas = Vec::new();
 	let mut ends = 0;
@@ -331,8 +297,8 @@ fn line(session: &Session, from: Option<Rev>, until: Option<Rev>, limit: usize) 
 	(deltas, false)
 }
 
-/// Group a line, newest first, into interactions: each starts at an interaction end and runs back to the
-/// delta after the previous end. A newest delta that is not an end, from work retired mid-interaction, opens a group of its own.
+/// Groups a line, newest first, into interactions, each from an interaction end back to the delta after the
+/// previous end. Newest deltas without an end, from work retired mid-interaction, form a group of their own.
 fn interactions(deltas: &[Delta]) -> Vec<Vec<&Delta>> {
 	let mut groups: Vec<Vec<&Delta>> = Vec::new();
 	for delta in deltas {
@@ -344,7 +310,6 @@ fn interactions(deltas: &[Delta]) -> Vec<Vec<&Delta>> {
 	groups
 }
 
-/// What one send of the panel is computed against.
 struct View<'a> {
 	children: &'a HashMap<Rev, Vec<Rev>>,
 	on_line: &'a HashSet<Rev>,
@@ -404,7 +369,7 @@ impl View<'_> {
 		}
 	}
 
-	/// The branch that starts at `first`: its tip, following first children, and what its newest interaction did.
+	/// The branch starting at `first`, named by its tip along first children.
 	fn branch(&self, first: Rev) -> HistoryBranch {
 		let mut tip = first;
 		while let Some(&next) = self.children.get(&tip).and_then(|children| children.first()) {
@@ -433,15 +398,16 @@ fn progress_row(people: &People, peer: PeerId, ops: &[&RegistryDelta], open: boo
 	}
 }
 
-/// One line for a run of changes: the kinds among them, the most frequent first.
+/// One line for a run of changes: its kinds, the most frequent first. Peer registrations and markers name a run
+/// only when it holds nothing else.
 fn summarize<'a>(kinds: impl IntoIterator<Item = &'a RegistryDelta>) -> String {
-	let kinds: Vec<&RegistryDelta> = kinds.into_iter().collect();
+	let is_bookkeeping = |kind: &RegistryDelta| matches!(kind, RegistryDelta::RegisterPeer { .. } | RegistryDelta::Meta);
+	let mut kinds: Vec<&RegistryDelta> = kinds.into_iter().collect();
+	if kinds.iter().any(|kind| !is_bookkeeping(kind)) {
+		kinds.retain(|kind| !is_bookkeeping(kind));
+	}
 	let mut counts: Vec<(String, usize)> = Vec::new();
-	for kind in &kinds {
-		// A registration or a marker says nothing about the document; it labels a run only when it is all there is.
-		if matches!(kind, RegistryDelta::RegisterPeer { .. } | RegistryDelta::Meta) && kinds.len() > 1 {
-			continue;
-		}
+	for kind in kinds {
 		let label = describe(kind);
 		match counts.iter_mut().find(|(known, _)| *known == label) {
 			Some((_, count)) => *count += 1,
@@ -488,8 +454,7 @@ fn describe(kind: &RegistryDelta) -> String {
 	}
 }
 
-/// How authors are named and coloured: the document's record first, then what the room announced, then
-/// the stand-in, all by user id so a person is one person across their peers.
+/// Names and colours authors by user id: the document's record, else the name announced to the room, else the stand-in.
 struct People<'a> {
 	session: &'a Session,
 	metadata: &'a HistoryMetadata,
@@ -505,7 +470,7 @@ struct Person {
 
 impl People<'_> {
 	fn person(&self, peer: PeerId) -> Person {
-		// A peer that never registered, from a copy older than registrations, is its own user by convention.
+		// A peer that never registered is its own user
 		let user = self.session.user_of(peer).unwrap_or(UserId(peer.0));
 		let recorded = self.metadata.user_name(user).map(str::to_string);
 		let announced = || self.peers.iter().find(|remote| remote.user == user && !remote.name.is_empty()).map(|remote| remote.name.clone());
@@ -519,5 +484,19 @@ impl People<'_> {
 			mine: self.session.is_mine(peer),
 			color: user_color(user),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_run_of_only_markers_is_named_by_them() {
+		let register = RegistryDelta::RegisterPeer { peer: PeerId(1), user: UserId(1) };
+		let merge = RegistryDelta::Merge { extra_parents: Vec::new() };
+		assert_eq!(summarize([&RegistryDelta::Meta, &RegistryDelta::Meta]), "Marked a step ×2");
+		assert_eq!(summarize([&register, &RegistryDelta::Meta]), "Joined the document, Marked a step");
+		assert_eq!(summarize([&RegistryDelta::Meta, &merge, &register]), "Joined two lines of work");
 	}
 }
