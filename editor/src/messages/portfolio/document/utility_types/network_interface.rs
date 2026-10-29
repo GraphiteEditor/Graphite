@@ -50,7 +50,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DefinitionId, DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::Appearance;
 use graphene_std::math::quad::Quad;
 use graphene_std::registry::MULTI_OUTPUT_NODES;
@@ -195,7 +195,7 @@ mod network_interface_tests {
 	fn instance_paths_resolve_through_the_definitions_table() {
 		use super::*;
 
-		let definition = DefinitionId(1);
+		let definition = NetworkId(1);
 		let instance = |implementation| DocumentNode { implementation, ..Default::default() };
 		let instances = [NodeId(10), NodeId(11)];
 

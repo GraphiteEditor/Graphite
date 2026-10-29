@@ -580,7 +580,7 @@ pub struct NodeNetworkPersistentMetadata {
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
-	pub definitions: HashMap<DefinitionId, NodeNetworkMetadata>,
+	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.

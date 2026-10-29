@@ -1,5 +1,5 @@
 use super::{InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
-use graph_craft::document::{DefinitionId, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNodeImplementation, NetworkId, NodeId, NodeInput, NodeNetwork};
 use std::collections::{HashMap, HashSet};
 
 impl NodeNetworkInterface {
@@ -45,7 +45,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// A loaded outward wire cache must match a fresh computation from the network.
-	fn validate_outward_wires(&self, path: &mut Vec<NodeId>, validated_definitions: &mut HashSet<DefinitionId>, violations: &mut Vec<String>) {
+	fn validate_outward_wires(&self, path: &mut Vec<NodeId>, validated_definitions: &mut HashSet<NetworkId>, violations: &mut Vec<String>) {
 		let Some(network) = self.nested_network(path) else { return };
 
 		if let Some(computed) = self.compute_outward_wires(path)
@@ -91,7 +91,7 @@ fn wire_counts(inputs: &[InputConnector]) -> HashMap<InputConnector, usize> {
 struct DocumentRoot<'a> {
 	network: &'a NodeNetwork,
 	metadata: &'a NodeNetworkMetadata,
-	definition_import_counts: HashMap<DefinitionId, usize>,
+	definition_import_counts: HashMap<NetworkId, usize>,
 }
 
 fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: usize, violations: &mut Vec<String>) {

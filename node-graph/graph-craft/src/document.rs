@@ -308,9 +308,9 @@ pub enum OldDocumentNodeImplementation {
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, core_types::CacheHash, PartialOrd, Ord, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct DefinitionId(pub u64);
+pub struct NetworkId(pub u64);
 
-impl DefinitionId {
+impl NetworkId {
 	pub fn new() -> Self {
 		Self(generate_uuid())
 	}
@@ -323,7 +323,7 @@ pub enum DocumentNodeImplementation {
 	///
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
-	Definition(DefinitionId),
+	Definition(NetworkId),
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
@@ -572,21 +572,21 @@ pub struct NodeNetwork {
 	)]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 	#[serde(default, skip_serializing_if = "FxHashMap::is_empty")]
-	pub definitions: FxHashMap<DefinitionId, NodeNetwork>,
+	pub definitions: FxHashMap<NetworkId, NodeNetwork>,
 	#[serde(skip)]
 	pub generated: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NetworkLocation<'a> {
-	pub definition: Option<DefinitionId>,
+	pub definition: Option<NetworkId>,
 	pub inline_path: &'a [NodeId],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DefinitionError {
-	Missing(DefinitionId),
-	Cycle(Vec<DefinitionId>),
+	Missing(NetworkId),
+	Cycle(Vec<NetworkId>),
 	NestedTable,
 }
 
@@ -603,9 +603,9 @@ impl std::fmt::Display for DefinitionError {
 impl std::error::Error for DefinitionError {}
 
 struct DefinitionInliner {
-	definitions: FxHashMap<DefinitionId, NodeNetwork>,
-	inlined: FxHashMap<DefinitionId, NodeNetwork>,
-	visiting: Vec<DefinitionId>,
+	definitions: FxHashMap<NetworkId, NodeNetwork>,
+	inlined: FxHashMap<NetworkId, NodeNetwork>,
+	visiting: Vec<NetworkId>,
 }
 
 impl DefinitionInliner {
@@ -625,7 +625,7 @@ impl DefinitionInliner {
 		Ok(())
 	}
 
-	fn inlined_definition(&mut self, id: DefinitionId) -> Result<&NodeNetwork, DefinitionError> {
+	fn inlined_definition(&mut self, id: NetworkId) -> Result<&NodeNetwork, DefinitionError> {
 		if !self.inlined.contains_key(&id) {
 			if let Some(start) = self.visiting.iter().position(|&visiting| visiting == id) {
 				return Err(DefinitionError::Cycle(self.visiting[start..].to_vec()));
@@ -1486,8 +1486,8 @@ impl NodeNetwork {
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
 pub struct RecursiveNodeIter<'a> {
-	definitions: &'a FxHashMap<DefinitionId, NodeNetwork>,
-	visited_definitions: FxHashSet<DefinitionId>,
+	definitions: &'a FxHashMap<NetworkId, NodeNetwork>,
+	visited_definitions: FxHashSet<NetworkId>,
 	nodes: Vec<(&'a NodeId, &'a DocumentNode, Vec<NodeId>)>,
 }
 
@@ -2125,7 +2125,7 @@ mod test {
 		DocumentNode { implementation, ..Default::default() }
 	}
 
-	fn network_with(nodes: impl IntoIterator<Item = (NodeId, DocumentNodeImplementation)>, definitions: impl IntoIterator<Item = (DefinitionId, NodeNetwork)>) -> NodeNetwork {
+	fn network_with(nodes: impl IntoIterator<Item = (NodeId, DocumentNodeImplementation)>, definitions: impl IntoIterator<Item = (NetworkId, NodeNetwork)>) -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(10), 0)],
 			nodes: nodes.into_iter().map(|(id, implementation)| (id, node_with(implementation))).collect(),
@@ -2134,7 +2134,7 @@ mod test {
 		}
 	}
 
-	const ADD: DefinitionId = DefinitionId(1);
+	const ADD: NetworkId = NetworkId(1);
 
 	fn two_add_instances() -> NodeNetwork {
 		network_with(
@@ -2160,7 +2160,7 @@ mod test {
 
 	#[test]
 	fn definitions_referencing_definitions_inline_transitively() {
-		let outer = DefinitionId(2);
+		let outer = NetworkId(2);
 		let mut network = network_with(
 			[(NodeId(10), DocumentNodeImplementation::Definition(outer))],
 			[(ADD, add_network()), (outer, network_with([(NodeId(10), DocumentNodeImplementation::Definition(ADD))], []))],
@@ -2173,7 +2173,7 @@ mod test {
 
 	#[test]
 	fn invalid_definition_tables_are_rejected() {
-		let (first, second) = (DefinitionId(2), DefinitionId(3));
+		let (first, second) = (NetworkId(2), NetworkId(3));
 		let mut cyclic = network_with(
 			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
 			[
@@ -2223,7 +2223,7 @@ mod test {
 		assert_eq!(body_paths.len(), add_network().nodes.len());
 		assert!(body_paths.windows(2).all(|pair| pair[0] == pair[1]));
 
-		let (first, second) = (DefinitionId(2), DefinitionId(3));
+		let (first, second) = (NetworkId(2), NetworkId(3));
 		let cyclic = network_with(
 			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
 			[
