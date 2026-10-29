@@ -211,15 +211,14 @@ pub enum RegistryDelta {
 	Merge {
 		extra_parents: Vec<Rev>,
 	},
-	/// Changes nothing and only carries its hot op's attributes, such as the end of an interaction staged after its last
-	/// write. Retirement drops it.
+	/// Changes nothing and only carries its hot op's attributes, such as an interaction end. Never retires into history.
 	Meta,
 	// Allow for future delta types without a model change
 	Other(Value),
 }
 
 impl RegistryDelta {
-	/// The resource bytes this op needs on hand, which history keeps referencing even once the registry moves on.
+	/// The resource bytes this op names.
 	pub fn resource_hash(&self) -> Option<ResourceHash> {
 		match self {
 			RegistryDelta::AddResource { entry, .. } => entry.hash,

@@ -1,5 +1,5 @@
-//! Peers exchanging retired history: syncing, following and merging lines, and undo against what other peers hold;
-//! reopening with ops discarded, and the session-only operations on the shared head.
+//! Peers exchanging retired history: syncing, following and merging lines, moving the shared head, dropping and restoring
+//! interactions, and undo against what other peers hold.
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::ProtoNodeIdentifier;
@@ -7,8 +7,8 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput as RuntimeInput, NodeNetwork};
 
 use crate::{
-	AttributeDelta, Delta, History, HotOp, HotOpId, Implementation, InputSlot, MergeOutcome, Network, NetworkId, NoMetadata, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry,
-	ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId, Value,
+	AttributeDelta, CrdtError, Delta, History, HotOp, HotOpId, Implementation, InputSlot, MergeOutcome, Network, NetworkId, NoMetadata, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta,
+	ResourceEntry, ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId, Value,
 };
 use std::collections::HashSet;
 
@@ -420,8 +420,8 @@ fn runtime_network(values: [u32; 2]) -> NodeNetwork {
 	}
 }
 
-/// A whole-document stage diffs against what the runtime held, so after a peer shrank a node's input list it writes a
-/// slot past the new end. It lands as a peer's write would, rather than failing and failing again on every later stage.
+/// After a peer shrank a node's input list, a whole-document stage still writes the slot past the new end. It lands as
+/// a peer's write would instead of failing on every later stage.
 #[test]
 fn a_local_stage_after_a_peers_input_list_change_still_lands() {
 	let resources = graphene_resource::ResourceRegistry::new();
@@ -578,8 +578,8 @@ fn local_op(rng: &mut Lcg, registry: &Registry) -> Option<RegistryDelta> {
 			implementation: Implementation::Network(NetworkId(pick(rng, seen_networks.clone())?)),
 		},
 		12 => {
-			let mut entry = crate::ResourceEntry {
-				hash: Some(crate::ResourceHash::from([rng.below(2) as u8; 32])),
+			let mut entry = ResourceEntry {
+				hash: Some(ResourceHash::from([rng.below(2) as u8; 32])),
 				..Default::default()
 			};
 			entry.force_set_source(
@@ -591,26 +591,26 @@ fn local_op(rng: &mut Lcg, registry: &Registry) -> Option<RegistryDelta> {
 				},
 			);
 			RegistryDelta::AddResource {
-				id: crate::ResourceId::from(1 + rng.below(2)),
+				id: ResourceId::from(1 + rng.below(2)),
 				entry,
 			}
 		}
 		13 => {
-			let id = crate::ResourceId::from(1 + rng.below(2));
+			let id = ResourceId::from(1 + rng.below(2));
 			let snapshot = registry.resources.get(&id)?.clone();
 			RegistryDelta::RemoveResource { id, snapshot }
 		}
 		14 => RegistryDelta::SetResourceHash {
-			id: crate::ResourceId::from(1 + rng.below(2)),
-			hash: Some(crate::ResourceHash::from([rng.below(2) as u8; 32])),
+			id: ResourceId::from(1 + rng.below(2)),
+			hash: Some(ResourceHash::from([rng.below(2) as u8; 32])),
 		},
 		15 => RegistryDelta::AddSource {
-			id: crate::ResourceId::from(1 + rng.below(2)),
+			id: ResourceId::from(1 + rng.below(2)),
 			key: source_key(rng),
 			source: Value::from(serde_json::json!(rng.below(9))),
 		},
 		_ => RegistryDelta::RemoveSource {
-			id: crate::ResourceId::from(1 + rng.below(2)),
+			id: ResourceId::from(1 + rng.below(2)),
 			key: source_key(rng),
 		},
 	})
@@ -625,7 +625,7 @@ fn check_invariants(session: &Session, context: &str) {
 	assert_eq!(session.registry(), &rebuilt_working(session), "{context}: working registry is not snapshot + hot log");
 }
 
-/// A session as a reopen rebuilds it (what `Gdd::open_in` does): the retired snapshot, history, head, redo stack and
+/// A session rebuilt as a reopen does: the retired snapshot, history, head, redo stack and
 /// node counter, then the hot sequence, clock and retired marks from `session.json`, then the hot log replayed.
 fn reopened(s: &Session) -> Session {
 	let mut r = Session::load(
@@ -858,15 +858,14 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	let base = host.head_rev().expect("rev");
 	host.mark_interaction_end(base);
 
-	// The guest's step, retired by the host, writes its own key and one the host writes after it. The guest has
-	// its own session and clock, so its ops carry its authorship.
+	// The guest's step, retired by the host, writes its own key and one the host writes after it.
 	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
 	let guest_ops = [set_attribute("guest", 1), set_attribute("shared", 1)];
 	let hot = guest.stage_ops(guest_ops).expect("stage");
 	for hot_op in &hot {
 		host.replay_hot_op(hot_op.clone()).expect("the guest's ops reach the host");
 	}
-	let guest_ids: Vec<crate::HotOpId> = hot.iter().map(crate::HotOp::id).collect();
+	let guest_ids: Vec<HotOpId> = hot.iter().map(HotOp::id).collect();
 	let revs = host.retire_hot_ops(&guest_ids).expect("retire");
 	let undone = *revs.last().expect("the guest's step");
 	host.mark_interaction_end(undone);
@@ -888,7 +887,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(moved.copies[0].parent, Some(base), "the copy hangs off the dropped step's parent");
 	assert!(moved.copies[0].is_interaction_end(), "the copy keeps its interaction end");
 	assert_eq!(moved.copies[0].retired_at(), Some(1_234), "the copy keeps when the original was retired");
-	assert!(touched.nodes.is_empty() && !touched.resources, "document attributes only");
+	assert!(touched.is_empty(), "document attributes name no graph entity");
 	let snapshot = host.retired_registry();
 	assert!(snapshot.attributes.get("guest").is_none_or(|value| value.deleted), "the dropped step's write is gone");
 	assert_eq!(
@@ -896,7 +895,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 		Some(&Value::from(serde_json::json!(2))),
 		"the later step's write stands"
 	);
-	assert!(host.delta(undone).is_some() && host.delta(later).is_some(), "the abandoned branch stays for a history panel");
+	assert!(host.delta(undone).is_some() && host.delta(later).is_some(), "the dropped line stays as a branch");
 	assert!(host.registry().value_equal(host.retired_registry()));
 
 	guest.apply_head_move(&moved).expect("follow");
@@ -904,7 +903,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	assert_eq!(guest.retired_registry(), host.retired_registry());
 	assert_eq!(guest.history().map(|delta| delta.id).collect::<Vec<_>>(), host.history().map(|delta| delta.id).collect::<Vec<_>>());
 	assert!(
-		matches!(guest.apply_head_move(&moved), Err(crate::CrdtError::CursorMismatch { .. })),
+		matches!(guest.apply_head_move(&moved), Err(CrdtError::CursorMismatch { .. })),
 		"a move only applies from where it started"
 	);
 
@@ -932,7 +931,7 @@ fn undo_in_a_session_finds_the_users_step_from_another_peer() {
 	for hot_op in &hot {
 		host.replay_hot_op(hot_op.clone()).expect("the step reaches the host");
 	}
-	let ids: Vec<crate::HotOpId> = hot.iter().map(crate::HotOp::id).collect();
+	let ids: Vec<HotOpId> = hot.iter().map(HotOp::id).collect();
 	let revs = host.retire_hot_ops(&ids).expect("retire");
 	let step = *revs.last().expect("the step");
 	host.mark_interaction_end(step);
@@ -962,7 +961,7 @@ fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
 	assert_eq!(moved.from, Some(third));
 	assert_eq!(moved.head, Some(first));
 	assert!(moved.copies.is_empty(), "nothing is minted: the line since is left behind");
-	assert!(touched.nodes.is_empty() && !touched.resources, "document attributes only");
+	assert!(touched.is_empty(), "document attributes name no graph entity");
 	let snapshot = host.retired_registry();
 	assert!(snapshot.attributes.get("b").is_none_or(|value| value.deleted), "the second step's write is gone");
 	assert!(snapshot.attributes.get("c").is_none_or(|value| value.deleted), "the third step's write is gone");
@@ -986,7 +985,7 @@ fn a_head_move_from_another_head_is_rejected_and_changes_nothing() {
 
 	let (moved, _) = host.move_head_to(first).expect("move");
 	let registry = guest.retired_registry().clone();
-	assert!(matches!(guest.apply_head_move(&moved), Err(crate::CrdtError::CursorMismatch { found, .. }) if found == Some(first)));
+	assert!(matches!(guest.apply_head_move(&moved), Err(CrdtError::CursorMismatch { found, .. }) if found == Some(first)));
 	assert_eq!(guest.head_rev(), Some(first));
 	assert_eq!(guest.retired_registry(), &registry);
 }
@@ -1016,7 +1015,7 @@ fn a_head_move_back_across_a_merge_drops_both_branches() {
 		assert!(moved.retired_registry().networks.contains_key(&NetworkId(kept)));
 		assert!(!moved.retired_registry().networks.contains_key(&NetworkId(dropped)));
 		let sibling = if target == host_step { guest_step } else { host_step };
-		assert!(matches!(moved.move_head_to(sibling), Err(crate::CrdtError::NotAncestor(rev)) if rev == sibling));
+		assert!(matches!(moved.move_head_to(sibling), Err(CrdtError::NotAncestor(rev)) if rev == sibling));
 	}
 }
 
@@ -1076,7 +1075,7 @@ fn a_malformed_head_move_changes_nothing() {
 			copies: vec![off_first.clone(), off_base_again.clone()],
 		},
 	] {
-		assert!(matches!(guest.apply_head_move(&moved), Err(crate::CrdtError::MalformedHeadMove)));
+		assert!(matches!(guest.apply_head_move(&moved), Err(CrdtError::MalformedHeadMove)));
 		assert_eq!(guest.head_rev(), Some(second));
 		assert_eq!(guest.history_len(), history_len);
 		assert_eq!(guest.retired_registry(), &registry);
@@ -1107,9 +1106,9 @@ fn a_head_move_publishes_the_new_head() {
 /// Dropping hot ops another peer retired re-derives the working registry without them until their deltas arrive.
 #[test]
 fn discarded_hot_ops_leave_the_working_registry_at_the_snapshot() {
-	let op = crate::HotOp {
+	let op = HotOp {
 		op: set_attribute("k", 1),
-		timestamp: crate::TimeStamp { counter: 3, peer: PeerId(2) },
+		timestamp: TimeStamp { counter: 3, peer: PeerId(2) },
 		sequence: crate::HotSequence(1),
 		attributes: Default::default(),
 	};

@@ -80,8 +80,8 @@ impl Registry {
 		rendered
 	}
 
-	/// Whether both registries removed the same entities at the same times. The marks decide how future
-	/// ops land, so registries agreeing on values but not on marks will diverge.
+	/// Whether both registries removed the same entities at the same times. Registries equal in value but not in their
+	/// removal marks resolve later ops differently.
 	pub fn removal_marks_equal(&self, other: &Self) -> bool {
 		fn same<K: std::hash::Hash + Eq, T>(a: &HashMap<K, Tombstone<T>>, b: &HashMap<K, Tombstone<T>>) -> bool {
 			a.len() == b.len()

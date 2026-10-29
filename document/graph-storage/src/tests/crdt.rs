@@ -161,7 +161,7 @@ fn history_is_causal_and_deterministic() {
 	}
 }
 
-pub(super) fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
+fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 	RegistryDelta::ChangeDocumentAttribute {
 		delta: crate::AttributeDelta {
 			key: key.to_string(),
@@ -753,8 +753,7 @@ fn all_referenced_resource_hashes_survives_undo() {
 	assert!(session.all_referenced_resource_hashes().contains(&changed), "the undone hash change keeps its bytes for redo");
 }
 
-/// A hot hash a later hot op overwrote is in no registry, but retiring puts it in history, whose bytes every peer
-/// then fetches; collecting it meanwhile loses the bytes for good when only this peer had them.
+/// A hot hash a later hot op overwrote is in no registry, but retiring puts it in history.
 #[test]
 fn all_referenced_resource_hashes_keeps_an_overwritten_hot_hash() {
 	use crate::ResourceId;
@@ -770,8 +769,8 @@ fn all_referenced_resource_hashes_keeps_an_overwritten_hot_hash() {
 	assert!(session.all_referenced_resource_hashes().contains(&first), "and from history once retired");
 }
 
-/// A take-back can lose to a host retiring the same ops, leaving history naming a hash only this peer held, so the
-/// bytes stay roots after the step is taken back and its redo future is gone.
+/// A take-back can lose to a host retiring the same ops, so what a taken-back step named stays a root once nothing
+/// else names it.
 #[test]
 fn resource_gc_roots_keep_what_a_taken_back_step_named() {
 	use crate::ResourceId;

@@ -160,7 +160,7 @@ fn a_retracted_interaction_leaves_no_trace_and_keeps_what_others_wrote() {
 /// An author's ops can reach the retirer out of order through a re-announcement after a lapsed link.
 /// Coarsening keeps the newest write by stamp, not log position, so the retired delta matches every working registry.
 #[test]
-fn a_interaction_that_arrived_out_of_order_retires_to_its_newest_write() {
+fn an_interaction_that_arrived_out_of_order_retires_to_its_newest_write() {
 	let mut author = Session::with_peer(PeerId(2));
 	author.stage_ops(vec![set_attribute("name", 1), set_attribute("name", 2)]).expect("stage");
 	author.end_interaction().expect("close");
@@ -187,7 +187,7 @@ fn a_interaction_that_arrived_out_of_order_retires_to_its_newest_write() {
 /// whole-list input write supersedes the slot writes before it, a write wiring an input to a node stays
 /// while what supersedes it wires elsewhere, and the fold is the one every op would have produced.
 #[test]
-fn a_interaction_retires_to_one_delta_per_field() {
+fn an_interaction_retires_to_one_delta_per_field() {
 	let attribute = |value: u32| set_attribute("name", value);
 	let wire = |target: u64| RegistryDelta::ChangeNodeInput {
 		id: NodeId(1),
