@@ -1,10 +1,10 @@
 //! Peers exchanging retired history: syncing, following and merging lines, and undo against what other peers hold.
 
-use crate::{Delta, History, MergeOutcome, Network, NetworkId, Node, NodeId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session, Value};
+use crate::{Delta, History, Implementation, MergeOutcome, Network, NetworkId, Node, NodeId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session, Value};
 use std::collections::HashSet;
 
 use super::bookkeeping::{add_network, set_attribute};
-use super::crdt::{change_node_attribute, commit_retired, set_document_attribute};
+use super::crdt::{change_node_attribute, commit_retired};
 
 /// Commits `op` as one interaction, with nothing hot.
 fn step(session: &mut Session, op: RegistryDelta) -> Rev {
@@ -187,20 +187,20 @@ fn following_a_merge_refolds_the_branch_it_joins() {
 	let mut host = Session::with_peer(PeerId(1));
 	host.commit_op_for_test(add_network(1)).expect("root");
 	let mut guest = Session::with_peer(PeerId(2));
-	let root: Vec<crate::Delta> = host.history().cloned().collect();
+	let root: Vec<Delta> = host.history().cloned().collect();
 	guest.follow(root, host.head_rev()).expect("follow the root");
 
 	// The guest retires a step of its own while apart, then follows the host's line, which leaves it behind.
 	guest.commit_op_for_test(add_network(2)).expect("own step");
-	let own: Vec<crate::Delta> = guest.history().filter(|delta| delta.author == PeerId(2)).cloned().collect();
+	let own: Vec<Delta> = guest.history().filter(|delta| delta.author == PeerId(2)).cloned().collect();
 	host.commit_op_for_test(add_network(3)).expect("host step");
-	let line: Vec<crate::Delta> = host.history().cloned().collect();
+	let line: Vec<Delta> = host.history().cloned().collect();
 	guest.follow(line, host.head_rev()).expect("follow the host");
 	assert!(!guest.retired_registry().networks.contains_key(&NetworkId(2)), "the guest's own step is off the line");
 
 	// The host merges the guest's step and the guest follows to the joined head.
 	host.merge(own).expect("merge");
-	let merged: Vec<crate::Delta> = host.history().cloned().collect();
+	let merged: Vec<Delta> = host.history().cloned().collect();
 	guest.follow(merged, host.head_rev()).expect("follow the merge");
 
 	let fold = guest.snapshot_from_history().expect("fold");
@@ -301,11 +301,11 @@ fn merge_converges_to_identical_history() {
 	let merge_a = session_a.merge(deltas_b).expect("merge into A failed");
 	let merge_b = session_b.merge(deltas_a).expect("merge into B failed");
 
-	assert!(matches!(merge_a, crate::MergeOutcome::Merged(_)), "divergent branches must produce a merge delta");
+	assert!(matches!(merge_a, MergeOutcome::Merged(_)), "divergent branches must produce a merge delta");
 	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
 
-	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
-	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
+	let order_a: Vec<Rev> = session_a.history().map(|d| d.id).collect();
+	let order_b: Vec<Rev> = session_b.history().map(|d| d.id).collect();
 	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
 	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
 }
@@ -316,16 +316,11 @@ fn a_write_revives_a_network_removed_on_a_merged_branch() {
 
 	// Shared base, then peer B adds and removes network 7 on its own branch.
 	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
+	session_a.commit_op_for_test(set_attribute("compute::base", 0)).expect("base commit");
 	let mut session_b = session_a.clone();
 
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b
-		.commit_op_for_test(RegistryDelta::AddNetwork {
-			id: network_id,
-			network: Network::default(),
-		})
-		.expect("B AddNetwork");
+	session_a.commit_op_for_test(set_attribute("compute::a", 1)).expect("A edit");
+	session_b.commit_op_for_test(add_network(network_id.0)).expect("B AddNetwork");
 	session_b
 		.commit_op_for_test(RegistryDelta::RemoveNetwork {
 			id: network_id,
@@ -349,7 +344,7 @@ fn a_write_revives_a_network_removed_on_a_merged_branch() {
 
 #[test]
 fn a_concurrent_remove_and_attribute_change_commute() {
-	let node = Node::new(NetworkId(5), crate::Implementation::Network(NetworkId(5)), 0);
+	let node = Node::new(NetworkId(5), Implementation::Network(NetworkId(5)), 0);
 	let mut base = Session::with_peer(PeerId(1));
 	commit_retired(&mut base, add_network(5));
 	commit_retired(&mut base, RegistryDelta::AddNode { id: NodeId(7), node: node.clone() });

@@ -187,7 +187,7 @@ impl History {
 	}
 
 	/// Every delta not reachable from `known`, in topological order.
-	pub fn deltas_unknown_to(&self, known: impl IntoIterator<Item = Rev>) -> Vec<&Delta> {
+	pub(crate) fn deltas_unknown_to(&self, known: impl IntoIterator<Item = Rev>) -> Vec<&Delta> {
 		let known = self.ancestors(known);
 		self.deltas.iter().filter(|delta| !known.contains(&delta.id)).collect()
 	}

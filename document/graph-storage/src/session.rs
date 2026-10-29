@@ -414,14 +414,12 @@ impl Session {
 			current = delta.parent;
 		};
 
+		self.document.head = head;
 		if extends {
-			for delta in chain.iter().rev() {
-				self.document.apply_op_with(RegistryTarget::Retired, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
-				self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
+			for delta in chain.into_iter().rev() {
+				self.document.apply_retired_op_idempotent(delta.kind, delta.timestamp)?;
 			}
-			self.document.head = head;
 		} else {
-			self.document.head = head;
 			self.document.retired_snapshot = self.snapshot_from_history()?;
 			self.document.rebuild_working();
 		}
@@ -447,8 +445,7 @@ impl Session {
 			if self.document.history.contains(delta.id) {
 				continue;
 			}
-			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			self.document.apply_op_with(RegistryTarget::Retired, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
+			self.document.apply_retired_op_idempotent(delta.kind.clone(), delta.timestamp)?;
 			absorbed_ids.insert(delta.id);
 			self.document.history.push(delta);
 		}
@@ -520,8 +517,7 @@ impl Session {
 			current = delta.parent;
 		}
 		for delta in skipped.into_iter().rev() {
-			self.document.apply_op_with(RegistryTarget::Retired, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
-			self.document.apply_op_idempotent(delta.kind, delta.timestamp)?;
+			self.document.apply_retired_op_idempotent(delta.kind, delta.timestamp)?;
 		}
 		Ok(true)
 	}
@@ -987,6 +983,7 @@ pub enum CrdtError {
 	RevMismatch { stored: Rev, expected: Rev },
 }
 
+/// How [`Session::merge`] or [`Session::follow`] moved the head.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MergeOutcome {
 	NoOp,
