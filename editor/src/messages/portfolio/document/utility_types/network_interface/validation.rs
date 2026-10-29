@@ -1,5 +1,5 @@
 use super::{InputConnector, NodeNetworkInterface, NodeNetworkMetadata};
-use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
+use graph_craft::document::{DefinitionId, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork};
 use std::collections::{HashMap, HashSet};
 
 impl NodeNetworkInterface {
@@ -10,7 +10,7 @@ impl NodeNetworkInterface {
 	pub fn validate_invariants(&self) -> Vec<String> {
 		let mut violations = Vec::new();
 		validate_network(self.document_network(), self.document_network(), &self.network_metadata, &mut Vec::new(), 0, &mut violations);
-		self.validate_outward_wires(&mut Vec::new(), &mut violations);
+		self.validate_outward_wires(&mut Vec::new(), &mut HashSet::new(), &mut violations);
 		self.validate_dots_stay_on_wires(&mut violations);
 		violations
 	}
@@ -25,7 +25,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// A loaded outward wire cache must match a fresh computation from the network.
-	fn validate_outward_wires(&self, path: &mut Vec<NodeId>, violations: &mut Vec<String>) {
+	fn validate_outward_wires(&self, path: &mut Vec<NodeId>, validated_definitions: &mut HashSet<DefinitionId>, violations: &mut Vec<String>) {
 		let Some(network) = self.nested_network(path) else { return };
 
 		if let Some(computed) = self.compute_outward_wires(path)
@@ -45,9 +45,14 @@ impl NodeNetworkInterface {
 		}
 
 		for (node_id, node) in &network.nodes {
-			if matches!(node.implementation, DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) {
+			let descend = match node.implementation {
+				DocumentNodeImplementation::Network(_) => true,
+				DocumentNodeImplementation::Definition(id) => validated_definitions.insert(id),
+				_ => false,
+			};
+			if descend {
 				path.push(*node_id);
-				self.validate_outward_wires(path, violations);
+				self.validate_outward_wires(path, validated_definitions, violations);
 				path.pop();
 			}
 		}
