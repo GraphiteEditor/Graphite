@@ -41,7 +41,6 @@
 	export let closeAction: ((index: number) => void) | undefined = undefined;
 	export let reorderAction: ((oldIndex: number, newIndex: number) => void) | undefined = undefined;
 	export let renameAction: ((index: number, newName: string) => void) | undefined = undefined;
-	// Clicking the session circle of a shared document's tab
 	export let sessionAction: ((index: number) => void) | undefined = undefined;
 	export let emptySpaceAction: (() => void) | undefined = undefined;
 	export let crossPanelDropAction: ((sourcePanelId: string, targetPanelId: string, insertIndex: number) => void) | undefined = undefined;
@@ -615,7 +614,6 @@
 						margin-left: 8px;
 					}
 
-					// The live-session circle sits between the name and the close button, tight against both.
 					.session {
 						flex: 0 0 auto;
 						align-self: center;

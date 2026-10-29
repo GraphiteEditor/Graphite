@@ -20,7 +20,7 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptions.subscribeFrontendMessage("TriggerSessionLinkCopy", (data) => {
 		const url = new URL(window.location.href);
 		url.hash = "";
-		url.search = `?session=${data.token}`;
+		url.search = new URLSearchParams({ session: data.token }).toString();
 		navigator.clipboard?.writeText?.(url.toString());
 	});
 

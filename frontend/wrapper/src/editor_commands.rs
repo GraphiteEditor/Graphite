@@ -208,7 +208,7 @@ mod editor_commands {
 		DialogMessage::RequestNewDocumentDialog.into()
 	}
 
-	/// Join the live session named in the page's `?session=` parameter
+	/// Join the live session under `token`
 	fn join_session(token: String) -> Message {
 		SyncMessage::Join { token }.into()
 	}
@@ -260,7 +260,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Bring a panel to the front, restoring it to its default position first when it is closed
+	/// Bring a panel to the front, reopening it at its default position if it is closed
 	fn focus_panel(panel_type: PanelType) -> Message {
 		WorkspaceMessage::FocusPanel { panel_type }.into()
 	}
@@ -280,27 +280,27 @@ mod editor_commands {
 		HistoryMessage::GoBack { id }.into()
 	}
 
-	/// Drop one interaction out of the line, the later ones staying
+	/// Remove one interaction from the line, keeping the later ones
 	fn history_remove_step(id: String) -> Message {
 		HistoryMessage::RemoveStep { id }.into()
 	}
 
-	/// Bring an undone or abandoned interaction back
+	/// Redo an undone interaction, or reapply an abandoned one
 	fn history_bring_back(id: String) -> Message {
 		HistoryMessage::BringBack { id }.into()
 	}
 
-	/// Show a branch's line in the History panel, or the head's again with no id
+	/// Show a branch's line in the History panel, or the head's line when `id` is `None`
 	fn follow_history_branch(id: Option<String>) -> Message {
 		HistoryMessage::Follow { id }.into()
 	}
 
-	/// Name an interaction in the History panel, or take the name away with an empty string
+	/// Name an interaction in the History panel; an empty label removes the name
 	fn rename_history_interaction(id: String, label: String) -> Message {
 		HistoryMessage::Rename { id, label }.into()
 	}
 
-	/// Put a tag on an interaction in the History panel, or take it off
+	/// Add or remove a tag on an interaction in the History panel
 	fn tag_history_interaction(id: String, tag: String, on: bool) -> Message {
 		HistoryMessage::Tag { id, tag, on }.into()
 	}

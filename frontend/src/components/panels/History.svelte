@@ -12,7 +12,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const history = getContext<HistoryStore>("history");
 
-	// "3 min ago" for the recent past, a date for anything older; nothing when the retirer recorded no time.
+	// Relative for the past week, a date before that
 	function when(ms: number | undefined): string {
 		if (ms === undefined) return "";
 		const seconds = Math.max(0, Math.round((Date.now() - ms) / 1000));
@@ -30,18 +30,21 @@
 		return `${n} ${n === 1 ? one : many}`;
 	}
 
-	// The row whose name is being edited, and the row a tag is being typed for.
-	let renaming: string | undefined = undefined;
-	let tagging: string | undefined = undefined;
+	function authorLabel(row: { author: string; mine: boolean }): string {
+		return row.mine ? `${row.author} (you)` : row.author;
+	}
+
+	let renamingId: string | undefined = undefined;
+	let taggingId: string | undefined = undefined;
 
 	function commitName(id: string, label: string) {
 		editor.renameHistoryInteraction(id, label);
-		renaming = undefined;
+		renamingId = undefined;
 	}
 
 	function commitTag(id: string, tag: string) {
 		if (tag.trim()) editor.tagHistoryInteraction(id, tag, true);
-		tagging = undefined;
+		taggingId = undefined;
 	}
 </script>
 
@@ -59,7 +62,7 @@
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In progress" : "Waiting to enter history")}</span>
 					<span class="meta">
-						<span class="author" class:anonymous={row.anonymous}>{row.mine ? `${row.author} (you)` : row.author}</span>
+						<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span>
 						· {count(row.ops, "change", "changes")}
 						· {row.open ? "in progress" : "not yet in history"}
 					</span>
@@ -76,22 +79,22 @@
 				></button>
 				<span class="rail"><span class="dot" style:background={row.color}></span></span>
 				<div class="text">
-					{#if renaming === row.id}
+					{#if renamingId === row.id}
 						<TextInput value={row.named ? row.label : ""} placeholder={row.label} on:commitText={({ detail }) => commitName(row.id, detail)} />
 					{:else}
 						<span class="label" class:named={row.named}>{row.label}</span>
 					{/if}
 					<span class="meta">
-						<span class="author" class:anonymous={row.anonymous}>{row.mine ? `${row.author} (you)` : row.author}</span>
+						<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span>
 						{#if row.time}· {when(row.time)}{/if}
 						· {count(row.deltas, "change", "changes")}
 					</span>
-					{#if row.tags.length > 0 || tagging === row.id}
+					{#if row.tags.length > 0 || taggingId === row.id}
 						<span class="tags">
 							{#each row.tags as tag (tag)}
 								<span class="tag">{tag}<button class="remove" data-tooltip-label="Remove the tag" on:click={() => editor.tagHistoryInteraction(row.id, tag, false)}>×</button></span>
 							{/each}
-							{#if tagging === row.id}
+							{#if taggingId === row.id}
 								<TextInput value="" placeholder="Tag name" narrow={true} on:commitText={({ detail }) => commitTag(row.id, detail)} />
 							{/if}
 						</span>
@@ -105,16 +108,14 @@
 					{/if}
 				</div>
 				<span class="actions">
-					<button class="small" data-tooltip-label="Name this step" on:click={() => (renaming = renaming === row.id ? undefined : row.id)}>Name</button>
-					<button class="small" data-tooltip-label="Tag this step" on:click={() => (tagging = tagging === row.id ? undefined : row.id)}>Tag</button>
-					{#if row.undone}
-						<IconButton icon="HistoryRedo" size={16} tooltipLabel="Bring back" tooltipDescription="Redo up to and including this step." action={() => editor.historyBringBack(row.id)} />
-					{:else if row.abandoned}
+					<button class="small" data-tooltip-label="Name this step" on:click={() => (renamingId = renamingId === row.id ? undefined : row.id)}>Name</button>
+					<button class="small" data-tooltip-label="Tag this step" on:click={() => (taggingId = taggingId === row.id ? undefined : row.id)}>Tag</button>
+					{#if row.undone || row.abandoned}
 						<IconButton
 							icon="HistoryRedo"
 							size={16}
 							tooltipLabel="Bring back"
-							tooltipDescription="Do this step again on top of the current line."
+							tooltipDescription={row.undone ? "Redo up to and including this step." : "Do this step again on top of the current line."}
 							action={() => editor.historyBringBack(row.id)}
 						/>
 					{:else}

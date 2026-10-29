@@ -714,7 +714,7 @@
 						bind:this={viewport}
 						data-viewport
 					>
-						<!-- Other peers' pointers over the document, in viewport pixels -->
+						<!-- Other peers' pointers -->
 						{#each $document.remoteCursors as cursor}
 							<RemoteCursor {cursor} />
 						{/each}

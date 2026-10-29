@@ -1115,7 +1115,7 @@
 	</div>
 </div>
 
-<!-- Other peers' pointers over the graph, in viewport pixels like the box selection -->
+<!-- Other peers' pointers -->
 {#each $nodeGraph.remoteCursors as cursor}
 	<RemoteCursor {cursor} />
 {/each}

@@ -207,7 +207,7 @@
 				editor.renameDocument(newName);
 			}}
 			sessionAction={(tabIndex) => {
-				// The panel shows the active document's session, so select the document first
+				// The Session panel shows the active document
 				editor.selectDocument($portfolio.documents[tabIndex].id);
 				editor.focusPanel("Session");
 			}}

@@ -4,11 +4,9 @@
 	import type { IconName } from "/src/icons";
 	import type { FrontendRemoteCursor } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	// Another peer's pointer, placed by the parent in its own pixels: the arrow's tip is the point, and the
-	// pill beside it carries the tool the peer holds and their name.
 	export let cursor: FrontendRemoteCursor;
 
-	// The tool arrives as a plain string from a peer that may run another build; only a name this build knows is drawn.
+	// A peer running another build may name a tool icon this build lacks
 	function isIconName(name: string): name is IconName {
 		return name in ICONS;
 	}
