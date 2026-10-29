@@ -24,14 +24,13 @@ pub struct PreferencesMessageHandler {
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
 	pub show_storage_preferences: bool,
-	/// Who this person is across documents and devices, drawn once and kept; `0` until then.
-	/// Kept as a decimal string in the preferences file: a 64-bit number does not survive the browser's JSON store.
+	/// Who this person is across documents, drawn once and kept.
+	/// Stored as a decimal string, since the browser's JSON loses precision on a 64-bit number.
 	#[serde(with = "u64_as_string")]
 	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
 	pub user_id: u64,
 	/// The display name peers see in a live session; empty means unnamed.
 	pub user_name: String,
-	/// Draw the other peers' pointers over a shared document.
 	pub show_remote_cursors: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
@@ -63,7 +62,7 @@ impl Default for PreferencesMessageHandler {
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
 			show_storage_preferences: false,
-			user_id: 0,
+			user_id: crate::application::generate_uuid(),
 			user_name: String::new(),
 			show_remote_cursors: true,
 			#[cfg(target_os = "macos")]
@@ -92,7 +91,11 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			PreferencesMessage::ResetToDefaults => {
-				responses.add(PreferencesMessage::Load { preferences: Self::default() });
+				let preferences = Self {
+					user_id: self.user_id,
+					..Self::default()
+				};
+				responses.add(PreferencesMessage::Load { preferences });
 				responses.add(DialogMessage::RequestPreferencesDialog);
 			}
 
@@ -162,8 +165,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 	);
 }
 
-/// A `u64` written as a decimal string, since the browser's JSON loses precision on a number this wide and cannot write a
-/// BigInt. Reads a number too.
+/// A `u64` written as a decimal string, read from a string or a number.
 mod u64_as_string {
 	use serde::{Deserialize, Deserializer, Serializer};
 
@@ -182,5 +184,48 @@ mod u64_as_string {
 			Stored::Text(text) => text.parse().map_err(serde::de::Error::custom),
 			Stored::Number(number) => Ok(number),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_first_launch_without_stored_preferences_has_a_user_id() {
+		assert_ne!(PreferencesMessageHandler::default().user_id, 0);
+		let stored: PreferencesMessageHandler = serde_json::from_str("{}").unwrap();
+		assert_ne!(stored.user_id, 0);
+	}
+
+	#[test]
+	fn resetting_the_preferences_keeps_the_user_id() {
+		let mut preferences = PreferencesMessageHandler::default();
+		let tool_message_handler = ToolMessageHandler::default();
+		let mut responses = VecDeque::new();
+		preferences.process_message(
+			PreferencesMessage::ResetToDefaults,
+			&mut responses,
+			PreferencesMessageContext {
+				tool_message_handler: &tool_message_handler,
+			},
+		);
+		let reset = responses.iter().find_map(|message| match message {
+			Message::Preferences(PreferencesMessage::Load { preferences }) => Some(preferences),
+			_ => None,
+		});
+		assert_eq!(reset.map(|reset| reset.user_id), Some(preferences.user_id));
+	}
+
+	#[test]
+	fn the_user_id_round_trips_as_a_string() {
+		let preferences = PreferencesMessageHandler {
+			user_id: u64::MAX,
+			..Default::default()
+		};
+		let json = serde_json::to_value(&preferences).unwrap();
+		assert_eq!(json["user_id"], serde_json::Value::from(u64::MAX.to_string()));
+		let read: PreferencesMessageHandler = serde_json::from_value(json).unwrap();
+		assert_eq!(read.user_id, u64::MAX);
 	}
 }
