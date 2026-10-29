@@ -7,7 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-migration-core = { workspace = true }
+migration-core = { workspace = true, features = ["typed"] }
 document-graph-storage = { workspace = true }
 
 thiserror = { workspace = true }

@@ -5,11 +5,13 @@
 //! the previous version. So format steps convert only what changed, and old versions never depend on the live crate.
 
 mod plan;
+mod step;
 mod types;
 
 use plan::{Plan, Snapshots};
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
+use step::Step;
 use types::Types;
 
 const SCHEMA: &str = "document/graph-storage/src/schema";
@@ -62,10 +64,17 @@ fn check(workspace: &Path) -> Result<(), String> {
 
 	if !plan.is_unchanged() {
 		return Err(format!(
-			"the stored types changed since format version {latest}:\n{}\nRun `cargo run migration snapshot` to freeze them as version {}, then bump `SUPPORTED_FORMAT_VERSION` and add a format step from {latest}",
+			"the stored types changed since format version {latest}:\n{}\nRun `cargo run migration snapshot` to freeze them as version {} with a format step from {latest}",
 			plan.describe(),
 			plan.version
 		));
+	}
+
+	for version in 2..=latest {
+		let step = workspace.join(SNAPSHOTS).join(step_path(version));
+		if !step.exists() {
+			return Err(format!("format version {version} has no step from {} at {}", version - 1, step.display()));
+		}
 	}
 
 	let supported = supported_version(workspace)?;
@@ -80,7 +89,8 @@ fn check(workspace: &Path) -> Result<(), String> {
 fn snapshot(workspace: &Path) -> Result<(), String> {
 	let live = Types::read_schema(&workspace.join(SCHEMA))?;
 	let snapshots_directory = workspace.join(SNAPSHOTS);
-	let plan = Plan::new(&live, &Snapshots::read(&snapshots_directory)?);
+	let snapshots = Snapshots::read(&snapshots_directory)?;
+	let plan = Plan::new(&live, &snapshots);
 
 	if let Some(latest) = plan.previous
 		&& plan.is_unchanged()
@@ -95,9 +105,26 @@ fn snapshot(workspace: &Path) -> Result<(), String> {
 	register_version(&snapshots_directory.join("lib.rs"), plan.version)?;
 
 	println!("Froze format version {} into {}", plan.version, file.display());
-	if plan.previous.is_some() {
+
+	if let Some(previous) = plan.previous {
+		let step = Step::new(&plan, previous, &live, &snapshots);
+		let step_file = snapshots_directory.join(step_path(plan.version));
+		std::fs::create_dir_all(snapshots_directory.join("steps")).map_err(|error| format!("creating the steps module: {error}"))?;
+		std::fs::write(&step_file, step.render()).map_err(|error| format!("{}: {error}", step_file.display()))?;
+		format(workspace, &step_file)?;
+		register_step(&snapshots_directory.join("steps/mod.rs"), plan.version)?;
+		set_supported_version(workspace, plan.version)?;
+
 		println!("{}", plan.describe());
-		println!("Next, set `SUPPORTED_FORMAT_VERSION` to {} and add a format step from {}", plan.version, plan.version - 1);
+		println!(
+			"Wrote the format step from {previous} into {}, and set `SUPPORTED_FORMAT_VERSION` to {}",
+			step_file.display(),
+			plan.version
+		);
+		println!("Finish the conversions of the changed types where the step's `compile_error!`s point");
+		for name in step.unconverted() {
+			println!("Warning: `{name}` changed, but format steps don't convert where it's stored");
+		}
 	}
 	Ok(())
 }
@@ -136,6 +163,42 @@ fn register_version(library: &Path, version: u32) -> Result<(), String> {
 	lines.insert(after_modules, latest);
 
 	std::fs::write(library, lines.join("\n") + "\n").map_err(|error| format!("{}: {error}", library.display()))
+}
+
+/// The step into `version`, relative to the snapshots crate's source.
+fn step_path(version: u32) -> PathBuf {
+	PathBuf::from(format!("steps/v{}_to_v{version}.rs", version - 1))
+}
+
+/// Declares the step into `version` in the steps module, creating it and declaring it in the crate on the first step.
+fn register_step(steps: &Path, version: u32) -> Result<(), String> {
+	let module = format!("mod v{}_to_v{version};", version - 1);
+	let source = std::fs::read_to_string(steps).unwrap_or_else(|_| "//! One format step per version, each registering itself.\n\n".to_string());
+	if !source.lines().any(|line| line == module) {
+		std::fs::write(steps, format!("{source}{module}\n")).map_err(|error| format!("{}: {error}", steps.display()))?;
+	}
+
+	let Some(directory) = steps.parent().and_then(Path::parent) else { return Ok(()) };
+	let library = directory.join("lib.rs");
+	let library_source = std::fs::read_to_string(&library).map_err(|error| format!("{}: {error}", library.display()))?;
+	if !library_source.lines().any(|line| line == "mod steps;") {
+		std::fs::write(&library, format!("{library_source}\nmod steps;\n")).map_err(|error| format!("{}: {error}", library.display()))?;
+	}
+	Ok(())
+}
+
+fn set_supported_version(workspace: &Path, version: u32) -> Result<(), String> {
+	let manifest = workspace.join(MANIFEST);
+	let source = std::fs::read_to_string(&manifest).map_err(|error| format!("{}: {error}", manifest.display()))?;
+	let updated: Vec<String> = source
+		.lines()
+		.map(|line| match line.strip_prefix(SUPPORTED_VERSION_DECLARATION) {
+			Some(_) => format!("{SUPPORTED_VERSION_DECLARATION}{version};"),
+			None => line.to_string(),
+		})
+		.collect();
+
+	std::fs::write(&manifest, updated.join("\n") + "\n").map_err(|error| format!("{}: {error}", manifest.display()))
 }
 
 fn supported_version(workspace: &Path) -> Result<u32, String> {

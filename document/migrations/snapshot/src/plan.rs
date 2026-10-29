@@ -1,6 +1,6 @@
 //! What the next format version must declare again, and the snapshot file that declares it.
 
-use crate::types::{ImportLeaf, Types, flatten};
+use crate::types::{Entry, ImportLeaf, Types, flatten};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::{ToTokens, format_ident, quote};
 use std::collections::{BTreeMap, BTreeSet};
@@ -35,13 +35,17 @@ impl Snapshots {
 		self.versions.keys().next_back().copied()
 	}
 
-	/// The fingerprint of `name` as of `version`, following re-exports to the version defining it.
-	fn fingerprint(&self, version: u32, name: &str) -> Option<String> {
+	/// `name` as of `version`, following re-exports to the version defining it.
+	pub fn entry(&self, version: u32, name: &str) -> Option<&Entry> {
 		let types = self.versions.get(&version)?;
 		if let Some(entry) = types.entries.get(name) {
-			return Some(entry.fingerprint());
+			return Some(entry);
 		}
-		types.reexports.get(name).and_then(|&earlier| self.fingerprint(earlier, name))
+		types.reexports.get(name).and_then(|&earlier| self.entry(earlier, name))
+	}
+
+	fn fingerprint(&self, version: u32, name: &str) -> Option<String> {
+		self.entry(version, name).map(Entry::fingerprint)
 	}
 
 	fn names(&self, version: u32) -> BTreeSet<String> {

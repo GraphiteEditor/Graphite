@@ -108,7 +108,7 @@ graph-craft = { path = "node-graph/graph-craft" }
 document-format = { path = "document/format" }
 document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
-migration-core = { path = "document/migrations/core" }
+migration-core = { path = "document/migrations/core", default-features = false }
 migration-macros = { path = "document/migrations/macros" }
 migration-runner = { path = "document/migrations/runner" }
 migration-formats = { path = "document/migrations/formats" }

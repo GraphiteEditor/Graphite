@@ -3686,6 +3686,7 @@ version = "0.0.0"
 dependencies = [
  "document-graph-storage",
  "graphene-resource",
+ "migration-core",
  "postcard",
  "serde",
  "serde_json",

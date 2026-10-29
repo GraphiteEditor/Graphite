@@ -1,5 +1,6 @@
-//! `#[migration]` and `rename!` for `migration-core`. See `node-graph/rfcs/document-format-migrations.md` for what they expand to.
+//! `#[migration]`, `rename!`, and `format_migration!` for `migration-core`. See `node-graph/rfcs/document-format-migrations.md` for what they expand to.
 
+mod format;
 mod step;
 
 use convert_case::{Case, Casing};
@@ -31,6 +32,25 @@ pub fn rename(input: TokenStream) -> TokenStream {
 	let step = parse_macro_input!(input as Step);
 
 	expand_rename(step).unwrap_or_else(Error::into_compile_error).into()
+}
+
+/// Registers a format step converting the listed stored roots through their `Upgrade` impls:
+/// `format_migration!(1 => 2, registry: v1::Registry, delta: v1::Delta);`. Roots left out keep their payloads.
+#[proc_macro]
+pub fn format_migration(input: TokenStream) -> TokenStream {
+	let step = parse_macro_input!(input as format::FormatStep);
+
+	let expanded = core_path().map(|core| {
+		let migration = format::expand(&core, &step);
+		let registration = registration(&core, quote!(register_format_migration), quote!(&FormatStep), &format!("format {}=>{}", step.from, step.to));
+		quote! {
+			const _: () = {
+				#migration
+				#registration
+			};
+		}
+	});
+	expanded.unwrap_or_else(Error::into_compile_error).into()
 }
 
 /// What one parameter of a migration function receives.
@@ -130,7 +150,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 	let docs = function.attrs.iter().filter(|attribute| attribute.path().is_ident("doc"));
 	let source = declaration(&core, &step.source);
 	let target = declaration(&core, &step.target);
-	let registration = registration(&core, quote!(&#struct_name), &step);
+	let registration = registration(&core, quote!(register_migration), quote!(&#struct_name), &step_name(&step));
 
 	Ok(quote! {
 		#function
@@ -184,7 +204,7 @@ fn expand_rename(step: Step) -> syn::Result<TokenStream2> {
 	let core = core_path()?;
 	let source = declaration(&core, &step.source);
 	let target = declaration(&core, &step.target);
-	let registration = registration(&core, quote!(&MIGRATION), &step);
+	let registration = registration(&core, quote!(register_migration), quote!(&MIGRATION), &step_name(&step));
 
 	Ok(quote! {
 		const _: () = {
@@ -194,10 +214,13 @@ fn expand_rename(step: Step) -> syn::Result<TokenStream2> {
 	})
 }
 
-/// Registers `migration` at startup: through `ctor` on native targets, and through an exported function the host calls on wasm,
-/// where `ctor` isn't available. The export's name derives from the step, so registering one step twice fails to link.
-fn registration(core: &TokenStream2, migration: TokenStream2, step: &Step) -> TokenStream2 {
-	let step_name = format!("{}@{}=>{}@{}", step.source.identifier, step.source.version, step.target.identifier, step.target.version);
+fn step_name(step: &Step) -> String {
+	format!("{}@{}=>{}@{}", step.source.identifier, step.source.version, step.target.identifier, step.target.version)
+}
+
+/// Passes `migration` to `register` at startup: through `ctor` on native targets, and through an exported function the host calls
+/// on wasm, where `ctor` isn't available. The export's name derives from `step_name`, so registering one step twice fails to link.
+fn registration(core: &TokenStream2, register: TokenStream2, migration: TokenStream2, step_name: &str) -> TokenStream2 {
 	let hash = blake3::hash(step_name.as_bytes()).to_hex();
 	let export = format_ident!("__migration_registry_{}", &hash[..16]);
 
@@ -206,7 +229,7 @@ fn registration(core: &TokenStream2, migration: TokenStream2, step: &Step) -> To
 
 		#[cfg_attr(not(target_family = "wasm"), ctor)]
 		fn register() {
-			#core::register_migration(#migration);
+			#core::#register(#migration);
 		}
 
 		#[cfg(target_family = "wasm")]

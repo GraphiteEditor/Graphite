@@ -380,7 +380,7 @@ Format migrations whose change cannot be expressed per record declare `Truncate`
 
 ## Registration
 
-Migrations register themselves the way nodes do. On native targets the generated registration runs through `#[ctor]`. On wasm, where `ctor` isn't available, the macro emits an exported `extern "C" fn __migration_registry_*` that the host calls on startup, alongside the existing node registry shims. The export's name hashes the step, so two crates registering the same step fail to link. The runner reads the registry, orders it (see "Ordering"), and knows no specific migration. A rename is registered with `rename!` rather than a `migration!` form, because attribute and function-like macros share one namespace, and macro output must mint a unique exported symbol that `macro_rules!` can't.
+Migrations register themselves the way nodes do. On native targets the generated registration runs through `#[ctor]`. On wasm, where `ctor` isn't available, the macro emits an exported `extern "C" fn __migration_registry_*` that the host calls on startup, alongside the existing node registry shims. The export's name hashes the step, so two crates registering the same step fail to link. Format steps register the same way through `format_migration!`, and the runner rejects two steps from one version. The runner reads the registry, orders it (see "Ordering"), and knows no specific migration. A rename is registered with `rename!` rather than a `migration!` form, because attribute and function-like macros share one namespace, and macro output must mint a unique exported symbol that `macro_rules!` can't.
 
 Which migrations a binary ships is decided by which migration crates it links, selected with cargo features. A linked crate that nothing references can be discarded by the linker, so each binary references every enabled migration crate (`use nodes_2026 as _;` behind its feature).
 
@@ -392,7 +392,32 @@ Every stored type lives in `graph-storage`'s `schema` module: the registry, delt
 
 `cargo run migration check` fails in CI when the live module no longer matches `latest`, naming the changed types, or when `SUPPORTED_FORMAT_VERSION` isn't the latest frozen version. It also fails when a stored field names a type defined outside the module. A round-trip test encodes live documents through `latest` and compares the results, which catches what comparing definitions can't, such as a changed serde impl in a dependency.
 
-Format steps depend only on `migration-formats`, never on `graph-storage`, so the infrastructure can change without touching old migrations.
+Format steps live in `migration-formats/src/steps/`, depend only on its frozen versions, never on `graph-storage`, so the infrastructure can change without touching old migrations. `snapshot` writes the step along with the version and sets `SUPPORTED_FORMAT_VERSION`:
+
+```rust
+format_migration! {
+	1 => 2,
+	registry: v1::Registry,
+	delta: v1::Delta,
+	hot_op: v1::HotOp,
+}
+
+impl Upgrade for v1::ExportSlot {
+	type Next = v2::ExportSlot;
+	fn upgrade(self) -> Result<Self::Next, MigrationError> {
+		let v1::ExportSlot { target, timestamp } = self;
+		Ok(v2::ExportSlot {
+			label: compile_error!("`label` is new; give it a value here"),
+			target,
+			timestamp,
+		})
+	}
+}
+```
+
+`format_migration!` registers a step converting each listed root (the ones the version declares again) through its `Upgrade` impl, and leaves the other payloads untouched. Listing `delta` sets `HistoryPolicy::Rewrite`. The tool generates an `Upgrade` impl for every type declared again: types that only reach a changed one convert field by field, mapping containers structurally, with aliases expanded and generic types like `Tombstone<T>` converted inline at each use, since an impl on a type shared across versions would conflict between steps. A changed type converts the fields and variants that still match by name and type, and marks each new field, retyped field, or removed variant with `compile_error!`, so the compiler lists exactly what the author writes. `check` fails when a version has no step file.
+
+Changes to `ProtoNode` are reported but not converted, since declarations are stored as content-addressed resources rather than in the payloads a step sees.
 
 ## API change detection
 

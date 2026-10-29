@@ -7,6 +7,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
+migration-core = { workspace = true }
 graphene-resource = { workspace = true, features = ["serde"] }
 
 serde = { workspace = true }
