@@ -3713,6 +3713,20 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
+	// Collapse the legacy "Rasterize" wrapper network, which drew into a browser canvas, into the standalone Vello `rasterize` proto node
+	#[cfg(feature = "gpu")]
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Rasterize"
+		&& node.inputs.len() == 2
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::rasterize::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+	}
+
 	// The removed Attach Attribute node degrades to a passthrough of its
 	// content: its eager whole-list source input cannot be mechanically rewired as Write Attribute's lazy per-item value producer.
 	if let Some(DefinitionIdentifier::ProtoNode(identifier)) = document.network_interface.reference(node_id, network_path)
@@ -3837,6 +3851,79 @@ mod tests {
 		};
 		let expected = original.iter().map(|(name, offset)| (swap_name(name), *offset)).collect::<Vec<_>>();
 		assert_eq!(chain_layout(&opened, layer), expected, "the migration should leave the layer's chain intact");
+	}
+
+	#[cfg(feature = "gpu")]
+	#[tokio::test]
+	async fn opening_a_canvas_rasterize_network_upgrades_it_to_the_vello_node() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkTemplate;
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::platform_application_io::rasterize;
+		use graphene_std::transform::Footprint;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER), 0, 0).await;
+		let document = editor.active_document_mut();
+
+		let footprint = Footprint {
+			resolution: glam::UVec2::new(64, 32),
+			..Default::default()
+		};
+		let footprint_input = NodeInput::value(TaggedValue::Footprint(footprint), false);
+		document.network_interface.set_input(&InputConnector::node_at_index(node_id, 1), footprint_input.clone(), &[]);
+
+		// Save the node as the network that drew into a browser canvas
+		let canvas_network = NodeNetworkTemplate {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: [(
+				NodeId(0),
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(rasterize::IDENTIFIER),
+					inputs: vec![NodeInput::import(list!(graphic_types::Graphic), 0), NodeInput::import(item!(Footprint), 1)],
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		let mut legacy = NodeTemplate {
+			implementation: NodeTemplateImplementation::Network(canvas_network),
+			..Default::default()
+		};
+		document.network_interface.replace_implementation(&node_id, &[], &mut legacy);
+		document.network_interface.set_reference(&node_id, &[], Some("Rasterize".into()));
+		let serialized = document.serialize_document();
+
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let interface = &opened.network_interface;
+		assert_eq!(interface.reference(&node_id, &[]), Some(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER)));
+		assert_eq!(
+			interface.input_from_connector(&InputConnector::node_at_index(node_id, 1), &[]),
+			Some(&footprint_input),
+			"the footprint should carry over"
+		);
+	}
+
+	#[cfg(feature = "gpu")]
+	#[tokio::test]
+	async fn a_rasterize_node_on_the_export_compiles() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rasterize = editor
+			.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::platform_application_io::rasterize::IDENTIFIER), 0, 0)
+			.await;
+		editor
+			.active_document_mut()
+			.network_interface
+			.create_wire(&OutputConnector::primary_output(rasterize), &InputConnector::Export(0), &[]);
+
+		editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
 	}
 
 	#[test]

@@ -1,29 +1,20 @@
-#[cfg(target_family = "wasm")]
-use base64::Engine;
-#[cfg(target_family = "wasm")]
-use canvas_utils::{Canvas, CanvasHandle};
 use core_types::Ctx;
 use core_types::color::SRGBA8;
-use core_types::list::Item;
-#[cfg(target_family = "wasm")]
-use core_types::list::List;
-#[cfg(target_family = "wasm")]
+use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::ops::Convert;
+use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
-#[cfg(target_family = "wasm")]
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
+use glam::{DAffine2, UVec2};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
-#[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-#[cfg(target_family = "wasm")]
-use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
@@ -224,75 +215,48 @@ fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
 	Item::new_from_element(Raster::new_cpu(image))
 }
 
-#[cfg(target_family = "wasm")]
-#[node_macro::node(category(""))]
-fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
-	Item::new_from_element(CanvasHandle::new())
+/// Renders a view of the input graphic within an area defined by the *Footprint*.
+#[node_macro::node(category(""), placeholder = pending_raster)]
+async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(try_wgpu_executor::IDENTIFIER)] executor: Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
+	let Some(executor) = executor.into_element() else {
+		log::error!("Rasterizing requires a GPU executor");
+		return List::new();
+	};
+	rasterize_with_vello(data, footprint.into_element(), executor).await
 }
 
-/// Renders a view of the input graphic within an area defined by the *Footprint*.
-#[cfg(target_family = "wasm")]
-#[node_macro::node(category(""), placeholder = pending_raster)]
-async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, canvas: Item<CanvasHandle>) -> List<Raster<CPU>> {
-	let mut data = data;
-	let mut canvas = canvas.into_element();
-	use glam::{DAffine2, DVec2};
-
-	let footprint = footprint.into_element();
-
-	if footprint.transform.matrix2.determinant() == 0. {
+async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> List<Raster<CPU>> {
+	let resolution = footprint.resolution;
+	if footprint.transform.matrix2.determinant() == 0. || resolution.cmpeq(UVec2::ZERO).any() {
 		log::trace!("Invalid footprint received for rasterization");
 		return List::new();
 	}
 
-	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
-	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
-	let upstream_graphic_list = data.clone();
-
-	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
-	let size = aabb.size();
-	let resolution = footprint.resolution;
+	let view = DAffine2::from_scale(resolution.as_dvec2() / aabb.size()) * DAffine2::from_translation(-aabb.start);
 	let render_params = RenderParams {
 		footprint,
 		for_export: true,
 		..Default::default()
 	};
+	let texture = match executor.render_vello(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) {
+		Ok(texture) => texture,
+		Err(error) => {
+			log::error!("Failed to rasterize: {error}");
+			return List::new();
+		}
+	};
+	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor).await;
 
-	for transform in data.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-		*transform = DAffine2::from_translation(-aabb.start) * *transform;
-	}
-	data.render_svg(&mut render, &render_params);
-	render.format_svg(DVec2::ZERO, size);
-	let svg_string = render.svg.to_svg_string();
-
-	canvas.set_resolution(resolution);
-	let context = canvas.context();
-
-	let preamble = "data:image/svg+xml;base64,";
-	let mut base64_string = String::with_capacity(preamble.len() + svg_string.len() * 4);
-	base64_string.push_str(preamble);
-	base64::engine::general_purpose::STANDARD.encode_string(svg_string, &mut base64_string);
-
-	let image_data = web_sys::HtmlImageElement::new().unwrap();
-	image_data.set_src(base64_string.as_str());
-	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context
-		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
-		.unwrap();
-
-	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
-
-	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
+	// The input's layers stay reachable so the renderer can expose their click targets to the editor's tools
 	List::new_from_item(
-		Item::new_from_element(Raster::new_cpu(image))
+		Item::new_from_element(raster)
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, data),
 	)
 }
 
-#[cfg(target_family = "wasm")]
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _canvas: &Item<CanvasHandle>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
 	List::new()
 }
 
@@ -357,4 +321,34 @@ fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor
 	let (raster, attributes) = content.into_parts();
 
 	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::Color;
+	use glam::DVec2;
+
+	#[tokio::test]
+	async fn rasterize_renders_the_footprint_area_at_its_resolution() {
+		let Some(executor) = ::wgpu_executor::WgpuExecutor::new().await else { return };
+
+		let red = Item::new_from_element(Raster::new_cpu(Image::new(1, 1, Color::RED))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::new(500., 1000.)));
+		let data = List::new_from_item(Item::new_from_element(Graphic::RasterCPU(Box::new(red))));
+		let footprint = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(1000.)),
+			resolution: UVec2::splat(4),
+			..Default::default()
+		};
+
+		let output = rasterize_with_vello(data, footprint, executor).await;
+
+		let image = output.iter_element_values().next().expect("Rasterize should output one image").data();
+		assert_eq!((image.width, image.height), (4, 4));
+		for x in 0..4 {
+			let pixel = image.data[(4 + x) as usize];
+			let expected_red = x < 2;
+			assert_eq!(pixel.a() > 0.5, expected_red, "pixel {x} should be {}", if expected_red { "red" } else { "transparent" });
+		}
+	}
 }

@@ -652,41 +652,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			description: Cow::Borrowed("Loads an image from a given URL."),
 			inspector: None,
 		},
-		#[cfg(all(feature = "gpu", target_family = "wasm"))]
+		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
 			icon: Some("NodeRasterize"),
 			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(2), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(item!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
+				implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
 				inputs: vec![
 					NodeInput::type_default(list!(Vector), true),
 					NodeInput::value(
