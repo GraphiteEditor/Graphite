@@ -770,6 +770,23 @@ fn all_referenced_resource_hashes_keeps_an_overwritten_hot_hash() {
 	assert!(session.all_referenced_resource_hashes().contains(&first), "and from history once retired");
 }
 
+/// A take-back can lose to a host retiring the same ops, leaving history naming a hash only this peer held, so the
+/// bytes stay roots after the step is taken back and its redo future is gone.
+#[test]
+fn resource_gc_roots_keep_what_a_taken_back_step_named() {
+	use crate::ResourceId;
+
+	let mut session = Session::with_peer(PeerId(1));
+	let hash = ResourceHash::from(&b"bytes"[..]);
+	session.stage_embedded_resource(ResourceId::new(), hash).expect("stage resource");
+	session.end_interaction().expect("end interaction");
+	session.retract_interaction().expect("retract").expect("a hot step to take back");
+	assert!(!session.all_referenced_resource_hashes().contains(&hash), "nothing names the hash once taken back");
+
+	session.stage_embedded_resource(ResourceId::new(), ResourceHash::from(&b"other"[..])).expect("a fresh edit");
+	assert!(session.resource_gc_roots().contains(&hash));
+}
+
 /// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
 /// new edit; a no-op commit (here `embed_resource_sources` over an empty id set) leaving it cleared
 /// would silently disable redo after an undo.

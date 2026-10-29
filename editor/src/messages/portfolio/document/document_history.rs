@@ -178,15 +178,9 @@ impl DocumentHistory {
 		!self.legacy_redo_stack.is_empty()
 	}
 
-	/// The resource bytes garbage collection must keep for the stored document, including what the steps taken back
-	/// name: nothing in the registry or history refers to those until a redo restages them.
+	/// The resource bytes garbage collection must keep for the stored document. See `Session::resource_gc_roots`.
 	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
-		let Some(storage) = self.storage.as_ref() else { return HashSet::new() };
-		let retracted = self.retracted_undos.iter().filter_map(|note| match note {
-			UndoNote::Retracted(ops) => Some(ops),
-			_ => None,
-		});
-		storage.resource_gc_roots(retracted.flatten())
+		self.storage.as_ref().map(|storage| storage.resource_gc_roots()).unwrap_or_default()
 	}
 
 	/// Whether the next redo step was taken back or dropped rather than cursor-undone, checked before the legacy stacks move.

@@ -393,8 +393,8 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// The resource bytes garbage collection must keep for this document. See [`Session::resource_gc_roots`].
-	pub fn resource_gc_roots<'a>(&self, retracted: impl IntoIterator<Item = &'a document_graph_storage::RegistryDelta>) -> std::collections::HashSet<ResourceHash> {
-		self.session.resource_gc_roots(retracted)
+	pub fn resource_gc_roots(&self) -> std::collections::HashSet<ResourceHash> {
+		self.session.resource_gc_roots()
 	}
 
 	/// Drop the session and return the working-copy container + layout.

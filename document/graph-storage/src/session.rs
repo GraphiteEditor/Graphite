@@ -22,6 +22,9 @@ pub struct Session {
 	/// The registry the runtime was last built from or staged to. Local diffs are taken against it,
 	/// so edits peers applied to the working registry in the meantime are not diffed away.
 	runtime_base: Option<Registry>,
+	/// What the ops this peer took back named. A take-back can lose a race with a host retiring the same ops, and the
+	/// author may hold the only copy, so their bytes stay roots until the session ends, even once no redo can restage them.
+	taken_back_resources: HashSet<ResourceHash>,
 }
 
 impl Session {
@@ -44,6 +47,7 @@ impl Session {
 			document: Document::empty(peer, user),
 			remote_tips: HashMap::new(),
 			runtime_base: None,
+			taken_back_resources: HashSet::new(),
 		}
 	}
 
@@ -313,6 +317,7 @@ impl Session {
 			},
 			remote_tips: HashMap::new(),
 			runtime_base: None,
+			taken_back_resources: HashSet::new(),
 		}
 	}
 
@@ -364,6 +369,7 @@ impl Session {
 		}
 		self.runtime_base = None;
 		let (touched, taken) = self.document.retract_hot_ops(&ids);
+		self.taken_back_resources.extend(taken.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
 		Ok(Some(Retraction { ids, touched, ops }))
 	}
@@ -1022,11 +1028,11 @@ impl Session {
 		hashes
 	}
 
-	/// The resource bytes garbage collection must keep: everything referenced, plus what `retracted` (the ops of steps
-	/// this peer took back, which a redo restages) names, since nothing else here refers to those.
-	pub fn resource_gc_roots<'a>(&self, retracted: impl IntoIterator<Item = &'a RegistryDelta>) -> HashSet<ResourceHash> {
+	/// The resource bytes garbage collection must keep: everything referenced, plus what the ops this peer took back
+	/// named, which a redo may restage or a retirement that beat the take-back may still name.
+	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
 		let mut roots = self.all_referenced_resource_hashes();
-		roots.extend(retracted.into_iter().filter_map(RegistryDelta::resource_hash));
+		roots.extend(&self.taken_back_resources);
 		roots
 	}
 
@@ -1124,6 +1130,16 @@ impl Session {
 	/// Restore the hot op sequence after a load. Raises only, as replaying the hot log may already have.
 	pub fn restore_hot_sequence(&mut self, sequence: HotSequence) {
 		self.document.last_hot_sequence = self.document.last_hot_sequence.max(sequence);
+	}
+
+	/// What the ops this peer took back named, carried across a reload so a lost take-back keeps its bytes.
+	pub fn taken_back_resources(&self) -> &HashSet<ResourceHash> {
+		&self.taken_back_resources
+	}
+
+	/// Restore [`taken_back_resources`](Self::taken_back_resources) after a load.
+	pub fn restore_taken_back_resources(&mut self, hashes: HashSet<ResourceHash>) {
+		self.taken_back_resources.extend(hashes);
 	}
 }
 

@@ -241,7 +241,7 @@ impl Peer {
 	}
 
 	fn stage(&mut self, op: RegistryDelta) {
-		// A fresh edit clears the redo future, so the steps taken back stop being GC roots.
+		// A fresh edit clears the redo future, though the session keeps what the steps taken back named as GC roots.
 		self.retracted.clear();
 		let hot_ops = self.target.session.stage_computed_ops(vec![op]).expect("stage");
 
@@ -311,7 +311,7 @@ impl Peer {
 	}
 
 	fn gc_roots(&self) -> HashSet<ResourceHash> {
-		self.target.session.resource_gc_roots(self.retracted.iter().flatten())
+		self.target.session.resource_gc_roots()
 	}
 
 	/// Every hash this peer's registry, history, hot log or retracted steps name, gathered here rather than through the
@@ -636,6 +636,11 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 				peers[index].collect_garbage(&needed);
 			}
 			17 if peers[index].replica.is_synced() => peers[index].redo_retracted(),
+			// Bytes nothing names, as an abandoned import leaves behind: what garbage collection is for.
+			8 if network.random_below(4) == 0 => {
+				let bytes = format!("stray-{}-{}", peers[index].peer.0, network.random_below(1 << 20)).into_bytes();
+				peers[index].target.resources.insert(ResourceHash::from(bytes.as_slice()), bytes);
+			}
 			// A small payload pool, so peers sometimes introduce the same resource concurrently.
 			8 if peers[index].replica.is_synced() => {
 				let bytes = format!("resource-{}", network.random_below(5)).into_bytes();

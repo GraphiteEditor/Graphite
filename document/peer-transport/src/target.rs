@@ -111,9 +111,12 @@ impl SyncTarget for Session {
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
 		// A spent sequence must not come round again, or a new op of this peer's would be taken as retired.
+		// Nor may the bytes of a take-back lose their root.
 		let spent = self.last_hot_sequence();
+		let taken_back = self.taken_back_resources().clone();
 		*self = Session::load(self.peer(), self.user(), registry, history, head, Vec::new(), self.next_node_counter());
 		self.restore_hot_sequence(spent);
+		self.restore_taken_back_resources(taken_back);
 		Ok(())
 	}
 
