@@ -1565,6 +1565,10 @@ impl InputTypeConstraint {
 				warn!("Input types for extract node {name} not supported");
 				Self::All
 			}
+			NodeTemplateImplementation::Definition(_) => {
+				warn!("Input types for definition node {name} not supported");
+				Self::All
+			}
 		}
 	}
 

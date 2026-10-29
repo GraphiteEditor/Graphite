@@ -38,6 +38,7 @@ pub struct Preprocessor {
 
 impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+		network.inline_definitions().map_err(PreprocessorError::Definition)?;
 		self.insert_inject_scopes(network);
 		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
 		self.expand_network(network);
@@ -144,7 +145,7 @@ impl Preprocessor {
 						node.compile_metadata = compile_metadata;
 					}
 				}
-				DocumentNodeImplementation::Extract => (),
+				DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => (),
 			}
 		}
 	}
@@ -334,6 +335,7 @@ impl Preprocessor {
 					exports,
 					nodes,
 					scope_injections: Default::default(),
+					definitions: Default::default(),
 					generated: true,
 				}),
 				visible: true,
@@ -413,6 +415,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 #[derive(Debug)]
 pub enum PreprocessorError {
 	ResourceNotFound(ResourceId),
+	Definition(DefinitionError),
 }
 
 #[cfg(test)]
@@ -673,6 +676,7 @@ impl std::fmt::Display for PreprocessorError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
+			PreprocessorError::Definition(error) => write!(f, "{error}"),
 		}
 	}
 }

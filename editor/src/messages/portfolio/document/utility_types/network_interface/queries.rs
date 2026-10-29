@@ -78,6 +78,10 @@ impl NodeNetworkInterface {
 		Some(network)
 	}
 
+	pub fn locate<'p>(&self, network_path: &'p [NodeId]) -> Option<NetworkLocation<'p>> {
+		self.document_network().locate(network_path)
+	}
+
 	/// Identifies the graph that would be evaluated, previews included.
 	pub fn network_hash(&self) -> u64 {
 		let mut hasher = std::hash::DefaultHasher::new();
@@ -98,9 +102,13 @@ impl NodeNetworkInterface {
 		&self.network_metadata
 	}
 
+	pub(crate) fn nested_metadata(&self, network_path: &[NodeId]) -> Option<&NodeNetworkMetadata> {
+		self.network_metadata.nested_metadata(self.locate(network_path)?)
+	}
+
 	/// The network metadata should always exist for the current network
 	pub fn network_metadata(&self, network_path: &[NodeId]) -> Option<&NodeNetworkMetadata> {
-		let Some(network_metadata) = self.network_metadata.nested_metadata(network_path) else {
+		let Some(network_metadata) = self.nested_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata with path {network_path:?}");
 			return None;
 		};
@@ -1074,13 +1082,17 @@ impl NodeNetworkInterface {
 		let mut network_metadata = NodeNetworkMetadata::default();
 		let mut stack = vec![(Vec::new(), old_network)];
 		while let Some((network_path, old_network)) = stack.pop() {
-			let Some(nested_network) = node_network.nested_network_mut(&network_path) else {
+			let Some(location) = node_network.locate(&network_path) else {
+				log::error!("Could not locate nested network in from_old_network");
+				continue;
+			};
+			let Some(nested_network) = node_network.located_network_mut(location) else {
 				log::error!("Could not get nested network in from_old_network");
 				continue;
 			};
 			nested_network.exports = old_network.exports;
 			nested_network.scope_injections = old_network.scope_injections.into_iter().collect();
-			let Some(nested_network_metadata) = network_metadata.nested_metadata_mut(&network_path) else {
+			let Some(nested_network_metadata) = network_metadata.nested_metadata_mut(location) else {
 				log::error!("Could not get nested network in from_old_network");
 				continue;
 			};

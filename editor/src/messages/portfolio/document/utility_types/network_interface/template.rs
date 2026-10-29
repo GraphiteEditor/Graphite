@@ -75,6 +75,7 @@ impl Default for NodeTemplate {
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeTemplateImplementation {
 	Network(NodeNetworkTemplate),
+	Definition(DefinitionId),
 	ProtoNode(ProtoNodeIdentifier),
 	Extract,
 }
@@ -150,6 +151,7 @@ impl NodeTemplate {
 					navigation_metadata: nested_persistent.navigation_metadata,
 				})
 			}
+			DocumentNodeImplementation::Definition(id) => NodeTemplateImplementation::Definition(id),
 			DocumentNodeImplementation::ProtoNode(identifier) => NodeTemplateImplementation::ProtoNode(identifier),
 			DocumentNodeImplementation::Extract => NodeTemplateImplementation::Extract,
 		};
@@ -278,11 +280,13 @@ impl NodeTemplateImplementation {
 						navigation_metadata,
 						selection_undo_history: Default::default(),
 						selection_redo_history: Default::default(),
+						definitions: Default::default(),
 					},
 					transient_metadata: Default::default(),
 				};
 				(DocumentNodeImplementation::Network(network), Some(network_metadata))
 			}
+			NodeTemplateImplementation::Definition(id) => (DocumentNodeImplementation::Definition(id), None),
 			NodeTemplateImplementation::ProtoNode(identifier) => (DocumentNodeImplementation::ProtoNode(identifier), None),
 			NodeTemplateImplementation::Extract => (DocumentNodeImplementation::Extract, None),
 		}

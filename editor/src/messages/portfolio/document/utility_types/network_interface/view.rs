@@ -30,14 +30,10 @@ pub struct NetworkView<'a, 'p> {
 impl NodeNetworkInterface {
 	/// Resolves a read cursor for the network at `network_path`, walking the nested network and metadata trees once.
 	pub fn view<'a, 'p>(&'a self, network_path: &'p [NodeId]) -> Result<NetworkView<'a, 'p>, NetworkError> {
-		let network = self
-			.document_network()
-			.nested_network(network_path)
-			.ok_or_else(|| NetworkError::NetworkNotFound { path: network_path.to_vec() })?;
-		let metadata = self
-			.document_network_metadata()
-			.nested_metadata(network_path)
-			.ok_or_else(|| NetworkError::NetworkNotFound { path: network_path.to_vec() })?;
+		let not_found = || NetworkError::NetworkNotFound { path: network_path.to_vec() };
+		let location = self.locate(network_path).ok_or_else(not_found)?;
+		let network = self.document_network().located_network(location).ok_or_else(not_found)?;
+		let metadata = self.document_network_metadata().nested_metadata(location).ok_or_else(not_found)?;
 
 		Ok(NetworkView {
 			interface: self,
@@ -96,19 +92,14 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn reference(&self, node_id: &NodeId) -> Result<Option<DefinitionIdentifier>, NetworkError> {
-		match self.implementation(node_id)? {
-			DocumentNodeImplementation::Network(_) => {
-				let node_metadata = self.node_metadata(node_id)?;
-				let network_metadata = node_metadata
-					.persistent_metadata
-					.network_metadata
-					.as_ref()
-					.ok_or(NetworkError::NestedMetadataNotFound { node_id: *node_id })?;
-				Ok(network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network))
-			}
-			DocumentNodeImplementation::ProtoNode(protonode_id) => Ok(Some(DefinitionIdentifier::ProtoNode(protonode_id.clone()))),
-			_ => Ok(None),
-		}
+		let network_metadata = match self.implementation(node_id)? {
+			DocumentNodeImplementation::Network(_) => self.node_metadata(node_id)?.persistent_metadata.network_metadata.as_ref(),
+			DocumentNodeImplementation::Definition(id) => self.interface.network_metadata.persistent_metadata.definitions.get(id),
+			DocumentNodeImplementation::ProtoNode(protonode_id) => return Ok(Some(DefinitionIdentifier::ProtoNode(protonode_id.clone()))),
+			DocumentNodeImplementation::Extract => return Ok(None),
+		};
+		let network_metadata = network_metadata.ok_or(NetworkError::NestedMetadataNotFound { node_id: *node_id })?;
+		Ok(network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network))
 	}
 
 	pub fn is_layer(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
@@ -251,9 +242,17 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(self.input_row_count(node_id)?.max(self.number_of_outputs(node_id)?).max(1))
 	}
 
+	pub fn implementation_network(&self, node_id: &NodeId) -> Result<Option<&'a NodeNetwork>, NetworkError> {
+		let implementation = self.implementation(node_id)?;
+		Ok(self.interface.document_network().implementation_network(implementation))
+	}
+
 	pub fn number_of_outputs(&self, node_id: &NodeId) -> Result<usize, NetworkError> {
+		if let Some(nested_network) = self.implementation_network(node_id)? {
+			return Ok(nested_network.exports.len());
+		}
+
 		Ok(match self.implementation(node_id)? {
-			DocumentNodeImplementation::Network(nested_network) => nested_network.exports.len(),
 			// A multi-output proto node has an output for each field of the struct it returns
 			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).map_or(1, |metadata| metadata.number_of_outputs()),
 			_ => 1,
@@ -274,8 +273,11 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn hidden_primary_output(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
+		if let Some(network) = self.implementation_network(node_id)? {
+			return Ok(network.exports.first().is_none_or(|input| !input.is_exposed()));
+		}
+
 		Ok(match self.implementation(node_id)? {
-			DocumentNodeImplementation::Network(network) => network.exports.first().is_none_or(|input| !input.is_exposed()),
 			DocumentNodeImplementation::ProtoNode(identifier) => MULTI_OUTPUT_NODES.get(identifier).is_some_and(|metadata| metadata.hidden_primary_output()),
 			_ => false,
 		})

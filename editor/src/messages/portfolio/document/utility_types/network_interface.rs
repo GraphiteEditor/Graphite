@@ -50,7 +50,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::document::{DefinitionId, DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::Appearance;
 use graphene_std::math::quad::Quad;
 use graphene_std::registry::MULTI_OUTPUT_NODES;
@@ -186,5 +186,43 @@ mod network_interface_tests {
 			nodes.iter().any(|(node_id, other)| *node_id != rectangle && other == original),
 			"duplicated node should exist\nother nodes: {nodes:#?}\noriginal {original:#?}"
 		);
+	}
+
+	#[test]
+	fn instance_paths_resolve_through_the_definitions_table() {
+		use super::*;
+
+		let definition = DefinitionId(1);
+		let instance = |implementation| DocumentNode { implementation, ..Default::default() };
+		let instances = [NodeId(10), NodeId(11)];
+
+		let network = NodeNetwork {
+			nodes: instances.iter().map(|&id| (id, instance(DocumentNodeImplementation::Definition(definition)))).collect(),
+			definitions: [(definition, NodeNetwork::value_network(instance(DocumentNodeImplementation::default())))].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut definition_metadata = NodeNetworkMetadata::default();
+		definition_metadata.persistent_metadata.reference = Some("Artboard".into());
+		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
+
+		let mut network_metadata = NodeNetworkMetadata::default();
+		for id in instances {
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
+		}
+		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
+
+		let interface = NodeNetworkInterface::from_trees(network, network_metadata);
+
+		let paths = instances.map(|id| [id]);
+		let views = paths.each_ref().map(|path| interface.view(path).unwrap());
+		assert!(std::ptr::eq(views[0].network, views[1].network));
+		assert!(std::ptr::eq(views[0].metadata, views[1].metadata));
+		assert!(views[0].node_metadata(&NodeId(0)).is_ok());
+
+		let document_view = interface.view(&[]).unwrap();
+		assert_eq!(document_view.reference(&NodeId(10)), Ok(Some(DefinitionIdentifier::Network("Artboard".into()))));
+		assert_eq!(document_view.number_of_outputs(&NodeId(10)), Ok(1));
+		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
 	}
 }

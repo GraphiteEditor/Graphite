@@ -274,14 +274,9 @@ impl NodeNetworkInterface {
 		let node = Box::new(document_node.clone());
 		let metadata = Box::new(persistent_metadata.clone());
 
-		let previous_node = self
-			.network
-			.get_mut()
-			.network_mut()
-			.nested_network_mut(locator.network_path)?
-			.nodes
-			.insert(locator.node_id, document_node);
-		let previous_metadata = self.network_metadata.get_mut().nested_metadata_mut(locator.network_path)?.persistent_metadata.node_metadata.insert(
+		let location = self.locate(locator.network_path)?;
+		let previous_node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.insert(locator.node_id, document_node);
+		let previous_metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata.node_metadata.insert(
 			locator.node_id,
 			DocumentNodeMetadata {
 				persistent_metadata,
@@ -319,11 +314,12 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		let node = self.network.get_mut().network_mut().nested_network_mut(locator.network_path)?.nodes.remove(&locator.node_id);
+		let location = self.locate(locator.network_path)?;
+		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.remove(&locator.node_id);
 		let metadata = self
 			.network_metadata
 			.get_mut()
-			.nested_metadata_mut(locator.network_path)?
+			.nested_metadata_mut(location)?
 			.persistent_metadata
 			.node_metadata
 			.remove(&locator.node_id);
@@ -341,7 +337,8 @@ impl NodeNetworkInterface {
 	/// Whether both trees hold the network, checked before a write so a missing one cannot leave the two
 	/// halves out of step.
 	fn network_pair_exists(&self, network_path: &[NodeId]) -> bool {
-		self.network.network().nested_network(network_path).is_some() && self.network_metadata.nested_metadata(network_path).is_some()
+		self.locate(network_path)
+			.is_some_and(|location| self.network.network().located_network(location).is_some() && self.network_metadata.nested_metadata(location).is_some())
 	}
 
 	/// Takes what the writes since the last drain changed, in write order, leaving the buffer empty

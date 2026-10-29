@@ -114,13 +114,12 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 		self.persistent(network_path, local_id)?.storage_id.map(document_graph_storage::NodeId)
 	}
 	fn reference(&self, network_path: &[NodeId]) -> Option<&str> {
-		let network_metadata = self.interface.network_metadata.nested_metadata(network_path)?;
+		let network_metadata = self.interface.nested_metadata(network_path)?;
 		network_metadata.persistent_metadata.reference.as_deref()
 	}
 
 	fn pinned_order(&self, network_path: &[NodeId]) -> Vec<NodeId> {
 		self.interface
-			.network_metadata
 			.nested_metadata(network_path)
 			.map(|network_metadata| network_metadata.persistent_metadata.pinned_node_order.clone())
 			.unwrap_or_default()
@@ -189,7 +188,7 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	let mut network_metadata = NodeNetworkMetadata::default();
 	seed_metadata_tree(&network, &mut network_metadata);
 	apply_entries_into_tree(&network, &mut network_metadata, node_entries)?;
-	apply_network_entries_into_tree(&mut network_metadata, network_entries);
+	apply_network_entries_into_tree(&network, &mut network_metadata, network_entries);
 
 	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
@@ -211,7 +210,7 @@ pub fn collect_network_view_settings(
 	let mut out = BTreeMap::new();
 
 	for (network_path, &network_id) in network_ids {
-		let Some(network_metadata) = interface.network_metadata.nested_metadata(network_path) else {
+		let Some(network_metadata) = interface.nested_metadata(network_path) else {
 			continue;
 		};
 		let navigation = &network_metadata.persistent_metadata.navigation_metadata;
@@ -303,9 +302,9 @@ fn network_contains(interface: &NodeNetworkInterface, network_path: &[NodeId], n
 }
 
 /// Entries whose `network_path` doesn't resolve are skipped with a warning (per-network drift is more often a stale path than corruption).
-fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: Vec<NetworkMetadataEntry>) {
+fn apply_network_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, entries: Vec<NetworkMetadataEntry>) {
 	for entry in entries {
-		let Some(network_metadata) = metadata.nested_metadata_mut(&entry.network_path) else {
+		let Some(network_metadata) = network.locate(&entry.network_path).and_then(|location| metadata.nested_metadata_mut(location)) else {
 			log::warn!("apply_network_entries_into_tree: nested network at {:?} not found, skipping", entry.network_path);
 			continue;
 		};
@@ -340,9 +339,10 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 	}
 
 	for (path, entries) in by_path {
-		let nested_network = nested_network_at(network, &path);
+		let location = network.locate(&path);
+		let nested_network = location.and_then(|location| network.located_network(location));
 
-		let Some(network_metadata) = metadata.nested_metadata_mut(&path) else {
+		let Some(network_metadata) = location.and_then(|location| metadata.nested_metadata_mut(location)) else {
 			log::warn!("apply_entries_into_tree: nested network at {path:?} not found, skipping {} entries", entries.len());
 			continue;
 		};
@@ -398,17 +398,6 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 	}
 
 	Ok(())
-}
-
-/// `None` when the path is invalid; callers treat that as "skip silently" since the surrounding `nested_metadata_mut` already warns.
-fn nested_network_at<'a>(root: &'a NodeNetwork, path: &[NodeId]) -> Option<&'a NodeNetwork> {
-	let mut current = root;
-	for segment in path {
-		let node = current.nodes.get(segment)?;
-		let DocumentNodeImplementation::Network(nested) = &node.implementation else { return None };
-		current = nested;
-	}
-	Some(current)
 }
 
 /// Storage-side `None` restores as `""` (the runtime's "unset" sentinel for `input_name` / `input_description`).

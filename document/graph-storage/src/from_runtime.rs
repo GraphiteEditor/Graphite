@@ -698,7 +698,7 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 			Implementation::Network(nested_network_id)
 		}
 		// TODO: Support Extract in the Registry format.
-		DocumentNodeImplementation::Extract => return Err(ConversionError::UnsupportedImplementation),
+		DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => return Err(ConversionError::UnsupportedImplementation),
 	})
 }
 

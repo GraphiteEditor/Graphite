@@ -216,6 +216,7 @@ fn convert_network(
 		exports,
 		nodes,
 		scope_injections,
+		definitions: FxHashMap::default(),
 		generated: false,
 	})
 }

@@ -23,7 +23,8 @@ impl NodeNetworkInterface {
 
 	/// The metadata tree at `network_path`.
 	fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
-		self.network_metadata.get_mut().nested_metadata_mut(network_path)
+		let location = self.locate(network_path)?;
+		self.network_metadata.get_mut().nested_metadata_mut(location)
 	}
 
 	/// The metadata of the node that encapsulates the network at `network_path`, or `None` for the
@@ -47,17 +48,19 @@ impl NodeNetworkInterface {
 
 	/// The persistent metadata of a network, or `None` if the network is missing.
 	pub(crate) fn network_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
-		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(network_path)?.persistent_metadata;
+		let location = self.locate(network_path)?;
+		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata;
 		Some(NetworkMut::new(metadata, &mut self.deltas, network_path))
 	}
 
 	/// Both halves of a node, or `None` if either is missing.
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
-		let node = self.network.get_mut().network_mut().nested_network_mut(locator.network_path)?.nodes.get_mut(&locator.node_id)?;
+		let location = self.locate(locator.network_path)?;
+		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&locator.node_id)?;
 		let metadata = self
 			.network_metadata
 			.get_mut()
-			.nested_metadata_mut(locator.network_path)?
+			.nested_metadata_mut(location)?
 			.persistent_metadata
 			.node_metadata
 			.get_mut(&locator.node_id)?;

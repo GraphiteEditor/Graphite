@@ -306,6 +306,16 @@ pub enum OldDocumentNodeImplementation {
 	Extract,
 }
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, core_types::CacheHash, PartialOrd, Ord, DynAny, serde::Serialize, serde::Deserialize)]
+pub struct DefinitionId(pub u64);
+
+impl DefinitionId {
+	pub fn new() -> Self {
+		Self(generate_uuid())
+	}
+}
+
 #[derive(Clone, Debug, PartialEq, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
 /// Represents the implementation of a node, which can be a nested [`NodeNetwork`], a proto [`ProtoNodeIdentifier`], or `Extract`.
 pub enum DocumentNodeImplementation {
@@ -313,6 +323,7 @@ pub enum DocumentNodeImplementation {
 	///
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
+	Definition(DefinitionId),
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
@@ -371,6 +382,10 @@ impl DocumentNodeImplementation {
 	pub fn output_count(&self) -> usize {
 		match self {
 			DocumentNodeImplementation::Network(network) => network.exports.len(),
+			DocumentNodeImplementation::Definition(id) => {
+				log::error!("The output count of definition {id:?} was requested without access to the definitions table");
+				1
+			}
 			_ => 1,
 		}
 	}
@@ -556,8 +571,75 @@ pub struct NodeNetwork {
 		deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap"
 	)]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
+	#[serde(default, skip_serializing_if = "FxHashMap::is_empty")]
+	pub definitions: FxHashMap<DefinitionId, NodeNetwork>,
 	#[serde(skip)]
 	pub generated: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetworkLocation<'a> {
+	pub definition: Option<DefinitionId>,
+	pub inline_path: &'a [NodeId],
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DefinitionError {
+	Missing(DefinitionId),
+	Cycle(Vec<DefinitionId>),
+	NestedTable,
+}
+
+impl std::fmt::Display for DefinitionError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Missing(id) => write!(f, "Definition {id:?} is referenced but not defined"),
+			Self::Cycle(cycle) => write!(f, "Definitions reference each other in a cycle: {cycle:?}"),
+			Self::NestedTable => write!(f, "Only the document network may hold definitions"),
+		}
+	}
+}
+
+impl std::error::Error for DefinitionError {}
+
+struct DefinitionInliner {
+	definitions: FxHashMap<DefinitionId, NodeNetwork>,
+	inlined: FxHashMap<DefinitionId, NodeNetwork>,
+	visiting: Vec<DefinitionId>,
+}
+
+impl DefinitionInliner {
+	fn inline_network(&mut self, network: &mut NodeNetwork) -> Result<(), DefinitionError> {
+		if !network.definitions.is_empty() {
+			return Err(DefinitionError::NestedTable);
+		}
+
+		for node in network.nodes.values_mut() {
+			if let DocumentNodeImplementation::Definition(id) = node.implementation {
+				node.implementation = DocumentNodeImplementation::Network(self.inlined_definition(id)?.clone());
+			} else if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
+				self.inline_network(nested)?;
+			}
+		}
+
+		Ok(())
+	}
+
+	fn inlined_definition(&mut self, id: DefinitionId) -> Result<&NodeNetwork, DefinitionError> {
+		if !self.inlined.contains_key(&id) {
+			if let Some(start) = self.visiting.iter().position(|&visiting| visiting == id) {
+				return Err(DefinitionError::Cycle(self.visiting[start..].to_vec()));
+			}
+
+			let mut network = self.definitions.get(&id).ok_or(DefinitionError::Missing(id))?.clone();
+			self.visiting.push(id);
+			self.inline_network(&mut network)?;
+			self.visiting.pop();
+			self.inlined.insert(id, network);
+		}
+
+		Ok(&self.inlined[&id])
+	}
 }
 
 impl core_types::CacheHash for NodeNetwork {
@@ -578,12 +660,19 @@ impl core_types::CacheHash for NodeNetwork {
 			node_id.cache_hash(state);
 			ty.cache_hash(state);
 		}
+
+		let mut definitions: Vec<_> = self.definitions.iter().collect();
+		definitions.sort_by_key(|(id, _)| *id);
+		for (id, definition) in definitions {
+			id.cache_hash(state);
+			definition.cache_hash(state);
+		}
 	}
 }
 
 impl PartialEq for NodeNetwork {
 	fn eq(&self, other: &Self) -> bool {
-		self.exports == other.exports && self.nodes == other.nodes && self.scope_injections == other.scope_injections
+		self.exports == other.exports && self.nodes == other.nodes && self.scope_injections == other.scope_injections && self.definitions == other.definitions
 	}
 }
 
@@ -608,22 +697,87 @@ impl NodeNetwork {
 
 	/// Get the nested network given by the path of node ids
 	pub fn nested_network(&self, nested_path: &[NodeId]) -> Option<&Self> {
-		let mut network = Some(self);
+		let mut network = self;
 
 		for segment in nested_path {
-			network = network.and_then(|network| network.nodes.get(segment)).and_then(|node| node.implementation.get_network());
+			network = self.implementation_network(&network.nodes.get(segment)?.implementation)?;
 		}
-		network
+		Some(network)
 	}
 
 	/// Get the mutable nested network given by the path of node ids
 	pub fn nested_network_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network = Some(self);
+		let location = self.locate(nested_path)?;
+		self.located_network_mut(location)
+	}
 
-		for segment in nested_path {
-			network = network.and_then(|network| network.nodes.get_mut(segment)).and_then(|node| node.implementation.get_network_mut());
+	pub fn locate<'a>(&self, nested_path: &'a [NodeId]) -> Option<NetworkLocation<'a>> {
+		let mut location = NetworkLocation {
+			definition: None,
+			inline_path: nested_path,
+		};
+		let mut network = self;
+
+		for (index, segment) in nested_path.iter().enumerate() {
+			let implementation = &network.nodes.get(segment)?.implementation;
+			if let DocumentNodeImplementation::Definition(id) = implementation {
+				location = NetworkLocation {
+					definition: Some(*id),
+					inline_path: &nested_path[index + 1..],
+				};
+			}
+			network = self.implementation_network(implementation)?;
 		}
-		network
+
+		Some(location)
+	}
+
+	pub fn located_network(&self, location: NetworkLocation) -> Option<&Self> {
+		let mut network = match location.definition {
+			Some(id) => self.definitions.get(&id)?,
+			None => self,
+		};
+
+		for segment in location.inline_path {
+			network = network.nodes.get(segment)?.implementation.get_network()?;
+		}
+		Some(network)
+	}
+
+	pub fn located_network_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
+		let mut network = match location.definition {
+			Some(id) => self.definitions.get_mut(&id)?,
+			None => self,
+		};
+
+		for segment in location.inline_path {
+			network = network.nodes.get_mut(segment)?.implementation.get_network_mut()?;
+		}
+		Some(network)
+	}
+
+	pub fn implementation_network<'a>(&'a self, implementation: &'a DocumentNodeImplementation) -> Option<&'a Self> {
+		match implementation {
+			DocumentNodeImplementation::Network(network) => Some(network),
+			DocumentNodeImplementation::Definition(id) => self.definitions.get(id),
+			_ => None,
+		}
+	}
+
+	pub fn implementation_output_count(&self, implementation: &DocumentNodeImplementation) -> usize {
+		match implementation {
+			DocumentNodeImplementation::Definition(_) => self.implementation_network(implementation).map_or(0, |network| network.exports.len()),
+			_ => implementation.output_count(),
+		}
+	}
+
+	pub fn inline_definitions(&mut self) -> Result<(), DefinitionError> {
+		let mut inliner = DefinitionInliner {
+			definitions: std::mem::take(&mut self.definitions),
+			inlined: FxHashMap::default(),
+			visiting: Vec::new(),
+		};
+		inliner.inline_network(self)
 	}
 
 	/// Is the node being used directly as an output?
@@ -1870,5 +2024,98 @@ mod test {
 		assert!(matches!(&value_node.construction_args, ConstructionArgs::Value(value) if **value == TaggedValue::None));
 	}
 
-	// TODO: Write more tests
+	fn node_with(implementation: DocumentNodeImplementation) -> DocumentNode {
+		DocumentNode { implementation, ..Default::default() }
+	}
+
+	fn network_with(nodes: impl IntoIterator<Item = (NodeId, DocumentNodeImplementation)>, definitions: impl IntoIterator<Item = (DefinitionId, NodeNetwork)>) -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(10), 0)],
+			nodes: nodes.into_iter().map(|(id, implementation)| (id, node_with(implementation))).collect(),
+			definitions: definitions.into_iter().collect(),
+			..Default::default()
+		}
+	}
+
+	const ADD: DefinitionId = DefinitionId(1);
+
+	fn two_add_instances() -> NodeNetwork {
+		network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(ADD)), (NodeId(11), DocumentNodeImplementation::Definition(ADD))],
+			[(ADD, add_network())],
+		)
+	}
+
+	#[test]
+	fn definitions_inline_into_copies_of_their_network() {
+		let mut network = two_add_instances();
+		network.inline_definitions().unwrap();
+
+		let inlined = network_with(
+			[
+				(NodeId(10), DocumentNodeImplementation::Network(add_network())),
+				(NodeId(11), DocumentNodeImplementation::Network(add_network())),
+			],
+			[],
+		);
+		assert_eq!(network, inlined);
+	}
+
+	#[test]
+	fn definitions_referencing_definitions_inline_transitively() {
+		let outer = DefinitionId(2);
+		let mut network = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(outer))],
+			[(ADD, add_network()), (outer, network_with([(NodeId(10), DocumentNodeImplementation::Definition(ADD))], []))],
+		);
+		network.inline_definitions().unwrap();
+
+		let inner = network_with([(NodeId(10), DocumentNodeImplementation::Network(add_network()))], []);
+		assert_eq!(network, network_with([(NodeId(10), DocumentNodeImplementation::Network(inner))], []));
+	}
+
+	#[test]
+	fn invalid_definition_tables_are_rejected() {
+		let (first, second) = (DefinitionId(2), DefinitionId(3));
+		let mut cyclic = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
+			[
+				(first, network_with([(NodeId(10), DocumentNodeImplementation::Definition(second))], [])),
+				(second, network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], [])),
+			],
+		);
+		assert_eq!(cyclic.inline_definitions(), Err(DefinitionError::Cycle(vec![first, second])));
+
+		let mut missing = network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], []);
+		assert_eq!(missing.inline_definitions(), Err(DefinitionError::Missing(first)));
+
+		let mut nested = network_with([(NodeId(10), DocumentNodeImplementation::Network(two_add_instances()))], []);
+		assert_eq!(nested.inline_definitions(), Err(DefinitionError::NestedTable));
+	}
+
+	#[test]
+	fn edits_through_one_instance_reach_every_instance() {
+		let mut network = two_add_instances();
+		let added = node_with(DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::IdentityNode")));
+		network.nested_network_mut(&[NodeId(10)]).unwrap().nodes.insert(NodeId(2), added.clone());
+
+		assert_eq!(network.nested_network(&[NodeId(11)]).unwrap().nodes.get(&NodeId(2)), Some(&added));
+		assert_eq!(
+			network.locate(&[NodeId(11)]),
+			Some(NetworkLocation {
+				definition: Some(ADD),
+				inline_path: &[]
+			})
+		);
+		assert_eq!(network.implementation_output_count(&DocumentNodeImplementation::Definition(ADD)), 1);
+	}
+
+	#[test]
+	fn definition_edits_change_the_network_hash() {
+		let mut network = two_add_instances();
+		let before = network.current_hash();
+
+		network.definitions.get_mut(&ADD).unwrap().exports.push(NodeInput::node(NodeId(0), 0));
+		assert_ne!(network.current_hash(), before);
+	}
 }
