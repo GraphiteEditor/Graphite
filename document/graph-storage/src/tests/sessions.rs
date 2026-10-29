@@ -946,6 +946,7 @@ fn undo_in_a_session_finds_the_users_step_from_another_peer() {
 	assert!(!stranger.is_mine(PeerId(2)));
 }
 
+/// The retirer moves the head back: the line since stays as a branch, and a follower folds to the same state.
 #[test]
 fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
 	let mut host = Session::with_identity(PeerId(1), UserId(1));
@@ -972,6 +973,134 @@ fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
 	guest.apply_head_move(&moved).expect("follow");
 	assert_eq!(guest.head_rev(), Some(first));
 	assert!(guest.retired_registry().value_equal(host.retired_registry()), "the follower folds to the same state");
+}
+
+/// A move only applies from the head it started at: a peer elsewhere has diverged and is left as it was.
+#[test]
+fn a_head_move_from_another_head_is_rejected_and_changes_nothing() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("a", 1)).expect("step");
+	let first = host.head_rev().expect("rev");
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	host.commit_op_for_test(set_attribute("b", 2)).expect("step");
+
+	let (moved, _) = host.move_head_to(first).expect("move");
+	let registry = guest.retired_registry().clone();
+	assert!(matches!(guest.apply_head_move(&moved), Err(crate::CrdtError::CursorMismatch { found, .. }) if found == Some(first)));
+	assert_eq!(guest.head_rev(), Some(first));
+	assert_eq!(guest.retired_registry(), &registry);
+}
+
+/// Across a merge the move drops both merged branches, reports what each named, and takes either side as its target.
+#[test]
+fn a_head_move_back_across_a_merge_drops_both_branches() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(add_network(1)).expect("base");
+	let base = host.head_rev().expect("rev");
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	host.commit_op_for_test(add_network(2)).expect("host step");
+	let host_step = host.head_rev().expect("rev");
+	guest.commit_op_for_test(add_network(3)).expect("guest step");
+	let guest_step = guest.head_rev().expect("rev");
+	assert!(matches!(host.merge(guest.cloned_deltas()).expect("merge"), MergeOutcome::Merged(_)));
+
+	let mut moved_to_base = host.clone();
+	let (_, touched) = moved_to_base.move_head_to(base).expect("move to the base");
+	assert!(touched.networks.is_superset(&[NetworkId(2), NetworkId(3)].into()), "both branches are left behind: {touched:?}");
+	assert!(!moved_to_base.retired_registry().networks.contains_key(&NetworkId(2)));
+	assert!(!moved_to_base.retired_registry().networks.contains_key(&NetworkId(3)));
+
+	for (target, kept, dropped) in [(host_step, 2, 3), (guest_step, 3, 2)] {
+		let mut moved = host.clone();
+		moved.move_head_to(target).expect("either side of the merge is an ancestor");
+		assert!(moved.retired_registry().networks.contains_key(&NetworkId(kept)));
+		assert!(!moved.retired_registry().networks.contains_key(&NetworkId(dropped)));
+		let sibling = if target == host_step { guest_step } else { host_step };
+		assert!(matches!(moved.move_head_to(sibling), Err(crate::CrdtError::NotAncestor(rev)) if rev == sibling));
+	}
+}
+
+/// A follower takes on the copies a move minted on top of its base and folds to the line they end.
+#[test]
+fn a_head_move_with_copies_is_followed_onto_them() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("a", 1)).expect("step");
+	let first = host.head_rev().expect("rev");
+	host.commit_op_for_test(set_attribute("b", 2)).expect("step");
+	let second = host.head_rev().expect("rev");
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+
+	let copy = Delta::new(Some(first), PeerId(1), crate::TimeStamp { counter: 50, peer: PeerId(1) }, set_attribute("c", 3), Vec::new());
+	let moved = crate::HeadMove {
+		from: Some(second),
+		head: Some(copy.id),
+		copies: vec![copy.clone()],
+	};
+	let touched = guest.apply_head_move(&moved).expect("follow");
+	assert!(touched.is_empty(), "the walked-over step wrote a document attribute");
+	assert_eq!(guest.head_rev(), Some(copy.id));
+	assert!(guest.delta(copy.id).is_some() && guest.delta(second).is_some(), "the copy joins history and the old step stays");
+	let snapshot = guest.retired_registry();
+	assert!(snapshot.attributes.get("b").is_none_or(|value| value.deleted), "the step walked over is gone");
+	assert_eq!(snapshot.attributes.get("c").map(|value| &value.value), Some(&Value::from(serde_json::json!(3))));
+	assert!(guest.registry().value_equal(guest.retired_registry()));
+	assert!(snapshot.value_equal(&guest.snapshot_from_history().expect("fold")));
+}
+
+/// Copies that don't chain from the base to the move's head are refused before anything changes.
+#[test]
+fn a_malformed_head_move_changes_nothing() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("a", 1)).expect("step");
+	let first = host.head_rev().expect("rev");
+	host.commit_op_for_test(set_attribute("b", 2)).expect("step");
+	let second = host.head_rev().expect("rev");
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let (history_len, registry) = (guest.history_len(), guest.retired_registry().clone());
+
+	let copy = |counter, parent| Delta::new(parent, PeerId(1), crate::TimeStamp { counter, peer: PeerId(1) }, set_attribute("c", counter as u32), Vec::new());
+	let off_first = copy(50, Some(first));
+	let off_base_again = copy(51, Some(first));
+	for moved in [
+		// The copies end somewhere other than the move's head.
+		crate::HeadMove {
+			from: Some(second),
+			head: Some(second),
+			copies: vec![off_first.clone()],
+		},
+		// The second copy hangs off the base instead of the first copy.
+		crate::HeadMove {
+			from: Some(second),
+			head: Some(off_base_again.id),
+			copies: vec![off_first.clone(), off_base_again.clone()],
+		},
+	] {
+		assert!(matches!(guest.apply_head_move(&moved), Err(crate::CrdtError::MalformedHeadMove)));
+		assert_eq!(guest.head_rev(), Some(second));
+		assert_eq!(guest.history_len(), history_len);
+		assert_eq!(guest.retired_registry(), &registry);
+		assert!(guest.registry().value_equal(guest.retired_registry()));
+	}
+}
+
+/// Peers hold the line up to where the head moved, so a silent undo must not reach behind it.
+#[test]
+fn a_head_move_publishes_the_new_head() {
+	let mut host = Session::with_identity(PeerId(1), UserId(1));
+	let [_, second, third] = [("a", 1), ("b", 2), ("c", 3)].map(|(key, value)| {
+		host.commit_op_for_test(set_attribute(key, value)).expect("step");
+		let rev = host.head_rev().expect("rev");
+		host.mark_interaction_end(rev);
+		rev
+	});
+	host.publish_up_to(third);
+	let mut guest = Session::load(PeerId(2), UserId(1), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	guest.publish_up_to(third);
+
+	let (moved, _) = host.move_head_to(second).expect("move");
+	assert!(!host.can_undo(), "the step the room holds stays put");
+	guest.apply_head_move(&moved).expect("follow");
+	assert!(!guest.can_undo(), "the follower holds the same line");
 }
 
 /// Dropping hot ops another peer retired re-derives the working registry without them until their deltas arrive.

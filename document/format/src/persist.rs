@@ -386,9 +386,6 @@ impl<L: Layout> Gdd<L> {
 		if self.retires_locally() {
 			let (moved, touched) = self.session.drop_interaction(rev)?;
 			self.remote_changes.touched.extend(touched);
-			if let Some(head) = self.session.head_rev() {
-				self.session.publish_up_to(head);
-			}
 			self.rewrite_history()?;
 			self.rewrite_hot_log()?;
 			self.persist_registry_snapshot()?;
@@ -409,9 +406,6 @@ impl<L: Layout> Gdd<L> {
 		if self.retires_locally() {
 			let (moved, touched) = self.session.move_head_to(rev)?;
 			self.remote_changes.touched.extend(touched);
-			if let Some(head) = self.session.head_rev() {
-				self.session.publish_up_to(head);
-			}
 			self.persist_registry_snapshot()?;
 			self.persist_session_state()?;
 			if let Some(replica) = &mut self.network {

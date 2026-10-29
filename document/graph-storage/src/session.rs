@@ -416,8 +416,9 @@ impl Session {
 		let position = walked.iter().position(|delta| delta.id == undone).ok_or(CrdtError::NotFoundInHistory(undone))?;
 
 		// Fold from history at the new head.
+		let snapshot = self.fold_at(Some(base))?;
 		self.document.head = Some(base);
-		self.document.retired_snapshot = self.snapshot_from_history()?;
+		self.document.retired_snapshot = snapshot;
 
 		let mut touched = Touched::default();
 		walked[position..].iter().for_each(|delta| touched.record(&delta.kind));
@@ -435,6 +436,9 @@ impl Session {
 
 		self.document.rebuild_working();
 		self.runtime_base = None;
+		if let Some(head) = self.document.head {
+			self.publish_up_to(head);
+		}
 		Ok((
 			HeadMove {
 				from,
@@ -445,27 +449,22 @@ impl Session {
 		))
 	}
 
-	/// Move the shared head back to an ancestor in a session. The line down to `target` stays as an abandoned
-	/// branch, nothing is minted, and the snapshot refolds at the target as in [`drop_interaction`](Self::drop_interaction).
-	/// Returns the move to broadcast and what the steps left behind named. Only the retirer does this; a guest asks it to.
+	/// Move the shared head back to its ancestor `target`, leaving the line since as a branch. Returns the move to
+	/// broadcast and what the steps left behind named. Only the retirer does this; a guest asks it to.
 	pub fn move_head_to(&mut self, target: Rev) -> Result<(HeadMove, Touched), CrdtError> {
 		let from = self.document.head;
 		if from == Some(target) {
 			return Err(CrdtError::NothingToUndo);
 		}
-		let mut touched = Touched::default();
-		let mut current = from;
-		while current != Some(target) {
-			let rev = current.ok_or(CrdtError::NotFoundInHistory(target))?;
-			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?;
-			touched.record(&delta.kind);
-			current = delta.parent;
-		}
+		let touched = self.touched_since(Some(target))?;
+		let snapshot = self.fold_at(Some(target))?;
+
 		self.document.head = Some(target);
-		self.document.retired_snapshot = self.snapshot_from_history()?;
+		self.document.retired_snapshot = snapshot;
 		self.document.redo_stack.clear();
 		self.document.rebuild_working();
 		self.runtime_base = None;
+		self.publish_up_to(target);
 		Ok((
 			HeadMove {
 				from,
@@ -476,9 +475,9 @@ impl Session {
 		))
 	}
 
-	/// Follow another peer's cursor move: refold the snapshot to where the copies start, take the copies on,
-	/// and put the head where the mover put it. Returns what the walked-over ops named. The move only
-	/// applies from the head it started at; anywhere else this peer has diverged and needs a resync.
+	/// Follow a peer's [`HeadMove`], returning what the walked-over ops named. Changes nothing when the head is not
+	/// where the move started, since this peer has then diverged, or when the copies don't chain from an ancestor of
+	/// the head to the move's head.
 	pub fn apply_head_move(&mut self, moved: &HeadMove) -> Result<Touched, CrdtError> {
 		if self.document.head != moved.from {
 			return Err(CrdtError::CursorMismatch {
@@ -487,39 +486,52 @@ impl Session {
 			});
 		}
 		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
-
-		let mut touched = Touched::default();
-		let mut current = self.document.head;
-		while current != base {
-			let rev = current.ok_or(CrdtError::NothingToUndo)?;
-			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?;
-			touched.record(&delta.kind);
-			current = delta.parent;
-		}
-		// Fold from history at the new base, as `drop_interaction` does.
-		self.document.head = base;
-		self.document.retired_snapshot = self.snapshot_from_history()?;
-
+		let touched = self.touched_since(base)?;
+		let mut tip = base;
 		for copy in &moved.copies {
-			if let Some(parent) = copy.parent
-				&& !self.document.history.contains(parent)
-			{
-				return Err(CrdtError::NotFoundInHistory(parent));
+			if copy.parent != tip || matches!(copy.kind, RegistryDelta::Merge { .. }) {
+				return Err(CrdtError::MalformedHeadMove);
 			}
-			self.document.apply_op_with(RegistryTarget::Retired, copy.kind.clone(), copy.timestamp, ApplyMode::Idempotent)?;
-			self.document.history.push(copy.clone());
-			self.document.head = Some(copy.id);
+			tip = Some(copy.id);
 		}
-		if self.document.head != moved.head {
-			return Err(CrdtError::CursorMismatch {
-				expected: moved.head,
-				found: self.document.head,
-			});
+		if tip != moved.head {
+			return Err(CrdtError::MalformedHeadMove);
+		}
+
+		// Like `follow`, a failed fold leaves only the copies behind in history.
+		for copy in &moved.copies {
+			self.document.history.push(copy.clone());
+		}
+		let snapshot = self.fold_at(moved.head)?;
+		self.document.head = moved.head;
+		self.document.retired_snapshot = snapshot;
+		if !moved.copies.is_empty() {
+			self.document.history.canonical_sort();
 		}
 		self.document.redo_stack.clear();
-		self.document.history.canonical_sort();
 		self.document.rebuild_working();
 		self.runtime_base = None;
+		if let Some(head) = moved.head {
+			self.publish_up_to(head);
+		}
+		Ok(touched)
+	}
+
+	/// What the deltas on the head's line but not on `base`'s named, merged branches included. Fails unless `base` is
+	/// on the head's line.
+	fn touched_since(&self, base: Option<Rev>) -> Result<Touched, CrdtError> {
+		let history = &self.document.history;
+		let line = history.ancestors(self.document.head);
+		if let Some(base) = base
+			&& !line.contains(&base)
+		{
+			return Err(CrdtError::NotAncestor(base));
+		}
+		let kept = history.ancestors(base);
+		let mut touched = Touched::default();
+		for delta in history.iter().filter(|delta| line.contains(&delta.id) && !kept.contains(&delta.id)) {
+			touched.record(&delta.kind);
+		}
 		Ok(touched)
 	}
 
@@ -575,7 +587,11 @@ impl Session {
 
 	/// The retired snapshot as history alone gives it: the fold of `head`'s ancestry, leaving out undone deltas kept for redo.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
-		let reachable = self.document.history.ancestors(self.document.head);
+		self.fold_at(self.document.head)
+	}
+
+	fn fold_at(&self, head: Option<Rev>) -> Result<Registry, CrdtError> {
+		let reachable = self.document.history.ancestors(head);
 		let mut scratch = Document::empty(self.document.peer, self.document.user);
 		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
 			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
@@ -1316,6 +1332,10 @@ pub enum CrdtError {
 	NotUndoable(Rev),
 	#[error("Cursor is at {found:?}, the move expected {expected:?}")]
 	CursorMismatch { expected: Option<Rev>, found: Option<Rev> },
+	#[error("Delta {0} is not on the head's line")]
+	NotAncestor(Rev),
+	#[error("Head move copies do not chain from its base to its head")]
+	MalformedHeadMove,
 	#[error("Node {0} already exists")]
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]

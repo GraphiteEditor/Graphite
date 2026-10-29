@@ -316,9 +316,6 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	fn apply_head_move(&mut self, moved: &HeadMove) -> Result<(), TargetError> {
 		let touched = self.session.apply_head_move(moved)?;
 		self.remote_changes.touched.extend(touched);
-		if let Some(head) = self.session.head_rev() {
-			self.session.publish_up_to(head);
-		}
 		self.pending_persist.history = true;
 		self.pending_persist.hot_log = true;
 		self.pending_persist.snapshot = true;
