@@ -235,6 +235,21 @@ fn a_late_copy_of_a_followed_line_leaves_the_head_but_a_known_step_ahead_moves_i
 }
 
 #[test]
+fn following_to_an_unknown_head_is_rejected_and_changes_nothing() {
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("a", 1)).unwrap();
+	let mut guest = Session::with_peer(PeerId(2));
+	guest.follow(host.cloned_deltas(), None).unwrap();
+	let (head, registry) = (guest.head_rev(), guest.retired_registry().clone());
+
+	host.commit_op_for_test(set_attribute("b", 1)).unwrap();
+	let unknown = host.head_rev().unwrap();
+	assert!(matches!(guest.follow(Vec::new(), Some(unknown)), Err(crate::CrdtError::NotFoundInHistory(rev)) if rev == unknown));
+	assert_eq!(guest.head_rev(), head);
+	assert_eq!(guest.retired_registry(), &registry);
+}
+
+#[test]
 fn an_undone_step_leaves_no_stamp_behind_for_a_concurrent_write_to_lose_to() {
 	let mut a = Session::with_peer(PeerId(3));
 	step(&mut a, set_attribute("base", 1));

@@ -379,6 +379,12 @@ impl Session {
 		let length_before = self.document.history.len();
 		let named = head.is_some();
 		let head = head.or_else(|| incoming.last().map(|delta| delta.id)).or(before);
+		if let Some(head) = head
+			&& !self.document.history.contains(head)
+			&& !incoming.iter().any(|delta| delta.id == head)
+		{
+			return Err(CrdtError::NotFoundInHistory(head));
+		}
 
 		for delta in incoming {
 			if self.document.history.contains(delta.id) {
