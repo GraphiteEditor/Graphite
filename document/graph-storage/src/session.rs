@@ -500,6 +500,7 @@ impl Session {
 
 		// Like `follow`, a failed fold leaves only the copies behind in history.
 		for copy in &moved.copies {
+			self.document.clock.observe(copy.timestamp);
 			self.document.history.push(copy.clone());
 		}
 		let snapshot = self.fold_at(moved.head)?;

@@ -1039,6 +1039,7 @@ fn a_head_move_with_copies_is_followed_onto_them() {
 	let touched = guest.apply_head_move(&moved).expect("follow");
 	assert!(touched.is_empty(), "the walked-over step wrote a document attribute");
 	assert_eq!(guest.head_rev(), Some(copy.id));
+	assert!(guest.clock_counter() >= 50, "a later edit here outdates the copy");
 	assert!(guest.delta(copy.id).is_some() && guest.delta(second).is_some(), "the copy joins history and the old step stays");
 	let snapshot = guest.retired_registry();
 	assert!(snapshot.attributes.get("b").is_none_or(|value| value.deleted), "the step walked over is gone");

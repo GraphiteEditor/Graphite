@@ -257,9 +257,11 @@ impl<L: Layout> Gdd<L> {
 		Ok(true)
 	}
 
-	/// Append facts to the metadata file, one line each; the file is never rewritten.
+	/// Append facts to the metadata file, one line each; the file is never rewritten. The lines start on a fresh one,
+	/// so a tail a crash or failed write left unterminated is not joined to them; the blank lines this leaves are
+	/// skipped on read.
 	pub(crate) fn append_facts(&mut self, facts: &[MetadataFact]) -> Result<(), Error> {
-		let mut buffer = Vec::new();
+		let mut buffer = vec![b'\n'];
 		for fact in facts {
 			METADATA_CODEC.append(&mut buffer, fact)?;
 		}

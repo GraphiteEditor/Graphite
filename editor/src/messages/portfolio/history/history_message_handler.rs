@@ -193,7 +193,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 	session.redo_stack().hash(&mut hasher);
 	session.hot_log().len().hash(&mut hasher);
 	gdd.role().is_some().hash(&mut hasher);
-	for record in &gdd.metadata().users {
+	for record in gdd.metadata().users() {
 		record.user.hash(&mut hasher);
 		if let Some(name) = gdd.metadata().user_name(record.user) {
 			name.hash(&mut hasher);
@@ -203,7 +203,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 		remote.user.hash(&mut hasher);
 		remote.name.hash(&mut hasher);
 	}
-	for record in &gdd.metadata().revs {
+	for record in gdd.metadata().revs() {
 		record.rev.hash(&mut hasher);
 		for (key, fact) in &record.attributes {
 			key.hash(&mut hasher);

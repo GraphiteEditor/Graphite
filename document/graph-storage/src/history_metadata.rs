@@ -65,18 +65,38 @@ pub mod rev_attr {
 	pub const TAG_PREFIX: &str = "tag:";
 }
 
-/// The folded record. Users and revs are kept sorted so two copies holding the same facts serialize alike.
+/// The folded record. Users and revs are kept sorted so two copies holding the same facts serialize alike, and it
+/// travels as its facts, folded again on arrival, so no input can break that order.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(from = "Vec<MetadataFact>", into = "Vec<MetadataFact>")]
 pub struct HistoryMetadata {
-	#[serde(default)]
-	pub users: Vec<UserRecord>,
-	#[serde(default)]
-	pub revs: Vec<RevRecord>,
+	users: Vec<UserRecord>,
+	revs: Vec<RevRecord>,
+}
+
+impl From<Vec<MetadataFact>> for HistoryMetadata {
+	fn from(facts: Vec<MetadataFact>) -> Self {
+		Self::fold(facts)
+	}
+}
+
+impl From<HistoryMetadata> for Vec<MetadataFact> {
+	fn from(record: HistoryMetadata) -> Self {
+		record.facts()
+	}
 }
 
 impl HistoryMetadata {
 	pub fn is_empty(&self) -> bool {
 		self.users.is_empty() && self.revs.is_empty()
+	}
+
+	pub fn users(&self) -> &[UserRecord] {
+		&self.users
+	}
+
+	pub fn revs(&self) -> &[RevRecord] {
+		&self.revs
 	}
 
 	/// The record folded from facts in file order: each fact lands unless a newer one about the same thing stands.
@@ -230,6 +250,22 @@ mod tests {
 
 	fn rev(n: u128) -> Rev {
 		Rev::new(n).expect("non-zero")
+	}
+
+	/// A copy from elsewhere arrives as facts in any order, with duplicates, and still settles into the sorted record.
+	#[test]
+	fn a_record_read_from_unsorted_facts_is_sorted() {
+		let fact = |subject, value: &str, ms| MetadataFact {
+			subject,
+			key: rev_attr::LABEL.into(),
+			value: value.into(),
+			stamp: stamp(ms, 1),
+		};
+		let facts = vec![fact(Subject::Rev(rev(9)), "late", 2), fact(Subject::Rev(rev(1)), "first", 1), fact(Subject::Rev(rev(9)), "early", 1)];
+		let record: HistoryMetadata = serde_json::from_str(&serde_json::to_string(&facts).expect("encode")).expect("decode");
+		assert_eq!(record.rev_label(rev(1)), Some("first"));
+		assert_eq!(record.rev_label(rev(9)), Some("late"));
+		assert_eq!(serde_json::from_value::<HistoryMetadata>(serde_json::to_value(&record).expect("encode")).expect("decode"), record);
 	}
 
 	#[test]

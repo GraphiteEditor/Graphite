@@ -42,8 +42,14 @@ fn a_recorded_name_survives_a_reopen() {
 		assert!(gdd.record_rev_attribute(step, rev_attr::LABEL, "Fixed the eye".into(), NOW_MS).expect("record"));
 		assert!(gdd.record_rev_attribute(step, "tag:v1", true.into(), NOW_MS).expect("record"));
 		let (working, layout) = gdd.into_storage();
-		let reopened = GddV1::open_in(working, layout).await.expect("open");
+		let mut reopened = GddV1::open_in(working, layout).await.expect("open");
 		assert_eq!(reopened.metadata().user_name(UserId(10)), Some("Ada"));
+
+		// A fact recorded after the torn tail is not joined to it.
+		reopened.record_user_attribute(UserId(11), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
+		let (working, layout) = reopened.into_storage();
+		let reopened = GddV1::open_in(working, layout).await.expect("open");
+		assert_eq!(reopened.metadata().user_name(UserId(11)), Some("Bea"));
 		assert_eq!(reopened.metadata().rev_label(step), Some("Fixed the eye"), "a label appended after the name is folded back in");
 		assert_eq!(reopened.metadata().rev_tags(step), vec!["v1"]);
 	});
