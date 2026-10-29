@@ -3437,6 +3437,29 @@ async fn toggling_a_preview_changes_the_network_hash() {
 }
 
 #[tokio::test]
+async fn toggling_a_node_to_a_layer_changes_the_network_hash() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let before = network_interface.network_hash();
+
+	network_interface.set_to_node_or_layer(&node, &[], true);
+	assert_ne!(
+		before,
+		network_interface.network_hash(),
+		"A new layer should change the hash, since it gives the runtime another thumbnail to render"
+	);
+
+	network_interface.set_to_node_or_layer(&node, &[], false);
+	assert_eq!(before, network_interface.network_hash(), "Returning to a node should return the hash to what it was");
+}
+
+#[tokio::test]
 async fn the_network_hash_is_stable_while_previewing() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;

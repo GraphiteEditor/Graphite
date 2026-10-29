@@ -94,6 +94,8 @@ pub struct GraphUpdate {
 	pub(super) node_to_inspect: Vec<NodeId>,
 	/// The node each network renders in place of its export, paired with that network's path.
 	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+	/// Full path from the root network to every layer, which are the nodes with thumbnails.
+	pub(super) layers: Vec<Vec<NodeId>>,
 }
 
 /// Replaces each network's primary export with its previewed node.
@@ -236,6 +238,7 @@ impl NodeRuntime {
 					resources,
 					node_to_inspect,
 					previewed,
+					layers,
 				}) => {
 					apply_previews(&mut network, &previewed);
 
@@ -250,6 +253,11 @@ impl NodeRuntime {
 					self.node_graph_errors.clear();
 					self.node_graph_warnings.clear();
 					let result = self.update_network(network);
+					if result.is_ok()
+						&& let Some(compiled_network) = &self.old_graph
+					{
+						self.thumbnails.update_sources(&layers, compiled_network, &self.executor);
+					}
 					let node_graph_errors = self.node_graph_errors.clone();
 					let node_graph_warnings = self.node_graph_warnings.clone();
 
@@ -263,7 +271,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
 					if !render_config.for_export && !render_config.for_eyedropper {
-						self.thumbnails.set_scale(render_config.scale, &self.monitor_nodes);
+						self.thumbnails.set_scale(render_config.scale);
 						self.pending = Some(request);
 					}
 					if render_config.for_export {
@@ -420,14 +428,12 @@ impl NodeRuntime {
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings = warnings;
-		let previous_monitor_ids: HashMap<Vec<NodeId>, NodeId> = std::mem::take(&mut self.monitor_nodes).into_iter().collect();
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
 			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
 			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
 			.collect();
-		self.thumbnails.update_monitors(&previous_monitor_ids, &self.monitor_nodes);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -471,9 +477,9 @@ impl NodeRuntime {
 		EvaluationErrors(errors.into())
 	}
 
-	/// Updates state data, giving back the layers whose thumbnails were dropped because they're no longer monitored.
+	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
 	async fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
-		let dropped_thumbnails = self.thumbnails.drop_unmonitored(&self.monitor_nodes);
+		let dropped_thumbnails = self.thumbnails.drop_sourceless();
 
 		for (monitor_node_path, _) in &self.monitor_nodes {
 			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {

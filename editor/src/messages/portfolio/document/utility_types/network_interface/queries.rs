@@ -55,6 +55,23 @@ impl NodeNetworkInterface {
 		legacy
 	}
 
+	/// The path of every layer in the document's networks.
+	pub fn layer_paths(&self) -> Vec<Vec<NodeId>> {
+		let mut layer_paths = Vec::new();
+		self.for_each_layer(&mut |network_path, layer| layer_paths.push([network_path, &[layer]].concat()));
+		layer_paths
+	}
+
+	fn for_each_layer(&self, visit: &mut impl FnMut(&[NodeId], NodeId)) {
+		self.for_each_network(&mut |network_path, network_metadata| {
+			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
+				if node_metadata.persistent_metadata.is_layer() {
+					visit(network_path, *node_id);
+				}
+			}
+		});
+	}
+
 	fn for_each_network(&self, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
 		fn walk(network_path: &mut Vec<NodeId>, network_metadata: &NodeNetworkMetadata, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
 			visit(network_path, network_metadata);
@@ -84,8 +101,16 @@ impl NodeNetworkInterface {
 
 	/// Identifies the graph that would be evaluated, previews included.
 	pub fn network_hash(&self) -> u64 {
+		// Layers get thumbnails, so they're hashed too, summed since the order isn't stable. O(nodes) on every render, without allocating.
+		let mut layers_hash = 0_u64;
+		self.for_each_layer(&mut |network_path, layer| {
+			let mut hasher = std::hash::DefaultHasher::new();
+			(network_path, layer).hash(&mut hasher);
+			layers_hash = layers_hash.wrapping_add(hasher.finish());
+		});
+
 		let mut hasher = std::hash::DefaultHasher::new();
-		(self.network.current_hash(), self.previewed_nodes()).hash(&mut hasher);
+		(self.network.current_hash(), self.previewed_nodes(), layers_hash).hash(&mut hasher);
 		hasher.finish()
 	}
 
