@@ -17,7 +17,6 @@ impl NodeNetworkInterface {
 		}
 
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
-		// This unloads the import and export ports too, since they are placed from the bounds it clears.
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 

@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, TransactionCheckpoint,
+	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, TransactionCheckpoint,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -3382,12 +3382,7 @@ impl NodeGraphMessageHandler {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
-		// From the preview, not the export: the export names the document root, so reading it would start a
-		// preview on that instead of ending this one
-		let previewing = match network_interface.previewing(breadcrumb_network_path) {
-			Previewing::Yes { previewed } => Some(previewed.node_id),
-			_ => None,
-		};
+		let previewing = network_interface.previewing(breadcrumb_network_path).previewed().map(|previewed| previewed.node_id);
 
 		// If only one node is selected then show the preview or stop previewing button
 		if let Some(node_id) = previewing {
@@ -3727,8 +3722,7 @@ impl NodeGraphMessageHandler {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
-			// Asked of the preview itself, which the export no longer reflects
-			let previewed = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { previewed } if previewed.node_id == node_id);
+			let previewed = network_interface.previewing(breadcrumb_network_path).previews(node_id);
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 

@@ -20,8 +20,7 @@ fn rectangle_definition() -> DefinitionIdentifier {
 	DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
 }
 
-/// The graph the runtime compiles: the document as it stands, plus the previews the interface resolved.
-/// Assembled the same way the runtime does, so these assertions cover the path an evaluation takes.
+/// The graph the runtime compiles: the document network with its previews applied.
 fn evaluated_network(network_interface: &NodeNetworkInterface) -> graph_craft::document::NodeNetwork {
 	let mut network = network_interface.document_network().clone();
 	crate::node_graph_executor::apply_previews(&mut network, &network_interface.previewed_nodes());
@@ -1024,7 +1023,6 @@ async fn signature_edits_keep_parallel_metadata_in_sync() {
 	assert_invariants(&editor, "after removing the added export");
 }
 
-/// Previewing rewires nothing, so ending one has nothing to restore and cannot disconnect anything.
 #[tokio::test]
 async fn reordering_an_import_to_the_front_makes_it_the_exposed_primary() {
 	let mut editor = EditorTestUtils::create();
@@ -3326,7 +3324,6 @@ async fn resting_a_wire_on_an_exposed_input_reveals_nothing_that_would_move_it_f
 	assert!(!exposed(&editor, translation) && !exposed(&editor, scale), "the unused revealed inputs should hide again");
 }
 
-/// The graph handed to the compiler renders the previewed node, while the document keeps its own export.
 #[tokio::test]
 async fn the_evaluated_network_renders_the_previewed_node() {
 	let mut editor = EditorTestUtils::create();
@@ -3352,8 +3349,6 @@ async fn the_evaluated_network_renders_the_previewed_node() {
 	);
 }
 
-/// A document saved by the version that rewired the export still opens, rather than failing the whole
-/// document's deserialization.
 #[test]
 fn a_preview_written_by_the_rewiring_version_still_deserializes() {
 	let stored = r#"{"Yes":{"root_node_to_restore":{"node_id":7,"output_index":1}}}"#;
@@ -3369,7 +3364,6 @@ fn a_preview_written_by_the_rewiring_version_still_deserializes() {
 	);
 }
 
-/// The shape this version writes round trips, so accepting the older one has not displaced it.
 #[test]
 fn the_current_preview_shape_round_trips() {
 	let previewing = Previewing::Yes {
@@ -3381,8 +3375,6 @@ fn the_current_preview_shape_round_trips() {
 	assert_eq!(serde_json::from_str::<Previewing>(&stored).expect("previewing should deserialize"), previewing);
 }
 
-/// Migrating a rewired preview puts the export back and keeps the node the user was looking at as the
-/// preview, so the document is no longer rewired but looks the same.
 #[tokio::test]
 async fn migrating_a_rewired_preview_restores_the_export() {
 	let mut editor = EditorTestUtils::create();
@@ -3394,8 +3386,7 @@ async fn migrating_a_rewired_preview_restores_the_export() {
 
 	let network_interface = &mut editor.active_document_mut().network_interface;
 
-	// Stand in for what the rewiring version left on disk: the export moved to the previewed node, and
-	// the metadata naming the artboard as what to restore.
+	// What the rewiring version saved: the export wired to the previewed node, and the artboard recorded to restore
 	network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::Export(0), &[]);
 	let Some(mut network) = network_interface.network_mut(&[]) else {
 		panic!("the document network should resolve")
@@ -3425,8 +3416,6 @@ async fn migrating_a_rewired_preview_restores_the_export() {
 	);
 }
 
-/// Toggling a preview must move the hash the executor caches against, or the graph it already sent is
-/// reused and the canvas keeps rendering the old export.
 #[tokio::test]
 async fn toggling_a_preview_changes_the_network_hash() {
 	let mut editor = EditorTestUtils::create();
@@ -3447,7 +3436,6 @@ async fn toggling_a_preview_changes_the_network_hash() {
 	assert_eq!(before, network_interface.network_hash(), "Ending the preview should return the hash to what it was");
 }
 
-/// The hash must be stable for an unchanged document, or every frame looks like a change.
 #[tokio::test]
 async fn the_network_hash_is_stable_while_previewing() {
 	let mut editor = EditorTestUtils::create();
@@ -3466,8 +3454,6 @@ async fn the_network_hash_is_stable_while_previewing() {
 	}
 }
 
-/// A preview restored from the session must name a node the document still has: the session outlives the
-/// document, and previewing a removed node would redirect the export to nothing.
 #[tokio::test]
 async fn a_session_preview_of_a_removed_node_is_dropped() {
 	use super::storage_metadata::{apply_network_view_settings, collect_network_view_settings};
@@ -3485,7 +3471,7 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 	let network_ids = HashMap::from([(Vec::new(), document_graph_storage::NetworkId(0))]);
 	let stored = collect_network_view_settings(network_interface, &network_ids);
 
-	// The document moves on without the previewed node, as it would if another peer had removed it
+	// As if another peer had removed the previewed node
 	network_interface.delete_nodes(vec![node], false, &[]);
 	apply_network_view_settings(network_interface, &network_ids, &stored);
 

@@ -280,8 +280,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 		}
 	};
 	apply_network_view_settings(&mut interface, &network_ids, gdd.network_view_settings());
-	// Deliberately no document upgrades: the format is still unstable, and migrating it belongs
-	// to the versioned migration it will get rather than to fixups called from here.
+	// TODO: Run document upgrades here once this format has a versioned migration
 
 	let mut document = DocumentMessageHandler::from_storage(interface, gdd, declarations, String::new(), None);
 	document.finalize_storage_load();

@@ -753,15 +753,12 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
-	/// The dashed wire from the previewed node to the export, drawn alongside the solid wire the export is
-	/// really connected to. See [`Previewing`].
+	/// The dashed wire from the previewed node to the export, drawn alongside the export's own wire.
 	pub fn wire_to_preview(&self, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
 
 		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
 
-		// Whole connector, not just the node: the export already reaching this exact port is what would put a
-		// second wire on top of the solid one
 		if self.upstream_output_connector(&input, network_path) == Some(previewed.to_connector()) {
 			return None;
 		}
@@ -784,7 +781,6 @@ impl NodeNetworkInterface {
 
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
-		// Styled by the previewed node's own output, since the export is connected to something else
 		let output_type = self.output_type(&upstream_output, network_path);
 		let data_type = output_type.displayed_type();
 		let is_list = output_type.is_list();

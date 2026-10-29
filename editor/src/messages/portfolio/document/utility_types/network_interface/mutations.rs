@@ -19,10 +19,9 @@ impl NodeNetworkInterface {
 				let other_persistent = &other_network_metadata.persistent_metadata;
 				*view.navigation = other_persistent.navigation_metadata.clone();
 
-				// A preview survives a rebuild unless it names a node the rebuilt network no longer has
-				*view.previewing = match other_persistent.previewing {
-					Previewing::Yes { previewed } if !view.nodes.contains_key(&previewed.node_id) => Previewing::No,
-					previewing => previewing,
+				*view.previewing = match other_persistent.previewing.previewed() {
+					Some(previewed) if !view.nodes.contains_key(&previewed.node_id) => Previewing::No,
+					_ => other_persistent.previewing,
 				};
 
 				*view.selection.undo = other_persistent.selection_undo_history.clone();
@@ -932,8 +931,7 @@ impl NodeNetworkInterface {
 		match side {
 			DotSide::Incoming => self.upstream_output_connector(&InputConnector::primary_input(*node_id), network_path).is_none(),
 			DotSide::Outgoing => {
-				// A preview of the dot still counts as taking its output
-				let previewed = matches!(self.previewing(network_path), Previewing::Yes { previewed } if previewed.node_id == *node_id);
+				let previewed = self.previewing(network_path).previews(*node_id);
 				let consumed = self
 					.with_outward_wires(network_path, |outward_wires| {
 						outward_wires.get(&OutputConnector::primary_output(*node_id)).is_some_and(|inputs| !inputs.is_empty())
@@ -1075,12 +1073,8 @@ impl NodeNetworkInterface {
 
 	/// Removes all references to the node with the given id from the network, and reconnects the input to the node below.
 	pub fn remove_references_from_network(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		// Only a preview of the node being removed is cleared: previewing rewires nothing, so the
-		// reconnection below cannot invalidate a preview of any other node
-		if matches!(self.previewing(network_path), Previewing::Yes { previewed } if previewed.node_id == *node_id)
-			&& let Some(mut network) = self.network_mut(network_path)
-		{
-			network.set_previewing(Previewing::No);
+		if self.previewing(network_path).previews(*node_id) {
+			self.set_previewing(Previewing::No, network_path);
 		}
 
 		// The wire the downstream inputs reconnect to, which is the first exposed input of the node being removed
@@ -1380,50 +1374,34 @@ impl NodeNetworkInterface {
 		self.load_structure();
 	}
 
-	/// Renders `toggle_id` instead of the network's export, or stops doing so if it already is. See [`Previewing`].
+	/// Renders `toggle_id` in place of the network's export, or stops doing so if it already is.
 	pub fn toggle_preview(&mut self, toggle_id: NodeId, network_path: &[NodeId]) {
-		let exported = matches!(
-			self.input_from_connector(&InputConnector::Export(0), network_path),
-			Some(NodeInput::Node { node_id, output_index: 0, .. }) if *node_id == toggle_id
-		);
-		let previewing = match self.previewing(network_path) {
-			Previewing::Yes { previewed } if previewed.node_id == toggle_id => Previewing::No,
-			// The export already shows this node's primary output, which is all a preview of it would show
-			_ if exported => Previewing::No,
-			_ => Previewing::Yes {
-				previewed: RootNode { node_id: toggle_id, output_index: 0 },
-			},
+		let primary_output = RootNode { node_id: toggle_id, output_index: 0 };
+		let previewing = if self.previewing(network_path).previews(toggle_id) || self.root_node(network_path) == Some(primary_output) {
+			Previewing::No
+		} else {
+			Previewing::Yes { previewed: primary_output }
 		};
+		self.set_previewing(previewing, network_path);
+	}
 
-		let Some(mut network) = self.network_mut(network_path) else { return };
-		network.set_previewing(previewing);
+	fn set_previewing(&mut self, previewing: Previewing, network_path: &[NodeId]) {
+		if let Some(mut network) = self.network_mut(network_path) {
+			network.set_previewing(previewing);
+		}
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	/// Converts a preview written by the version that previewed by rewiring the export: the node the export
-	/// points at becomes the preview, and the export goes back to what was recorded to restore.
+	/// Converts previews written by versions that previewed by rewiring the export, putting the export back.
 	pub fn migrate_rewired_previews(&mut self) {
 		for (network_path, root_node_to_restore) in self.legacy_rewired_previews() {
-			let previewed = match self.input_from_connector(&InputConnector::Export(0), &network_path) {
-				Some(NodeInput::Node { node_id, output_index, .. }) => Some(RootNode {
-					node_id: *node_id,
-					output_index: *output_index,
-				}),
-				_ => None,
-			};
+			let previewing = self.root_node(&network_path).map_or(Previewing::No, |previewed| Previewing::Yes { previewed });
 
 			match root_node_to_restore {
 				Some(root_node) => self.create_wire(&root_node.to_connector(), &InputConnector::Export(0), &network_path),
 				None => self.disconnect_input(&InputConnector::Export(0), &network_path),
 			}
-
-			let previewing = match previewed {
-				Some(previewed) => Previewing::Yes { previewed },
-				None => Previewing::No,
-			};
-			if let Some(mut network) = self.network_mut(&network_path) {
-				network.set_previewing(previewing);
-			}
+			self.set_previewing(previewing, &network_path);
 		}
 	}
 }

@@ -91,17 +91,11 @@ pub struct GraphUpdate {
 	pub(super) resources: ResourceRegistry,
 	/// Full path from the root network to the node the Data panel inspects.
 	pub(super) node_to_inspect: Vec<NodeId>,
-	/// The node each network renders instead of its export, paired with that network's path.
-	///
-	/// Per-evaluation and this peer's alone, like `node_to_inspect`: the document travels unchanged and
-	/// the substitution happens here, so nothing that is not being evaluated ever sees a doctored graph.
+	/// The node each network renders in place of its export, paired with that network's path.
 	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
 }
 
-/// Substitutes each network's previewed node for its export, on the graph about to be compiled.
-///
-/// Applies the list as given rather than deciding again which previews count: the editor's change check
-/// is derived from the same list, and a second opinion here would let the two disagree.
+/// Replaces each network's primary export with its previewed node.
 pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
 	for (network_path, previewed) in previewed {
 		let Some(nested) = network.nested_network_mut(network_path) else { continue };

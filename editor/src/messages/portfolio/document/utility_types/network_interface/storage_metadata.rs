@@ -285,10 +285,9 @@ pub fn apply_network_view_settings(
 		if let Some(value) = settings.get(session::network::PREVIEWING)
 			&& let Ok(previewing) = from_value::<Previewing>(value)
 		{
-			// The session outlives the document, so it can name a node another peer has since removed
-			let previewing = match previewing {
-				Previewing::Yes { previewed } if !network_contains(interface, network_path, previewed.node_id) => Previewing::No,
-				previewing => previewing,
+			let previewing = match previewing.previewed() {
+				Some(previewed) if !network_contains(interface, network_path, previewed.node_id) => Previewing::No,
+				_ => previewing,
 			};
 
 			if let Some(mut network) = interface.network_mut(network_path) {
@@ -298,8 +297,7 @@ pub fn apply_network_view_settings(
 	}
 }
 
-/// Whether the network at `network_path` still holds `node_id`. Asked without logging, since a missing node
-/// is expected here rather than a fault.
+/// Whether the network at `network_path` contains `node_id`, without logging when it doesn't.
 fn network_contains(interface: &NodeNetworkInterface, network_path: &[NodeId], node_id: NodeId) -> bool {
 	interface.document_network().nested_network(network_path).is_some_and(|network| network.nodes.contains_key(&node_id))
 }

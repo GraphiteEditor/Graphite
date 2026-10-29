@@ -450,20 +450,14 @@ impl RootNode {
 	}
 }
 
-/// Which node the node graph renders instead of the network's export.
-///
-/// Per-peer view state, not part of the document: the export keeps whatever it is wired to, and the
-/// compile path substitutes the previewed node into the graph it evaluates. So previewing a node
-/// changes nothing another peer would see, and there is nothing to restore when it ends.
+/// Which node the node graph renders in place of the network's export, as per-peer view state that leaves the export untouched.
 #[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize)]
 pub enum Previewing {
 	Yes {
 		previewed: RootNode,
 	},
 	// TODO: Eventually remove this document upgrade code
-	/// Written by a version that previewed by rewiring the export, so the export already points at the
-	/// previewed node and this names what to put back. Converted to `Yes` when the document is opened,
-	/// and never written by this version.
+	/// Written by versions that previewed by rewiring the export, and converted to `Yes` when the document is opened.
 	LegacyRewired {
 		root_node_to_restore: Option<RootNode>,
 	},
@@ -471,10 +465,22 @@ pub enum Previewing {
 	No,
 }
 
+impl Previewing {
+	pub fn previewed(&self) -> Option<RootNode> {
+		match self {
+			Previewing::Yes { previewed } => Some(*previewed),
+			_ => None,
+		}
+	}
+
+	pub fn previews(&self, node_id: NodeId) -> bool {
+		self.previewed().is_some_and(|previewed| previewed.node_id == node_id)
+	}
+}
+
+// TODO: Eventually remove this document upgrade code, restoring the derived `Deserialize`
 impl<'de> serde::Deserialize<'de> for Previewing {
-	// TODO: Eventually remove this document upgrade code, restoring the derived `Deserialize`
-	/// Accepts both the current shape and the one written while previewing rewired the export, so a
-	/// document saved mid-preview by an older version still opens.
+	/// Also accepts the shape written by versions that previewed by rewiring the export.
 	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
 		#[derive(serde::Deserialize)]
 		enum Stored {
