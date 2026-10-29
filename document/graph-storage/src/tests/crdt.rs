@@ -753,6 +753,23 @@ fn all_referenced_resource_hashes_survives_undo() {
 	assert!(session.all_referenced_resource_hashes().contains(&changed), "the undone hash change keeps its bytes for redo");
 }
 
+/// A hot hash a later hot op overwrote is in no registry, but retiring puts it in history, whose bytes every peer
+/// then fetches; collecting it meanwhile loses the bytes for good when only this peer had them.
+#[test]
+fn all_referenced_resource_hashes_keeps_an_overwritten_hot_hash() {
+	use crate::ResourceId;
+
+	let mut session = Session::with_peer(PeerId(1));
+	let (first, second) = (ResourceHash::from(&b"first"[..]), ResourceHash::from(&b"second"[..]));
+	let id = ResourceId::new();
+	session.stage_embedded_resource(id, first).expect("stage resource");
+	let hot_ops = session.stage_ops([crate::RegistryDelta::SetResourceHash { id, hash: Some(second) }]).expect("stage hash change");
+	assert!(session.all_referenced_resource_hashes().contains(&first), "the overwritten hash is still named while hot");
+
+	session.retire(hot_ops.last().expect("staged").timestamp).expect("retire");
+	assert!(session.all_referenced_resource_hashes().contains(&first), "and from history once retired");
+}
+
 /// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
 /// new edit; a no-op commit (here `embed_resource_sources` over an empty id set) leaving it cleared
 /// would silently disable redo after an undo.

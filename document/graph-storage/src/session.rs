@@ -1009,14 +1009,16 @@ impl Session {
 		self.document.history.verify()
 	}
 
-	/// Every resource hash referenced by the current registry *or* anywhere in history. Undo removes a
+	/// Every resource hash referenced by the current registry, the hot log, or anywhere in history. Undo removes a
 	/// interaction's `AddResource` from the working registry, so a redoable (or re-undoable) interaction's
 	/// resources no longer appear in `registry().resources` even though redo still needs them. Resource GC
 	/// must keep this whole set alive, not just the current head's, or undo then redo loses declaration
 	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot and `SetResourceHash`.
+	/// A hot op a later one overwrote is in no registry, yet names a hash history takes on when it retires.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
 		hashes.extend(self.document.history.resource_hashes());
+		hashes.extend(self.document.hot_log.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		hashes
 	}
 
