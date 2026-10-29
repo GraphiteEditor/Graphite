@@ -2,7 +2,7 @@ use super::utility_types::{Direction, NodeEvaluationError};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector, RootNode};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
@@ -74,10 +74,6 @@ pub enum NodeGraphMessage {
 	/// Disconnects every wire an import feeds, or the wire feeding an export.
 	DisconnectImportExport {
 		index: ImportOrExport,
-	},
-	DisconnectRootNode,
-	SetRootNodeToRestore {
-		root_node_to_restore: RootNode,
 	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,

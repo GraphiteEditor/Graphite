@@ -1,5 +1,6 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
+use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
 use crate::task::{Spawn, Spawner, Task};
 use glam::{DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
@@ -90,6 +91,23 @@ pub struct GraphUpdate {
 	pub(super) resources: ResourceRegistry,
 	/// Full path from the root network to the node the Data panel inspects.
 	pub(super) node_to_inspect: Vec<NodeId>,
+	/// The node each network renders instead of its export, paired with that network's path.
+	///
+	/// Per-evaluation and this peer's alone, like `node_to_inspect`: the document travels unchanged and
+	/// the substitution happens here, so nothing that is not being evaluated ever sees a doctored graph.
+	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+}
+
+/// Substitutes each network's previewed node for its export, on the graph about to be compiled.
+///
+/// Applies the list as given rather than deciding again which previews count: the editor's change check
+/// is derived from the same list, and a second opinion here would let the two disagree.
+pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
+	for (network_path, previewed) in previewed {
+		let Some(nested) = network.nested_network_mut(network_path) else { continue };
+		let Some(export) = nested.exports.first_mut() else { continue };
+		*export = NodeInput::node(previewed.node_id, previewed.output_index);
+	}
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -218,7 +236,14 @@ impl NodeRuntime {
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+					mut network,
+					resources,
+					node_to_inspect,
+					previewed,
+				}) => {
+					apply_previews(&mut network, &previewed);
+
 					match &mut self.inspect_state {
 						Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
 						_ => self.inspect_state = InspectState::new(node_to_inspect),
@@ -672,5 +697,35 @@ impl InspectState {
 		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
 		self.last_evaluation = Some((node, context_hash, data.clone()));
 		data
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use graph_craft::document::DocumentNode;
+
+	#[test]
+	fn a_preview_replaces_the_export_of_the_graph_being_compiled() {
+		let previewed_node = NodeId(1);
+		let exported_node = NodeId(2);
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(exported_node, 0)],
+			nodes: [(previewed_node, DocumentNode::default()), (exported_node, DocumentNode::default())].into_iter().collect(),
+			..Default::default()
+		};
+
+		apply_previews(
+			&mut network,
+			&[(
+				Vec::new(),
+				RootNode {
+					node_id: previewed_node,
+					output_index: 0,
+				},
+			)],
+		);
+
+		assert_eq!(network.exports.first().and_then(|export| export.as_node()), Some(previewed_node));
 	}
 }

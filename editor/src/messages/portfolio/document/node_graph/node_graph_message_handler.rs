@@ -11,7 +11,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, RootNode, TransactionCheckpoint,
+	self, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeTypePersistentMetadata, OutputConnector, Previewing, TransactionCheckpoint,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelChainInsertion, LayerPanelChainNode, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -471,22 +471,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					ImportOrExport::Import(import_index) => {
 						network_interface.disconnect_import_wires(import_index, breadcrumb_network_path);
 					}
-					// While previewing, drop the wire the preview would restore, as dragging it off does
-					ImportOrExport::Export(0) if matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { root_node_to_restore: Some(_) }) => {
-						network_interface.start_previewing_without_restore(breadcrumb_network_path);
-					}
 					ImportOrExport::Export(export_index) => network_interface.disconnect_input(&InputConnector::Export(export_index), breadcrumb_network_path),
 				}
 				network_interface.remove_orphaned_dots(breadcrumb_network_path);
 
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
-			NodeGraphMessage::DisconnectRootNode => {
-				network_interface.start_previewing_without_restore(selection_network_path);
-			}
-			NodeGraphMessage::SetRootNodeToRestore { root_node_to_restore } => {
-				network_interface.set_root_node_to_restore(root_node_to_restore, selection_network_path);
 			}
 			// Duplicates in the flow like everywhere else
 			NodeGraphMessage::DuplicateSelectedNodes => responses.add(DocumentMessage::DuplicateSelectedLayers),
@@ -1396,18 +1386,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.wire_in_progress_to_connector = Some(point);
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
-							let mut disconnect_root_node = false;
-							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
-								&& root_node_to_restore.is_some()
-								&& *disconnecting == InputConnector::Export(0)
-							{
-								disconnect_root_node = true;
-							}
-							if disconnect_root_node {
-								responses.add(NodeGraphMessage::DisconnectRootNode);
-							} else {
-								responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
-							}
+							responses.add(NodeGraphMessage::DisconnectInput { input_connector: *disconnecting });
 							// Picking up a wire from the end of a dot leaves that dot with nothing to redirect
 							responses.add(NodeGraphMessage::RemoveOrphanedDots);
 							// Update the frontend that the node is disconnected
@@ -1823,7 +1802,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.into_iter()
 					.collect::<HashSet<_>>();
 
-				let previewing = network_interface.previewing(selection_network_path);
 				for selected_node in &all_selected_nodes {
 					// Handle inputs of selected node
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
@@ -1848,17 +1826,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						&& all_selected_nodes.contains(&node_id)
 					{
 						first_deselected_upstream_output = upstream_of(&node_id);
-					}
-
-					// While previewing, the export's eventual return to this node is a connection too, so it moves upstream as well
-					if let Some(OutputConnector::Node { node_id, output_index }) = first_deselected_upstream_output
-						&& let Previewing::Yes {
-							root_node_to_restore: Some(root_node_to_restore),
-						} = previewing && root_node_to_restore.to_connector() == OutputConnector::primary_output(*selected_node)
-					{
-						responses.add(NodeGraphMessage::SetRootNodeToRestore {
-							root_node_to_restore: RootNode { node_id, output_index },
-						});
 					}
 
 					let number_of_outputs = network_interface.number_of_outputs(selected_node, selection_network_path);
@@ -3095,7 +3062,7 @@ impl NodeGraphMessageHandler {
 			.filter(|input| network_interface.input_from_connector(input, network_path).is_some_and(|input| input.is_exposed()))
 			.filter_map(|input| network_interface.wire_update_from_input(input, wire_style, glide_offsets, network_path))
 			.collect::<Vec<_>>();
-		wires.extend(network_interface.wire_to_root(wire_style, glide_offsets, network_path));
+		wires.extend(network_interface.wire_to_preview(wire_style, glide_offsets, network_path));
 		wires
 	}
 
@@ -3415,13 +3382,11 @@ impl NodeGraphMessageHandler {
 			warn!("No network in update_selection_action_buttons");
 			return;
 		};
-		let previewing = if matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { .. }) {
-			network.exports.iter().find_map(|export| {
-				let NodeInput::Node { node_id, .. } = export else { return None };
-				Some(*node_id)
-			})
-		} else {
-			None
+		// From the preview, not the export: the export names the document root, so reading it would start a
+		// preview on that instead of ending this one
+		let previewing = match network_interface.previewing(breadcrumb_network_path) {
+			Previewing::Yes { previewed } => Some(previewed.node_id),
+			_ => None,
 		};
 
 		// If only one node is selected then show the preview or stop previewing button
@@ -3710,8 +3675,8 @@ impl NodeGraphMessageHandler {
 			wire_path_update: None,
 		}));
 
-		if let Some(wire_to_root) = network_interface.wire_to_root(graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path) {
-			added_wires.push(wire_to_root);
+		if let Some(wire_to_preview) = network_interface.wire_to_preview(graph_wire_style, &GlideOffsets::default(), breadcrumb_network_path) {
+			added_wires.push(wire_to_preview);
 		} else {
 			added_wires.push(WirePathUpdate {
 				id: NodeId(u64::MAX),
@@ -3762,11 +3727,8 @@ impl NodeGraphMessageHandler {
 				log::error!("Could not get position for node: {node_id}");
 				continue;
 			};
-			let is_export = network_interface
-				.input_from_connector(&InputConnector::Export(0), breadcrumb_network_path)
-				.is_some_and(|export| export.as_node().is_some_and(|export_node_id| node_id == export_node_id));
-			let is_root_node = network_interface.root_node(breadcrumb_network_path).is_some_and(|root_node| root_node.node_id == node_id);
-			let previewed = is_export && !is_root_node;
+			// Asked of the preview itself, which the export no longer reflects
+			let previewed = matches!(network_interface.previewing(breadcrumb_network_path), Previewing::Yes { previewed } if previewed.node_id == node_id);
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 

@@ -676,9 +676,7 @@ impl NodeNetworkInterface {
 
 	/// The wire into the input as the frontend draws it, with its ends following anything drawn gliding into place.
 	pub fn wire_update_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
-		// While previewing, the export's wire leads to the temporarily previewed node
-		let dashed = *input == InputConnector::Export(0) && matches!(self.previewing(network_path), Previewing::Yes { .. });
-		let wire = self.wire_path_from_input(input, graph_wire_style, dashed, glide_offsets, network_path)?;
+		let wire = self.wire_path_from_input(input, graph_wire_style, false, glide_offsets, network_path)?;
 		let (id, input_index) = match input {
 			InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
 			InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
@@ -755,27 +753,26 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
-	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&self, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	/// The dashed wire from the previewed node to the export, drawn alongside the solid wire the export is
+	/// really connected to. See [`Previewing`].
+	pub fn wire_to_preview(&self, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
-		let current_export = self.upstream_output_connector(&input, network_path)?;
 
-		let root_node = match self.previewing(network_path) {
-			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => None,
-		}?;
+		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
 
-		if Some(root_node.node_id) == current_export.node_id() {
+		// Whole connector, not just the node: the export already reaching this exact port is what would put a
+		// second wire on top of the solid one
+		if self.upstream_output_connector(&input, network_path) == Some(previewed.to_connector()) {
 			return None;
 		}
 		let Some(input_position) = self.get_input_center(&input, network_path) else {
-			log::error!("Could not get input position for wire end in root node: {input:?}");
+			log::error!("Could not get input position for wire end in preview: {input:?}");
 			return None;
 		};
 		let input_position = input_position + glide_offsets.input(&input);
-		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let upstream_output = OutputConnector::node(previewed.node_id, previewed.output_index);
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
+			log::error!("Could not get output position for wire start in preview: {upstream_output:?}");
 			return None;
 		};
 		let output_position = output_position + glide_offsets.output(&upstream_output);
@@ -787,7 +784,7 @@ impl NodeNetworkInterface {
 
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
-		// Styled by the root node's own output, since the export it leads to is connected to the previewed node instead
+		// Styled by the previewed node's own output, since the export is connected to something else
 		let output_type = self.output_type(&upstream_output, network_path);
 		let data_type = output_type.displayed_type();
 		let is_list = output_type.is_list();
@@ -795,7 +792,7 @@ impl NodeNetworkInterface {
 			path_string,
 			data_type,
 			thick,
-			dashed: false,
+			dashed: true,
 			is_list,
 			center_path_string,
 		});

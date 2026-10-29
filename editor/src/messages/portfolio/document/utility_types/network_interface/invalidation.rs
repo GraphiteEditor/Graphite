@@ -17,6 +17,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.unload_upstream_node_click_targets(vec![*node_id], network_path);
+		// This unloads the import and export ports too, since they are placed from the bounds it clears.
 		self.unload_all_nodes_bounding_box(network_path);
 	}
 
@@ -25,9 +26,11 @@ impl NodeNetworkInterface {
 		self.unload_import_export_ports(network_path);
 	}
 
-	/// Unloads what a node's name or lock state feeds: a layer's width, and the geometry sized from it.
+	/// Unloads what a node's name or lock state feeds: a layer's width, the geometry sized from it, and
+	/// the network bounds that geometry contributes to.
 	pub(crate) fn invalidate_node_appearance(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		self.try_unload_layer_width(node_id, network_path);
 		self.unload_node_click_targets(node_id, network_path);
+		self.unload_all_nodes_bounding_box(network_path);
 	}
 }
