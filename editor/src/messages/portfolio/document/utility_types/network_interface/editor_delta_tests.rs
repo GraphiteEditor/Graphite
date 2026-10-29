@@ -1,7 +1,7 @@
 use super::DocumentNodePersistentMetadata;
-use super::InputConnector;
 use super::editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange, construct_batch, ui_attribute_writes};
 use super::storage_metadata::StorageMetadataView;
+use super::{InputConnector, NodeTemplate};
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{PeerId, Registry, RegistryDelta, Session};
@@ -633,9 +633,19 @@ async fn swapping_an_implementation_leaves_the_node_in_place() {
 	}
 }
 
-/// What a peer receives must bring its interface to what the editing peer holds: the recorded deltas become storage ops on
-/// the peer's registry, the touched entities are reconciled into a pre-edit clone, and that must equal the edited interface
-/// and convert back to the registry it was reconciled from.
+fn conversion(editor: &EditorTestUtils) -> document_graph_storage::RuntimeConversion {
+	let document = editor.active_document();
+	Registry::convert_from_runtime(
+		document.network_interface.document_network(),
+		&StorageMetadataView::new(&document.network_interface),
+		&document.resources.registry,
+		PEER,
+	)
+	.expect("conversion should succeed")
+}
+
+/// Sends the deltas `edit` records to a peer as storage ops, reconciles the touched entities into a pre-edit clone of the
+/// interface, and checks that it equals the edited interface and converts back to the peer's registry.
 async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUtils)) {
 	use document_graph_storage::Touched;
 
@@ -648,21 +658,10 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 		})
 		.await;
 	editor.active_document_mut().network_interface.discard_deltas();
-	// Both interfaces address nodes the way storage does, so they compare directly.
 	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
-	// The peer's registry holds what a conversion of the interface holds before the edit.
 	let mut mirror = editor.active_document().network_interface.clone();
-	let baseline = {
-		let document = editor.active_document();
-		Registry::convert_from_runtime(
-			document.network_interface.document_network(),
-			&StorageMetadataView::new(&document.network_interface),
-			&document.resources.registry,
-			PEER,
-		)
-		.expect("conversion")
-	};
+	let baseline = conversion(&editor);
 	let mut peer = Session::with_peer(PeerId(8));
 	peer.stage_computed_ops(compute_deltas(&Registry::default(), &baseline.registry)).expect("the peer takes the baseline");
 	let mut declarations = baseline.declarations;
@@ -719,7 +718,7 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 	);
 }
 
-/// The paths at which two JSON values differ, one per line, so a metadata mismatch names the field.
+/// The paths at which two JSON values differ, one per line.
 fn json_diff(expected: &serde_json::Value, actual: &serde_json::Value, path: &str) -> String {
 	use serde_json::Value;
 	match (expected, actual) {
@@ -743,6 +742,12 @@ fn json_diff(expected: &serde_json::Value, actual: &serde_json::Value, path: &st
 		_ if expected == actual => String::new(),
 		_ => format!("{path}: expected {expected}\n{path}: actual   {actual}\n"),
 	}
+}
+
+fn rectangle_template() -> NodeTemplate {
+	crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
+		.expect("rectangle definition")
+		.default_node_template()
 }
 
 #[tokio::test]
@@ -774,10 +779,7 @@ async fn reconciling_an_arity_change_reproduces_the_interface() {
 #[tokio::test]
 async fn reconciling_a_node_insertion_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
-		let template = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
-			.expect("rectangle definition")
-			.default_node_template();
-		editor.active_document_mut().network_interface.insert_node(NodeId(0xDE17A), template, &[]);
+		editor.active_document_mut().network_interface.insert_node(NodeId(0xDE17A), rectangle_template(), &[]);
 	})
 	.await;
 }
@@ -786,10 +788,7 @@ async fn reconciling_a_node_insertion_reproduces_the_interface() {
 async fn reconciling_a_node_insertion_inside_a_group_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
 		let group = only_group(editor);
-		let template = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type(&rectangle_definition())
-			.expect("rectangle definition")
-			.default_node_template();
-		editor.active_document_mut().network_interface.insert_node(NodeId(0xDE17B), template, &[group]);
+		editor.active_document_mut().network_interface.insert_node(NodeId(0xDE17B), rectangle_template(), &[group]);
 	})
 	.await;
 }
@@ -821,19 +820,13 @@ async fn reconciling_an_input_value_edit_reproduces_the_interface() {
 	assert_remote_reconcile_reproduces(|editor| {
 		let group = only_group(editor);
 		let interface = &mut editor.active_document_mut().network_interface;
-		let inner = interface
+		let (inner, index) = interface
 			.nested_network(&[group])
 			.expect("the group's network")
 			.nodes
 			.iter()
-			.find(|(_, node)| node.inputs.iter().any(|input| input.as_value().is_some()))
-			.map(|(id, _)| *id)
+			.find_map(|(id, node)| Some((*id, node.inputs.iter().position(|input| input.as_value().is_some())?)))
 			.expect("a node with a value input inside the group");
-		let index = interface
-			.nested_network(&[group])
-			.and_then(|network| network.nodes.get(&inner))
-			.and_then(|node| node.inputs.iter().position(|input| input.as_value().is_some()))
-			.expect("the value input");
 		interface.set_input(&InputConnector::node_at_index(inner, index), NodeInput::value(TaggedValue::Number(42.), false), &[group]);
 	})
 	.await;
@@ -849,27 +842,16 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 	editor.draw_rect(0., 0., 100., 100.).await;
 	editor.active_document_mut().network_interface.pin_storage_identities(PEER);
 
-	let baseline = convert(&editor);
-	let declarations = {
-		let document = editor.active_document();
-		Registry::convert_from_runtime(
-			document.network_interface.document_network(),
-			&StorageMetadataView::new(&document.network_interface),
-			&document.resources.registry,
-			PEER,
-		)
-		.expect("conversion")
-		.declarations
-	};
+	let baseline = conversion(&editor);
 	let mut touched = Touched::default();
-	touched.nodes.extend(baseline.node_instances.keys().copied());
-	touched.networks.extend(baseline.networks.keys().copied());
+	touched.nodes.extend(baseline.registry.node_instances.keys().copied());
+	touched.networks.extend(baseline.registry.networks.keys().copied());
 
 	let before = editor.active_document().network_interface.clone();
 	let reconciled = editor
 		.active_document_mut()
 		.network_interface
-		.reconcile_remote(&baseline, &declarations, &touched, PEER)
+		.reconcile_remote(&baseline.registry, &baseline.declarations, &touched, PEER)
 		.expect("reconcile");
 
 	assert!(reconciled.networks.is_empty(), "nothing differed, so nothing should have been applied: {:?}", reconciled.networks);

@@ -193,8 +193,8 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
 
-/// The runtime node and the persistent metadata for it and everything nested under it, from a single-node projection
-/// of the registry. Uses the same entry patching as a whole rebuild, so a reconciled node matches what a rebuild holds.
+/// The runtime node and the persistent metadata of it and everything nested under it, from a single-node projection,
+/// patched as a whole rebuild patches its entries.
 pub(super) fn node_metadata_from_projection(projected: document_graph_storage::ProjectedNode) -> Result<(graph_craft::document::DocumentNode, DocumentNodePersistentMetadata), InterfaceRebuildError> {
 	let document_graph_storage::ProjectedNode {
 		network_path: prefix,
@@ -204,7 +204,7 @@ pub(super) fn node_metadata_from_projection(projected: document_graph_storage::P
 		network_entries,
 	} = projected;
 
-	// The entries carry absolute paths; the scratch tree is rooted at the node's own network.
+	// The scratch tree is rooted at the node's own network
 	let rebase = |path: Vec<NodeId>| path.get(prefix.len()..).map(<[NodeId]>::to_vec).unwrap_or_default();
 	let node_entries = node_entries
 		.into_iter()

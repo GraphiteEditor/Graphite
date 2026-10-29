@@ -1,13 +1,8 @@
-//! Brings the interface into line with the working registry for the entities peers touched, so a remote
-//! batch costs deltas for what changed rather than a rebuild of the whole interface.
+//! Brings the interface into line with the working registry for the entities peers touched, applying the
+//! difference as the `EditorDelta`s a local edit records, mirrored without recording them.
 //!
-//! Each touched node is projected to its runtime form and compared with what the interface holds. The
-//! difference is applied through `apply` as the `EditorDelta`s a local edit records, mirrored without
-//! recording so nothing is offered back to its sender. A node held on one side only is added or removed
-//! whole, and what no field write expresses, such as a changed implementation or scope injection, replaces it.
-//!
-//! The touched set over-approximates: a late-writer-wins loser or a failed op names an unchanged entity,
-//! for which the comparison emits nothing.
+//! The touched set over-approximates: an entity that lost a late-writer-wins race or a failed op names is
+//! unchanged, and its comparison emits nothing.
 
 use std::collections::{BTreeSet, HashMap};
 
@@ -21,7 +16,7 @@ use super::{DocumentNodePersistentMetadata, EditorDelta, NetworkMetadataChange, 
 
 #[derive(Debug, thiserror::Error)]
 pub enum ReconcileError {
-	/// A declaration the touched nodes need is not cached yet. Nothing was applied; retry once it lands.
+	/// A declaration the touched nodes need is not cached yet.
 	#[error("waiting for proto-node declaration {0}")]
 	DeclarationMissing(document_graph_storage::ResourceId),
 	#[error("the interface lacks the network at {0:?} that the registry places a node in")]
@@ -41,39 +36,28 @@ impl From<ConversionError> for ReconcileError {
 	}
 }
 
-/// What a reconcile changed, for the caller to unload what those changes feed.
+/// What a reconcile changed.
 #[derive(Debug, Default)]
 pub struct Reconciled {
 	/// The networks a delta was applied in.
 	pub networks: BTreeSet<Vec<NodeId>>,
 }
 
-/// Where the interface holds each node storage knows, keyed by the identity storage addresses it by.
+/// Where the interface holds each node, keyed by its storage identity.
 type StorageIndex = HashMap<StorageNodeId, (Vec<NodeId>, NodeId)>;
 
 impl NodeNetworkInterface {
 	/// Applies to the interface whatever the registry holds differently for the touched entities.
 	///
-	/// Can fail part-way through. Retrying with the same touched set is safe, since a reconciled node compares equal
-	/// and emits nothing; the caller retries when a declaration is on its way and otherwise rebuilds from the registry.
+	/// Can fail part-way through. Retrying with the same touched set is safe, since a reconciled node compares equal.
 	pub(crate) fn reconcile_remote(&mut self, registry: &Registry, declarations: &Declarations, touched: &Touched, peer: document_graph_storage::PeerId) -> Result<Reconciled, ReconcileError> {
 		let projection = registry.runtime_projection(declarations);
 		let index = self.pin_storage_identities(peer);
 
-		// A touched network is reconciled through the node implementing it, whose comparison covers the
-		// network's exports and metadata. The root has no such node.
+		// A network is compared through the node implementing it; the root has none
 		let mut ids = touched.nodes.clone();
-		let mut root = false;
-		for &network in &touched.networks {
-			match projection.owner(network) {
-				Some(owner) => {
-					ids.insert(owner);
-				}
-				None => root |= network == ROOT_NETWORK,
-			}
-		}
+		ids.extend(touched.networks.iter().filter_map(|&network| projection.owner(network)));
 
-		// A node the runtime cannot reach and the interface does not hold has nothing to reconcile.
 		let mut items: Vec<(Vec<NodeId>, NodeId, StorageNodeId)> = ids
 			.into_iter()
 			.filter_map(|id| {
@@ -81,32 +65,34 @@ impl NodeNetworkInterface {
 				Some((path, local_id, id))
 			})
 			.collect();
-		// A network's path is a prefix of the paths inside it, so this puts each node after the one
-		// implementing its network, and a nested node finds its network in place.
+		// Sorting by path reconciles each network node before the nodes inside it
 		items.sort();
 
 		let mut reconciled = Reconciled::default();
 		for (path, local_id, id) in items {
 			self.reconcile_node(&projection, &index, &path, local_id, id, &mut reconciled)?;
 		}
-		if root {
-			let target = projection.network_entry(ROOT_NETWORK)?;
-			let current_exports = self.document_network().exports.clone();
-			let current = &self.document_network_metadata().persistent_metadata;
-			let mut deltas = Vec::new();
-			export_deltas(&[], &current_exports, &target.exports, &mut deltas);
-			network_metadata_deltas(
-				&[],
-				current.reference.as_deref(),
-				&current.pinned_node_order,
-				target.metadata.reference.as_deref(),
-				&target.metadata.pinned_order,
-				&mut deltas,
-			);
-			self.apply_reconciled(&[], deltas, &mut reconciled);
+		if touched.networks.contains(&ROOT_NETWORK) {
+			self.reconcile_root_network(&projection, &mut reconciled)?;
 		}
 
 		Ok(reconciled)
+	}
+
+	fn reconcile_root_network(&mut self, projection: &RuntimeProjection, reconciled: &mut Reconciled) -> Result<(), ReconcileError> {
+		let target = projection.network_entry(ROOT_NETWORK)?;
+		let current = &self.document_network_metadata().persistent_metadata;
+
+		let mut deltas = Vec::new();
+		export_deltas(&[], &self.document_network().exports, &target.exports, &mut deltas);
+		network_metadata_deltas(
+			&[],
+			(current.reference.as_deref(), &current.pinned_node_order),
+			(target.metadata.reference.as_deref(), &target.metadata.pinned_order),
+			&mut deltas,
+		);
+		self.apply_reconciled(&[], deltas, reconciled);
+		Ok(())
 	}
 
 	fn reconcile_node(
@@ -118,7 +104,7 @@ impl NodeNetworkInterface {
 		id: StorageNodeId,
 		reconciled: &mut Reconciled,
 	) -> Result<(), ReconcileError> {
-		// The interface holds the node elsewhere, under another id or in a network it has left; that copy goes first.
+		// A copy held under another id or in another network goes first
 		if let Some((held_path, held_id)) = index.get(&id)
 			&& (held_path.as_slice() != path || *held_id != local_id)
 			&& self.holds_node(held_path, *held_id)
@@ -127,8 +113,7 @@ impl NodeNetworkInterface {
 		}
 
 		let stored = projection.node_address(id).is_some();
-		let held = self.holds_node(path, local_id);
-		match (stored, held) {
+		match (stored, self.holds_node(path, local_id)) {
 			(false, false) => {}
 			(false, true) => self.apply_reconciled(path, vec![remove_node(path, local_id)], reconciled),
 			(true, false) => {
@@ -162,9 +147,8 @@ impl NodeNetworkInterface {
 		Ok(())
 	}
 
-	/// Emits what differs between the node the interface holds at `path` / `local_id` and `target`, which
-	/// the registry describes. A network node's contents are left to their own reconciliation: only its
-	/// exports and its network's metadata are compared here.
+	/// Applies what differs between the node the interface holds and `target`. A network node's contents are left to their
+	/// own reconciliation: only its exports and its network's metadata are compared here.
 	fn diff_node(&mut self, path: &[NodeId], local_id: NodeId, target: DocumentNode, target_metadata: DocumentNodePersistentMetadata, reconciled: &mut Reconciled) {
 		let Some(current) = self.document_network().nested_network(path).and_then(|network| network.nodes.get(&local_id)) else {
 			return;
@@ -178,114 +162,24 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let mut deltas = Vec::new();
-		let mut nested_changed = false;
-		let at = |change: NodeMetadataChange| EditorDelta::NodeMetadata {
-			network_path: path.to_vec(),
-			node_id: local_id,
-			change,
-		};
-
-		// What no field write expresses replaces the node whole, and its metadata with it.
-		if !same_implementation(&current.implementation, &target.implementation) || current.skip_deduplication != target.skip_deduplication {
-			nested_changed = matches!(target.implementation, DocumentNodeImplementation::Network(_)) || matches!(current.implementation, DocumentNodeImplementation::Network(_));
-			deltas.push(EditorDelta::Graph(RuntimeDelta::ReplaceNode {
-				network_path: path.to_vec(),
-				node_id: local_id,
-				node: Box::new(target),
-			}));
-			deltas.push(EditorDelta::NodeMetadataSnapshot {
-				network_path: path.to_vec(),
-				node_id: local_id,
-				metadata: Box::new(target_metadata),
-			});
+		let (deltas, nested_changed) = if same_implementation(&current.implementation, &target.implementation) && current.skip_deduplication == target.skip_deduplication {
+			field_deltas(path, local_id, (current, current_metadata), (&target, &target_metadata))
 		} else {
-			// The slots first, so the metadata array that indexes them lands on a list of the right length.
-			if current.inputs.len() != target.inputs.len() {
-				deltas.push(EditorDelta::Graph(RuntimeDelta::SetInputs {
+			let nested_changed = is_network(&current.implementation) || is_network(&target.implementation);
+			let deltas = vec![
+				EditorDelta::Graph(RuntimeDelta::ReplaceNode {
 					network_path: path.to_vec(),
 					node_id: local_id,
-					inputs: target.inputs.clone(),
-				}));
-				deltas.push(EditorDelta::NodeInputMetadata {
+					node: Box::new(target),
+				}),
+				EditorDelta::NodeMetadataSnapshot {
 					network_path: path.to_vec(),
 					node_id: local_id,
-					input_metadata: target_metadata.input_metadata.clone(),
-				});
-			} else {
-				for (input_index, (held, wanted)) in current.inputs.iter().zip(&target.inputs).enumerate() {
-					if held != wanted {
-						deltas.push(EditorDelta::Graph(RuntimeDelta::SetInput {
-							network_path: path.to_vec(),
-							node_id: local_id,
-							input_index,
-							input: wanted.clone(),
-						}));
-					}
-				}
-				if current_metadata.input_metadata != target_metadata.input_metadata {
-					deltas.push(EditorDelta::NodeInputMetadata {
-						network_path: path.to_vec(),
-						node_id: local_id,
-						input_metadata: target_metadata.input_metadata.clone(),
-					});
-				}
-			}
-
-			// Export slot writes rename the encapsulating node's outputs as a side effect, so the names are
-			// restated after them whenever the slot count moved.
-			let mut restate_output_names = false;
-			if let (DocumentNodeImplementation::Network(held), DocumentNodeImplementation::Network(wanted)) = (&current.implementation, &target.implementation) {
-				let nested = nested_path(path, local_id);
-				let before = deltas.len();
-				export_deltas(&nested, &held.exports, &wanted.exports, &mut deltas);
-				restate_output_names = held.exports.len() != wanted.exports.len();
-
-				let (held_reference, held_order) = current_metadata
-					.network_metadata
-					.as_ref()
-					.map(|network| (network.persistent_metadata.reference.as_deref(), network.persistent_metadata.pinned_node_order.as_slice()))
-					.unwrap_or((None, &[]));
-				let (wanted_reference, wanted_order) = target_metadata
-					.network_metadata
-					.as_ref()
-					.map(|network| (network.persistent_metadata.reference.as_deref(), network.persistent_metadata.pinned_node_order.as_slice()))
-					.unwrap_or((None, &[]));
-				network_metadata_deltas(&nested, held_reference, held_order, wanted_reference, wanted_order, &mut deltas);
-				nested_changed = deltas.len() != before;
-			}
-
-			if current.visible != target.visible {
-				deltas.push(EditorDelta::Graph(RuntimeDelta::SetVisibility {
-					network_path: path.to_vec(),
-					node_id: local_id,
-					visible: target.visible,
-				}));
-			}
-			if current.call_argument != target.call_argument {
-				deltas.push(EditorDelta::Graph(RuntimeDelta::SetCallArgument {
-					network_path: path.to_vec(),
-					node_id: local_id,
-					call_argument: target.call_argument.clone(),
-				}));
-			}
-
-			if current_metadata.node_type_metadata != target_metadata.node_type_metadata {
-				deltas.push(at(NodeMetadataChange::NodeType(target_metadata.node_type_metadata.clone())));
-			}
-			if current_metadata.display_name != target_metadata.display_name {
-				deltas.push(at(NodeMetadataChange::DisplayName(target_metadata.display_name.clone())));
-			}
-			if current_metadata.locked != target_metadata.locked {
-				deltas.push(at(NodeMetadataChange::Locked(target_metadata.locked)));
-			}
-			if current_metadata.pinned != target_metadata.pinned {
-				deltas.push(at(NodeMetadataChange::Pinned(target_metadata.pinned)));
-			}
-			if restate_output_names || current_metadata.output_names != target_metadata.output_names {
-				deltas.push(at(NodeMetadataChange::OutputNames(target_metadata.output_names.clone())));
-			}
-		}
+					metadata: Box::new(target_metadata),
+				},
+			];
+			(deltas, nested_changed)
+		};
 
 		if deltas.is_empty() {
 			return;
@@ -319,6 +213,95 @@ impl NodeNetworkInterface {
 	}
 }
 
+/// The field writes taking a node to `target` when its implementation stays, and whether they changed its nested network.
+fn field_deltas(
+	path: &[NodeId],
+	local_id: NodeId,
+	(current, current_metadata): (&DocumentNode, &DocumentNodePersistentMetadata),
+	(target, target_metadata): (&DocumentNode, &DocumentNodePersistentMetadata),
+) -> (Vec<EditorDelta>, bool) {
+	let mut deltas = Vec::new();
+	let metadata = |change: NodeMetadataChange| EditorDelta::NodeMetadata {
+		network_path: path.to_vec(),
+		node_id: local_id,
+		change,
+	};
+	let input_metadata = || EditorDelta::NodeInputMetadata {
+		network_path: path.to_vec(),
+		node_id: local_id,
+		input_metadata: target_metadata.input_metadata.clone(),
+	};
+
+	// The slots go first, so the metadata indexing them lands on a list of the right length
+	if current.inputs.len() != target.inputs.len() {
+		deltas.push(EditorDelta::Graph(RuntimeDelta::SetInputs {
+			network_path: path.to_vec(),
+			node_id: local_id,
+			inputs: target.inputs.clone(),
+		}));
+		deltas.push(input_metadata());
+	} else {
+		for (input_index, (held, wanted)) in current.inputs.iter().zip(&target.inputs).enumerate() {
+			if held != wanted {
+				deltas.push(EditorDelta::Graph(RuntimeDelta::SetInput {
+					network_path: path.to_vec(),
+					node_id: local_id,
+					input_index,
+					input: wanted.clone(),
+				}));
+			}
+		}
+		if current_metadata.input_metadata != target_metadata.input_metadata {
+			deltas.push(input_metadata());
+		}
+	}
+
+	let mut nested_changed = false;
+	// Export slot writes rename the encapsulating node's outputs, so the names are restated after a slot count change
+	let mut restate_output_names = false;
+	if let (DocumentNodeImplementation::Network(held), DocumentNodeImplementation::Network(wanted)) = (&current.implementation, &target.implementation) {
+		let nested = nested_path(path, local_id);
+		let before = deltas.len();
+		export_deltas(&nested, &held.exports, &wanted.exports, &mut deltas);
+		network_metadata_deltas(&nested, nested_network_metadata(current_metadata), nested_network_metadata(target_metadata), &mut deltas);
+		nested_changed = deltas.len() != before;
+		restate_output_names = held.exports.len() != wanted.exports.len();
+	}
+
+	if current.visible != target.visible {
+		deltas.push(EditorDelta::Graph(RuntimeDelta::SetVisibility {
+			network_path: path.to_vec(),
+			node_id: local_id,
+			visible: target.visible,
+		}));
+	}
+	if current.call_argument != target.call_argument {
+		deltas.push(EditorDelta::Graph(RuntimeDelta::SetCallArgument {
+			network_path: path.to_vec(),
+			node_id: local_id,
+			call_argument: target.call_argument.clone(),
+		}));
+	}
+
+	if current_metadata.node_type_metadata != target_metadata.node_type_metadata {
+		deltas.push(metadata(NodeMetadataChange::NodeType(target_metadata.node_type_metadata.clone())));
+	}
+	if current_metadata.display_name != target_metadata.display_name {
+		deltas.push(metadata(NodeMetadataChange::DisplayName(target_metadata.display_name.clone())));
+	}
+	if current_metadata.locked != target_metadata.locked {
+		deltas.push(metadata(NodeMetadataChange::Locked(target_metadata.locked)));
+	}
+	if current_metadata.pinned != target_metadata.pinned {
+		deltas.push(metadata(NodeMetadataChange::Pinned(target_metadata.pinned)));
+	}
+	if restate_output_names || current_metadata.output_names != target_metadata.output_names {
+		deltas.push(metadata(NodeMetadataChange::OutputNames(target_metadata.output_names.clone())));
+	}
+
+	(deltas, nested_changed)
+}
+
 fn remove_node(path: &[NodeId], local_id: NodeId) -> EditorDelta {
 	EditorDelta::Graph(RuntimeDelta::RemoveNode {
 		network_path: path.to_vec(),
@@ -330,8 +313,11 @@ fn nested_path(path: &[NodeId], local_id: NodeId) -> Vec<NodeId> {
 	[path, &[local_id]].concat()
 }
 
-/// Whether a field-by-field comparison can bring `current` to `target`, which it cannot across a
-/// change of what the node computes.
+fn is_network(implementation: &DocumentNodeImplementation) -> bool {
+	matches!(implementation, DocumentNodeImplementation::Network(_))
+}
+
+/// Whether field writes can take `current` to `target`, which they cannot across a change of what the node computes.
 fn same_implementation(current: &DocumentNodeImplementation, target: &DocumentNodeImplementation) -> bool {
 	match (current, target) {
 		(DocumentNodeImplementation::ProtoNode(held), DocumentNodeImplementation::ProtoNode(wanted)) => held == wanted,
@@ -340,38 +326,39 @@ fn same_implementation(current: &DocumentNodeImplementation, target: &DocumentNo
 	}
 }
 
-/// The slot writes taking `current` to `target`: a write per slot that differs, then a removal at the
-/// end for each slot too many, which the mirror applies as removals of that index in turn.
-fn export_deltas(network_path: &[NodeId], current: &[NodeInput], target: &[NodeInput], deltas: &mut Vec<EditorDelta>) {
-	for (export_index, input) in target.iter().enumerate() {
-		if current.get(export_index) != Some(input) {
-			deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-				network_path: network_path.to_vec(),
-				export_index,
-				input: Some(input.clone()),
-			}));
-		}
-	}
-	for _ in target.len()..current.len() {
-		deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-			network_path: network_path.to_vec(),
-			export_index: target.len(),
-			input: None,
-		}));
-	}
+/// The reference and pinned node order of a network node's nested network.
+fn nested_network_metadata(metadata: &DocumentNodePersistentMetadata) -> (Option<&str>, &[NodeId]) {
+	metadata
+		.network_metadata
+		.as_ref()
+		.map(|network| (network.persistent_metadata.reference.as_deref(), network.persistent_metadata.pinned_node_order.as_slice()))
+		.unwrap_or((None, &[]))
 }
 
-fn network_metadata_deltas(network_path: &[NodeId], current_reference: Option<&str>, current_order: &[NodeId], target_reference: Option<&str>, target_order: &[NodeId], deltas: &mut Vec<EditorDelta>) {
-	if current_reference != target_reference {
-		deltas.push(EditorDelta::NetworkMetadata {
+/// A write per export slot that differs, then a removal at the end for each slot too many.
+fn export_deltas(network_path: &[NodeId], current: &[NodeInput], target: &[NodeInput], deltas: &mut Vec<EditorDelta>) {
+	let set_export = |export_index, input| {
+		EditorDelta::Graph(RuntimeDelta::SetExport {
 			network_path: network_path.to_vec(),
-			change: NetworkMetadataChange::Reference(target_reference.map(str::to_string)),
-		});
+			export_index,
+			input,
+		})
+	};
+	let changed = target.iter().enumerate().filter(|&(export_index, input)| current.get(export_index) != Some(input));
+	deltas.extend(changed.map(|(export_index, input)| set_export(export_index, Some(input.clone()))));
+	deltas.extend((target.len()..current.len()).map(|_| set_export(target.len(), None)));
+}
+
+/// Writes for a network's reference and pinned node order, each given as `(reference, pinned order)`.
+fn network_metadata_deltas(network_path: &[NodeId], current: (Option<&str>, &[NodeId]), target: (Option<&str>, &[NodeId]), deltas: &mut Vec<EditorDelta>) {
+	let change = |change| EditorDelta::NetworkMetadata {
+		network_path: network_path.to_vec(),
+		change,
+	};
+	if current.0 != target.0 {
+		deltas.push(change(NetworkMetadataChange::Reference(target.0.map(str::to_string))));
 	}
-	if current_order != target_order {
-		deltas.push(EditorDelta::NetworkMetadata {
-			network_path: network_path.to_vec(),
-			change: NetworkMetadataChange::PinnedOrder(target_order.to_vec()),
-		});
+	if current.1 != target.1 {
+		deltas.push(change(NetworkMetadataChange::PinnedOrder(target.1.to_vec())));
 	}
 }
