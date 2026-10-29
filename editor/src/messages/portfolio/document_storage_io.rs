@@ -145,17 +145,12 @@ pub(super) async fn open_document_file(
 			(None, None)
 		}
 	};
-	// The session room derives from the manifest's id, so a copy of a distributed file such as a demo artwork gets its own.
-	if fresh_identity {
-		let storage = match gdd.as_mut() {
-			Some(gdd) => Some(gdd),
-			None => document.as_mut().and_then(|document| document.storage_mut()),
-		};
-		if let Some(storage) = storage
-			&& let Err(error) = storage.update_manifest(|manifest| manifest.document_id = generate_uuid())
-		{
-			log::error!("Giving the copy of {document_id:?} its own id failed: {error}");
-		}
+	// The session room derives from the manifest's document id, so a fresh id gives the copy a room of its own
+	if fresh_identity
+		&& let Some(storage) = gdd.as_mut().or_else(|| document.as_mut().and_then(|document| document.storage_mut()))
+		&& let Err(error) = storage.update_manifest(|manifest| manifest.document_id = generate_uuid())
+	{
+		log::error!("Giving the copy of {document_id:?} its own id failed: {error}");
 	}
 	let declarations = load_declarations(gdd.as_ref(), &resources).await;
 	PortfolioMessage::DocumentFileLoaded {
@@ -220,11 +215,9 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 				container.remove(&path).await?;
 			}
 		}
-		{
-			// The person at this device is set when the storage is attached; until then the peer stands for itself.
-			let peer = PeerId(generate_uuid());
-			GddV1::create_in(container, GddV1Layout, peer, UserId(peer.0), document_id.0, version.clone(), version)
-		}
+		// The peer stands for its own user until the storage is attached to the user at this device
+		let peer = PeerId(generate_uuid());
+		GddV1::create_in(container, GddV1Layout, peer, UserId(peer.0), document_id.0, version.clone(), version)
 	}
 	.await;
 	match created {

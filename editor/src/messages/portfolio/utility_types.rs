@@ -12,9 +12,9 @@ pub enum PanelType {
 	#[serde(alias = "Properties")]
 	Inspector,
 	Data,
-	/// The live session of the active document: its state, the join link, the peers, and the sharing actions.
+	/// The active document's live session: its state, join link, peers and sharing actions.
 	Session,
-	/// The active document's history as interactions along the head's line, with who did what and when.
+	/// The active document's history as interactions, with who did what and when.
 	History,
 }
 
@@ -258,7 +258,7 @@ impl WorkspacePanelLayout {
 		});
 	}
 
-	/// Whether the panel was closed by the user, so its position is remembered for a later restore.
+	/// Whether the user closed the panel, leaving its position saved for a later restore.
 	pub fn was_closed(&self, panel_type: PanelType) -> bool {
 		self.saved_positions.iter().any(|saved| saved.panel_type == panel_type)
 	}
@@ -312,9 +312,8 @@ impl WorkspacePanelLayout {
 	/// - Data: below the document in the left column (root child 0)
 	/// - Inspector: top of the right column (root child 1)
 	/// - Layers: bottom of the right column (root child 1)
+	/// - Session, History: a tab in the group of the Inspector or Layers respectively, otherwise placed like that panel
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
-		// The Session panel's home is a tab beside Inspector and the History panel's beside Layers, so each joins
-		// that group whenever one is present.
 		let beside = match panel_type {
 			PanelType::Session => Some(PanelType::Inspector),
 			PanelType::History => Some(PanelType::Layers),

@@ -41,7 +41,7 @@ pub struct PortfolioMessageContext<'a> {
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub tool_edit_target: &'a EditTarget,
-	/// The icon name of the active tool, which the session shows beside this peer's pointer.
+	/// Shown to peers beside this user's pointer.
 	pub current_tool_icon: String,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
@@ -69,7 +69,7 @@ pub struct PortfolioMessageHandler {
 	pending_opens: usize,
 	restore_select: Option<DocumentId>,
 	store_unavailable: bool,
-	/// Another tab owns the document store, so this one keeps its documents in memory; see [`PortfolioMessage::DocumentStoreClaimed`].
+	/// Another tab owns the document store, so this one keeps its documents in memory.
 	memory_only: bool,
 }
 
@@ -392,8 +392,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PersistentStateMessage::ReadState);
 					return;
 				}
-				// Nothing is restored, written to the store, or remembered for the next visit, and resources stay
-				// uncollected, since the owning tab's documents use them too.
+				// Nothing is restored or written to the store, and resources stay uncollected since the owning tab's documents use them too
 				log::warn!("Another tab has the stored documents open, so this tab keeps its documents in memory only");
 				self.document_store = DocumentStoreHandle::default();
 				self.memory_only = true;
@@ -430,7 +429,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::LoadPersistedState { state } => {
 				if let Some(layout) = state.workspace_layout {
 					self.workspace.panel_layout = layout;
-					// A workspace without the Session panel gets it as a background tab beside Inspector, unless the user closed it.
+					// A layout without the Session panel gets it as a background tab beside the Inspector, unless the user closed it
 					let panel_layout = &mut self.workspace.panel_layout;
 					if !panel_layout.is_panel_present(PanelType::Session) && !panel_layout.was_closed(PanelType::Session) {
 						match panel_layout.find_panel(PanelType::Inspector).and_then(|group_id| panel_layout.panel_group_mut(group_id)) {
@@ -1304,24 +1303,25 @@ impl PortfolioMessageHandler {
 		responses: &mut VecDeque<Message>,
 	) {
 		let Some(document) = self.documents.get_mut(&document_id) else { return };
-		let user = document_graph_storage::UserId(preferences.user_id);
+		// The working copy is authored by the person at this device, whoever wrote it last
+		let set_user = |gdd: &mut GddV1| {
+			if let Err(error) = gdd.set_user(document_graph_storage::UserId(preferences.user_id)) {
+				log::error!("Setting the user of {document_id:?} failed: {error}");
+			}
+		};
 		match gdd {
 			Some(mut gdd) => {
-				// The copy follows the person at this device, whoever wrote it last.
-				if let Err(error) = gdd.set_user(user) {
-					log::error!("Setting the user of {document_id:?} failed: {error}");
-				}
-				document.set_storage(*gdd, declarations, resource_storage.resources_mut().storage());
+				set_user(&mut gdd);
+				let resources = resource_storage.resources_mut();
+				document.set_storage(*gdd, declarations, resources.storage());
 				document.require_whole_document_stage();
-				document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				document.commit_storage_snapshot(&resources, preferences.validate_storage_round_trip);
 				document.retire_storage_interaction();
 			}
-			// Recovered from its storage alone, the document already holds it.
+			// A document built from its storage already holds it
 			None => {
 				let Some(storage) = document.storage_mut() else { return };
-				if let Err(error) = storage.set_user(user) {
-					log::error!("Setting the user of {document_id:?} failed: {error}");
-				}
+				set_user(storage);
 			}
 		}
 		responses.add(SyncMessage::StorageMounted { document_id });
