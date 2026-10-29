@@ -18,22 +18,20 @@ pub use document_live::DEFAULT_SIGNALING_SERVER;
 pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dyn Error>> {
 	let (peer, user) = identity();
 	let token = SessionToken(random_bytes());
-	let mut live = match document {
+	let live = match document {
 		Some(path) => LiveDocument::host_document(open_archive(path).await?, signaling, token, user, spawn_driver),
 		None => LiveDocument::host(signaling, token, peer, user, spawn_driver).await?,
 	};
 	println!("hosting session {}", live.token());
-	repl_loop(&mut live).await;
-	live.leave();
+	drive_from_stdin(live).await;
 	Ok(())
 }
 
 pub async fn join(signaling: &str, token: SessionToken) -> Result<(), Box<dyn Error>> {
 	let (peer, user) = identity();
-	let mut live = LiveDocument::join(signaling, token, peer, user, spawn_driver).await?;
+	let live = LiveDocument::join(signaling, token, peer, user, spawn_driver).await?;
 	println!("joining session {token}");
-	repl_loop(&mut live).await;
-	live.leave();
+	drive_from_stdin(live).await;
 	Ok(())
 }
 
@@ -49,7 +47,7 @@ async fn open_archive(path: &Path) -> Result<GddV1, Box<dyn Error>> {
 	Ok(GddV1::open_from_archive(&archive, container, GddV1Layout).await?)
 }
 
-async fn repl_loop(live: &mut LiveDocument) {
+async fn drive_from_stdin(mut live: LiveDocument) {
 	let mut lines = BufReader::new(tokio::io::stdin()).lines();
 	let mut tick = tokio::time::interval(Duration::from_millis(100));
 
@@ -62,12 +60,13 @@ async fn repl_loop(live: &mut LiveDocument) {
 			}
 			line = lines.next_line() => {
 				let Ok(Some(line)) = line else { break };
-				if !repl::run_command(live, line.trim()) {
+				if !repl::run_command(&mut live, line.trim()) {
 					break;
 				}
 			}
 		}
 	}
+	live.leave();
 }
 
 fn spawn_driver(driver: document_live::MessageLoopFuture) {

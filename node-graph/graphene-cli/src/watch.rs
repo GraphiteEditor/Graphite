@@ -1,5 +1,4 @@
-//! A window that follows a live document: every change recompiles the graph, and each frame is
-//! blitted from the executor's output texture straight onto the window surface.
+//! A window that follows a live document, recompiling the graph on every change and blitting the rendered texture onto the surface.
 
 use crate::{TokioSpawner, compile_graph, create_executor, editor_api, export};
 use document_live::{Event, LiveDocument};
@@ -51,14 +50,13 @@ struct Viewer {
 	editor_api: Arc<PlatformEditorApi>,
 	runtime: tokio::runtime::Handle,
 	spawner: Arc<TokioSpawner>,
-	/// Generations and retained sources for the compiled graph, so async nodes settle across frames.
 	graph_runtime: AsyncRuntime,
 	window: Option<Arc<dyn Window>>,
 	surface: Option<(WgpuSurface, wgpu::SurfaceConfiguration)>,
 	blitter: Option<TextureBlitter>,
 	executor: Option<DynamicExecutor>,
 	dirty: bool,
-	/// What `is_ready` last waited on, logged when it changes so a resource nobody serves is visible.
+	/// The missing resources last logged.
 	waiting: Vec<ResourceHash>,
 }
 
@@ -71,7 +69,7 @@ impl Viewer {
 		let context = self.wgpu_executor().context();
 		let surface = context.instance.create_surface(window.clone()).expect("create surface");
 		let capabilities = surface.get_capabilities(&context.adapter);
-		// A non-sRGB 8-bit target passes the renderer's already-encoded bytes through unchanged.
+		// The rendered bytes are already sRGB encoded, so a non-sRGB target passes them through unchanged
 		let preferred = [wgpu::TextureFormat::Bgra8Unorm, wgpu::TextureFormat::Rgba8Unorm];
 		let format = preferred.into_iter().find(|format| capabilities.formats.contains(format)).unwrap_or(capabilities.formats[0]);
 		let size = window.surface_size();
@@ -106,6 +104,18 @@ impl Viewer {
 		}
 	}
 
+	fn log_missing_resources(&mut self) {
+		let missing = self.live.missing_resources();
+		if missing == self.waiting {
+			return;
+		}
+		if !missing.is_empty() {
+			let hashes = missing.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+			log::info!("Waiting for {} resources no peer has sent yet: {hashes}", missing.len());
+		}
+		self.waiting = missing;
+	}
+
 	fn recompile(&mut self) {
 		let network = match self.runtime.block_on(self.live.network()) {
 			Ok(network) => network,
@@ -130,8 +140,7 @@ impl Viewer {
 			return Ok(());
 		};
 
-		// Until the document is compiled the window still presents its background, since a Wayland surface that
-		// never commits a buffer is never shown.
+		// Present the background even without a frame, since Wayland never shows a surface that has not committed a buffer
 		let frame = match &self.executor {
 			Some(executor) => {
 				let mut render_config = RenderConfig {
@@ -196,27 +205,21 @@ impl ApplicationHandler for Viewer {
 
 	fn new_events(&mut self, event_loop: &dyn ActiveEventLoop, _cause: StartCause) {
 		for event in self.runtime.block_on(self.live.poll()) {
-			if matches!(event, Event::Synced | Event::Changed | Event::ResourceReceived { .. }) {
-				self.dirty = true;
-			}
-			match &event {
-				Event::Synced => log::info!("Synced with the session"),
-				Event::ResourceReceived { hash, bytes } => log::info!("Received resource {hash} ({} bytes)", bytes.len()),
-				_ => {}
-			}
+			self.dirty |= match event {
+				Event::Synced => {
+					log::info!("Synced with the session");
+					true
+				}
+				Event::ResourceReceived { hash, bytes } => {
+					log::info!("Received resource {hash} ({} bytes)", bytes.len());
+					true
+				}
+				Event::Changed => true,
+				_ => false,
+			};
 		}
 		if self.dirty && self.live.is_synced() {
-			let waiting = self.live.missing_resources();
-			if waiting != self.waiting {
-				if !waiting.is_empty() {
-					log::info!(
-						"Waiting for {} resources no peer has sent yet: {}",
-						waiting.len(),
-						waiting.iter().map(|hash| hash.to_string()).collect::<Vec<_>>().join(", ")
-					);
-				}
-				self.waiting = waiting;
-			}
+			self.log_missing_resources();
 		}
 		if self.dirty && self.live.is_ready() {
 			self.dirty = false;
