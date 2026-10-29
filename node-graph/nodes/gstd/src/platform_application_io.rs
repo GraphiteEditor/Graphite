@@ -261,40 +261,40 @@ fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<PlatformE
 	editor_api
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Application IO is unavailable")]
+pub struct ApplicationIoError;
+
+#[node_macro::node(category(""), inject_scope)]
+fn application_io(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Result<Item<Arc<PlatformApplicationIo>>, ApplicationIoError> {
+	editor_api.into_element().application_io.clone().map(Item::new_from_element).ok_or(ApplicationIoError)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Resource {0} was not found")]
+pub struct ResourceError(ResourceHash);
+
 #[node_macro::node(category(""), placeholder = pending_stored_resource)]
 async fn resource(
 	_: impl Ctx,
-	/// The scope-provided editor API giving access to the platform's resource storage.
-	#[scope(editor_api::IDENTIFIER)]
-	editor_api: Item<Arc<PlatformEditorApi>>,
+	/// The scope-provided application IO giving access to the platform's resource storage.
+	#[scope(application_io::IDENTIFIER)]
+	application_io: Item<Arc<PlatformApplicationIo>>,
 	/// The content hash identifying which stored resource to load.
 	hash: Item<ResourceHash>,
-) -> Item<Resource> {
+) -> Result<Item<Resource>, ResourceError> {
 	let hash = hash.into_element();
-	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
-
-	let editor_api = editor_api.into_element();
-	let Some(application_io) = editor_api.application_io.as_ref() else {
-		log::error!("Resource {hash} is unavailable because the platform's application IO is missing");
-		return placeholder();
-	};
-
-	let Some(resource) = application_io.load_resource(hash).await else {
-		log::error!("Resource {hash} was not found in storage");
-		return placeholder();
-	};
-
-	Item::new_from_element(resource)
+	let resource = application_io.element().load_resource(hash).await.ok_or(ResourceError(hash))?;
+	Ok(Item::new_from_element(resource))
 }
 
-fn pending_stored_resource(_editor_api: &Item<Arc<PlatformEditorApi>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
+fn pending_stored_resource(_application_io: &Item<Arc<PlatformApplicationIo>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
 	Item::new_from_element(Resource::empty())
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Result<Item<::wgpu_executor::WgpuExecutor>, ::wgpu_executor::NoGpuError> {
-	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor()).cloned();
-	executor.map(Item::new_from_element).ok_or(::wgpu_executor::NoGpuError)
+fn wgpu_executor(_: impl Ctx, #[scope(application_io::IDENTIFIER)] application_io: Item<Arc<PlatformApplicationIo>>) -> Result<Item<::wgpu_executor::WgpuExecutor>, ::wgpu_executor::NoGpuError> {
+	application_io.element().gpu_executor().cloned().map(Item::new_from_element).ok_or(::wgpu_executor::NoGpuError)
 }
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
