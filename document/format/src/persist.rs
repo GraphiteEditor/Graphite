@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{Delta, HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, TimeStamp, UserId, Value, WallStamp};
+use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, TimeStamp, UserId, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -14,7 +14,7 @@ use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
 use crate::session_state::SessionState;
-use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io};
 
 impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
@@ -35,8 +35,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(rev)
 	}
 
-	/// Set the person using this device. A change re-registers the peer on its next staged batch, and the newer
-	/// registration wins everywhere.
+	/// Set the person using this device. A change re-registers the peer on its next staged batch.
 	pub fn set_user(&mut self, user: UserId) -> Result<(), Error> {
 		if self.session.user() == user {
 			return Ok(());
@@ -109,7 +108,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(hot_ops)
 	}
 
-	/// Every staged hot op ends here: the frame that survives a crash, then the broadcast that reaches the room.
+	/// Append the frames of freshly staged hot ops, then broadcast them.
 	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
 		if hot_ops.iter().any(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta)) {
 			self.own_staged_since_tick = true;
@@ -155,7 +154,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Persist freshly-staged hot ops and retire exactly them into durable history as one unit. Frames are
 	/// appended first, so a crash before retirement still recovers the work. Returns the retired `Rev`s;
-	/// on a peer that does not retire the ops stay hot.
+	/// on a peer that does not retire, the ops are broadcast and stay hot.
 	pub(crate) fn append_and_retire(&mut self, hot_ops: &[HotOp], interaction_end: bool) -> Result<Vec<Rev>, Error> {
 		if hot_ops.is_empty() {
 			return Ok(Vec::new());
@@ -164,6 +163,10 @@ impl<L: Layout> Gdd<L> {
 			self.append_hot_frame(hot_op)?;
 		}
 		if !self.retires_locally() {
+			#[cfg(feature = "network")]
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_hot_ops(hot_ops)?;
+			}
 			return Ok(Vec::new());
 		}
 
@@ -203,17 +206,6 @@ impl<L: Layout> Gdd<L> {
 			// The annotation ticked the clock, which a reopen must not hand out again.
 			self.persist_session_state()?;
 		}
-		Ok(())
-	}
-
-	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
-	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
-	pub(crate) fn rewrite_history(&mut self) -> Result<(), Error> {
-		let mut buffer = Vec::new();
-		for delta in self.session.history() {
-			self.manifest.codecs.history.append(&mut buffer, delta)?;
-		}
-		self.working.write_non_blocking(&io::path_for(self.layout.history_basename(), self.manifest.codecs.history), &buffer)?;
 		Ok(())
 	}
 
@@ -257,15 +249,22 @@ impl<L: Layout> Gdd<L> {
 		Ok(true)
 	}
 
-	/// Append facts to the metadata file, one line each; the file is never rewritten. The lines start on a fresh one,
-	/// so a tail a crash or failed write left unterminated is not joined to them; the blank lines this leaves are
-	/// skipped on read.
+	/// Append facts to the metadata file, which is never rewritten. The lines start on a fresh one, so a tail a crash or
+	/// failed write left unterminated is not joined to them; the blank lines this leaves are skipped on read.
 	pub(crate) fn append_facts(&mut self, facts: &[MetadataFact]) -> Result<(), Error> {
-		let mut buffer = vec![b'\n'];
-		for fact in facts {
-			METADATA_CODEC.append(&mut buffer, fact)?;
+		let lines = [b"\n".as_slice(), &encode_facts(facts)?].concat();
+		self.working.append_non_blocking(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &lines)?;
+		Ok(())
+	}
+
+	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
+	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
+	pub(crate) fn rewrite_history(&mut self) -> Result<(), Error> {
+		let mut buffer = Vec::new();
+		for delta in self.session.history() {
+			self.manifest.codecs.history.append(&mut buffer, delta)?;
 		}
-		self.working.append_non_blocking(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &buffer)?;
+		self.working.write_non_blocking(&io::path_for(self.layout.history_basename(), self.manifest.codecs.history), &buffer)?;
 		Ok(())
 	}
 
@@ -278,9 +277,9 @@ impl<L: Layout> Gdd<L> {
 			redo_stack: self.session.redo_stack().to_vec(),
 			next_node_counter: self.session.next_node_counter(),
 			last_hot_sequence: self.session.last_hot_sequence(),
-			shared: self.shared,
 			retired_marks: self.session.retired_marks().clone(),
 			clock_counter: self.session.clock_counter(),
+			shared: self.shared,
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		};
@@ -335,37 +334,31 @@ impl<L: Layout> Gdd<L> {
 	/// run retires with what arrived.
 	pub const RETIRE_MAX_AGE_MS: f64 = 60_000.0;
 
-	/// Closes this peer's open interaction, if any, with a marker broadcast like any other hot op. The editor
-	/// calls this at each undo-step boundary.
+	/// Close this peer's open interaction, if any, with a marker staged like any other hot op.
 	pub fn end_interaction(&mut self) -> Result<(), Error> {
 		let staged = self.session.end_interaction()?;
 		self.persist_staged(&staged)?;
 		Ok(())
 	}
 
-	/// Undo this peer's latest interaction while it is still hot: its ops leave the hot log here, and on every
-	/// peer the retraction reaches, and never retire. `None` means the step already retired and undo has to
-	/// move the cursor. What the ops named lands in the remote changes, so the mirror picks up what others
-	/// wrote there meanwhile.
+	/// Undo this peer's latest interaction while it is still hot, here and on every peer the retraction reaches.
+	/// `None` when it already retired. What the ops named lands in the remote changes.
 	pub fn retract_interaction(&mut self) -> Result<Option<Vec<RegistryDelta>>, Error> {
-		let Some(document_graph_storage::Retraction { ids, touched, ops }) = self.session.retract_interaction()? else {
+		let Some(retraction) = self.session.retract_interaction()? else {
 			return Ok(None);
 		};
 		self.own_last_staged_ms = None;
-		#[cfg(feature = "network")]
-		self.remote_changes.touched.extend(touched);
-		#[cfg(not(feature = "network"))]
-		let _ = touched;
 		self.rewrite_hot_log()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 		#[cfg(feature = "network")]
-		if let Some(replica) = &mut self.network {
-			replica.broadcast_retraction(&ids)?;
+		{
+			self.remote_changes.touched.extend(retraction.touched);
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_retraction(&retraction.ids)?;
+			}
 		}
-		#[cfg(not(feature = "network"))]
-		let _ = ids;
-		Ok(Some(ops))
+		Ok(Some(retraction.ops))
 	}
 
 	/// Undo this peer's latest retired step, the one [`Session::latest_own_interaction`] names, through
@@ -379,18 +372,14 @@ impl<L: Layout> Gdd<L> {
 		Ok(Some(rev))
 	}
 
-	/// Drop a retired interaction out of the line, later steps minted again on its parent; see
-	/// [`Session::drop_interaction`]. The retirer does it, records what it named in the remote changes and
-	/// tells the room; anyone else asks the retirer and sees the head move come back through the poll.
+	/// Drop a retired interaction out of the line; see [`Session::drop_interaction`]. A peer that does not retire asks
+	/// the retirer to, and the head move comes back through the poll.
 	#[cfg(feature = "network")]
 	pub fn drop_step(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {
 			let (moved, touched) = self.session.drop_interaction(rev)?;
 			self.remote_changes.touched.extend(touched);
-			self.rewrite_history()?;
-			self.rewrite_hot_log()?;
-			self.persist_registry_snapshot()?;
-			self.persist_session_state()?;
+			self.persist_rewritten_line()?;
 			if let Some(replica) = &mut self.network {
 				replica.broadcast_head_move(moved)?;
 			}
@@ -400,8 +389,8 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Move the head to an ancestor in a session, everything since staying as a branch; see
-	/// [`Session::move_head_to`]. The retirer does it and tells the room; anyone else asks the retirer.
+	/// Move the head back to an ancestor, the line since staying as a branch; see [`Session::move_head_to`]. A peer
+	/// that does not retire asks the retirer to.
 	#[cfg(feature = "network")]
 	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {
@@ -418,23 +407,13 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Redo a step [`undo_retired_step`](Self::undo_retired_step) dropped, as a copy on top of the line.
-	/// The retirer does it; anyone else asks the retirer.
+	/// Redo a step [`drop_step`](Self::drop_step) dropped, as a copy on top of the line. A peer that does not retire
+	/// asks the retirer to.
 	#[cfg(feature = "network")]
 	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
 		if self.retires_locally() {
-			let revs = self.session.restore_interaction(rev)?;
-			let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
-			for delta in &deltas {
-				self.remote_changes.touched.record(&delta.kind);
-			}
-			if let Some(&last) = revs.last() {
-				self.session.publish_up_to(last);
-			}
-			self.rewrite_history()?;
-			self.rewrite_hot_log()?;
-			self.persist_registry_snapshot()?;
-			self.persist_session_state()?;
+			let deltas = self.restore_dropped_interaction(rev)?;
+			self.persist_rewritten_line()?;
 			if let Some(replica) = &mut self.network {
 				replica.broadcast_retired(&deltas, &[])?;
 			}
@@ -444,8 +423,15 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Stage ops a retraction took back as a fresh interaction, recording them as changes for the mirror:
-	/// redoing a retracted step is a new edit to everyone, this peer included.
+	/// Persist a head change that rewrote the history file's order but left the hot log alone.
+	#[cfg(feature = "network")]
+	fn persist_rewritten_line(&mut self) -> Result<(), Error> {
+		self.rewrite_history()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()
+	}
+
+	/// Stage ops a retraction took back as a fresh interaction, recorded in the remote changes like a peer's edit.
 	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
 		#[cfg(feature = "network")]
 		for op in &ops {
@@ -455,16 +441,14 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Retire every interaction the policy says is due at `now_ms`, the wall clock in milliseconds that retirements
-	/// also record: closed interactions that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS), once
-	/// [`RETIRE_AFTER_INTERACTIONS`](Self::RETIRE_AFTER_INTERACTIONS) of them are waiting or the oldest has waited
-	/// [`RETIRE_MAX_AGE_MS`](Self::RETIRE_MAX_AGE_MS). Open interactions never retire. The editor calls this every
-	/// frame with whether it is between steps; a peer that does not retire only closes its own quiet interaction.
+	/// Retire every interaction the policy says is due at `now_ms`, the wall clock in milliseconds: closed interactions
+	/// that have waited [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS), once [`RETIRE_AFTER_INTERACTIONS`](Self::RETIRE_AFTER_INTERACTIONS)
+	/// of them are waiting or the oldest has waited [`RETIRE_MAX_AGE_MS`](Self::RETIRE_MAX_AGE_MS). Open interactions
+	/// never retire. `idle` says whether the editor is between steps. A peer that does not retire only closes its own
+	/// quiet interaction.
 	pub fn retire_due(&mut self, now_ms: f64, idle: bool) -> Result<Vec<Rev>, Error> {
-		// The editor passes the wall clock, which retirements record as when a step happened.
 		self.wall_clock_ms = Some(now_ms);
-		// An interaction the editor never closed, or one cut off by a reopen, closes once quiet, but only between
-		// steps: a pause mid-gesture must not split what undo takes back as one.
+		// An interaction left open closes once quiet, but only between steps, so a pause mid-gesture does not split it.
 		if self.own_staged_since_tick {
 			self.own_staged_since_tick = false;
 			self.own_last_staged_ms = Some(now_ms);
@@ -498,8 +482,8 @@ impl<L: Layout> Gdd<L> {
 		}
 	}
 
-	/// Close this peer's open interaction and retire every closed one, whoever authored it. The undo path calls
-	/// this first so the interaction being undone is in history; a peer that does not retire only closes its own.
+	/// Close this peer's open interaction and retire every closed one, whoever authored it. A peer that does not retire
+	/// only closes its own.
 	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
 		self.end_interaction()?;
 		self.own_last_staged_ms = None;
@@ -507,8 +491,7 @@ impl<L: Layout> Gdd<L> {
 		self.retire_interactions(&closed)
 	}
 
-	/// Retire the given closed interactions in one history append and one
-	/// broadcast. A no-op for a peer that leaves retirement to the session host.
+	/// Retire the given closed interactions in one history append and one broadcast. A no-op on a peer that does not retire.
 	pub(crate) fn retire_interactions(&mut self, interactions: &[document_graph_storage::ClosedInteraction]) -> Result<Vec<Rev>, Error> {
 		if !self.retires_locally() || interactions.is_empty() {
 			return Ok(Vec::new());
@@ -523,8 +506,7 @@ impl<L: Layout> Gdd<L> {
 		Ok(revs)
 	}
 
-	/// Working-copy checkpoint: retire every hot op stamped at or before `up_to`, whatever its author or
-	/// interaction state. For callers that own the whole log; a session uses [`retire_interactions`](Self::retire_interactions).
+	/// Working-copy checkpoint: retire every hot op stamped at or before `up_to`, whatever its author or interaction state.
 	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
 		if !self.retires_locally() {
 			return Ok(Vec::new());
@@ -535,18 +517,12 @@ impl<L: Layout> Gdd<L> {
 		Ok(revs)
 	}
 
-	/// What every retirement ends with: the published frontier moves, the deltas reach the history file,
-	/// the hot log and snapshot are rewritten, and the room hears about it.
+	/// Stamp, publish and persist freshly retired deltas, then broadcast them with the hot ops they retired.
 	fn finish_retirement(&mut self, new_revs: &[Rev], retired_hot_ops: &[document_graph_storage::HotOpId]) -> Result<(), Error> {
-		// Stamped before the frames are written, so the time is on disk and in the broadcast.
-		if let Some(wall_ms) = self.wall_clock_ms
-			&& !new_revs.is_empty()
-		{
+		if let Some(wall_ms) = self.wall_clock_ms {
 			self.session.stamp_retired_at(new_revs, wall_ms as u64);
 		}
-		// These deltas are about to reach peers, so the published frontier moves with them: rewinding a commit
-		// peers hold would silently diverge, so undo past it moves the shared head instead. Set before the
-		// persists below so it survives a reopen.
+		// Deltas peers hold are published, so undo past them moves the shared head instead of rewinding.
 		#[cfg(feature = "network")]
 		if self.network.is_some()
 			&& let Some(&last) = new_revs.last()
@@ -557,7 +533,6 @@ impl<L: Layout> Gdd<L> {
 		if !new_revs.is_empty() {
 			self.append_history_deltas(new_revs)?;
 		}
-
 		self.rewrite_hot_log()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
@@ -572,6 +547,7 @@ impl<L: Layout> Gdd<L> {
 
 		Ok(())
 	}
+
 	/// Guests leave retirement to the host and keep their hot ops until its retired deltas arrive.
 	fn retires_locally(&self) -> bool {
 		#[cfg(feature = "network")]

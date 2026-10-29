@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredMarks, Rev, Session, Touched, UserId};
+use document_graph_storage::{CrdtError, Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredMarks, Rev, Session, Touched, UserId};
 use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
@@ -37,9 +37,20 @@ impl<L: Layout> Gdd<L> {
 	pub fn take_remote_changes(&mut self) -> RemoteChanges {
 		std::mem::take(&mut self.remote_changes)
 	}
-}
 
-impl<L: Layout> Gdd<L> {
+	/// Restore a dropped interaction and publish it, recording what it named in the remote changes. Returns the new deltas.
+	pub(crate) fn restore_dropped_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, CrdtError> {
+		let revs = self.session.restore_interaction(rev)?;
+		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+		for delta in &deltas {
+			self.remote_changes.touched.record(&delta.kind);
+		}
+		if let Some(&last) = revs.last() {
+			self.session.publish_up_to(last);
+		}
+		Ok(deltas)
+	}
+
 	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) {
 		self.network = Some(Replica::host(transport, self.session.peer(), user));
 	}
@@ -65,8 +76,7 @@ impl<L: Layout> Gdd<L> {
 		self.network = Some(Replica::guest(transport, self.session.peer(), user));
 	}
 
-	/// Leaves the room. A host first retires every closed interaction, so finished work reaches history before
-	/// the retirer leaves.
+	/// Leave the room for good, so a reopen does not reconnect. See [`disconnect`](Self::disconnect).
 	pub fn leave(&mut self) {
 		self.shared = false;
 		if let Err(error) = self.persist_session_state() {
@@ -75,7 +85,8 @@ impl<L: Layout> Gdd<L> {
 		self.disconnect();
 	}
 
-	/// Drops the connection but keeps the document shared, for a transport that went down, so a reopen reconnects.
+	/// Drop the connection but keep the document shared, so a reopen reconnects. A host first retires every closed
+	/// interaction.
 	pub fn disconnect(&mut self) {
 		let closed = self.session.closed_interactions();
 		if let Err(error) = self.retire_interactions(&closed) {
@@ -212,7 +223,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		}
 		SyncTarget::merge_remote(&mut self.session, deltas, retires, head)?;
 
-		// Whatever a peer sent is already shared, so it sits behind the published frontier and cannot be silently rewound.
+		// What a peer sent is shared, so undo must not rewind it silently.
 		if let Some(head) = self.session.head_rev() {
 			self.session.publish_up_to(head);
 		}
@@ -223,9 +234,10 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		let appended = tail
 			.iter()
 			.all(|&rev| incoming.contains(&rev) || self.session.delta(rev).is_some_and(|delta| matches!(delta.kind, RegistryDelta::Merge { .. })));
-		match appended {
-			true => self.append_history_deltas(&tail)?,
-			false => self.pending_persist.history = true,
+		if appended {
+			self.append_history_deltas(&tail)?;
+		} else {
+			self.pending_persist.history = true;
 		}
 		self.pending_persist.hot_log |= !retires.is_empty();
 		self.pending_persist.snapshot = true;
@@ -245,9 +257,10 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		// Appended when the tail is just the absorbed deltas and their merge; see `merge_remote`.
 		let absorbed_ids: HashSet<Rev> = absorbed.iter().map(|delta| delta.id).collect();
 		let tail: Vec<Rev> = self.session.history().skip(length_before).map(|delta| delta.id).collect();
-		match tail.iter().all(|rev| absorbed_ids.contains(rev)) {
-			true => self.append_history_deltas(&tail)?,
-			false => self.pending_persist.history = true,
+		if tail.iter().all(|rev| absorbed_ids.contains(rev)) {
+			self.append_history_deltas(&tail)?;
+		} else {
+			self.pending_persist.history = true;
 		}
 		self.pending_persist.hot_log |= !retires.is_empty();
 		self.pending_persist.snapshot = true;
@@ -300,14 +313,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn restore_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, TargetError> {
-		let revs = self.session.restore_interaction(rev)?;
-		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
-		for delta in &deltas {
-			self.remote_changes.touched.record(&delta.kind);
-		}
-		if let Some(&last) = revs.last() {
-			self.session.publish_up_to(last);
-		}
+		let deltas = self.restore_dropped_interaction(rev)?;
 		self.pending_persist.history = true;
 		self.pending_persist.snapshot = true;
 		Ok(deltas)

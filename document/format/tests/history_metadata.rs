@@ -1,22 +1,19 @@
-// History metadata: persisted with the working copy and merged with every copy met.
-// Needs the network feature for a session and the runtime conversion for staging ops.
-#![cfg(all(feature = "conversion", feature = "network"))]
+// History metadata: appended to its own file with the working copy, carried by an export and merged with every copy met.
 
 use document_container::backends::memory::MemoryBackend;
 use document_container::{AnyContainer, AsyncContainer};
 use document_format::{GddV1, GddV1Layout, Layout};
-use document_graph_storage::from_runtime::DeclarationBytes;
 use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, Rev, TimeStamp, UserId, rev_attr, user_attr};
-use peer_transport::mock::MockNetwork;
 
 const NOW_MS: f64 = 1_700_000_000_000.;
 
-async fn document(peer: u64, user: u64) -> GddV1 {
+fn document(peer: u64, user: u64) -> GddV1 {
 	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), UserId(user), 1, "editor".into(), "stdlib".into()).expect("create")
 }
 
 /// Let the room settle: greetings, the sync handshake and whatever was broadcast.
-fn settle(network: &mut MockNetwork, peers: &mut [&mut GddV1]) {
+#[cfg(feature = "network")]
+fn settle(network: &mut peer_transport::mock::MockNetwork, peers: &mut [&mut GddV1]) {
 	for _ in 0..16 {
 		for peer in peers.iter_mut() {
 			peer.poll_peers();
@@ -31,7 +28,7 @@ fn settle(network: &mut MockNetwork, peers: &mut [&mut GddV1]) {
 #[test]
 fn a_recorded_name_survives_a_reopen() {
 	futures::executor::block_on(async {
-		let mut gdd = document(1, 10).await;
+		let mut gdd = document(1, 10);
 		assert!(gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record"));
 		assert!(
 			!gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS + 1.).expect("record"),
@@ -60,7 +57,7 @@ fn a_recorded_name_survives_a_reopen() {
 #[test]
 fn an_unreadable_metadata_line_is_skipped() {
 	futures::executor::block_on(async {
-		let mut gdd = document(1, 10).await;
+		let mut gdd = document(1, 10);
 		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
 		let (working, layout) = gdd.into_storage();
 		let path = document_format::io::path_for(layout.metadata_basename(), document_format::METADATA_CODEC);
@@ -76,16 +73,17 @@ fn an_unreadable_metadata_line_is_skipped() {
 	});
 }
 
+#[cfg(feature = "network")]
 #[test]
 fn names_reach_the_room_with_the_sync_and_as_they_change() {
 	futures::executor::block_on(async {
-		let mut host = document(1, 10).await;
-		let mut guest = document(2, 20).await;
+		let mut host = document(1, 10);
+		let mut guest = document(2, 20);
 		host.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
 		// A name given before joining travels with the joiner and reaches the host.
 		guest.record_user_attribute(UserId(20), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
 
-		let mut network = MockNetwork::new(1);
+		let mut network = peer_transport::mock::MockNetwork::new(1);
 		let host_endpoint = network.endpoint();
 		let guest_endpoint = network.endpoint();
 		let (host_id, guest_id) = (host_endpoint.id(), guest_endpoint.id());
@@ -110,19 +108,13 @@ fn names_reach_the_room_with_the_sync_and_as_they_change() {
 #[test]
 fn a_retirement_records_when_it_happened() {
 	futures::executor::block_on(async {
-		let mut gdd = document(1, 10).await;
-		// The editor's per-frame tick is where the wall clock comes from.
+		let mut gdd = document(1, 10);
 		gdd.retire_due(NOW_MS, true).expect("tick");
 
-		let byte_store = graph_craft::application_io::resource::HashMapResourceStorage::new();
-		gdd.stage_constructed_ops(
-			vec![RegistryDelta::AddNetwork {
-				id: NetworkId(9),
-				network: Network::default(),
-			}],
-			&DeclarationBytes::default(),
-			&byte_store,
-		)
+		gdd.stage_ops([RegistryDelta::AddNetwork {
+			id: NetworkId(9),
+			network: Network::default(),
+		}])
 		.expect("stage");
 		let everything = TimeStamp {
 			counter: u64::MAX,
@@ -133,6 +125,28 @@ fn a_retirement_records_when_it_happened() {
 		for rev in revs {
 			let delta = gdd.session().delta(rev).expect("retired delta");
 			assert_eq!(delta.retired_at(), Some(NOW_MS as u64));
+		}
+	});
+}
+
+/// An export with history carries the facts about it; one without history carries none, since they'd name revs it lacks.
+#[cfg(all(feature = "conversion", feature = "zip"))]
+#[test]
+fn an_export_carries_the_metadata_only_with_the_history() {
+	futures::executor::block_on(async {
+		let mut gdd = document(1, 10);
+		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+
+		let byte_store = graph_craft::application_io::resource::HashMapResourceStorage::new();
+		for include_history in [true, false] {
+			let options = document_format::ExportOptions {
+				include_history,
+				..Default::default()
+			};
+			let archive = gdd.export_to_bytes(document_format::ExportFormat::Zip, options, &byte_store, None).await.expect("export");
+			let reopened = GddV1::open_from_archive(&archive, AnyContainer::Memory(MemoryBackend::new()), GddV1Layout).await.expect("open");
+			let expected = include_history.then_some("Ada");
+			assert_eq!(reopened.metadata().user_name(UserId(10)), expected, "include_history: {include_history}");
 		}
 	});
 }

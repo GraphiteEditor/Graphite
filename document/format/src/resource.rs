@@ -116,7 +116,7 @@ impl<L: Layout> Gdd<L> {
 		}
 	}
 
-	/// Resources the registry or its history names whose bytes are not on hand.
+	/// Referenced resources whose bytes are not on hand.
 	pub(crate) fn unstored_resources(&self) -> Vec<ResourceHash> {
 		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
 	}
