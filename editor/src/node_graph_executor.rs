@@ -494,7 +494,10 @@ impl NodeGraphExecutor {
 					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
-								let in_document = |path: &&[NodeId]| path.split_last().is_some_and(|(node, network)| document.network_interface.document_node(node, network).is_some());
+								let in_document = |path: &&[NodeId]| {
+									path.split_last()
+										.is_some_and(|(node, network)| document.network_interface.view(network).and_then(|view| view.node(node)).is_ok())
+								};
 								errors
 									.iter()
 									.flat_map(|(error, trace)| {
