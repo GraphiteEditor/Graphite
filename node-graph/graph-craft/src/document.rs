@@ -2024,5 +2024,98 @@ mod test {
 		assert!(matches!(&value_node.construction_args, ConstructionArgs::Value(value) if **value == TaggedValue::None));
 	}
 
-	// TODO: Write more tests
+	fn node_with(implementation: DocumentNodeImplementation) -> DocumentNode {
+		DocumentNode { implementation, ..Default::default() }
+	}
+
+	fn network_with(nodes: impl IntoIterator<Item = (NodeId, DocumentNodeImplementation)>, definitions: impl IntoIterator<Item = (DefinitionId, NodeNetwork)>) -> NodeNetwork {
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(10), 0)],
+			nodes: nodes.into_iter().map(|(id, implementation)| (id, node_with(implementation))).collect(),
+			definitions: definitions.into_iter().collect(),
+			..Default::default()
+		}
+	}
+
+	const ADD: DefinitionId = DefinitionId(1);
+
+	fn two_add_instances() -> NodeNetwork {
+		network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(ADD)), (NodeId(11), DocumentNodeImplementation::Definition(ADD))],
+			[(ADD, add_network())],
+		)
+	}
+
+	#[test]
+	fn definitions_inline_into_copies_of_their_network() {
+		let mut network = two_add_instances();
+		network.inline_definitions().unwrap();
+
+		let inlined = network_with(
+			[
+				(NodeId(10), DocumentNodeImplementation::Network(add_network())),
+				(NodeId(11), DocumentNodeImplementation::Network(add_network())),
+			],
+			[],
+		);
+		assert_eq!(network, inlined);
+	}
+
+	#[test]
+	fn definitions_referencing_definitions_inline_transitively() {
+		let outer = DefinitionId(2);
+		let mut network = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(outer))],
+			[(ADD, add_network()), (outer, network_with([(NodeId(10), DocumentNodeImplementation::Definition(ADD))], []))],
+		);
+		network.inline_definitions().unwrap();
+
+		let inner = network_with([(NodeId(10), DocumentNodeImplementation::Network(add_network()))], []);
+		assert_eq!(network, network_with([(NodeId(10), DocumentNodeImplementation::Network(inner))], []));
+	}
+
+	#[test]
+	fn invalid_definition_tables_are_rejected() {
+		let (first, second) = (DefinitionId(2), DefinitionId(3));
+		let mut cyclic = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
+			[
+				(first, network_with([(NodeId(10), DocumentNodeImplementation::Definition(second))], [])),
+				(second, network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], [])),
+			],
+		);
+		assert_eq!(cyclic.inline_definitions(), Err(DefinitionError::Cycle(vec![first, second])));
+
+		let mut missing = network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], []);
+		assert_eq!(missing.inline_definitions(), Err(DefinitionError::Missing(first)));
+
+		let mut nested = network_with([(NodeId(10), DocumentNodeImplementation::Network(two_add_instances()))], []);
+		assert_eq!(nested.inline_definitions(), Err(DefinitionError::NestedTable));
+	}
+
+	#[test]
+	fn edits_through_one_instance_reach_every_instance() {
+		let mut network = two_add_instances();
+		let added = node_with(DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::IdentityNode")));
+		network.nested_network_mut(&[NodeId(10)]).unwrap().nodes.insert(NodeId(2), added.clone());
+
+		assert_eq!(network.nested_network(&[NodeId(11)]).unwrap().nodes.get(&NodeId(2)), Some(&added));
+		assert_eq!(
+			network.locate(&[NodeId(11)]),
+			Some(NetworkLocation {
+				definition: Some(ADD),
+				inline_path: &[]
+			})
+		);
+		assert_eq!(network.implementation_output_count(&DocumentNodeImplementation::Definition(ADD)), 1);
+	}
+
+	#[test]
+	fn definition_edits_change_the_network_hash() {
+		let mut network = two_add_instances();
+		let before = network.current_hash();
+
+		network.definitions.get_mut(&ADD).unwrap().exports.push(NodeInput::node(NodeId(0), 0));
+		assert_ne!(network.current_hash(), before);
+	}
 }

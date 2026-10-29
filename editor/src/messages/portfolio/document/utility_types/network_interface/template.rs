@@ -280,6 +280,7 @@ impl NodeTemplateImplementation {
 						navigation_metadata,
 						selection_undo_history: Default::default(),
 						selection_redo_history: Default::default(),
+						definitions: Default::default(),
 					},
 					transient_metadata: Default::default(),
 				};

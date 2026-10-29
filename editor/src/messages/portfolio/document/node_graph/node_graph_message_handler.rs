@@ -514,7 +514,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(NodeGraphMessage::BeginEditLayerName { node_id: layer_id });
 					return;
 				}
-				if let Some(DocumentNodeImplementation::Network(_)) = network_interface.implementation(&node_id, selection_network_path) {
+				if let Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}
@@ -3758,7 +3758,7 @@ impl NodeGraphMessageHandler {
 		let mut subgraph_names = vec!["Document".to_string()];
 		for node_id in breadcrumb_network_path {
 			let node = current_network.nodes.get(node_id)?;
-			if let Some(network) = node.implementation.get_network() {
+			if let Some(network) = network_interface.document_network().implementation_network(&node.implementation) {
 				current_network = network;
 			};
 			subgraph_names.push(network_interface.display_name(node_id, &current_network_path));

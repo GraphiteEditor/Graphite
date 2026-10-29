@@ -447,7 +447,9 @@ impl NodeNetworkInterface {
 
 	// When opening an old document to ensure the output names match the number of exports
 	pub fn validate_output_names(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
-		let DocumentNodeImplementation::Network(network) = &node.implementation else { return };
+		let Some(network) = self.document_network().implementation_network(&node.implementation) else {
+			return;
+		};
 		let number_of_exports = network.exports.len();
 
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
@@ -621,7 +623,10 @@ impl NodeNetworkInterface {
 					self.unload_all_nodes_bounding_box(network_path);
 
 					// A nested network draws its interior ports from the encapsulating node's inputs
-					if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Network(_))) {
+					if matches!(
+						self.implementation(node_id, network_path),
+						Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_))
+					) {
 						let nested_path = [network_path, &[*node_id]].concat();
 						self.invalidate_import_export(&nested_path);
 					}

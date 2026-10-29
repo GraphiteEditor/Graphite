@@ -9,7 +9,7 @@ impl NodeNetworkInterface {
 	// O(nodes + wires) summed across all nesting levels, plus an acyclicity walk per network
 	pub fn validate_invariants(&self) -> Vec<String> {
 		let mut violations = Vec::new();
-		validate_network(self.document_network(), &self.network_metadata, &mut Vec::new(), 0, &mut violations);
+		validate_network(self.document_network(), self.document_network(), &self.network_metadata, &mut Vec::new(), 0, &mut violations);
 		self.validate_outward_wires(&mut Vec::new(), &mut violations);
 		self.validate_dots_stay_on_wires(&mut violations);
 		violations
@@ -45,7 +45,7 @@ impl NodeNetworkInterface {
 		}
 
 		for (node_id, node) in &network.nodes {
-			if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+			if matches!(node.implementation, DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) {
 				path.push(*node_id);
 				self.validate_outward_wires(path, violations);
 				path.pop();
@@ -63,7 +63,7 @@ fn wire_counts(inputs: &[InputConnector]) -> HashMap<InputConnector, usize> {
 	counts
 }
 
-fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: usize, violations: &mut Vec<String>) {
+fn validate_network(document_network: &NodeNetwork, network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: usize, violations: &mut Vec<String>) {
 	let node_metadata = &network_metadata.persistent_metadata.node_metadata;
 
 	// The network and its metadata tree must contain exactly the same set of nodes
@@ -89,7 +89,7 @@ fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadat
 	let validate_input = |input: &NodeInput, location: &str, violations: &mut Vec<String>| match input {
 		NodeInput::Node { node_id, output_index, .. } => match network.nodes.get(node_id) {
 			None => violations.push(format!("{location} in network {path:?} references nonexistent node {node_id}")),
-			Some(target) if *output_index >= target.implementation.output_count() => {
+			Some(target) if *output_index >= document_network.implementation_output_count(&target.implementation) => {
 				violations.push(format!("{location} in network {path:?} references nonexistent output {output_index} of node {node_id}"));
 			}
 			_ => {}
@@ -138,7 +138,7 @@ fn validate_network(network: &NodeNetwork, network_metadata: &NodeNetworkMetadat
 				}
 
 				path.push(*node_id);
-				validate_network(nested_network, nested_metadata, path, node.inputs.len(), violations);
+				validate_network(document_network, nested_network, nested_metadata, path, node.inputs.len(), violations);
 				path.pop();
 			}
 			(DocumentNodeImplementation::Network(_), None) => {

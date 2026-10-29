@@ -528,27 +528,29 @@ impl PartialEq for NodeNetworkMetadata {
 }
 
 impl NodeNetworkMetadata {
-	pub fn nested_metadata(&self, nested_path: &[NodeId]) -> Option<&Self> {
-		let mut network_metadata = Some(self);
+	pub fn nested_metadata(&self, location: NetworkLocation) -> Option<&Self> {
+		let mut network_metadata = match location.definition {
+			Some(id) => self.persistent_metadata.definitions.get(&id)?,
+			None => self,
+		};
 
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network| network.persistent_metadata.node_metadata.get(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_ref());
+		for segment in location.inline_path {
+			network_metadata = network_metadata.persistent_metadata.node_metadata.get(segment)?.persistent_metadata.network_metadata.as_ref()?;
 		}
-		network_metadata
+		Some(network_metadata)
 	}
 
 	/// Get the mutable nested network given by the path of node ids
-	pub fn nested_metadata_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network_metadata = Some(self);
+	pub fn nested_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
+		let mut network_metadata = match location.definition {
+			Some(id) => self.persistent_metadata.definitions.get_mut(&id)?,
+			None => self,
+		};
 
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
+		for segment in location.inline_path {
+			network_metadata = network_metadata.persistent_metadata.node_metadata.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?;
 		}
-		network_metadata
+		Some(network_metadata)
 	}
 }
 
@@ -577,6 +579,8 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Stack of selection snapshots for future history states.
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
+	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
+	pub definitions: HashMap<DefinitionId, NodeNetworkMetadata>,
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
