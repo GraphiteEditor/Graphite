@@ -1,27 +1,41 @@
-//! Trait definitions for `.gdd` document migrations.
+//! Authoring surface for `.gdd` document migrations.
 //!
 //! Two tiers: a [`FormatMigration`] steps a document's serialized payloads from one format version
-//! to the next, and a [`ContentMigration`] (feature `typed`) upgrades node usages on the typed
-//! `Registry` within the current version. Migration crates export a [`MigrationSet`] via a plain
-//! constructor function; the `migration-runner` crate aggregates and dispatches them. Design
-//! rationale lives in `node-graph/rfcs/document-format-migrations.md`.
+//! to the next, and a [`NodeMigration`] (feature `typed`) steps one proto-node declaration to its
+//! successor on the typed `Registry`. The `migration-runner` crate applies both. Design rationale
+//! lives in `node-graph/rfcs/document-format-migrations.md`.
 
 #[cfg(feature = "typed")]
-pub mod content;
+pub mod connector;
+#[cfg(feature = "typed")]
+pub mod declaration;
 pub mod error;
 pub mod format;
+#[cfg(feature = "typed")]
+pub mod migration;
 pub mod payload;
+#[cfg(feature = "typed")]
+pub mod value;
+#[cfg(feature = "typed")]
+pub mod view;
 
 #[cfg(feature = "typed")]
-pub use content::{ContentMigration, DeclarationInfo, MigrationContext, MigrationHost, NodeSelector, Selector, Target};
+pub use connector::{InputConnector, NewNode, OutputConnector};
+#[cfg(feature = "typed")]
+pub use declaration::{Declaration, DeclarationResolver};
+#[cfg(feature = "typed")]
+pub use document_graph_storage::NodeInput;
 pub use error::MigrationError;
 pub use format::{FormatMigration, HistoryPolicy};
+#[cfg(feature = "typed")]
+pub use migration::{NodeMigration, Rename};
 pub use payload::{Payload, PayloadCodec};
+#[cfg(feature = "typed")]
+pub use value::{encode, literal, literal_of};
+#[cfg(feature = "typed")]
+pub use view::{AddedNode, AnchorContext, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Upstream, View};
 
-/// Document attribute holding the list of applied `Document`-selector migration IDs.
-pub const APPLIED_ATTRIBUTE: &str = "migrations::applied";
-
-/// Stable identifier for one migration, recorded in provenance and used for skip checks.
+/// Stable identifier for one format migration, recorded in provenance.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct MigrationId(pub &'static str);
 
@@ -31,11 +45,10 @@ impl std::fmt::Display for MigrationId {
 	}
 }
 
-/// What one migration crate exports: its migrations, in application order.
-/// Staged node upgrades must be registered in ascending target-version order.
+/// What one migration crate exports.
 #[derive(Default)]
 pub struct MigrationSet {
 	pub format: Vec<Box<dyn FormatMigration>>,
 	#[cfg(feature = "typed")]
-	pub content: Vec<Box<dyn ContentMigration>>,
+	pub node: Vec<Box<dyn NodeMigration>>,
 }

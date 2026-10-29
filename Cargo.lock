@@ -3670,6 +3670,7 @@ dependencies = [
 name = "migration-core"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "document-graph-storage",
  "postcard",
  "serde",
@@ -3682,8 +3683,8 @@ name = "migration-runner"
 version = "0.0.0"
 dependencies = [
  "document-graph-storage",
- "log",
  "migration-core",
+ "serde",
  "serde_json",
  "thiserror 2.0.18",
 ]

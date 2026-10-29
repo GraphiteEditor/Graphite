@@ -1,6 +1,6 @@
 [package]
 name = "migration-core"
-description = "Trait definitions and selectors for Graphite document migrations"
+description = "Authoring surface for Graphite document migrations"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -8,13 +8,14 @@ authors.workspace = true
 
 [features]
 default = ["typed"]
-# Content-tier migrations over the typed registry. Format-tier-only migration crates
+# Node-tier migrations over the typed registry. Format-tier-only migration crates
 # (historic version steps, wasm builds) disable this to drop the graph-storage dependency.
-typed = ["dep:document-graph-storage"]
+typed = ["dep:document-graph-storage", "dep:blake3"]
 
 [dependencies]
 document-graph-storage = { workspace = true, optional = true }
 
+blake3 = { workspace = true, optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 postcard = { workspace = true }

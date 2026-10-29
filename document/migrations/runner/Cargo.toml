@@ -1,6 +1,6 @@
 [package]
 name = "migration-runner"
-description = "Dispatches Graphite document migrations across the format and content tiers"
+description = "Applies Graphite document migrations across the format and node tiers"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -10,6 +10,8 @@ authors.workspace = true
 migration-core = { workspace = true }
 document-graph-storage = { workspace = true }
 
-serde_json = { workspace = true }
 thiserror = { workspace = true }
-log = { workspace = true }
+
+[dev-dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }

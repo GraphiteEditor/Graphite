@@ -82,6 +82,12 @@ impl Delta {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
 	}
 
+	/// Take over `original`'s annotations and retirement time, for a delta that replaces it in rewritten history.
+	pub fn carry_annotations(&mut self, original: &Delta) {
+		self.attributes = original.attributes.clone();
+		self.retired_at_ms = original.retired_at_ms;
+	}
+
 	/// When the delta entered history in wall-clock milliseconds, if the peer that retired it recorded it.
 	pub fn retired_at(&self) -> Option<u64> {
 		(self.retired_at_ms != 0).then_some(self.retired_at_ms)

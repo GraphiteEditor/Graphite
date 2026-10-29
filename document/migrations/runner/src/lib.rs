@@ -1,11 +1,13 @@
-//! Dispatches document migrations: format-version chaining over serialized payloads, then
-//! delta-expressed content migrations over the typed registry. See
-//! `node-graph/rfcs/document-format-migrations.md` for the pipeline design.
+//! Applies document migrations: format-version chaining over serialized payloads, then node migrations that rewrite history into the
+//! current shape. See `node-graph/rfcs/document-format-migrations.md` for the pipeline design.
 
-use document_graph_storage::{CrdtError, Implementation, NodeId, Registry, ResourceId, Rev, Session, TimeStamp, Value, attr};
-use migration_core::{APPLIED_ATTRIBUTE, DeclarationInfo, FormatMigration, HistoryPolicy, MigrationContext, MigrationError, MigrationHost, MigrationSet, Payload, Selector, Target};
+mod node;
+
+use document_graph_storage::{CrdtError, NodeId, Rev};
+use migration_core::{Declaration, FormatMigration, HistoryPolicy, InputConnector, MigrationError, MigrationSet, Payload};
 
 pub use document_graph_storage::rehash_deltas;
+pub use node::{DeclarationTable, RewrittenHistory, apply_migration, rewrite_history};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {
@@ -13,7 +15,21 @@ pub enum RunnerError {
 	MissingFormatStep { at_version: u32 },
 	#[error("format migration {id} failed: {source}")]
 	Format { id: &'static str, source: MigrationError },
-	#[error("failed to commit migration deltas: {0}")]
+	#[error("migration from {migration} failed on node {anchor:?}: {error}")]
+	Migration { migration: Declaration, anchor: NodeId, error: MigrationError },
+	#[error("node {anchor:?} adds two nodes of {declaration} under the key {key:?}")]
+	DuplicateAddedNode { anchor: NodeId, declaration: Declaration, key: String },
+	#[error("added node {0:?} already exists")]
+	AddedNodeExists(NodeId),
+	#[error("{0:?} is rewired by one anchor while its own migration replaces or removes it")]
+	ConflictingSlot(InputConnector),
+	#[error("{0:?} does not exist in the migrated state")]
+	MissingConsumer(InputConnector),
+	#[error("delta {0:?} branches or merges, which the rewrite does not handle yet")]
+	NonLinearHistory(Rev),
+	#[error("a rewritten chain both removes and adds node {0:?}, which a shared timestamp can't order")]
+	ChainWritesTwice(NodeId),
+	#[error("failed to apply a delta: {0}")]
 	Crdt(#[from] CrdtError),
 }
 
@@ -91,135 +107,5 @@ impl MigrationRunner {
 		}
 
 		Ok(outcome)
-	}
-
-	/// Run content migrations over an open session, committing each migration's changes as one
-	/// retired gesture. A target that errors has its changes reverted and logged, so one bad node
-	/// doesn't block the rest of the document or the remaining migrations. Returns the retired revs.
-	pub fn run_content_migrations(&self, session: &mut Session, host: &mut dyn MigrationHost) -> Result<Vec<Rev>, RunnerError> {
-		let mut all_revs = Vec::new();
-
-		for migration in self.sets.iter().flat_map(|set| &set.content) {
-			let selector = migration.selector();
-
-			// `Document`-selector migrations have no self-gating selector, so provenance gates reruns
-			if matches!(selector, Selector::Document) && applied_migrations(session.registry()).iter().any(|applied| applied == migration.id().0) {
-				continue;
-			}
-
-			let targets = collect_targets(&selector, session.registry(), host);
-			if targets.is_empty() {
-				continue;
-			}
-
-			// Apply per target on a shared clone, restoring the pre-target state on error
-			let mut target_registry = session.registry().clone();
-			let mut applied = false;
-			for target in targets {
-				let backup = target_registry.clone();
-				let mut context = SessionContext {
-					session: &mut *session,
-					host: &mut *host,
-				};
-				match migration.migrate(target, &mut target_registry, &mut context) {
-					Ok(()) => applied = true,
-					Err(error) => {
-						log::error!("Content migration {} failed on {target:?}: {error}", migration.id());
-						target_registry = backup;
-					}
-				}
-			}
-			if !applied {
-				continue;
-			}
-
-			if matches!(selector, Selector::Document) {
-				record_applied(&mut target_registry, migration.id().0);
-			}
-
-			// Commit the mutation as deltas and retire them as one undoable gesture
-			if !session.registry().value_equal(&target_registry) {
-				session.stage_registry_replace(&target_registry)?;
-				let revs = session.retire_all()?;
-				if let Some(last) = revs.last() {
-					session.mark_interaction_end(*last);
-				}
-				all_revs.extend(revs);
-			}
-		}
-
-		Ok(all_revs)
-	}
-}
-
-fn applied_migrations(registry: &Registry) -> Vec<String> {
-	registry.attributes.get_typed::<Vec<String>>(APPLIED_ATTRIBUTE).unwrap_or_default()
-}
-
-fn record_applied(registry: &mut Registry, id: &str) {
-	let mut applied = applied_migrations(registry);
-	if !applied.iter().any(|existing| existing == id) {
-		applied.push(id.to_string());
-		// The placeholder timestamp is re-stamped by the commit path
-		let _ = registry.attributes.set_serialized(APPLIED_ATTRIBUTE, &applied, TimeStamp::default());
-	}
-}
-
-/// Scan the registry for the entities a selector matches, in deterministic (sorted) order.
-fn collect_targets(selector: &Selector, registry: &Registry, host: &dyn MigrationHost) -> Vec<Target> {
-	let node_targets = |mut nodes: Vec<NodeId>| {
-		nodes.sort_unstable();
-		nodes.into_iter().map(Target::Node).collect()
-	};
-
-	match selector {
-		Selector::Document => vec![Target::Document],
-		Selector::Reference(name) => node_targets(
-			registry
-				.node_instances
-				.iter()
-				.filter(|(_, node)| {
-					node.attributes()
-						.get(attr::node::ui::REFERENCE)
-						.is_some_and(|attribute| matches!(&attribute.value, Value::Str(reference) if reference == name))
-				})
-				.map(|(id, _)| *id)
-				.collect(),
-		),
-		Selector::Node(node_selector) => node_targets(
-			registry
-				.node_instances
-				.iter()
-				.filter(|(_, node)| {
-					let Implementation::ProtoNode(resource_id) = node.implementation() else { return false };
-					host.declaration_info(*resource_id).is_some_and(|info| node_selector.matches(&info))
-				})
-				.map(|(id, _)| *id)
-				.collect(),
-		),
-	}
-}
-
-/// Combines the open session (ID minting) with host services into the context migrations see.
-struct SessionContext<'a> {
-	session: &'a mut Session,
-	host: &'a mut dyn MigrationHost,
-}
-
-impl MigrationHost for SessionContext<'_> {
-	fn declaration_info(&self, id: ResourceId) -> Option<DeclarationInfo> {
-		self.host.declaration_info(id)
-	}
-	fn declaration(&self, id: ResourceId) -> Option<serde_json::Value> {
-		self.host.declaration(id)
-	}
-	fn resolve_definition(&mut self, identifier: &str) -> Option<document_graph_storage::Node> {
-		self.host.resolve_definition(identifier)
-	}
-}
-
-impl MigrationContext for SessionContext<'_> {
-	fn mint_node_id(&mut self) -> NodeId {
-		self.session.next_node_id()
 	}
 }
