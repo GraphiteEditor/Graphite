@@ -184,6 +184,12 @@ impl Document {
 		self.apply_op_with(RegistryTarget::Working, op, timestamp, ApplyMode::Idempotent)
 	}
 
+	/// A retired op from a peer, against both the retired and the working registry.
+	pub(crate) fn apply_retired_op_idempotent(&mut self, op: RegistryDelta, timestamp: TimeStamp) -> Result<(), CrdtError> {
+		self.apply_op_with(RegistryTarget::Retired, op.clone(), timestamp, ApplyMode::Idempotent)?;
+		self.apply_op_idempotent(op, timestamp)
+	}
+
 	/// Applies one op. Every field, existence included, is last-writer-wins on a timestamp, so ops fold alike in any order:
 	/// an addition writes every field, a removal keeps the content as a tombstone, a newer write or reference revives an
 	/// older removal, and a write to an entity never seen lands on a placeholder until its addition arrives.
