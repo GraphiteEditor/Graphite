@@ -3,8 +3,8 @@
 use crate::nodes::{NodeSource, find_nodes};
 use std::path::{Path, PathBuf};
 
-const NODE_CRATES: &str = "node-graph";
-const MIGRATIONS: &str = "document/migrations/nodes/src";
+pub const NODE_CRATES: &str = "node-graph";
+pub const MIGRATIONS: &str = "document/migrations/nodes/src";
 
 /// `new <identifier>` steps a node from its previous version, `new <old>@<version> <identifier>` replaces a node by another,
 /// and `rename <old>@<version> <identifier>` registers a finished rename.

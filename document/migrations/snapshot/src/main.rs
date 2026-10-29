@@ -5,6 +5,7 @@
 //! A new version declares again only the types that changed, plus every type reaching one, and re-exports the rest from
 //! the previous version. So format steps convert only what changed, and old versions never depend on the live crate.
 
+mod lineage;
 mod nodes;
 mod plan;
 mod scaffold;
@@ -28,7 +29,8 @@ fn usage() {
 	println!("  cargo run migration <command>");
 	println!();
 	println!("<command>:");
-	println!("  check       Fail if the stored types changed since the latest frozen format version");
+	println!("  check       Fail if the stored types changed since the latest frozen format version, or a node's version");
+	println!("              has no migration leading to it");
 	println!("  snapshot    Freeze the stored types as the next format version, with the step from the previous one");
 	println!("  new <identifier>");
 	println!("              Scaffold the migration of a node from the version before its current `version(N)`");
@@ -96,6 +98,18 @@ fn check(workspace: &Path) -> Result<(), String> {
 	}
 
 	println!("The stored types match format version {latest}");
+
+	let nodes: Vec<lineage::Declaration> = nodes::find_nodes(&workspace.join(scaffold::NODE_CRATES))?
+		.into_iter()
+		.map(|node| (node.identifier, node.version))
+		.collect();
+	let migrations = lineage::find_migrations(&workspace.join(scaffold::MIGRATIONS))?;
+	let problems = lineage::lineage_problems(&nodes, &migrations);
+	if !problems.is_empty() {
+		return Err(problems.join("\n"));
+	}
+
+	println!("Every node version has a migration leading to it ({} nodes, {} migrations)", nodes.len(), migrations.len());
 	Ok(())
 }
 

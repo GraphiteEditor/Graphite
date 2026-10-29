@@ -430,6 +430,8 @@ A CLI subcommand dumps `NODE_METADATA` (identifier, version, input names and typ
 | Version bumped | A migration from the previous version is registered. |
 | Migration registered | `target.version == source.version + 1`, and the dependency order has no cycle. |
 
+`cargo run migration check` already covers the rows that need no baseline: every node whose `version(N)` is above 1 needs a migration leading to `identifier@N` in `migration-nodes`, and every migration must lead to a declared node or to the source of another migration. Comparing APIs against the baseline remains.
+
 The scaffold commands, which a failing check prints, find the node in the `node-graph` sources with its identifier (the `path(...)` override or the module path, then the Pascal-case function name and `Node`) and its `version(N)`, and write into `migration-nodes`, a module per node crate and a file per step:
 
 - `cargo run migration new <identifier>` scaffolds `#[migration("<identifier>"@N-1 => @N)]`, refusing a node still at version 1.
