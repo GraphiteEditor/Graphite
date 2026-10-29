@@ -1,4 +1,5 @@
 use super::*;
+use std::hash::{Hash, Hasher};
 
 /// Index of the Artboard definition's Clip input, which must match the input order authored in document_node_definitions.rs.
 pub(crate) const ARTBOARD_CLIP_INPUT_INDEX: usize = 5;
@@ -22,6 +23,52 @@ impl NodeNetworkInterface {
 	pub fn document_network(&self) -> &NodeNetwork {
 		self.network.network()
 	}
+
+	/// The node each network previews in place of its export, paired with that network's path and sorted by it.
+	pub fn previewed_nodes(&self) -> Vec<(Vec<NodeId>, RootNode)> {
+		let mut previewed = Vec::new();
+		self.for_each_network(&mut |network_path, network_metadata| {
+			let Some(root_node) = network_metadata.persistent_metadata.previewing.previewed() else { return };
+			let replaces_export = self
+				.document_network()
+				.nested_network(network_path)
+				.is_some_and(|network| !network.exports.is_empty() && network.nodes.contains_key(&root_node.node_id));
+			if replaces_export {
+				previewed.push((network_path.to_vec(), root_node));
+			}
+		});
+
+		previewed.sort_by(|(left, _), (right, _)| left.cmp(right));
+		previewed
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Each network whose preview was written by a version that rewired the export, paired with what that version would restore.
+	pub(crate) fn legacy_rewired_previews(&self) -> Vec<(Vec<NodeId>, Option<RootNode>)> {
+		let mut legacy = Vec::new();
+		self.for_each_network(&mut |network_path, network_metadata| {
+			if let Previewing::LegacyRewired { root_node_to_restore } = network_metadata.persistent_metadata.previewing {
+				legacy.push((network_path.to_vec(), root_node_to_restore));
+			}
+		});
+
+		legacy
+	}
+
+	fn for_each_network(&self, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
+		fn walk(network_path: &mut Vec<NodeId>, network_metadata: &NodeNetworkMetadata, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
+			visit(network_path, network_metadata);
+			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
+				let Some(nested) = &node_metadata.persistent_metadata.network_metadata else { continue };
+				network_path.push(*node_id);
+				walk(network_path, nested, visit);
+				network_path.pop();
+			}
+		}
+
+		walk(&mut Vec::new(), &self.network_metadata, visit);
+	}
+
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
 		let Some(network) = self.document_network().nested_network(network_path) else {
@@ -31,8 +78,11 @@ impl NodeNetworkInterface {
 		Some(network)
 	}
 
+	/// Identifies the graph that would be evaluated, previews included.
 	pub fn network_hash(&self) -> u64 {
-		self.network.current_hash()
+		let mut hasher = std::hash::DefaultHasher::new();
+		(self.network.current_hash(), self.previewed_nodes()).hash(&mut hasher);
+		hasher.finish()
 	}
 
 	/// Get the specified document node in the nested network based on node_id and network_path

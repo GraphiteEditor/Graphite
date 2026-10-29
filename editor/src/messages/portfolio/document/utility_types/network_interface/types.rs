@@ -450,13 +450,58 @@ impl RootNode {
 	}
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
+/// Which node the node graph renders in place of the network's export, as per-peer view state that leaves the export untouched.
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize)]
 pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
+	Yes {
+		previewed: RootNode,
+	},
+	// TODO: Eventually remove this document upgrade code
+	/// Written by versions that previewed by rewiring the export, and converted to `Yes` when the document is opened.
+	LegacyRewired {
+		root_node_to_restore: Option<RootNode>,
+	},
 	#[default]
 	No,
+}
+
+impl Previewing {
+	pub fn previewed(&self) -> Option<RootNode> {
+		match self {
+			Previewing::Yes { previewed } => Some(*previewed),
+			_ => None,
+		}
+	}
+
+	pub fn previews(&self, node_id: NodeId) -> bool {
+		self.previewed().is_some_and(|previewed| previewed.node_id == node_id)
+	}
+}
+
+// TODO: Eventually remove this document upgrade code, restoring the derived `Deserialize`
+impl<'de> serde::Deserialize<'de> for Previewing {
+	/// Also accepts the shape written by versions that previewed by rewiring the export.
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(serde::Deserialize)]
+		enum Stored {
+			Yes(YesFields),
+			LegacyRewired { root_node_to_restore: Option<RootNode> },
+			No,
+		}
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum YesFields {
+			Current { previewed: RootNode },
+			Rewired { root_node_to_restore: Option<RootNode> },
+		}
+
+		Ok(match Stored::deserialize(deserializer)? {
+			Stored::Yes(YesFields::Current { previewed }) => Previewing::Yes { previewed },
+			Stored::Yes(YesFields::Rewired { root_node_to_restore }) | Stored::LegacyRewired { root_node_to_restore } => Previewing::LegacyRewired { root_node_to_restore },
+			Stored::No => Previewing::No,
+		})
+	}
 }
 
 /// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.

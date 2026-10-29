@@ -357,6 +357,7 @@ impl NodeMut<'_> {
 
 	/// Appends input metadata until there is one entry per input, filling from `defaults` where it has an
 	/// entry for the added index. Restores the parallel-array invariant for an older document.
+	/// Entries past the last input are kept, since they can hold user-authored names and overrides.
 	pub(crate) fn pad_input_metadata(&mut self, number_of_inputs: usize, defaults: impl Fn(usize) -> Option<InputMetadata>) {
 		if self.metadata.input_metadata.len() >= number_of_inputs {
 			return;

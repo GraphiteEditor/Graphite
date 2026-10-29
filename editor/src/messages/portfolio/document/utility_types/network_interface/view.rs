@@ -294,20 +294,14 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		self.metadata.persistent_metadata.previewing
 	}
 
-	/// The root node (the node that the solid line is connected to), or None if no nodes are connected to the output.
+	/// The node output wired to the primary export, if any.
 	pub fn root_node(&self) -> Option<RootNode> {
-		match &self.metadata.persistent_metadata.previewing {
-			Previewing::Yes { root_node_to_restore } => *root_node_to_restore,
-			Previewing::No => self.network.exports.first().and_then(|export| {
-				if let NodeInput::Node { node_id, output_index, .. } = export {
-					Some(RootNode {
-						node_id: *node_id,
-						output_index: *output_index,
-					})
-				} else {
-					None
-				}
+		match self.network.exports.first() {
+			Some(NodeInput::Node { node_id, output_index, .. }) => Some(RootNode {
+				node_id: *node_id,
+				output_index: *output_index,
 			}),
+			_ => None,
 		}
 	}
 

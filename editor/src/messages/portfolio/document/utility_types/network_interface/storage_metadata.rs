@@ -284,11 +284,22 @@ pub fn apply_network_view_settings(
 
 		if let Some(value) = settings.get(session::network::PREVIEWING)
 			&& let Ok(previewing) = from_value::<Previewing>(value)
-			&& let Some(mut network) = interface.network_mut(network_path)
 		{
-			network.set_previewing(previewing);
+			let previewing = match previewing.previewed() {
+				Some(previewed) if !network_contains(interface, network_path, previewed.node_id) => Previewing::No,
+				_ => previewing,
+			};
+
+			if let Some(mut network) = interface.network_mut(network_path) {
+				network.set_previewing(previewing);
+			}
 		}
 	}
+}
+
+/// Whether the network at `network_path` contains `node_id`, without logging when it doesn't.
+fn network_contains(interface: &NodeNetworkInterface, network_path: &[NodeId], node_id: NodeId) -> bool {
+	interface.document_network().nested_network(network_path).is_some_and(|network| network.nodes.contains_key(&node_id))
 }
 
 /// Entries whose `network_path` doesn't resolve are skipped with a warning (per-network drift is more often a stale path than corruption).

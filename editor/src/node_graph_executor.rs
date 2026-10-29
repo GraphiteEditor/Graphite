@@ -199,6 +199,7 @@ impl NodeGraphExecutor {
 				network,
 				resources,
 				node_to_inspect: Vec::new(),
+				previewed: Vec::new(),
 			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
@@ -209,6 +210,7 @@ impl NodeGraphExecutor {
 		let network_hash = document.network_interface.network_hash();
 		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
+			let previewed = document.network_interface.previewed_nodes();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 			self.node_graph_document = Some(document_id);
@@ -216,7 +218,12 @@ impl NodeGraphExecutor {
 			let resources = document.resources.registry.clone();
 
 			self.sender
-				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+					network,
+					resources,
+					node_to_inspect,
+					previewed,
+				}))
 				.map_err(|e| e.to_string())?;
 		} else if self.previous_node_to_inspect != node_to_inspect {
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
@@ -343,6 +350,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
@@ -389,6 +397,7 @@ impl NodeGraphExecutor {
 				network,
 				resources,
 				node_to_inspect: Vec::new(),
+				previewed,
 			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
@@ -723,6 +732,7 @@ impl NodeGraphExecutor {
 				network,
 				resources,
 				node_to_inspect: full_path.clone(),
+				previewed: Vec::new(),
 			}))
 			.is_err()
 		{
