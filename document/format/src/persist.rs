@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HotOp, Rev, TimeStamp, Value};
+use document_graph_storage::{HistoryMetadata, HotOp, Rev, Subject, TimeStamp, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -14,7 +14,7 @@ use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
 use crate::session_state::SessionState;
-use crate::{Gdd, MANIFEST_CODEC, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
 
 impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
@@ -180,6 +180,25 @@ impl<L: Layout> Gdd<L> {
 			self.persist_session_state()?;
 		}
 		Ok(())
+	}
+
+	pub fn metadata(&self) -> &HistoryMetadata {
+		&self.metadata
+	}
+
+	/// State a fact at wall time `wall_ms`, taken on only once it is on disk. Returns whether it changed anything.
+	pub fn record(&mut self, subject: Subject, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
+		let stamp = WallStamp {
+			ms: wall_ms as u64,
+			peer: self.session.peer(),
+		};
+		let Some(fact) = self.metadata.statement(subject, key, value, stamp) else { return Ok(false) };
+		// The leading newline keeps the fact off a tail a crash left unterminated. Reading skips the blank lines this leaves.
+		let mut line = vec![b'\n'];
+		METADATA_CODEC.append(&mut line, &fact)?;
+		self.working.append_non_blocking(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &line)?;
+		self.metadata.absorb(fact);
+		Ok(true)
 	}
 
 	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
