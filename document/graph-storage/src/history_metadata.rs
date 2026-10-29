@@ -1,8 +1,7 @@
 //! What people say about a document's history, kept beside it rather than in it: user names, step labels
 //! and tags. None of it is folded into the document, so moving the head never changes it and stating it
 //! never rewrites a delta. Each [`MetadataFact`] carries a wall-clock stamp and the newer of two about the
-//! same thing wins, so the record merges the same in any order and any number of times. On disk the facts
-//! are appended one per line and folded on read, so nothing is ever rewritten.
+//! same thing wins, so the record merges the same in any order and any number of times.
 
 use crate::ids::{PeerId, Rev, UserId};
 use serde::{Deserialize, Serialize};
@@ -91,22 +90,8 @@ impl HistoryMetadata {
 
 	/// Every fact the record holds, users first then revs, for writing it out whole.
 	pub fn facts(&self) -> Vec<MetadataFact> {
-		let users = self.users.iter().flat_map(|record| {
-			record.attributes.iter().map(|(key, fact)| MetadataFact {
-				subject: Subject::User(record.user),
-				key: key.clone(),
-				value: fact.value.clone(),
-				stamp: fact.stamp,
-			})
-		});
-		let revs = self.revs.iter().flat_map(|record| {
-			record.attributes.iter().map(|(key, fact)| MetadataFact {
-				subject: Subject::Rev(record.rev),
-				key: key.clone(),
-				value: fact.value.clone(),
-				stamp: fact.stamp,
-			})
-		});
+		let users = self.users.iter().flat_map(|record| facts_about(Subject::User(record.user), &record.attributes));
+		let revs = self.revs.iter().flat_map(|record| facts_about(Subject::Rev(record.rev), &record.attributes));
 		users.chain(revs).collect()
 	}
 
@@ -114,7 +99,7 @@ impl HistoryMetadata {
 		self.users.binary_search_by_key(&user, |record| record.user).ok().map(|index| &self.users[index])
 	}
 
-	pub(crate) fn user_attribute(&self, user: UserId, key: &str) -> Option<&Fact> {
+	fn user_attribute(&self, user: UserId, key: &str) -> Option<&Fact> {
 		self.user(user)?.attributes.get(key)
 	}
 
@@ -127,7 +112,7 @@ impl HistoryMetadata {
 		self.revs.binary_search_by_key(&rev, |record| record.rev).ok().map(|index| &self.revs[index])
 	}
 
-	pub(crate) fn rev_attribute(&self, rev: Rev, key: &str) -> Option<&Fact> {
+	fn rev_attribute(&self, rev: Rev, key: &str) -> Option<&Fact> {
 		self.rev(rev)?.attributes.get(key)
 	}
 
@@ -142,7 +127,7 @@ impl HistoryMetadata {
 		record
 			.attributes
 			.iter()
-			.filter(|(_, fact)| fact.value == serde_json::Value::Bool(true))
+			.filter(|(_, fact)| fact.value.as_bool() == Some(true))
 			.filter_map(|(key, _)| key.strip_prefix(rev_attr::TAG_PREFIX))
 			.collect()
 	}
@@ -165,7 +150,8 @@ impl HistoryMetadata {
 				return None;
 			}
 			if stamp <= existing.stamp {
-				stamp.ms = existing.stamp.ms + 1;
+				// A stamp at the end of time can't be outdone, so the change could never land elsewhere.
+				stamp.ms = existing.stamp.ms.checked_add(1)?;
 			}
 		}
 		attributes.insert(key.to_string(), Fact { value: value.clone(), stamp });
@@ -177,11 +163,16 @@ impl HistoryMetadata {
 		})
 	}
 
-	/// Take on a fact stated elsewhere unless an equal or newer stamp stands for the same thing. Returns whether
-	/// it landed.
-	pub(crate) fn absorb(&mut self, fact: MetadataFact) -> bool {
+	/// Take on a fact stated elsewhere unless the one standing for the same thing is newer, or as new with the greater
+	/// value, so even facts sharing a stamp settle alike everywhere. Returns whether it landed.
+	fn absorb(&mut self, fact: MetadataFact) -> bool {
 		let attributes = self.attributes_mut(fact.subject);
-		if attributes.get(&fact.key).is_some_and(|mine| fact.stamp <= mine.stamp) {
+		let stands = |mine: &Fact| match fact.stamp.cmp(&mine.stamp) {
+			std::cmp::Ordering::Less => true,
+			std::cmp::Ordering::Greater => false,
+			std::cmp::Ordering::Equal => fact.value.to_string().cmp(&mine.value.to_string()).is_le(),
+		};
+		if attributes.get(&fact.key).is_some_and(stands) {
 			return false;
 		}
 		attributes.insert(fact.key, Fact { value: fact.value, stamp: fact.stamp });
@@ -218,6 +209,15 @@ impl HistoryMetadata {
 			}
 		}
 	}
+}
+
+fn facts_about(subject: Subject, attributes: &BTreeMap<String, Fact>) -> impl Iterator<Item = MetadataFact> + '_ {
+	attributes.iter().map(move |(key, fact)| MetadataFact {
+		subject,
+		key: key.clone(),
+		value: fact.value.clone(),
+		stamp: fact.stamp,
+	})
 }
 
 #[cfg(test)]
@@ -277,5 +277,30 @@ mod tests {
 		let facts = record.facts();
 		assert_eq!(facts.len(), 5);
 		assert_eq!(HistoryMetadata::fold(facts), record);
+	}
+
+	#[test]
+	fn facts_sharing_a_stamp_settle_alike_whatever_order_they_meet_in() {
+		let fact = |value: &str| MetadataFact {
+			subject: Subject::User(UserId(1)),
+			key: user_attr::NAME.into(),
+			value: value.into(),
+			stamp: stamp(10, 1),
+		};
+		let ab = HistoryMetadata::fold([fact("Ada"), fact("Bea")]);
+		let ba = HistoryMetadata::fold([fact("Bea"), fact("Ada")]);
+		assert_eq!(ab, ba);
+	}
+
+	#[test]
+	fn a_fact_stamped_at_the_end_of_time_cannot_be_outdone() {
+		let mut record = HistoryMetadata::fold([MetadataFact {
+			subject: Subject::User(UserId(1)),
+			key: user_attr::NAME.into(),
+			value: "Ada".into(),
+			stamp: stamp(u64::MAX, 2),
+		}]);
+		assert!(record.set_user_attribute(UserId(1), user_attr::NAME, "Bea".into(), stamp(5, 1)).is_none());
+		assert_eq!(record.user_name(UserId(1)), Some("Ada"));
 	}
 }

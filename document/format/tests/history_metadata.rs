@@ -2,9 +2,9 @@
 // Needs the network feature for a session and the runtime conversion for staging ops.
 #![cfg(all(feature = "conversion", feature = "network"))]
 
-use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
-use document_format::{GddV1, GddV1Layout};
+use document_container::{AnyContainer, AsyncContainer};
+use document_format::{GddV1, GddV1Layout, Layout};
 use document_graph_storage::from_runtime::DeclarationBytes;
 use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, Rev, TimeStamp, UserId, rev_attr, user_attr};
 use peer_transport::mock::MockNetwork;
@@ -46,6 +46,27 @@ fn a_recorded_name_survives_a_reopen() {
 		assert_eq!(reopened.metadata().user_name(UserId(10)), Some("Ada"));
 		assert_eq!(reopened.metadata().rev_label(step), Some("Fixed the eye"), "a label appended after the name is folded back in");
 		assert_eq!(reopened.metadata().rev_tags(step), vec!["v1"]);
+	});
+}
+
+/// A line that doesn't decode, such as one torn by a crash or a kind of fact from a newer editor, is skipped rather
+/// than keeping the document from opening.
+#[test]
+fn an_unreadable_metadata_line_is_skipped() {
+	futures::executor::block_on(async {
+		let mut gdd = document(1, 10).await;
+		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+		let (working, layout) = gdd.into_storage();
+		let path = document_format::io::path_for(layout.metadata_basename(), document_format::METADATA_CODEC);
+		working
+			.append_non_blocking(
+				&path,
+				b"{\"subject\":{\"Branch\":3},\"key\":\"name\",\"value\":1,\"stamp\":{\"ms\":1,\"peer\":1}}\n{\"subject\":{\"User\":",
+			)
+			.expect("append");
+
+		let reopened = GddV1::open_in(working, layout).await.expect("open");
+		assert_eq!(reopened.metadata().user_name(UserId(10)), Some("Ada"));
 	});
 }
 

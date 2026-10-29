@@ -225,32 +225,31 @@ impl<L: Layout> Gdd<L> {
 	/// Record a fact about a user at wall time `wall_ms`, persisted and told to the room. Returns whether it
 	/// changed anything.
 	pub fn record_user_attribute(&mut self, user: UserId, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
-		let stamp = WallStamp {
-			ms: wall_ms.max(0.) as u64,
-			peer: self.session.peer(),
-		};
-		let Some(fact) = self.metadata.set_user_attribute(user, key, value, stamp) else {
-			return Ok(false);
-		};
-		self.append_facts(&[fact])?;
-		#[cfg(feature = "network")]
-		if let Some(replica) = &mut self.network {
-			replica.send_metadata(&self.metadata)?;
-		}
-		Ok(true)
+		let stamp = self.wall_stamp(wall_ms);
+		self.record(|metadata| metadata.set_user_attribute(user, key, value, stamp))
 	}
 
 	/// Record a fact about a rev, such as a label or tag on the interaction it closes. Otherwise like
 	/// [`record_user_attribute`](Self::record_user_attribute).
 	pub fn record_rev_attribute(&mut self, rev: Rev, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
-		let stamp = WallStamp {
-			ms: wall_ms.max(0.) as u64,
+		let stamp = self.wall_stamp(wall_ms);
+		self.record(|metadata| metadata.set_rev_attribute(rev, key, value, stamp))
+	}
+
+	fn wall_stamp(&self, wall_ms: f64) -> WallStamp {
+		WallStamp {
+			ms: wall_ms as u64,
 			peer: self.session.peer(),
-		};
-		let Some(fact) = self.metadata.set_rev_attribute(rev, key, value, stamp) else {
-			return Ok(false);
-		};
+		}
+	}
+
+	/// States a fact on a copy of the record, kept only once the fact is on disk, so a failed write leaves nothing
+	/// behind that a retry would take for no change.
+	fn record(&mut self, state: impl FnOnce(&mut HistoryMetadata) -> Option<MetadataFact>) -> Result<bool, Error> {
+		let mut metadata = self.metadata.clone();
+		let Some(fact) = state(&mut metadata) else { return Ok(false) };
 		self.append_facts(&[fact])?;
+		self.metadata = metadata;
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
 			replica.send_metadata(&self.metadata)?;

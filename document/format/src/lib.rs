@@ -204,7 +204,7 @@ impl<L: Layout> Gdd<L> {
 			false => SessionState::default(),
 		};
 		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
-			true => HistoryMetadata::fold(io::iter::<MetadataFact>(&working, layout.metadata_basename(), METADATA_CODEC).await?),
+			true => HistoryMetadata::fold(io::iter_lenient::<MetadataFact>(&working, layout.metadata_basename(), METADATA_CODEC).await?),
 			false => HistoryMetadata::default(),
 		};
 

@@ -35,7 +35,7 @@ pub async fn iter<T: DeserializeOwned>(container: &AnyContainer, basename: &str,
 	Ok(codec.iter::<T>(bytes.as_slice()).collect::<Result<Vec<_>, _>>()?)
 }
 
-/// Same as [`iter`] but skips the values that fail to decode.
+/// Same as [`iter`] but skips the values that fail to decode, for a file whose damage is no reason not to open.
 pub async fn iter_lenient<T: DeserializeOwned>(container: &AnyContainer, basename: &str, codec: Codec) -> Result<Vec<T>, ReadError> {
 	let bytes = read_bytes(container, basename, codec).await?;
 	let values = codec
