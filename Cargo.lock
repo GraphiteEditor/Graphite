@@ -2215,7 +2215,6 @@ dependencies = [
 name = "graphene-std"
 version = "0.0.0"
 dependencies = [
- "base64",
  "blending-nodes",
  "brush-nodes",
  "bytemuck",

@@ -10,8 +10,6 @@ use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
-#[cfg(target_family = "wasm")]
-use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
 #[cfg(feature = "gpu")]
 use graphene_std::raster::GPU;
 use graphene_std::raster::color::Color;
@@ -87,8 +85,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<RenderOutput>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => ListDyn, Context => Item<graphene_std::ContextModification>]),
-		#[cfg(target_family = "wasm")]
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<CanvasHandle>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformEditorApi>>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::RuntimeHandle>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::SourceId>, Context => Item<graphene_std::ContextModification>]),
@@ -136,8 +132,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
-		#[cfg(target_family = "wasm")]
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<CanvasHandle>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<RenderOutput>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformEditorApi>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::RuntimeHandle>]),
