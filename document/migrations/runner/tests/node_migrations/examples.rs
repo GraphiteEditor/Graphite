@@ -1,9 +1,7 @@
-//! The RFC's examples, each written the way an author would, followed by what `#[migration]` would expand it to.
+//! The RFC's examples, written the way a migration crate would. `#[migration]` generates a unit struct per function, and the
+//! registry picks every migration up at startup.
 
-use migration_core::{
-	AnchorContext, Declaration, Downstream, Edits, Inputs, MigrationError, NewNode, Node, NodeInput, NodeMigration, OutputConnector, Region, Rename, Upstream, View, decl, encode, literal, literal_of,
-	migration,
-};
+use migration_core::{Downstream, Inputs, MigrationError, NewNode, Node, NodeInput, OutputConnector, Upstream, decl, encode, literal, literal_of, migration, rename};
 use serde::{Deserialize, Serialize};
 use std::f64::consts::PI;
 
@@ -21,53 +19,25 @@ pub enum Axis {
 	Y,
 }
 
-// ======
-// Rename
-// ======
+rename!("graphene_core::ops::AddNode"@1 => "math_nodes::add"@2);
 
-pub fn add_rename() -> Rename {
-	migration!(rename "graphene_core::ops::AddNode"@1 => "math_nodes::add"@2)
-}
-
-// ===============
-// Opacity toggles
-// ===============
+// Later steps of the lineages below, so ordering has chains and pins to respect
+rename!("math_nodes::multiply"@1 => "math_nodes::product"@2);
+rename!("vector_nodes::split_vec2"@2 => "vector_nodes::split"@3);
 
 /// Adds the opacity and fill toggles.
-fn opacity_toggles(inputs: &mut Inputs) {
+#[migration("blending_nodes::opacity"@1 => @2)]
+pub fn opacity_toggles(inputs: &mut Inputs) {
 	inputs.insert(1, literal(Tagged::Bool(true)));
 	inputs.push(literal(Tagged::Bool(false)));
 	inputs.push(literal(Tagged::Number(100.)));
 }
 
-pub struct OpacityToggles;
-
-impl NodeMigration for OpacityToggles {
-	fn source(&self) -> Declaration {
-		decl!("blending_nodes::opacity"@1)
-	}
-	fn target(&self) -> Declaration {
-		decl!("blending_nodes::opacity"@2)
-	}
-	fn footprint(&self) -> Region {
-		Region::ANCHOR.union(<Inputs as View>::REGION)
-	}
-
-	fn run(&self, context: &AnchorContext) -> Result<Edits, MigrationError> {
-		let mut inputs = Inputs::extract(context);
-		opacity_toggles(&mut inputs);
-		inputs.into_edits()
-	}
-}
-
-// =================
-// Transform degrees
-// =================
-
 pub const ROTATION: u32 = 2;
 
 /// Rotation is now stored in degrees.
-fn transform_degrees(node: &Node, inputs: &mut Inputs, upstream: &mut Upstream) -> Result<(), MigrationError> {
+#[migration("transform_nodes::transform"@1 => @2)]
+pub fn transform_degrees(node: &Node, inputs: &mut Inputs, upstream: &mut Upstream) -> Result<(), MigrationError> {
 	let rotation = &node.inputs()[ROTATION as usize].input;
 
 	let converted = match rotation {
@@ -94,41 +64,9 @@ fn transform_degrees(node: &Node, inputs: &mut Inputs, upstream: &mut Upstream) 
 	Ok(())
 }
 
-pub struct TransformDegrees;
-
-impl NodeMigration for TransformDegrees {
-	fn source(&self) -> Declaration {
-		decl!("transform_nodes::transform"@1)
-	}
-	fn target(&self) -> Declaration {
-		decl!("transform_nodes::transform"@2)
-	}
-	fn pins(&self) -> &'static [Declaration] {
-		const { &[decl!("math_nodes::multiply"@1)] }
-	}
-	fn footprint(&self) -> Region {
-		Region::ANCHOR.union(<Inputs as View>::REGION).union(<Upstream as View>::REGION)
-	}
-
-	fn run(&self, context: &AnchorContext) -> Result<Edits, MigrationError> {
-		let mut inputs = Inputs::extract(context);
-		let mut upstream = Upstream::extract(context);
-		transform_degrees(context.source_node(), &mut inputs, &mut upstream)?;
-
-		let mut edits = inputs.into_edits()?;
-		edits.merge(upstream.into_edits()?);
-		Ok(edits)
-	}
-}
-
-const _: () = assert!(Region::disjoint(&[<Inputs as View<'static>>::REGION, <Upstream<'static> as View<'static>>::REGION]));
-
-// =====================
-// Angle between degrees
-// =====================
-
 /// The output is now in degrees, so consumers keep receiving radians through a conversion.
-fn angle_between_degrees(node: &Node, downstream: &mut Downstream) {
+#[migration("vector_nodes::angle_between"@1 => @2)]
+pub fn angle_between_degrees(node: &Node, downstream: &mut Downstream) {
 	let consumers = downstream.consumers(0);
 	if consumers.is_empty() {
 		return;
@@ -143,35 +81,9 @@ fn angle_between_degrees(node: &Node, downstream: &mut Downstream) {
 	}
 }
 
-pub struct AngleBetweenDegrees;
-
-impl NodeMigration for AngleBetweenDegrees {
-	fn source(&self) -> Declaration {
-		decl!("vector_nodes::angle_between"@1)
-	}
-	fn target(&self) -> Declaration {
-		decl!("vector_nodes::angle_between"@2)
-	}
-	fn pins(&self) -> &'static [Declaration] {
-		const { &[decl!("math_nodes::to_radians"@1)] }
-	}
-	fn footprint(&self) -> Region {
-		Region::ANCHOR.union(<Downstream as View>::REGION)
-	}
-
-	fn run(&self, context: &AnchorContext) -> Result<Edits, MigrationError> {
-		let mut downstream = Downstream::extract(context);
-		angle_between_degrees(context.source_node(), &mut downstream);
-		downstream.into_edits()
-	}
-}
-
-// =========================
-// Extract XY to Split Vec2
-// =========================
-
 /// Extract XY becomes Split Vec2 with one output per component. A wired axis selects between them at runtime.
-fn extract_xy_to_split(node: &Node, inputs: &mut Inputs, downstream: &mut Downstream) -> Result<(), MigrationError> {
+#[migration("vector_nodes::extract_xy"@1 => "vector_nodes::split_vec2"@2)]
+pub fn extract_xy_to_split(node: &Node, inputs: &mut Inputs, downstream: &mut Downstream) -> Result<(), MigrationError> {
 	let axis = &node.inputs()[1].input;
 
 	let component = match literal_of::<Tagged>(axis) {
@@ -195,32 +107,3 @@ fn extract_xy_to_split(node: &Node, inputs: &mut Inputs, downstream: &mut Downst
 	inputs.truncate(1);
 	Ok(())
 }
-
-pub struct ExtractXyToSplit;
-
-impl NodeMigration for ExtractXyToSplit {
-	fn source(&self) -> Declaration {
-		decl!("vector_nodes::extract_xy"@1)
-	}
-	fn target(&self) -> Declaration {
-		decl!("vector_nodes::split_vec2"@2)
-	}
-	fn pins(&self) -> &'static [Declaration] {
-		const { &[decl!("logic_nodes::select_axis"@1)] }
-	}
-	fn footprint(&self) -> Region {
-		Region::ANCHOR.union(<Inputs as View>::REGION).union(<Downstream as View>::REGION)
-	}
-
-	fn run(&self, context: &AnchorContext) -> Result<Edits, MigrationError> {
-		let mut inputs = Inputs::extract(context);
-		let mut downstream = Downstream::extract(context);
-		extract_xy_to_split(context.source_node(), &mut inputs, &mut downstream)?;
-
-		let mut edits = inputs.into_edits()?;
-		edits.merge(downstream.into_edits()?);
-		Ok(edits)
-	}
-}
-
-const _: () = assert!(Region::disjoint(&[<Inputs as View<'static>>::REGION, <Downstream<'static> as View<'static>>::REGION]));

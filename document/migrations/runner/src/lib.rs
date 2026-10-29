@@ -2,12 +2,14 @@
 //! current shape. See `node-graph/rfcs/document-format-migrations.md` for the pipeline design.
 
 mod node;
+mod order;
 
 use document_graph_storage::{CrdtError, NodeId, Rev};
 use migration_core::{Declaration, FormatMigration, HistoryPolicy, InputConnector, MigrationError, MigrationSet, Payload};
 
 pub use document_graph_storage::rehash_deltas;
 pub use node::{DeclarationTable, RewrittenHistory, apply_migration, rewrite_history};
+pub use order::{migrate_history, order_migrations, references};
 
 #[derive(Debug, thiserror::Error)]
 pub enum RunnerError {
@@ -29,6 +31,12 @@ pub enum RunnerError {
 	NonLinearHistory(Rev),
 	#[error("a rewritten chain both removes and adds node {0:?}, which a shared timestamp can't order")]
 	ChainWritesTwice(NodeId),
+	#[error("two migrations start from {0}")]
+	DuplicateMigration(Declaration),
+	#[error("migration from {from} to {to} does not step exactly one version")]
+	InvalidStep { from: Declaration, to: Declaration },
+	#[error("migrations from {0:?} depend on each other in a cycle")]
+	OrderCycle(Vec<Declaration>),
 	#[error("failed to apply a delta: {0}")]
 	Crdt(#[from] CrdtError),
 }

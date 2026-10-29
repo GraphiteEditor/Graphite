@@ -69,7 +69,7 @@ The function runs once per **anchor**: a node of the source declaration. The run
 
 | Parameter | Region | Operations |
 |---|---|---|
-| `&Node` | anchor (read) | the existing `Node` accessors, plus `id()` |
+| `&Node` | anchor (read) | the existing `Node` accessors, plus `id()`, which the stored node doesn't hold |
 | `&Graph` | anchor's network (read) | `declaration(node)`, `node(node)`, `consumers(output)` |
 | `&mut Inputs` | the anchor's input slots | `set`, `insert`, `push`, `remove`, `truncate` |
 | `&mut Upstream` | new and existing nodes upstream of the anchor | `add_node`, `add_node_keyed`, `remove_node` |
@@ -131,7 +131,7 @@ pub enum Tagged {
 A rename needs no function:
 
 ```rust
-migration!(rename "graphene_core::ops::AddNode"@1 => "math_nodes::add"@2);
+rename!("graphene_core::ops::AddNode"@1 => "math_nodes::add"@2);
 ```
 
 Adding inputs only touches the anchor's slots:
@@ -240,7 +240,7 @@ Applying a migration to every anchor in a state defines a total function `M` ove
 rewritten(d) = diff( R(d), M(O(d) + d) )
 ```
 
-The difference is staged against `R(d)` through the ordinary op path, which produces correct reverse priors, and replaces `d` in history. In the common case it is a single delta: a version step becomes `SetNodeImplementation` to the target declaration, and an input write is moved to its new slot. When the migration restructures the graph it becomes a short chain, for example `AddNode` for an inserted node followed by the rewires. A delta whose difference is empty is dropped.
+The difference is staged against `R(d)` through the ordinary op path, which produces correct reverse priors, and replaces `d` in history. In the common case it is a single delta: a version step becomes `SetNodeImplementation` to the target declaration, and an input write is moved to its new slot. When the migration restructures the graph it becomes a short chain, for example `AddNode` for an inserted node followed by the rewires. A delta whose difference is empty is dropped, and its interaction-end mark moves to the rewritten delta before it. An interaction whose effect the migration makes empty therefore stops being its own undo step.
 
 Translation of later deltas falls out of the same formula. If a migration inserts a conversion between `X` and its consumer `Y`, and later in history the user rewires `Y.0 = X`, then `M` applied to that original state again routes `Y` through the conversion, so the rewritten delta wires `Y` to it. Deltas that never touch a source declaration's node pass through unchanged, because `M` is the identity away from anchors.
 
@@ -259,12 +259,14 @@ Both tiers end in the same place: stored history, the registry snapshot, and ses
 Every parameter type implements a view trait:
 
 ```rust
-pub trait View: Sized {
+pub trait View<'a>: Sized {
 	const REGION: Region;
-	fn extract(context: &AnchorContext) -> Self;
-	fn into_edits(self) -> Edits;
+	fn extract(context: &AnchorContext<'a>) -> Self;
+	fn into_edits(self) -> Result<Edits, MigrationError>;
 }
 ```
+
+`into_edits` fails on a misuse only visible at runtime, such as an input index out of range or a `connect` to a slot that doesn't read the anchor.
 
 The attribute generates a `NodeMigration` implementation that extracts each mutable view, calls the function with the source state and the views, and collects their edits. For `angle_between_degrees`:
 
@@ -279,21 +281,21 @@ impl NodeMigration for AngleBetweenDegrees {
 		decl!("vector_nodes::angle_between"@2)
 	}
 	fn pins(&self) -> &'static [Declaration] {
-		&[decl!("math_nodes::to_radians"@1)]
+		const { &[Declaration::new("math_nodes::to_radians", 1)] }
 	}
 	fn footprint(&self) -> Region {
-		Region::ANCHOR.union(Downstream::REGION)
+		Region::ANCHOR.union(<Downstream as View>::REGION)
 	}
 
 	fn run(&self, context: &AnchorContext) -> Result<Edits, MigrationError> {
-		let mut downstream = Downstream::extract(context);
-		angle_between_degrees(context.source_node(), &mut downstream);
-		Ok(downstream.into_edits())
+		let mut view = <Downstream as View>::extract(context);
+		angle_between_degrees(context.source_node(), &mut view);
+		View::into_edits(view)
 	}
 }
-
-const _: () = assert!(Region::disjoint(&[Downstream::REGION]));
 ```
+
+The struct is named after the function in Pascal case and carries its doc comment. A migration with several mutable views also gets `const _: () = assert!(Region::disjoint(&[...]))` over their regions, so overlapping views fail to compile. The macro rejects a step that doesn't advance the version by exactly one, and parameters other than `&Node`, `&Graph`, and `&mut` views. Pins need the inline `const` block, since a call to a `const fn` isn't promoted to `'static`.
 
 It also registers the migration (see "Registration"). The runner applies the `Edits` to a registry clone, switches the anchor to the target declaration, and diffs.
 
@@ -312,7 +314,7 @@ Migrations are ordered by their declarations, not by registration:
 - **Chain:** a migration whose target is `a@n` runs before the one whose source is `a@n`.
 - **Pins:** every `decl!` in a migration's body pins the declaration it names. A migration that inserts or inspects `fill@2` runs after the migration that produces `fill@2` and before `fill@2 → 3`, so the nodes it creates or sees always have the version it was written against. The attribute macro collects the pins by scanning the body for `decl!`.
 
-Cycles are rejected in CI. Migrations with no ordering relation commute, because their footprints contain different anchors.
+Cycles are rejected in CI, as are two migrations from the same declaration. Migrations with no ordering relation commute, because their footprints contain different anchors. The runner still breaks ties by source declaration, so the order never depends on registration order.
 
 ## Detecting pending migrations
 
@@ -378,7 +380,7 @@ Format migrations whose change cannot be expressed per record declare `Truncate`
 
 ## Registration
 
-Migrations register themselves the way nodes do. On native targets the generated registration runs through `#[ctor]`. On wasm, where `ctor` isn't available, the macro emits an exported `extern "C" fn __migration_registry_*` that the host calls on startup, alongside the existing node registry shims. The runner reads the registry and knows no specific migration.
+Migrations register themselves the way nodes do. On native targets the generated registration runs through `#[ctor]`. On wasm, where `ctor` isn't available, the macro emits an exported `extern "C" fn __migration_registry_*` that the host calls on startup, alongside the existing node registry shims. The export's name hashes the step, so two crates registering the same step fail to link. The runner reads the registry, orders it (see "Ordering"), and knows no specific migration. A rename is registered with `rename!` rather than a `migration!` form, because attribute and function-like macros share one namespace, and macro output must mint a unique exported symbol that `macro_rules!` can't.
 
 Which migrations a binary ships is decided by which migration crates it links, selected with cargo features. A linked crate that nothing references can be discarded by the linker, so each binary references every enabled migration crate (`use nodes_2026 as _;` behind its feature).
 
@@ -406,7 +408,8 @@ Every migration ships with:
 
 ```
 document/migrations/
-├── core/     migration-core: views, connectors, `decl!`, `#[migration]` and `migration!`, registry, Payload, errors
+├── core/     migration-core: views, connectors, `decl!`, registry, Payload, errors, re-exporting `#[migration]` and `rename!`
+├── macros/   migration-macros: `#[migration]` and `rename!`
 ├── runner/   migration-runner: format chaining, ordering, history rewrite, fast path, settling, Rev mapping, translation of older peers' deltas
 └── <sets>    migration crates, one per era or area, selected per binary by cargo features
 ```
@@ -444,5 +447,5 @@ document/migrations/
 
 - CLI `migrate` subcommand for batch upgrades (the runner is editor-independent).
 - Online migration service running retired migration crates as wasm modules, letting active editors drop ancient migrations. Node migrations need the views as host functions.
-- Declarative `migration!` forms for common index maps beyond renames.
+- Declarative forms for common index maps beyond `rename!`.
 - Per-library format versioning, as in the format RFC.

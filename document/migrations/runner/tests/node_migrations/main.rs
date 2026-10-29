@@ -1,9 +1,10 @@
 mod examples;
+mod registration;
 mod rewrite;
 
 use document_graph_storage::{ExportSlot, Implementation, Network, Node, NodeId, NodeInput, ROOT_NETWORK, Registry};
-use examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees, add_rename};
-use migration_core::{Declaration, DeclarationResolver, NodeMigration, decl, literal, literal_of};
+use examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees};
+use migration_core::{Declaration, DeclarationResolver, NodeMigration, decl, literal, literal_of, registered_migrations};
 use migration_runner::{DeclarationTable, RunnerError, apply_migration};
 
 /// A root network built node by node, for running one migration on.
@@ -58,6 +59,12 @@ impl Fixture {
 	}
 }
 
+/// The registered migration starting from `source`.
+pub fn registered(source: Declaration) -> &'static dyn NodeMigration {
+	let migration = registered_migrations().into_iter().find(|migration| migration.source() == source);
+	migration.unwrap_or_else(|| panic!("no migration from {source} is registered"))
+}
+
 fn wire(node: NodeId, index: u32) -> NodeInput {
 	NodeInput::Node { id: node, index }
 }
@@ -75,11 +82,11 @@ fn added_nodes(source: &Registry, migrated: &Registry) -> Vec<NodeId> {
 
 #[test]
 fn rename_switches_declaration_and_keeps_inputs() {
-	let migration = add_rename();
-	let mut fixture = Fixture::new(&migration);
+	let migration = registered(decl!("graphene_core::ops::AddNode"@1));
+	let mut fixture = Fixture::new(migration);
 	let add = fixture.add(decl!("graphene_core::ops::AddNode"@1), vec![literal(Tagged::Number(1.)), literal(Tagged::Number(2.))]);
 
-	let migrated = fixture.migrate(&migration).unwrap();
+	let migrated = fixture.migrate(migration).unwrap();
 
 	assert_eq!(fixture.declaration_of(&migrated, add), Some(decl!("math_nodes::add"@2)));
 	assert_eq!(inputs(&migrated, add), inputs(&fixture.registry, add));

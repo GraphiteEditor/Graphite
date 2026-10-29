@@ -1,7 +1,7 @@
 use crate::{AnchorContext, Declaration, Edits, MigrationError, Region};
 
-/// Steps every node of one declaration to its successor. Implemented by `#[migration]` and `migration!`, not by hand.
-pub trait NodeMigration {
+/// Steps every node of one declaration to its successor. Implemented by `#[migration]` and `rename!`, not by hand.
+pub trait NodeMigration: Send + Sync {
 	/// The declaration whose nodes are anchors.
 	fn source(&self) -> Declaration;
 	/// The declaration the runner switches anchors to.
@@ -44,12 +44,4 @@ impl NodeMigration for Rename {
 	fn run(&self, _context: &AnchorContext) -> Result<Edits, MigrationError> {
 		Ok(Edits::default())
 	}
-}
-
-/// Declarative migrations: `migration!(rename "old::node"@1 => "new::node"@2)`.
-#[macro_export]
-macro_rules! migration {
-	(rename $source:literal @ $source_version:literal => $target:literal @ $target_version:literal) => {
-		$crate::Rename::new($crate::decl!($source @ $source_version), $crate::decl!($target @ $target_version))
-	};
 }

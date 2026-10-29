@@ -27,10 +27,7 @@ impl FormatMigration for RenameKey {
 }
 
 fn format_set() -> MigrationSet {
-	MigrationSet {
-		format: vec![Box::new(RenameKey)],
-		..Default::default()
-	}
+	MigrationSet { format: vec![Box::new(RenameKey)] }
 }
 
 #[test]

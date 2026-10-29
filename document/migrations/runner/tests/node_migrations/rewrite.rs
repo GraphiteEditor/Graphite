@@ -1,6 +1,7 @@
 //! The commutation property on generated linear histories: `replay(rewrite(H)) == M(replay(H))`.
 
-use crate::examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, Tagged, TransformDegrees, add_rename};
+use crate::examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, Tagged, TransformDegrees};
+use crate::registered;
 use document_graph_storage::{Delta, Implementation, Network, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, Registry, RegistryDelta, ResourceId, Session, UserId, apply_retired_op};
 use migration_core::{Declaration, NodeMigration, decl, literal};
 use migration_runner::{DeclarationTable, apply_migration, rewrite_history};
@@ -159,7 +160,7 @@ fn generate(migration: &dyn NodeMigration, seed: u64, steps: usize) -> (Session,
 	(generator.session, table)
 }
 
-fn replay(deltas: &[Delta]) -> Registry {
+pub fn replay(deltas: &[Delta]) -> Registry {
 	let mut registry = Registry::default();
 	for delta in deltas {
 		apply_retired_op(&mut registry, delta.kind.clone(), delta.timestamp).expect("history replays");
@@ -205,7 +206,7 @@ fn check_commutation(migration: &dyn NodeMigration, seeds: std::ops::Range<u64>,
 
 #[test]
 fn rename_commutes() {
-	check_commutation(&add_rename(), 1..50, 40);
+	check_commutation(registered(decl!("graphene_core::ops::AddNode"@1)), 1..50, 40);
 }
 
 #[test]

@@ -3671,11 +3671,25 @@ name = "migration-core"
 version = "0.0.0"
 dependencies = [
  "blake3",
+ "ctor",
  "document-graph-storage",
+ "migration-macros",
  "postcard",
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "migration-macros"
+version = "0.0.0"
+dependencies = [
+ "blake3",
+ "convert_case",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
