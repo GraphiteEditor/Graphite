@@ -17,6 +17,8 @@ static TOTAL_WIRED: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_EXPORTS: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_INPUT_ATTRIBUTES: AtomicUsize = AtomicUsize::new(0);
 static TOTAL_SOURCES: AtomicUsize = AtomicUsize::new(0);
+static TOTAL_COLLECTED: AtomicUsize = AtomicUsize::new(0);
+static TOTAL_REDONE_RETRACTIONS: AtomicUsize = AtomicUsize::new(0);
 
 /// A peer's document plus the editor's byte store, since bare `Session`'s no-op resource defaults leave the request path unexercised.
 struct SimTarget {
@@ -27,6 +29,9 @@ struct SimTarget {
 	flushes: usize,
 	/// Every rev this peer has ever held, to check none is later dropped. See [`SimTarget::flush`].
 	seen_revs: HashSet<Rev>,
+	/// Hashes this peer collected while naming them itself, or while another present peer named them without the bytes:
+	/// a copy the room needed. Other drops are fair game, even if a peer that held the bytes too later leaves unserved.
+	collected_while_needed: HashSet<ResourceHash>,
 	seed: u64,
 }
 
@@ -38,6 +43,7 @@ impl SimTarget {
 			durable_history: Vec::new(),
 			flushes: 0,
 			seen_revs: HashSet::new(),
+			collected_while_needed: HashSet::new(),
 			seed,
 		}
 	}
@@ -187,6 +193,8 @@ struct Peer {
 	last_closed: HotSequence,
 	/// This peer's retired interactions it undid, newest last, for a redo to name.
 	dropped: Vec<Rev>,
+	/// The ops of this peer's hot steps it took back, newest last, for a redo to stage afresh as the editor does.
+	retracted: Vec<Vec<RegistryDelta>>,
 }
 
 impl Peer {
@@ -207,6 +215,7 @@ impl Peer {
 			departed: false,
 			last_closed: HotSequence::NONE,
 			dropped: Vec::new(),
+			retracted: Vec::new(),
 		}
 	}
 
@@ -232,6 +241,8 @@ impl Peer {
 	}
 
 	fn stage(&mut self, op: RegistryDelta) {
+		// A fresh edit clears the redo future, so the steps taken back stop being GC roots.
+		self.retracted.clear();
 		let hot_ops = self.target.session.stage_computed_ops(vec![op]).expect("stage");
 
 		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
@@ -240,6 +251,7 @@ impl Peer {
 	/// Introduce a resource only this peer holds the bytes for, so every other peer has to fetch them.
 	fn stage_resource(&mut self, bytes: Vec<u8>) {
 		let hash = ResourceHash::from(bytes.as_slice());
+		self.retracted.clear();
 		self.target.resources.insert(hash, bytes);
 
 		// Per-peer ids, as live resources get a fresh `ResourceId`; content-derived ids would collide across
@@ -270,7 +282,46 @@ impl Peer {
 		if let Some(retraction) = self.target.session.retract_interaction().expect("retract") {
 			self.last_closed = retraction.ids.iter().map(|id| id.sequence).fold(self.last_closed, HotSequence::max);
 			self.replica.broadcast_retraction(&retraction.ids).expect("broadcast retraction");
+			if !retraction.ops.is_empty() {
+				self.retracted.push(retraction.ops);
+			}
 		}
+	}
+
+	/// Redo the hot step this peer took back last, staging its ops afresh. Like the editor, a redo that no longer fits
+	/// the registry is given up.
+	fn redo_retracted(&mut self) {
+		let Some(ops) = self.retracted.pop() else { return };
+		let Ok(hot_ops) = self.target.session.stage_computed_ops(ops) else { return };
+		self.replica.broadcast_hot_ops(&hot_ops).expect("broadcast");
+		self.end_interaction();
+		TOTAL_REDONE_RETRACTIONS.fetch_add(1, Ordering::Relaxed);
+	}
+
+	/// Drop every held byte outside the GC root set, as the editor's periodic resource GC does. `needed` is what a
+	/// present peer names and lacks, which with what this peer names tells a needed copy from garbage.
+	fn collect_garbage(&mut self, needed: &HashSet<ResourceHash>) {
+		let roots = self.gc_roots();
+		let names = self.names();
+		let dropped = self.target.resources.keys().filter(|hash| !roots.contains(hash) && (needed.contains(hash) || names.contains(hash)));
+		self.target.collected_while_needed.extend(dropped);
+		let before = self.target.resources.len();
+		self.target.resources.retain(|hash, _| roots.contains(hash));
+		TOTAL_COLLECTED.fetch_add(before - self.target.resources.len(), Ordering::Relaxed);
+	}
+
+	fn gc_roots(&self) -> HashSet<ResourceHash> {
+		self.target.session.resource_gc_roots(self.retracted.iter().flatten())
+	}
+
+	/// Every hash this peer's registry, history, hot log or retracted steps name, gathered here rather than through the
+	/// GC root rule it checks.
+	fn names(&self) -> HashSet<ResourceHash> {
+		let session = self.session();
+		let ops = session.history().map(|delta| &delta.kind).chain(session.hot_log().iter().map(|hot_op| &hot_op.op));
+		let mut names: HashSet<ResourceHash> = ops.chain(self.retracted.iter().flatten()).filter_map(RegistryDelta::resource_hash).collect();
+		names.extend(session.registry().resources.values().filter_map(|entry| entry.hash));
+		names
 	}
 
 	/// Undo this peer's latest retired step: the host drops it out of the line itself, a guest asks the host to.
@@ -526,19 +577,21 @@ fn present_host(peers: &[Peer]) -> Option<usize> {
 }
 
 /// Run until nothing is in flight and no peer reports progress, since resource transfers take several rounds.
-/// A room idle without a host has its grace period elapse and settles again.
-fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) {
+/// A room idle without a host has its grace period elapse and settles again. Returns how many resources arrived.
+fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) -> usize {
+	let mut received = 0;
 	for _ in 0..1000 {
 		network.deliver_all();
-		let events: usize = peers.iter_mut().filter(|peer| !peer.departed).map(|peer| peer.poll().len()).sum();
-		if events == 0 && network.pending() == 0 {
+		let events: Vec<Event> = peers.iter_mut().filter(|peer| !peer.departed).flat_map(|peer| peer.poll()).collect();
+		received += events.iter().filter(|event| matches!(event, Event::ResourceReceived { .. })).count();
+		if events.is_empty() && network.pending() == 0 {
 			if present_host(peers).is_none() {
 				let decided = peers.iter_mut().filter(|peer| !peer.departed).filter_map(|peer| peer.replica.decide_role()).count();
 				if decided > 0 {
 					continue;
 				}
 			}
-			return;
+			return received;
 		}
 	}
 	panic!("the room never went idle");
@@ -564,7 +617,7 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			continue;
 		}
 
-		match network.random_below(16) {
+		match network.random_below(18) {
 			// A guest edits only once synced; anything staged earlier would be invisible to its peers.
 			0..=2 if peers[index].replica.is_synced() => {
 				let op = random_op(&mut network, &peers[index].target);
@@ -577,6 +630,12 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 			11 if peers[index].replica.is_synced() => peers[index].retract(),
 			12 if peers[index].replica.is_synced() => peers[index].undo_retired(),
 			13 if peers[index].replica.is_synced() && !peers[index].dropped.is_empty() => peers[index].redo_retired(),
+			// About eleven a run over every peer, often enough to land between a resource's ops, its retirement and its fetch.
+			16 => {
+				let needed = needed_anywhere(&peers);
+				peers[index].collect_garbage(&needed);
+			}
+			17 if peers[index].replica.is_synced() => peers[index].redo_retracted(),
 			// A small payload pool, so peers sometimes introduce the same resource concurrently.
 			8 if peers[index].replica.is_synced() => {
 				let bytes = format!("resource-{}", network.random_below(5)).into_bytes();
@@ -615,10 +674,12 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 	}
 
 	quiesce(&mut network, &mut peers);
+	collect_garbage_everywhere(&mut peers);
 	for peer in peers.iter_mut().filter(|peer| !peer.departed) {
 		peer.end_interaction();
 	}
 	quiesce(&mut network, &mut peers);
+	collect_garbage_everywhere(&mut peers);
 	let host = present_host(&peers).unwrap_or_else(|| {
 		panic!(
 			"seed {seed}: an idle room has no host: {:?}",
@@ -638,7 +699,25 @@ fn simulate(seed: u64, guest_count: usize, steps: usize) -> (MockNetwork, Vec<Pe
 	peers[host].retire();
 	quiesce(&mut network, &mut peers);
 
+	// At rest every held hash is either named or garbage, so collecting must leave nothing to fetch again.
+	collect_garbage_everywhere(&mut peers);
+	let refetched = quiesce(&mut network, &mut peers);
+	assert_eq!(refetched, 0, "seed {seed}: garbage collection at rest dropped bytes the room then fetched again");
+
 	(network, peers)
+}
+
+/// Every hash a present peer names and lacks the bytes for. See [`Peer::names`].
+fn needed_anywhere(peers: &[Peer]) -> HashSet<ResourceHash> {
+	let present = peers.iter().filter(|peer| !peer.departed);
+	present.flat_map(|peer| peer.names().into_iter().filter(|hash| !peer.target.resources.contains_key(hash))).collect()
+}
+
+fn collect_garbage_everywhere(peers: &mut [Peer]) {
+	let needed = needed_anywhere(peers);
+	for peer in peers.iter_mut().filter(|peer| !peer.departed) {
+		peer.collect_garbage(&needed);
+	}
 }
 
 /// Dump every peer's state for one seed: `SIM_DUMP=<seed> cargo test ... -- --nocapture`.
@@ -792,8 +871,11 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		assert!(guest.session().hot_log().is_empty(), "seed {seed}: guest {index} still holds hot ops");
 	}
 
-	// Bytes that left with a departed peer are gone, so only resources a present peer holds must be served.
-	let servable: HashSet<ResourceHash> = present().flat_map(|(_, peer)| peer.target.resources.keys().copied()).collect();
+	// Bytes that left with a departed peer are gone, so only resources a present peer holds must be served. One a
+	// present peer collected while another needed it counts too, or garbage collection losing needed bytes would pass.
+	let servable: HashSet<ResourceHash> = present()
+		.flat_map(|(_, peer)| peer.target.resources.keys().chain(&peer.target.collected_while_needed).copied())
+		.collect();
 
 	// An idle room with anything outstanding is stuck, which content convergence can miss.
 	for (index, peer) in present() {
@@ -802,7 +884,15 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 		assert_eq!(peer.target.durable_history, peer.target.history_revs(), "seed {seed}: peer {index} has unflushed history");
 
 		let unserved: Vec<_> = SyncTarget::missing_resources(&peer.target).into_iter().filter(|hash| servable.contains(hash)).collect();
-		assert!(unserved.is_empty(), "seed {seed}: peer {index} is missing resource bytes another peer holds: {unserved:?}");
+		assert!(
+			unserved.is_empty(),
+			"seed {seed}: peer {index} is missing resource bytes a present peer holds or collected while another needed them: {unserved:?}"
+		);
+
+		// A request outliving its need would suppress the ask once the hash is named again.
+		let missing = SyncTarget::missing_resources(&peer.target);
+		let stale: Vec<_> = peer.replica.pending_resource_requests().filter(|hash| !missing.contains(hash)).collect();
+		assert!(stale.is_empty(), "seed {seed}: peer {index} still requests resources it no longer misses: {stale:?}");
 	}
 }
 
@@ -811,37 +901,50 @@ fn peers_converge_under_random_interleavings() {
 	// The committed corpus is the first 1000 seeds; `SIM_SEEDS` runs more.
 	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(1000);
 
+	// `SIM_KEEP_GOING` runs every seed and lists the failures, to tell one bug from several.
+	let keep_going = std::env::var_os("SIM_KEEP_GOING").is_some();
+	let mut failed = Vec::new();
 	for seed in 0..seeds {
-		let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
-		{
-			let registry = peers[present_host(&peers).expect("an idle room has a host")].session().retired_registry();
-			TOTAL_NODES.fetch_add(registry.node_instances.len(), Ordering::Relaxed);
-			let wired = registry
-				.node_instances
-				.values()
-				.flat_map(|node| node.inputs())
-				.filter(|slot| matches!(slot.input, NodeInput::Node { .. }))
-				.count();
-			TOTAL_WIRED.fetch_add(wired, Ordering::Relaxed);
+		let run = || {
+			let (_, peers) = simulate(seed, 1 + (seed % 3) as usize, 200);
+			{
+				let registry = peers[present_host(&peers).expect("an idle room has a host")].session().retired_registry();
+				TOTAL_NODES.fetch_add(registry.node_instances.len(), Ordering::Relaxed);
+				let wired = registry
+					.node_instances
+					.values()
+					.flat_map(|node| node.inputs())
+					.filter(|slot| matches!(slot.input, NodeInput::Node { .. }))
+					.count();
+				TOTAL_WIRED.fetch_add(wired, Ordering::Relaxed);
 
-			let exports = registry.networks.values().flat_map(|net| &net.exports).filter(|slot| slot.target.is_some()).count();
-			TOTAL_EXPORTS.fetch_add(exports, Ordering::Relaxed);
+				let exports = registry.networks.values().flat_map(|net| &net.exports).filter(|slot| slot.target.is_some()).count();
+				TOTAL_EXPORTS.fetch_add(exports, Ordering::Relaxed);
 
-			let input_attributes = registry.node_instances.values().flat_map(|node| node.inputs()).filter(|slot| !slot.attributes.is_empty()).count();
-			TOTAL_INPUT_ATTRIBUTES.fetch_add(input_attributes, Ordering::Relaxed);
+				let input_attributes = registry.node_instances.values().flat_map(|node| node.inputs()).filter(|slot| !slot.attributes.is_empty()).count();
+				TOTAL_INPUT_ATTRIBUTES.fetch_add(input_attributes, Ordering::Relaxed);
 
-			// A second source can only come from `AddSource`, proving the resource-chain ops reach the registry.
-			let stacked_sources = registry.resources.values().filter(|entry| entry.sources.len() > 1).count();
-			TOTAL_SOURCES.fetch_add(stacked_sources, Ordering::Relaxed);
+				// A second source can only come from `AddSource`, proving the resource-chain ops reach the registry.
+				let stacked_sources = registry.resources.values().filter(|entry| entry.sources.len() > 1).count();
+				TOTAL_SOURCES.fetch_add(stacked_sources, Ordering::Relaxed);
+			}
+			assert_converged(seed, &peers);
+		};
+		if !keep_going {
+			run();
+		} else if std::panic::catch_unwind(run).is_err() {
+			failed.push(seed);
 		}
-		assert_converged(seed, &peers);
 	}
+	assert!(failed.is_empty(), "{} seeds failed: {failed:?}", failed.len());
 	// The generator's ops are guarded on registry state, so a change can quietly stop producing them.
 	assert!(TOTAL_NODES.load(Ordering::Relaxed) > 0, "the corpus produced no nodes");
 	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
 	assert!(TOTAL_EXPORTS.load(Ordering::Relaxed) > 0, "the corpus set no network exports");
 	assert!(TOTAL_INPUT_ATTRIBUTES.load(Ordering::Relaxed) > 0, "the corpus wrote no input-slot attributes");
 	assert!(TOTAL_SOURCES.load(Ordering::Relaxed) > 0, "the corpus never stacked a second source on a resource");
+	assert!(TOTAL_COLLECTED.load(Ordering::Relaxed) > 0, "garbage collection never dropped a resource");
+	assert!(TOTAL_REDONE_RETRACTIONS.load(Ordering::Relaxed) > 0, "the corpus never redid a step taken back");
 }
 
 /// A rejoining guest keeps its `PeerId` but restarts its broadcast sequence, which the room must follow
