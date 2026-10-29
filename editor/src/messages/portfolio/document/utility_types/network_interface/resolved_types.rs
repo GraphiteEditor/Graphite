@@ -212,7 +212,7 @@ impl NodeNetworkInterface {
 				};
 				let node_path = [network_path, &[*node_id]].concat();
 				match implementation {
-					DocumentNodeImplementation::Network(_) => {
+					DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_) => {
 						let outward_wires = self.with_outward_wires(&node_path, |map| map.get(&OutputConnector::Import(*input_index)).cloned()).flatten();
 						let Some(outward_wires) = outward_wires else { return false };
 						outward_wires.iter().any(|connector| match connector {
@@ -354,7 +354,7 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		};
 		match implementation {
-			DocumentNodeImplementation::Network(_) => {
+			DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_) => {
 				let nested_path = [network_path, &[*node_id]].concat();
 				let inputs_from_import = self
 					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -391,7 +391,7 @@ impl NodeNetworkInterface {
 					.any(|connector| type_feeds_input(source_type, connector, conversions))
 			}
 			// The wire reaches every interior input fed by the import, so each of them has to accept it
-			Some(DocumentNodeImplementation::Network(_)) => {
+			Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
 				let nested_path = [network_path, &[*node_id]].concat();
 				let interior_inputs = self
 					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -435,7 +435,7 @@ impl NodeNetworkInterface {
 					Box::new(move |source_type| connectors.iter().any(|connector| type_feeds_input(source_type, connector, conversions)))
 				}
 				// The wire reaches every interior input fed by the import, so each of them has to accept it
-				Some(DocumentNodeImplementation::Network(_)) => {
+				Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
 					let interior_inputs = self
 						.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -523,7 +523,7 @@ impl NodeNetworkInterface {
 					.map(|node_io| node_io.return_value.nested_type().clone())
 					.collect(),
 				// A subgraph's output carries whatever feeds its export
-				Some(DocumentNodeImplementation::Network(_)) => {
+				Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
 					let export = InputConnector::Export(*output_index);
 					match self.upstream_output_connector(&export, &nested_path) {
@@ -583,7 +583,9 @@ impl NodeNetworkInterface {
 					return Vec::new();
 				};
 				match implementation {
-					DocumentNodeImplementation::Network(_) => self.valid_output_types(&OutputConnector::Import(input_connector.input_index()), &[network_path, &[*node_id]].concat()),
+					DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_) => {
+						self.valid_output_types(&OutputConnector::Import(input_connector.input_index()), &[network_path, &[*node_id]].concat())
+					}
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 						let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
 							log::error!("Protonode {proto_node_identifier:?} not found in registry in complete_valid_input_types");
@@ -656,7 +658,9 @@ impl NodeNetworkInterface {
 					return TypeSource::Error("Could not get implementation");
 				};
 				match implementation {
-					DocumentNodeImplementation::Network(_) => self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat()),
+					DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_) => {
+						self.input_type(&InputConnector::Export(*output_index), &[network_path, &[*node_id]].concat())
+					}
 					// The compiler removes passthrough nodes so they resolve no type of their own, but their output carries their primary input's type
 					DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER => {
 						self.input_type(&InputConnector::primary_input(*node_id), network_path)
