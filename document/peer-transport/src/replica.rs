@@ -573,6 +573,10 @@ impl Replica {
 	fn handle_packet(&mut self, from: TransportPeerId, packet: SyncPacket, target: &mut dyn SyncTarget, events: &mut Vec<Event>) -> Result<(), ReplicaError> {
 		match packet {
 			SyncPacket::Hello { peer, user, role, epoch, seq } => {
+				if peer == self.peer {
+					log::warn!("Ignoring link {from}, whose hello claims this peer's own id");
+					return Ok(());
+				}
 				log::debug!("Join handshake: hello from {peer:?} ({role:?}), synced {}", self.is_synced());
 				// A re-greeting over the same link and epoch only announces a role; re-anchoring would strand held broadcasts.
 				let known = self.peers.contains_key(&from) && self.delivered.get(&peer).is_some_and(|progress| progress.epoch == epoch);
@@ -974,6 +978,32 @@ mod tests {
 		network.deliver_all();
 		host.poll(&mut session);
 		assert_eq!(host.held_broadcasts(), 1);
+	}
+
+	#[test]
+	fn a_hello_claiming_our_own_id_is_ignored() {
+		let (mut network, mut host, host_link, mut session) = hosted_room();
+		let mut impostor = connect_bare_peer(&mut network, &mut host, &mut session);
+		let own_hello = SyncPacket::Hello {
+			peer: HOST_PEER,
+			user: UserId(2),
+			role: Role::Guest,
+			epoch: 1,
+			seq: 0,
+		};
+		let broadcast = Broadcast {
+			epoch: 1,
+			seq: 1,
+			seen: Vec::new(),
+			body: BroadcastBody::HotOps(Vec::new()),
+		};
+		impostor.send(host_link, &own_hello).unwrap();
+		impostor.send(host_link, &SyncPacket::Broadcast(broadcast)).unwrap();
+		network.deliver_all();
+		host.poll(&mut session);
+
+		assert_eq!(host.peers().count(), 0, "the impostor never joins");
+		assert_eq!(host.held_broadcasts(), 0, "nothing from it waits forever");
 	}
 
 	#[test]
