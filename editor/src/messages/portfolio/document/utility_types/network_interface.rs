@@ -238,7 +238,7 @@ mod network_interface_tests {
 		let mut metadata_with_unused = network_metadata.clone();
 		metadata_with_unused.persistent_metadata.definitions.insert(unused, NodeNetworkMetadata::default());
 		let with_unused = NodeNetworkInterface::from_trees(network_with_unused, metadata_with_unused);
-		assert_eq!(with_unused.validate_invariants().len(), 1);
+		assert_eq!(with_unused.validate_invariants(), vec!["Node 0 in network [] has no metadata entry".to_string()]);
 
 		let mut mismatched_network = network;
 		mismatched_network.nodes.get_mut(&NodeId(11)).unwrap().inputs.push(NodeInput::value(TaggedValue::None, false));
