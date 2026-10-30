@@ -500,3 +500,102 @@ fn textures_of_dropped_rasters_are_freed() {
 	}
 	assert_eq!(canvas.images.textures.len(), 1, "only the texture of pixels that still exist stays");
 }
+
+#[test]
+fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
+	use crate::WgpuPipelineCache;
+	use crate::raster_effects::evaluate_raster_effects;
+	use crate::shader_runtime::raster_kernel_runtime::RasterKernelRuntime;
+	use core_types::Color as GraphicColor;
+	use core_types::list::{ATTR_EFFECTS, Item};
+	use core_types::ops::{Convert, ConvertAsync};
+	use core_types::transform::Footprint;
+	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
+	use glam::DVec2;
+	use graphic_types::raster_types::{CPU, GPU, Image, Raster, Storage};
+	use graphic_types::{EffectOperation, Effects};
+
+	let size = UVec2::new(160, 160);
+	let (min, max) = (50, 100);
+	let shadow_color = GraphicColor::from_rgbaf32_unchecked(0.1, 0.2, 0.8, 0.75);
+	let blur = |radius, box_blur, gamma| EffectOperation::Blur { radius, box_blur, gamma };
+
+	let cases = [
+		vec![blur(3., false, false)],
+		vec![blur(20., false, true)],
+		vec![blur(5.5, true, false)],
+		vec![EffectOperation::DropShadow {
+			color: shadow_color,
+			offset: DVec2::new(6.5, -3.),
+			blur: 4.,
+			spread: 2.,
+		}],
+		vec![EffectOperation::InnerShadow {
+			color: shadow_color,
+			offset: DVec2::new(4., 4.),
+			blur: 3.,
+			spread: 0.,
+		}],
+		vec![
+			EffectOperation::OuterGlow {
+				color: shadow_color,
+				blur: 6.,
+				spread: 3.,
+			},
+			blur(2., false, false),
+		],
+	];
+
+	let Some(executor) = executor() else { return };
+	let pipeline = WgpuPipelineCache::default();
+	executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+	for effects in cases {
+		for fill in [1., 0.5] {
+			let Some(rendered) = render_square_with_effects(effects.clone(), fill, min as f64, max as f64, size) else {
+				return;
+			};
+
+			// The same square as a raster covering the render one pixel to one pixel
+			let mut image = Image::new(size.x, size.y, GraphicColor::TRANSPARENT);
+			for y in min..max {
+				for x in min..max {
+					image.data[(y * size.x + x) as usize] = GraphicColor::WHITE;
+				}
+			}
+			let uploaded: Raster<GPU> = Raster::new_cpu(image).convert(Footprint::DEFAULT, executor.clone());
+			let item = Item::new_from_element(uploaded)
+				.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(size.as_dvec2()))
+				.with_attribute(ATTR_EFFECTS, Effects::from_operations(effects.clone()))
+				.with_attribute(ATTR_OPACITY_FILL, fill as f64);
+			let evaluated = evaluate_raster_effects(item, &pipeline).unwrap();
+			assert!(evaluated.attribute::<Effects>(ATTR_EFFECTS).is_none(), "the effects are used up");
+
+			// Reads the evaluated raster at the center of each render pixel through its grown coverage
+			let transform: DAffine2 = evaluated.attribute_cloned_or_default(ATTR_TRANSFORM);
+			assert_eq!(transform, DAffine2::from_scale(size.as_dvec2()), "the growth is in the coverage");
+			let placement = transform * evaluated.element().coverage();
+			let raster: Raster<CPU> = futures::executor::block_on(evaluated.into_element().convert(Footprint::DEFAULT, executor.clone()));
+			let document_to_pixels = DAffine2::from_scale(DVec2::new(raster.width as f64, raster.height as f64)) * placement.inverse();
+
+			let mut worst = 0;
+			for y in 0..size.y {
+				for x in 0..size.x {
+					let point = document_to_pixels.transform_point2(DVec2::new(x as f64 + 0.5, y as f64 + 0.5)).floor();
+					let color = raster.data[(point.y as u32 * raster.width + point.x as u32) as usize];
+					let [red, green, blue, alpha] = color.to_gamma_srgb_channels();
+					let evaluated = [red * alpha, green * alpha, blue * alpha, alpha].map(|channel| channel * 255.);
+
+					// Compared premultiplied, so a nearly transparent pixel's color can't dominate
+					let rendered = pixel(&rendered, size, x, y);
+					let rendered_alpha = rendered[3] as f32 / 255.;
+					for channel in 0..4 {
+						let rendered_channel = if channel == 3 { rendered[3] as f32 } else { rendered[channel] as f32 * rendered_alpha };
+						worst = worst.max((evaluated[channel] - rendered_channel).abs().round() as u32);
+					}
+				}
+			}
+			assert!(worst <= 2, "{effects:?} at fill {fill} differs from the render by up to {worst} levels");
+		}
+	}
+}
