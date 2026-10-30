@@ -14,7 +14,7 @@ use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 // Dehazing algorithm based on "Single Image Haze Removal Using Dark Channel Prior"
 // Paper: <https://www.researchgate.net/publication/220182411_Single_Image_Haze_Removal_Using_Dark_Channel_Prior>
 // TODO: Make this algorithm work with negative strength values
-#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), placeholder = pending_dehaze)]
+#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), footprint_invariant, placeholder = pending_dehaze)]
 async fn dehaze(
 	_: impl Ctx,
 	image_frame: Item<Raster<GPU>>,
