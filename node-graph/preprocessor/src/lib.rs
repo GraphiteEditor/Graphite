@@ -84,7 +84,7 @@ impl Preprocessor {
 							let id = producer_node_id(&platform_application_io::editor_api::IDENTIFIER, resource_id);
 							let resource_node = DocumentNode {
 								inputs: vec![
-									NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
+									NodeInput::scope(platform_application_io::application_io::IDENTIFIER),
 									NodeInput::value(TaggedValue::ResourceHash(hash), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),

@@ -22,6 +22,7 @@ pub use context::Context as WgpuContext;
 pub use context::ContextBuilder as WgpuContextBuilder;
 pub use pipeline::Pipeline as WgpuPipeline;
 pub use pipeline::PipelineCache as WgpuPipelineCache;
+pub use pipeline::PipelineError as WgpuPipelineError;
 pub use raster_types::Texture;
 pub use rendering::vello_scene_builder::VelloSceneBuilder;
 pub use wgpu::Backends as WgpuBackends;
@@ -188,3 +189,7 @@ impl WgpuExecutor {
 		})
 	}
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("No GPU is available")]
+pub struct NoGpuError;
