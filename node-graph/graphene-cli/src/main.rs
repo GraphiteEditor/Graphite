@@ -223,7 +223,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				scale,
 				size: (width, height),
 				transparent,
-			};
+				framing: None,
+			}
+			.framed(&executor, &runtime, &spawner)
+			.await?;
 			let animation = export::AnimationParams::new(fps, frames, duration);
 			if file_type == export::FileType::Gif {
 				export::export_gif(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
