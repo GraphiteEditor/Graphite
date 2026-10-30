@@ -288,6 +288,91 @@ impl Session {
 		Ok(session)
 	}
 
+	/// Move the shared head back to its ancestor `target`, leaving the line since as a branch. Returns the move to
+	/// broadcast and what the steps left behind named. Only the retirer does this; a guest asks it to.
+	pub fn move_head_to(&mut self, target: Rev) -> Result<(HeadMove, Touched), CrdtError> {
+		let from = self.document.head;
+		if from == Some(target) {
+			return Err(CrdtError::NothingToUndo);
+		}
+		let touched = self.touched_since(Some(target))?;
+		let snapshot = self.fold_at(Some(target))?;
+
+		self.document.head = Some(target);
+		self.document.retired_snapshot = snapshot;
+		self.document.redo_stack.clear();
+		self.document.rebuild_working();
+		self.publish_up_to(target);
+		Ok((
+			HeadMove {
+				from,
+				head: Some(target),
+				copies: Vec::new(),
+			},
+			touched,
+		))
+	}
+
+	/// Follow a peer's [`HeadMove`], returning what the walked-over ops named. Changes nothing when the head is not
+	/// where the move started, since this peer has then diverged, or when the copies don't chain from an ancestor of
+	/// the head to the move's head.
+	pub fn apply_head_move(&mut self, moved: &HeadMove) -> Result<Touched, CrdtError> {
+		if self.document.head != moved.from {
+			return Err(CrdtError::CursorMismatch {
+				expected: moved.from,
+				found: self.document.head,
+			});
+		}
+		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
+		let touched = self.touched_since(base)?;
+		let mut tip = base;
+		for copy in &moved.copies {
+			if copy.parent != tip || matches!(copy.kind, RegistryDelta::Merge { .. }) {
+				return Err(CrdtError::MalformedHeadMove);
+			}
+			tip = Some(copy.id);
+		}
+		if tip != moved.head {
+			return Err(CrdtError::MalformedHeadMove);
+		}
+
+		// Like `follow`, a failed fold leaves only the copies behind in history.
+		for copy in &moved.copies {
+			self.document.clock.observe(copy.timestamp);
+			self.document.history.push(copy.clone());
+		}
+		let snapshot = self.fold_at(moved.head)?;
+		self.document.head = moved.head;
+		self.document.retired_snapshot = snapshot;
+		if !moved.copies.is_empty() {
+			self.document.history.canonical_sort();
+		}
+		self.document.redo_stack.clear();
+		self.document.rebuild_working();
+		if let Some(head) = moved.head {
+			self.publish_up_to(head);
+		}
+		Ok(touched)
+	}
+
+	/// What the deltas on the head's line but not on `base`'s named, merged branches included. Fails unless `base` is
+	/// on the head's line.
+	fn touched_since(&self, base: Option<Rev>) -> Result<Touched, CrdtError> {
+		let history = &self.document.history;
+		let line = history.ancestors(self.document.head);
+		if let Some(base) = base
+			&& !line.contains(&base)
+		{
+			return Err(CrdtError::NotAncestor(base));
+		}
+		let kept = history.ancestors(base);
+		let mut touched = Touched::default();
+		for delta in history.iter().filter(|delta| line.contains(&delta.id) && !kept.contains(&delta.id)) {
+			touched.record(&delta.kind);
+		}
+		Ok(touched)
+	}
+
 	/// Which hot ops are done with, for a peer catching up and for persisting. See [`RetiredMarks`].
 	pub fn retired_marks(&self) -> &RetiredMarks {
 		&self.document.retired
@@ -306,7 +391,11 @@ impl Session {
 
 	/// The retired snapshot as history alone gives it: the fold of `head`'s ancestry, leaving out undone deltas kept for redo.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
-		let reachable = self.document.history.ancestors(self.document.head);
+		self.fold_at(self.document.head)
+	}
+
+	fn fold_at(&self, head: Option<Rev>) -> Result<Registry, CrdtError> {
+		let reachable = self.document.history.ancestors(head);
 		let mut scratch = Document::empty(self.document.peer, self.document.user);
 		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
 			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
@@ -981,12 +1070,27 @@ pub enum CrdtError {
 	NothingToUndo,
 	#[error("Nothing to redo")]
 	NothingToRedo,
+	#[error("Cursor is at {found:?}, the move expected {expected:?}")]
+	CursorMismatch { expected: Option<Rev>, found: Option<Rev> },
+	#[error("Delta {0} is not on the head's line")]
+	NotAncestor(Rev),
+	#[error("Head move copies do not chain from its base to its head")]
+	MalformedHeadMove,
 	#[error("Node {0} already exists")]
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]
 	NetworkAlreadyExists(NetworkId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
+}
+
+/// A shared head move, as [`Session::move_head_to`] produces it and [`Session::apply_head_move`] follows it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HeadMove {
+	pub from: Option<Rev>,
+	pub head: Option<Rev>,
+	/// Steps minted again on top of the line's new end.
+	pub copies: Vec<Delta>,
 }
 
 /// How [`Session::merge`] or [`Session::follow`] moved the head.
