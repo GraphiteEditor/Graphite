@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: Some(application_io_for_api),
 	});
 	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone());
+	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(std::time::Instant::now()));
 	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
 
 	match app.command {

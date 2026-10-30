@@ -37,7 +37,7 @@ serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 wgpu = { workspace = true, optional = true }
-web-sys = { workspace = true }
+web-sys = { workspace = true, features = ["Performance"] }
 serde_json = { workspace = true }
 spin = { workspace = true, optional = true }
 tsify = { workspace = true }
