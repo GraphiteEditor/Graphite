@@ -5,6 +5,8 @@ use crate::WgpuPipelineCache;
 use crate::raster_kernel::{MAX_FRAME_SIDE, adjust_raster, blur_raster, run_raster_kernel};
 use crate::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 use core_types::list::{ATTR_EFFECTS, Item};
+use core_types::ops::Convert;
+use core_types::transform::Footprint;
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphic_types::effects::{bevel_light, bevel_smoothing, outline_extents};
@@ -13,7 +15,7 @@ use raster_kernels::RasterKernel;
 use raster_kernels::adjustments::{leading_adjustments, preserves_alpha};
 use raster_kernels::blur::BlurSpace;
 use raster_kernels::effects::*;
-use raster_types::{GPU, Raster, Storage};
+use raster_types::{CPU, GPU, Raster, Storage};
 
 /// Blurs and spreads shorter than this, in pixels, leave no visible trace.
 pub const NEGLIGIBLE_LENGTH: f64 = 0.01;
@@ -39,6 +41,16 @@ pub fn evaluate_raster_effects(item: Item<Raster<GPU>>, pipeline: &WgpuPipelineC
 	item.remove_attribute::<f64>(ATTR_OPACITY_FILL);
 	item.set_attribute(ATTR_TRANSFORM, transform);
 	Ok(item)
+}
+
+/// The CPU raster uploaded with its effects carried out into its pixels, for the Eager node and the input adapter that feeds a CPU raster to a node taking only GPU rasters.
+pub fn upload_raster(image: Item<Raster<CPU>>, pipeline: &WgpuPipelineCache) -> Result<Item<Raster<GPU>>, NodeError> {
+	let executor = pipeline.executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to upload a raster"))?;
+
+	let (image, attributes) = image.into_parts();
+	let uploaded: Raster<GPU> = image.convert(Footprint::DEFAULT, executor);
+
+	evaluate_raster_effects(Item::from_parts(uploaded, attributes), pipeline)
 }
 
 /// The larger raster of the effects carried out on `raster`, an item's whose `transform` is kept, with the coverage placing that larger raster where the original's pixels were.

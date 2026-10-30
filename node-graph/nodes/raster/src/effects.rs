@@ -1,16 +1,16 @@
 use crate::raster_kernel::raster_kernel_pipeline;
-use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
-use core_types::ops::Convert;
-use core_types::transform::Footprint;
-use core_types::{ATTR_OPACITY_FILL, Color, Ctx, Interrupt, NodeError};
+use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item, List};
+use core_types::{ATTR_OPACITY_FILL, CacheHash, Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, Effect, EffectOperation, Effects, GlowSource, Graphic, Vector, stamp_effect};
 use raster_kernels::adjustments::{adjust_color, adjust_gradient, preserves_alpha};
+use std::hash::{DefaultHasher, Hasher};
+use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::vector::style::StrokeAlign;
 use vector_types::{Gradient, GradientSettings};
 use wgpu_executor::WgpuPipelineCache;
-use wgpu_executor::raster_effects::evaluate_raster_effects;
+use wgpu_executor::raster_effects::{evaluate_raster_effects, upload_raster};
 use wgpu_executor::raster_kernel::adjust_raster;
 
 /// Content an effect can be carried out on. A GPU raster has the effect carried out into its pixels at once, with the same kernels the renderer uses,
@@ -405,21 +405,56 @@ fn eager(
 	image: Item<Raster<CPU>>,
 	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> Result<Item<Raster<GPU>>, Interrupt> {
-	let pipeline = pipeline.element();
-	let executor = pipeline.executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to upload a raster"))?;
+	Ok(upload_raster(image, pipeline.element())?)
+}
 
-	let (image, attributes) = image.into_parts();
-	let uploaded: Raster<GPU> = image.convert(Footprint::DEFAULT, executor);
+/// The `input_adapter` row uploading a CPU raster wire for an input that only takes GPU rasters, by the same steps as the Eager node.
+/// The upload is kept until the wire carries other pixels or effects, so it's made once however often the consuming node runs.
+#[node_macro::node(category("_Adapters"), skip_impl)]
+fn upload_item(_: impl Ctx, value: Item<Raster<CPU>>, pipeline: Item<WgpuPipelineCache>, #[data] cache: Arc<Mutex<Option<(u64, Item<Raster<GPU>>)>>>) -> Result<Item<Raster<GPU>>, Interrupt> {
+	Ok(uploaded(cache, &value, || upload_raster(value.clone(), pipeline.element()))?)
+}
 
-	Ok(evaluate_raster_effects(Item::from_parts(uploaded, attributes), pipeline)?)
+/// The `List` counterpart of `upload_item`.
+#[node_macro::node(category("_Adapters"), skip_impl)]
+fn upload_list(_: impl Ctx, value: List<Raster<CPU>>, pipeline: Item<WgpuPipelineCache>, #[data] cache: Arc<Mutex<Option<(u64, List<Raster<GPU>>)>>>) -> Result<List<Raster<GPU>>, Interrupt> {
+	let upload = || value.clone().into_iter().map(|item| upload_raster(item, pipeline.element())).collect::<Result<List<_>, _>>();
+	Ok(uploaded(cache, &value, upload)?)
+}
+
+/// The `input_adapter` row passing a GPU raster wire through, taking the pipeline only since every row under one identifier takes the same inputs.
+#[node_macro::node(category("_Adapters"), skip_impl)]
+fn pass_raster<'i, T: 'i + Send>(_: impl Ctx, value: T, _pipeline: Item<WgpuPipelineCache>) -> T {
+	value
+}
+
+/// The result of `upload` for `source`, reusing the last one if it was for the same pixels and effects.
+fn uploaded<S: CacheHash, T: Clone>(cache: &Mutex<Option<(u64, T)>>, source: &S, upload: impl FnOnce() -> Result<T, NodeError>) -> Result<T, NodeError> {
+	let mut hasher = DefaultHasher::new();
+	source.cache_hash(&mut hasher);
+	let hash = hasher.finish();
+
+	let mut cache = cache.lock().unwrap_or_else(PoisonError::into_inner);
+	if let Some((_, result)) = cache.as_ref().filter(|(cached_hash, _)| *cached_hash == hash) {
+		return Ok(result.clone());
+	}
+
+	let result = upload()?;
+	*cache = Some((hash, result.clone()));
+	Ok(result)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use core_types::ATTR_TRANSFORM;
+	use core_types::Node;
+	use core_types::context::OwnedContextImpl;
 	use core_types::list::ATTR_EFFECTS;
-	use core_types::ops::ConvertAsync;
+	use core_types::ops::{Convert, ConvertAsync};
+	use core_types::poll::Poll;
+	use core_types::transform::Footprint;
+	use core_types::value::PrecomputedItemNode;
 	use glam::{DAffine2, UVec2};
 	use graphic_types::Effects;
 	use graphic_types::raster_types::{Image, Storage};
@@ -582,6 +617,59 @@ mod tests {
 			assert_eq!(adjusted.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.), 0.5, "the fill stays for the render");
 			let raster: Raster<CPU> = adjusted.into_element().convert(Footprint::DEFAULT, executor.clone()).await;
 			assert_color(raster.data[0], Color::BLACK);
+		});
+	}
+
+	#[test]
+	fn the_input_adapter_uploads_a_raster_once_until_its_pixels_or_effects_change() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+			let pipeline = Item::new_from_element(pipeline);
+
+			let cache = Default::default();
+			let upload = |item: &Item<Raster<CPU>>| super::upload_item((), &cache, item.clone(), pipeline.clone()).unwrap();
+
+			let plain = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::WHITE)));
+			let first = upload(&plain);
+			assert_eq!(upload(&plain).element().texture(), first.element().texture(), "the same pixels stay uploaded");
+
+			// Stamps carried out before anything reads the pixels, leaving none behind
+			let inverted = Raster::<CPU>::apply_adjustment(plain, Adjustment::Invert, pipeline.element()).unwrap();
+			let second = upload(&inverted);
+			assert_ne!(second.element().texture(), first.element().texture(), "other effects are uploaded anew");
+			assert!(second.attribute::<Effects>(ATTR_EFFECTS).is_none());
+			let raster: Raster<CPU> = second.into_element().convert(Footprint::DEFAULT, executor.clone()).await;
+			assert_color(raster.data[0], Color::BLACK);
+		});
+	}
+
+	#[test]
+	fn the_input_adapter_keeps_its_upload_when_the_footprint_changes() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+			let raster = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::WHITE)));
+			let adapter = UploadItemNode::new(PrecomputedItemNode::new(raster), PrecomputedItemNode::new(Item::new_from_element(pipeline)));
+
+			let upload_under = |translation: DVec2| {
+				let footprint = Footprint {
+					transform: DAffine2::from_translation(translation),
+					..Footprint::DEFAULT
+				};
+				let context = OwnedContextImpl::default().with_footprint(footprint).into_context();
+				let Poll::Final(uploaded) = adapter.eval(&context) else {
+					panic!("the upload should finish at once")
+				};
+				uploaded
+			};
+
+			let first = upload_under(DVec2::ZERO);
+			let panned = upload_under(DVec2::new(500., -300.));
+			assert_eq!(panned.element().texture(), first.element().texture(), "panning shouldn't upload the raster again");
 		});
 	}
 }
