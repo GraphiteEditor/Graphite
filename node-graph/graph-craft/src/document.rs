@@ -9,7 +9,7 @@ use core_types::{Context, Cow, MemoHash, NodeCompileMetadata, NodeParameter, Pro
 use dyn_any::DynAny;
 use glam::IVec2;
 use log::Metadata;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -308,9 +308,9 @@ pub enum OldDocumentNodeImplementation {
 
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, core_types::CacheHash, PartialOrd, Ord, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct DefinitionId(pub u64);
+pub struct NetworkId(pub u64);
 
-impl DefinitionId {
+impl NetworkId {
 	pub fn new() -> Self {
 		Self(generate_uuid())
 	}
@@ -323,7 +323,7 @@ pub enum DocumentNodeImplementation {
 	///
 	/// A nested [`NodeNetwork`] that is flattened by the [`NodeNetwork::flatten`] function.
 	Network(NodeNetwork),
-	Definition(DefinitionId),
+	Definition(NetworkId),
 	/// This describes a (document) node implemented as a proto node.
 	///
 	/// A proto node identifier which can be found in `node_registry.rs`.
@@ -572,21 +572,21 @@ pub struct NodeNetwork {
 	)]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 	#[serde(default, skip_serializing_if = "FxHashMap::is_empty")]
-	pub definitions: FxHashMap<DefinitionId, NodeNetwork>,
+	pub definitions: FxHashMap<NetworkId, NodeNetwork>,
 	#[serde(skip)]
 	pub generated: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct NetworkLocation<'a> {
-	pub definition: Option<DefinitionId>,
+	pub definition: Option<NetworkId>,
 	pub inline_path: &'a [NodeId],
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DefinitionError {
-	Missing(DefinitionId),
-	Cycle(Vec<DefinitionId>),
+	Missing(NetworkId),
+	Cycle(Vec<NetworkId>),
 	NestedTable,
 }
 
@@ -603,9 +603,9 @@ impl std::fmt::Display for DefinitionError {
 impl std::error::Error for DefinitionError {}
 
 struct DefinitionInliner {
-	definitions: FxHashMap<DefinitionId, NodeNetwork>,
-	inlined: FxHashMap<DefinitionId, NodeNetwork>,
-	visiting: Vec<DefinitionId>,
+	definitions: FxHashMap<NetworkId, NodeNetwork>,
+	inlined: FxHashMap<NetworkId, NodeNetwork>,
+	visiting: Vec<NetworkId>,
 }
 
 impl DefinitionInliner {
@@ -625,7 +625,7 @@ impl DefinitionInliner {
 		Ok(())
 	}
 
-	fn inlined_definition(&mut self, id: DefinitionId) -> Result<&NodeNetwork, DefinitionError> {
+	fn inlined_definition(&mut self, id: NetworkId) -> Result<&NodeNetwork, DefinitionError> {
 		if !self.inlined.contains_key(&id) {
 			if let Some(start) = self.visiting.iter().position(|&visiting| visiting == id) {
 				return Err(DefinitionError::Cycle(self.visiting[start..].to_vec()));
@@ -948,6 +948,9 @@ impl NodeNetwork {
 		}
 		for node in self.nodes.values_mut() {
 			node.normalize_stored_types();
+		}
+		for definition in self.definitions.values_mut() {
+			definition.normalize_stored_types();
 		}
 	}
 
@@ -1441,7 +1444,11 @@ impl NodeNetwork {
 	/// Create a [`RecursiveNodeIter`] that iterates over all [`DocumentNode`]s, including ones that are deeply nested.
 	pub fn recursive_nodes(&self) -> RecursiveNodeIter<'_> {
 		let nodes = self.nodes.iter().map(|(id, node)| (id, node, Vec::new())).collect();
-		RecursiveNodeIter { nodes }
+		RecursiveNodeIter {
+			definitions: &self.definitions,
+			visited_definitions: FxHashSet::default(),
+			nodes,
+		}
 	}
 
 	/// Ensure the cached list of dependants exactly matches the real list of dependants
@@ -1478,7 +1485,10 @@ impl NodeNetwork {
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
+/// Each definition body is visited once, under the path of the first instance reached.
 pub struct RecursiveNodeIter<'a> {
+	definitions: &'a FxHashMap<NetworkId, NodeNetwork>,
+	visited_definitions: FxHashSet<NetworkId>,
 	nodes: Vec<(&'a NodeId, &'a DocumentNode, Vec<NodeId>)>,
 }
 
@@ -1486,7 +1496,12 @@ impl<'a> Iterator for RecursiveNodeIter<'a> {
 	type Item = (&'a NodeId, &'a DocumentNode, Vec<NodeId>);
 	fn next(&mut self) -> Option<Self::Item> {
 		let (current_id, node, path) = self.nodes.pop()?;
-		if let DocumentNodeImplementation::Network(network) = &node.implementation {
+		let nested_network = match &node.implementation {
+			DocumentNodeImplementation::Network(network) => Some(network),
+			DocumentNodeImplementation::Definition(id) if self.visited_definitions.insert(*id) => self.definitions.get(id),
+			_ => None,
+		};
+		if let Some(network) = nested_network {
 			self.nodes.extend(network.nodes.iter().map(|(id, node)| {
 				let mut nested_path = path.clone();
 				nested_path.push(*current_id);
@@ -2111,7 +2126,7 @@ mod test {
 		DocumentNode { implementation, ..Default::default() }
 	}
 
-	fn network_with(nodes: impl IntoIterator<Item = (NodeId, DocumentNodeImplementation)>, definitions: impl IntoIterator<Item = (DefinitionId, NodeNetwork)>) -> NodeNetwork {
+	fn network_with(nodes: impl IntoIterator<Item = (NodeId, DocumentNodeImplementation)>, definitions: impl IntoIterator<Item = (NetworkId, NodeNetwork)>) -> NodeNetwork {
 		NodeNetwork {
 			exports: vec![NodeInput::node(NodeId(10), 0)],
 			nodes: nodes.into_iter().map(|(id, implementation)| (id, node_with(implementation))).collect(),
@@ -2120,7 +2135,7 @@ mod test {
 		}
 	}
 
-	const ADD: DefinitionId = DefinitionId(1);
+	const ADD: NetworkId = NetworkId(1);
 
 	fn two_add_instances() -> NodeNetwork {
 		network_with(
@@ -2146,7 +2161,7 @@ mod test {
 
 	#[test]
 	fn definitions_referencing_definitions_inline_transitively() {
-		let outer = DefinitionId(2);
+		let outer = NetworkId(2);
 		let mut network = network_with(
 			[(NodeId(10), DocumentNodeImplementation::Definition(outer))],
 			[(ADD, add_network()), (outer, network_with([(NodeId(10), DocumentNodeImplementation::Definition(ADD))], []))],
@@ -2159,7 +2174,7 @@ mod test {
 
 	#[test]
 	fn invalid_definition_tables_are_rejected() {
-		let (first, second) = (DefinitionId(2), DefinitionId(3));
+		let (first, second) = (NetworkId(2), NetworkId(3));
 		let mut cyclic = network_with(
 			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
 			[
@@ -2200,5 +2215,23 @@ mod test {
 
 		network.definitions.get_mut(&ADD).unwrap().exports.push(NodeInput::node(NodeId(0), 0));
 		assert_ne!(network.current_hash(), before);
+	}
+
+	#[test]
+	fn recursive_nodes_visit_each_definition_once() {
+		let network = two_add_instances();
+		let body_paths = network.recursive_nodes().map(|(_, _, path)| path).filter(|path| !path.is_empty()).collect::<Vec<_>>();
+		assert_eq!(body_paths.len(), add_network().nodes.len());
+		assert!(body_paths.windows(2).all(|pair| pair[0] == pair[1]));
+
+		let (first, second) = (NetworkId(2), NetworkId(3));
+		let cyclic = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Definition(first))],
+			[
+				(first, network_with([(NodeId(10), DocumentNodeImplementation::Definition(second))], [])),
+				(second, network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], [])),
+			],
+		);
+		assert_eq!(cyclic.recursive_nodes().count(), 3);
 	}
 }

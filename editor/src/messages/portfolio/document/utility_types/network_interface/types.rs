@@ -580,7 +580,7 @@ pub struct NodeNetworkPersistentMetadata {
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
-	pub definitions: HashMap<DefinitionId, NodeNetworkMetadata>,
+	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
@@ -1137,6 +1137,9 @@ pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl Fn
 	for node in network.nodes.values() {
 		visit_node_resources(node, visit);
 	}
+	for definition in network.definitions.values() {
+		visit_network_resources(definition, visit);
+	}
 }
 
 pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {
@@ -1190,6 +1193,37 @@ mod tests {
 		visit_network_resources(&outer, &mut |id| visits.push(id));
 		assert_eq!(visits.iter().filter(|id| **id == shared).count(), 3);
 		assert_eq!(visits.len(), 4);
+	}
+
+	#[test]
+	fn resource_visits_reach_each_definition_once() {
+		let definition = NetworkId(1);
+		let used = ResourceId::from(1);
+		let instance = || DocumentNode {
+			implementation: DocumentNodeImplementation::Definition(definition),
+			..Default::default()
+		};
+		let body = NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::Resource(used), false)],
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			nodes: [(NodeId(1), instance()), (NodeId(2), instance())].into_iter().collect(),
+			definitions: [(definition, body)].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut visits = Vec::new();
+		visit_network_resources(&network, &mut |id| visits.push(id));
+		assert_eq!(visits, vec![used]);
 	}
 
 	#[test]

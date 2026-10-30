@@ -75,7 +75,7 @@ impl Default for NodeTemplate {
 #[derive(Debug, Clone, PartialEq)]
 pub enum NodeTemplateImplementation {
 	Network(NodeNetworkTemplate),
-	Definition(DefinitionId),
+	Definition(NetworkId),
 	ProtoNode(ProtoNodeIdentifier),
 	Extract,
 }
