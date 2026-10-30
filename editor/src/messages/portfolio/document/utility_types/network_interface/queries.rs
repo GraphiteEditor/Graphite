@@ -72,18 +72,24 @@ impl NodeNetworkInterface {
 		});
 	}
 
-	fn for_each_network(&self, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
-		fn walk(network_path: &mut Vec<NodeId>, network_metadata: &NodeNetworkMetadata, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
-			visit(network_path, network_metadata);
-			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
-				let Some(nested) = &node_metadata.persistent_metadata.network_metadata else { continue };
-				network_path.push(*node_id);
-				walk(network_path, nested, visit);
-				network_path.pop();
+	pub(super) fn for_each_network(&self, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
+		let mut stack = vec![(Vec::new(), Vec::new())];
+		while let Some((network_path, enclosing_definitions)) = stack.pop() {
+			let (Some(network), Some(network_metadata)) = (self.document_network().nested_network(&network_path), self.nested_metadata(&network_path)) else {
+				continue;
+			};
+			visit(&network_path, network_metadata);
+
+			for (node_id, node) in &network.nodes {
+				let mut enclosing_definitions = enclosing_definitions.clone();
+				match node.implementation {
+					DocumentNodeImplementation::Network(_) => {}
+					DocumentNodeImplementation::Definition(id) if !enclosing_definitions.contains(&id) => enclosing_definitions.push(id),
+					_ => continue,
+				}
+				stack.push(([network_path.as_slice(), &[*node_id]].concat(), enclosing_definitions));
 			}
 		}
-
-		walk(&mut Vec::new(), &self.network_metadata, visit);
 	}
 
 	/// Gets the nested network based on network_path
@@ -867,23 +873,11 @@ impl NodeNetworkInterface {
 	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		// O(n * (nodes + wires)) since connected_to_output performs a graph walk per artboard candidate
-		self.document_network_metadata()
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter_map(|(node_id, node_metadata)| {
-				if node_metadata.persistent_metadata.network_metadata.as_ref().is_some_and(|network_metadata| {
-					network_metadata
-						.persistent_metadata
-						.reference
-						.as_ref()
-						.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]) && self.is_layer(node_id, &[]))
-				}) {
-					Some(LayerNodeIdentifier::new(*node_id, self))
-				} else {
-					None
-				}
-			})
+		self.document_network()
+			.nodes
+			.keys()
+			.filter(|node_id| self.is_artboard(node_id, &[]) && self.connected_to_output(node_id, &[]) && self.is_layer(node_id, &[]))
+			.map(|node_id| LayerNodeIdentifier::new(*node_id, self))
 			.collect()
 	}
 

@@ -253,4 +253,39 @@ mod network_interface_tests {
 		let mismatched = NodeNetworkInterface::from_trees(mismatched_network, network_metadata);
 		assert_eq!(mismatched.validate_invariants().len(), 1);
 	}
+
+	#[test]
+	fn metadata_walks_reach_every_instance_of_a_definition() {
+		use super::*;
+
+		let definition = NetworkId(1);
+		let instance = |implementation| DocumentNode { implementation, ..Default::default() };
+		let instances = [NodeId(10), NodeId(11)];
+
+		let network = NodeNetwork {
+			nodes: instances.iter().map(|&id| (id, instance(DocumentNodeImplementation::Definition(definition)))).collect(),
+			definitions: [(definition, NodeNetwork::value_network(instance(DocumentNodeImplementation::default())))].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut layer_metadata = DocumentNodeMetadata::default();
+		layer_metadata.persistent_metadata.node_type_metadata = NodeTypePersistentMetadata::layer(IVec2::ZERO);
+		let mut definition_metadata = NodeNetworkMetadata::default();
+		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), layer_metadata);
+
+		let mut network_metadata = NodeNetworkMetadata::default();
+		for id in instances {
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
+		}
+		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
+
+		let mut interface = NodeNetworkInterface::from_trees(network, network_metadata);
+
+		let mut layer_paths = interface.layer_paths();
+		layer_paths.sort();
+		assert_eq!(layer_paths, vec![vec![NodeId(10), NodeId(0)], vec![NodeId(11), NodeId(0)]]);
+
+		interface.set_reference(&NodeId(10), &[], Some("Artboard".into()));
+		assert!(interface.is_artboard(&NodeId(11), &[]));
+	}
 }

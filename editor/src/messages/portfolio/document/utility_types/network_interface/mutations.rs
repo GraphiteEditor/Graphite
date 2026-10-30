@@ -504,11 +504,12 @@ impl NodeNetworkInterface {
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
 	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in set_reference");
+		let nested_path = [network_path, &[*node_id]].concat();
+		let Some(mut network) = self.network_mut(&nested_path) else {
+			log::error!("Could not get the network of node {node_id} in set_reference");
 			return;
 		};
-		node.set_reference(reference_name);
+		network.set_reference(reference_name);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts

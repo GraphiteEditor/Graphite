@@ -68,14 +68,6 @@ impl NodeDeltas<'_> {
 		});
 	}
 
-	/// Records a change to the network this node owns, addressed by the node's path extended with its ID.
-	fn owned_network(&mut self, change: NetworkMetadataChange) {
-		self.deltas.push(EditorDelta::NetworkMetadata {
-			network_path: self.locator.owned_network_path(),
-			change,
-		});
-	}
-
 	fn graph(&mut self, delta: RuntimeDelta) {
 		self.deltas.push(EditorDelta::Graph(delta));
 	}
@@ -229,18 +221,6 @@ impl NodeMut<'_> {
 		if changed {
 			let change = NodeMetadataChange::NodeType(self.metadata.node_type_metadata.clone());
 			self.deltas.metadata(change);
-		}
-		changed
-	}
-
-	/// The definition this node's nested network was instantiated from. Only network nodes carry one.
-	pub(crate) fn set_reference(&mut self, reference: Option<String>) -> bool {
-		let Some(network_metadata) = self.metadata.network_metadata.as_mut() else { return false };
-		let changed = network_metadata.persistent_metadata.reference != reference;
-		network_metadata.persistent_metadata.reference = reference;
-		if changed {
-			let change = NetworkMetadataChange::Reference(network_metadata.persistent_metadata.reference.clone());
-			self.deltas.owned_network(change);
 		}
 		changed
 	}

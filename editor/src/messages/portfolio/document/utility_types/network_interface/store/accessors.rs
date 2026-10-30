@@ -105,18 +105,12 @@ impl NodeNetworkInterface {
 	/// Visits every network at every nesting level with its view state, for restoring what the peer was
 	/// looking at onto an interface rebuilt from storage.
 	pub(in super::super) fn for_each_network_view_state_mut(&mut self, mut visit: impl FnMut(&[NodeId], NetworkViewStateMut)) {
-		let mut stack = vec![Vec::new()];
-		while let Some(network_path) = stack.pop() {
+		let mut network_paths = Vec::new();
+		self.for_each_network(&mut |network_path, _| network_paths.push(network_path.to_vec()));
+
+		for network_path in network_paths {
 			let Some(network_metadata) = self.network_metadata_mut(&network_path) else { continue };
 			let persistent = &mut network_metadata.persistent_metadata;
-
-			stack.extend(
-				persistent
-					.node_metadata
-					.iter()
-					.filter(|(_, node_metadata)| node_metadata.persistent_metadata.network_metadata.is_some())
-					.map(|(node_id, _)| [network_path.as_slice(), &[*node_id]].concat()),
-			);
 
 			visit(
 				&network_path,
