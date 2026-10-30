@@ -15,6 +15,7 @@ use graphic_types::adjustment::{
 	LevelsRecord, LevelsSettings, SelectiveColorInks, SelectiveColorSettings,
 };
 pub use graphic_types::adjustment::{DesaturateMethod, RelativeAbsolute, SelectiveColorChoice};
+pub use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
 use num_enum::{FromPrimitive, IntoPrimitive};
 use raster_kernels::color_lookup_table::parse_cached;
 use raster_types::{GPU, Raster};
@@ -932,93 +933,6 @@ pub enum RedGreenBlueAlpha {
 	Alpha,
 }
 
-/// Style of noise pattern.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[widget(Dropdown)]
-pub enum NoiseType {
-	#[default]
-	Perlin,
-	#[label("OpenSimplex2")]
-	OpenSimplex2,
-	#[label("OpenSimplex2S")]
-	OpenSimplex2S,
-	Cellular,
-	ValueCubic,
-	Value,
-	WhiteNoise,
-}
-
-/// Style of layered levels of the noise pattern.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-pub enum FractalType {
-	#[default]
-	None,
-	#[label("Fractional Brownian Motion")]
-	FBm,
-	Ridged,
-	PingPong,
-	#[label("Progressive (Domain Warp Only)")]
-	DomainWarpProgressive,
-	#[label("Independent (Domain Warp Only)")]
-	DomainWarpIndependent,
-}
-
-/// Distance function used by the cellular noise.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-pub enum CellularDistanceFunction {
-	#[default]
-	Euclidean,
-	#[label("Euclidean Squared (Faster)")]
-	EuclideanSq,
-	Manhattan,
-	Hybrid,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-pub enum CellularReturnType {
-	CellValue,
-	#[default]
-	#[label("Nearest (F1)")]
-	Nearest,
-	#[label("Next Nearest (F2)")]
-	NextNearest,
-	#[label("Average (F1 / 2 + F2 / 2)")]
-	Average,
-	#[label("Difference (F2 - F1)")]
-	Difference,
-	#[label("Product (F2 * F1 / 2)")]
-	Product,
-	#[label("Division (F1 / F2)")]
-	Division,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(dyn_any::DynAny)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
-#[widget(Dropdown)]
-pub enum DomainWarpType {
-	#[default]
-	None,
-	#[label("OpenSimplex2")]
-	OpenSimplex2,
-	#[label("OpenSimplex2 Reduced")]
-	OpenSimplex2Reduced,
-	BasicGrid,
-}
-
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
@@ -1576,19 +1490,8 @@ fn color_lookup<T: Adjust>(
 }
 
 mod _graphene_hash_impls {
-	use super::{AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RedGreenBlueAlpha, TonalRange};
-	graphene_hash::impl_via_hash!(
-		RedGreenBlue,
-		RedGreenBlueAlpha,
-		NoiseType,
-		FractalType,
-		CellularDistanceFunction,
-		CellularReturnType,
-		DomainWarpType,
-		AdjustmentChannel,
-		TonalRange,
-		HueSaturationRange
-	);
+	use super::{AdjustmentChannel, HueSaturationRange, RedGreenBlue, RedGreenBlueAlpha, TonalRange};
+	graphene_hash::impl_via_hash!(RedGreenBlue, RedGreenBlueAlpha, AdjustmentChannel, TonalRange, HueSaturationRange);
 }
 
 #[cfg(test)]

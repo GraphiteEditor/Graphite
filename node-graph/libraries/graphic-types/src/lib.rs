@@ -1,6 +1,7 @@
 pub mod adjustment;
 pub mod appearance;
 pub mod artboard;
+pub mod generator;
 pub mod graphic;
 
 // Re-export all transitive dependencies so downstream crates only need to depend on graphic-types

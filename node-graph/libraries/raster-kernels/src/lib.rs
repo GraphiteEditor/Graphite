@@ -4,6 +4,7 @@
 pub mod adjustments;
 pub mod blending;
 pub mod color_lookup_table;
+pub mod generators;
 mod kernel;
 
 pub use kernel::*;

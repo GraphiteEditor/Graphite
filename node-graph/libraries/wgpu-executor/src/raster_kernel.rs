@@ -7,8 +7,10 @@ use core_types::NodeError;
 use core_types::list::Item;
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphic_types::Adjustment;
+use graphic_types::generator::GeneratorPattern;
 use raster_kernels::adjustments::{AdjustmentVisitor, visit_kernel};
-use raster_kernels::{GpuParams, MapColor, RasterKernel, ToGpuParams, map_color_module, raster_kernel_module};
+use raster_kernels::generators::visit_generator_kernel;
+use raster_kernels::{GpuParams, MapColor, RasterKernel, RasterKernelVisitor, ToGpuParams, map_color_module, raster_kernel_module};
 use raster_types::{GPU, Raster, Storage};
 use std::any::{TypeId, type_name};
 
@@ -97,6 +99,24 @@ pub fn adjust_raster(adjustment: &Adjustment, raster: Raster<GPU>, pipeline: &Wg
 	}
 
 	visit_kernel(adjustment, AdjustRaster { raster, pipeline })
+}
+
+/// Renders `pattern` across `area` of its own space, from its minimum to its maximum corner, into a raster of `size` pixels.
+pub fn render_generator(pattern: &GeneratorPattern, area: [DVec2; 2], size: UVec2, pipeline: &WgpuPipelineCache) -> Result<Raster<GPU>, NodeError> {
+	struct RenderGenerator<'a> {
+		size: UVec2,
+		pipeline: &'a WgpuPipelineCache,
+	}
+
+	impl RasterKernelVisitor for RenderGenerator<'_> {
+		type Output = Result<Raster<GPU>, NodeError>;
+
+		fn visit<K: RasterKernel>(self, kernel: &K) -> Self::Output {
+			run_raster_kernel(kernel, Vec::new(), self.size, self.pipeline)
+		}
+	}
+
+	visit_generator_kernel(pattern, area, size, RenderGenerator { size, pipeline })
 }
 
 /// The most pixels along each side of a [`union_frame`], which coarsens its grid to fit, within the texture size most WebGL2 devices support.
@@ -193,6 +213,7 @@ mod tests {
 	use core_types::transform::Footprint;
 	use graphene_resource::Resource;
 	use graphic_types::adjustment::*;
+	use graphic_types::generator::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseSettings, NoiseType};
 	use graphic_types::vector_types::{Gradient, GradientStop};
 	use raster_kernels::adjustments::adjust_color;
 	use raster_types::{CPU, Image};
@@ -414,6 +435,76 @@ mod tests {
 					assert!(difference < 0.01, "{adjustment}: {color:?} became {actual:?} on the GPU but {expected:?} on the CPU");
 				}
 			}
+		});
+	}
+
+	fn noise(seed: i64, noise_type: NoiseType, fractal_type: FractalType) -> GeneratorPattern {
+		GeneratorPattern::Noise(NoiseSettings {
+			seed,
+			scale: 10.,
+			noise_type,
+			domain_warp_type: DomainWarpType::None,
+			domain_warp_amplitude: 0.,
+			fractal_type,
+			fractal_octaves: 3,
+			fractal_lacunarity: 2.,
+			fractal_gain: 0.5,
+			fractal_weighted_strength: 0.,
+			fractal_ping_pong_strength: 2.,
+			cellular_distance_function: CellularDistanceFunction::Euclidean,
+			cellular_return_type: CellularReturnType::Nearest,
+			cellular_jitter: 1.,
+		})
+	}
+
+	/// The pattern rendered across `area` into `size` pixels, read back.
+	async fn render(executor: &WgpuExecutor, pipeline: &WgpuPipelineCache, pattern: &GeneratorPattern, area: [DVec2; 2], size: u32) -> Vec<Color> {
+		let raster = render_generator(pattern, area, UVec2::splat(size), pipeline).unwrap();
+		let raster: Raster<CPU> = raster.convert(Footprint::DEFAULT, executor.clone()).await;
+		raster.data().data.clone()
+	}
+
+	#[test]
+	fn renders_of_overlapping_areas_agree_where_they_overlap() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+			// One pixel per unit across 0 to 32, and again across 16 to 48, as two neighboring tiles of a render would sample it
+			let pattern = noise(7, NoiseType::OpenSimplex2, FractalType::FBm);
+			let whole = render(&executor, &pipeline, &pattern, [DVec2::ZERO, DVec2::splat(32.)], 32).await;
+			let shifted = render(&executor, &pipeline, &pattern, [DVec2::splat(16.), DVec2::splat(48.)], 32).await;
+			for y in 0..16 {
+				for x in 0..16 {
+					assert_eq!(whole[(y + 16) * 32 + x + 16], shifted[y * 32 + x]);
+				}
+			}
+		});
+	}
+
+	#[test]
+	fn white_noise_is_the_same_wherever_and_however_finely_it_is_sampled() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+			// Each unit cell keeps its value when sampled four times as finely
+			let white_noise = |seed| noise(seed, NoiseType::WhiteNoise, FractalType::None);
+			let area = [DVec2::ZERO, DVec2::splat(4.)];
+			let coarse = render(&executor, &pipeline, &white_noise(3), area, 4).await;
+			let fine = render(&executor, &pipeline, &white_noise(3), area, 16).await;
+			for y in 0..16 {
+				for x in 0..16 {
+					assert_eq!(fine[y * 16 + x], coarse[(y / 4) * 4 + x / 4]);
+				}
+			}
+
+			// The values spread across the whole range, and another seed gives others
+			let luminances: Vec<f32> = coarse.iter().map(|color| color.r()).collect();
+			assert!(luminances.iter().any(|&value| value < 0.5) && luminances.iter().any(|&value| value > 0.5));
+			assert_ne!(render(&executor, &pipeline, &white_noise(4), area, 4).await, coarse);
 		});
 	}
 }

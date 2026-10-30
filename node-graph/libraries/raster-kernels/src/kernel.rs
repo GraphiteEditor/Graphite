@@ -377,3 +377,9 @@ pub enum RasterKernelLookup<'a> {
 	/// A `size x size x size` 3D texture, its entries ordered with x fastest, then y, then z.
 	Lut3d { size: u32, data: &'a [Color] },
 }
+
+/// Receives a [`RasterKernel`] whose type depends on what it was picked for, such as the pattern a generator renders.
+pub trait RasterKernelVisitor {
+	type Output;
+	fn visit<K: RasterKernel>(self, kernel: &K) -> Self::Output;
+}
