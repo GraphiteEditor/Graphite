@@ -170,3 +170,22 @@ fn saving_an_unchanged_document_twice_writes_the_same_folder() {
 		}
 	});
 }
+
+#[test]
+fn a_working_copy_on_disk_saves_what_one_in_memory_saves() {
+	futures::executor::block_on(async {
+		let byte_store = HashMapResourceStorage::new();
+		let gdd = busy_document(&byte_store);
+		let dir = tempfile::tempdir().unwrap();
+
+		for (index, options) in option_sets().into_iter().enumerate() {
+			let archive = gdd.export_to_bytes(ExportFormat::Zip, options, &byte_store, None).await.expect("export");
+
+			let working = document_container::backends::folder::FolderBackend::create(dir.path().join(format!("working {index}"))).expect("create folder");
+			let on_disk = GddV1::open_from_archive(&archive, AnyContainer::Folder(working), GddV1Layout).await.expect("reopen");
+
+			let saved = on_disk.export_to_bytes(ExportFormat::Zip, options, &byte_store, None).await.expect("export");
+			assert!(archive == saved, "a folder working copy with {options:?} saves different bytes");
+		}
+	});
+}
