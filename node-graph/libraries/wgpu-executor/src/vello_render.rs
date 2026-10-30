@@ -1,8 +1,13 @@
 use crate::WgpuPipelineCache;
 use crate::raster_effects::apply_effects;
+use crate::raster_kernel::adjust_raster;
+use core_types::NodeError;
+use core_types::graphene_hash::CacheHash;
+use core_types::ops::Convert;
+use core_types::transform::Footprint;
 use glam::{DMat2, UVec2};
-use graphic_types::Effects;
-use raster_types::{GPU, Raster, Texture, WeakCPU};
+use graphic_types::{Adjustment, Effects};
+use raster_types::{CPU, GPU, Raster, Texture, WeakCPU};
 use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -42,6 +47,7 @@ pub struct VelloCanvas {
 	/// The premultiplied texture Vello GPU renders into before conversion to straight alpha, kept while the render size stays the same.
 	premultiplied_target: Option<wgpu::Texture>,
 	images: ImageTextures,
+	adjusted_rasters: AdjustedRasters,
 }
 
 /// A render in progress: the shared renderer and GPU, the canvas whose resources it draws with, and the raster kernels that carry out its effects groups' effects.
@@ -103,6 +109,7 @@ impl VelloRenderer {
 		};
 		context.render_area(draw, view, size, target);
 		canvas.images.free_unused();
+		canvas.adjusted_rasters.free_unused(canvas.images.render_count);
 
 		Ok(())
 	}
@@ -124,6 +131,7 @@ impl VelloRenderer {
 			clear(device, queue, target);
 		}
 		canvas.images.free_unused();
+		canvas.adjusted_rasters.free_unused(canvas.images.render_count);
 	}
 }
 
@@ -315,6 +323,17 @@ impl EffectsRenderer for RenderContext<'_> {
 			}
 		}
 	}
+
+	fn adjust_raster(&mut self, raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Option<Texture> {
+		let render_count = self.canvas.images.render_count;
+		match self.canvas.adjusted_rasters.prepare(raster, adjustments, render_count, self.kernels) {
+			Ok(texture) => texture,
+			Err(error) => {
+				log::error!("Failed to carry out adjustments: {error}");
+				None
+			}
+		}
+	}
 }
 
 /// Leaves `target` transparent.
@@ -437,6 +456,82 @@ impl ImageTextures {
 				ImageKey::Texture(..) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
 			}
 		});
+	}
+}
+
+/// The GPU rasters of the images recent renders drew with leading adjustments, uploaded once however their adjustments change.
+#[derive(Default)]
+struct AdjustedRasters {
+	rasters: HashMap<u64, AdjustedRaster>,
+}
+
+/// A CPU raster's pixels on the GPU, with a copy for each run of adjustments it's drawn with.
+struct AdjustedRaster {
+	/// The pixels uploaded, which are freed once they're gone since they can't be drawn again.
+	source: WeakCPU,
+	uploaded: Raster<GPU>,
+	copies: Vec<AdjustedCopy>,
+}
+
+/// A raster with a run of adjustments carried out on it.
+struct AdjustedCopy {
+	run_hash: u64,
+	texture: Texture,
+	last_used: u64,
+}
+
+impl AdjustedRasters {
+	/// The texture of `raster` with the run of `adjustments` carried out on it, keyed by the raster's identity and the run's hash.
+	fn prepare(&mut self, raster: &Raster<CPU>, adjustments: &[Adjustment], render_count: u64, kernels: &WgpuPipelineCache) -> Result<Option<Texture>, NodeError> {
+		let Some(executor) = kernels.executor() else { return Ok(None) };
+
+		let mut hasher = std::hash::DefaultHasher::new();
+		adjustments.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
+		let run_hash = std::hash::Hasher::finish(&hasher);
+
+		let adjusted_raster = self.rasters.entry(raster.buffer_id()).or_insert_with(|| AdjustedRaster {
+			source: raster.downgrade(),
+			uploaded: raster.clone().convert(Footprint::DEFAULT, executor.clone()),
+			copies: Vec::new(),
+		});
+
+		if let Some(copy) = adjusted_raster.copies.iter_mut().find(|copy| copy.run_hash == run_hash) {
+			copy.last_used = render_count;
+			return Ok(Some(copy.texture.clone()));
+		}
+
+		// A new run replaces the one longest unused, as when dragging a slider makes a new run every render
+		let replaced = adjusted_raster
+			.copies
+			.iter()
+			.enumerate()
+			.filter(|(_, copy)| copy.last_used < render_count)
+			.min_by_key(|(_, copy)| copy.last_used);
+		if let Some((index, _)) = replaced {
+			adjusted_raster.copies.swap_remove(index);
+		}
+
+		let mut result = adjusted_raster.uploaded.clone();
+		for adjustment in adjustments {
+			result = adjust_raster(adjustment, result, kernels)?;
+		}
+		let Some(texture) = result.texture().cloned() else { return Ok(None) };
+
+		adjusted_raster.copies.push(AdjustedCopy {
+			run_hash,
+			texture: texture.clone(),
+			last_used: render_count,
+		});
+		Ok(Some(texture))
+	}
+
+	fn free_unused(&mut self, render_count: u64) {
+		let in_use = |last_used: u64| render_count - last_used < UNUSED_IMAGE_RENDER_LIMIT;
+
+		for adjusted_raster in self.rasters.values_mut() {
+			adjusted_raster.copies.retain(|copy| in_use(copy.last_used));
+		}
+		self.rasters.retain(|_, adjusted_raster| !adjusted_raster.copies.is_empty() && adjusted_raster.source.is_alive());
 	}
 }
 

@@ -954,3 +954,151 @@ fn evaluating_leading_adjustments_keeps_the_colors_of_transparent_pixels() {
 	let difference = (raster.data[0].to_vec4() - expected.to_vec4()).abs().max_element();
 	assert!(difference < 1e-3, "got {:?} rather than {expected:?}", raster.data[0]);
 }
+
+#[test]
+fn adjusted_images_carry_out_their_adjustments_on_a_texture_of_their_pixels() {
+	use core_types::Color as GraphicColor;
+	use graphic_types::adjustment::{Adjustment, DesaturateMethod};
+	use graphic_types::raster_types::{Image, Raster};
+	use raster_kernels::adjustments::adjust_color;
+
+	let size = UVec2::new(8, 8);
+	let colors: Vec<GraphicColor> = (0..64)
+		.map(|index| GraphicColor::from_gamma_srgb_channels(index as f32 / 63., 1. - index as f32 / 63., 0.5, 1.))
+		.collect();
+	let raster = Raster::new_cpu(Image {
+		width: size.x,
+		height: size.y,
+		data: colors.clone(),
+	});
+	let run = [
+		Adjustment::Invert,
+		Adjustment::Vibrance { vibrance: 40., saturation: 0. },
+		Adjustment::Desaturate { method: DesaturateMethod::LumaRec601 },
+	];
+
+	let mut scene = VelloSceneBuilder::new(8, 8, Affine::IDENTITY, 4096);
+	assert!(
+		scene.adjusted_raster(&raster, &run).is_none(),
+		"a scene with no GPU to carry them out on leaves the image to its effects"
+	);
+
+	let gpu = render(size, |scene| {
+		let texture = scene.adjusted_raster(&raster, &run).expect("the adjustments are carried out");
+		scene.draw_texture(texture, peniko::ImageSampler::new(), Affine::IDENTITY);
+	});
+	let Some(gpu) = gpu else { return };
+
+	for (index, color) in colors.iter().enumerate() {
+		let mapped = run.iter().fold(*color, |color, adjustment| adjust_color(adjustment, color));
+		let expected = mapped.to_gamma_srgb_channels().map(|channel| (channel * 255.).round() as i32);
+		for channel in 0..3 {
+			assert!(
+				(expected[channel] - gpu[index][channel] as i32).abs() <= 1,
+				"pixel {index} is {:?} rather than {expected:?}",
+				gpu[index]
+			);
+		}
+	}
+}
+
+#[test]
+fn minified_adjusted_images_sample_their_adjusted_mipmaps() {
+	use graphic_types::adjustment::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+
+	// White inverted to black, drawn at an eighth of its size where only the smaller levels are sampled
+	let white = Raster::new_cpu(Image::new(64, 64, core_types::Color::WHITE));
+	let draw = |scene: &mut VelloSceneBuilder| {
+		let texture = scene.adjusted_raster(&white, &[Adjustment::Invert]).expect("the adjustment is carried out");
+		scene.draw_texture(texture, peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+	};
+
+	let Some(pixels) = render(UVec2::new(8, 8), draw) else { return };
+	for (index, pixel) in pixels.iter().enumerate() {
+		assert!(pixel[0] <= 1 && pixel[3] == 255, "pixel {index} is {pixel:?} rather than black");
+	}
+}
+
+#[test]
+fn adjusted_images_upload_once_and_remake_one_copy_as_their_adjustments_change() {
+	use graphic_types::adjustment::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+
+	let Some(executor) = executor() else { return };
+	let _turn = take_turn();
+	let raster = Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE));
+	let exposure = |exposure| Adjustment::Exposure {
+		exposure,
+		offset: 0.,
+		gamma_correction: 1.,
+	};
+	let copies = |canvas: &crate::VelloCanvas| canvas.adjusted_rasters.rasters.values().map(|adjusted_raster| adjusted_raster.copies.len()).sum::<usize>();
+	let size = UVec2::new(64, 64);
+	let target = executor.request_texture(size);
+	let render_runs = |canvas: &mut crate::VelloCanvas, runs: &[Vec<Adjustment>]| {
+		let mut draw = |scene: &mut VelloSceneBuilder| {
+			for run in runs {
+				let texture = scene.adjusted_raster(&raster, run).expect("the adjustments are carried out");
+				scene.draw_texture(texture, peniko::ImageSampler::new(), Affine::scale(8.));
+			}
+		};
+		let context = executor.context();
+		(executor.inner.vello_renderer)
+			.render(canvas, &context.device, &context.queue, &executor.render_kernels(), &mut draw, Affine::IDENTITY, size, &target)
+			.unwrap();
+	};
+
+	// Dragging a slider adjusts the same pixels differently in every render
+	let mut canvas = crate::VelloCanvas::default();
+	render_runs(&mut canvas, &[vec![exposure(0.1)]]);
+	let uploaded = canvas.adjusted_rasters.rasters.values().next().unwrap().uploaded.texture().cloned();
+	for amount in [0.2, 0.3] {
+		render_runs(&mut canvas, &[vec![exposure(amount)]]);
+	}
+	assert_eq!(copies(&canvas), 1, "each new run takes over the copy the last render drew");
+	assert_eq!(
+		canvas.adjusted_rasters.rasters.values().next().unwrap().uploaded.texture().cloned(),
+		uploaded,
+		"the pixels stay uploaded"
+	);
+
+	// Two layers sharing the pixels with different adjustments need a copy each
+	render_runs(&mut canvas, &[vec![exposure(0.4)], vec![Adjustment::Invert]]);
+	assert_eq!(copies(&canvas), 2);
+}
+
+#[test]
+fn images_reveal_the_colors_of_transparent_pixels_when_adjusted() {
+	use core_types::ATTR_TRANSFORM;
+	use core_types::list::{ATTR_EFFECTS, Item, List};
+	use glam::DVec2;
+	use graphic_types::adjustment::Adjustment;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{EffectOperation, Effects};
+	use raster_kernels::adjustments::adjust_color;
+	use rendering::{Render, RenderParams};
+
+	// A color hidden under full transparency, which a premultiplied render of the image in an effects group would lose
+	let size = UVec2::new(4, 4);
+	let hidden = core_types::Color::from_rgbaf32_unchecked(0.8, 0.4, 0.2, 0.);
+	let effects = Effects::from_operations([Adjustment::MakeOpaque, Adjustment::Invert].map(EffectOperation::Adjustment));
+	let image = List::new_from_item(
+		Item::new_from_element(Raster::new_cpu(Image::new(size.x, size.y, hidden)))
+			.with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(4.)))
+			.with_attribute(ATTR_EFFECTS, effects),
+	);
+
+	let Some(pixels) = render(size, |scene| image.render_to_vello(scene, DAffine2::IDENTITY, &RenderParams::default())) else {
+		return;
+	};
+	let expected = adjust_color(&Adjustment::Invert, hidden.with_alpha(1.))
+		.to_gamma_srgb_channels()
+		.map(|channel| (channel * 255.).round() as i32);
+	for pixel in &pixels {
+		assert_eq!(pixel[3], 255, "the image becomes opaque");
+		for channel in 0..3 {
+			assert!((pixel[channel] as i32 - expected[channel]).abs() <= 1, "{pixel:?} rather than {expected:?}");
+		}
+	}
+}

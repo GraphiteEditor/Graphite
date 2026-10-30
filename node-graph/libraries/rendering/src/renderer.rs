@@ -3185,6 +3185,17 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let compositing = item.compositing(render_params);
 	let blend_mode = blend_mode_attr.to_peniko();
 
+	// Leading adjustments are carried out on a texture of the image as it's drawn, rather than on a render of it in an effects group
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, split_compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let fits_texture_copy = image.width as u64 * image.height as u64 <= MAX_ADJUSTED_TEXTURE_PIXELS;
+	let adjusted_texture = if !leading_adjustments.is_empty() && fits_texture_copy && render_params.render_mode != RenderMode::Outline {
+		scene.adjusted_raster(image, &leading_adjustments)
+	} else {
+		None
+	};
+	let compositing = if adjusted_texture.is_some() { split_compositing } else { compositing };
+
 	let opacity = compositing.opacity;
 	let mut layer = false;
 
@@ -3219,13 +3230,20 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
 	compositing.draw_with_effects(scene, item_bounds, |scene| {
-		scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
+		let image_transform = kurbo::Affine::new(image_transform.to_cols_array());
+		match &adjusted_texture {
+			Some(texture) => scene.draw_texture(texture.clone(), sampler, image_transform),
+			None => scene.draw_raster(image.clone(), sampler, image_transform),
+		}
 	});
 
 	if layer {
 		scene.pop_layer();
 	}
 }
+
+/// The most pixels an image may have for its adjustments to be carried out on a texture of it, past which an effects group carries them out at the render's resolution.
+const MAX_ADJUSTED_TEXTURE_PIXELS: u64 = 4096 * 4096;
 
 /// The metadata a raster contributes under an `element_id`: a unit-square click target,
 /// plus the first item's transform and any merged-layers snapshot when a first item exists.

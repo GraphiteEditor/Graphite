@@ -1,6 +1,6 @@
 use glam::{DMat2, UVec2};
-use graphic_types::Effects;
 use graphic_types::raster_types::{CPU, Raster, Texture};
+use graphic_types::{Adjustment, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -36,6 +36,10 @@ pub trait EffectsRenderer: Send {
 	/// Renders the content `draw` draws, placed by `view`, into a texture of `size`, returning a straight-alpha texture of the same size with `effects` carried out on it.
 	/// `lengths_to_pixels` maps the effects' lengths onto the texture's pixels, and `fill` fades the content but not the shadows and glows cast from it.
 	fn render_effects(&mut self, size: UVec2, view: Affine, effects: &Effects, fill: f32, lengths_to_pixels: DMat2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> Texture;
+
+	/// A straight-alpha texture of the size of the CPU `raster`, with `adjustments` carried out on its pixels, kept for as long as they're drawn that way.
+	/// `None` if they can't be carried out.
+	fn adjust_raster(&mut self, raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Option<Texture>;
 }
 
 /// The pixels behind an image the scene draws.
@@ -226,6 +230,15 @@ impl<'a> VelloSceneBuilder<'a> {
 			return;
 		};
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
+	}
+
+	/// A texture of the CPU `raster`'s pixels with `adjustments` carried out on them, to draw in place of it, if the GPU can carry them out and it fits in one.
+	pub fn adjusted_raster(&mut self, raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Option<Texture> {
+		if raster.width > self.max_texture_size || raster.height > self.max_texture_size {
+			return None;
+		}
+
+		self.effects_renderer.as_deref_mut().filter(|renderer| renderer.renders_effects())?.adjust_raster(raster, adjustments)
 	}
 
 	/// Draws the content `draw` draws with `effects` carried out on it, given the area it covers in the space of the drawn content, or `None` if unbounded.
