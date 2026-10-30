@@ -1254,7 +1254,7 @@ pub struct RetiredMarks {
 	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub retired_runs: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
 	/// Which covered ops their author took back rather than retired, as inclusive runs.
-	#[serde(default)]
+	#[serde(default, serialize_with = "crate::sorted::serialize_sorted")]
 	pub taken_back: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
 }
 

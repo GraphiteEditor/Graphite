@@ -11,8 +11,8 @@ use crate::error::Error;
 use crate::layout::Layout;
 use crate::{Gdd, PendingPersist};
 
-/// What peers changed in the working registry since the editor last asked, so the editor can reconcile
-/// just the touched entities of its runtime mirror.
+/// What peers changed in the working registry since it was last taken, so a runtime mirror can reconcile
+/// just the touched entities.
 #[derive(Clone, Debug, Default)]
 pub struct RemoteChanges {
 	pub touched: Touched,
@@ -336,17 +336,19 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn flush(&mut self) -> Result<(), TargetError> {
-		let pending = std::mem::take(&mut self.pending_persist);
-
-		if pending.history {
+		// Each flag clears only once its write succeeds, so a failed write is retried on the next flush.
+		if self.pending_persist.history {
 			self.rewrite_history()?;
+			self.pending_persist.history = false;
 		}
-		if pending.hot_log {
+		if self.pending_persist.hot_log {
 			self.rewrite_hot_log()?;
+			self.pending_persist.hot_log = false;
 		}
-		if pending.snapshot {
+		if self.pending_persist.snapshot {
 			self.persist_registry_snapshot()?;
 			self.persist_session_state()?;
+			self.pending_persist.snapshot = false;
 		}
 		Ok(())
 	}

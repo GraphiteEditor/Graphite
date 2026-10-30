@@ -98,6 +98,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Whether this document's resource bytes are on hand, in whichever store backs it.
+	#[cfg(feature = "network")]
 	pub(crate) fn holds_resource(&self, hash: &ResourceHash) -> bool {
 		match &self.byte_store {
 			Some(byte_store) => byte_store.contains(hash),
@@ -106,6 +107,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Put resource bytes into whichever store backs this document.
+	#[cfg(feature = "network")]
 	pub(crate) fn hold_resource(&self, bytes: &[u8]) -> Result<(), ContainerError> {
 		match &self.byte_store {
 			Some(byte_store) => {
@@ -117,6 +119,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Referenced resources whose bytes are not on hand.
+	#[cfg(feature = "network")]
 	pub(crate) fn unstored_resources(&self) -> Vec<ResourceHash> {
 		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
 	}
