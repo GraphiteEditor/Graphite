@@ -98,6 +98,11 @@ impl TraceSlot {
 		}
 	}
 
+	/// Drops the slot's trace and its request for the next slice.
+	pub fn clear(&self) {
+		self.lock().take();
+	}
+
 	fn lock(&self) -> MutexGuard<'_, Option<Trace>> {
 		self.0.lock().unwrap_or_else(PoisonError::into_inner)
 	}

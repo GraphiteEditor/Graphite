@@ -95,6 +95,7 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 	let raster = image.element();
 	let (width, height) = (raster.width as usize, raster.height as usize);
 	if width == 0 || height == 0 {
+		slot.clear();
 		return Poll::Final(List::new());
 	}
 
@@ -280,6 +281,14 @@ mod test {
 		assert!(!released(), "a clone of the node dropped the trace");
 		drop(clone);
 		assert!(released(), "the dropped node's trace is still held");
+	}
+
+	#[test]
+	fn an_empty_image_drops_the_trace() {
+		let slot = TraceSlot::default();
+		assert!(matches!(slice(&busy(96), &slot), Poll::Partial(_)));
+		assert!(matches!(slice(&raster(0, 0, |_, _| DARK), &slot), Poll::Final(_)));
+		assert!(!slot.tracing(), "the former image's trace is still held");
 	}
 
 	/// The first evaluation of a large enough image already shows a first look at it.
