@@ -163,9 +163,20 @@ impl HistoryMetadata {
 		self.state(Subject::Rev(rev), key, value, stamp)
 	}
 
-	fn state(&mut self, subject: Subject, key: &str, value: serde_json::Value, mut stamp: WallStamp) -> Option<MetadataFact> {
-		let attributes = self.attributes_mut(subject);
-		if let Some(existing) = attributes.get(key) {
+	fn state(&mut self, subject: Subject, key: &str, value: serde_json::Value, stamp: WallStamp) -> Option<MetadataFact> {
+		let fact = self.statement(subject, key, value, stamp)?;
+		self.absorb(fact.clone());
+		Some(fact)
+	}
+
+	/// The fact that would state `value`, stamped after the one it replaces, without taking it on. `None` when the same
+	/// value already stands, which allocates nothing.
+	pub fn statement(&self, subject: Subject, key: &str, value: serde_json::Value, mut stamp: WallStamp) -> Option<MetadataFact> {
+		let existing = match subject {
+			Subject::User(user) => self.user_attribute(user, key),
+			Subject::Rev(rev) => self.rev_attribute(rev, key),
+		};
+		if let Some(existing) = existing {
 			if existing.value == value {
 				return None;
 			}
@@ -174,7 +185,6 @@ impl HistoryMetadata {
 				stamp.ms = existing.stamp.ms.checked_add(1)?;
 			}
 		}
-		attributes.insert(key.to_string(), Fact { value: value.clone(), stamp });
 		Some(MetadataFact {
 			subject,
 			key: key.to_string(),
@@ -185,7 +195,7 @@ impl HistoryMetadata {
 
 	/// Take on a fact stated elsewhere unless the one standing for the same thing is newer, or as new with the greater
 	/// value, so even facts sharing a stamp settle alike everywhere. Returns whether it landed.
-	fn absorb(&mut self, fact: MetadataFact) -> bool {
+	pub fn absorb(&mut self, fact: MetadataFact) -> bool {
 		let attributes = self.attributes_mut(fact.subject);
 		let stands = |mine: &Fact| match fact.stamp.cmp(&mine.stamp) {
 			std::cmp::Ordering::Less => true,

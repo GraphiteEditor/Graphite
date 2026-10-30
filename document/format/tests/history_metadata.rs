@@ -52,6 +52,24 @@ fn a_recorded_name_survives_a_reopen() {
 	});
 }
 
+#[test]
+fn recording_an_unchanged_value_writes_nothing() {
+	futures::executor::block_on(async {
+		let mut gdd = document(1, 10);
+		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+		let metadata = gdd.metadata().clone();
+		let (working, layout) = gdd.into_storage();
+		let path = document_format::io::path_for(layout.metadata_basename(), document_format::METADATA_CODEC);
+		let before = working.read(&path).await.expect("read").as_slice().to_vec();
+
+		let mut reopened = GddV1::open_in(working, layout).await.expect("open");
+		assert!(!reopened.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS + 1.).expect("record"));
+		assert_eq!(reopened.metadata(), &metadata);
+		let (working, _) = reopened.into_storage();
+		assert_eq!(working.read(&path).await.expect("read").as_slice(), before.as_slice());
+	});
+}
+
 /// A line that doesn't decode, such as one torn by a crash or a kind of fact from a newer editor, is skipped rather
 /// than keeping the document from opening.
 #[test]

@@ -647,7 +647,7 @@ fn peer_row(name: &str, anonymous: bool) -> LayoutGroup {
 fn record_profile(gdd: &mut GddV1, preferences: &PreferencesMessageHandler) {
 	let name = preferences.user_name.trim();
 	let user = UserId(preferences.user_id);
-	if name.is_empty() && gdd.metadata().user_name(user).is_none() {
+	if gdd.metadata().user_name(user).unwrap_or_default() == name {
 		return;
 	}
 	if let Err(error) = gdd.record_user_attribute(user, user_attr::NAME, serde_json::Value::from(name), now_ms()) {
