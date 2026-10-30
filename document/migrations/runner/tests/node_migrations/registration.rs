@@ -1,9 +1,9 @@
 //! What `#[migration]` and `rename!` generate and register, and how the runner orders and chains the registry.
 
 use crate::examples::{ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees};
-use crate::rewrite::replay;
 use document_graph_storage::{Delta, Implementation, Network, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, RegistryDelta, Session, UserId};
 use migration_core::{AnchorContext, Declaration, DeclarationResolver, Edits, MigrationError, NodeMigration, Region, decl, literal, registered_migrations};
+use migration_runner::testing::replay;
 use migration_runner::{DeclarationTable, RunnerError, migrate_history, order_migrations};
 
 #[test]

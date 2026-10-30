@@ -4,6 +4,8 @@
 mod format;
 mod node;
 mod order;
+#[cfg(feature = "testing")]
+pub mod testing;
 
 use document_graph_storage::{CrdtError, NodeId, Rev};
 use migration_core::{Declaration, InputConnector, MigrationError};

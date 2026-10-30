@@ -3717,6 +3717,8 @@ name = "migration-nodes"
 version = "0.0.0"
 dependencies = [
  "migration-core",
+ "migration-runner",
+ "serde",
 ]
 
 [[package]]
@@ -3725,6 +3727,7 @@ version = "0.0.0"
 dependencies = [
  "document-graph-storage",
  "migration-core",
+ "migration-runner",
  "serde",
  "serde_json",
  "thiserror 2.0.18",

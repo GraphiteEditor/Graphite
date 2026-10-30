@@ -2,68 +2,11 @@ mod examples;
 mod registration;
 mod rewrite;
 
-use document_graph_storage::{ExportSlot, Implementation, Network, Node, NodeId, NodeInput, ROOT_NETWORK, Registry};
+use document_graph_storage::{NodeId, NodeInput, ROOT_NETWORK, Registry};
 use examples::{AngleBetweenDegrees, Axis, ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees};
-use migration_core::{Declaration, DeclarationResolver, NodeMigration, decl, literal, literal_of, registered_migrations};
-use migration_runner::{DeclarationTable, RunnerError, apply_migration};
-
-/// A root network built node by node, for running one migration on.
-pub struct Fixture {
-	pub registry: Registry,
-	pub table: DeclarationTable,
-	next_id: u64,
-}
-
-impl Fixture {
-	pub fn new(migration: &dyn NodeMigration) -> Self {
-		let mut registry = Registry::default();
-		registry.networks.insert(ROOT_NETWORK, Network::default());
-
-		let mut table = DeclarationTable::default();
-		table.register_migration(migration);
-
-		Self { registry, table, next_id: 0 }
-	}
-
-	pub fn add(&mut self, declaration: Declaration, inputs: Vec<NodeInput>) -> NodeId {
-		self.next_id += 1;
-		let id = NodeId(self.next_id);
-
-		let resource = self.table.register(declaration);
-		let mut node = Node::new(ROOT_NETWORK, Implementation::ProtoNode(resource), inputs.len());
-		for (slot, input) in node.inputs_mut().iter_mut().zip(inputs) {
-			slot.input = input;
-		}
-		self.registry.node_instances.insert(id, node);
-
-		id
-	}
-
-	pub fn export(&mut self, input: NodeInput) {
-		let network = self.registry.networks.get_mut(&ROOT_NETWORK).expect("the fixture creates the root network");
-		network.exports.push(ExportSlot {
-			target: Some(input),
-			..Default::default()
-		});
-	}
-
-	pub fn migrate(&self, migration: &dyn NodeMigration) -> Result<Registry, RunnerError> {
-		apply_migration(migration, &self.registry, &self.table)
-	}
-
-	pub fn declaration_of(&self, registry: &Registry, node: NodeId) -> Option<Declaration> {
-		let Implementation::ProtoNode(resource) = registry.node_instances.get(&node)?.implementation() else {
-			return None;
-		};
-		self.table.declaration(*resource)
-	}
-}
-
-/// The registered migration starting from `source`.
-pub fn registered(source: Declaration) -> &'static dyn NodeMigration {
-	let migration = registered_migrations().into_iter().find(|migration| migration.source() == source);
-	migration.unwrap_or_else(|| panic!("no migration from {source} is registered"))
-}
+use migration_core::{decl, literal, literal_of};
+use migration_runner::RunnerError;
+use migration_runner::testing::{Fixture, registered};
 
 fn wire(node: NodeId, index: u32) -> NodeInput {
 	NodeInput::Node { id: node, index }

@@ -6,6 +6,10 @@ version.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[features]
+# Fixtures and history properties for migrations' tests, as `migration_runner::testing`.
+testing = []
+
 [dependencies]
 migration-core = { workspace = true, features = ["typed"] }
 document-graph-storage = { workspace = true }
@@ -13,5 +17,6 @@ document-graph-storage = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+migration-runner = { path = ".", features = ["testing"] }
 serde = { workspace = true }
 serde_json = { workspace = true }

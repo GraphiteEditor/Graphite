@@ -2,6 +2,7 @@
 
 use crate::lineage::{MigrationStep, find_migrations};
 use crate::nodes::{NodeSource, find_nodes};
+use convert_case::{Case, Casing};
 use std::path::{Path, PathBuf};
 
 pub const NODE_CRATES: &str = "node-graph";
@@ -158,12 +159,26 @@ fn write_step(migrations: &Path, node: &NodeSource, name: &str, step: &str, from
 		return Err(format!("{} already exists", file.display()));
 	}
 
+	let migration = name.to_case(Case::Pascal);
 	let source = format!(
 		"use migration_core::{{Inputs, migration}};\n\n\
 		 /// Describe what changed from version {from}.\n\
 		 #[migration({step})]\n\
 		 pub fn {name}(inputs: &mut Inputs) {{\n\
 		 \tcompile_error!(\"Migrate from version {from} here. Read the source state with `&Node` or `&Graph`, and edit it through `&mut Inputs`, `&mut Upstream`, or `&mut Downstream`\");\n\
+		 }}\n\n\
+		 #[cfg(test)]\n\
+		 mod tests {{\n\
+		 \tuse super::*;\n\
+		 \tuse migration_runner::testing::{{SourceContract, check_commutation, check_undo}};\n\n\
+		 \tfn contract() -> SourceContract {{\n\
+		 \t\tSourceContract::new(compile_error!(\"How many inputs version {from} stores\"), |random, slot| compile_error!(\"A literal version {from} allows in `slot`, made with `migration_core::literal`\"))\n\
+		 \t}}\n\n\
+		 \t#[test]\n\
+		 \tfn rewrites_history() {{\n\
+		 \t\tcheck_commutation(&{migration}, &contract());\n\
+		 \t\tcheck_undo(&{migration}, &contract());\n\
+		 \t}}\n\
 		 }}\n"
 	);
 	std::fs::write(&file, source).map_err(|error| format!("{}: {error}", file.display()))?;
