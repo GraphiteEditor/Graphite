@@ -39,6 +39,7 @@ const { subscribe, update } = store;
 
 export const welcomeScreenButtonsLayout = persistedLayout("welcomeScreenButtonsLayout");
 export const inspectorLayout = persistedLayout("inspectorLayout");
+export const paletteLayout = persistedLayout("paletteLayout");
 export const dataPanelLayout = persistedLayout("dataPanelLayout");
 export const dataPanelContextLayout = persistedLayout("dataPanelContextLayout");
 export const dataPanelPathLayout = persistedLayout("dataPanelPathLayout");
@@ -144,6 +145,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 
 	subscriptions.subscribeLayoutUpdate("DataPanelPath", (data) => {
 		patchLayout(dataPanelPathLayout, data);
+	subscriptions.subscribeLayoutUpdate("Palette", (data) => {
+		patchLayout(paletteLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
@@ -206,6 +209,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateWorkspacePanelLayout");
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("Inspector");
+	subscriptions.unsubscribeLayoutUpdate("Palette");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("DataPanelContext");
 	subscriptions.unsubscribeLayoutUpdate("DataPanelPath");
