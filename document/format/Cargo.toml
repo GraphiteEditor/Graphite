@@ -25,11 +25,14 @@ zip = ["document-container/zip"]
 xz = ["document-container/xz"]
 # Runs the format steps and node migrations the binary links (see migration-core) when a document opens, and persists the result.
 migrations = ["conversion", "dep:migration-core", "dep:migration-runner"]
+# Lets `Gdd` host or join a `peer_transport` session, mirroring hot ops and retired history to peers.
+network = ["dep:peer-transport"]
 default = ["conversion", "zip", "xz"]
 
 [dependencies]
 document-container = { workspace = true }
 document-graph-storage = { workspace = true, default-features = false }
+peer-transport = { workspace = true, optional = true }
 graph-craft = { workspace = true, optional = true }
 graphene-resource = { workspace = true }
 migration-core = { workspace = true, optional = true, features = ["typed"] }
