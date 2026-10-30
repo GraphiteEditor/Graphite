@@ -20,12 +20,12 @@ impl std::fmt::Debug for TraceSlot {
 struct Trace {
 	/// A hash of the image and options traced.
 	inputs: u64,
-	/// None once the trace is done and `shown` is its result.
+	/// `None` once the trace is done and `shown` is its result.
 	tracing: Option<ollev::Tracing>,
 	shown: List<Graphic>,
-	/// The revision of the scene in `shown`, none before the first.
+	/// The revision of the scene in `shown`.
 	revision: Option<u64>,
-	/// The task asking for the next slice, aborted when the trace is dropped so it asks for no evaluation.
+	/// The task requesting the next slice, aborted on drop so a replaced trace triggers no evaluation.
 	next: Option<AbortHandle>,
 }
 
@@ -38,8 +38,8 @@ impl Drop for Trace {
 }
 
 impl TraceSlot {
-	/// Traces `slice` of the trace of `inputs` on `clock`, started by `start` when the slot holds no trace of them (the trace
-	/// of other inputs is dropped). Partial with the latest showable scene, Final once done.
+	/// Advances the trace of `inputs` by `slice`, replacing any trace of other inputs with one from `start`.
+	/// Returns the latest showable scene, partial until the trace is done.
 	pub fn poll(
 		&self,
 		inputs: u64,
@@ -48,7 +48,7 @@ impl TraceSlot {
 		start: impl FnOnce() -> Result<ollev::Tracing, ollev::TraceError>,
 		convert: impl Fn(&Model) -> List<Graphic>,
 	) -> Poll<List<Graphic>> {
-		// The trace is out of the slot during the slice, so a slice that panics leaves the slot empty
+		// Taken out of the slot so a panicking slice leaves it empty
 		let mut held = self.lock();
 		let mut trace = match held.take().filter(|trace| trace.inputs == inputs) {
 			Some(trace) => trace,
@@ -84,15 +84,13 @@ impl TraceSlot {
 			}
 		}
 
-		let state = match trace.tracing {
-			Some(_) => Poll::Partial(trace.shown.clone()),
-			None => Poll::Final(trace.shown.clone()),
-		};
+		let shown = trace.shown.clone();
+		let state = if trace.tracing.is_some() { Poll::Partial(shown) } else { Poll::Final(shown) };
 		*held = Some(trace);
 		state
 	}
 
-	/// Holds `next`, the task asking for the next slice of the slot's trace, to abort it if the trace is dropped first.
+	/// Keeps the task requesting the next slice, so dropping the trace aborts it.
 	pub fn ask_next(&self, next: AbortHandle) {
 		match self.lock().as_mut() {
 			Some(trace) => trace.next = Some(next),
@@ -110,7 +108,7 @@ impl TraceSlot {
 		self.lock().as_ref().is_some_and(|trace| trace.tracing.is_some())
 	}
 
-	/// Tells whether the slot's trace was dropped, which it is once every clone of the slot is.
+	/// Tells whether the slot's trace was dropped, which happens once every clone of the slot is.
 	#[cfg(test)]
 	pub fn released(&self) -> impl Fn() -> bool + use<> {
 		let held = Arc::downgrade(&self.0);

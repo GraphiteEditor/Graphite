@@ -13,7 +13,7 @@ use raster_types::{CPU, Raster};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::time::Duration;
 
-/// What Graphite's renderer draws of ollev's model; the rest is lowered into it by ollev.
+/// The parts of ollev's model Graphite renders natively. ollev lowers the rest into these.
 pub const CAPABILITIES: ollev::Capabilities = ollev::Capabilities {
 	even_odd: false,
 	path_gradients: false,
@@ -24,8 +24,8 @@ pub const CAPABILITIES: ollev::Capabilities = ollev::Capabilities {
 	transparent_stops: true,
 };
 
-/// Ten milliseconds of tracing per evaluation, to fit a frame with its render; ollev's checkpoints overrun it by up to about
-/// half a second on a large image. Each evaluation shows the newest scene ollev keeps.
+/// Tracing time per evaluation, leaving room in the frame for the render. ollev only checks it at checkpoints, which can
+/// overrun it by about half a second on a large image.
 const SLICE: Duration = Duration::from_millis(10);
 
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
@@ -67,7 +67,7 @@ fn vectorize(
 	#[hard(0..)]
 	max_pixels: Item<i64>,
 	#[scope("runtime")] runtime: Item<RuntimeHandle>,
-	#[source_id] _source: Item<SourceId>,
+	#[source_id] source: Item<SourceId>,
 	#[data] trace: TraceSlot,
 ) -> Poll<List<Graphic>> {
 	let stages = ollev::Stages {
@@ -82,13 +82,13 @@ fn vectorize(
 	let runtime = runtime.element();
 	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, max_pixels, trace, SLICE, runtime.clock());
 	if let Poll::Partial(_) = state {
-		// The task's end bumps this node's generation, so the editor evaluates the graph again and the next slice runs
-		trace.ask_next(runtime.spawn(*_source.element(), Box::pin(async {})));
+		// Finishing an empty task bumps the node's generation, which re-evaluates it for the next slice
+		trace.ask_next(runtime.spawn(*source.element(), Box::pin(async {})));
 	}
 	state
 }
 
-/// One slice of the trace of `image` held in `slot`, which starts it when the slot holds no trace of these inputs.
+/// Runs one slice of the trace held in `slot`, starting a new trace if `slot` holds none for these inputs.
 #[allow(clippy::too_many_arguments)]
 fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: ollev::Stages, max_pixels: Option<usize>, slot: &TraceSlot, slice: Duration, clock: &dyn Clock) -> Poll<List<Graphic>> {
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -104,7 +104,6 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 	[stages.translucency, stages.strokes, stages.primitives, stages.effects, stages.instancing, stages.path_gradients].hash(&mut hasher);
 
 	let start = || {
-		// Graphite's colors are linear light with straight alpha; ollev composites transparency over white
 		let pixels: Vec<f32> = raster.data.iter().flat_map(|color| [color.r(), color.g(), color.b(), color.a()]).collect();
 		let source = ollev::Image {
 			pixels: ollev::Pixels::RgbaF32 {
@@ -126,7 +125,6 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 		ollev::Tracing::new(&source, &options)
 	};
 
-	// The traced coordinates are in pixels, while the image's transform maps the unit square onto the document
 	let pixels_to_document = image_transform * DAffine2::from_scale(DVec2::new(1. / width as f64, 1. / height as f64));
 	slot.poll(hasher.finish(), slice, clock, start, |model| convert::model_to_graphic(model, pixels_to_document))
 }
@@ -182,8 +180,8 @@ mod test {
 		assert!(!traced.is_empty(), "the ring traced into no shapes");
 	}
 
-	/// Rasters with too few pixels, too little contrast, or too little room for a shape, which panicked in debug builds (glam's
-	/// asserts on vectors without a direction), each traced at a few detail and tolerance settings.
+	/// Rasters with too few pixels, too little contrast or too little room for a shape, which used to trip glam's zero-length
+	/// vector asserts in debug builds.
 	#[test]
 	fn traces_degenerate_rasters() {
 		let gray = |value: f32| Color::from_rgbaf32_unchecked(value, value, value, 1.);
@@ -215,11 +213,12 @@ mod test {
 		let center = DVec2::splat(size as f64 / 2.);
 		raster(size, size, |x, y| {
 			let point = DVec2::new(x as f64 + 0.5, y as f64 + 0.5);
-			let ring = (point - center).length() % 24.;
-			match () {
-				_ if (point - center * 0.6).length() < size as f64 / 8. => Color::from_rgbaf32_unchecked(0.8, 0.3, 0.1, 1.),
-				_ if ring < 6. => DARK,
-				_ => Color::from_rgbaf32_unchecked(0.9, 0.9, x as f32 / size as f32, 1.),
+			if (point - center * 0.6).length() < size as f64 / 8. {
+				Color::from_rgbaf32_unchecked(0.8, 0.3, 0.1, 1.)
+			} else if (point - center).length() % 24. < 6. {
+				DARK
+			} else {
+				Color::from_rgbaf32_unchecked(0.9, 0.9, x as f32 / size as f32, 1.)
 			}
 		})
 	}
@@ -326,8 +325,8 @@ mod test {
 
 	/// One evaluation of the node holding `slot` on `image`, with every stage on.
 	fn evaluate(slot: &TraceSlot, image: &Item<Raster<CPU>>, runtime: &AsyncRuntime) -> Poll<List<Graphic>> {
+		let one = || Item::new_from_element(1.);
 		let on = || Item::new_from_element(true);
-		let (one, handle) = (|| Item::new_from_element(1.), Item::new_from_element(runtime.handle()));
 		vectorize(
 			(),
 			slot,
@@ -341,7 +340,7 @@ mod test {
 			on(),
 			on(),
 			Item::new_from_element(0),
-			handle,
+			Item::new_from_element(runtime.handle()),
 			Item::new_from_element(SOURCE),
 		)
 	}

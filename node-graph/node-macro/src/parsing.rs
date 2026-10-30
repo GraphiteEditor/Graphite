@@ -886,7 +886,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		));
 	}
 
-	// `#[source_id]` injects the node's `SourceId` as async nodes get it, so a synchronous node can bump its own generation
+	// Gives a synchronous node its `SourceId`, as async nodes get it, so it can bump its own generation
 	let source_id = extract_attribute(attrs, "source_id").is_some();
 
 	let value_source = match (default_value, scope) {

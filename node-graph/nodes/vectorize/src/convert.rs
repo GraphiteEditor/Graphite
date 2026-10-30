@@ -38,16 +38,15 @@ impl From<&Structure> for RepeatStructure {
 
 /// Converts a traced model in pixel coordinates into Graphite content placed in the document by `pixels_to_document`.
 pub fn model_to_graphic(model: &Model, pixels_to_document: DAffine2) -> List<Graphic> {
-	let converter = Converter { model };
-
-	let mut list = List::new();
-	for item in converter.items(&model.items) {
-		let mut item = item;
-		let transform: DAffine2 = item.attribute_cloned_or(ATTR_TRANSFORM, DAffine2::IDENTITY);
-		item.set_attribute(ATTR_TRANSFORM, pixels_to_document * transform);
-		list.push(item);
-	}
-	list
+	Converter { model }
+		.items(&model.items)
+		.into_iter()
+		.map(|mut item| {
+			let transform: DAffine2 = item.attribute_cloned_or(ATTR_TRANSFORM, DAffine2::IDENTITY);
+			item.set_attribute(ATTR_TRANSFORM, pixels_to_document * transform);
+			item
+		})
+		.collect()
 }
 
 struct Converter<'a> {
@@ -71,7 +70,6 @@ impl Converter<'_> {
 				}
 			};
 
-			// Close the current run when the next item is not clipped the same way
 			if run.as_ref().is_some_and(|(run_clip, _)| Some(*run_clip) != clip)
 				&& let Some((run_clip, content)) = run.take()
 			{
@@ -97,7 +95,6 @@ impl Converter<'_> {
 			return group(content);
 		};
 
-		// The clip's shape masks what follows it while its own fill stays invisible
 		let base = mask_base(loops_to_bezpath(&clip.loops, clip.rule));
 		let masked = std::iter::once(base).chain(content.into_iter().map(with_clipping_mask));
 		let clipped = group(masked.collect());
@@ -122,8 +119,8 @@ impl Converter<'_> {
 	fn object(&self, object: &Object) -> Item<Graphic> {
 		let paint = paint(&object.paint);
 		let mut vector = match &object.geometry {
-			Geometry::Fill { loops, rule } => vector_item(loops_to_bezpath(loops, *rule)).into_fill(paint),
-			Geometry::Stroke(stroke) => vector_item(cubics_to_bezpath(&stroke.centerline, stroke.closed)).into_stroke(&stroke_style(stroke), paint),
+			Geometry::Fill { loops, rule } => Vector::item_from_bezpath(&loops_to_bezpath(loops, *rule)).into_fill(paint),
+			Geometry::Stroke(stroke) => Vector::item_from_bezpath(&cubics_to_bezpath(&stroke.centerline, stroke.closed)).into_stroke(&stroke_style(stroke), paint),
 		};
 
 		if object.opacity < 1. {
@@ -170,19 +167,14 @@ fn stroke_style(stroke: &StrokeGeometry) -> Stroke {
 	}
 }
 
-fn vector_item(path: BezPath) -> Item<Vector> {
-	Vector::item_from_bezpath(&path)
-}
-
 fn group(items: Vec<Item<Graphic>>) -> Item<Graphic> {
-	let mut list = List::new();
-	items.into_iter().for_each(|item| list.push(item));
+	let list = items.into_iter().collect();
 	Item::new_from_element(Graphic::Graphic(Box::new(Item::new_from_element(Graphic::GraphicList(list)))))
 }
 
 /// An invisible shape whose coverage masks the clipped items that follow it.
 fn mask_base(path: BezPath) -> Item<Graphic> {
-	let base = vector_item(path).with_attribute(ATTR_OPACITY_FILL, 0.).into_fill(Graphic::from(Color::BLACK));
+	let base = Vector::item_from_bezpath(&path).with_attribute(ATTR_OPACITY_FILL, 0.).into_fill(Graphic::from(Color::BLACK));
 	Item::new_from_element(Graphic::from(base))
 }
 
@@ -212,12 +204,14 @@ fn paint(paint: &Paint) -> Graphic {
 
 /// A linear or radial gradient in Graphite's form: its stops along the unit line or circle, placed by its transform.
 fn gradient_item(gradient: &ollev::model::Gradient) -> Item<Gradient> {
-	let mut stops = List::new();
-	for stop in gradient.stops() {
-		let [red, green, blue, alpha] = stop.color;
-		let stop_color = color(DVec3::new(red, green, blue), alpha);
-		stops.push(Item::new_from_element(stop_color).with_attribute(ATTR_POSITION, stop.offset));
-	}
+	let stops = gradient
+		.stops()
+		.iter()
+		.map(|stop| {
+			let [red, green, blue, alpha] = stop.color;
+			Item::new_from_element(color(DVec3::new(red, green, blue), alpha)).with_attribute(ATTR_POSITION, stop.offset)
+		})
+		.collect();
 
 	let (form, transform) = match gradient.shape() {
 		GradientShape::Linear { start, end } => {
@@ -259,7 +253,7 @@ fn loops_to_bezpath(loops: &[Vec<Curve>], rule: FillRule) -> BezPath {
 	}
 	let mut path = BezPath::new();
 	for cubics in loops.iter().filter(|cubics| !cubics.is_empty()) {
-		cubics_to_bezpath(cubics, true).elements().iter().for_each(|&element| path.push(element));
+		path.extend(cubics_to_bezpath(cubics, true));
 	}
 	path
 }
