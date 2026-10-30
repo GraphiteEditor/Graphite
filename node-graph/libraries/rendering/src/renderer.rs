@@ -3,7 +3,7 @@ use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use crate::vello_scene_builder::VelloSceneBuilder;
 use core_types::CacheHash;
 use core_types::FallibleVec2Operations;
-use core_types::blending::{BlendMode, apply_blend_mode};
+use core_types::blending::{BlendMode, blend_colors};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
@@ -168,39 +168,6 @@ pub(crate) fn faded_paint_color(item: ItemRef<'_, Color>, for_mask: bool) -> Opt
 	Some(color.with_alpha(color.a() * item.paint_opacity(for_mask)))
 }
 
-/// Composites one paint color over the stack beneath it, mixing by the blend mode and then source-over in straight alpha.
-fn composite_paint_over(over: Color, under: Color, blend_mode: BlendMode) -> Color {
-	let (over_alpha, under_alpha) = (over.a(), under.a());
-
-	// These modes only move the backdrop's alpha, leaving its color alone
-	match blend_mode {
-		BlendMode::Erase => return under.with_alpha((under_alpha - over_alpha).clamp(0., 1.)),
-		BlendMode::Restore => return under.with_alpha((under_alpha + over_alpha).clamp(0., 1.)),
-		BlendMode::MultiplyAlpha => return under.with_alpha(under_alpha * over_alpha),
-		_ => {}
-	}
-
-	let result_alpha = over_alpha + under_alpha * (1. - over_alpha);
-	if result_alpha <= 0. {
-		return Color::TRANSPARENT;
-	}
-
-	let mixed = apply_blend_mode(over, under, blend_mode);
-
-	// The mode only mixes where the backdrop has coverage, so its alpha interpolates each source channel from the raw color to the mixed color
-	let source_channel = |over_channel: f32, mixed_channel: f32| over_channel * (1. - under_alpha) + mixed_channel * under_alpha;
-
-	let channel =
-		|mixed_channel: f32, over_channel: f32, under_channel: f32| (source_channel(over_channel, mixed_channel) * over_alpha + under_channel * under_alpha * (1. - over_alpha)) / result_alpha;
-
-	Color::from_rgbaf32_unchecked(
-		channel(mixed.r(), over.r(), under.r()),
-		channel(mixed.g(), over.g(), under.g()),
-		channel(mixed.b(), over.b(), under.b()),
-		result_alpha,
-	)
-}
-
 /// Flattens a rank-1 color paint into the single color the fast path emits, stacking the items in paint order.
 pub(crate) fn composite_paint_colors(list: &List<Color>, for_mask: bool) -> Option<Color> {
 	let mut composited = None;
@@ -212,7 +179,7 @@ pub(crate) fn composite_paint_colors(list: &List<Color>, for_mask: bool) -> Opti
 		composited = Some(match composited {
 			// The lowest paint has nothing beneath it, so its blend mode has nothing to act on
 			None => faded,
-			Some(under) => composite_paint_over(faded, under, item.attribute_cloned_or_default(ATTR_BLEND_MODE)),
+			Some(under) => blend_colors(faded, under, item.attribute_cloned_or_default(ATTR_BLEND_MODE), 1.),
 		});
 	}
 
