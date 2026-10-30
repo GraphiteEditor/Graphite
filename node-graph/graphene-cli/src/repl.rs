@@ -28,8 +28,7 @@ pub fn report(event: &Event) {
 
 /// Returns `false` to quit.
 pub fn run_command(live: &mut LiveDocument, line: &str) -> bool {
-	let mut words = line.splitn(3, ' ');
-	match (words.next(), words.next(), words.next()) {
+	match split_command(line) {
 		(Some("set"), Some(key), Some(value)) => {
 			let Ok(value) = serde_json::from_str(value) else {
 				println!("value must be JSON");
@@ -68,6 +67,19 @@ pub fn run_command(live: &mut LiveDocument, line: &str) -> bool {
 	true
 }
 
+/// The command word, the word after it, and the rest of the line with its own spacing kept, split at runs of whitespace.
+fn split_command(line: &str) -> (Option<&str>, Option<&str>, Option<&str>) {
+	fn next_word(text: &str) -> (Option<&str>, &str) {
+		let text = text.trim_start();
+		let (word, rest) = text.split_once(char::is_whitespace).unwrap_or((text, ""));
+		((!word.is_empty()).then_some(word), rest)
+	}
+	let (command, rest) = next_word(line);
+	let (argument, rest) = next_word(rest);
+	let rest = rest.trim();
+	(command, argument, (!rest.is_empty()).then_some(rest))
+}
+
 fn describe(kind: &RegistryDelta) -> String {
 	match kind {
 		RegistryDelta::ChangeDocumentAttribute { delta } => format!("set {} = {:?}", delta.key, delta.value),
@@ -79,4 +91,16 @@ fn describe(kind: &RegistryDelta) -> String {
 
 fn short_rev(rev: Rev) -> String {
 	format!("{rev}").chars().take(8).collect()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn commands_split_at_any_run_of_whitespace() {
+		assert_eq!(split_command("set  name\t\"a  b\" "), (Some("set"), Some("name"), Some("\"a  b\"")));
+		assert_eq!(split_command("\tretire"), (Some("retire"), None, None));
+		assert_eq!(split_command("   "), (None, None, None));
+	}
 }
