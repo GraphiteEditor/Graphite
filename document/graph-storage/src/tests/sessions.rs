@@ -1180,3 +1180,34 @@ fn restaging_an_unchanged_runtime_does_not_revive_a_nested_network_removed_under
 	a.stage_from_runtime(&runtime, &NoMetadata, &resources).expect("restage");
 	assert!(!a.registry().networks.contains_key(&nested), "the removed network stays removed");
 }
+
+#[test]
+fn a_drop_whose_copy_fails_leaves_the_session_unchanged() {
+	let mut session = Session::with_peer(PeerId(1));
+	session.commit_op_for_test(add_network(3)).expect("base");
+	let base = session.head_rev().expect("rev");
+	session.mark_interaction_end(base);
+	session.commit_op_for_test(set_attribute("dropped", 1)).expect("dropped step");
+	let undone = session.head_rev().expect("rev");
+	session.mark_interaction_end(undone);
+
+	// A later step no fold can apply, so minting its copy fails.
+	let op = RegistryDelta::SetNetworkExport {
+		id: NetworkId(3),
+		index: crate::ids::MAX_EXPORT_SLOTS as u32,
+		export: None,
+	};
+	let reverse = crate::prior::capture(session.retired_registry(), &op);
+	let timestamp = TimeStamp { counter: 100, peer: PeerId(1) };
+	let later = Delta::new(Some(undone), PeerId(1), timestamp, op, reverse);
+	let head = later.id;
+	session.document.history.push(later);
+	session.document.head = Some(head);
+
+	let (registry, retired, history_len) = (session.registry().clone(), session.retired_registry().clone(), session.history_len());
+	assert!(matches!(session.drop_interaction(undone), Err(CrdtError::ExportSlotOutOfBounds(_))));
+	assert_eq!(session.head_rev(), Some(head));
+	assert_eq!(session.history_len(), history_len);
+	assert_eq!(session.retired_registry(), &retired);
+	assert_eq!(session.registry(), &registry);
+}

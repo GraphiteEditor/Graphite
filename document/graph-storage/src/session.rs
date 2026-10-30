@@ -420,19 +420,29 @@ impl Session {
 		}
 		let position = newest_first.iter().position(|delta| delta.id == undone).ok_or(CrdtError::NotFoundInHistory(undone))?;
 
-		let snapshot = self.fold_at(Some(base))?;
-		self.document.head = Some(base);
-		self.document.retired_snapshot = snapshot;
+		// Minted on a scratch fold first, so a failing copy changes nothing.
+		let mut scratch = self.fold_scratch_at(Some(base))?;
+		let mut copies = Vec::with_capacity(position);
+		let mut parent = Some(base);
+		for original in newest_first[..position].iter().rev() {
+			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
+			scratch.apply_op_with(RegistryTarget::Working, original.kind.clone(), original.timestamp, ApplyMode::Idempotent)?;
+			let copy = Delta::new(parent, original.timestamp.peer, original.timestamp, original.kind.clone(), reverse);
+			parent = Some(copy.id);
+			copies.push(copy);
+		}
 
 		let mut touched = Touched::default();
 		newest_first[position..].iter().for_each(|delta| touched.record(&delta.kind));
-		let mut copies = Vec::new();
-		for original in newest_first[..position].iter().rev() {
-			for rev in self.commit_ops_authored_at([(original.kind.clone(), Some(original.timestamp))], true)? {
-				self.carry_attributes(original, rev);
-				copies.extend(self.document.history.get(rev).cloned());
+		for (original, copy) in newest_first[..position].iter().rev().zip(&mut copies) {
+			self.document.history.push(copy.clone());
+			self.carry_attributes(original, copy.id);
+			if let Some(carried) = self.document.history.get(copy.id) {
+				*copy = carried.clone();
 			}
 		}
+		self.document.head = parent;
+		self.document.retired_snapshot = scratch.working_registry;
 		self.document.history.canonical_sort();
 
 		self.document.redo_stack.clear();
@@ -590,12 +600,17 @@ impl Session {
 	}
 
 	fn fold_at(&self, head: Option<Rev>) -> Result<Registry, CrdtError> {
+		Ok(self.fold_scratch_at(head)?.working_registry)
+	}
+
+	/// A scratch document whose working registry is the fold of `head`'s ancestry.
+	fn fold_scratch_at(&self, head: Option<Rev>) -> Result<Document, CrdtError> {
 		let reachable = self.document.history.ancestors(head);
 		let mut scratch = Document::empty(self.document.peer, self.document.user);
 		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
 			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
 		}
-		Ok(scratch.working_registry)
+		Ok(scratch)
 	}
 
 	pub fn history_len(&self) -> usize {
