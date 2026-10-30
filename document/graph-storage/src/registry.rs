@@ -7,22 +7,26 @@ use std::collections::HashMap;
 /// revives the entity.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Registry {
+	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub node_instances: HashMap<NodeId, Node>,
+	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub networks: HashMap<NetworkId, Network>,
 	/// Content-addressable resources (images, fonts, eventually proto-node declarations) referenced
 	/// by `ResourceId`. See [`ResourceStore`].
+	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub resources: ResourceStore,
 	/// Which person each device is, from `RegistryDelta::RegisterPeer`, so undo and authorship scope by person.
+	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub peer_users: HashMap<PeerId, PeerRegistration>,
 	pub attributes: Attributes,
 	/// Tombstones of removed nodes, so an op on one is ordered against its removal whichever arrives first.
-	#[serde(default)]
+	#[serde(default, serialize_with = "crate::sorted::serialize_sorted")]
 	pub removed_nodes: HashMap<NodeId, Tombstone<Node>>,
 	/// Tombstones of removed networks; see [`removed_nodes`](Self::removed_nodes).
-	#[serde(default)]
+	#[serde(default, serialize_with = "crate::sorted::serialize_sorted")]
 	pub removed_networks: HashMap<NetworkId, Tombstone<Network>>,
 	/// Tombstones of removed resources; see [`removed_nodes`](Self::removed_nodes).
-	#[serde(default)]
+	#[serde(default, serialize_with = "crate::sorted::serialize_sorted")]
 	pub removed_resources: HashMap<ResourceId, Tombstone<ResourceEntry>>,
 }
 

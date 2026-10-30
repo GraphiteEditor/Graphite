@@ -12,6 +12,7 @@ mod prior;
 pub mod registry;
 pub mod resources;
 pub mod session;
+mod sorted;
 mod touched;
 pub mod value;
 

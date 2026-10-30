@@ -1248,8 +1248,10 @@ pub struct HotOpId {
 /// Persisted, so a late copy of such an op is dropped.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RetiredMarks {
+	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub retired_up_to: HashMap<PeerId, HotSequence>,
 	/// retired ops past their author's prefix, as inclusive runs, one per gap in flight.
+	#[serde(serialize_with = "crate::sorted::serialize_sorted")]
 	pub retired_runs: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
 	/// Which covered ops their author took back rather than retired, as inclusive runs.
 	#[serde(default)]
