@@ -16,7 +16,19 @@ impl NodeNetworkInterface {
 			metadata: &self.network_metadata,
 			definition_import_counts: HashMap::new(),
 		};
-		validate_network(&mut root, self.document_network(), &self.network_metadata, &mut Vec::new(), 0, &mut violations);
+		validate_network(&mut root, self.document_network(), &self.network_metadata, &mut Vec::new(), Some(0), &mut violations);
+
+		for (id, definition) in &self.document_network().definitions {
+			if root.definition_import_counts.contains_key(id) {
+				continue;
+			}
+			let Some(definition_metadata) = self.network_metadata.persistent_metadata.definitions.get(id) else {
+				continue;
+			};
+
+			root.definition_import_counts.insert(*id, None);
+			validate_network(&mut root, definition, definition_metadata, &mut Vec::new(), None, &mut violations);
+		}
 		self.validate_outward_wires(&mut Vec::new(), &mut HashSet::new(), &mut violations);
 		self.validate_dots_stay_on_wires(&mut violations);
 		violations
@@ -91,10 +103,10 @@ fn wire_counts(inputs: &[InputConnector]) -> HashMap<InputConnector, usize> {
 struct DocumentRoot<'a> {
 	network: &'a NodeNetwork,
 	metadata: &'a NodeNetworkMetadata,
-	definition_import_counts: HashMap<NetworkId, usize>,
+	definition_import_counts: HashMap<NetworkId, Option<usize>>,
 }
 
-fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: usize, violations: &mut Vec<String>) {
+fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_metadata: &NodeNetworkMetadata, path: &mut Vec<NodeId>, import_count: Option<usize>, violations: &mut Vec<String>) {
 	let (document_network, document_metadata) = (root.network, root.metadata);
 
 	let node_metadata = &network_metadata.persistent_metadata.node_metadata;
@@ -127,8 +139,12 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 			}
 			_ => {}
 		},
-		NodeInput::Import { import_index, .. } if *import_index >= import_count => {
-			violations.push(format!("{location} in network {path:?} references nonexistent import {import_index} of {import_count}"));
+		NodeInput::Import { import_index, .. } => {
+			if let Some(import_count) = import_count
+				&& *import_index >= import_count
+			{
+				violations.push(format!("{location} in network {path:?} references nonexistent import {import_index} of {import_count}"));
+			}
 		}
 		_ => {}
 	};
@@ -174,7 +190,7 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 				validate_output_names(nested_network.exports.len(), violations);
 
 				path.push(*node_id);
-				validate_network(root, nested_network, nested_metadata, path, node.inputs.len(), violations);
+				validate_network(root, nested_network, nested_metadata, path, Some(node.inputs.len()), violations);
 				path.pop();
 			}
 			(DocumentNodeImplementation::Network(_), None) => {
@@ -191,19 +207,19 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 				validate_output_names(definition.exports.len(), violations);
 
 				match root.definition_import_counts.get(id) {
-					Some(&validated_import_count) if validated_import_count != node.inputs.len() => violations.push(format!(
+					Some(&Some(validated_import_count)) if validated_import_count != node.inputs.len() => violations.push(format!(
 						"Node {node_id} in network {path:?} has {} inputs but another instance of definition {id:?} has {validated_import_count}",
 						node.inputs.len()
 					)),
 					Some(_) => {}
 					None => {
-						root.definition_import_counts.insert(*id, node.inputs.len());
+						root.definition_import_counts.insert(*id, Some(node.inputs.len()));
 
 						let Some(definition_metadata) = document_metadata.persistent_metadata.definitions.get(id) else {
 							continue;
 						};
 						path.push(*node_id);
-						validate_network(root, definition, definition_metadata, path, node.inputs.len(), violations);
+						validate_network(root, definition, definition_metadata, path, Some(node.inputs.len()), violations);
 						path.pop();
 					}
 				}

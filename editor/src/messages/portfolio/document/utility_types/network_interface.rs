@@ -230,6 +230,16 @@ mod network_interface_tests {
 		assert_eq!(document_view.number_of_outputs(&NodeId(10)), Ok(1));
 		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
 
+		let unused = NetworkId(2);
+		let mut network_with_unused = network.clone();
+		network_with_unused
+			.definitions
+			.insert(unused, NodeNetwork::value_network(instance(DocumentNodeImplementation::default())));
+		let mut metadata_with_unused = network_metadata.clone();
+		metadata_with_unused.persistent_metadata.definitions.insert(unused, NodeNetworkMetadata::default());
+		let with_unused = NodeNetworkInterface::from_trees(network_with_unused, metadata_with_unused);
+		assert_eq!(with_unused.validate_invariants().len(), 1);
+
 		let mut mismatched_network = network;
 		mismatched_network.nodes.get_mut(&NodeId(11)).unwrap().inputs.push(NodeInput::value(TaggedValue::None, false));
 		network_metadata

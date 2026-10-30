@@ -1196,6 +1196,37 @@ mod tests {
 	}
 
 	#[test]
+	fn resource_visits_reach_each_definition_once() {
+		let definition = NetworkId(1);
+		let used = ResourceId::from(1);
+		let instance = || DocumentNode {
+			implementation: DocumentNodeImplementation::Definition(definition),
+			..Default::default()
+		};
+		let body = NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::Resource(used), false)],
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			nodes: [(NodeId(1), instance()), (NodeId(2), instance())].into_iter().collect(),
+			definitions: [(definition, body)].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut visits = Vec::new();
+		visit_network_resources(&network, &mut |id| visits.push(id));
+		assert_eq!(visits, vec![used]);
+	}
+
+	#[test]
 	fn port_click_targets_reach_around_the_connector_where_wires_attach() {
 		let center = DVec2::new(100., 50.);
 		let mut ports = Ports::new();

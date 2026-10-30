@@ -1485,6 +1485,7 @@ impl NodeNetwork {
 }
 
 /// An iterator over all [`DocumentNode`]s, including ones that are deeply nested.
+/// Each definition body is visited once, under the path of the first instance reached.
 pub struct RecursiveNodeIter<'a> {
 	definitions: &'a FxHashMap<NetworkId, NodeNetwork>,
 	visited_definitions: FxHashSet<NetworkId>,
