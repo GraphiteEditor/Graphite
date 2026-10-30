@@ -127,6 +127,14 @@ impl<P: core_types::CacheHash + Pixel> core_types::CacheHash for Image<P> {
 	}
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ImageError {
+	#[error("The {width}×{height} px image is too large")]
+	TooLarge { width: u32, height: u32 },
+	#[error("The file is not an image in a supported format, or it is damaged")]
+	Undecodable(#[source] ::image::ImageError),
+}
+
 impl<P: Pixel> Image<P> {
 	pub fn new(width: u32, height: u32, color: P) -> Self {
 		Self {
@@ -134,6 +142,18 @@ impl<P: Pixel> Image<P> {
 			height,
 			data: vec![color; (width * height) as usize],
 		}
+	}
+
+	/// An image filled with `color`, failing where the pixel count overflows the `u32` pixel indices or can't be allocated.
+	pub fn try_new(width: u32, height: u32, color: P) -> Result<Self, ImageError> {
+		let too_large = || ImageError::TooLarge { width, height };
+		let count = width.checked_mul(height).ok_or_else(too_large)? as usize;
+
+		let mut data = Vec::new();
+		data.try_reserve_exact(count).map_err(|_| too_large())?;
+		data.resize(count, color);
+
+		Ok(Self { width, height, data })
 	}
 }
 
@@ -144,8 +164,8 @@ impl Image<Color> {
 		Image { width, height, data }
 	}
 
-	/// Decodes an image file of any supported format.
-	pub fn from_encoded(data: &[u8]) -> Option<Self> {
+	/// Decodes an image file of any supported format, or gives the reason it can't be.
+	pub fn from_encoded(data: &[u8]) -> Result<Self, ImageError> {
 		let image = decode(data)?;
 
 		// Most files hold eight-bit samples, which decode through a table of all 256 values rather than a power function for each
@@ -159,7 +179,7 @@ impl Image<Color> {
 				.map(|&[red, green, blue, alpha]| SRGBA8::new(red, green, blue, alpha).into())
 				.collect();
 
-			return Some(Image {
+			return Ok(Image {
 				width: image.width(),
 				height: image.height(),
 				data,
@@ -187,7 +207,7 @@ impl Image<Color> {
 			})
 			.collect();
 
-		Some(Image {
+		Ok(Image {
 			width: image.width(),
 			height: image.height(),
 			data,
@@ -196,7 +216,7 @@ impl Image<Color> {
 
 	/// The pixel size of an image file, if it decodes in full as [`Image::from_encoded`] needs it to.
 	pub fn encoded_size(data: &[u8]) -> Option<(u32, u32)> {
-		decode(data).map(|image| (image.width(), image.height()))
+		decode(data).ok().map(|image| (image.width(), image.height()))
 	}
 
 	/// The image shrunk by half along each axis `times` times, averaging each block of pixels with their colors weighted by their alpha.
@@ -246,9 +266,17 @@ impl Image<Color> {
 }
 
 /// A TGA file has no signature to recognize it by, so a file of no recognized format is tried as one.
-fn decode(data: &[u8]) -> Option<::image::DynamicImage> {
+fn decode(data: &[u8]) -> Result<::image::DynamicImage, ImageError> {
 	let format = ::image::guess_format(data).unwrap_or(::image::ImageFormat::Tga);
-	::image::load_from_memory_with_format(data, format).ok()
+	::image::load_from_memory_with_format(data, format).map_err(|error| {
+		// The memory limit error carries no size, which the header gives
+		if let ::image::ImageError::Limits(_) = error
+			&& let Ok((width, height)) = ::image::ImageReader::with_format(std::io::Cursor::new(data), format).into_dimensions()
+		{
+			return ImageError::TooLarge { width, height };
+		}
+		ImageError::Undecodable(error)
+	})
 }
 
 use super::*;
@@ -389,12 +417,37 @@ mod test {
 			let mut encoded = Vec::new();
 			pixels.write_to(&mut std::io::Cursor::new(&mut encoded), format).unwrap();
 
-			let image = Image::from_encoded(&encoded).unwrap_or_else(|| panic!("{format:?} should decode"));
+			let image = Image::from_encoded(&encoded).unwrap_or_else(|error| panic!("{format:?} should decode: {error}"));
 			assert_eq!(Image::encoded_size(&encoded), Some((2, 1)), "{format:?}");
 			assert_eq!(image.to_flat_u8().0, pixels.as_raw().as_slice(), "{format:?}");
 		}
 
-		assert!(Image::from_encoded(b"not an image").is_none());
+		assert!(Image::from_encoded(b"not an image").is_err());
+	}
+
+	#[test]
+	fn a_file_that_does_not_decode_gives_its_reason() {
+		use super::*;
+
+		assert!(matches!(Image::from_encoded(b"not an image"), Err(ImageError::Undecodable(_))));
+
+		// A BMP header for a 32-bit image of 30000×30000 pixels, which is far beyond the decoder's memory limit
+		let mut file = b"BM".to_vec();
+		for field in [54_u32, 0, 54, 40, 30000, 30000] {
+			file.extend(field.to_le_bytes());
+		}
+		file.extend([1, 0, 32, 0]);
+		file.extend([0; 24]);
+		let error = Image::from_encoded(&file).unwrap_err();
+		assert!(matches!(error, ImageError::TooLarge { width: 30000, height: 30000 }), "{error:?}");
+	}
+
+	#[test]
+	fn an_image_too_large_for_its_pixel_indices_is_not_made() {
+		use super::*;
+
+		assert!(matches!(Image::try_new(65536, 65536, Color::BLACK), Err(ImageError::TooLarge { width: 65536, height: 65536 })));
+		assert_eq!(Image::try_new(3, 2, Color::BLACK).unwrap().data, vec![Color::BLACK; 6]);
 	}
 
 	#[test]
@@ -453,7 +506,7 @@ mod test {
 		file.extend([0, 255, 0, 0]);
 
 		assert!(::image::load_from_memory_with_format(&file, ::image::ImageFormat::Tga).is_ok());
-		assert!(Image::from_encoded(&file).is_none());
+		assert!(Image::from_encoded(&file).is_err());
 	}
 
 	#[test]

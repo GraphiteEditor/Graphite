@@ -104,8 +104,8 @@ fn text_to_vector(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).
 	string: Item<String>,
-) -> Item<Vector> {
-	shape_text_item(&string, false).into_iter().next().unwrap_or_default()
+) -> Result<Item<Vector>, TextToVectorError> {
+	Ok(shape_text_item(&string, false)?.into_iter().next().unwrap_or_default())
 }
 
 /// Splits a styled text string into a separate vector item for each of its glyphs (letterforms).
@@ -114,6 +114,6 @@ fn text_to_vector_glyphs(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).
 	string: Item<String>,
-) -> List<Vector> {
+) -> Result<List<Vector>, TextToVectorError> {
 	shape_text_item(&string, true)
 }

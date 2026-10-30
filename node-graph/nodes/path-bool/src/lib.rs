@@ -10,8 +10,19 @@ use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
-use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, QuadBez};
+use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathEl, PathSeg, Point, QuadBez, Shape};
 pub use vector_types::vector::misc::BooleanOperation;
+
+/// Why a boolean operation gives no result.
+#[derive(Debug, thiserror::Error)]
+pub enum BooleanOperationError {
+	#[error("An operand has coordinates that aren't finite")]
+	NonFiniteCoordinates,
+	#[error(transparent)]
+	Text(#[from] text_nodes::TextToVectorError),
+	#[error("The operands can't be combined because {0}")]
+	Topology(#[from] linesweeper::Error),
+}
 
 // TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-item `List`s and now we use a single `List`
@@ -30,12 +41,12 @@ fn boolean_operation(
 	/// Intersection cuts away all but the overlapping areas shared by every path.
 	/// Difference cuts away the areas where an even number of paths overlap, keeping those where an odd number do.
 	operation: Item<BooleanOperation>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, BooleanOperationError> {
 	let operation = operation.into_element();
 
 	// The first index is the bottom of the stack
-	let flattened = flatten_vector(&content);
-	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation);
+	let flattened = flatten_vector(&content)?;
+	let mut result_vector_list = boolean_operation_on_vector_list(&flattened, operation)?;
 
 	// Replace the transformation matrix with a mutation of the vector points themselves
 	if result_vector_list.element_mut(0).is_some() {
@@ -65,7 +76,7 @@ fn boolean_operation(
 		set_paths_at(&mut result_vector_list, 0, result_paths);
 	}
 
-	result_vector_list.into_iter().next().unwrap_or_default()
+	Ok(result_vector_list.into_iter().next().unwrap_or_default())
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -104,7 +115,7 @@ impl std::ops::AddAssign for WindingNumber {
 			self.elems = rhs.elems;
 		} else {
 			for (me, them) in self.elems.iter_mut().zip(&rhs.elems) {
-				*me += *them;
+				*me = me.wrapping_add(*them);
 			}
 		}
 	}
@@ -133,7 +144,7 @@ impl WindingNumber {
 	}
 }
 
-fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: BooleanOperation) -> List<Vector> {
+fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: BooleanOperation) -> Result<List<Vector>, BooleanOperationError> {
 	const EPSILON: f64 = 1e-5;
 	let mut list = List::new();
 	let mut paths = Vec::new();
@@ -161,18 +172,15 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	for index in 0..vector.len() {
 		let element = vector.element(index).unwrap();
 		let element_paths = paths_from_list_row_attributes(vector, index).unwrap_or_else(|| no_paths());
-		paths.push(to_bez_path(element, element_paths, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index)));
+		paths.push(to_bez_path(element, element_paths, vector.attribute_cloned_or_default(ATTR_TRANSFORM, index))?);
 	}
 
-	let top = match Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON) {
-		Ok(top) => top,
-		Err(e) => {
-			log::error!("Boolean operation failed while building topology: {e}");
-			row.set_paths(List::<Path>::new());
-			list.push(row);
-			return list;
-		}
-	};
+	// Far from the origin, the tolerance grows with the coordinates' magnitude like linesweeper's own `binary_op`, since the sweep can't resolve less
+	let bounds = paths.iter().map(Shape::bounding_box).reduce(|a, b| a.union(b)).unwrap_or_default();
+	let magnitude = bounds.min_x().min(bounds.min_y()).abs().max(bounds.max_x().max(bounds.max_y()).abs());
+	let epsilon = EPSILON.max(magnitude * f64::EPSILON * 64.);
+
+	let top = Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), epsilon).map_err(linesweeper::Error::from)?;
 	let contours = top.contours(|winding| winding.is_inside(boolean_operation));
 	let mut result_paths = List::new();
 	let closed_contours = contours.contours().map(|contour| closed(contour.path.clone()));
@@ -180,14 +188,14 @@ fn boolean_operation_on_vector_list(vector: &List<Vector>, boolean_operation: Bo
 	row.set_paths(result_paths);
 
 	list.push(row);
-	list
+	Ok(list)
 }
 
 /// Flattens graphic content into the operands of a boolean operation, matching `flatten_graphic_list`'s attribute composition.
 /// Non-path content is dropped, since it contributes no region to operate on.
-fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
-	(0..graphic_list.len())
-		.flat_map(|index| {
+fn flatten_vector(graphic_list: &List<Graphic>) -> Result<List<Vector>, BooleanOperationError> {
+	let operands = (0..graphic_list.len())
+		.map(|index| {
 			let graphic = graphic_list.element(index).unwrap();
 
 			// Whether the parent carries each attribute is a structural fact, so an absent one never invents a column on the children
@@ -234,11 +242,11 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				other => other,
 			};
 
-			match graphic {
+			Ok(match graphic {
 				Graphic::Vector(item) => vec![compose_parent(*item)],
 				Graphic::VectorList(vector) => vector.into_iter().map(compose_parent).collect::<Vec<_>>(),
-				Graphic::Text(item) => text_nodes::shape_text_list(&List::new_from_item(item), false).into_iter().map(compose_parent).collect::<Vec<_>>(),
-				Graphic::TextList(text) => text_nodes::shape_text_list(&text, false).into_iter().map(compose_parent).collect::<Vec<_>>(),
+				Graphic::Text(item) => text_nodes::shape_text_list(&List::new_from_item(item), false)?.into_iter().map(compose_parent).collect::<Vec<_>>(),
+				Graphic::TextList(text) => text_nodes::shape_text_list(&text, false)?.into_iter().map(compose_parent).collect::<Vec<_>>(),
 				Graphic::GraphicList(mut graphic) => {
 					if parent_has_transform {
 						for transform in graphic.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
@@ -265,12 +273,12 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 
 					// Unioning each group lets it enter the outer operation as one region, which is why this cannot defer
 					// to `flatten_graphic_list`. Splicing children in as sibling operands makes them subtract from each other.
-					let flattened = flatten_vector(&graphic);
+					let flattened = flatten_vector(&graphic)?;
 					if flattened.is_empty() {
 						// The union call emits one blank operand even from an empty list
 						Vec::new()
 					} else {
-						boolean_operation_on_vector_list(&flattened, BooleanOperation::Union).into_iter().collect::<Vec<_>>()
+						boolean_operation_on_vector_list(&flattened, BooleanOperation::Union)?.into_iter().collect::<Vec<_>>()
 					}
 				}
 				// Rasters, colors, and gradients bound no region, so they contribute no operand
@@ -280,9 +288,11 @@ fn flatten_vector(graphic_list: &List<Graphic>) -> List<Vector> {
 				Graphic::StrokeList(_) => Vec::new(),
 				// Normalized to GraphicList above
 				Graphic::Graphic(_) => Vec::new(),
-			}
+			})
 		})
-		.collect()
+		.collect::<Result<Vec<_>, BooleanOperationError>>()?;
+
+	Ok(operands.into_iter().flatten().collect())
 }
 
 // This quantization should potentially be removed since it's not conceptually necessary,
@@ -309,7 +319,7 @@ fn closed(mut path: BezPath) -> BezPath {
 	path
 }
 
-fn to_bez_path(vector: &Vector, element_paths: &List<Path>, transform: DAffine2) -> BezPath {
+fn to_bez_path(vector: &Vector, element_paths: &List<Path>, transform: DAffine2) -> Result<BezPath, BooleanOperationError> {
 	let transform = Affine::new(transform.to_cols_array());
 	let mut path = BezPath::new();
 
@@ -330,7 +340,10 @@ fn to_bez_path(vector: &Vector, element_paths: &List<Path>, transform: DAffine2)
 		}
 	}
 
-	path
+	if !path.is_finite() {
+		return Err(BooleanOperationError::NonFiniteCoordinates);
+	}
+	Ok(path)
 }
 
 pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
@@ -355,7 +368,7 @@ mod tests {
 	#[test]
 	fn difference_leaves_the_overlap_of_two_shapes_empty() {
 		let content: List<Graphic> = [operand(&Circle::new((0., 0.), 100.)), operand(&Rect::new(50., 50., 200., 200.))].into_iter().collect();
-		let result = boolean_operation((), content, Item::new_from_element(BooleanOperation::Difference));
+		let result = boolean_operation((), content, Item::new_from_element(BooleanOperation::Difference)).unwrap();
 
 		let paths = result.attribute::<List<Path>>(ATTR_PATHS).cloned().unwrap_or_default();
 		let vector = result.element();
@@ -370,7 +383,7 @@ mod tests {
 	#[test]
 	fn difference_keeps_areas_covered_by_an_odd_number_of_shapes() {
 		let circles = [(0., 0.), (60., 0.), (30., 52.)].map(|center| operand(&Circle::new(center, 50.)));
-		let result = boolean_operation((), circles.into_iter().collect(), Item::new_from_element(BooleanOperation::Difference));
+		let result = boolean_operation((), circles.into_iter().collect(), Item::new_from_element(BooleanOperation::Difference)).unwrap();
 
 		let paths = result.attribute::<List<Path>>(ATTR_PATHS).cloned().unwrap_or_default();
 		let vector = result.element();

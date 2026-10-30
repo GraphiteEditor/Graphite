@@ -10,9 +10,27 @@ use wgpu::{Extent3d, TextureFormat};
 
 /// Uploads CPU image data to a GPU texture
 fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
-	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
-
 	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), TextureFormat::Rgba8UnormSrgb);
+
+	if image.width == 0 || image.height == 0 {
+		queue.write_texture(
+			texture.as_image_copy(),
+			bytemuck::bytes_of(&SRGBA8::TRANSPARENT),
+			wgpu::TexelCopyBufferLayout {
+				offset: 0,
+				bytes_per_row: Some(4),
+				rows_per_image: Some(1),
+			},
+			Extent3d {
+				width: 1,
+				height: 1,
+				depth_or_array_layers: 1,
+			},
+		);
+		return texture;
+	}
+
+	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
 	queue.write_texture(
 		texture.as_image_copy(),
 		bytemuck::cast_slice(rgba8_data.as_slice()),

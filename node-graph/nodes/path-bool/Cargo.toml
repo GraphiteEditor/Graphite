@@ -25,3 +25,4 @@ linesweeper = { workspace = true }
 log = { workspace = true }
 smallvec = { workspace = true }
 vector-types = { workspace = true }
+thiserror = { workspace = true }

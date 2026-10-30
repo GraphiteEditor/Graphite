@@ -59,56 +59,58 @@ impl WeldExt for Vector {
 			})
 			.collect::<Vec<_>>();
 
-		// Collect points and segments to delete at the end to avoid invalidating indices
+		// Each collapse set keeps its first point, which every other point in the set merges into
+		let mut collapse_group = FxHashMap::default();
+		let mut kept_points = Vec::with_capacity(collapse.len());
 		let mut points_to_delete = FxHashSet::default();
-		let mut segments_to_delete = FxHashSet::default();
-		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position) {
-			// Remove any segments where both endpoints are in the collapse set
-			for segment_index in 0..working.segment_ids.len() {
-				let start = working.point_ids[working.segment_start[segment_index]];
-				let end = working.point_ids[working.segment_end[segment_index]];
-				if collapse_set.contains(&start) && collapse_set.contains(&end) {
-					segments_to_delete.insert(working.segment_ids[segment_index]);
-				}
-			}
-
-			// Delete all points but the first, set its position to the average, and update segments
+		for (group, collapse_set) in collapse.iter().enumerate() {
 			let first_id = collapse_set.iter().copied().next().unwrap();
-			collapse_set.remove(&first_id);
-			let first_offset = indices.point_to_offset[&first_id];
+			kept_points.push((first_id, indices.point_to_offset[&first_id]));
 
-			// Look for segments with endpoints in `collapse_set` and replace them with the point we are collapsing to
-			for segment_index in 0..working.segment_ids.len() {
-				let start_id = working.point_ids[working.segment_start[segment_index]];
-				let end_id = working.point_ids[working.segment_end[segment_index]];
-
-				// Update Bezier handles for moved points
-				if start_id == first_id {
-					let point_position = working.point_positions[working.segment_start[segment_index]];
-					working.segment_handles[segment_index].move_start(average_pos - point_position);
-				}
-				if end_id == first_id {
-					let point_position = working.point_positions[working.segment_end[segment_index]];
-					working.segment_handles[segment_index].move_end(average_pos - point_position);
-				}
-
-				// Replace removed points with the collapsed point
-				if collapse_set.contains(&start_id) {
-					let point_position = working.point_positions[working.segment_start[segment_index]];
-					working.segment_start[segment_index] = first_offset;
-					working.segment_handles[segment_index].move_start(average_pos - point_position);
-				}
-				if collapse_set.contains(&end_id) {
-					let point_position = working.point_positions[working.segment_end[segment_index]];
-					working.segment_end[segment_index] = first_offset;
-					working.segment_handles[segment_index].move_end(average_pos - point_position);
+			for &id in collapse_set {
+				collapse_group.insert(id, group);
+				if id != first_id {
+					points_to_delete.insert(id);
 				}
 			}
+		}
 
-			// Update the position of the collapsed point
+		// Collect segments to delete at the end to avoid invalidating indices
+		let mut segments_to_delete = FxHashSet::default();
+		for segment_index in 0..working.segment_ids.len() {
+			let start_id = working.point_ids[working.segment_start[segment_index]];
+			let end_id = working.point_ids[working.segment_end[segment_index]];
+			let (start_group, end_group) = (collapse_group.get(&start_id).copied(), collapse_group.get(&end_id).copied());
+
+			// Remove any segments where both endpoints are in the same collapse set
+			if start_group.is_some() && start_group == end_group {
+				segments_to_delete.insert(working.segment_ids[segment_index]);
+			}
+
+			// Move the segment's ends in a collapse set, along with their handles, onto the point the set collapses to
+			if let Some(group) = start_group {
+				let point_position = working.point_positions[working.segment_start[segment_index]];
+				working.segment_handles[segment_index].move_start(average_position[group] - point_position);
+
+				let (first_id, first_offset) = kept_points[group];
+				if start_id != first_id {
+					working.segment_start[segment_index] = first_offset;
+				}
+			}
+			if let Some(group) = end_group {
+				let point_position = working.point_positions[working.segment_end[segment_index]];
+				working.segment_handles[segment_index].move_end(average_position[group] - point_position);
+
+				let (first_id, first_offset) = kept_points[group];
+				if end_id != first_id {
+					working.segment_end[segment_index] = first_offset;
+				}
+			}
+		}
+
+		// Update the positions of the collapsed points
+		for (&(_, first_offset), average_pos) in kept_points.iter().zip(average_position) {
 			working.point_positions[first_offset] = average_pos;
-
-			points_to_delete.extend(collapse_set)
 		}
 
 		// Drop the collapsed segments, then the merged-away points, remapping segment endpoints
@@ -404,13 +406,13 @@ fn weld_nearby_points(vector: &mut Vector, paths: &mut List<Path>, transform: DA
 
 	// Create a spatial grid with cell size of 'distance'
 	use std::collections::HashMap;
-	let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
+	let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
 
 	// Add points to grid cells without collecting all positions first
 	for i in 0..point_count {
 		let pos = transform.transform_point2(working.point_positions[i]);
-		let grid_x = ((pos.x - min_x) / distance).floor() as i32;
-		let grid_y = ((pos.y - min_y) / distance).floor() as i32;
+		let grid_x = ((pos.x - min_x) / distance).floor() as i64;
+		let grid_y = ((pos.y - min_y) / distance).floor() as i64;
 
 		grid.entry((grid_x, grid_y)).or_default().push(i);
 	}
@@ -428,15 +430,16 @@ fn weld_nearby_points(vector: &mut Vector, paths: &mut List<Path>, transform: DA
 		}
 
 		let pos_i = transform.transform_point2(working.point_positions[i]);
-		let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
-		let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
+		let grid_x = ((pos_i.x - min_x) / distance).floor() as i64;
+		let grid_y = ((pos_i.y - min_y) / distance).floor() as i64;
 
 		let mut group = vec![i];
 
 		// Check only neighboring cells (3x3 grid around current cell)
 		for dx in -1..=1 {
 			for dy in -1..=1 {
-				let neighbor_cell = (grid_x + dx, grid_y + dy);
+				// The saturating cast puts infinite points in the grid's edge cells, which have no neighbors beyond
+				let Some(neighbor_cell) = grid_x.checked_add(dx).zip(grid_y.checked_add(dy)) else { continue };
 
 				if let Some(indices) = grid.get(&neighbor_cell) {
 					for &j in indices {
@@ -695,6 +698,19 @@ mod tests {
 
 	fn point_ids(vector: &Vector) -> Vec<u64> {
 		vector.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.map(|id| id.inner()).collect()).unwrap_or_default()
+	}
+
+	// A point too far off for the grid of cells to hold sits at its edge, which has no cells beyond it to check
+	#[test]
+	fn weld_all_beside_an_infinite_point() {
+		let mut vector = pool(&[(0., 0.), (0.05, 0.), (f64::INFINITY, 0.)]);
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
+
+		vector.weld_all(&mut paths, DAffine2::IDENTITY, 0.1);
+
+		assert_eq!(vector.0.len(), 2);
+		assert!(near(vector.0.element(0), (0.025, 0.)));
 	}
 
 	// Two lines meeting across a small gap join there, while two close points of another path stay apart since only one is an end

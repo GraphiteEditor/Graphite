@@ -9,35 +9,50 @@
 //! welded points and segments. Voronoi cells around the convex hull are unbounded, so they are clipped to the convex hull
 //! of the input sites, which also bounds the whole diagram to a finite region.
 
-use delaunator::{EMPTY, Point, triangulate};
+use delaunator::{EMPTY, Point, Triangulation, triangulate};
 use glam::DVec2;
+
+#[derive(Debug, thiserror::Error)]
+pub enum PointDiagramError {
+	#[error("Some points have positions that aren't finite")]
+	NonFinitePoints,
+}
+
+/// Triangulates `sites` with `delaunator`, which can't take non-finite positions among them.
+fn triangulation(sites: &[DVec2]) -> Result<Triangulation, PointDiagramError> {
+	if !sites.iter().all(|site| site.is_finite()) {
+		return Err(PointDiagramError::NonFinitePoints);
+	}
+
+	let points: Vec<Point> = sites.iter().map(|p| Point { x: p.x, y: p.y }).collect();
+	Ok(triangulate(&points))
+}
 
 /// Computes the Delaunay triangulation of `sites`, returning each triangle as a triple of indices into `sites`.
 ///
-/// Returns an empty vector when there are fewer than three points or they are all colinear (no triangle exists).
-pub fn delaunay_triangles(sites: &[DVec2]) -> Vec<[usize; 3]> {
-	let points: Vec<Point> = sites.iter().map(|p| Point { x: p.x, y: p.y }).collect();
-	let triangulation = triangulate(&points);
-	triangulation.triangles.chunks_exact(3).map(|t| [t[0], t[1], t[2]]).collect()
+/// Returns an empty vector when there are fewer than three points or they are all colinear (no triangle exists), and fails when a site isn't finite.
+pub fn delaunay_triangles(sites: &[DVec2]) -> Result<Vec<[usize; 3]>, PointDiagramError> {
+	let triangulation = triangulation(sites)?;
+	Ok(triangulation.triangles.as_chunks::<3>().0.iter().map(|t| [t[0], t[1], t[2]]).collect())
 }
 
 /// Computes the Voronoi cell of every site, each clipped to the convex hull of `sites`.
 ///
 /// Returns one closed polygon per site that produces a non-empty cell (degenerate or fully-clipped cells are omitted,
-/// so the result may be shorter than `sites`). Returns an empty vector when no triangulation exists (fewer than three points or all colinear).
-pub fn voronoi_cells(sites: &[DVec2]) -> Vec<Vec<DVec2>> {
-	voronoi_cells_per_site(sites).0.into_iter().flatten().collect()
+/// so the result may be shorter than `sites`). Returns an empty vector when no triangulation exists (fewer than three points or all colinear), and fails when a site isn't finite.
+pub fn voronoi_cells(sites: &[DVec2]) -> Result<Vec<Vec<DVec2>>, PointDiagramError> {
+	Ok(voronoi_cells_per_site(sites)?.0.into_iter().flatten().collect())
 }
 
 /// Applies Lloyd's relaxation: each step moves every interior site to the centroid of its Voronoi cell, yielding a more
 /// even (centroidal) point distribution. A fractional `iterations` runs the whole-number steps and then blends each site
 /// partway toward the result of one more step, so the relaxation can be animated smoothly. Returns the sites unchanged when
-/// `iterations` is 0 or no diagram can be formed.
+/// `iterations` is 0 or no diagram can be formed, and fails when `iterations` isn't 0 and a site isn't finite.
 ///
 /// The convex-hull (perimeter) sites are pinned so the point cloud's outline is preserved. Otherwise, clipping the
 /// unbounded perimeter cells would drag those sites around (inward for the convex hull, or outward into the corners of a
 /// fixed bounding box), distorting the shape over successive iterations.
-pub fn relax_sites(sites: &[DVec2], iterations: f64) -> Vec<DVec2> {
+pub fn relax_sites(sites: &[DVec2], iterations: f64) -> Result<Vec<DVec2>, PointDiagramError> {
 	const MAX_STEPS_FOR_SAFETY: f64 = 1000.;
 	let iterations = iterations.clamp(0., MAX_STEPS_FOR_SAFETY);
 	let whole_steps = iterations.floor();
@@ -45,24 +60,24 @@ pub fn relax_sites(sites: &[DVec2], iterations: f64) -> Vec<DVec2> {
 
 	let mut current = sites.to_vec();
 	for _ in 0..whole_steps as u32 {
-		current = relax_once(&current);
+		current = relax_once(&current)?;
 	}
 
 	// Blend each site partway toward one further step for the fractional remainder.
 	if fraction > 0. {
-		let next = relax_once(&current);
+		let next = relax_once(&current)?;
 		for (point, target) in current.iter_mut().zip(next) {
 			*point = point.lerp(target, fraction);
 		}
 	}
 
-	current
+	Ok(current)
 }
 
 /// Performs a single Lloyd relaxation step: moves every interior site to its Voronoi cell centroid,
 /// leaving the pinned convex-hull (perimeter) sites in place.
-fn relax_once(sites: &[DVec2]) -> Vec<DVec2> {
-	let (cells, is_hull) = voronoi_cells_per_site(sites);
+fn relax_once(sites: &[DVec2]) -> Result<Vec<DVec2>, PointDiagramError> {
+	let (cells, is_hull) = voronoi_cells_per_site(sites)?;
 	let mut relaxed = sites.to_vec();
 	for ((site, cell), on_hull) in relaxed.iter_mut().zip(cells).zip(is_hull) {
 		if on_hull {
@@ -72,7 +87,7 @@ fn relax_once(sites: &[DVec2]) -> Vec<DVec2> {
 			*site = centroid;
 		}
 	}
-	relaxed
+	Ok(relaxed)
 }
 
 /// The area-weighted centroid of a simple polygon, or `None` if it has fewer than three vertices or zero area.
@@ -95,11 +110,11 @@ fn polygon_centroid(polygon: &[DVec2]) -> Option<DVec2> {
 /// Computes each site's clipped Voronoi cell, aligned with `sites` (index `i` is the cell of `sites[i]`), together with a
 /// per-site flag marking the convex-hull (perimeter) sites. A cell is `None` when the site has no incident triangle
 /// (e.g. a coincident duplicate) or its cell vanishes after clipping.
-fn voronoi_cells_per_site(sites: &[DVec2]) -> (Vec<Option<Vec<DVec2>>>, Vec<bool>) {
-	let points: Vec<Point> = sites.iter().map(|p| Point { x: p.x, y: p.y }).collect();
-	let triangulation = triangulate(&points);
+#[allow(clippy::type_complexity)]
+fn voronoi_cells_per_site(sites: &[DVec2]) -> Result<(Vec<Option<Vec<DVec2>>>, Vec<bool>), PointDiagramError> {
+	let triangulation = triangulation(sites)?;
 	if triangulation.triangles.is_empty() {
-		return (vec![None; sites.len()], vec![false; sites.len()]);
+		return Ok((vec![None; sites.len()], vec![false; sites.len()]));
 	}
 
 	let triangles = &triangulation.triangles;
@@ -168,7 +183,7 @@ fn voronoi_cells_per_site(sites: &[DVec2]) -> (Vec<Option<Vec<DVec2>>>, Vec<bool
 		})
 		.collect();
 
-	(cells, is_hull)
+	Ok((cells, is_hull))
 }
 
 /// The circumcenter of a triangle, computed relative to `a` for numerical stability. Falls back to the centroid for a
@@ -306,18 +321,18 @@ mod tests {
 		// `delaunator` returns clockwise triangles, so `delaunay_triangles` keeps that order, but `voronoi_cells` are
 		// counter-clockwise. This documents the raw orientation; the Delaunay node reverses it to match the cells.
 		let sites = square_with_center();
-		for t in delaunay_triangles(&sites) {
+		for t in delaunay_triangles(&sites).unwrap() {
 			let poly = [sites[t[0]], sites[t[1]], sites[t[2]]];
 			assert!(signed_area(&poly) < 0., "delaunator triangles are expected to be clockwise");
 		}
-		for cell in voronoi_cells(&sites) {
+		for cell in voronoi_cells(&sites).unwrap() {
 			assert!(signed_area(&cell) > 0., "voronoi cells are expected to be counter-clockwise");
 		}
 	}
 
 	#[test]
 	fn delaunay_triangulates_square() {
-		let triangles = delaunay_triangles(&square_with_center());
+		let triangles = delaunay_triangles(&square_with_center()).unwrap();
 		// Four corner-to-center triangles tessellate the square.
 		assert_eq!(triangles.len(), 4);
 		for triangle in triangles {
@@ -329,12 +344,12 @@ mod tests {
 
 	#[test]
 	fn delaunay_degenerate_inputs_produce_no_triangles() {
-		assert!(delaunay_triangles(&[]).is_empty());
-		assert!(delaunay_triangles(&[DVec2::new(1., 1.)]).is_empty());
-		assert!(delaunay_triangles(&[DVec2::new(0., 0.), DVec2::new(1., 1.)]).is_empty());
+		assert!(delaunay_triangles(&[]).unwrap().is_empty());
+		assert!(delaunay_triangles(&[DVec2::new(1., 1.)]).unwrap().is_empty());
+		assert!(delaunay_triangles(&[DVec2::new(0., 0.), DVec2::new(1., 1.)]).unwrap().is_empty());
 		// Colinear points have no triangulation.
 		let colinear = vec![DVec2::new(0., 0.), DVec2::new(1., 1.), DVec2::new(2., 2.)];
-		assert!(delaunay_triangles(&colinear).is_empty());
+		assert!(delaunay_triangles(&colinear).unwrap().is_empty());
 	}
 
 	#[test]
@@ -343,14 +358,14 @@ mod tests {
 		// (100 for the 10x10 square). If the outward projection direction were inverted, the boundary cells would collapse
 		// inward and the total would fall well short of 100.
 		let sites = square_with_center();
-		let total: f64 = voronoi_cells(&sites).iter().map(|cell| signed_area(cell)).sum();
+		let total: f64 = voronoi_cells(&sites).unwrap().iter().map(|cell| signed_area(cell)).sum();
 		assert!((total - 100.).abs() < 1e-6, "cells should tile the hull (area 100), got {total}");
 	}
 
 	#[test]
 	fn voronoi_cells_stay_within_the_hull() {
 		let sites = square_with_center();
-		let cells = voronoi_cells(&sites);
+		let cells = voronoi_cells(&sites).unwrap();
 		assert!(!cells.is_empty());
 		// Clipping to the hull keeps every vertex inside the input bounds (with a small tolerance for float error).
 		for cell in &cells {
@@ -365,7 +380,7 @@ mod tests {
 	#[test]
 	fn relaxation_with_zero_iterations_is_identity() {
 		let sites = square_with_center();
-		assert_eq!(relax_sites(&sites, 0.), sites);
+		assert_eq!(relax_sites(&sites, 0.).unwrap(), sites);
 	}
 
 	#[test]
@@ -373,7 +388,7 @@ mod tests {
 		// Add a point clustered near the center; relaxation should redistribute the points without leaving the hull.
 		let mut sites = square_with_center();
 		sites.push(DVec2::new(5.5, 4.5));
-		let relaxed = relax_sites(&sites, 3.);
+		let relaxed = relax_sites(&sites, 3.).unwrap();
 
 		assert_eq!(relaxed.len(), sites.len());
 		assert_ne!(relaxed, sites, "relaxation should move the points");
@@ -394,7 +409,7 @@ mod tests {
 			DVec2::new(3., 3.),
 			DVec2::new(7., 4.),
 		];
-		let relaxed = relax_sites(&sites, 4.);
+		let relaxed = relax_sites(&sites, 4.).unwrap();
 
 		for i in 0..4 {
 			assert_eq!(relaxed[i], sites[i], "convex hull point {i} should be pinned");
@@ -416,9 +431,9 @@ mod tests {
 		// A fractional count lands exactly midway between the two bracketing whole-step results, exercising both the
 		// pure-fraction path (0.5) and the whole-steps-then-fraction path (2.5).
 		for whole in [0., 2.] {
-			let lower = relax_sites(&sites, whole);
-			let upper = relax_sites(&sites, whole + 1.);
-			let half = relax_sites(&sites, whole + 0.5);
+			let lower = relax_sites(&sites, whole).unwrap();
+			let upper = relax_sites(&sites, whole + 1.).unwrap();
+			let half = relax_sites(&sites, whole + 0.5).unwrap();
 			for i in 0..sites.len() {
 				let expected = (lower[i] + upper[i]) / 2.;
 				assert!((half[i] - expected).length() < 1e-9, "index {i} at {whole}.5: {half:?} vs {expected:?}", half = half[i]);
@@ -430,7 +445,7 @@ mod tests {
 	fn relaxation_leaves_degenerate_input_unchanged() {
 		// Fewer than three points cannot form a diagram, so relaxation is a no-op.
 		let sites = vec![DVec2::new(0., 0.), DVec2::new(1., 1.)];
-		assert_eq!(relax_sites(&sites, 5.), sites);
+		assert_eq!(relax_sites(&sites, 5.).unwrap(), sites);
 	}
 
 	#[test]
@@ -444,12 +459,12 @@ mod tests {
 			DVec2::new(7., 6.),
 		];
 		// A huge or infinite count must clamp to the converged result rather than hang on a billions-long loop.
-		let converged = relax_sites(&sites, 1000.);
-		assert_eq!(relax_sites(&sites, 1e9), converged);
-		assert_eq!(relax_sites(&sites, f64::INFINITY), converged);
+		let converged = relax_sites(&sites, 1000.).unwrap();
+		assert_eq!(relax_sites(&sites, 1e9).unwrap(), converged);
+		assert_eq!(relax_sites(&sites, f64::INFINITY).unwrap(), converged);
 		// NaN and negative counts resolve to zero steps, leaving the sites unchanged.
-		assert_eq!(relax_sites(&sites, f64::NAN), sites);
-		assert_eq!(relax_sites(&sites, -5.), sites);
+		assert_eq!(relax_sites(&sites, f64::NAN).unwrap(), sites);
+		assert_eq!(relax_sites(&sites, -5.).unwrap(), sites);
 	}
 
 	#[test]
@@ -460,7 +475,7 @@ mod tests {
 			let angle = i as f64 / 6. * std::f64::consts::TAU;
 			sites.push(DVec2::new(angle.cos() * 10., angle.sin() * 10.));
 		}
-		let cells = voronoi_cells(&sites);
+		let cells = voronoi_cells(&sites).unwrap();
 		assert!(!cells.is_empty());
 		// Every cell is a finite polygon with no runaway coordinates.
 		for cell in &cells {

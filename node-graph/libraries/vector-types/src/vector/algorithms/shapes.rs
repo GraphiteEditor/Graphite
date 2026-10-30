@@ -13,6 +13,19 @@ use std::f64::consts::TAU;
 /// Constant from <https://pomax.github.io/bezierinfo/#circles_cubic>
 const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 
+/// Relative growth per radian below which spiral arc lengths use a circle, since the closed forms divide by the growth.
+const SPIRAL_CIRCLE_GROWTH: f64 = 1e-6;
+
+/// The most anchors a polygon or star can have before allocating them overflows the address space.
+const MAX_POLYGON_ANCHORS: u64 = (isize::MAX as usize / size_of::<Anchor>()) as u64;
+
+/// The failure of [`regular_polygon_bezpath`] and [`star_polygon_bezpath`].
+#[derive(Debug, thiserror::Error)]
+pub enum PolygonError {
+	#[error("A shape with {0} sides is too large to fit in memory")]
+	TooManySides(u64),
+}
+
 /// An anchor point with its optional incoming and outgoing handle positions, in absolute coordinates.
 #[derive(Clone)]
 struct Anchor {
@@ -64,8 +77,8 @@ pub fn rounded_rectangle_bezpath(corner1: DVec2, corner2: DVec2, corner_radii: [
 
 		let handle_offset = radius * HANDLE_OFFSET_FACTOR;
 		vec![
-			Anchor::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize())),
-			Anchor::new(point2, Some(point2 + handle_offset * (corner - point2).normalize()), None),
+			Anchor::new(point1, None, Some(point1 + handle_offset * (corner - point1).normalize_or_zero())),
+			Anchor::new(point2, Some(point2 + handle_offset * (corner - point2).normalize_or_zero()), None),
 		]
 	};
 
@@ -162,7 +175,12 @@ pub fn arc_bezpath(radius: f64, start_angle: f64, sweep_angle: f64, arc_type: Ar
 }
 
 /// Constructs a regular polygon (ngon). Based on `sides` and `radius`, which is the distance from the center to any vertex.
-pub fn regular_polygon_bezpath(center: DVec2, sides: u64, radius: f64) -> BezPath {
+/// Fails when it has more sides than can be allocated.
+pub fn regular_polygon_bezpath(center: DVec2, sides: u64, radius: f64) -> Result<BezPath, PolygonError> {
+	if sides > MAX_POLYGON_ANCHORS {
+		return Err(PolygonError::TooManySides(sides));
+	}
+
 	let sides = sides.max(3);
 	let angle_increment = TAU / (sides as f64);
 	let positions = (0..sides).map(|i| {
@@ -170,11 +188,16 @@ pub fn regular_polygon_bezpath(center: DVec2, sides: u64, radius: f64) -> BezPat
 		center + radius * DVec2::new(f64::cos(angle), f64::sin(angle))
 	});
 
-	polyline_bezpath(positions, true)
+	Ok(polyline_bezpath(positions, true))
 }
 
 /// Constructs a star polygon (n-star). See [`regular_polygon_bezpath`], but with interspersed vertices at an `inner_radius`.
-pub fn star_polygon_bezpath(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> BezPath {
+pub fn star_polygon_bezpath(center: DVec2, sides: u64, radius: f64, inner_radius: f64) -> Result<BezPath, PolygonError> {
+	// Each side has an outer and an inner anchor
+	if sides > MAX_POLYGON_ANCHORS / 2 {
+		return Err(PolygonError::TooManySides(sides));
+	}
+
 	let sides = sides.max(2);
 	let angle_increment = 0.5 * TAU / (sides as f64);
 	let positions = (0..sides * 2).map(|i| {
@@ -183,7 +206,7 @@ pub fn star_polygon_bezpath(center: DVec2, sides: u64, radius: f64, inner_radius
 		center + radius * DVec2::new(f64::cos(angle), f64::sin(angle))
 	});
 
-	polyline_bezpath(positions, true)
+	Ok(polyline_bezpath(positions, true))
 }
 
 /// Constructs a line from `point1` to `point2`.
@@ -224,8 +247,26 @@ pub fn arrow_bezpath(start: DVec2, end: DVec2, shaft_width: f64, head_width: f64
 	polyline_bezpath(positions, true)
 }
 
+/// The failure of [`spiral_bezpath`].
+#[derive(Debug, thiserror::Error)]
+pub enum SpiralError {
+	#[error("The angular resolution must be greater than 0")]
+	AngularResolutionNotPositive,
+	#[error("The number of turns must be finite")]
+	TurnsNotFinite,
+	#[error("The start angle is too large to step through at this angular resolution")]
+	AngleTooLarge,
+}
+
 /// Constructs a spiral winding from an inner radius `a` out to `outer_radius`, sampled every `delta_theta` radians.
-pub fn spiral_bezpath(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> BezPath {
+pub fn spiral_bezpath(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Result<BezPath, SpiralError> {
+	if delta_theta.is_nan() || delta_theta <= 0. {
+		return Err(SpiralError::AngularResolutionNotPositive);
+	}
+	if turns == f64::INFINITY {
+		return Err(SpiralError::TurnsNotFinite);
+	}
+
 	let mut anchors = Vec::new();
 	let mut prev_in_handle = None;
 	let theta_end = turns * TAU + start_angle;
@@ -236,6 +277,10 @@ pub fn spiral_bezpath(a: f64, outer_radius: f64, turns: f64, start_angle: f64, d
 	let mut theta = start_angle;
 	while theta < theta_end {
 		let theta_next = f64::min(theta + delta_theta, theta_end);
+		// A step lost to the angle's float precision would never reach the end
+		if theta_next == theta {
+			return Err(SpiralError::AngleTooLarge);
+		}
 
 		let p0 = spiral_point(theta, a, b, spiral_type);
 		let p3 = spiral_point(theta_next, a, b, spiral_type);
@@ -260,7 +305,7 @@ pub fn spiral_bezpath(a: f64, outer_radius: f64, turns: f64, start_angle: f64, d
 		theta = theta_next;
 	}
 
-	bezpath_from_anchors(&anchors, false)
+	Ok(bezpath_from_anchors(&anchors, false))
 }
 
 pub fn calculate_growth_factor(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
@@ -309,6 +354,9 @@ fn log_spiral_point(theta: f64, a: f64, b: f64) -> DVec2 {
 /// Computes arc length along a logarithmic spiral between two angles.
 fn log_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
 	let factor = (1. + b * b).sqrt();
+	if b.abs() < SPIRAL_CIRCLE_GROWTH {
+		return a * (b * (theta_start + theta_end) / 2.).exp() * factor * (theta_end - theta_start);
+	}
 	(a / b) * factor * ((b * theta_end).exp() - (b * theta_start).exp())
 }
 
@@ -337,6 +385,10 @@ fn archimedean_spiral_tangent(theta: f64, a: f64, b: f64) -> DVec2 {
 
 /// Computes arc length along an Archimedean spiral between two angles.
 fn archimedean_spiral_arc_length(theta_start: f64, theta_end: f64, a: f64, b: f64) -> f64 {
+	let middle_radius = a + b * (theta_start + theta_end) / 2.;
+	if b.abs() <= middle_radius.abs() * SPIRAL_CIRCLE_GROWTH {
+		return middle_radius.abs() * (theta_end - theta_start);
+	}
 	archimedean_spiral_arc_length_origin(theta_end, a, b) - archimedean_spiral_arc_length_origin(theta_start, a, b)
 }
 

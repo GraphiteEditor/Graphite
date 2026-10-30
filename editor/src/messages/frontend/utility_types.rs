@@ -197,7 +197,7 @@ mod tests {
 
 		for file_type in [FileType::Png, FileType::Jpg, FileType::Webp, FileType::Tiff, FileType::Bmp, FileType::Tga, FileType::Ico] {
 			let encoded = file_type.encode(2, 1, pixels.clone()).unwrap_or_else(|error| panic!("{file_type:?}: {error}"));
-			let decoded = Image::from_encoded(&encoded).unwrap_or_else(|| panic!("{file_type:?} should read back"));
+			let decoded = Image::from_encoded(&encoded).unwrap_or_else(|error| panic!("{file_type:?} should read back: {error}"));
 			assert_eq!((decoded.width, decoded.height), (2, 1), "{file_type:?}");
 
 			// Only JPG lacks transparency, so it lands on white

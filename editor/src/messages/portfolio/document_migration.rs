@@ -3447,6 +3447,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
 	}
 
+	// Load Image's URL is empty until set, it used to be `graphite:null`
+	if reference == DefinitionIdentifier::Network("Load Image".into())
+		&& let Some(url) = node.inputs.get(1)
+		&& matches!(url.as_value(), Some(TaggedValue::String(url)) if url == "graphite:null")
+	{
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::String(String::new()), url.is_exposed()),
+			network_path,
+		);
+	}
+
 	// `wgpu-executor` scope was removed, change to the auto injected scope node `graphene_std::platform_application_io::wgpu_executor`
 	for (i, input) in node.inputs.iter().enumerate() {
 		if let NodeInput::Scope(name) = input

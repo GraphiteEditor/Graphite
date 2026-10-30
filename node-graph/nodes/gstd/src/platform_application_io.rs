@@ -12,8 +12,8 @@ pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
-use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{Image, ImageError};
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
@@ -208,11 +208,14 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
 #[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
-fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>, ImageError> {
 	let data = data.into_element();
-	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
+	if data.is_empty() {
+		return Ok(Item::default());
+	}
+	let image = Image::from_encoded(data.as_ref())?;
 
-	Item::new_from_element(Raster::new_cpu(image))
+	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
