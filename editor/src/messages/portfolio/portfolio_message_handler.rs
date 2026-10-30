@@ -1305,7 +1305,10 @@ impl PortfolioMessageHandler {
 		let Some(document) = self.documents.get_mut(&document_id) else { return };
 		// The working copy is authored by the person at this device, whoever wrote it last
 		let set_user = |gdd: &mut GddV1| {
-			if let Err(error) = gdd.set_user(document_graph_storage::UserId(preferences.user_id)) {
+			let user = document_graph_storage::UserId(preferences.user_id);
+			if gdd.session().user() != user
+				&& let Err(error) = gdd.set_user(user, document_graph_storage::PeerId(generate_uuid()))
+			{
 				log::error!("Setting the user of {document_id:?} failed: {error}");
 			}
 		};

@@ -101,3 +101,49 @@ fn a_reopen_continues_the_hot_op_sequence() {
 		assert_eq!(reopened.stage_ops([set(4)]).unwrap()[0].sequence.0, last.0 + 1);
 	});
 }
+
+/// A new user's fresh peer, and the previous user's claim on their steps, survive a reopen.
+#[test]
+fn a_user_change_survives_a_reopen() {
+	use document_graph_storage::{AttributeDelta, RegistryDelta, Value};
+	let set = |key: &str| RegistryDelta::ChangeDocumentAttribute {
+		delta: AttributeDelta {
+			key: key.into(),
+			value: Some(Value::from(serde_json::json!(1))),
+		},
+	};
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(24), UserId(240), 1, "ed".into(), "std".into()).unwrap();
+		gdd.stage_ops([set("a")]).unwrap();
+		gdd.retire_pending_interaction().unwrap();
+		gdd.stage_ops([set("b")]).unwrap();
+
+		gdd.set_user(UserId(250), PeerId(25)).unwrap();
+		let clock = gdd.session().clock_counter();
+		let (working, layout) = gdd.into_storage();
+		let mut reopened = GddV1::open_in(working, layout).await.unwrap();
+		assert_eq!(reopened.session().peer(), PeerId(25));
+		assert_eq!(reopened.session().user(), UserId(250));
+		assert_eq!(reopened.session().clock_counter(), clock);
+
+		let staged = reopened.stage_ops([set("c")]).unwrap();
+		assert!(staged.iter().all(|hot_op| hot_op.timestamp.peer == PeerId(25) && hot_op.timestamp.counter > clock));
+		assert_eq!(staged[0].sequence.0, 1, "the new peer's run starts over");
+		reopened.retire_pending_interaction().unwrap();
+
+		let (working, layout) = reopened.into_storage();
+		let reopened = GddV1::open_in(working, layout).await.unwrap();
+		let session = reopened.session();
+		assert!(session.hot_log().is_empty(), "the previous user's open step closed and retired");
+		assert_eq!(session.user_of(PeerId(24)), Some(UserId(240)));
+		assert_eq!(session.user_of(PeerId(25)), Some(UserId(250)));
+		assert!(!session.is_mine(PeerId(24)));
+		assert!(session.is_mine(PeerId(25)));
+		let authors: Vec<PeerId> = session
+			.history()
+			.filter(|delta| matches!(delta.kind, RegistryDelta::ChangeDocumentAttribute { .. }))
+			.map(|delta| delta.author)
+			.collect();
+		assert_eq!(authors, [PeerId(24), PeerId(24), PeerId(25)]);
+	});
+}

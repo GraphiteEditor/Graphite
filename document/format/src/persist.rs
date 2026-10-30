@@ -6,7 +6,7 @@
 use document_container::AsyncContainer;
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, TimeStamp, UserId, Value, WallStamp};
+use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, TimeStamp, UserId, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -35,12 +35,20 @@ impl<L: Layout> Gdd<L> {
 		Ok(rev)
 	}
 
-	/// Set the person using this device. A change re-registers the peer on its next staged batch.
-	pub fn set_user(&mut self, user: UserId) -> Result<(), Error> {
+	/// Set the person using this device. A change takes `peer`, an id never used before, so the steps the previous
+	/// person made stay theirs; see [`Session::set_user`](document_graph_storage::Session::set_user). Refused while
+	/// connected.
+	pub fn set_user(&mut self, user: UserId, peer: PeerId) -> Result<(), Error> {
 		if self.session.user() == user {
 			return Ok(());
 		}
-		self.session.set_user(user);
+		#[cfg(feature = "network")]
+		if self.network.is_some() {
+			return Err(Error::UserChangeWhileConnected);
+		}
+		let closing = self.session.set_user(user, peer)?;
+		self.own_last_staged_ms = None;
+		self.persist_staged(&closing)?;
 		self.persist_session_state()
 	}
 

@@ -73,3 +73,14 @@ fn a_resource_a_guest_adds_reaches_the_host() {
 	settle(&mut network, &mut [&mut host, &mut guest]);
 	assert!(host.session().registry().resources.contains_key(&id));
 }
+
+/// The room knows this device by its peer, so the user cannot change mid-session.
+#[test]
+fn the_user_cannot_change_while_connected() {
+	let mut host = document(1);
+	let mut network = MockNetwork::new(1);
+	host.share(network.endpoint(), UserId(1));
+	assert!(matches!(host.set_user(UserId(2), PeerId(2)), Err(document_format::Error::UserChangeWhileConnected)));
+	assert_eq!(host.session().peer(), PeerId(1));
+	assert_eq!(host.session().user(), UserId(1));
+}

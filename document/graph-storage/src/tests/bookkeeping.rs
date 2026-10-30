@@ -254,7 +254,7 @@ fn newest_peer_registration_wins_in_any_order() {
 	stage_and_retire(&mut device, set_attribute("first", 1));
 	assert_eq!(device.registry().peer_users[&PeerId(1)].user, UserId(10));
 
-	// The person at the device changes, so the next batch registers again.
+	// A second registration of the same peer replaces the first.
 	device.document.user = UserId(20);
 	stage_and_retire(&mut device, set_attribute("second", 2));
 	assert_eq!(device.registry().peer_users[&PeerId(1)].user, UserId(20));
@@ -267,6 +267,56 @@ fn newest_peer_registration_wins_in_any_order() {
 	}
 	assert_eq!(other.user_of(PeerId(1)), Some(UserId(20)), "the newest registration wins in any order");
 	assert_eq!(other.user_of(PeerId(3)), None, "a peer never registered has no user");
+}
+
+#[test]
+fn a_new_user_takes_a_fresh_peer_and_leaves_the_old_steps_to_their_maker() {
+	fn interaction(session: &mut Session, key: &str) {
+		session.stage_ops([set_attribute(key, 1)]).expect("stage");
+		session.end_interaction().expect("close");
+		for closed in session.closed_interactions() {
+			session.retire_interaction(&closed).expect("retire");
+		}
+	}
+	let mut device = Session::with_identity(PeerId(1), UserId(10));
+	for key in ["a", "b", "c"] {
+		interaction(&mut device, key);
+	}
+	device.undo().expect("undo c");
+	assert!(device.can_redo());
+	device.stage_ops([set_attribute("d", 1)]).expect("stage d, left open");
+	let clock_before = device.clock_counter();
+
+	let closing = device.set_user(UserId(20), PeerId(2)).expect("switch");
+	assert!(closing.iter().all(|hot_op| hot_op.timestamp.peer == PeerId(1)), "the old peer closes its own interaction");
+	assert!(closing.last().is_some_and(crate::HotOp::ends_interaction));
+	assert_eq!(device.peer(), PeerId(2));
+	assert!(device.clock_counter() >= clock_before);
+	assert!(!device.can_undo(), "the previous user's steps are not this person's to undo");
+	assert!(!device.can_redo());
+	assert_eq!(device.user_of(PeerId(1)), Some(UserId(10)));
+	assert!(!device.is_mine(PeerId(1)));
+
+	device.stage_ops([set_attribute("e", 1)]).expect("stage e");
+	device.end_interaction().expect("close e");
+	let new_ops: Vec<_> = device.hot_log().iter().filter(|hot_op| hot_op.timestamp.peer == PeerId(2)).collect();
+	assert_eq!(new_ops.first().map(|hot_op| hot_op.sequence), Some(crate::HotSequence(1)), "the new peer's run starts over");
+	assert!(new_ops.iter().all(|hot_op| hot_op.timestamp.counter > clock_before));
+	for closed in device.closed_interactions() {
+		device.retire_interaction(&closed).expect("retire");
+	}
+
+	assert_eq!(device.registry().peer_users[&PeerId(1)].user, UserId(10), "the old registration stands");
+	assert_eq!(device.user_of(PeerId(2)), Some(UserId(20)));
+	assert!(device.is_mine(PeerId(2)));
+	for delta in device.history().filter(|delta| !matches!(delta.kind, RegistryDelta::RegisterPeer { .. })) {
+		let expected = if delta.author == PeerId(1) { UserId(10) } else { UserId(20) };
+		assert_eq!(device.user_of(delta.author), Some(expected));
+	}
+
+	assert!(device.can_undo(), "the new user's own step undoes");
+	device.undo().expect("undo e");
+	assert!(!device.can_undo(), "but not past it into the previous user's");
 }
 
 #[test]

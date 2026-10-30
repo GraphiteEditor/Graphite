@@ -59,9 +59,20 @@ impl Session {
 		self.document.user
 	}
 
-	/// Change the person behind this peer. The next staged batch registers the peer again.
-	pub fn set_user(&mut self, user: UserId) {
+	/// Hand this device to `user` under `peer`, an id never used before, so the old peer's ops stay with the person who
+	/// made them. The old peer's open interaction is closed first, and the closing ops are returned for the caller to
+	/// persist. The clock carries on, the hot op run starts over, and the redo stack is dropped, since its steps are no
+	/// longer this person's. The next staged batch registers the new peer.
+	pub fn set_user(&mut self, user: UserId, peer: PeerId) -> Result<Vec<HotOp>, CrdtError> {
+		let closing = self.end_interaction()?;
+		let mut clock = LamportClock::new(peer);
+		clock.counter = self.document.clock.counter;
+		self.document.clock = clock;
+		self.document.peer = peer;
 		self.document.user = user;
+		self.document.last_hot_sequence = HotSequence::NONE;
+		self.document.redo_stack.clear();
+		Ok(closing)
 	}
 
 	pub fn user_of(&self, peer: PeerId) -> Option<UserId> {
