@@ -272,17 +272,17 @@ mod editor_commands {
 	}
 
 	/// Move the head to an interaction shown in the History panel
-	fn history_go_back(id: String) -> Message {
+	fn go_back_to_history_interaction(id: String) -> Message {
 		HistoryMessage::GoBack { id }.into()
 	}
 
 	/// Remove one interaction from the line, keeping the later ones
-	fn history_remove_step(id: String) -> Message {
+	fn remove_history_interaction(id: String) -> Message {
 		HistoryMessage::RemoveStep { id }.into()
 	}
 
 	/// Redo an undone interaction, or reapply an abandoned one
-	fn history_bring_back(id: String) -> Message {
+	fn bring_back_history_interaction(id: String) -> Message {
 		HistoryMessage::BringBack { id }.into()
 	}
 

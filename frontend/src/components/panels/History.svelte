@@ -116,7 +116,7 @@
 							size={16}
 							tooltipLabel="Bring back"
 							tooltipDescription={row.undone ? "Redo up to and including this step." : "Do this step again on top of the current line."}
-							action={() => editor.historyBringBack(row.id)}
+							action={() => editor.bringBackHistoryInteraction(row.id)}
 						/>
 					{:else}
 						{#if !row.head}
@@ -125,7 +125,7 @@
 								size={16}
 								tooltipLabel="Go back to here"
 								tooltipDescription={$history.session ? "Move everyone's document back to this step. The steps since stay as a branch." : "Undo up to this step."}
-								action={() => editor.historyGoBack(row.id)}
+								action={() => editor.goBackToHistoryInteraction(row.id)}
 							/>
 						{/if}
 						<IconButton
@@ -133,7 +133,7 @@
 							size={16}
 							tooltipLabel="Remove this step"
 							tooltipDescription="Take this step out and keep the ones after it."
-							action={() => editor.historyRemoveStep(row.id)}
+							action={() => editor.removeHistoryInteraction(row.id)}
 						/>
 					{/if}
 				</span>
