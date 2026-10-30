@@ -111,17 +111,26 @@ pub enum BroadcastBody {
 	HeadMove(HeadMove),
 }
 
+/// Largest encoded packet a peer sends or accepts. Generous, since a `Resource` carries a whole embedded file.
+pub const MAX_PACKET_BYTES: usize = 256 * 1024 * 1024;
+
 #[derive(Debug, thiserror::Error)]
 pub enum PacketError {
 	#[error("failed to encode packet: {0}")]
 	Encode(#[from] rmp_serde::encode::Error),
 	#[error("failed to decode packet: {0}")]
 	Decode(#[from] rmp_serde::decode::Error),
+	#[error("packet of {0} bytes exceeds the limit of {MAX_PACKET_BYTES}")]
+	TooLarge(usize),
 }
 
 impl SyncPacket {
 	pub fn encode(&self) -> Result<Box<[u8]>, PacketError> {
-		Ok(rmp_serde::to_vec(self)?.into_boxed_slice())
+		let bytes = rmp_serde::to_vec(self)?;
+		if bytes.len() > MAX_PACKET_BYTES {
+			return Err(PacketError::TooLarge(bytes.len()));
+		}
+		Ok(bytes.into_boxed_slice())
 	}
 
 	pub fn decode(bytes: &[u8]) -> Result<Self, PacketError> {

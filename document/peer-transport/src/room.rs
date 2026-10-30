@@ -1,9 +1,9 @@
-use crate::packet::{PacketError, SyncPacket};
+use crate::packet::{MAX_PACKET_BYTES, PacketError, SyncPacket};
 use crate::transport::{Transport, TransportEvent, TransportPeerId};
 use futures::StreamExt;
 use futures::channel::mpsc::UnboundedSender;
 use matchbox_socket::{MessageLoopFuture, Packet, PeerState, WebRtcSocket};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
@@ -29,19 +29,36 @@ fn frames(bytes: &[u8]) -> Vec<Box<[u8]>> {
 }
 
 /// Per-peer reassembly of framed packets. The channel is ordered per peer, so a packet ends at its first [`FRAME_FINAL`].
-#[derive(Default)]
 struct Reassembler {
 	partial: HashMap<TransportPeerId, Vec<u8>>,
+	limit: usize,
 }
+
+impl Default for Reassembler {
+	fn default() -> Self {
+		Self {
+			partial: HashMap::new(),
+			limit: MAX_PACKET_BYTES,
+		}
+	}
+}
+
+/// A peer's packet grew past the limit, and its partial bytes were discarded.
+#[derive(Debug, PartialEq)]
+struct Oversized;
 
 impl Reassembler {
 	/// The packet's bytes once its final frame lands.
-	fn accept(&mut self, peer: TransportPeerId, frame: &[u8]) -> Option<Vec<u8>> {
-		let (&flag, chunk) = frame.split_first()?;
+	fn accept(&mut self, peer: TransportPeerId, frame: &[u8]) -> Result<Option<Vec<u8>>, Oversized> {
+		let Some((&flag, chunk)) = frame.split_first() else { return Ok(None) };
 		let buffer = self.partial.entry(peer).or_default();
+		if buffer.len() + chunk.len() > self.limit {
+			self.forget(peer);
+			return Err(Oversized);
+		}
 		buffer.extend_from_slice(chunk);
 
-		(flag == FRAME_FINAL).then(|| std::mem::take(buffer))
+		Ok((flag == FRAME_FINAL).then(|| std::mem::take(buffer)))
 	}
 
 	fn forget(&mut self, peer: TransportPeerId) {
@@ -101,6 +118,8 @@ pub struct Room {
 	outgoing: UnboundedSender<(TransportPeerId, Packet)>,
 	inbox: Arc<Mutex<Inbox>>,
 	incoming: Reassembler,
+	/// Peers reported gone for sending an oversized packet, ignored until the socket sees them leave.
+	dropped: HashSet<TransportPeerId>,
 }
 
 impl Room {
@@ -139,6 +158,7 @@ impl Room {
 				outgoing,
 				inbox,
 				incoming: Reassembler::default(),
+				dropped: HashSet::new(),
 			},
 			driver,
 		)
@@ -162,6 +182,9 @@ impl Room {
 
 impl Transport for Room {
 	fn send(&mut self, to: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError> {
+		if self.dropped.contains(&to) {
+			return Ok(());
+		}
 		let bytes = packet.encode()?;
 		self.send_chunks(&bytes, &[to]);
 		Ok(())
@@ -169,7 +192,7 @@ impl Transport for Room {
 
 	fn broadcast_except(&mut self, excluded: Option<TransportPeerId>, packet: &SyncPacket) -> Result<(), PacketError> {
 		let bytes = packet.encode()?;
-		let peers: Vec<_> = self.socket.connected_peers().filter(|&peer| Some(peer) != excluded).collect();
+		let peers: Vec<_> = self.socket.connected_peers().filter(|&peer| Some(peer) != excluded && !self.dropped.contains(&peer)).collect();
 		self.send_chunks(&bytes, &peers);
 		Ok(())
 	}
@@ -178,18 +201,32 @@ impl Transport for Room {
 		let mut events = Vec::new();
 
 		for (peer, state) in self.socket.update_peers() {
-			events.push(match state {
-				PeerState::Connected => TransportEvent::PeerConnected(peer),
+			match state {
+				PeerState::Connected => events.push(TransportEvent::PeerConnected(peer)),
 				PeerState::Disconnected => {
 					self.incoming.forget(peer);
-					TransportEvent::PeerDisconnected(peer)
+					if !self.dropped.remove(&peer) {
+						events.push(TransportEvent::PeerDisconnected(peer));
+					}
 				}
-			});
+			}
 		}
 
 		let received: Vec<_> = lock(&self.inbox).packets.drain(..).collect();
 		for (peer, frame) in received {
-			let Some(bytes) = self.incoming.accept(peer, &frame) else { continue };
+			if self.dropped.contains(&peer) {
+				continue;
+			}
+			let bytes = match self.incoming.accept(peer, &frame) {
+				Ok(Some(bytes)) => bytes,
+				Ok(None) => continue,
+				Err(Oversized) => {
+					log::warn!("Dropping link {peer}, whose packet grew past {MAX_PACKET_BYTES} bytes");
+					self.dropped.insert(peer);
+					events.push(TransportEvent::PeerDisconnected(peer));
+					continue;
+				}
+			};
 
 			events.push(match SyncPacket::decode(&bytes) {
 				Ok(packet) => TransportEvent::Packet(peer, packet),
@@ -235,7 +272,7 @@ mod tests {
 	fn round_trip(bytes: &[u8]) -> Vec<Vec<u8>> {
 		let mut incoming = Reassembler::default();
 
-		frames(bytes).into_iter().filter_map(|frame| incoming.accept(peer(1), &frame)).collect()
+		frames(bytes).into_iter().filter_map(|frame| incoming.accept(peer(1), &frame).unwrap()).collect()
 	}
 
 	#[test]
@@ -284,9 +321,9 @@ mod tests {
 		let short_frames = frames(&short);
 		assert_eq!(long_frames.len(), 2, "the long packet must span two frames to interleave");
 
-		assert_eq!(incoming.accept(first, &long_frames[0]), None);
-		assert_eq!(incoming.accept(second, &short_frames[0]), Some(short));
-		assert_eq!(incoming.accept(first, &long_frames[1]), Some(long));
+		assert_eq!(incoming.accept(first, &long_frames[0]), Ok(None));
+		assert_eq!(incoming.accept(second, &short_frames[0]), Ok(Some(short)));
+		assert_eq!(incoming.accept(first, &long_frames[1]), Ok(Some(long)));
 	}
 
 	#[test]
@@ -295,18 +332,37 @@ mod tests {
 		let mut incoming = Reassembler::default();
 
 		let long: Vec<u8> = (0..CHUNK_BYTES + 8).map(|index| (index % 89) as u8).collect();
-		assert_eq!(incoming.accept(sender, &frames(&long)[0]), None);
+		assert_eq!(incoming.accept(sender, &frames(&long)[0]), Ok(None));
 
 		incoming.forget(sender);
 
 		let fresh = b"fresh".to_vec();
-		assert_eq!(incoming.accept(sender, &frames(&fresh)[0]), Some(fresh), "the abandoned prefix must be gone");
+		assert_eq!(incoming.accept(sender, &frames(&fresh)[0]), Ok(Some(fresh)), "the abandoned prefix must be gone");
+	}
+
+	#[test]
+	fn a_packet_growing_past_the_limit_is_discarded() {
+		let (sender, other) = (peer(1), peer(2));
+		let mut incoming = Reassembler {
+			limit: CHUNK_BYTES * 2,
+			..Reassembler::default()
+		};
+		let other_frames = frames(&vec![9; CHUNK_BYTES + 1]);
+		assert_eq!(incoming.accept(other, &other_frames[0]), Ok(None));
+
+		let endless = frames(&vec![7; CHUNK_BYTES * 4]);
+		assert_eq!(incoming.accept(sender, &endless[0]), Ok(None));
+		assert_eq!(incoming.accept(sender, &endless[1]), Ok(None), "exactly the limit still fits");
+		assert_eq!(incoming.accept(sender, &endless[2]), Err(Oversized));
+		assert!(!incoming.partial.contains_key(&sender), "the partial packet is freed");
+
+		assert_eq!(incoming.accept(other, &other_frames[1]), Ok(Some(vec![9; CHUNK_BYTES + 1])), "other peers are unaffected");
 	}
 
 	#[test]
 	fn an_empty_frame_is_ignored() {
 		let mut incoming = Reassembler::default();
 
-		assert_eq!(incoming.accept(peer(1), &[]), None);
+		assert_eq!(incoming.accept(peer(1), &[]), Ok(None));
 	}
 }

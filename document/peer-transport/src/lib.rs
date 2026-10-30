@@ -6,7 +6,7 @@ mod target;
 mod token;
 mod transport;
 
-pub use packet::{CursorPosition, CursorSpace, PacketError, Role, SyncPacket, SyncPayload};
+pub use packet::{CursorPosition, CursorSpace, MAX_PACKET_BYTES, PacketError, Role, SyncPacket, SyncPayload};
 pub use replica::{Event, RemotePeer, Replica, ReplicaError};
 pub use room::{Incoming, Room};
 pub use target::{SyncTarget, TargetError};

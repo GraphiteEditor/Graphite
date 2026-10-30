@@ -450,9 +450,7 @@ impl Replica {
 		if let Err(error) = self.request_missing_resources(target) {
 			log::error!("Sync error: {error}");
 		}
-		if let Err(error) = self.serve_owed_resources(target) {
-			log::error!("Sync error: {error}");
-		}
+		self.serve_owed_resources(target);
 
 		events
 	}
@@ -538,9 +536,9 @@ impl Replica {
 	}
 
 	/// Answer requests whose bytes turned up since, as a requester never asks twice.
-	fn serve_owed_resources(&mut self, target: &dyn SyncTarget) -> Result<(), PacketError> {
+	fn serve_owed_resources(&mut self, target: &dyn SyncTarget) {
 		if self.owed_resources.is_empty() {
-			return Ok(());
+			return;
 		}
 
 		let mut ready: Vec<(ResourceHash, Vec<u8>)> = self.owed_resources.keys().filter_map(|&hash| target.resource_bytes(hash).map(|bytes| (hash, bytes))).collect();
@@ -551,10 +549,17 @@ impl Replica {
 			recipients.sort_unstable();
 
 			for to in recipients {
-				self.transport.send(to, &SyncPacket::Resource { hash, bytes: bytes.clone() })?;
+				self.serve_resource(to, hash, bytes.clone());
 			}
 		}
-		Ok(())
+	}
+
+	/// A resource that fails to send, as one past [`MAX_PACKET_BYTES`](crate::MAX_PACKET_BYTES) does, is logged so the
+	/// others still go.
+	fn serve_resource(&mut self, to: TransportPeerId, hash: ResourceHash, bytes: Vec<u8>) {
+		if let Err(error) = self.send_resource(to, hash, bytes) {
+			log::error!("Sending resource {hash:?} to {to}: {error}");
+		}
 	}
 
 	fn send_hello(&mut self, transport_peer: TransportPeerId) -> Result<(), ReplicaError> {
@@ -778,7 +783,7 @@ impl Replica {
 			SyncPacket::ResourceRequest(hashes) => {
 				for hash in hashes {
 					match target.resource_bytes(hash) {
-						Some(bytes) => self.transport.send(from, &SyncPacket::Resource { hash, bytes })?,
+						Some(bytes) => self.serve_resource(from, hash, bytes),
 						None => {
 							self.owed_resources.entry(hash).or_default().insert(from);
 							events.push(Event::ResourceRequested { from, hash });
