@@ -32,8 +32,9 @@ fn usage() {
 	println!("  check       Fail if the stored types changed since the latest frozen format version, or a node's version");
 	println!("              has no migration leading to it");
 	println!("  snapshot    Freeze the stored types as the next format version, with the step from the previous one");
+	println!("  new         Scaffold every step missing between a node's newest migration and its current `version(N)`");
 	println!("  new <identifier>");
-	println!("              Scaffold the migration of a node from the version before its current `version(N)`");
+	println!("              Scaffold the missing steps of one node");
 	println!("  new <old identifier>@<version> <identifier>");
 	println!("              Scaffold the migration replacing a removed node by another");
 	println!("  rename <old identifier>@<version> <identifier>");

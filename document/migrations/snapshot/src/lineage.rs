@@ -74,9 +74,7 @@ pub fn lineage_problems(nodes: &[Declaration], migrations: &[MigrationStep]) -> 
 	for node in nodes {
 		let (identifier, version) = node;
 		if *version > 1 && !targets.contains(node) {
-			problems.push(format!(
-				"`{identifier}` is at version {version}, but no migration leads to it. Run `cargo run migration new {identifier}`"
-			));
+			problems.push(format!("`{identifier}` is at version {version}, but no migration leads to it. Run `cargo run migration new`"));
 		}
 	}
 

@@ -434,7 +434,8 @@ A CLI subcommand dumps `NODE_METADATA` (identifier, version, input names and typ
 
 The scaffold commands, which a failing check prints, find the node in the `node-graph` sources with its identifier (the `path(...)` override or the module path, then the Pascal-case function name and `Node`) and its `version(N)`, and write into `migration-nodes`, a module per node crate and a file per step:
 
-- `cargo run migration new <identifier>` scaffolds `#[migration("<identifier>"@N-1 => @N)]`, refusing a node still at version 1.
+- `cargo run migration new` scaffolds a `#[migration("<identifier>"@V => @V+1)]` for every version between the newest one a migration leads a node to (1 if none) and its `version(N)`.
+- `cargo run migration new <identifier>` does the same for one node, refusing a node still at version 1.
 - `cargo run migration new <old>@<version> <identifier>` scaffolds the replacement of a removed node, checking that the new node is at `version + 1`.
 - `cargo run migration rename <old>@<version> <identifier>` appends a finished `rename!` to the crate module's `renames.rs`.
 

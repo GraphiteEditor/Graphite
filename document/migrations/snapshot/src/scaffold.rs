@@ -1,18 +1,27 @@
 //! Scaffolds node migrations into `migration-nodes`, one file per step, in a module per node crate.
 
+use crate::lineage::{MigrationStep, find_migrations};
 use crate::nodes::{NodeSource, find_nodes};
 use std::path::{Path, PathBuf};
 
 pub const NODE_CRATES: &str = "node-graph";
 pub const MIGRATIONS: &str = "document/migrations/nodes/src";
 
-/// `new <identifier>` steps a node from its previous version, `new <old>@<version> <identifier>` replaces a node by another,
-/// and `rename <old>@<version> <identifier>` registers a finished rename.
+/// `new` scaffolds every step missing between a node's newest migration and its version, `new <identifier>` does so for one node,
+/// `new <old>@<version> <identifier>` replaces a node by another, and `rename <old>@<version> <identifier>` registers a finished rename.
 pub fn scaffold(workspace: &Path, command: &str, arguments: &[String]) -> Result<(), String> {
 	let nodes = find_nodes(&workspace.join(NODE_CRATES))?;
 	let migrations = workspace.join(MIGRATIONS);
 
 	match (command, arguments) {
+		("new", []) => {
+			let steps = missing_steps(&nodes, &find_migrations(&migrations)?);
+			if steps.is_empty() {
+				println!("Every node version already has a migration leading to it");
+				return Ok(());
+			}
+			write_version_steps(&migrations, &steps)
+		}
 		("new", [identifier]) => {
 			let node = find(&nodes, identifier)?;
 			if node.version == 1 {
@@ -23,15 +32,19 @@ pub fn scaffold(workspace: &Path, command: &str, arguments: &[String]) -> Result
 				));
 			}
 
-			let from = node.version - 1;
-			let source = format!("\"{}\"@{from} => @{}", node.identifier, node.version);
-			write_step(&migrations, node, &format!("{}_v{from}", node.function), &source, from)
+			let steps = missing_steps(std::slice::from_ref(node), &find_migrations(&migrations)?);
+			if steps.is_empty() {
+				return Err(format!("migrations up to `{}`@{} already exist", node.identifier, node.version));
+			}
+			write_version_steps(&migrations, &steps)
 		}
 		("new", [old, identifier]) => {
 			let (old_identifier, from) = parse_declaration(old)?;
 			let node = find_target(&nodes, identifier, from)?;
 			let source = format!("\"{old_identifier}\"@{from} => \"{}\"@{}", node.identifier, node.version);
-			write_step(&migrations, node, &format!("{}_from_{}", node.function, last_segment(&old_identifier)), &source, from)
+			write_step(&migrations, node, &format!("{}_from_{}", node.function, last_segment(&old_identifier)), &source, from)?;
+			print_step_hint();
+			Ok(())
 		}
 		("rename", [old, identifier]) => {
 			let (old_identifier, from) = parse_declaration(old)?;
@@ -41,6 +54,31 @@ pub fn scaffold(workspace: &Path, command: &str, arguments: &[String]) -> Result
 		}
 		_ => Err("expected `new <identifier>`, `new <old identifier>@<version> <identifier>`, or `rename <old identifier>@<version> <identifier>`".to_string()),
 	}
+}
+
+/// Each `(node, from)` step still missing between the newest version a migration leads the node to (1 if none) and its current version.
+fn missing_steps<'a>(nodes: &'a [NodeSource], migrations: &[MigrationStep]) -> Vec<(&'a NodeSource, u32)> {
+	nodes
+		.iter()
+		.flat_map(|node| {
+			let targets = migrations.iter().filter(|step| step.target.0 == node.identifier).map(|step| step.target.1);
+			let migrated = targets.filter(|version| *version <= node.version).max().unwrap_or(1);
+			(migrated..node.version).map(move |from| (node, from))
+		})
+		.collect()
+}
+
+fn write_version_steps(migrations: &Path, steps: &[(&NodeSource, u32)]) -> Result<(), String> {
+	for (node, from) in steps {
+		let source = format!("\"{}\"@{from} => @{}", node.identifier, from + 1);
+		write_step(migrations, node, &format!("{}_v{from}", node.function), &source, *from)?;
+	}
+	print_step_hint();
+	Ok(())
+}
+
+fn print_step_hint() {
+	println!("Write each migration where its `compile_error!` points, and describe the change in its doc comment");
 }
 
 /// The node `query` names: its full identifier, or an unambiguous function name or identifier suffix.
@@ -132,7 +170,6 @@ fn write_step(migrations: &Path, node: &NodeSource, name: &str, step: &str, from
 	declare_module(&directory.join("mod.rs"), name)?;
 
 	println!("Scaffolded `{step}` in {}", file.display());
-	println!("Write the migration where its `compile_error!` points, and describe the change in its doc comment");
 	Ok(())
 }
 
@@ -249,7 +286,35 @@ mod tests {
 		assert!(step.contains("compile_error!"));
 
 		let again = scaffold(&workspace.0, "new", &arguments(&["blending_nodes::OpacityNode"])).unwrap_err();
-		assert!(again.contains("already exists"), "{again}");
+		assert!(again.contains("already exist"), "{again}");
+	}
+
+	#[test]
+	fn new_without_a_node_scaffolds_every_missing_step() {
+		let workspace = Workspace::new("all");
+		std::fs::create_dir_all(workspace.0.join(MIGRATIONS).join("legacy")).unwrap();
+		std::fs::write(
+			workspace.0.join(MIGRATIONS).join("legacy/brighten_v1.rs"),
+			"#[migration(\"legacy::adjust::BrightenNode\"@1 => @2)]\npub fn brighten_v1(inputs: &mut Inputs) {}\n",
+		)
+		.unwrap();
+
+		scaffold(&workspace.0, "new", &[]).unwrap();
+		assert!(workspace.read("blending_nodes/opacity_v1.rs").contains("\"blending_nodes::OpacityNode\"@1 => @2"));
+		assert!(workspace.read("legacy/brighten_v2.rs").contains("\"legacy::adjust::BrightenNode\"@2 => @3"));
+		assert!(!workspace.0.join(MIGRATIONS).join("blending_nodes/blend_v1.rs").exists());
+
+		let found = find_migrations(&workspace.0.join(MIGRATIONS)).unwrap();
+		let nodes = find_nodes(&workspace.0.join(NODE_CRATES)).unwrap();
+		assert!(missing_steps(&nodes, &found).is_empty());
+	}
+
+	#[test]
+	fn new_with_a_node_scaffolds_each_skipped_version() {
+		let workspace = Workspace::new("skipped");
+		scaffold(&workspace.0, "new", &arguments(&["brighten"])).unwrap();
+		assert!(workspace.read("legacy/brighten_v1.rs").contains("@1 => @2"));
+		assert!(workspace.read("legacy/brighten_v2.rs").contains("@2 => @3"));
 	}
 
 	#[test]
