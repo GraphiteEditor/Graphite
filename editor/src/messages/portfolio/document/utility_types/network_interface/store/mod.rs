@@ -387,10 +387,9 @@ impl NodeNetworkInterface {
 		}
 
 		for (path, local_id, storage_id) in unpinned {
-			if let Some(node) = self
-				.network_metadata
-				.get_mut()
-				.nested_metadata_mut(&path)
+			let location = self.locate(&path);
+			if let Some(node) = location
+				.and_then(|location| self.network_metadata.get_mut().nested_metadata_mut(location))
 				.and_then(|network| network.persistent_metadata.node_metadata.get_mut(&local_id))
 			{
 				node.persistent_metadata.storage_id = Some(storage_id.0);

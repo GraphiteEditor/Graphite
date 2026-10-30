@@ -226,7 +226,7 @@ pub(super) fn node_metadata_from_projection(projected: document_graph_storage::P
 	let mut metadata = NodeNetworkMetadata::default();
 	seed_metadata_tree(&scratch, &mut metadata);
 	apply_entries_into_tree(&scratch, &mut metadata, node_entries)?;
-	apply_network_entries_into_tree(&mut metadata, network_entries);
+	apply_network_entries_into_tree(&scratch, &mut metadata, network_entries);
 
 	let persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
 	let node = scratch.nodes.remove(&local_id).expect("inserted above");

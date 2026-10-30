@@ -154,7 +154,6 @@ impl NodeNetworkInterface {
 			return;
 		};
 		let Some(current_metadata) = self
-			.document_network_metadata()
 			.nested_metadata(path)
 			.and_then(|network| network.persistent_metadata.node_metadata.get(&local_id))
 			.map(|node| &node.persistent_metadata)
@@ -202,14 +201,11 @@ impl NodeNetworkInterface {
 
 	fn holds_node(&self, path: &[NodeId], local_id: NodeId) -> bool {
 		self.document_network().nested_network(path).is_some_and(|network| network.nodes.contains_key(&local_id))
-			&& self
-				.document_network_metadata()
-				.nested_metadata(path)
-				.is_some_and(|network| network.persistent_metadata.node_metadata.contains_key(&local_id))
+			&& self.nested_metadata(path).is_some_and(|network| network.persistent_metadata.node_metadata.contains_key(&local_id))
 	}
 
 	fn holds_network(&self, path: &[NodeId]) -> bool {
-		self.document_network().nested_network(path).is_some() && self.document_network_metadata().nested_metadata(path).is_some()
+		self.document_network().nested_network(path).is_some() && self.nested_metadata(path).is_some()
 	}
 }
 
