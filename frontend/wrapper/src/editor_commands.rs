@@ -187,11 +187,7 @@ mod editor_commands {
 	}
 
 	fn load_preferences(preferences: Option<String>) -> Message {
-		let Some(preferences) = preferences else { return Message::NoOp };
-		let Ok(preferences) = serde_json::from_str(&preferences) else {
-			log::error!("Failed to deserialize preferences");
-			return Message::NoOp;
-		};
+		let preferences = PreferencesMessageHandler::from_stored(preferences.as_deref());
 		PreferencesMessage::Load { preferences }.into()
 	}
 

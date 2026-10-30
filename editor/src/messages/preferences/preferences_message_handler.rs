@@ -71,6 +71,17 @@ impl Default for PreferencesMessageHandler {
 	}
 }
 
+impl PreferencesMessageHandler {
+	/// The preferences stored as JSON, or the defaults when none are stored or they do not parse.
+	pub fn from_stored(stored: Option<&str>) -> Self {
+		let Some(stored) = stored else { return Self::default() };
+		serde_json::from_str(stored).unwrap_or_else(|error| {
+			log::error!("Failed to deserialize preferences: {error}");
+			Self::default()
+		})
+	}
+}
+
 #[message_handler_data]
 impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for PreferencesMessageHandler {
 	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, context: PreferencesMessageContext) {
@@ -196,6 +207,27 @@ mod tests {
 		assert_ne!(PreferencesMessageHandler::default().user_id, 0);
 		let stored: PreferencesMessageHandler = serde_json::from_str("{}").unwrap();
 		assert_ne!(stored.user_id, 0);
+	}
+
+	#[test]
+	fn missing_or_unreadable_stored_preferences_load_as_defaults_and_are_persisted() {
+		for stored in [None, Some("not json")] {
+			let mut preferences = PreferencesMessageHandler::default();
+			let loaded = PreferencesMessageHandler::from_stored(stored);
+			assert_ne!(loaded.user_id, 0);
+
+			let mut responses = VecDeque::new();
+			let tool_message_handler = ToolMessageHandler::default();
+			let context = PreferencesMessageContext {
+				tool_message_handler: &tool_message_handler,
+			};
+			preferences.process_message(PreferencesMessage::Load { preferences: loaded.clone() }, &mut responses, context);
+			let persisted = responses.iter().find_map(|message| match message {
+				Message::Frontend(FrontendMessage::TriggerUpdatePreferences { preferences }) => Some(preferences),
+				_ => None,
+			});
+			assert_eq!(persisted.map(|persisted| persisted.user_id), Some(loaded.user_id));
+		}
 	}
 
 	#[test]
