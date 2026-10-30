@@ -1751,6 +1751,7 @@ dependencies = [
  "migration-core",
  "migration-formats",
  "migration-runner",
+ "peer-transport",
  "postcard",
  "serde",
  "serde_json",

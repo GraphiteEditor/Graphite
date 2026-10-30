@@ -10,6 +10,7 @@
 // gated off wasm to avoid unused-import warnings.
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
@@ -18,10 +19,10 @@ use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 use document_graph_storage::Rev;
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{HistoryMetadata, PeerId, Registry, Session, UserId};
+use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
-use graphene_resource::ResourceHash;
+use graphene_resource::{ResourceHash, ResourceStorage};
 
 pub mod codec;
 pub mod error;
@@ -32,6 +33,8 @@ mod load;
 pub mod manifest;
 #[cfg(feature = "migrations")]
 mod migrate;
+#[cfg(feature = "network")]
+pub mod network;
 pub mod persist;
 pub mod resource;
 
@@ -58,6 +61,15 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
 /// One fact per line, so recording one only appends.
 pub const METADATA_CODEC: Codec = Codec::JsonLines;
+
+/// The facts as lines of the metadata file.
+pub(crate) fn encode_facts<'a>(facts: impl IntoIterator<Item = &'a MetadataFact>) -> Result<Vec<u8>, Error> {
+	let mut buffer = Vec::new();
+	for fact in facts {
+		METADATA_CODEC.append(&mut buffer, fact)?;
+	}
+	Ok(buffer)
+}
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
@@ -71,8 +83,7 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 /// read.
 /// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
-/// `Session` is cloned (a snapshot copy); the container is shared.
-#[derive(Clone)]
+/// `Session` is cloned as a snapshot copy. A clone is not connected to the room.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: AnyContainer,
@@ -90,6 +101,63 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
 	pub(crate) migrated: bool,
+	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
+	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	#[cfg(feature = "network")]
+	pub(crate) network: Option<peer_transport::Replica>,
+	#[cfg(feature = "network")]
+	pub(crate) pending_persist: PendingPersist,
+	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
+	#[cfg(feature = "network")]
+	pub(crate) remote_changes: network::RemoteChanges,
+	/// Whether the document belongs in its room, persisted so a reopen reconnects.
+	pub(crate) shared: bool,
+}
+
+/// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per file.
+#[cfg(feature = "network")]
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PendingPersist {
+	pub(crate) history: bool,
+	pub(crate) hot_log: bool,
+	pub(crate) snapshot: bool,
+}
+
+impl<L: Layout + Clone> Clone for Gdd<L> {
+	fn clone(&self) -> Self {
+		Self {
+			view_settings: self.view_settings.clone(),
+			network_view_settings: self.network_view_settings.clone(),
+			byte_store: self.byte_store.clone(),
+			migrated: self.migrated,
+			shared: self.shared,
+			..Self::assemble(self.session.clone(), self.working.clone(), self.layout.clone(), self.manifest.clone(), self.metadata.clone())
+		}
+	}
+}
+
+impl<L: Layout> Gdd<L> {
+	/// A handle with no view settings, not shared, and no live state.
+	fn assemble(session: Session, working: AnyContainer, layout: L, manifest: Manifest, metadata: HistoryMetadata) -> Self {
+		Self {
+			session,
+			working,
+			layout,
+			manifest,
+			metadata,
+			view_settings: Default::default(),
+			network_view_settings: Default::default(),
+			byte_store: None,
+			migrated: false,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
+			shared: false,
+		}
+	}
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -215,14 +283,10 @@ impl<L: Layout> Gdd<L> {
 		}
 
 		let mut gdd = Self {
-			session,
-			working,
-			layout,
-			manifest,
 			view_settings: session_state.view_settings,
-			metadata,
 			network_view_settings: session_state.network_view_settings,
-			migrated: false,
+			shared: session_state.shared,
+			..Self::assemble(session, working, layout, manifest, metadata)
 		};
 
 		#[cfg(feature = "migrations")]
@@ -257,16 +321,7 @@ impl<L: Layout> Gdd<L> {
 		let session = Session::with_peer(peer);
 		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
 
-		Ok(Self {
-			session,
-			working,
-			layout,
-			manifest,
-			view_settings: std::collections::BTreeMap::new(),
-			metadata: HistoryMetadata::default(),
-			network_view_settings: std::collections::BTreeMap::new(),
-			migrated: false,
-		})
+		Ok(Self::assemble(session, working, layout, manifest, HistoryMetadata::default()))
 	}
 }
 
