@@ -47,13 +47,17 @@ let
         # Plotting tools
         pkgs.graphviz
       ];
+      libs = [
+        pkgs.vulkan-loader
+      ];
+      env = {
+        VK_ADD_DRIVER_FILES = "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.${pkgs.stdenv.hostPlatform.uname.processor}.json";
+      };
     }
-    deps.rustGPU
     (lib.optionalAttrs desktop (
       {
         libs = [
           pkgs.wayland
-          pkgs.vulkan-loader
           pkgs.libGL
           pkgs.libxkbcommon
           self.packages.${system}.graphite-cef

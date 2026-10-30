@@ -152,7 +152,6 @@ pub fn print(network: &ProtoNetwork, document: &Document, format: Format, upstre
 				let arguments = match &node.proto.construction_args {
 					ConstructionArgs::Nodes(_) => format!("({})", node.inputs.iter().map(|&input| id(input)).collect::<Vec<_>>().join(", ")),
 					ConstructionArgs::Value(value) => format!("{{{}}}", summary(value, 80)),
-					ConstructionArgs::Inline(inline) => format!("{{{}}}", inline.expr),
 				};
 				let shared = if node.origins.len() > 1 { "(shared)" } else { "" };
 				let provenance = [node.kind.tag(), &location(node.origins[0]), shared]
@@ -246,7 +245,6 @@ fn constant<'a>(nodes: &[Node<'a>], mut n: usize) -> Option<&'a TaggedValue> {
 		match &nodes[n].proto.construction_args {
 			ConstructionArgs::Value(value) => return Some(&**value),
 			ConstructionArgs::Nodes(_) => n = *nodes[n].inputs.first()?,
-			ConstructionArgs::Inline(_) => return None,
 		}
 	}
 }

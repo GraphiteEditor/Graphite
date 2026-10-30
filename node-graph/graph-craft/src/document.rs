@@ -146,10 +146,6 @@ impl DocumentNode {
 		let mut construction_args = ConstructionArgs::Nodes(vec![]);
 
 		// If we have one input of the type inline, set it as the construction args
-		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
-			construction_args = ConstructionArgs::Inline(inline.clone());
-		}
-		// If we have one input of the type inline, set it as the construction args
 		if let &[NodeInput::Value { ref tagged_value, .. }] = self.inputs.as_slice() {
 			construction_args = ConstructionArgs::Value(tagged_value.clone());
 		}
@@ -195,22 +191,6 @@ pub enum NodeInput {
 
 	/// Input that is replaced at graph compilation with introspective metadata about this node's location.
 	Reflection(DocumentNodeMetadata),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct InlineRust {
-	pub expr: String,
-	pub ty: Type,
-}
-
-impl InlineRust {
-	pub fn new(expr: String, ty: Type) -> Self {
-		Self { expr, ty }
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
@@ -263,7 +243,6 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Import { .. } => true,
-			NodeInput::Inline(_) => false,
 			NodeInput::Scope(_) => false,
 			NodeInput::Reflection(_) => false,
 		}
@@ -275,7 +254,6 @@ impl NodeInput {
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			// Stored import types are normalized to their structural form once at document migration
 			NodeInput::Import { import_type, .. } => import_type.clone(),
-			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
 			NodeInput::Reflection(_) => concrete!(Metadata),
 		}
@@ -1199,7 +1177,6 @@ impl NodeNetwork {
 							*import_index = parent_input_index;
 						}
 						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-						NodeInput::Inline(_) => (),
 						NodeInput::Scope(_) => unreachable!("Scope inputs should have been resolved by resolve_scope_inputs_recursive before flattening"),
 						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
 					}

@@ -4,21 +4,32 @@ use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
+use half::f16;
 use raster_types::Image;
-use raster_types::{CPU, GPU, Raster, Texture};
-use wgpu::{Extent3d, TextureFormat};
+use raster_types::{CPU, GPU, Raster, Storage};
+use wgpu::Extent3d;
 
 /// Uploads CPU image data to a GPU texture
-fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
-	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
+fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Raster<GPU> {
+	if image.is_empty() {
+		return Raster::default();
+	}
 
-	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), TextureFormat::Rgba8UnormSrgb);
+	let format = executor.raster_format();
+	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), format);
+	let half_floats: Vec<[f16; 4]>;
+	let (bytes, bytes_per_pixel) = if format == crate::FALLBACK_RASTER_FORMAT {
+		half_floats = image.data.iter().map(|color| color.to_vec4().to_array().map(f16::from_f32)).collect();
+		(bytemuck::cast_slice(half_floats.as_slice()), 8)
+	} else {
+		(bytemuck::cast_slice(image.data.as_slice()), 16)
+	};
 	queue.write_texture(
 		texture.as_image_copy(),
-		bytemuck::cast_slice(rgba8_data.as_slice()),
+		bytes,
 		wgpu::TexelCopyBufferLayout {
 			offset: 0,
-			bytes_per_row: Some(4 * image.width),
+			bytes_per_row: Some(bytes_per_pixel * image.width),
 			rows_per_image: Some(image.height),
 		},
 		Extent3d {
@@ -27,29 +38,35 @@ fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raste
 			depth_or_array_layers: 1,
 		},
 	);
-	texture
+	Raster::new_gpu(texture)
 }
 
 /// Converts a Raster<GPU> texture to Raster<CPU> by downloading the underlying texture data.
 ///
 /// Assumptions:
 /// - 2D texture, mip level 0
-/// - 4 bytes-per-pixel RGBA8
+/// - 4 bytes-per-pixel RGBA8, or `RASTER_FORMAT` or `FALLBACK_RASTER_FORMAT`
 /// - Texture has COPY_SRC usage
 struct RasterGpuToRasterCpuConverter {
 	buffer: Buffer,
 	width: u32,
 	height: u32,
+	format: wgpu::TextureFormat,
 	unpadded_bytes_per_row: u32,
 	padded_bytes_per_row: u32,
 	_source: raster_types::Texture,
 }
 impl RasterGpuToRasterCpuConverter {
-	fn new(executor: &WgpuExecutor, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Self {
-		let texture = data_gpu.data();
+	fn new(executor: &WgpuExecutor, encoder: &mut wgpu::CommandEncoder, data_gpu: Raster<GPU>) -> Option<Self> {
+		let texture = data_gpu.texture()?;
 		let width = texture.width();
 		let height = texture.height();
-		let bytes_per_pixel = 4; // RGBA8
+		let format = texture.format();
+		let bytes_per_pixel = match format {
+			crate::RASTER_FORMAT => 16,
+			crate::FALLBACK_RASTER_FORMAT => 8,
+			_ => 4,
+		};
 		let unpadded_bytes_per_row = width * bytes_per_pixel;
 		let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 		let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
@@ -84,15 +101,16 @@ impl RasterGpuToRasterCpuConverter {
 			},
 		);
 
-		Self {
+		Some(Self {
 			buffer,
 			width,
 			height,
+			format,
 			unpadded_bytes_per_row,
 			padded_bytes_per_row,
 			// Keep source texture alive
-			_source: data_gpu.texture.clone(),
-		}
+			_source: texture.clone(),
+		})
 	}
 
 	async fn convert(self, device: &wgpu::Device) -> Result<Raster<CPU>, wgpu::BufferAsyncError> {
@@ -136,8 +154,20 @@ impl RasterGpuToRasterCpuConverter {
 		for row in 0..self.height as usize {
 			let start = row * row_stride;
 			let row_slice = &view[start..start + row_bytes];
-			for px in row_slice.chunks_exact(4) {
-				cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+			match self.format {
+				crate::RASTER_FORMAT => cpu_data.extend(bytemuck::pod_collect_to_vec::<u8, Color>(row_slice)),
+				crate::FALLBACK_RASTER_FORMAT => {
+					let pixels = bytemuck::pod_collect_to_vec::<u8, [f16; 4]>(row_slice);
+					cpu_data.extend(pixels.iter().map(|pixel| {
+						let [red, green, blue, alpha] = pixel.map(f16::to_f32);
+						Color::from_rgbaf32_unchecked(red, green, blue, alpha)
+					}));
+				}
+				_ => {
+					for px in row_slice.chunks_exact(4) {
+						cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+					}
+				}
 			}
 		}
 
@@ -208,9 +238,7 @@ impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<CPU>> {
 			.into_iter()
 			.map(|row| {
 				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(&executor, &queue, &image);
-
-				Item::from_parts(Raster::new_gpu(texture), attributes)
+				Item::from_parts(upload_to_texture(&executor, &queue, &image), attributes)
 			})
 			.collect();
 
@@ -223,10 +251,10 @@ impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<CPU>> {
 impl Convert<Raster<GPU>, WgpuExecutor> for Raster<CPU> {
 	fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<GPU> {
 		let queue = executor.context().queue.lock();
-		let texture = upload_to_texture(&executor, &queue, &self);
+		let raster = upload_to_texture(&executor, &queue, &self);
 
 		queue.submit([]);
-		Raster::new_gpu(texture)
+		raster
 	}
 }
 
@@ -260,7 +288,12 @@ impl ConvertAsync<List<Raster<CPU>>, WgpuExecutor> for List<Raster<GPU>> {
 
 		let mut map_futures = Vec::new();
 		for converter in converters {
-			map_futures.push(converter.convert(device));
+			map_futures.push(async move {
+				match converter {
+					Some(converter) => converter.convert(device).await,
+					None => Ok(Raster::default()),
+				}
+			});
 		}
 
 		let map_results = futures::future::try_join_all(map_futures)
@@ -293,6 +326,7 @@ impl ConvertAsync<Raster<CPU>, WgpuExecutor> for Raster<GPU> {
 
 		queue.submit([encoder.finish()]);
 
+		let Some(converter) = converter else { return Raster::default() };
 		converter.convert(device).await.expect("Failed to download texture data")
 	}
 }

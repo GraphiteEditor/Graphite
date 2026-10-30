@@ -42,7 +42,7 @@ pub struct VelloCanvas {
 }
 
 impl VelloRenderer {
-	pub(crate) fn new(device: &wgpu::Device) -> Self {
+	pub(crate) fn new(device: &wgpu::Device, raster_format: wgpu::TextureFormat) -> Self {
 		let render_target_config = RenderTargetConfig {
 			format: TEXTURE_FORMAT,
 			width: 1,
@@ -59,11 +59,11 @@ impl VelloRenderer {
 
 		Self {
 			gpu: Mutex::new(Renderer::new_with(device, &render_target_config, settings)),
-			alpha_conversion: AlphaConversion::new(device),
+			alpha_conversion: AlphaConversion::new(device, raster_format),
 		}
 	}
 
-	/// Renders the scene `draw` draws on `canvas`, with its content placed by `view`, into `target` (an `Rgba8Unorm` texture of `size` with straight alpha).
+	/// Renders the scene `draw` draws on `canvas`, with its content placed by `view`, into `target`, a texture of `size` with straight alpha that is either `Rgba8Unorm` holding sRGB values or the executor's raster format holding linear-light values.
 	/// A render with more content than Vello GPU can hold calls `draw` again for each part it splits into.
 	#[expect(clippy::too_many_arguments)]
 	pub(crate) fn render(
@@ -135,10 +135,12 @@ impl VelloRenderer {
 			[(UVec2::ZERO, UVec2::new(size.x, top)), (UVec2::new(0, top), UVec2::new(size.x, size.y - top))]
 		};
 		let halves = halves.map(|(offset, half_size)| {
-			let half_target = create_texture(
+			// In the target's own format, so the half can be copied into it
+			let half_target = create_texture_with_format(
 				device,
 				"vello_gpu_split_target",
 				half_size,
+				target.format(),
 				wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::COPY_DST,
 			);
 			let half_view = Affine::translate((-(offset.x as f64), -(offset.y as f64))) * view;
@@ -267,7 +269,7 @@ impl VelloRenderer {
 
 		if rendered.is_ok() {
 			let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-			self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view);
+			self.alpha_conversion.unpremultiply(device, &mut encoder, &premultiplied_view, &target_view, target.format());
 		}
 
 		// Submitted even after a failure, since it also prepares the textures of the scene's images
@@ -361,7 +363,8 @@ impl ImageTextures {
 
 		if let SceneImage::Texture(source) = image {
 			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-			alpha_conversion.premultiply(device, encoder, &source_view, source.format().is_srgb(), &view);
+			let loads_linear_light = source.format().is_srgb() || matches!(source.format(), crate::RASTER_FORMAT | crate::FALLBACK_RASTER_FORMAT);
+			alpha_conversion.premultiply(device, encoder, &source_view, loads_linear_light, &view);
 		}
 
 		Some(view)
@@ -482,6 +485,10 @@ fn clear_texture(encoder: &mut wgpu::CommandEncoder, view: &wgpu::TextureView) {
 }
 
 fn create_texture(device: &wgpu::Device, label: &str, size: UVec2, usage: wgpu::TextureUsages) -> wgpu::Texture {
+	create_texture_with_format(device, label, size, TEXTURE_FORMAT, usage)
+}
+
+fn create_texture_with_format(device: &wgpu::Device, label: &str, size: UVec2, format: wgpu::TextureFormat, usage: wgpu::TextureUsages) -> wgpu::Texture {
 	device.create_texture(&wgpu::TextureDescriptor {
 		label: Some(label),
 		size: wgpu::Extent3d {
@@ -492,7 +499,7 @@ fn create_texture(device: &wgpu::Device, label: &str, size: UVec2, usage: wgpu::
 		mip_level_count: 1,
 		sample_count: 1,
 		dimension: wgpu::TextureDimension::D2,
-		format: TEXTURE_FORMAT,
+		format,
 		usage,
 		view_formats: &[],
 	})
@@ -502,6 +509,8 @@ fn create_texture(device: &wgpu::Device, label: &str, size: UVec2, usage: wgpu::
 struct AlphaConversion {
 	bind_group_layout: wgpu::BindGroupLayout,
 	unpremultiply_pipeline: wgpu::RenderPipeline,
+	/// Unpremultiplies into a linear-light target in the executor's raster format.
+	unpremultiply_to_linear_pipeline: wgpu::RenderPipeline,
 	premultiply_pipeline: wgpu::RenderPipeline,
 	/// The parameters for a source whose format stores linear values.
 	linear_source_parameters: wgpu::Buffer,
@@ -510,7 +519,7 @@ struct AlphaConversion {
 }
 
 impl AlphaConversion {
-	fn new(device: &wgpu::Device) -> Self {
+	fn new(device: &wgpu::Device, raster_format: wgpu::TextureFormat) -> Self {
 		use wgpu::util::DeviceExt;
 
 		let shader = device.create_shader_module(wgpu::include_wgsl!("vello_alpha.wgsl"));
@@ -546,7 +555,7 @@ impl AlphaConversion {
 			immediate_size: 0,
 		});
 
-		let create_pipeline = |label: &str, entry_point: &str| {
+		let create_pipeline = |label: &str, entry_point: &str, format: wgpu::TextureFormat| {
 			device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
 				label: Some(label),
 				layout: Some(&pipeline_layout),
@@ -561,7 +570,7 @@ impl AlphaConversion {
 					entry_point: Some(entry_point),
 					compilation_options: Default::default(),
 					targets: &[Some(wgpu::ColorTargetState {
-						format: TEXTURE_FORMAT,
+						format,
 						blend: None,
 						write_mask: wgpu::ColorWrites::ALL,
 					})],
@@ -586,16 +595,22 @@ impl AlphaConversion {
 		};
 
 		Self {
-			unpremultiply_pipeline: create_pipeline("vello_unpremultiply_pipeline", "unpremultiply"),
-			premultiply_pipeline: create_pipeline("vello_premultiply_pipeline", "premultiply"),
+			unpremultiply_pipeline: create_pipeline("vello_unpremultiply_pipeline", "unpremultiply", TEXTURE_FORMAT),
+			unpremultiply_to_linear_pipeline: create_pipeline("vello_unpremultiply_to_linear_pipeline", "unpremultiply_to_linear", raster_format),
+			premultiply_pipeline: create_pipeline("vello_premultiply_pipeline", "premultiply", TEXTURE_FORMAT),
 			linear_source_parameters: create_parameters("vello_alpha_linear_source", 0),
 			srgb_source_parameters: create_parameters("vello_alpha_srgb_source", 1),
 			bind_group_layout,
 		}
 	}
 
-	fn unpremultiply(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, target: &wgpu::TextureView) {
-		self.run(device, encoder, &self.unpremultiply_pipeline, &self.linear_source_parameters, source, target);
+	fn unpremultiply(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, target: &wgpu::TextureView, target_format: wgpu::TextureFormat) {
+		let pipeline = if target_format == TEXTURE_FORMAT {
+			&self.unpremultiply_pipeline
+		} else {
+			&self.unpremultiply_to_linear_pipeline
+		};
+		self.run(device, encoder, pipeline, &self.linear_source_parameters, source, target);
 	}
 
 	fn premultiply(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, source_is_srgb: bool, target: &wgpu::TextureView) {

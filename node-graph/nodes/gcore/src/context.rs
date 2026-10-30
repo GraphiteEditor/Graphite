@@ -4,7 +4,7 @@ use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
 use graphic_types::vector_types::Gradient;
 use graphic_types::{Graphic, Vector};
-use raster_types::{CPU, Raster};
+use raster_types::{GPU, Raster};
 
 #[node_macro::node(category("Data: Context"), icon("NodeReadContext"), path(graphene_core::vector))]
 fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Item<Graphic> {
@@ -23,7 +23,7 @@ fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Item<Vector> {
 }
 
 #[node_macro::node(category("Data: Context"), icon("NodeReadContext"), path(graphene_core::vector))]
-fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Item<Raster<CPU>> {
+fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Item<Raster<GPU>> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 

@@ -14,12 +14,12 @@ use crate::task::{Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
-use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::HashMapResourceStorage;
+use graph_craft::application_io::{ApplicationIo, PlatformApplicationIo};
 use graphene_std::raster::color::Color;
 use graphene_std::uuid::NodeId;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock};
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -42,7 +42,7 @@ impl EditorTestUtils {
 					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
 					.with_document_store(Arc::new(MemoryStore::default())),
 			)
-			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(PlatformApplicationIo::default()))
+			.with_runtime(RuntimeBuilder::new().with_wake(|| {}).with_application_io(gpu_application_io()))
 			.with_spawner(BlockingSpawner)
 			.with_random_seed(0)
 			.build();
@@ -457,6 +457,16 @@ fn init_test_logger() {
 			log::set_max_level(max_level);
 		}
 	});
+}
+
+/// Creates application IO with the GPU executor shared by every test in the process, since creating a device and its pipelines for each test is slow.
+/// Panics if no adapter is found, since tests render on the GPU like the app does.
+fn gpu_application_io() -> PlatformApplicationIo {
+	static GPU_EXECUTOR: LazyLock<Option<<PlatformApplicationIo as ApplicationIo>::Executor>> = LazyLock::new(|| futures::executor::block_on(PlatformApplicationIo::new()).gpu_executor().cloned());
+	let executor = GPU_EXECUTOR.clone().expect(
+		"Editor tests need a GPU adapter. Without a hardware GPU, install Mesa's lavapipe software Vulkan driver and point `VK_ADD_DRIVER_FILES` at its `lvp_icd.<arch>.json` (the Nix dev shell does this).",
+	);
+	PlatformApplicationIo::new_with_executor(executor)
 }
 
 /// Runs `operation`, returning its result along with the errors it logged.

@@ -1,6 +1,9 @@
 extern crate log;
 
+pub mod blending;
 pub mod bounds;
+pub mod choice_type;
+pub mod color;
 pub mod consts;
 pub mod context;
 pub mod generic;
@@ -34,11 +37,6 @@ pub use list::{
 	ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_LOCATION, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_NAME, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_START, ATTR_TEXT_ALIGN, ATTR_TRANSFORM, ATTR_TYPE,
 };
 pub use memo::MemoHash;
-pub use no_std_types::AsU32;
-pub use no_std_types::blending;
-pub use no_std_types::choice_type;
-pub use no_std_types::color;
-pub use no_std_types::shaders;
 pub use num_traits;
 pub use poll::{Finality, Interrupt, LazyInput, NodeError, Poll, PollInput, Status};
 pub use runtime::{Generations, RuntimeHandle, SourceId};
@@ -164,5 +162,14 @@ impl<P: NodeParameter> From<P> for ParameterRef {
 			node_identifier: P::NODE_IDENTIFIER,
 			input_index: P::INDEX,
 		}
+	}
+}
+
+pub trait AsU32 {
+	fn as_u32(&self) -> u32;
+}
+impl AsU32 for u32 {
+	fn as_u32(&self) -> u32 {
+		*self
 	}
 }

@@ -1,6 +1,6 @@
 use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, DocumentNodeMetadata, NodeInput, NodeNetwork};
 use graph_craft::generic;
 use graph_craft::{concrete, item};
 use graphene_std::Context;
@@ -27,7 +27,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 	let render_node = DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0)],
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(5), 0)],
+			exports: vec![NodeInput::node(NodeId(6), 0)],
 			nodes: [
 				DocumentNode {
 					call_argument: concrete!(Context),
@@ -42,7 +42,23 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER), NodeInput::node(NodeId(0), 0)],
+					inputs: vec![
+						NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER),
+						NodeInput::node(NodeId(0), 0),
+						NodeInput::scope("runtime"),
+						NodeInput::Reflection(DocumentNodeMetadata::SourceId),
+					],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::download_gpu_rasters::IDENTIFIER),
+					compile_metadata: Some(graphene_std::NodeCompileMetadata {
+						extract: ContextFeatures::VARARGS,
+						inject: ContextFeatures::empty(),
+						..Default::default()
+					}),
+					..Default::default()
+				},
+				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER), NodeInput::node(NodeId(1), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					compile_metadata: Some(graphene_std::NodeCompileMetadata {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -53,7 +69,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER), NodeInput::node(NodeId(1), 0)],
+					inputs: vec![NodeInput::scope(graphene_std::platform_application_io::try_wgpu_executor::IDENTIFIER), NodeInput::node(NodeId(2), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					compile_metadata: Some(graphene_std::NodeCompileMetadata {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -64,7 +80,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::scope(graphene_std::render_pixel_preview::pixel_preview_pipeline::IDENTIFIER), NodeInput::node(NodeId(2), 0)],
+					inputs: vec![NodeInput::scope(graphene_std::render_pixel_preview::pixel_preview_pipeline::IDENTIFIER), NodeInput::node(NodeId(3), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_pixel_preview::render_pixel_preview::IDENTIFIER),
 					compile_metadata: Some(graphene_std::NodeCompileMetadata {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
@@ -77,7 +93,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 					call_argument: concrete!(Context),
 					inputs: vec![
 						NodeInput::scope(graphene_std::render_background::composite_background_pipeline::IDENTIFIER),
-						NodeInput::node(NodeId(3), 0),
+						NodeInput::node(NodeId(4), 0),
 					],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_background::render_background::IDENTIFIER),
 					compile_metadata: Some(graphene_std::NodeCompileMetadata {
@@ -89,7 +105,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::node(NodeId(4), 0)],
+					inputs: vec![NodeInput::node(NodeId(5), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					compile_metadata: Some(graphene_std::NodeCompileMetadata {
 						// INDEX is never read; it forces a nullification and cache pair onto the `data` parameter's wire so the render cache keys on a stable context

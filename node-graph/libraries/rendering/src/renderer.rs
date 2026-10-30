@@ -23,7 +23,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_resource::Resource;
-use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
@@ -377,6 +377,9 @@ pub struct RenderParams {
 	pub canvas_image_scale: f64,
 	/// The nearest ancestor's appearance, cascading to items that lack their own.
 	pub inherited_appearance: Option<Appearance>,
+	/// Downloaded images of GPU raster textures, which SVG output embeds in place of the textures it can't reference. GPU rasters without one are not drawn.
+	#[cache_hash(skip)]
+	pub gpu_raster_downloads: Arc<HashMap<Texture, Raster<CPU>>>,
 }
 
 impl RenderParams {
@@ -775,6 +778,9 @@ pub trait Render: BoundingBox {
 		false
 	}
 
+	/// Recursively collects the textures of the GPU rasters this content draws, including those painting its appearances, so SVG output can download them first.
+	fn collect_gpu_textures(&self, _textures: &mut Vec<Texture>) {}
+
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
 }
 
@@ -1042,6 +1048,20 @@ fn add_graphic_item_outline_targets(item: ItemRef<'_, Graphic>, outlines: &mut V
 	outlines.extend(new_outlines);
 }
 
+/// Collects the textures of the GPU rasters painting an appearance's coverages.
+fn collect_appearance_gpu_textures(appearance: Option<&Appearance>, textures: &mut Vec<Texture>) {
+	for paint in appearance.into_iter().flat_map(Appearance::covers_with_paints).filter_map(|(_, paint)| paint) {
+		paint.collect_gpu_textures(textures);
+	}
+}
+
+/// Collects the textures of the GPU rasters painting the appearances of a list's items.
+fn collect_list_appearance_gpu_textures<T>(list: &List<T>, textures: &mut Vec<Texture>) {
+	for appearance in list.iter_attribute_values::<Appearance>(ATTR_APPEARANCE).into_iter().flatten() {
+		collect_appearance_gpu_textures(Some(appearance), textures);
+	}
+}
+
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
@@ -1049,14 +1069,14 @@ impl Render for Graphic {
 			Graphic::Graphic(item) => render_graphic_item_svg(ItemRef::Item(item), false, &mut None, render, render_params),
 			Graphic::Vector(item) => render_vector_item_svg(ItemRef::Item(item), false, &mut None, render, render_params),
 			Graphic::RasterCPU(item) => render_raster_cpu_item_svg(ItemRef::Item(item), render, render_params),
-			Graphic::RasterGPU(_) => (),
+			Graphic::RasterGPU(item) => render_raster_gpu_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Color(item) => render_color_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Gradient(item) => render_gradient_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Text(item) => render_text_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::VectorList(list) => list.render_svg(render, render_params),
 			Graphic::RasterCPUList(list) => list.render_svg(render, render_params),
-			Graphic::RasterGPUList(_) => (),
+			Graphic::RasterGPUList(list) => list.render_svg(render, render_params),
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
@@ -1089,6 +1109,31 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::TextList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::StrokeList(_) => (),
+		}
+	}
+
+	fn collect_gpu_textures(&self, textures: &mut Vec<Texture>) {
+		match self {
+			Graphic::Graphic(item) => {
+				item.element().collect_gpu_textures(textures);
+				collect_appearance_gpu_textures(item.attribute(ATTR_APPEARANCE), textures);
+			}
+			Graphic::Vector(item) => collect_appearance_gpu_textures(item.attribute(ATTR_APPEARANCE), textures),
+			Graphic::RasterGPU(item) => collect_raster_gpu_texture(item.element(), textures),
+			Graphic::GraphicList(list) => list.collect_gpu_textures(textures),
+			Graphic::VectorList(list) => list.collect_gpu_textures(textures),
+			Graphic::RasterGPUList(list) => list.collect_gpu_textures(textures),
+			Graphic::None(_)
+			| Graphic::NoneList(_)
+			| Graphic::RasterCPU(_)
+			| Graphic::Color(_)
+			| Graphic::Gradient(_)
+			| Graphic::Text(_)
+			| Graphic::RasterCPUList(_)
+			| Graphic::ColorList(_)
+			| Graphic::GradientList(_)
+			| Graphic::TextList(_)
+			| Graphic::StrokeList(_) => {}
 		}
 	}
 
@@ -1388,6 +1433,12 @@ impl Render for List<Artboard> {
 		}
 	}
 
+	fn collect_gpu_textures(&self, textures: &mut Vec<Texture>) {
+		for artboard in self.iter_element_values() {
+			artboard.as_graphic_list().collect_gpu_textures(textures);
+		}
+	}
+
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let dimensions: DVec2 = self.attribute_cloned_or_default(ATTR_DIMENSIONS, index);
@@ -1437,6 +1488,13 @@ impl Render for List<Graphic> {
 
 	fn contains_artboard(&self) -> bool {
 		self.iter_element_values().any(|element| element.contains_artboard())
+	}
+
+	fn collect_gpu_textures(&self, textures: &mut Vec<Texture>) {
+		for element in self.iter_element_values() {
+			element.collect_gpu_textures(textures);
+		}
+		collect_list_appearance_gpu_textures(self, textures);
 	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
@@ -2242,6 +2300,10 @@ impl Render for List<Vector> {
 		}
 	}
 
+	fn collect_gpu_textures(&self, textures: &mut Vec<Texture>) {
+		collect_list_appearance_gpu_textures(self, textures);
+	}
+
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		for index in 0..self.len() {
 			edit_list_row_geometry(self, index, |vector, paths| vector.vector_new_ids_from_hash(paths, reference.map(|id| id.0).unwrap_or_default()));
@@ -2357,7 +2419,19 @@ fn canvas_image_id(buffer_id: u64, halvings: u32) -> u64 {
 /// Emits one item of CPU raster content as SVG, as a canvas placeholder or an embedded base64 image.
 fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRender, render_params: &RenderParams) {
 	let Some(image) = item.element() else { return };
+	render_raster_image_svg(item, image, render, render_params);
+}
 
+/// Emits one item of GPU raster content as SVG from its texture's downloaded image, exactly as CPU raster content.
+fn render_raster_gpu_item_svg(item: ItemRef<'_, Raster<GPU>>, render: &mut SvgRender, render_params: &RenderParams) {
+	let Some(image) = item.element().and_then(Raster::texture).and_then(|texture| render_params.gpu_raster_downloads.get(texture)) else {
+		return;
+	};
+	render_raster_image_svg(item, image, render, render_params);
+}
+
+/// Emits a raster image as SVG, placed and styled by the attributes of the item it's drawn for.
+fn render_raster_image_svg<T>(item: ItemRef<'_, T>, image: &Raster<CPU>, render: &mut SvgRender, render_params: &RenderParams) {
 	let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
@@ -2547,8 +2621,10 @@ impl Render for List<Raster<CPU>> {
 }
 
 impl Render for List<Raster<GPU>> {
-	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {
-		log::warn!("tried to render texture as an svg");
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_raster_gpu_item_svg(ItemRef::ListItem(self, index), render, render_params);
+		}
 	}
 
 	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
@@ -2566,11 +2642,26 @@ impl Render for List<Raster<GPU>> {
 			add_unit_square_click_target(self.attribute_cloned_or_default(ATTR_TRANSFORM, index), click_targets);
 		}
 	}
+
+	fn collect_gpu_textures(&self, textures: &mut Vec<Texture>) {
+		for raster in self.iter_element_values() {
+			collect_raster_gpu_texture(raster, textures);
+		}
+	}
+}
+
+/// Collects a GPU raster's texture unless it's empty or already collected.
+fn collect_raster_gpu_texture(raster: &Raster<GPU>, textures: &mut Vec<Texture>) {
+	if let Some(texture) = raster.texture()
+		&& !textures.contains(texture)
+	{
+		textures.push(texture.clone());
+	}
 }
 
 /// Draws one item of GPU raster content into the Vello scene.
 fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-	let Some(raster) = item.element() else { return };
+	let Some(texture) = item.element().and_then(|raster| raster.texture()) else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let opacity_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY, 1.);
 	let opacity_fill_attr: f64 = item.attribute_cloned_or(ATTR_OPACITY_FILL, 1.);
@@ -2610,12 +2701,12 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 		return;
 	}
 
-	let width = raster.data().width();
-	let height = raster.data().height();
+	let width = texture.width();
+	let height = texture.height();
 
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
-	scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
+	scene.draw_texture(texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
 
 	if layer {
 		scene.pop_layer()

@@ -6,6 +6,7 @@ use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
 use glam::{DAffine2, UVec2};
+use core_types::{Interrupt, NodeError};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
@@ -13,7 +14,8 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
 use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{GPU, Raster, Storage};
+use raster_nodes::raster_kernel::raster_kernel_pipeline;
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
@@ -171,10 +173,16 @@ fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 }
 
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
-#[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"))]
-fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
+#[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"), placeholder = pending_image_bytes)]
+async fn image_to_bytes(_: impl Ctx, image: Item<Raster<GPU>>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Resource>, NodeError> {
+	let image = image.into_element();
+	if image.is_empty() {
+		return Ok(Item::new_from_element(Resource::empty()));
+	}
+
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to read a GPU raster"))?;
+	let image = image.convert(Footprint::DEFAULT, executor).await;
 	let bytes: Vec<u8> = image
-		.element()
 		.data
 		.iter()
 		.flat_map(|color| {
@@ -183,7 +191,11 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 		})
 		.collect();
 
-	Item::new_from_element(Resource::new(bytes))
+	Ok(Item::new_from_element(Resource::new(bytes)))
+}
+
+fn pending_image_bytes(_image: &Item<Raster<GPU>>, _pipeline: &Item<::wgpu_executor::WgpuPipelineCache>) -> Item<Resource> {
+	Item::new_from_element(Resource::empty())
 }
 
 /// Loads binary from URLs and local asset paths.
@@ -207,17 +219,18 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 /// Converts the raw byte data of an image file to a raster image.
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
-#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
-fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+#[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"), memoize)]
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Raster<GPU>>, Interrupt> {
 	let data = data.into_element();
-	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
+	let Some(image) = Image::from_encoded(data.as_ref()) else { return Ok(Item::default()) };
 
-	Item::new_from_element(Raster::new_cpu(image))
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to load an image"))?;
+	Ok(Item::new_from_element(Raster::new_cpu(image).convert(Footprint::DEFAULT, executor)))
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
 #[node_macro::node(category(""), placeholder = pending_raster)]
-async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(try_wgpu_executor::IDENTIFIER)] executor: Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
+async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, #[scope(try_wgpu_executor::IDENTIFIER)] executor: Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<GPU>> {
 	let Some(executor) = executor.into_element() else {
 		log::error!("Rasterizing requires a GPU executor");
 		return List::new();
@@ -225,7 +238,7 @@ async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>,
 	rasterize_with_vello(data, footprint.into_element(), executor).await
 }
 
-async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> List<Raster<CPU>> {
+async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> List<Raster<GPU>> {
 	let resolution = footprint.resolution;
 	if footprint.transform.matrix2.determinant() == 0. || resolution.cmpeq(UVec2::ZERO).any() {
 		log::trace!("Invalid footprint received for rasterization");
@@ -235,28 +248,28 @@ async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executo
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
 	let view = DAffine2::from_scale(resolution.as_dvec2() / aabb.size()) * DAffine2::from_translation(-aabb.start);
 	let render_params = RenderParams {
-		footprint,
+		footprint: Footprint { transform: view, ..footprint },
+		render_output_type: rendering::RenderOutputType::Vello,
 		for_export: true,
 		..Default::default()
 	};
-	let texture = match executor.render_vello(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) {
+	let texture = match executor.render_vello_raster(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params)) {
 		Ok(texture) => texture,
 		Err(error) => {
 			log::error!("Failed to rasterize: {error}");
 			return List::new();
 		}
 	};
-	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor).await;
 
 	// The input's layers stay reachable so the renderer can expose their click targets to the editor's tools
 	List::new_from_item(
-		Item::new_from_element(raster)
+		Item::new_from_element(Raster::new_gpu(texture))
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
 			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, data),
 	)
 }
 
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<Option<::wgpu_executor::WgpuExecutor>>) -> List<Raster<GPU>> {
 	List::new()
 }
 
@@ -314,20 +327,12 @@ fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: I
 	Item::new_from_element(executor)
 }
 
-/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Raster"), icon("NodeUploadTexture"), memoize)]
-fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
-	let executor = executor.into_element();
-	let (raster, attributes) = content.into_parts();
-
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
-}
-
 #[cfg(test)]
 mod tests {
 	use super::*;
 	use core_types::Color;
 	use glam::DVec2;
+	use graphic_types::raster_types::CPU;
 
 	#[tokio::test]
 	async fn rasterize_renders_the_footprint_area_at_its_resolution() {
@@ -341,9 +346,11 @@ mod tests {
 			..Default::default()
 		};
 
-		let output = rasterize_with_vello(data, footprint, executor).await;
+		let output = rasterize_with_vello(data, footprint, executor.clone()).await;
 
-		let image = output.iter_element_values().next().expect("Rasterize should output one image").data();
+		let raster = output.iter_element_values().next().expect("Rasterize should output one image").clone();
+		let raster: Raster<CPU> = raster.convert(Footprint::DEFAULT, executor).await;
+		let image = raster.data();
 		assert_eq!((image.width, image.height), (4, 4));
 		for x in 0..4 {
 			let pixel = image.data[(4 + x) as usize];
