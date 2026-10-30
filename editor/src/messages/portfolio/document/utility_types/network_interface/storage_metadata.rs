@@ -58,7 +58,7 @@ impl StorageMetadataView<'_> {
 	}
 
 	fn input_persistent(&self, network_path: &[NodeId], local_id: NodeId, input_index: usize) -> Option<&InputPersistentMetadata> {
-		Some(&self.persistent(network_path, local_id)?.input_metadata.get(input_index)?.persistent_metadata)
+		self.interface.view(network_path).ok()?.persistent_input_metadata(&local_id, input_index).ok()
 	}
 }
 
@@ -103,11 +103,21 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 	}
 
 	fn output_names(&self, network_path: &[NodeId], local_id: NodeId) -> Vec<String> {
-		self.persistent(network_path, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
+		self.interface
+			.view(network_path)
+			.ok()
+			.and_then(|view| view.output_names(&local_id).ok())
+			.map(<[String]>::to_vec)
+			.unwrap_or_default()
 	}
 
 	fn output_descriptions(&self, network_path: &[NodeId], local_id: NodeId) -> Vec<String> {
-		self.persistent(network_path, local_id).map(|p| p.output_descriptions.clone()).unwrap_or_default()
+		self.interface
+			.view(network_path)
+			.ok()
+			.and_then(|view| view.output_descriptions(&local_id).ok())
+			.map(<[String]>::to_vec)
+			.unwrap_or_default()
 	}
 
 	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {

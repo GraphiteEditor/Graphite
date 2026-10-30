@@ -208,12 +208,11 @@ mod network_interface_tests {
 		let mut definition_metadata = NodeNetworkMetadata::default();
 		definition_metadata.persistent_metadata.reference = Some("Artboard".into());
 		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
+		definition_metadata.persistent_metadata.export_names = vec![String::new()];
 
 		let mut network_metadata = NodeNetworkMetadata::default();
-		let mut instance_metadata = DocumentNodeMetadata::default();
-		instance_metadata.persistent_metadata.output_names = vec![String::new()];
 		for id in instances {
-			network_metadata.persistent_metadata.node_metadata.insert(id, instance_metadata.clone());
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
 		}
 		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
 
@@ -242,16 +241,8 @@ mod network_interface_tests {
 
 		let mut mismatched_network = network;
 		mismatched_network.nodes.get_mut(&NodeId(11)).unwrap().inputs.push(NodeInput::value(TaggedValue::None, false));
-		network_metadata
-			.persistent_metadata
-			.node_metadata
-			.get_mut(&NodeId(11))
-			.unwrap()
-			.persistent_metadata
-			.input_metadata
-			.push(InputMetadata::default());
 		let mismatched = NodeNetworkInterface::from_trees(mismatched_network, network_metadata);
-		assert_eq!(mismatched.validate_invariants().len(), 1);
+		assert!(mismatched.validate_invariants().iter().any(|violation| violation.contains("another instance of definition")));
 	}
 
 	#[test]
@@ -287,5 +278,46 @@ mod network_interface_tests {
 
 		interface.set_reference(&NodeId(10), &[], Some("Artboard".into()));
 		assert!(interface.is_artboard(&NodeId(11), &[]));
+	}
+
+	#[test]
+	fn interface_names_live_on_the_implementing_network() {
+		use super::*;
+
+		let definition = NetworkId(1);
+		let instance = |implementation| DocumentNode {
+			implementation,
+			inputs: vec![NodeInput::value(TaggedValue::None, false)],
+			..Default::default()
+		};
+		let instances = [NodeId(10), NodeId(11)];
+
+		let network = NodeNetwork {
+			nodes: instances.iter().map(|&id| (id, instance(DocumentNodeImplementation::Definition(definition)))).collect(),
+			definitions: [(definition, NodeNetwork::value_network(DocumentNode::default()))].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut definition_metadata = NodeNetworkMetadata::default();
+		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
+
+		let mut instance_metadata = DocumentNodeMetadata::default();
+		instance_metadata.persistent_metadata.input_metadata = vec![InputMetadata::default()];
+		instance_metadata.persistent_metadata.output_names = vec![String::new()];
+		let mut network_metadata = NodeNetworkMetadata::default();
+		for id in instances {
+			network_metadata.persistent_metadata.node_metadata.insert(id, instance_metadata.clone());
+		}
+		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
+
+		let mut interface = NodeNetworkInterface::from_trees(network, network_metadata);
+		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
+
+		interface.set_import_export_name("Shared".into(), ImportOrExport::Import(0), &[NodeId(10)]);
+		interface.set_import_export_name("Result".into(), ImportOrExport::Export(0), &[NodeId(10)]);
+
+		let view = interface.view(&[]).unwrap();
+		assert_eq!(view.persistent_input_metadata(&NodeId(11), 0).unwrap().input_name, "Shared");
+		assert_eq!(view.output_names(&NodeId(11)).unwrap(), ["Result".to_string()]);
 	}
 }

@@ -490,7 +490,7 @@ fn construct_metadata_snapshot(
 			ops.push(RegistryDelta::ChangeNodeAttribute { id: global_id, delta });
 		}
 
-		for input_index in 0..node_metadata.input_metadata.len() {
+		for input_index in 0..node_metadata.interface_input_metadata().len() {
 			let mut encoded = Attributes::new();
 			encode_input_ui_attributes(&mut encoded, &source, &path, id, input_index, TimeStamp::ORIGIN)?;
 			let current = working_node.and_then(|node| node.inputs().get(input_index)).map(|slot| &slot.attributes);
@@ -910,34 +910,36 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 	}
 
 	fn output_names(&self, metadata_path: &[NodeId], node_id: NodeId) -> Vec<String> {
-		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.output_names.clone()).unwrap_or_default()
+		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.interface_output_names().to_vec()).unwrap_or_default()
 	}
 
 	fn output_descriptions(&self, metadata_path: &[NodeId], node_id: NodeId) -> Vec<String> {
-		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.output_descriptions.clone()).unwrap_or_default()
+		self.metadata_for(metadata_path, node_id)
+			.map(|metadata| metadata.interface_output_descriptions().to_vec())
+			.unwrap_or_default()
 	}
 
 	fn input_name(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
+			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
 			.map(|input| input.persistent_metadata.input_name.as_str())
 	}
 
 	fn input_description(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
+			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
 			.map(|input| input.persistent_metadata.input_description.as_str())
 	}
 
 	fn widget_override(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
+			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
 			.and_then(|input| input.persistent_metadata.widget_override.as_deref())
 	}
 
 	fn input_data(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, Value> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.input_metadata.get(input_index))
+			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
 			.map(|input| input.persistent_metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
 			.unwrap_or_default()
 	}

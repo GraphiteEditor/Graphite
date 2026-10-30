@@ -43,7 +43,8 @@ impl NodeNetworkInterface {
 	/// Builds an interface around a freshly-assembled pair of trees, for a document arriving from
 	/// storage or from an older format rather than being edited into existence. Nothing is recorded: the
 	/// trees are the document, not a set of changes to it.
-	pub(super) fn from_trees(network: NodeNetwork, network_metadata: NodeNetworkMetadata) -> Self {
+	pub(super) fn from_trees(network: NodeNetwork, mut network_metadata: NodeNetworkMetadata) -> Self {
+		network_metadata.move_interface_metadata_into_networks(&network);
 		Self {
 			network: Guarded::new(MemoNetwork::new(network)),
 			network_metadata: Guarded::new(network_metadata),
@@ -60,7 +61,8 @@ impl NodeNetworkInterface {
 
 		let index = index.min(node.node.inputs.len());
 		node.node.inputs.insert(index, input);
-		node.metadata.input_metadata.insert(index.min(node.metadata.input_metadata.len()), metadata);
+		let input_metadata = node.interface().input_metadata;
+		input_metadata.insert(index.min(input_metadata.len()), metadata);
 		node.emit_inputs();
 		true
 	}
@@ -78,7 +80,8 @@ impl NodeNetworkInterface {
 		}
 
 		let input = node.node.inputs.remove(index);
-		let metadata = (index < node.metadata.input_metadata.len()).then(|| node.metadata.input_metadata.remove(index));
+		let input_metadata = node.interface().input_metadata;
+		let metadata = (index < input_metadata.len()).then(|| input_metadata.remove(index));
 		node.emit_inputs();
 		Some((input, metadata.unwrap_or_default()))
 	}
@@ -104,12 +107,11 @@ impl NodeNetworkInterface {
 		network.exports.insert(index, export);
 
 		let mut descriptions_changed = false;
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			let persistent_metadata = &mut encapsulating_node_metadata.persistent_metadata;
-			persistent_metadata.output_names.insert(index.min(persistent_metadata.output_names.len()), output_name);
+		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(network_path) {
+			persistent_metadata.export_names.insert(index.min(persistent_metadata.export_names.len()), output_name);
 
 			// A missing description is empty, so only a non-empty one past the end needs the gap filled
-			let output_descriptions = &mut persistent_metadata.output_descriptions;
+			let output_descriptions = &mut persistent_metadata.export_descriptions;
 			descriptions_changed = !output_description.is_empty() || (index <= output_descriptions.len() && has_description(output_descriptions));
 			if index <= output_descriptions.len() {
 				output_descriptions.insert(index, output_description);
@@ -138,14 +140,13 @@ impl NodeNetworkInterface {
 		let vacated = network.exports.len();
 
 		let mut descriptions_changed = false;
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			let persistent_metadata = &mut encapsulating_node_metadata.persistent_metadata;
-			if index < persistent_metadata.output_names.len() {
-				persistent_metadata.output_names.remove(index);
+		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(network_path) {
+			if index < persistent_metadata.export_names.len() {
+				persistent_metadata.export_names.remove(index);
 			}
-			descriptions_changed = index < persistent_metadata.output_descriptions.len() && has_description(&persistent_metadata.output_descriptions);
-			if index < persistent_metadata.output_descriptions.len() {
-				persistent_metadata.output_descriptions.remove(index);
+			descriptions_changed = index < persistent_metadata.export_descriptions.len() && has_description(&persistent_metadata.export_descriptions);
+			if index < persistent_metadata.export_descriptions.len() {
+				persistent_metadata.export_descriptions.remove(index);
 			}
 		}
 		self.emit_exports_from(network_path, index, Some(vacated), descriptions_changed);
@@ -177,9 +178,9 @@ impl NodeNetworkInterface {
 		}
 
 		let Some((&node_id, parent_path)) = network_path.split_last() else { return };
-		let Some(metadata) = self.encapsulating_node_metadata(network_path) else { return };
-		let output_names = NodeMetadataChange::OutputNames(metadata.persistent_metadata.output_names.clone());
-		let output_descriptions = descriptions_changed.then(|| NodeMetadataChange::OutputDescriptions(metadata.persistent_metadata.output_descriptions.clone()));
+		let Some(metadata) = self.nested_metadata(network_path) else { return };
+		let output_names = NodeMetadataChange::OutputNames(metadata.persistent_metadata.export_names.clone());
+		let output_descriptions = descriptions_changed.then(|| NodeMetadataChange::OutputDescriptions(metadata.persistent_metadata.export_descriptions.clone()));
 		for change in std::iter::once(output_names).chain(output_descriptions) {
 			self.deltas.push(EditorDelta::NodeMetadata {
 				network_path: parent_path.to_vec(),
@@ -192,12 +193,13 @@ impl NodeNetworkInterface {
 	/// Moves the export at `from` to `to`, carrying the encapsulating node's name and description for it.
 	pub(crate) fn move_export_slot(&mut self, network_path: &[NodeId], from: usize, to: usize) -> bool {
 		let (name, description) = self
-			.encapsulating_node_metadata(network_path)
+			.nested_metadata(network_path)
+			.filter(|_| !network_path.is_empty())
 			.map(|metadata| {
 				let persistent_metadata = &metadata.persistent_metadata;
 				(
-					persistent_metadata.output_names.get(from).cloned().unwrap_or_default(),
-					persistent_metadata.output_descriptions.get(from).cloned().unwrap_or_default(),
+					persistent_metadata.export_names.get(from).cloned().unwrap_or_default(),
+					persistent_metadata.export_descriptions.get(from).cloned().unwrap_or_default(),
 				)
 			})
 			.unwrap_or_default();

@@ -2582,6 +2582,8 @@ impl DocumentMessageHandler {
 			document_message_handler.snapping_state.grid_visible = document_message_handler.snapping_state.grid_snapping;
 		}
 
+		document_message_handler.network_interface.move_interface_metadata_into_networks();
+
 		Ok(document_message_handler)
 	}
 

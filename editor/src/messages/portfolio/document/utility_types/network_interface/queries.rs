@@ -740,8 +740,10 @@ impl NodeNetworkInterface {
 	/// The description stored for a node's output, or else for a proto node, the doc comment on its field in the struct a multi-output node returns.
 	pub fn output_description(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> String {
 		let stored_description = self
-			.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.output_descriptions.get(output_index))
+			.view(network_path)
+			.ok()
+			.and_then(|view| view.output_descriptions(node_id).ok())
+			.and_then(|output_descriptions| output_descriptions.get(output_index))
 			.filter(|description| !description.is_empty());
 		if let Some(stored_description) = stored_description {
 			return stored_description.clone();

@@ -27,12 +27,13 @@ impl NodeNetworkInterface {
 		self.network_metadata.get_mut().nested_metadata_mut(location)
 	}
 
-	/// The metadata of the node that encapsulates the network at `network_path`, or `None` for the
-	/// document network, which no node encapsulates.
-	pub(super) fn encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		let encapsulating_node_id = encapsulating_path.pop()?;
-		self.network_metadata_mut(&encapsulating_path)?.persistent_metadata.node_metadata.get_mut(&encapsulating_node_id)
+	/// The persistent metadata of the network at `network_path`, or `None` for the document network, which
+	/// no node implements.
+	pub(super) fn subnetwork_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkPersistentMetadata> {
+		if network_path.is_empty() {
+			return None;
+		}
+		Some(&mut self.network_metadata_mut(network_path)?.persistent_metadata)
 	}
 
 	// TODO: Eventually remove this document upgrade code, along with the migrations that call it
@@ -42,6 +43,11 @@ impl NodeNetworkInterface {
 	/// changing the one they have.
 	pub(in super::super) fn migrate_graph(&mut self, migrate: impl FnOnce(&mut NodeNetwork)) {
 		migrate(self.document_network_mut());
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	pub(crate) fn move_interface_metadata_into_networks(&mut self) {
+		self.network_metadata.get_mut().move_interface_metadata_into_networks(self.network.network());
 	}
 
 	// ===== Recorded writes =====
@@ -57,15 +63,13 @@ impl NodeNetworkInterface {
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
 		let location = self.locate(locator.network_path)?;
 		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&locator.node_id)?;
-		let metadata = self
-			.network_metadata
-			.get_mut()
-			.nested_metadata_mut(location)?
-			.persistent_metadata
-			.node_metadata
-			.get_mut(&locator.node_id)?;
+		let instantiated = match node.implementation {
+			DocumentNodeImplementation::Definition(id) => Some(id),
+			_ => None,
+		};
+		let (metadata, definition_metadata) = self.network_metadata.get_mut().node_metadata_with_definition_mut(location, &locator.node_id, instantiated)?;
 
-		Some(NodeMut::new(node, &mut metadata.persistent_metadata, &mut self.deltas, locator))
+		Some(NodeMut::new(node, &mut metadata.persistent_metadata, definition_metadata, &mut self.deltas, locator))
 	}
 
 	// ===== Unrecorded state, reachable from the whole network interface =====

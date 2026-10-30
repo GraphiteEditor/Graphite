@@ -485,8 +485,10 @@ impl NodeNetworkInterface {
 		// An emptied description keeps its slot, so only a node saved before it had output descriptions stores none at all
 		let has_output_descriptions = |output_descriptions: &[String]| output_descriptions.iter().any(|description| !description.is_empty());
 		let stores_output_descriptions = self
-			.node_metadata(node_id, network_path)
-			.is_some_and(|metadata| !metadata.persistent_metadata.output_descriptions.is_empty());
+			.view(network_path)
+			.ok()
+			.and_then(|view| view.output_descriptions(node_id).ok())
+			.is_some_and(|output_descriptions| !output_descriptions.is_empty());
 		let output_descriptions = definition_template
 			.filter(|template| has_output_descriptions(&template.output_descriptions) && !stores_output_descriptions)
 			.filter(|template| template.output_names.len() == self.number_of_outputs(node_id, network_path))
