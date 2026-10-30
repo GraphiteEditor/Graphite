@@ -1,4 +1,5 @@
 use glam::UVec2;
+use raster_types::WeakCPU;
 use rendering::vello_scene_builder::{SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -289,6 +290,7 @@ fn clear(device: &wgpu::Device, queue: &Queue, target: &wgpu::Texture) {
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum ImageKey {
 	Blob(u64),
+	Raster(u64),
 	Texture(wgpu::Texture),
 }
 
@@ -296,6 +298,8 @@ enum ImageKey {
 struct ImageTexture {
 	texture: wgpu::Texture,
 	last_used: u64,
+	/// The CPU raster pixels copied into the texture, which is freed once they're gone since they can't be drawn again.
+	raster: Option<WeakCPU>,
 }
 
 /// The textures of the images recent renders drew, each freed once it goes unused for long enough.
@@ -319,12 +323,24 @@ impl ImageTextures {
 	) -> Option<wgpu::TextureView> {
 		let key = match image {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
+			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture(texture) => ImageKey::Texture((**texture).clone()),
 		};
 
 		if !self.textures.contains_key(&key) {
 			let texture = match image {
-				SceneImage::Pixels(data) => upload_pixels(device, queue, data, max_texture_size)?,
+				SceneImage::Pixels(data) => {
+					if data.format != peniko::ImageFormat::Rgba8 {
+						log::error!("Unsupported image format {:?}", data.format);
+						return None;
+					}
+
+					upload_pixels(device, queue, data.data.data(), data.width, data.height, data.alpha_type, max_texture_size)?
+				}
+				SceneImage::Raster(raster) => {
+					let (pixels, width, height) = raster.to_flat_u8();
+					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
+				}
 				SceneImage::Texture(texture) => create_texture(
 					device,
 					"vello_gpu_premultiplied_image",
@@ -332,7 +348,11 @@ impl ImageTextures {
 					wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
 				),
 			};
-			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0 });
+			let raster = match image {
+				SceneImage::Raster(raster) => Some(raster.downgrade()),
+				SceneImage::Pixels(_) | SceneImage::Texture(_) => None,
+			};
+			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0, raster });
 		}
 
 		let image_texture = self.textures.get_mut(&key)?;
@@ -354,6 +374,7 @@ impl ImageTextures {
 			match key {
 				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 				ImageKey::Blob(_) => unused_renders == 0,
+				ImageKey::Raster(_) => unused_renders == 0 || (unused_renders < UNUSED_IMAGE_RENDER_LIMIT && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
 				ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
 			}
 		});
@@ -361,20 +382,13 @@ impl ImageTextures {
 }
 
 /// Uploads CPU pixels as a premultiplied texture, downscaling them by a whole factor if they exceed `max_texture_size`.
-fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, image: &peniko::ImageData, max_texture_size: u32) -> Option<wgpu::Texture> {
-	let (width, height) = (image.width, image.height);
+fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, pixels: &[u8], width: u32, height: u32, alpha_type: peniko::ImageAlphaType, max_texture_size: u32) -> Option<wgpu::Texture> {
 	if width == 0 || height == 0 {
 		return None;
 	}
-	if image.format != peniko::ImageFormat::Rgba8 {
-		log::error!("Unsupported image format {:?}", image.format);
-		return None;
-	}
 
-	let premultiplied: Vec<u8> = match image.alpha_type {
-		peniko::ImageAlphaType::Alpha => image
-			.data
-			.data()
+	let premultiplied: Vec<u8> = match alpha_type {
+		peniko::ImageAlphaType::Alpha => pixels
 			.as_chunks::<4>()
 			.0
 			.iter()
@@ -384,7 +398,7 @@ fn upload_pixels(device: &wgpu::Device, queue: &wgpu::Queue, image: &peniko::Ima
 				[premultiply(pixel[0]), premultiply(pixel[1]), premultiply(pixel[2]), pixel[3]]
 			})
 			.collect(),
-		peniko::ImageAlphaType::AlphaPremultiplied => image.data.data().to_vec(),
+		peniko::ImageAlphaType::AlphaPremultiplied => pixels.to_vec(),
 	};
 
 	// Box-average whole blocks of pixels down until both sides fit, which is exact to average since the pixels are premultiplied

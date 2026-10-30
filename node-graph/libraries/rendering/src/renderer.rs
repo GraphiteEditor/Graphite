@@ -22,9 +22,8 @@ use core_types::{
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
-use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::raster_types::{CPU, GPU, Image, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
@@ -249,7 +248,8 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
+	/// The rasters drawn to canvases rather than embedded, by the buffer ID their placeholders name.
+	pub image_data: HashMap<u64, Raster<CPU>>,
 	indent: usize,
 }
 
@@ -343,7 +343,7 @@ impl SvgRender {
 pub struct SvgRenderOutput {
 	pub svg: String,
 	pub svg_defs: String,
-	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
+	pub image_data: HashMap<u64, Raster<CPU>>,
 }
 
 impl From<&SvgRenderOutput> for SvgRender {
@@ -2371,7 +2371,8 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	}
 
 	if render_params.to_canvas() {
-		let id = *render.image_data.entry(CacheHashWrapper(image.clone().into_data())).or_insert_with(generate_uuid);
+		let id = image.buffer_id();
+		render.image_data.entry(id).or_insert_with(|| image.clone());
 
 		render.parent_tag(
 			"foreignObject",
@@ -2400,28 +2401,18 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 				render.leaf_tag(
 					"img", // Must be a self-closing (void element) tag, so we can't use `div` or `span`, for example
 					|attributes| {
-						attributes.push("data-canvas-placeholder", id.to_string());
+						// Prefixed to stay apart from the numbered thumbnail and viewport canvases on `window.imageCanvases`
+						attributes.push("data-canvas-placeholder", format!("image-{id}"));
 					},
 				)
 			},
 		);
 	} else {
-		let base64_string = image.base64_string.clone().unwrap_or_else(|| {
-			use base64::Engine;
-
-			let output = image.to_png();
-			let preamble = "data:image/png;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-			base64_string
-		});
-
 		render.leaf_tag("image", |attributes| {
 			attributes.push("width", "1");
 			attributes.push("height", "1");
 			attributes.push("preserveAspectRatio", "none");
-			attributes.push("href", base64_string);
+			attributes.push("href", image.png_data_url().to_string());
 			let matrix = format_transform_matrix(transform);
 			if !matrix.is_empty() {
 				attributes.push(ATTR_TRANSFORM, matrix);
@@ -2480,17 +2471,9 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	}
 
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 
-	let image_brush = peniko::ImageBrush::new(peniko::ImageData {
-		data: image.to_flat_u8().0.into(),
-		format: peniko::ImageFormat::Rgba8,
-		width: image.width,
-		height: image.height,
-		alpha_type: peniko::ImageAlphaType::Alpha,
-	})
-	.with_extend(peniko::Extend::Pad);
-
-	scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
+	scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
 
 	if layer {
 		scene.pop_layer();

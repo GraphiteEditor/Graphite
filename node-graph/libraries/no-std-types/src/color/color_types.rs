@@ -269,7 +269,7 @@ pub struct Color {
 	alpha: f32,
 }
 
-// `f32` channels mean `Color` doesn't qualify for a derived `Eq`, but in practice we never store NaN here, and the renderer's `HashMap<CacheHashWrapper<Image<Color>>, _>` deduplication needs `Color: Eq` to propagate up through the wrapper.
+// `f32` channels mean `Color` doesn't qualify for a derived `Eq`, but in practice we never store NaN here
 impl Eq for Color {}
 
 // TODO: Eventually remove this document upgrade code
