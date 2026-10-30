@@ -2159,6 +2159,8 @@ dependencies = [
  "image",
  "interpreted-executor",
  "log",
+ "migration-formats",
+ "migration-nodes",
  "preprocessor",
  "serde_json",
  "tokio",
@@ -5100,6 +5102,21 @@ name = "regex-syntax"
 version = "0.8.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "caf4aa5b0f434c91fe5c7f1ecb6a5ece2130b02ad2a590589dda5146df959001"
+
+[[package]]
+name = "regression"
+version = "0.0.0"
+dependencies = [
+ "clap",
+ "document-format",
+ "fern",
+ "graphene-cli",
+ "image",
+ "log",
+ "serde",
+ "serde_json",
+ "tokio",
+]
 
 [[package]]
 name = "renderdoc-sys"

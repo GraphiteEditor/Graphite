@@ -85,6 +85,8 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
+	/// Whether opening ran a format step or node migration, and so rewrote the working copy.
+	pub(crate) migrated: bool,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -198,6 +200,7 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
+			migrated: false,
 		};
 
 		#[cfg(feature = "migrations")]
@@ -206,6 +209,7 @@ impl<L: Layout> Gdd<L> {
 			if format_outcome.is_some() || migrated_nodes {
 				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);
 				gdd.persist_all()?;
+				gdd.migrated = true;
 			}
 		}
 
@@ -235,6 +239,7 @@ impl<L: Layout> Gdd<L> {
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
 			network_view_settings: std::collections::BTreeMap::new(),
+			migrated: false,
 		})
 	}
 }
@@ -276,6 +281,11 @@ impl<L: Layout> Gdd<L> {
 	/// disk.
 	pub fn manifest(&self) -> &Manifest {
 		&self.manifest
+	}
+
+	/// Whether opening ran a format step or node migration, and so rewrote the working copy.
+	pub fn migrated(&self) -> bool {
+		self.migrated
 	}
 
 	pub fn layout(&self) -> &L {

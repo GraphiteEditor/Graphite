@@ -11,6 +11,7 @@ pub enum Action {
 	Explore(Option<String>),
 	Drive,
 	Migration,
+	Regression,
 }
 
 pub enum Target {
@@ -49,6 +50,16 @@ impl Task {
 			return Some(Task {
 				action: Action::Migration,
 				target: Target::Web,
+				profile: Profile::Default,
+				args: args[1..].iter().map(|s| s.to_string()).collect(),
+			});
+		}
+
+		// Everything after `regression` belongs to the document regression tool
+		if args.first() == Some(&"regression") {
+			return Some(Task {
+				action: Action::Regression,
+				target: Target::Cli,
 				profile: Profile::Default,
 				args: args[1..].iter().map(|s| s.to_string()).collect(),
 			});

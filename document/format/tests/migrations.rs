@@ -51,12 +51,14 @@ fn opening_migrates_nodes_and_persists_the_result() {
 		assert!(migrated.registry().resources.contains_key(&target.id), "the target declaration is a registered resource");
 		assert_eq!(migrated.declarations(&migrated).await[&target.id], target.proto, "its bytes are stored");
 		assert_eq!(migrated.manifest().format_version, manifest::SUPPORTED_FORMAT_VERSION);
+		assert!(migrated.migrated());
 
 		// The rewritten history persisted, so a reopen has nothing left to migrate
 		let registry = migrated.registry().clone();
 		let (working, layout) = migrated.into_storage();
 		let reopened = GddV1::open_in(working, layout).await.unwrap();
 		assert!(reopened.registry().value_equal(&registry));
+		assert!(!reopened.migrated());
 	});
 }
 

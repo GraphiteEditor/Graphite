@@ -450,6 +450,8 @@ Every migration ships with:
 - **Fixtures.** Small source graphs built in the test and assertions on the migrated result.
 - **The commutation property.** For generated histories `H` over the source declaration, including concurrent branches, `replay(rewrite(H)) == M(replay(H))`. This is the definition of a correct rewrite, so a migration that passes it needs no hand-written history tests. The generator also produces the reachable source states that expose `unrepresentable` failures.
 
+Whole documents are covered by a regression corpus: a separate git repository of `.gdd` documents with reference renders at chosen animation times, which `cargo run regression check` renders and compares within a per-document tolerance. `add` and `bless` record references, and `upgrade` rewrites documents (by default `demo-artwork/*.gdd`) through the migrations of the current build, so a migration shows up in the corpus as a document change whose renders still match.
+
 ## Crate layout
 
 ```

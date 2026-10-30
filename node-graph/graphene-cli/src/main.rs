@@ -1,23 +1,8 @@
-mod dump;
-mod export;
-
 use clap::{Args, Parser, Subcommand};
-use document_container::AnyContainer;
-use document_container::backends::memory::MemoryBackend;
-use document_format::{GddV1, GddV1Layout};
 use fern::colors::{Color, ColoredLevelConfig};
-use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::document::*;
-use graph_craft::graphene_compiler::Compiler;
-use graph_craft::proto::ProtoNetwork;
-use graph_craft::util::load_network;
-use graphene_std::application_io::ApplicationIo;
-use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
-use interpreted_executor::dynamic_executor::DynamicExecutor;
-use interpreted_executor::util::wrap_network_in_scope;
+use graphene_cli::{compile_document, dump, export, open_document};
 use std::error::Error;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 #[derive(Debug, Parser)]
 #[clap(name = "graphene-cli", version)]
@@ -108,14 +93,10 @@ struct GlobalOpts {
 async fn main() -> Result<(), Box<dyn Error>> {
 	let app = App::parse();
 
-	let log_level = app.global_opts.verbose;
+	init_logging(app.global_opts.verbose);
 
-	init_logging(log_level);
-
-	let document_path = match app.command {
-		Command::Compile { ref document, .. } => document,
-		Command::Export { ref document, .. } => document,
-		Command::ExtractLegacyDoc { ref document } => document,
+	let document_path = match &app.command {
+		Command::Compile { document, .. } | Command::Export { document, .. } | Command::ExtractLegacyDoc { document } => document,
 		Command::ListNodeIdentifiers => {
 			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
 			nodes.sort_by_key(|x| x.as_str().to_string());
@@ -126,79 +107,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		}
 	};
 
-	// Load the document by extension: `.gdd` opens the new archive format, anything else is treated as a
-	// legacy `.graphite` document. The legacy path has no `Gdd`, so resources fall back to the default registry.
-	let is_gdd = document_path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
+	let print = matches!(app.command, Command::Compile { format: Some(_), .. });
+	let mut document = open_document(document_path, print).await?;
 
-	let gdd = if is_gdd {
-		let archive = std::fs::read(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
-		let container = AnyContainer::Memory(MemoryBackend::new());
-		let gdd = document_format::Gdd::open_from_archive(archive.as_ref(), container, GddV1Layout)
-			.await
-			.map_err(|error| format!("Failed to open document: {error}"))?;
-		Some(gdd)
-	} else {
-		None
-	};
-
-	if let Command::ExtractLegacyDoc { ref document } = app.command {
-		let Some(gdd) = &gdd else { return Err("ExtractLegacyDoc requires a .gdd document".into()) };
+	if let Command::ExtractLegacyDoc { document: path } = &app.command {
+		let Some(gdd) = &document.gdd else {
+			return Err("ExtractLegacyDoc requires a .gdd document".into());
+		};
 		let Some(legacy_doc) = gdd.read_legacy_document().await else {
 			return Err("gdd file did not contain a legacy .graphite document".into());
 		};
-		let mut new_path = document.clone();
-		new_path.set_extension("graphite");
+		let new_path = path.with_extension("graphite");
 		std::fs::write(&new_path, legacy_doc).map_err(|error| format!("Failed to write .graphite file: {error}"))?;
 		eprintln!("Saved file to {}", new_path.to_string_lossy());
 		return Ok(());
 	}
 
-	// Build the runtime network: from the `.gdd` registry, or by loading a legacy `.graphite` document.
-	let print = matches!(app.command, Command::Compile { format: Some(_), .. });
-	let (node_network, names) = match &gdd {
-		Some(gdd) => {
-			let declarations = gdd.declarations(gdd).await;
-			let (node_network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations)?;
-			let references = networks.into_iter().filter_map(|network| Some((network.network_path, network.reference?)));
-			let names = nodes.into_iter().filter_map(|node| Some(([node.network_path, vec![node.local_id]].concat(), node.display_name?)));
-			(node_network, print.then(|| references.chain(names).filter(|(_, name)| !name.is_empty()).collect()))
-		}
-		None => {
-			let document_string = std::fs::read_to_string(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
-			(load_network(&document_string), print.then(|| dump::legacy_names(&document_string)))
-		}
-	};
-	let document = names.map(|names| dump::document(&node_network, names));
-
-	log::info!("Creating GPU context");
-	let mut application_io = PlatformApplicationIo::new().await;
-	if let Some(gdd) = &gdd {
-		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
-	}
-
-	// Convert application_io to Arc first
-	let application_io_arc = Arc::new(application_io);
-
-	// Clone the application_io Arc before borrowing to extract executor
-	let application_io_for_api = application_io_arc.clone();
-
-	// Get reference to wgpu executor and clone device handle
-	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
-	let device = wgpu_executor_ref.context().device.clone();
-
-	let editor_api = Arc::new(PlatformEditorApi {
-		application_io: Some(application_io_for_api),
-	});
-	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone());
-	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
+	let dump_document = document.names.take().map(|names| dump::document(&document.network, names));
+	let compiled = compile_document(document).await?;
 
 	match app.command {
 		Command::Compile {
 			format, upstream, downstream, depth, ..
 		} => {
-			if let Some((format, document)) = format.zip(document) {
-				dump::print(&proto_graph, &document, format, upstream.as_deref(), downstream.as_deref(), depth)?;
+			if let Some((format, dump_document)) = format.zip(dump_document) {
+				dump::print(&compiled.proto_network, &dump_document, format, upstream.as_deref(), downstream.as_deref(), depth)?;
 			}
 		}
 		Command::Export {
@@ -212,48 +145,36 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			duration,
 			..
 		} => {
-			// Spawn thread to poll GPU device
-			std::thread::spawn(move || {
-				loop {
-					std::thread::sleep(std::time::Duration::from_nanos(10));
-					device.poll(wgpu::PollType::Poll).unwrap();
-				}
-			});
-
-			// Detect output file type
 			let file_type = export::detect_file_type(&output)?;
-
-			// Create executor
-			let executor = create_executor(proto_graph)?;
-			runtime.retain_sources(executor.sources());
-
 			if fps <= 0. {
 				return Err("Fps number must be positive".into());
 			}
 
-			// Perform export based on file type, where a multi-frame export to a format besides GIF becomes a numbered image sequence
+			let renderer = compiled.into_renderer()?;
+			let (executor, wgpu_executor, runtime, spawner) = (&renderer.executor, renderer.wgpu_executor(), &renderer.runtime, renderer.spawner.as_ref());
+
+			// A multi-frame export to a format besides GIF becomes a numbered image sequence
 			let settings = export::ExportSettings {
 				file_type,
 				scale,
 				size: (width, height),
 				transparent,
 				framing: None,
-			}
-			.framed(&executor, &runtime, &spawner)
-			.await?;
+			};
+			let settings = renderer.frame(settings).await?;
 			let animation = export::AnimationParams::new(fps, frames, duration);
 			if file_type == export::FileType::Gif {
-				export::export_gif(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
+				export::export_gif(executor, wgpu_executor, output, settings, animation, runtime, spawner).await?;
 			} else if animation.frames > 1 {
 				if file_type == export::FileType::Ico {
 					return Err("ICO can't be exported as an image sequence".into());
 				}
-				export::export_image_sequence(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
+				export::export_image_sequence(executor, wgpu_executor, output, settings, animation, runtime, spawner).await?;
 			} else {
-				export::export_document(&executor, wgpu_executor_ref, output, settings, &runtime, &spawner).await?;
+				export::export_document(executor, wgpu_executor, output, settings, runtime, spawner).await?;
 			}
 		}
-		_ => unreachable!("All other commands should be handled before this match statement is run"),
+		Command::ListNodeIdentifiers | Command::ExtractLegacyDoc { .. } => unreachable!("Handled before compiling"),
 	}
 
 	Ok(())
@@ -286,51 +207,4 @@ fn init_logging(log_level: u8) {
 		})
 		.apply()
 		.unwrap();
-}
-
-fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
-	let preprocessor = preprocessor::Preprocessor::new();
-
-	let mut network = wrap_network_in_scope(network, editor_api, runtime);
-
-	// A `.gdd` resolves resource hashes from its registry; a legacy `.graphite` has no resource store, so it
-	// preprocesses against an empty registry (matching the pre-`.gdd` CLI behavior).
-	match gdd {
-		Some(gdd) => preprocessor
-			.preprocess(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|r| r.hash))
-			.expect("Failed to expand network"),
-		None => { preprocessor.preprocess(&mut network, &|_| None) }.expect("Failed to expand network"),
-	}
-
-	let compiler = Compiler {};
-	let compiled_network = compiler.compile_single(network)?;
-	for warning in &compiled_network.warnings {
-		eprintln!("{warning:?}");
-	}
-	Ok(compiled_network.network)
-}
-
-fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
-	let executor = DynamicExecutor::new(proto_network).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
-	Ok(executor)
-}
-
-#[derive(Default)]
-pub(crate) struct TokioSpawner(Mutex<Vec<tokio::task::JoinHandle<()>>>);
-
-impl Spawn for TokioSpawner {
-	fn spawn(&self, task: Task) {
-		self.0.lock().unwrap().push(tokio::spawn(task));
-	}
-}
-
-impl TokioSpawner {
-	pub(crate) async fn join(&self) -> bool {
-		let tasks = std::mem::take(&mut *self.0.lock().unwrap());
-		let pending = !tasks.is_empty();
-		for task in tasks {
-			let _ = task.await;
-		}
-		pending
-	}
 }

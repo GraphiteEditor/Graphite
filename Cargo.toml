@@ -43,6 +43,7 @@ members = [
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
 	"tools/node-docs",
+	"tools/regression",
 	"tools/web-editor-driver",
 ]
 default-members = [
