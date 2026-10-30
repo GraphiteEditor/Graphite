@@ -40,7 +40,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let declarations = conversion.declarations;
 	let registry = conversion.registry;
 
-	let (_converted_network, entries) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime_with_metadata failed");
+	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
 
 	// Index emitted entries by their (network_path, local_id) address.
 	let entries_by_address: HashMap<(Vec<NodeId>, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network_path.clone(), e.local_id), e)).collect();
@@ -101,7 +101,7 @@ fn editor_metadata_round_trip_against_demo() {
 			let expected_name = source.input_name(&network_path, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
 			let expected_description = source.input_description(&network_path, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
 			let expected_widget = source.widget_override(&network_path, local_id, index).map(str::to_owned);
-			let expected_data = source.input_data(&network_path, local_id, index);
+			let expected_data: std::collections::BTreeMap<_, _> = source.input_data(&network_path, local_id, index).into_iter().collect();
 
 			assert_eq!(
 				input_entry.input_name, expected_name,
@@ -131,6 +131,18 @@ fn editor_metadata_round_trip_against_demo() {
 			checked_any_input_metadata = true;
 		}
 		if !expected_output_descriptions.is_empty() {
+			checked_any_output_description = true;
+		}
+	}
+
+	for entry in &network_entries {
+		let network_path = &entry.network_path;
+		assert_eq!(entry.import_metadata, source.import_metadata(network_path), "import_metadata mismatch for network {network_path:?}");
+		assert_eq!(entry.export_names, source.export_names(network_path), "export_names mismatch for network {network_path:?}");
+
+		let expected_export_descriptions = normalize_output_descriptions(source.export_descriptions(network_path));
+		assert_eq!(entry.export_descriptions, expected_export_descriptions, "export_descriptions mismatch for network {network_path:?}");
+		if !expected_export_descriptions.is_empty() {
 			checked_any_output_description = true;
 		}
 	}

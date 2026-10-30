@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use core_types::memo::MemoHash;
 use core_types::uuid::NodeId as RuntimeNodeId;
@@ -412,12 +412,15 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 		network_id,
 		reference: attributes.get_typed(node::ui::REFERENCE),
 		pinned_order,
+		import_metadata: attributes.get_or_default(network::IMPORT_METADATA),
+		export_names: attributes.get_or_default(network::EXPORT_NAMES),
+		export_descriptions: attributes.get_or_default(network::EXPORT_DESCRIPTIONS),
 	}
 }
 
 /// Reassembles `input_data` by scanning every attribute under `ui::input_data::` and stripping the prefix.
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
-	let input_data: HashMap<String, Value> = attributes
+	let input_data: BTreeMap<String, Value> = attributes
 		.live()
 		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
 		.collect();

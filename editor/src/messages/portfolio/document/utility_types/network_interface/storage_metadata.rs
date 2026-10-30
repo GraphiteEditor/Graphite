@@ -15,7 +15,7 @@ use graphene_std::vector::style::RenderMode;
 
 use super::{
 	DocumentNodePersistentMetadata, DocumentNodeTransientMetadata, InputMetadata, InputPersistentMetadata, LayerPosition, NavigationMetadata, NodeNetworkInterface, NodeNetworkMetadata,
-	NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
+	NodeNetworkPersistentMetadata, NodePersistentMetadata, NodePosition, NodeTypePersistentMetadata, PTZ, Previewing,
 };
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysVisibilitySettings;
 use crate::messages::portfolio::document::utility_types::misc::SnappingState;
@@ -58,7 +58,14 @@ impl StorageMetadataView<'_> {
 	}
 
 	fn input_persistent(&self, network_path: &[NodeId], local_id: NodeId, input_index: usize) -> Option<&InputPersistentMetadata> {
-		self.interface.view(network_path).ok()?.persistent_input_metadata(&local_id, input_index).ok()
+		Some(&self.persistent(network_path, local_id)?.input_metadata.get(input_index)?.persistent_metadata)
+	}
+
+	fn subnetwork_persistent(&self, network_path: &[NodeId]) -> Option<&NodeNetworkPersistentMetadata> {
+		if network_path.is_empty() {
+			return None;
+		}
+		Some(&self.interface.nested_metadata(network_path)?.persistent_metadata)
 	}
 }
 
@@ -103,21 +110,25 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 	}
 
 	fn output_names(&self, network_path: &[NodeId], local_id: NodeId) -> Vec<String> {
-		self.interface
-			.view(network_path)
-			.ok()
-			.and_then(|view| view.output_names(&local_id).ok())
-			.map(<[String]>::to_vec)
-			.unwrap_or_default()
+		self.persistent(network_path, local_id).map(|p| p.output_names.clone()).unwrap_or_default()
 	}
 
 	fn output_descriptions(&self, network_path: &[NodeId], local_id: NodeId) -> Vec<String> {
-		self.interface
-			.view(network_path)
-			.ok()
-			.and_then(|view| view.output_descriptions(&local_id).ok())
-			.map(<[String]>::to_vec)
+		self.persistent(network_path, local_id).map(|p| p.output_descriptions.clone()).unwrap_or_default()
+	}
+
+	fn import_metadata(&self, network_path: &[NodeId]) -> Vec<InputMetadataEntry> {
+		self.subnetwork_persistent(network_path)
+			.map(|persistent| persistent.import_metadata.iter().map(input_metadata_entry_from_runtime).collect())
 			.unwrap_or_default()
+	}
+
+	fn export_names(&self, network_path: &[NodeId]) -> Vec<String> {
+		self.subnetwork_persistent(network_path).map(|persistent| persistent.export_names.clone()).unwrap_or_default()
+	}
+
+	fn export_descriptions(&self, network_path: &[NodeId]) -> Vec<String> {
+		self.subnetwork_persistent(network_path).map(|persistent| persistent.export_descriptions.clone()).unwrap_or_default()
 	}
 
 	fn storage_node_id(&self, network_path: &[NodeId], local_id: NodeId) -> Option<document_graph_storage::NodeId> {
@@ -323,6 +334,9 @@ fn apply_network_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNet
 			network_metadata.persistent_metadata.reference = Some(reference);
 		}
 		network_metadata.persistent_metadata.pinned_node_order = entry.pinned_order;
+		network_metadata.persistent_metadata.import_metadata = entry.import_metadata.into_iter().map(input_metadata_entry_to_runtime).collect();
+		network_metadata.persistent_metadata.export_names = entry.export_names;
+		network_metadata.persistent_metadata.export_descriptions = entry.export_descriptions;
 	}
 }
 
@@ -408,6 +422,17 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 	}
 
 	Ok(())
+}
+
+pub(super) fn input_metadata_entry_from_runtime(input_metadata: &InputMetadata) -> InputMetadataEntry {
+	let persistent_metadata = &input_metadata.persistent_metadata;
+	let non_empty = |value: &str| (!value.is_empty()).then(|| value.to_string());
+	InputMetadataEntry {
+		input_name: non_empty(&persistent_metadata.input_name),
+		input_description: non_empty(&persistent_metadata.input_description),
+		widget_override: persistent_metadata.widget_override.as_deref().and_then(non_empty),
+		input_data: persistent_metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect(),
+	}
 }
 
 /// Storage-side `None` restores as `""` (the runtime's "unset" sentinel for `input_name` / `input_description`).

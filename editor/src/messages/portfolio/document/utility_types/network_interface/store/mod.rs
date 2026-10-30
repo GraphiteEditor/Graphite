@@ -177,14 +177,15 @@ impl NodeNetworkInterface {
 			}));
 		}
 
-		let Some((&node_id, parent_path)) = network_path.split_last() else { return };
+		if network_path.is_empty() {
+			return;
+		}
 		let Some(metadata) = self.nested_metadata(network_path) else { return };
-		let output_names = NodeMetadataChange::OutputNames(metadata.persistent_metadata.export_names.clone());
-		let output_descriptions = descriptions_changed.then(|| NodeMetadataChange::OutputDescriptions(metadata.persistent_metadata.export_descriptions.clone()));
-		for change in std::iter::once(output_names).chain(output_descriptions) {
-			self.deltas.push(EditorDelta::NodeMetadata {
-				network_path: parent_path.to_vec(),
-				node_id,
+		let export_names = NetworkMetadataChange::ExportNames(metadata.persistent_metadata.export_names.clone());
+		let export_descriptions = descriptions_changed.then(|| NetworkMetadataChange::ExportDescriptions(metadata.persistent_metadata.export_descriptions.clone()));
+		for change in std::iter::once(export_names).chain(export_descriptions) {
+			self.deltas.push(EditorDelta::NetworkMetadata {
+				network_path: network_path.to_vec(),
 				change,
 			});
 		}

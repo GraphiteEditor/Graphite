@@ -1019,27 +1019,6 @@ impl DocumentNodePersistentMetadata {
 	pub fn is_layer(&self) -> bool {
 		matches!(self.node_type_metadata, NodeTypePersistentMetadata::Layer(_))
 	}
-
-	pub fn interface_input_metadata(&self) -> &[InputMetadata] {
-		match &self.network_metadata {
-			Some(network_metadata) => &network_metadata.persistent_metadata.import_metadata,
-			None => &self.input_metadata,
-		}
-	}
-
-	pub fn interface_output_names(&self) -> &[String] {
-		match &self.network_metadata {
-			Some(network_metadata) => &network_metadata.persistent_metadata.export_names,
-			None => &self.output_names,
-		}
-	}
-
-	pub fn interface_output_descriptions(&self) -> &[String] {
-		match &self.network_metadata {
-			Some(network_metadata) => &network_metadata.persistent_metadata.export_descriptions,
-			None => &self.output_descriptions,
-		}
-	}
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]

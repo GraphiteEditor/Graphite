@@ -106,6 +106,13 @@ impl NodeDeltas<'_> {
 		});
 	}
 
+	fn owned_network(&mut self, change: NetworkMetadataChange) {
+		self.deltas.push(EditorDelta::NetworkMetadata {
+			network_path: self.locator.owned_network_path(),
+			change,
+		});
+	}
+
 	fn graph(&mut self, delta: RuntimeDelta) {
 		self.deltas.push(EditorDelta::Graph(delta));
 	}
@@ -278,7 +285,7 @@ impl NodeMut<'_> {
 				index: input_index,
 				name: input_metadata.persistent_metadata.input_name.clone(),
 			};
-			self.deltas.metadata(change);
+			self.record_input_change(change);
 		}
 		changed
 	}
@@ -308,7 +315,7 @@ impl NodeMut<'_> {
 				index: input_index,
 				widget_override: input_metadata.persistent_metadata.widget_override.clone(),
 			};
-			self.deltas.metadata(change);
+			self.record_input_change(change);
 		}
 		changed
 	}
@@ -319,8 +326,8 @@ impl NodeMut<'_> {
 		let changed = *existing != output_name;
 		*existing = output_name;
 		if changed {
-			let change = NodeMetadataChange::OutputNames(output_names.clone());
-			self.deltas.metadata(change);
+			let output_names = output_names.clone();
+			self.record_output_names(output_names);
 		}
 		changed
 	}
@@ -332,8 +339,8 @@ impl NodeMut<'_> {
 		let changed = *existing != output_names;
 		*existing = output_names;
 		if changed {
-			let change = NodeMetadataChange::OutputNames(existing.clone());
-			self.deltas.metadata(change);
+			let output_names = existing.clone();
+			self.record_output_names(output_names);
 		}
 		changed
 	}
@@ -354,8 +361,8 @@ impl NodeMut<'_> {
 		}
 		output_descriptions[output_index] = output_description;
 
-		let change = NodeMetadataChange::OutputDescriptions(output_descriptions.clone());
-		self.deltas.metadata(change);
+		let output_descriptions = output_descriptions.clone();
+		self.record_output_descriptions(output_descriptions);
 		true
 	}
 
@@ -365,10 +372,35 @@ impl NodeMut<'_> {
 		let changed = *existing != output_descriptions;
 		*existing = output_descriptions;
 		if changed {
-			let change = NodeMetadataChange::OutputDescriptions(existing.clone());
-			self.deltas.metadata(change);
+			let output_descriptions = existing.clone();
+			self.record_output_descriptions(output_descriptions);
 		}
 		changed
+	}
+
+	fn interface_on_network(&self) -> bool {
+		self.definition_metadata.is_some() || self.metadata.network_metadata.is_some()
+	}
+
+	fn record_input_change(&mut self, change: NodeMetadataChange) {
+		match self.interface_on_network() {
+			true => self.emit_input_metadata(),
+			false => self.deltas.metadata(change),
+		}
+	}
+
+	fn record_output_names(&mut self, output_names: Vec<String>) {
+		match self.interface_on_network() {
+			true => self.deltas.owned_network(NetworkMetadataChange::ExportNames(output_names)),
+			false => self.deltas.metadata(NodeMetadataChange::OutputNames(output_names)),
+		}
+	}
+
+	fn record_output_descriptions(&mut self, output_descriptions: Vec<String>) {
+		match self.interface_on_network() {
+			true => self.deltas.owned_network(NetworkMetadataChange::ExportDescriptions(output_descriptions)),
+			false => self.deltas.metadata(NodeMetadataChange::OutputDescriptions(output_descriptions)),
+		}
 	}
 
 	/// The metadata array the node's inputs index, one entry per input.
@@ -390,8 +422,8 @@ impl NodeMut<'_> {
 		}
 		output_names.resize(number_of_exports, String::new());
 
-		let change = NodeMetadataChange::OutputNames(output_names.clone());
-		self.deltas.metadata(change);
+		let output_names = output_names.clone();
+		self.record_output_names(output_names);
 	}
 
 	/// Appends input metadata until there is one entry per input, filling from `defaults` where it has an
@@ -489,7 +521,10 @@ impl NodeMut<'_> {
 
 	fn emit_input_metadata(&mut self) {
 		let input_metadata = self.input_metadata().to_vec();
-		self.deltas.input_metadata(input_metadata);
+		match self.interface_on_network() {
+			true => self.deltas.owned_network(NetworkMetadataChange::ImportMetadata(input_metadata)),
+			false => self.deltas.input_metadata(input_metadata),
+		}
 	}
 }
 
@@ -523,6 +558,36 @@ impl NetworkMut<'_> {
 		self.metadata.reference = reference;
 		if changed {
 			let change = NetworkMetadataChange::Reference(self.metadata.reference.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_import_metadata(&mut self, import_metadata: Vec<InputMetadata>) -> bool {
+		let changed = self.metadata.import_metadata != import_metadata;
+		self.metadata.import_metadata = import_metadata;
+		if changed {
+			let change = NetworkMetadataChange::ImportMetadata(self.metadata.import_metadata.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_export_names(&mut self, export_names: Vec<String>) -> bool {
+		let changed = self.metadata.export_names != export_names;
+		self.metadata.export_names = export_names;
+		if changed {
+			let change = NetworkMetadataChange::ExportNames(self.metadata.export_names.clone());
+			self.emit(change);
+		}
+		changed
+	}
+
+	pub(crate) fn set_export_descriptions(&mut self, export_descriptions: Vec<String>) -> bool {
+		let changed = self.metadata.export_descriptions != export_descriptions;
+		self.metadata.export_descriptions = export_descriptions;
+		if changed {
+			let change = NetworkMetadataChange::ExportDescriptions(self.metadata.export_descriptions.clone());
 			self.emit(change);
 		}
 		changed

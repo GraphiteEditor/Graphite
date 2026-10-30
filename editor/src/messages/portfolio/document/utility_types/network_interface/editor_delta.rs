@@ -1,4 +1,4 @@
-use super::storage_metadata::position_from_runtime;
+use super::storage_metadata::{input_metadata_entry_from_runtime, position_from_runtime};
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
 use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
@@ -80,6 +80,9 @@ pub enum NetworkMetadataChange {
 	Reference(Option<String>),
 	/// The whole order, since the encoding is one array-valued attribute rather than a slot each.
 	PinnedOrder(Vec<NodeId>),
+	ImportMetadata(Vec<InputMetadata>),
+	ExportNames(Vec<String>),
+	ExportDescriptions(Vec<String>),
 }
 
 pub struct ConstructedOps {
@@ -279,6 +282,9 @@ impl EditorDelta {
 							value: (!stored.is_empty()).then(|| serialize_attribute(network_attr::PINNED_ORDER, &stored)).transpose()?,
 						}
 					}
+					NetworkMetadataChange::ImportMetadata(import_metadata) => import_metadata_delta(import_metadata)?,
+					NetworkMetadataChange::ExportNames(export_names) => export_names_delta(export_names)?,
+					NetworkMetadataChange::ExportDescriptions(export_descriptions) => export_descriptions_delta(export_descriptions)?,
 				};
 
 				ops.push(RegistryDelta::ChangeNetworkAttribute {
@@ -294,6 +300,29 @@ impl EditorDelta {
 
 fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<Value, ConversionError> {
 	document_graph_storage::to_value(value).map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
+}
+
+fn import_metadata_delta(import_metadata: &[InputMetadata]) -> Result<AttributeDelta, ConversionError> {
+	let entries: Vec<_> = import_metadata.iter().map(input_metadata_entry_from_runtime).collect();
+	Ok(AttributeDelta {
+		key: network_attr::IMPORT_METADATA.to_string(),
+		value: (!entries.is_empty()).then(|| serialize_attribute(network_attr::IMPORT_METADATA, &entries)).transpose()?,
+	})
+}
+
+fn export_names_delta(export_names: &[String]) -> Result<AttributeDelta, ConversionError> {
+	Ok(AttributeDelta {
+		key: network_attr::EXPORT_NAMES.to_string(),
+		value: (!export_names.is_empty()).then(|| serialize_attribute(network_attr::EXPORT_NAMES, &export_names)).transpose()?,
+	})
+}
+
+fn export_descriptions_delta(export_descriptions: &[String]) -> Result<AttributeDelta, ConversionError> {
+	let any_description = export_descriptions.iter().any(|description| !description.is_empty());
+	Ok(AttributeDelta {
+		key: network_attr::EXPORT_DESCRIPTIONS.to_string(),
+		value: any_description.then(|| serialize_attribute(network_attr::EXPORT_DESCRIPTIONS, &export_descriptions)).transpose()?,
+	})
 }
 
 /// The attribute writes one metadata field makes, as the whole-document encoder would write them.
@@ -490,7 +519,7 @@ fn construct_metadata_snapshot(
 			ops.push(RegistryDelta::ChangeNodeAttribute { id: global_id, delta });
 		}
 
-		for input_index in 0..node_metadata.interface_input_metadata().len() {
+		for input_index in 0..node_metadata.input_metadata.len() {
 			let mut encoded = Attributes::new();
 			encode_input_ui_attributes(&mut encoded, &source, &path, id, input_index, TimeStamp::ORIGIN)?;
 			let current = working_node.and_then(|node| node.inputs().get(input_index)).map(|slot| &slot.attributes);
@@ -525,6 +554,15 @@ fn construct_metadata_snapshot(
 						value: target,
 					},
 				});
+			}
+
+			let persistent_metadata = &network_metadata.persistent_metadata;
+			for delta in [
+				import_metadata_delta(&persistent_metadata.import_metadata)?,
+				export_names_delta(&persistent_metadata.export_names)?,
+				export_descriptions_delta(&persistent_metadata.export_descriptions)?,
+			] {
+				ops.push(RegistryDelta::ChangeNetworkAttribute { id: network_id, delta });
 			}
 
 			// Restated alongside the reference, since a rebuild clears the network's attributes and the
@@ -910,36 +948,34 @@ impl document_graph_storage::NodeMetadataSource for MetadataCopySource<'_> {
 	}
 
 	fn output_names(&self, metadata_path: &[NodeId], node_id: NodeId) -> Vec<String> {
-		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.interface_output_names().to_vec()).unwrap_or_default()
+		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.output_names.clone()).unwrap_or_default()
 	}
 
 	fn output_descriptions(&self, metadata_path: &[NodeId], node_id: NodeId) -> Vec<String> {
-		self.metadata_for(metadata_path, node_id)
-			.map(|metadata| metadata.interface_output_descriptions().to_vec())
-			.unwrap_or_default()
+		self.metadata_for(metadata_path, node_id).map(|metadata| metadata.output_descriptions.clone()).unwrap_or_default()
 	}
 
 	fn input_name(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
+			.and_then(|metadata| metadata.input_metadata.get(input_index))
 			.map(|input| input.persistent_metadata.input_name.as_str())
 	}
 
 	fn input_description(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
+			.and_then(|metadata| metadata.input_metadata.get(input_index))
 			.map(|input| input.persistent_metadata.input_description.as_str())
 	}
 
 	fn widget_override(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> Option<&str> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
+			.and_then(|metadata| metadata.input_metadata.get(input_index))
 			.and_then(|input| input.persistent_metadata.widget_override.as_deref())
 	}
 
 	fn input_data(&self, metadata_path: &[NodeId], node_id: NodeId, input_index: usize) -> std::collections::HashMap<String, Value> {
 		self.metadata_for(metadata_path, node_id)
-			.and_then(|metadata| metadata.interface_input_metadata().get(input_index))
+			.and_then(|metadata| metadata.input_metadata.get(input_index))
 			.map(|input| input.persistent_metadata.input_data.iter().map(|(key, value)| (key.clone(), value.clone().into())).collect())
 			.unwrap_or_default()
 	}
