@@ -129,19 +129,19 @@ async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spaw
 		let local_transform = metadata.local_transforms.get(layer).copied().unwrap_or_default();
 		let transform = footprint * local_transform;
 
-		// A stroke extends past the path a click target outlines, so a vector layer measures its rendered geometry
-		if let Some(item) = metadata.vector_data.get(layer) {
+		// A stroke extends past the path a click target outlines, so a vector layer also measures its rendered geometry.
+		// Metadata only records the first item of a layer, so the other items count through their click targets, without their strokes.
+		let stroked = metadata.vector_data.get(layer).and_then(|item| {
 			let appearance = metadata.appearance_attributes.get(layer);
 			let stroke = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
-			if let Some(bounds) = item.element().stroke_inclusive_bounding_box_with_transform(paths, transform, stroke.as_ref()) {
-				return Some(bounds);
-			}
-		}
+			item.element().stroke_inclusive_bounding_box_with_transform(paths, transform, stroke.as_ref())
+		});
 
 		click_targets
 			.iter()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
+			.chain(stroked)
 			.reduce(combine_bounds)
 	});
 	Ok(layer_bounds.reduce(combine_bounds))
