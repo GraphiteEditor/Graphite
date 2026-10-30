@@ -41,8 +41,8 @@ pub struct PortfolioMessageContext<'a> {
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
 	pub tool_edit_target: &'a EditTarget,
-	/// Shown to peers beside this user's pointer.
-	pub current_tool_icon: String,
+	/// Its active tool's icon is shown to peers beside this user's pointer.
+	pub tools: &'a ToolMessageHandler,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
@@ -83,7 +83,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			animation,
 			current_tool,
 			tool_edit_target,
-			current_tool_icon,
+			tools,
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
@@ -154,7 +154,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					preferences,
 					ipp,
 					viewport,
-					current_tool_icon,
+					tools,
 				};
 				self.sync.process_message(message, responses, context);
 			}

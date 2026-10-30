@@ -28,7 +28,7 @@ pub struct SyncMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub ipp: &'a InputPreprocessorMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
-	pub current_tool_icon: String,
+	pub tools: &'a ToolMessageHandler,
 }
 
 /// Drives every document's collaborative session: connects them to their rooms, polls the rooms each frame and
@@ -69,7 +69,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			preferences,
 			ipp,
 			viewport,
-			current_tool_icon,
+			tools,
 		} = context;
 
 		match message {
@@ -169,14 +169,14 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				});
 			}
 			SyncMessage::Poll => {
-				let cursor = active_cursor(documents, active_document_id, ipp, viewport, &current_tool_icon);
+				let cursor = active_cursor(documents, active_document_id, ipp, viewport, tools);
 				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, cursor, responses);
 			}
 			SyncMessage::Wake { document_id, generation } => {
 				if !self.is_current(document_id, generation) {
 					return;
 				}
-				let cursor = active_cursor(documents, active_document_id, ipp, viewport, &current_tool_icon);
+				let cursor = active_cursor(documents, active_document_id, ipp, viewport, tools);
 				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, cursor, responses);
 				// The poll drained the inbox, so the next arrival wakes the next poll
 				self.arm(document_id, responses);
@@ -624,7 +624,7 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 	}
 
 	if gdd.role().is_some() {
-		let mut peers = gdd.peers();
+		let mut peers: Vec<_> = gdd.peers().collect();
 		peers.sort_by_key(|remote| remote.peer);
 		groups.push(heading(&format!("In the session ({})", peers.len() + 1)));
 		let me = match user_name.is_empty() {
@@ -666,15 +666,15 @@ fn active_cursor(
 	active_document_id: Option<DocumentId>,
 	ipp: &InputPreprocessorMessageHandler,
 	viewport: &ViewportMessageHandler,
-	tool_icon: &str,
+	tools: &ToolMessageHandler,
 ) -> Option<CursorPosition> {
 	let document = documents.get(&active_document_id?)?;
-	cursor_position(document, ipp, viewport, tool_icon)
+	cursor_position(document, ipp, viewport, tools)
 }
 
 /// The pointer while it is over the viewport, in the node graph's network when the graph is open and in the document
 /// otherwise. Rounded to a hundredth of a unit, so jitter below that sends nothing.
-fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, tool_icon: &str) -> Option<CursorPosition> {
+fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, tools: &ToolMessageHandler) -> Option<CursorPosition> {
 	let mouse = ipp.mouse.position;
 	let size = viewport.size();
 	if mouse.x < 0. || mouse.y < 0. || mouse.x > size.x() || mouse.y > size.y() {
@@ -688,10 +688,11 @@ fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMes
 	if !position.is_finite() {
 		return None;
 	}
+	let tool = tools.active_tool_icon();
 	Some(CursorPosition {
 		position: [(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.],
 		space,
-		tool: (!tool_icon.is_empty()).then(|| tool_icon.to_string()),
+		tool: (!tool.is_empty()).then_some(tool),
 	})
 }
 
@@ -703,7 +704,6 @@ fn document_cursors(document: &DocumentMessageHandler, preferences: &Preferences
 	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
 	let to_viewport = document.metadata().document_to_viewport;
 	gdd.peers()
-		.iter()
 		.filter_map(|remote| {
 			let cursor = remote.cursor.as_ref().filter(|cursor| matches!(cursor.space, CursorSpace::Document))?;
 			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
@@ -720,7 +720,6 @@ fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMes
 	let Some(to_viewport) = graph_to_viewport(document) else { return Vec::new() };
 	let shown = shown_network(document);
 	gdd.peers()
-		.iter()
 		.filter_map(|remote| {
 			let cursor = remote.cursor.as_ref()?;
 			let CursorSpace::Graph { network } = &cursor.space else { return None };

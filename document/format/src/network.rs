@@ -122,8 +122,8 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// The other peers in the room; empty when the document is not connected.
-	pub fn peers(&self) -> Vec<peer_transport::RemotePeer> {
-		self.network.as_ref().map(|replica| replica.peers().cloned().collect()).unwrap_or_default()
+	pub fn peers(&self) -> impl Iterator<Item = &peer_transport::RemotePeer> {
+		self.network.iter().flat_map(|replica| replica.peers())
 	}
 
 	/// Record that the runtime was rebuilt from the registry, so the next staged diff is taken against it.

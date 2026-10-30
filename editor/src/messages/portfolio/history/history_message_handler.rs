@@ -212,7 +212,7 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 	let people = People {
 		session,
 		metadata: gdd.metadata(),
-		peers: gdd.peers(),
+		peers: gdd.peers().collect(),
 	};
 
 	let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
@@ -458,7 +458,7 @@ fn describe(kind: &RegistryDelta) -> String {
 struct People<'a> {
 	session: &'a Session,
 	metadata: &'a HistoryMetadata,
-	peers: Vec<RemotePeer>,
+	peers: Vec<&'a RemotePeer>,
 }
 
 struct Person {
