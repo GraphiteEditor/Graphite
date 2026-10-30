@@ -2564,7 +2564,7 @@ impl DocumentMessageHandler {
 	/// Brings the interface into line with what peers changed in the registry, reconciling the touched entities in place
 	/// and rebuilding it whole only when the registry was rederived or the reconcile failed.
 	///
-	/// Returns false when a declaration is still on its way, keeping the changes for a later call.
+	/// Changes that could not be applied are kept for a later call. Returns false when a declaration is still on its way.
 	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
 		let changes = std::mem::take(&mut self.pending_remote);
 		if changes.is_empty() {
@@ -2589,8 +2589,9 @@ impl DocumentMessageHandler {
 			}
 		}
 
-		if let Some(rebuilt) = self.history.rebuild_interface() {
-			self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+		match self.history.rebuild_interface() {
+			Some(rebuilt) => self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses),
+			None => self.pending_remote = changes,
 		}
 		true
 	}
@@ -5311,5 +5312,21 @@ mod document_message_handler_tests {
 		(state.grid_snapping, state.snapping_enabled) = (true, false);
 		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
 		assert_bounds(&editor, rectangle, [DVec2::new(105., 32.), DVec2::new(165., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn remote_changes_that_neither_reconcile_nor_rebuild_are_kept_for_a_retry() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let document = editor.active_document_mut();
+		let storage = document.storage().expect("the document has a working copy").clone();
+		document.history.set_storage(storage, Declarations::default());
+		assert!(document.history.rebuild_interface().is_none(), "the registry should not convert without its declarations");
+
+		document.pending_remote.rebuilt = true;
+		document.apply_remote_changes(&mut VecDeque::new());
+		assert!(document.pending_remote.rebuilt, "the changes should be kept when the interface could not be rebuilt");
 	}
 }
