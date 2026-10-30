@@ -14,6 +14,9 @@ members = [
 	"document/migrations/core",
 	"document/migrations/macros",
 	"document/migrations/runner",
+	"document/migrations/formats",
+	"document/migrations/snapshot",
+	"document/migrations/nodes",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -108,6 +111,8 @@ document-container = { path = "document/container" }
 migration-core = { path = "document/migrations/core", default-features = false }
 migration-macros = { path = "document/migrations/macros" }
 migration-runner = { path = "document/migrations/runner" }
+migration-formats = { path = "document/migrations/formats" }
+migration-nodes = { path = "document/migrations/nodes" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }

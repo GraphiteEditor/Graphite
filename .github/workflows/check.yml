@@ -172,6 +172,47 @@ jobs:
           RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
         run: cargo test --all-features
 
+      # The plain `cargo test` above only covers the workspace's default members, which leave these out
+      - name: 🧪 Run document migration tests
+        env:
+          RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+        run: >-
+          cargo test --all-features
+          --package migration-core
+          --package migration-runner
+          --package migration-formats
+          --package migration-nodes
+          --package migration-snapshot
+          --package document-graph-storage
+
+  # Stored types, node version lineages, and node APIs against the base commit. Only needs the snapshot tool, so it runs on a GitHub runner
+  migrations:
+    needs: skip-check
+    # Master pushes are left out because they have no base commit, and the PR and merge queue runs already compared against it
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' && github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 📥 Fetch the base commit
+        run: git fetch --depth=1 origin "$BASE_SHA"
+
+      - name: 🔬 Check migrations against the base commit
+        run: cargo run --locked --package migration-snapshot -- check --baseline "$BASE_SHA"
+
   # Rust format check on GitHub runner
   rust-fmt:
     needs: skip-check
