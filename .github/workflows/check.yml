@@ -179,6 +179,48 @@ jobs:
           RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
         run: mold -run cargo run --package regression -- upgrade --check
 
+  # Render the documents of the regression corpus and compare them with their reference images
+  regression-corpus:
+    needs: skip-check
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
+    runs-on: [self-hosted, target/native]
+    permissions:
+      contents: read
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache/sccache
+      RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: 📥 Clone regression corpus
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: tagtraumen/graphite-corpus
+          path: target/regression-corpus
+          lfs: true
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 🖼️ Check the corpus renders against its references
+        run: mold -run cargo run --package regression -- --corpus target/regression-corpus check --output target/regression
+
+      - name: 📤 Upload the renders and diffs of mismatches
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: regression-mismatches
+          path: target/regression
+          if-no-files-found: ignore
+
   # Stored types, node version lineages, and node APIs against the base commit. Only needs the snapshot tool, so it runs on a GitHub runner
   migrations:
     needs: skip-check

@@ -253,13 +253,13 @@ Finish with `cargo run migration check` and `cargo test -p migration-formats`, w
 
 ## Regression corpus
 
-The corpus is a separate repository of real documents and the images they should render. A correct migration keeps a document looking the same, so `check` should still pass with your change:
+The [corpus](https://github.com/tagtraumen/graphite-corpus) is a separate repository of real documents and the images they should render, and CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
 
 ```sh
 cargo run regression --corpus <directory> check
 ```
 
-On a mismatch, the render and a diff image go to `target/regression`. Setting `GRAPHITE_REGRESSION_CORPUS` saves passing `--corpus` every time. To add a document, put the `.gdd` in the corpus's `ingest` folder and run `ingest`. After an intended visual change, `bless <name>` accepts the new render.
+On a mismatch, the render and a diff image go to `target/regression`. Setting `GRAPHITE_REGRESSION_CORPUS` saves passing `--corpus` every time. To add a document, put the `.gdd` in the corpus's `ingest` folder, run `ingest`, and commit the result. Its images are stored with Git LFS, so you need `git-lfs` installed. After an intended visual change, `bless <name>` accepts the new render.
 
 The demo artwork works differently. Its `.gdd` files are kept at the current version, so a migration that affects them means running `cargo run regression upgrade` and committing the result, which CI checks. The corpus documents stay as they were added, since they exist to prove that old files still upgrade.
 
