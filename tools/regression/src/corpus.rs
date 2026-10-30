@@ -25,14 +25,15 @@ pub struct Entry {
 	pub times: Vec<f64>,
 	#[serde(default = "Entry::default_scale")]
 	pub scale: f64,
-	/// Output size in pixels, since a render without one is a single pixel.
-	pub size: (u32, u32),
+	/// Output size in pixels of a region at the document origin, instead of the artwork's bounds at `scale`.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub size: Option<(u32, u32)>,
 	#[serde(default)]
 	pub tolerance: Tolerance,
 }
 
 impl Entry {
-	pub fn new(name: String, times: Vec<f64>, scale: f64, size: (u32, u32)) -> Self {
+	pub fn new(name: String, times: Vec<f64>, scale: f64, size: Option<(u32, u32)>) -> Self {
 		Self {
 			name,
 			times,

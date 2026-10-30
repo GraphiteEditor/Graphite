@@ -42,9 +42,9 @@ enum Command {
 		times: Vec<f64>,
 		#[clap(long, default_value = "1")]
 		scale: f64,
-		/// Output size in pixels, as WIDTHxHEIGHT
-		#[clap(long, default_value = "1024x1024", value_parser = parse_size)]
-		size: (u32, u32),
+		/// Output size in pixels of a region at the document origin, as WIDTHxHEIGHT, instead of the artwork's bounds
+		#[clap(long, value_parser = parse_size)]
+		size: Option<(u32, u32)>,
 	},
 	/// Render the references again, after an intended change in how documents look
 	Bless {

@@ -14,10 +14,11 @@ pub async fn render(document: &Path, entry: &Entry) -> Result<Vec<RgbaImage>, Bo
 	let settings = ExportSettings {
 		file_type: FileType::Png,
 		scale: entry.scale,
-		size: (Some(entry.size.0), Some(entry.size.1)),
+		size: entry.size.map_or((None, None), |(width, height)| (Some(width), Some(height))),
 		transparent: true,
 		framing: None,
 	};
+	let settings = renderer.frame(settings).await?;
 
 	let mut images = Vec::with_capacity(entry.times.len());
 	for time in &entry.times {
