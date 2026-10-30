@@ -76,7 +76,7 @@ pub(crate) struct PerformanceClock;
 impl Clock for PerformanceClock {
 	fn now(&self) -> Duration {
 		let performance = window().and_then(|window| window.performance()).expect("the editor runs in a window with `performance`");
-		Duration::from_secs_f64(performance.now().max(0.) / 1000.)
+		Duration::from_secs_f64(performance.now() / 1000.)
 	}
 }
 

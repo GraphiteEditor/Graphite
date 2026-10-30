@@ -53,7 +53,6 @@ impl EditorWrapper {
 	#[cfg(all(not(feature = "native"), target_family = "wasm"))]
 	pub async fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorWrapper {
 		use editor::builder::{Builder, EditorBuilder, RuntimeBuilder};
-		use editor::task::Scheduling;
 		use graph_craft::application_io::PlatformApplicationIo;
 		use graph_craft::application_io::resource::*;
 
@@ -85,8 +84,7 @@ impl EditorWrapper {
 			.with_runtime(
 				RuntimeBuilder::new(std::sync::Arc::new(crate::helpers::PerformanceClock))
 					.with_wake(crate::helpers::wake_runtime)
-					.with_application_io(application_io)
-					.with_scheduling(Scheduling::default()),
+					.with_application_io(application_io),
 			)
 			.with_spawner(crate::helpers::WasmSpawner)
 			.with_random_seed(uuid_random_seed)
@@ -200,7 +198,6 @@ impl EditorWrapper {
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
 				{
-					// The browser has painted the previous frame
 					if let Some(mut runtime) = crate::NODE_RUNTIME.try_lock()
 						&& let Some(runtime) = runtime.as_mut()
 					{

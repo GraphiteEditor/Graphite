@@ -221,7 +221,6 @@ impl NodeRuntime {
 			}
 		}
 
-		// An explicit request already reads the newest generations; a re-evaluation only starts while the frame has budget left
 		let rerun = std::mem::take(&mut self.rerun) | self.async_runtime().take_bumped();
 		if rerun && execution.is_none() {
 			if self.frame_has_budget() {
@@ -587,12 +586,12 @@ impl NodeRuntime {
 		self.scheduling = scheduling;
 	}
 
-	/// Called by the host once the previous output had a chance to be shown.
+	/// Called by the host once the previous output was presented.
 	pub fn begin_frame(&mut self) {
 		self.frame_start = self.async_runtime().clock().now();
 	}
 
-	/// How long until the next frame boundary, if a re-evaluation is waiting for it.
+	/// How long a deferred re-evaluation waits for the next frame.
 	pub fn until_next_frame(&self) -> Option<Duration> {
 		let budget = self.scheduling.frame_budget.filter(|budget| !budget.is_zero())?;
 		let elapsed = self.frame_elapsed().as_nanos() % budget.as_nanos();
@@ -730,7 +729,10 @@ impl InspectState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::test_utils::{EditorTestUtils, FakeClock};
 	use graph_craft::document::DocumentNode;
+	use graphene_std::SourceId;
+	use graphene_std::runtime::Runtime;
 
 	#[test]
 	fn a_preview_replaces_the_export_of_the_graph_being_compiled() {
@@ -755,18 +757,6 @@ mod tests {
 
 		assert_eq!(network.exports.first().and_then(|export| export.as_node()), Some(previewed_node));
 	}
-}
-
-#[cfg(test)]
-mod test {
-	use crate::messages::prelude::*;
-	use crate::task::Scheduling;
-	use crate::test_utils::{EditorTestUtils, FakeClock};
-	use glam::{DVec2, UVec2};
-	use graphene_std::SourceId;
-	use graphene_std::runtime::Runtime;
-	use std::sync::Arc;
-	use std::time::Duration;
 
 	const SOURCE: SourceId = SourceId(1);
 
@@ -783,7 +773,6 @@ mod test {
 		editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
 	}
 
-	/// Whether one runtime run re-evaluated the graph.
 	async fn evaluates(editor: &mut EditorTestUtils) -> bool {
 		editor.runtime.run().await;
 		let messages = editor.editor.handle_message(Message::Wake);

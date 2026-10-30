@@ -12,7 +12,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::ApplicationIo;
-use graphene_std::runtime::{AsyncRuntime, Clock, RuntimeHandle, Spawn, Task};
+use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
@@ -190,7 +190,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: Some(application_io_for_api),
 	});
 	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(InstantClock(std::time::Instant::now())));
+	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(std::time::Instant::now()));
 	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
 
 	match app.command {
@@ -313,14 +313,6 @@ fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
 	let executor = DynamicExecutor::new(proto_network).map_err(|errors| errors.iter().map(|e| format!("{e:?}")).reduce(|acc, e| format!("{acc}\n{e}")).unwrap_or_default())?;
 	Ok(executor)
-}
-
-struct InstantClock(std::time::Instant);
-
-impl Clock for InstantClock {
-	fn now(&self) -> std::time::Duration {
-		self.0.elapsed()
-	}
 }
 
 #[derive(Default)]

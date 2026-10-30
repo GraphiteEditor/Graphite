@@ -111,15 +111,14 @@ impl App {
 			loop {
 				let texture = async_runtime.block_on(node_runtime.run());
 				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
-				// A wake within a frame continues it, while waiting out a frame or idling starts a new one
-				let next_frame = match node_runtime.until_next_frame() {
+				let frame_ended = match node_runtime.until_next_frame() {
 					Some(wait) => {
 						thread::sleep(wait);
 						true
 					}
 					None => start_render_receiver.recv_timeout(Duration::from_millis(10)).is_err(),
 				};
-				if next_frame {
+				if frame_ended {
 					node_runtime.begin_frame();
 				}
 				if exiting_clone.load(Ordering::Relaxed) {

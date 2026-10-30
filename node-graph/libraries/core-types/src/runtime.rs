@@ -21,15 +21,21 @@ pub trait Spawn {
 	fn spawn(&self, task: Task);
 }
 
-/// Host-provided monotonic time from an arbitrary origin.
+/// Monotonic time since an arbitrary origin.
 pub trait Clock: Send + Sync {
 	fn now(&self) -> Duration;
 }
 
-/// Host-provided policy for the re-evaluations that finished tasks trigger.
+#[cfg(not(target_family = "wasm"))]
+impl Clock for std::time::Instant {
+	fn now(&self) -> Duration {
+		self.elapsed()
+	}
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Scheduling {
-	/// How long into a frame a re-evaluation may still start; later ones wait for the next frame. `None` never waits.
+	/// How far into a frame a re-evaluation caused by finished tasks may start. `None` never defers it.
 	pub frame_budget: Option<Duration>,
 }
 
@@ -169,16 +175,16 @@ impl RuntimeInner {
 
 	fn spawn(self: &Arc<Self>, source: SourceId, task: Task) -> AbortHandle {
 		let (handle, registration) = AbortHandle::new_pair();
-		let number = self.next_task.fetch_add(1, Ordering::Relaxed);
+		let id = self.next_task.fetch_add(1, Ordering::Relaxed);
 		if let Some(state) = self.lock().get_mut(&source) {
-			state.tasks.insert(number, handle.clone());
+			state.tasks.insert(id, handle.clone());
 		}
 
 		let inner = Arc::clone(self);
 		self.spawner.spawn(Box::pin(async move {
 			let finished = Abortable::new(task, registration).await.is_ok();
 			if let Some(state) = inner.lock().get_mut(&source)
-				&& state.tasks.remove(&number).is_some()
+				&& state.tasks.remove(&id).is_some()
 				&& finished
 			{
 				state.generation += 1;
