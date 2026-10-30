@@ -45,15 +45,15 @@ pub enum SceneImage {
 	Pixels(peniko::ImageData),
 	/// A CPU raster's straight-alpha linear pixels, identified by their buffer's ID so the renderer uploads them once.
 	Raster(Raster<CPU>),
-	/// Straight-alpha pixels in a GPU texture.
-	Texture(Texture),
+	/// Straight-alpha pixels in a GPU texture, whose copy for sampling gets mipmaps if it's drawn `minified`.
+	Texture { texture: Texture, minified: bool },
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 enum ImageKey {
 	Blob(u64),
 	Raster(u64),
-	Texture(Texture),
+	Texture(Texture, bool),
 }
 
 #[derive(Debug)]
@@ -218,7 +218,11 @@ impl<'a> VelloSceneBuilder<'a> {
 
 	/// Draws a GPU texture's rectangle of pixels, from the origin to its width and height, placed by `transform`.
 	pub fn draw_texture(&mut self, texture: Texture, sampler: peniko::ImageSampler, transform: Affine) {
-		let Some((source, texture_to_image, texture_size)) = self.image_source(SceneImage::Texture(texture)) else {
+		// Mipmaps only for a texture drawn smaller than its pixels, since they're made again at every render
+		let [a, b, c, d, _, _] = (self.view * transform).as_coeffs();
+		let minified = a.hypot(b) < 1. || c.hypot(d) < 1.;
+
+		let Some((source, texture_to_image, texture_size)) = self.image_source(SceneImage::Texture { texture, minified }) else {
 			return;
 		};
 		self.draw_image_source(source, sampler, transform * texture_to_image, texture_size);
@@ -259,7 +263,7 @@ impl<'a> VelloSceneBuilder<'a> {
 		let result = renderer.render_effects(size, content_view, effects, fill, lengths_to_device * resolution, draw);
 
 		// Draw the result where the content was
-		self.images.push(SceneImage::Texture(result));
+		self.images.push(SceneImage::Texture { texture: result, minified: false });
 		let id = TextureId(self.images.len() as u64 - 1);
 		self.scene.set_transform(Affine::translate(origin) * Affine::scale(1. / resolution));
 		self.scene.set_paint(PaintType::Image(Image {
@@ -300,7 +304,7 @@ impl<'a> VelloSceneBuilder<'a> {
 		let (width, height) = match &image {
 			SceneImage::Pixels(data) => (data.width, data.height),
 			SceneImage::Raster(raster) => (raster.width, raster.height),
-			SceneImage::Texture(texture) => (texture.width(), texture.height()),
+			SceneImage::Texture { texture, .. } => (texture.width(), texture.height()),
 		};
 		if width == 0 || height == 0 {
 			return None;
@@ -309,7 +313,7 @@ impl<'a> VelloSceneBuilder<'a> {
 		let key = match &image {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
-			SceneImage::Texture(texture) => ImageKey::Texture(texture.clone()),
+			SceneImage::Texture { texture, minified } => ImageKey::Texture(texture.clone(), *minified),
 		};
 		let id = *self.image_ids.entry(key).or_insert_with(|| {
 			self.images.push(image);

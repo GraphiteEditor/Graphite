@@ -329,7 +329,7 @@ fn clear(device: &wgpu::Device, queue: &Queue, target: &wgpu::Texture) {
 enum ImageKey {
 	Blob(u64),
 	Raster(u64),
-	Texture(wgpu::Texture),
+	Texture(wgpu::Texture, bool),
 }
 
 /// A premultiplied copy of an image's pixels that Vello GPU samples as an external texture.
@@ -362,7 +362,7 @@ impl ImageTextures {
 		let key = match image {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
-			SceneImage::Texture(texture) => ImageKey::Texture((**texture).clone()),
+			SceneImage::Texture { texture, minified } => ImageKey::Texture((**texture).clone(), *minified),
 		};
 
 		if !self.textures.contains_key(&key) {
@@ -379,16 +379,23 @@ impl ImageTextures {
 					let (pixels, width, height) = raster.to_flat_u8();
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
-				SceneImage::Texture(texture) => create_texture(
-					device,
-					"vello_gpu_premultiplied_image",
-					UVec2::new(texture.width(), texture.height()),
-					wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
-				),
+				SceneImage::Texture { texture, minified } => {
+					let level_count = if *minified { texture.width().max(texture.height()).ilog2() + 1 } else { 1 };
+					device.create_texture(&wgpu::TextureDescriptor {
+						label: Some("vello_gpu_premultiplied_image"),
+						size: texture.size(),
+						mip_level_count: level_count,
+						sample_count: 1,
+						dimension: wgpu::TextureDimension::D2,
+						format: TEXTURE_FORMAT,
+						usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+						view_formats: &[],
+					})
+				}
 			};
 			let raster = match image {
 				SceneImage::Raster(raster) => Some(raster.downgrade()),
-				SceneImage::Pixels(_) | SceneImage::Texture(_) => None,
+				SceneImage::Pixels(_) | SceneImage::Texture { .. } => None,
 			};
 			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0, raster });
 		}
@@ -397,10 +404,23 @@ impl ImageTextures {
 		image_texture.last_used = self.render_count;
 		let view = image_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		if let SceneImage::Texture(source) = image {
+		if let SceneImage::Texture { texture: source, .. } = image {
+			let level_view = |level: u32| {
+				image_texture.texture.create_view(&wgpu::TextureViewDescriptor {
+					base_mip_level: level,
+					mip_level_count: Some(1),
+					..Default::default()
+				})
+			};
+
 			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
 			let loads_linear_light = source.format().is_srgb() || matches!(source.format(), crate::RASTER_FORMAT | crate::FALLBACK_RASTER_FORMAT);
-			alpha_conversion.premultiply(device, encoder, &source_view, loads_linear_light, &view);
+			alpha_conversion.premultiply(device, encoder, &source_view, loads_linear_light, &level_view(0));
+
+			// Each mipmap level halves the one before it, so a minified image averages its pixels rather than skipping over them
+			for level in 1..image_texture.texture.mip_level_count() {
+				alpha_conversion.halve(device, encoder, &level_view(level - 1), &level_view(level));
+			}
 		}
 
 		Some(view)
@@ -414,7 +434,7 @@ impl ImageTextures {
 				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 				ImageKey::Blob(_) => unused_renders == 0,
 				ImageKey::Raster(_) => unused_renders == 0 || (unused_renders < UNUSED_IMAGE_RENDER_LIMIT && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
-				ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
+				ImageKey::Texture(..) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
 			}
 		});
 	}
@@ -596,6 +616,8 @@ struct AlphaConversion {
 	/// Unpremultiplies into a linear-light target in the executor's raster format.
 	unpremultiply_to_linear_pipeline: wgpu::RenderPipeline,
 	premultiply_pipeline: wgpu::RenderPipeline,
+	/// Averages a mipmap level from the one above it.
+	halve_pipeline: wgpu::RenderPipeline,
 	/// The parameters for a source whose format stores linear values.
 	linear_source_parameters: wgpu::Buffer,
 	/// The parameters for a source whose format decodes sRGB on load.
@@ -682,6 +704,7 @@ impl AlphaConversion {
 			unpremultiply_pipeline: create_pipeline("vello_unpremultiply_pipeline", "unpremultiply", TEXTURE_FORMAT),
 			unpremultiply_to_linear_pipeline: create_pipeline("vello_unpremultiply_to_linear_pipeline", "unpremultiply_to_linear", raster_format),
 			premultiply_pipeline: create_pipeline("vello_premultiply_pipeline", "premultiply", TEXTURE_FORMAT),
+			halve_pipeline: create_pipeline("vello_halve_pipeline", "halve", TEXTURE_FORMAT),
 			linear_source_parameters: create_parameters("vello_alpha_linear_source", 0),
 			srgb_source_parameters: create_parameters("vello_alpha_srgb_source", 1),
 			bind_group_layout,
@@ -700,6 +723,10 @@ impl AlphaConversion {
 	fn premultiply(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, source_is_srgb: bool, target: &wgpu::TextureView) {
 		let parameters = if source_is_srgb { &self.srgb_source_parameters } else { &self.linear_source_parameters };
 		self.run(device, encoder, &self.premultiply_pipeline, parameters, source, target);
+	}
+
+	fn halve(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, target: &wgpu::TextureView) {
+		self.run(device, encoder, &self.halve_pipeline, &self.linear_source_parameters, source, target);
 	}
 
 	fn run(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, pipeline: &wgpu::RenderPipeline, parameters: &wgpu::Buffer, source: &wgpu::TextureView, target: &wgpu::TextureView) {

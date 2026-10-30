@@ -542,6 +542,32 @@ fn minified_images_average_their_pixels() {
 }
 
 #[test]
+fn minified_gpu_rasters_average_their_pixels() {
+	use core_types::ops::Convert;
+	use core_types::transform::Footprint;
+	use raster_types::{GPU, Image, Raster};
+
+	let Some(executor) = executor() else { return };
+
+	// Like `minified_images_average_their_pixels`, whose stripes a texture without mipmaps would show as black
+	let stripes = Image {
+		width: 64,
+		height: 64,
+		data: (0..64 * 64)
+			.map(|index| if (2..6).contains(&(index % 8)) { core_types::Color::BLACK } else { core_types::Color::WHITE })
+			.collect(),
+	};
+	let stripes: Raster<GPU> = Raster::new_cpu(stripes).convert(Footprint::DEFAULT, executor.clone());
+	let texture = stripes.texture().cloned().unwrap();
+	let draw = |scene: &mut VelloSceneBuilder| scene.draw_texture(texture.clone(), peniko::ImageSampler::new(), Affine::scale(1. / 8.));
+
+	let Some(pixels) = render(UVec2::new(8, 8), draw) else { return };
+	for (index, pixel) in pixels.iter().enumerate() {
+		assert!((115..=140).contains(&pixel[0]) && pixel[3] == 255, "pixel {index} is {pixel:?} rather than the gray of its average");
+	}
+}
+
+#[test]
 fn rasters_upload_once_across_scenes_until_modified() {
 	use raster_types::{Image, Raster};
 
