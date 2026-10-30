@@ -19,6 +19,7 @@ fn usage() {
 	println!("  explore      Open an assortment of tools for exploring the codebase");
 	println!("  drive        Drive the web editor in an isolated browser (see `cargo run drive help`)");
 	println!("  migration    Freeze the stored format or scaffold node migrations (see `cargo run migration help`)");
+	println!("  regression   Upgrade documents and check renders of the regression corpus (see `cargo run regression help`)");
 	println!("  help         Show this message");
 	println!("<target>:");
 	println!("  [web]        Web app (default)");
@@ -54,6 +55,9 @@ fn main() -> ExitCode {
 	}
 	if matches!(task.action, Action::Migration) {
 		return delegate("migration-snapshot", &task);
+	}
+	if matches!(task.action, Action::Regression) {
+		return delegate("regression", &task);
 	}
 
 	if let Err(e) = run_task(&task) {
@@ -161,7 +165,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				profile = match action {
 					Action::Run => &Profile::Debug,
 					Action::Build => &Profile::Release,
-					Action::Explore(_) | Action::Drive | Action::Migration => unreachable!(),
+					Action::Explore(_) | Action::Drive | Action::Migration | Action::Regression => unreachable!(),
 				}
 			}
 
@@ -188,7 +192,7 @@ fn run_task(task: &Task) -> Result<(), Error> {
 		(Action::Build, Target::Cli, Profile::Debug) => cmd!("cargo", "build", "-p", "graphene-cli").run()?,
 		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => cmd!("cargo", "build", "-r", "-p", "graphene-cli").run()?,
 
-		(Action::Explore(_) | Action::Drive | Action::Migration, _, _) => unreachable!(),
+		(Action::Explore(_) | Action::Drive | Action::Migration | Action::Regression, _, _) => unreachable!(),
 	}
 	Ok(())
 }
