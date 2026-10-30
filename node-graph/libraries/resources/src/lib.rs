@@ -298,7 +298,9 @@ pub enum DataSource {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct ResourceRegistry {
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_sorted"))]
 	hashes: HashMap<ResourceId, ResourceHash>,
+	#[cfg_attr(feature = "serde", serde(serialize_with = "serialize_sorted"))]
 	sources: HashMap<ResourceId, Vec<DataSource>>,
 }
 
@@ -363,4 +365,35 @@ pub struct ResourceInfo<'a> {
 	pub id: ResourceId,
 	pub hash: Option<&'a ResourceHash>,
 	pub sources: &'a [DataSource],
+}
+
+/// Serializes a hash map in ascending key order, so equal maps write equal bytes whatever their iteration order.
+#[cfg(feature = "serde")]
+fn serialize_sorted<K: Ord + serde::Serialize, V: serde::Serialize, S: serde::Serializer>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error> {
+	let mut entries: Vec<_> = map.iter().collect();
+	entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+	serializer.collect_map(entries)
+}
+
+#[cfg(all(test, feature = "serde"))]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn equal_registries_serialize_alike_whatever_their_insertion_order() {
+		let ids: Vec<_> = (0..200).map(|_| ResourceId::new()).collect();
+		let fill = |order: &mut dyn Iterator<Item = &ResourceId>| {
+			let mut registry = ResourceRegistry::new();
+			for id in order {
+				registry.push_source_back(id, DataSource::Embedded);
+				registry.resolve(id, ResourceHash::from(&id.0.to_le_bytes()[..]));
+			}
+			registry
+		};
+		let forward = fill(&mut ids.iter());
+		let backward = fill(&mut ids.iter().rev());
+
+		assert_eq!(forward, backward);
+		assert_eq!(serde_json::to_string(&forward).unwrap(), serde_json::to_string(&backward).unwrap());
+	}
 }
