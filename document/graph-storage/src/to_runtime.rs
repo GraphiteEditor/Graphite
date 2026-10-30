@@ -112,6 +112,118 @@ fn runtime_node_id(global_id: NodeId, node: &Node) -> RuntimeNodeId {
 	RuntimeNodeId(node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0))
 }
 
+/// A node in runtime form with the metadata entries for it and everything nested under it, paths absolute.
+pub struct ProjectedNode {
+	/// The runtime path of the network the node sits in.
+	pub network_path: Vec<RuntimeNodeId>,
+	pub local_id: RuntimeNodeId,
+	pub node: DocumentNode,
+	/// The node's own entry first, then one per nested node.
+	pub node_entries: Vec<NodeMetadataEntry>,
+	/// One per network the node's implementation nests, outermost first.
+	pub network_entries: Vec<NetworkMetadataEntry>,
+}
+
+/// A network's own runtime form without its nodes, as [`RuntimeProjection::network_entry`] produces it.
+pub struct ProjectedNetwork {
+	pub network_path: Vec<RuntimeNodeId>,
+	pub exports: Vec<GraphCraftNodeInput>,
+	pub scope_injections: FxHashMap<String, (RuntimeNodeId, Type)>,
+	pub metadata: NetworkMetadataEntry,
+}
+
+/// Converts single registry entities to runtime form, for keeping a runtime mirror in step without
+/// rebuilding it.
+pub struct RuntimeProjection<'a> {
+	context: ConversionContext<'a>,
+	/// The node whose implementation each nested network is, or `None` where several nodes implement it.
+	owners: FxHashMap<NetworkId, Option<NodeId>>,
+}
+
+impl Registry {
+	pub fn runtime_projection<'a>(&'a self, declarations: &'a Declarations) -> RuntimeProjection<'a> {
+		let mut owners = FxHashMap::default();
+		for (&id, node) in &self.node_instances {
+			if let Implementation::Network(network) = node.implementation
+				&& network != ROOT_NETWORK
+			{
+				owners.entry(network).and_modify(|owner| *owner = None).or_insert(Some(id));
+			}
+		}
+		RuntimeProjection {
+			context: ConversionContext::new(self, declarations),
+			owners,
+		}
+	}
+}
+
+impl RuntimeProjection<'_> {
+	/// The node implementing `network`, or `None` for the root, for a network no node implements, and for one several
+	/// nodes implement, which the runtime holds a copy of under each and no single path addresses.
+	pub fn owner(&self, network: NetworkId) -> Option<NodeId> {
+		self.owners.get(&network).copied().flatten()
+	}
+
+	/// The runtime path of `network`: the nodes implementing it and its ancestors, outermost first.
+	/// `None` for a network the root does not reach, which the runtime does not hold.
+	pub fn network_path(&self, network: NetworkId) -> Option<Vec<RuntimeNodeId>> {
+		let mut chain: Vec<(NodeId, &Node)> = Vec::new();
+		let mut current = network;
+		while current != ROOT_NETWORK {
+			let owner = self.owner(current)?;
+			// Owners can form a cycle through concurrent implementation swaps, which the runtime rejects.
+			if chain.iter().any(|&(id, _)| id == owner) {
+				return None;
+			}
+			let node = self.context.registry.node_instances.get(&owner)?;
+			chain.push((owner, node));
+			current = node.network;
+		}
+		Some(chain.into_iter().rev().map(|(id, node)| runtime_node_id(id, node)).collect())
+	}
+
+	/// Where the node sits in the runtime: the path of its network, and its id within that network.
+	pub fn node_address(&self, id: NodeId) -> Option<(Vec<RuntimeNodeId>, RuntimeNodeId)> {
+		let node = self.context.registry.node_instances.get(&id)?;
+		Some((self.network_path(node.network)?, runtime_node_id(id, node)))
+	}
+
+	/// The node and everything nested under it, converted as a whole-document conversion would.
+	pub fn node(&self, id: NodeId) -> Result<ProjectedNode, ConversionError> {
+		let node = self.context.registry.node_instances.get(&id).ok_or(ConversionError::NodeNotFound(id))?;
+		let network_path = self.network_path(node.network).ok_or(ConversionError::NetworkNotFound(node.network))?;
+		let local_id = runtime_node_id(id, node);
+
+		if let Implementation::Network(nested) = node.implementation {
+			detect_network_cycle(&self.context, nested)?;
+		}
+
+		let mut node_entries = Some(vec![extract_ui_metadata(node, id, &network_path, local_id)]);
+		let mut network_entries = Some(Vec::new());
+		Ok(ProjectedNode {
+			node: convert_node(&self.context, node, &network_path, local_id, &mut node_entries, &mut network_entries)?,
+			network_path,
+			local_id,
+			node_entries: node_entries.expect("seeded above"),
+			network_entries: network_entries.expect("seeded above"),
+		})
+	}
+
+	/// The network's exports, scope injections and metadata, without its nodes.
+	pub fn network_entry(&self, id: NetworkId) -> Result<ProjectedNetwork, ConversionError> {
+		let registry = self.context.registry;
+		let network = registry.network_or_removed(id).ok_or(ConversionError::NetworkNotFound(id))?;
+		let network_path = self.network_path(id).ok_or(ConversionError::NetworkNotFound(id))?;
+
+		Ok(ProjectedNetwork {
+			metadata: extract_network_metadata(registry, &network.attributes, &network_path, id),
+			scope_injections: read_scope_injections(registry, id, &network.attributes)?,
+			exports: convert_exports(registry, id, network)?,
+			network_path,
+		})
+	}
+}
+
 /// Converts a single network. Recurses through `Implementation::Network` owning nodes.
 ///
 /// **ID remapping:** Registry uses globally hashed IDs; runtime networks need local IDs. We pull
@@ -201,15 +313,7 @@ fn convert_network(
 		}
 	}
 
-	// Input attributes aren't round-tripped for exports — Reflection/Import inputs don't appear there.
-	let empty_attrs = crate::Attributes::new();
-	let exports: Vec<GraphCraftNodeInput> = network
-		.exports
-		.iter()
-		.filter_map(|slot| slot.target.as_ref())
-		.map(|input| convert_input(context.registry, network_id, input, &empty_attrs))
-		.collect::<Result<Vec<_>, _>>()?;
-
+	let exports = convert_exports(context.registry, network_id, network)?;
 	let scope_injections = read_scope_injections(context.registry, network_id, &network.attributes)?;
 
 	Ok(NodeNetwork {
@@ -219,6 +323,18 @@ fn convert_network(
 		definitions: FxHashMap::default(),
 		generated: false,
 	})
+}
+
+/// The network's exports, compacted into the runtime's dense list.
+fn convert_exports(registry: &Registry, network_id: NetworkId, network: &crate::Network) -> Result<Vec<GraphCraftNodeInput>, ConversionError> {
+	// Input attributes aren't round-tripped for exports — Reflection/Import inputs don't appear there.
+	let empty_attrs = crate::Attributes::new();
+	network
+		.exports
+		.iter()
+		.filter_map(|slot| slot.target.as_ref())
+		.map(|input| convert_input(registry, network_id, input, &empty_attrs))
+		.collect()
 }
 
 /// Rebuild a network's `scope_injections` from its serialized attribute blob, resolving each stored
