@@ -6,6 +6,8 @@ use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::runtime::AsyncRuntime;
+use graphene_std::vector::{no_paths, paths_from_item_attributes};
+use graphene_std::{Cover, Coverage};
 use graphene_std::{NodeError, Poll};
 use image::ImageFormat;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
@@ -85,7 +87,7 @@ pub struct Framing {
 }
 
 impl ExportSettings {
-	/// Frame the artwork as it is at time zero, the way the editor exports all artwork, unless a size was given.
+	/// Frame the artwork as it is at time zero, unless a size was given.
 	/// Every frame of an animation shares this framing, so they all have one size.
 	pub async fn framed(mut self, executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Self, Box<dyn Error>> {
 		if self.size.0.is_some() && self.size.1.is_some() {
@@ -102,7 +104,8 @@ impl ExportSettings {
 	}
 }
 
-/// The document-space bounds of every layer's click targets, artboards included, from the metadata of an SVG render.
+/// The document-space bounds of every layer including its stroke, artboards included, from the metadata of an SVG render.
+/// Content an artboard clips away still counts, since this has no layer tree to tell which artboard holds it.
 async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Option<[DVec2; 2]>, Box<dyn Error>> {
 	// An identity viewport, since the default one is degenerate and its transforms come out NaN
 	let render_config = RenderConfig {
@@ -125,6 +128,17 @@ async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spaw
 		let footprint = metadata.upstream_footprints.get(layer).map(|footprint| footprint.transform).unwrap_or_default();
 		let local_transform = metadata.local_transforms.get(layer).copied().unwrap_or_default();
 		let transform = footprint * local_transform;
+
+		// A stroke extends past the path a click target outlines, so a vector layer measures its rendered geometry
+		if let Some(item) = metadata.vector_data.get(layer) {
+			let appearance = metadata.appearance_attributes.get(layer);
+			let stroke = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
+			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
+			if let Some(bounds) = item.element().stroke_inclusive_bounding_box_with_transform(paths, transform, stroke.as_ref()) {
+				return Some(bounds);
+			}
+		}
+
 		click_targets
 			.iter()
 			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
