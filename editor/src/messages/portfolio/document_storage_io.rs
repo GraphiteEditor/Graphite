@@ -241,27 +241,38 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 
 /// Decoded proto-node declarations for every node `gdd` or its history references, from the global cache.
 async fn load_declarations(gdd: Option<&GddV1>, resources: &ResourcesHandle) -> Declarations {
-	match gdd {
-		Some(gdd) => gdd.declarations(resources).await,
-		None => Declarations::new(),
+	let Some(gdd) = gdd else { return Declarations::new() };
+
+	// Migrations store the declarations they introduce in the container, which the cache hasn't seen yet
+	if gdd.migrated() {
+		hydrate_resources(gdd, resources).await;
+	}
+	gdd.declarations(resources).await
+}
+
+/// Copy every resource stored in `gdd`'s container into the global cache.
+async fn hydrate_resources(gdd: &GddV1, byte_store: &ResourcesHandle) {
+	let hashes = match gdd.resource_hashes().await {
+		Ok(hashes) => hashes,
+		Err(error) => {
+			log::error!("Listing the resources of a document failed: {error}");
+			return;
+		}
+	};
+
+	for hash in hashes {
+		match gdd.read_resource(&hash).await {
+			Ok(holder) => {
+				byte_store.store(holder.as_slice());
+			}
+			Err(error) => log::error!("Reading resource {hash} of a document failed: {error}"),
+		}
 	}
 }
 
 /// Storage session -> runtime interface. Resources stored in the container are hydrated into the global cache first.
 async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, document_id: DocumentId) -> Option<DocumentMessageHandler> {
-	match gdd.resource_hashes().await {
-		Ok(hashes) => {
-			for hash in hashes {
-				match gdd.read_resource(&hash).await {
-					Ok(holder) => {
-						byte_store.store(holder.as_slice());
-					}
-					Err(error) => log::error!("Opening document {document_id:?}: failed to read resource {hash}: {error}"),
-				}
-			}
-		}
-		Err(error) => log::error!("Opening document {document_id:?}: failed to list resources: {error}"),
-	}
+	hydrate_resources(&gdd, byte_store).await;
 
 	let declarations = gdd.declarations(byte_store).await;
 	let (network, node_entries, network_entries) = match gdd.registry().to_runtime_with_full_metadata(&declarations) {

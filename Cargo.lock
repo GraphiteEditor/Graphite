@@ -2436,6 +2436,8 @@ dependencies = [
  "kurbo",
  "log",
  "math-parser",
+ "migration-formats",
+ "migration-nodes",
  "node-macro",
  "num_enum",
  "once_cell",
