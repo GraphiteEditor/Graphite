@@ -125,9 +125,14 @@ impl Replica {
 		Some(Role::Host)
 	}
 
-	/// The link and id of a peer greeting as host.
+	/// The link and id of the peer greeting as host. While two coexist this is the one with the lower id, which keeps
+	/// the role once they meet.
 	fn current_host(&self) -> Option<(TransportPeerId, PeerId)> {
-		self.peers.iter().find(|(_, remote)| remote.role == Role::Host).map(|(&link, remote)| (link, remote.peer))
+		self.peers
+			.iter()
+			.filter(|(_, remote)| remote.role == Role::Host)
+			.map(|(&link, remote)| (link, remote.peer))
+			.min_by_key(|&(link, peer)| (peer, link))
 	}
 
 	/// Ask the host for a sync unless synced or already asked.
@@ -1066,6 +1071,39 @@ mod tests {
 
 		assert_eq!(host.peers().count(), 0, "the impostor never joins");
 		assert_eq!(host.held_broadcasts(), 0, "nothing from it waits forever");
+	}
+
+	#[test]
+	fn requests_go_to_the_host_with_the_lowest_id() {
+		let mut network = MockNetwork::new(0);
+		let endpoint = network.endpoint();
+		let guest_link = endpoint.id();
+		network.connect(guest_link);
+		let mut guest = Replica::connect(endpoint, PeerId(1), UserId(1));
+		let mut session = Session::with_peer(PeerId(1));
+
+		let mut hosts: Vec<(PeerId, MockEndpoint)> = [9, 4, 7, 2, 8, 3, 6, 5]
+			.into_iter()
+			.map(|id| (PeerId(id), connect_bare_peer(&mut network, &mut guest, &mut session)))
+			.collect();
+		for (peer, host) in &mut hosts {
+			host.send(guest_link, &hello_as(*peer, Role::Host, 0)).unwrap();
+		}
+		network.deliver_all();
+		guest.poll(&mut session);
+
+		guest.request_move(Rev(std::num::NonZeroU128::MIN)).unwrap();
+		network.deliver_all();
+		let asked: Vec<PeerId> = hosts
+			.iter_mut()
+			.filter_map(|(peer, host)| {
+				host.poll()
+					.iter()
+					.any(|event| matches!(event, TransportEvent::Packet(_, SyncPacket::MoveRequest { .. })))
+					.then_some(*peer)
+			})
+			.collect();
+		assert_eq!(asked, vec![PeerId(2)]);
 	}
 
 	#[test]
