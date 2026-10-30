@@ -1238,6 +1238,10 @@ fn coalesce(runs: &mut Vec<(HotSequence, HotSequence)>) {
 }
 
 impl RetiredMarks {
+	pub fn is_empty(&self) -> bool {
+		self.retired_up_to.is_empty() && self.retired_runs.is_empty()
+	}
+
 	/// Whether this hot op is retired or taken back.
 	pub fn covers(&self, id: HotOpId) -> bool {
 		self.retired_up_to.get(&id.peer).is_some_and(|&through| id.sequence <= through)

@@ -73,7 +73,7 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	pub fn join(&mut self, transport: impl Transport + 'static, user: UserId) {
-		self.network = Some(Replica::guest(transport, self.session.peer(), user));
+		self.network = Some(Replica::connect(transport, self.session.peer(), user));
 	}
 
 	/// Leave the room for good, so a reopen does not reconnect. See [`disconnect`](Self::disconnect).

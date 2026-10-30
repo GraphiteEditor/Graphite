@@ -203,7 +203,7 @@ impl Peer {
 		let transport = endpoint.id();
 		let replica = match role {
 			Role::Host => Replica::host(endpoint, peer, user),
-			Role::Guest => Replica::guest(endpoint, peer, user),
+			Role::Guest => Replica::connect(endpoint, peer, user),
 			Role::Undecided => Replica::connect(endpoint, peer, user),
 		};
 		Self {

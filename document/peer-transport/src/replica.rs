@@ -108,12 +108,6 @@ impl Replica {
 		Self::new(Box::new(transport), Role::Host, peer, user, SyncState::Synced)
 	}
 
-	/// Join through a link, expecting a host. Same as [`connect`](Self::connect): the role stays undecided until a host
-	/// greets, so a link into a room whose host is gone elects like anyone else.
-	pub fn guest(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
-		Self::connect(transport, peer, user)
-	}
-
 	/// Connect undecided: a host's hello makes this peer a guest, and [`decide_role`](Self::decide_role) makes it the
 	/// host if none greets in time.
 	pub fn connect(transport: impl Transport + 'static, peer: PeerId, user: UserId) -> Self {
@@ -491,7 +485,7 @@ impl Replica {
 		let unretired: Vec<HotOp> = target.hot_log().into_iter().filter(|hot_op| !retired.covers(hot_op.id())).collect();
 
 		self.broadcast_hot_ops(&unretired)?;
-		if retired.retired_up_to.is_empty() && retired.retired_runs.is_empty() {
+		if retired.is_empty() {
 			return Ok(());
 		}
 		self.broadcast(BroadcastBody::RetiredMarks(retired))
