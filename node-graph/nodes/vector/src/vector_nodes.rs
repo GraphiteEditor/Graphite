@@ -553,8 +553,8 @@ fn copy_to_points<I: Send + Clone>(
 		Context -> List<Graphic>,
 		Context -> List<Vector>,
 		Context -> List<String>,
-		Context -> List<Raster<GPU>>,
 		Context -> List<Raster<CPU>>,
+		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
 	)]
@@ -1263,8 +1263,8 @@ fn pack_strips<T: Send + Clone>(
 	#[implementations(
 		List<Graphic>,
 		List<Vector>,
-		List<Raster<GPU>>,
 		List<Raster<CPU>>,
+		List<Raster<GPU>>,
 	)]
 	elements: List<T>,
 	#[default(0.)]
