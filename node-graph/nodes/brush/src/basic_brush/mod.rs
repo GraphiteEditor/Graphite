@@ -9,6 +9,7 @@ mod stroke;
 use brush_types::BrushCache;
 use core_types::list::{ATTR_COLOR, ATTR_DIAMETER, ATTR_FLOW, ATTR_HARDNESS, Item, List};
 use core_types::{ATTR_TRANSFORM, Ctx, ExtractFootprint};
+use glam::DAffine2;
 use graphic_types::Graphic;
 use pipeline::{BasicBrushPipeline, BasicBrushPipelineArgs};
 use raster_types::{GPU, Raster};
@@ -52,16 +53,26 @@ fn basic_brush(
 		}
 	}
 
+	let mut logical_bounds = None;
+	for stroke in &strokes {
+		stroke::union(&mut logical_bounds, stroke::bounds(stroke, 1.));
+	}
+	let logical_transform = logical_bounds.as_ref().map_or(DAffine2::IDENTITY, |bounds| bounds.to_transform());
+
 	let args = BasicBrushPipelineArgs {
 		footprint: *ctx.footprint(),
 		strokes: &strokes,
 		cache: &cache,
 	};
 	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args) else {
-		return List::new();
+		return if logical_bounds.is_some() {
+			List::new_from_item(Item::<Raster<GPU>>::default().with_attribute(ATTR_TRANSFORM, logical_transform))
+		} else {
+			List::new()
+		};
 	};
-	let raster = Raster::<GPU>::new_gpu(texture);
-	List::new_from_item(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, transform))
+	let raster = Raster::<GPU>::new_gpu(texture).with_coverage(logical_transform.inverse() * transform);
+	List::new_from_item(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, logical_transform))
 }
 
 #[node_macro::node(category(""), inject_scope)]

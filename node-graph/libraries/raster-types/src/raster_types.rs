@@ -14,6 +14,10 @@ mod __private {
 
 pub trait Storage: __private::Sealed + Clone + Debug + 'static {
 	fn is_empty(&self) -> bool;
+	/// The affine from the unit square of the pixels onto the region of the item's local space they cover, which the unit square is logically.
+	fn coverage(&self) -> DAffine2 {
+		DAffine2::IDENTITY
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -350,15 +354,23 @@ mod gpu {
 		}
 	}
 
-	#[derive(Clone, Debug, Default, PartialEq, Hash)]
+	#[derive(Clone, Debug, Default, PartialEq)]
 	pub struct GPU {
 		texture: Option<Texture>,
+		coverage: DAffine2,
+	}
+
+	impl ::core::hash::Hash for GPU {
+		fn hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+			self.texture.hash(state);
+			self.coverage.to_cols_array().map(f64::to_bits).hash(state);
+		}
 	}
 
 	impl core_types::CacheHash for GPU {
 		fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
 			use ::core::hash::Hash;
-			self.texture.hash(state);
+			self.hash(state);
 		}
 	}
 
@@ -369,11 +381,24 @@ mod gpu {
 			let size = self.size();
 			size.x == 0 || size.y == 0
 		}
+
+		fn coverage(&self) -> DAffine2 {
+			self.coverage
+		}
 	}
 
 	impl Raster<GPU> {
 		pub fn new_gpu(texture: impl Into<Texture>) -> Self {
-			Self::new(GPU { texture: Some(texture.into()) })
+			Self::new(GPU {
+				texture: Some(texture.into()),
+				coverage: DAffine2::IDENTITY,
+			})
+		}
+
+		/// The same pixels covering the region of the item's local space that `coverage` maps the unit square onto.
+		pub fn with_coverage(mut self, coverage: DAffine2) -> Self {
+			self.coverage = coverage;
+			self
 		}
 
 		pub fn texture(&self) -> Option<&Texture> {
@@ -435,7 +460,9 @@ where
 		}
 
 		let unit_rectangle = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
-		RenderBoundingBox::Rectangle((transform * unit_rectangle).bounding_box())
+		let [start, end] = (transform * unit_rectangle).bounding_box();
+		let [covered_start, covered_end] = (transform * self.coverage() * unit_rectangle).bounding_box();
+		RenderBoundingBox::Rectangle([start.min(covered_start), end.max(covered_end)])
 	}
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {

@@ -24,7 +24,7 @@ fn channels_to_image(
 	#[expose] alpha: Item<Raster<GPU>>,
 	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> Result<Item<Raster<GPU>>, Interrupt> {
-	// Each channel is placed by its transform into their `union_frame`, which takes the red channel's other attributes, and gives its luminance weighted by its alpha.
+	// Each channel is placed by its transform into their `union_frame`, which takes the red channel's attributes with the frame as its coverage, and gives its luminance weighted by its alpha.
 	// An empty channel gives zero, or full opacity for the alpha channel.
 	let channels = [red, green, blue, alpha];
 	if channels.iter().all(|channel| channel.element().is_empty()) {
@@ -35,9 +35,9 @@ fn channels_to_image(
 	let raster = run_raster_kernel(&CombineChannels {}, frame.kernel_inputs(&channels.each_ref().map(Item::element)), frame.size, pipeline.element())?;
 
 	let [red, ..] = channels;
-	let (_, mut attributes) = red.into_parts();
-	attributes.insert(ATTR_TRANSFORM, frame.transform);
-	Ok(Item::from_parts(raster, attributes))
+	let red_transform: DAffine2 = red.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let (_, attributes) = red.into_parts();
+	Ok(Item::from_parts(raster.with_coverage(red_transform.inverse() * frame.transform), attributes))
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMask"))]
@@ -69,8 +69,9 @@ fn mask(
 	};
 	let raster = run_raster_kernel(&kernel, frame.kernel_inputs(&[image.element(), stencil.element()]), frame.size, pipeline.element())?;
 
+	let coverage = image.element().coverage();
 	let (_, attributes) = image.into_parts();
-	Ok(Item::from_parts(raster, attributes))
+	Ok(Item::from_parts(raster.with_coverage(coverage), attributes))
 }
 
 #[node_macro::node(category(""))]
@@ -107,9 +108,9 @@ fn extend_image_to_bounds(
 	};
 	let raster = run_raster_kernel(&kernel, frame.kernel_inputs(&[image.element()]), frame.size, pipeline.element())?;
 
-	let (_, mut attributes) = image.into_parts();
-	attributes.insert(ATTR_TRANSFORM, transform);
-	Ok(Item::from_parts(raster, attributes))
+	let image_logical_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let (_, attributes) = image.into_parts();
+	Ok(Item::from_parts(raster.with_coverage(image_logical_transform.inverse() * transform), attributes))
 }
 
 gpu_params! {
@@ -257,12 +258,14 @@ fn noise_pattern(
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
+	// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
+	const CLIPPING_SQUARE_SIZE: f64 = 100.;
+	let logical_transform = if clip { DAffine2::from_scale(DVec2::splat(CLIPPING_SQUARE_SIZE)) } else { DAffine2::IDENTITY };
+
 	let mut size = viewport_bounds.size();
 	let mut offset = viewport_bounds.start;
 	if clip {
-		// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
-		const CLIPPING_SQUARE_SIZE: f64 = 100.;
-		let image_bounds = Bbox::from_transform(DAffine2::from_scale(DVec2::splat(CLIPPING_SQUARE_SIZE))).to_axis_aligned_bbox();
+		let image_bounds = Bbox::from_transform(logical_transform).to_axis_aligned_bbox();
 		let intersection = viewport_bounds.intersect(&image_bounds);
 
 		offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
@@ -271,7 +274,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Ok(Item::default());
+		return Ok(Item::default().with_attribute(ATTR_TRANSFORM, logical_transform));
 	}
 
 	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -280,7 +283,7 @@ fn noise_pattern(
 	let width = (size.x * footprint_scale.x) as u32;
 	let height = (size.y * footprint_scale.y) as u32;
 	if width == 0 || height == 0 {
-		return Ok(Item::default());
+		return Ok(Item::default().with_attribute(ATTR_TRANSFORM, logical_transform));
 	}
 
 	let corner = offset.as_vec2().to_array();
@@ -290,7 +293,7 @@ fn noise_pattern(
 	if noise_type == NoiseType::WhiteNoise {
 		let kernel = WhiteNoise { corner, texel, seed: seed as u32 };
 		let raster = run_raster_kernel(&kernel, Vec::new(), output_size, pipeline.element())?;
-		return Ok(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, transform));
+		return Ok(Item::new_from_element(raster.with_coverage(logical_transform.inverse() * transform)).with_attribute(ATTR_TRANSFORM, logical_transform));
 	}
 
 	let domain_warp_type = match domain_warp_type {
@@ -351,7 +354,7 @@ fn noise_pattern(
 	};
 	let raster = run_raster_kernel(&kernel, Vec::new(), output_size, pipeline.element())?;
 
-	Ok(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, transform))
+	Ok(Item::new_from_element(raster.with_coverage(logical_transform.inverse() * transform)).with_attribute(ATTR_TRANSFORM, logical_transform))
 }
 
 gpu_params! {
@@ -439,7 +442,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send, #[scope(raster_kernel_pipeline:
 	};
 	let raster = run_raster_kernel(&kernel, Vec::new(), UVec2::new(width, height), pipeline.element())?;
 
-	Ok(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)))
+	Ok(Item::new_from_element(raster.with_coverage(DAffine2::from_translation(offset) * DAffine2::from_scale(size))))
 }
 
 gpu_params! {

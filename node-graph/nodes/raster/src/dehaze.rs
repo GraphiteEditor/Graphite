@@ -57,7 +57,7 @@ async fn dehaze(
 	};
 	let dehazed = run_raster_kernel(&recover, vec![dehaze_input(&coefficients), dehaze_input(&raster)], size, pipeline)?;
 
-	Ok(Item::from_parts(dehazed, attributes))
+	Ok(Item::from_parts(dehazed.with_coverage(raster.coverage()), attributes))
 }
 
 fn pending_dehaze(image_frame: &Item<Raster<GPU>>, _strength: &Item<f64>, _pipeline: &Item<WgpuPipelineCache>) -> Item<Raster<GPU>> {
