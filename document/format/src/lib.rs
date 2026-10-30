@@ -16,7 +16,7 @@ use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{Delta, HistoryMetadata, HotOp, PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::ResourceHash;
@@ -52,6 +52,8 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
 /// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
+/// One fact per line, so recording one only appends.
+pub const METADATA_CODEC: Codec = Codec::JsonLines;
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
@@ -75,6 +77,8 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
 	/// and synchronous.
 	pub(crate) manifest: Manifest,
+	/// See [`HistoryMetadata`].
+	pub(crate) metadata: HistoryMetadata,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
 	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
@@ -136,6 +140,10 @@ impl<L: Layout> Gdd<L> {
 			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
 			false => SessionState::default(),
 		};
+		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
+			true => HistoryMetadata::fold(io::iter_lenient(&working, layout.metadata_basename(), METADATA_CODEC).await?),
+			false => HistoryMetadata::default(),
+		};
 
 		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
 		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
@@ -173,6 +181,7 @@ impl<L: Layout> Gdd<L> {
 			layout,
 			manifest,
 			view_settings: session_state.view_settings,
+			metadata,
 			network_view_settings: session_state.network_view_settings,
 		})
 	}
@@ -199,6 +208,7 @@ impl<L: Layout> Gdd<L> {
 			layout,
 			manifest,
 			view_settings: std::collections::BTreeMap::new(),
+			metadata: HistoryMetadata::default(),
 			network_view_settings: std::collections::BTreeMap::new(),
 		})
 	}
