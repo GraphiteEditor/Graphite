@@ -12,6 +12,8 @@ pub struct NodeSource {
 	pub version: u32,
 	pub function: String,
 	pub file: PathBuf,
+	/// The parameters and output as written, without their attributes. Comparing it tells whether stored inputs still fit.
+	pub signature: String,
 }
 
 /// Every node in a crate under `root` with a `src/lib.rs`. Files that don't parse are skipped, since they don't build either.
@@ -129,10 +131,21 @@ fn node_source(function: &syn::ItemFn, file: &Path, module_path: &[String]) -> O
 	}
 
 	let function_name = function.sig.ident.to_string();
+	let parameters = function.sig.inputs.iter().map(|parameter| match parameter {
+		syn::FnArg::Typed(typed) => {
+			let (pattern, ty) = (&typed.pat, &typed.ty);
+			quote::quote!(#pattern: #ty).to_string()
+		}
+		syn::FnArg::Receiver(receiver) => quote::quote!(#receiver).to_string(),
+	});
+	let output = &function.sig.output;
+	let signature = format!("({}) {}", parameters.collect::<Vec<_>>().join(", "), quote::quote!(#output));
+
 	Some(NodeSource {
 		identifier: format!("{path}::{}Node", function_name.to_case(Case::Pascal)),
 		version,
 		function: function_name,
 		file: file.to_path_buf(),
+		signature,
 	})
 }

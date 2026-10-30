@@ -5,6 +5,7 @@
 //! A new version declares again only the types that changed, plus every type reaching one, and re-exports the rest from
 //! the previous version. So format steps convert only what changed, and old versions never depend on the live crate.
 
+mod api;
 mod lineage;
 mod nodes;
 mod plan;
@@ -31,6 +32,9 @@ fn usage() {
 	println!("<command>:");
 	println!("  check       Fail if the stored types changed since the latest frozen format version, or a node's version");
 	println!("              has no migration leading to it");
+	println!("  check --baseline <git ref>");
+	println!("              Also fail if a node's API changed since that commit without a version bump, or a node disappeared");
+	println!("              without a migration");
 	println!("  snapshot    Freeze the stored types as the next format version, with the step from the previous one");
 	println!("  new         Scaffold every step missing between a node's newest migration and its current `version(N)`");
 	println!("  new <identifier>");
@@ -50,7 +54,11 @@ fn main() -> ExitCode {
 
 	let arguments: Vec<String> = std::env::args().skip(1).collect();
 	let result = match arguments.first().map(String::as_str) {
-		Some("check") => check(&workspace),
+		Some("check") => match &arguments[1..] {
+			[] => check(&workspace),
+			[flag, baseline] if flag == "--baseline" => check(&workspace).and_then(|()| api::check_against(&workspace, baseline)),
+			_ => Err("expected `check` or `check --baseline <git ref>`".to_string()),
+		},
 		Some("snapshot") => snapshot(&workspace),
 		Some(command @ ("new" | "rename")) => scaffold::scaffold(&workspace, command, &arguments[1..]),
 		Some("help" | "--help") => {
