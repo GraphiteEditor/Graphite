@@ -5,6 +5,7 @@ use core_types::color::float_to_srgb_u8;
 use core_types::color::*;
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
+use std::borrow::Cow;
 use std::vec::Vec;
 
 mod base64_serde {
@@ -199,10 +200,10 @@ impl Image<Color> {
 	}
 
 	/// The image shrunk by half along each axis `times` times, averaging each block of pixels with their colors weighted by their alpha.
-	/// Blocks at the right and bottom edges average only the pixels they have. O(width × height).
-	pub fn halved(&self, times: u32) -> Self {
+	/// Blocks at the right and bottom edges average only the pixels they have. O(width × height), or O(1) borrowing the image as it is when `times` is zero.
+	pub fn halved(&self, times: u32) -> Cow<'_, Self> {
 		if times == 0 {
-			return self.clone();
+			return Cow::Borrowed(self);
 		}
 
 		let factor = 1_u32 << times.min(31);
@@ -231,7 +232,7 @@ impl Image<Color> {
 			}
 		}
 
-		Image { width, height, data }
+		Cow::Owned(Image { width, height, data })
 	}
 
 	pub fn to_png(&self) -> Vec<u8> {
@@ -413,7 +414,7 @@ mod test {
 		assert_eq!((halved.width, halved.height), (2, 1), "the odd column becomes a block of its own");
 		assert_eq!(halved.data[0], Color::from_rgbaf32_unchecked(1., 0., 0., 0.5));
 		assert_eq!(halved.data[1], red);
-		assert_eq!(image.halved(0), image);
+		assert!(matches!(image.halved(0), Cow::Borrowed(borrowed) if *borrowed == image));
 	}
 
 	#[test]

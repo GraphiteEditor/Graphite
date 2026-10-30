@@ -149,9 +149,9 @@ fn create_context(
 		..logical_viewport
 	};
 
-	// Rounded up so no image is sent at less than the resolution the screen shows it at
+	// Rounded up so no image is sent below its on-screen resolution, with a tolerance for float noise at exact powers of two
 	let canvas_image_scale = match render_output_type {
-		RenderOutputTypeRequest::Svg => footprint.scale_magnitudes().max_element().log2().ceil().exp2(),
+		RenderOutputTypeRequest::Svg => (footprint.scale_magnitudes().max_element().log2() - 1e-9).ceil().exp2(),
 		RenderOutputTypeRequest::Vello => 0.,
 	};
 
