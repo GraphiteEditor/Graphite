@@ -35,8 +35,8 @@ pub struct SyncMessageContext<'a> {
 /// whenever a packet arrives, and applies remote changes to the interface.
 #[derive(Debug, Default, ExtractField)]
 pub struct SyncMessageHandler {
-	/// The document being created to join a session link, with that link.
-	pending_join: Option<(DocumentId, SessionToken)>,
+	/// The documents being created to join a session link, each with its link.
+	pending_joins: HashMap<DocumentId, SessionToken>,
 	polling: bool,
 	/// Each connected document's room inbox, with the generation of its connection.
 	incoming: HashMap<DocumentId, (u32, Incoming)>,
@@ -100,7 +100,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					}
 				};
 				let document_id = DocumentId(generate_uuid());
-				self.pending_join = Some((document_id, token));
+				self.pending_joins.insert(document_id, token);
 				responses.add(PortfolioMessage::NewDocumentWithId {
 					name: "Shared session".into(),
 					document_id,
@@ -112,7 +112,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				// Every document polls, shared or not, since retirement runs on the frame tick
 				self.start_polling(responses);
-				if let Some((_, token)) = self.pending_join.take_if(|(join_id, _)| *join_id == document_id) {
+				if let Some(token) = self.pending_joins.remove(&document_id) {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 					let incoming = room.incoming();
 					gdd.join(room, UserId(preferences.user_id));
@@ -767,4 +767,33 @@ fn display_name(remote: &RemotePeer, metadata: &HistoryMetadata) -> String {
 
 fn is_anonymous(remote: &RemotePeer, metadata: &HistoryMetadata) -> bool {
 	metadata.user_name(remote.user).is_none() && remote.name.is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_second_join_does_not_drop_the_first() {
+		let mut sync = SyncMessageHandler::default();
+		let (resource_storage, preferences, ipp, viewport, tools) = Default::default();
+		let mut documents = HashMap::new();
+		for byte in [1, 2] {
+			let context = SyncMessageContext {
+				documents: &mut documents,
+				active_document_id: None,
+				resource_storage: &resource_storage,
+				preferences: &preferences,
+				ipp: &ipp,
+				viewport: &viewport,
+				tools: &tools,
+			};
+			let token = SessionToken([byte; 16]).to_string();
+			sync.process_message(SyncMessage::Join { token }, &mut VecDeque::new(), context);
+		}
+
+		let mut tokens: Vec<_> = sync.pending_joins.values().copied().collect();
+		tokens.sort_by_key(|token| token.0);
+		assert_eq!(tokens, [SessionToken([1; 16]), SessionToken([2; 16])]);
+	}
 }
