@@ -2165,10 +2165,13 @@ dependencies = [
  "dyn-any",
  "glam",
  "graphene-hash",
+ "graphene-resource",
  "node-macro",
+ "num_enum",
  "raster-types",
  "serde",
  "serde_json",
+ "tsify",
  "vector-types",
  "wasm-bindgen",
 ]
@@ -4622,6 +4625,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d6831663a5098ea164f89cff59c6284e95f4e3c76ce9848d4529f5ccca9bde"
 
 [[package]]
+name = "raster-kernels"
+version = "0.0.0"
+dependencies = [
+ "core-types",
+ "glam",
+ "graphene-resource",
+ "graphic-types",
+ "thiserror 2.0.18",
+ "vector-types",
+]
+
+[[package]]
 name = "raster-nodes"
 version = "0.0.0"
 dependencies = [
@@ -4634,8 +4649,10 @@ dependencies = [
  "graphene-core",
  "graphene-hash",
  "graphene-resource",
+ "graphic-types",
  "node-macro",
  "num_enum",
+ "raster-kernels",
  "raster-types",
  "serde",
  "thiserror 2.0.18",
@@ -6953,9 +6970,12 @@ dependencies = [
  "futures",
  "glam",
  "graphene-application-io",
+ "graphene-resource",
+ "graphic-types",
  "half",
  "log",
  "node-macro",
+ "raster-kernels",
  "raster-types",
  "rendering",
  "thiserror 2.0.18",

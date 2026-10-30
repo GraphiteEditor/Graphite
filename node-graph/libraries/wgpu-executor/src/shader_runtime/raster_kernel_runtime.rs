@@ -9,21 +9,23 @@ use std::hash::{Hash, Hasher};
 use std::sync::Mutex;
 use wgpu::util::BufferInitDescriptor;
 
+pub use raster_kernels::RasterKernelLookup;
+
 /// An input raster of a kernel, with the affine mapping output pixel coordinates to the input's texel coordinates.
 pub struct RasterKernelInput<'a> {
 	pub raster: &'a Raster<GPU>,
 	pub output_to_texel: DAffine2,
 }
 
-/// A lookup table of a kernel, bound as an `Rgba32Float` texture after its inputs.
-pub enum RasterKernelLookup<'a> {
-	/// A `width x 1` 2D texture of at most 4096 entries.
-	Lut1d(&'a [Color]),
-	/// A `size x size x size` 3D texture, its entries ordered with x fastest, then y, then z.
-	Lut3d { size: u32, data: &'a [Color] },
+/// How a lookup table is uploaded as a texture.
+trait LookupTexture {
+	fn data(&self) -> &[Color];
+	fn extent(&self) -> wgpu::Extent3d;
+	fn dimension(&self) -> (wgpu::TextureDimension, wgpu::TextureViewDimension);
+	fn content_hash(&self) -> u64;
 }
 
-impl RasterKernelLookup<'_> {
+impl LookupTexture for RasterKernelLookup<'_> {
 	fn data(&self) -> &[Color] {
 		match self {
 			Self::Lut1d(data) | Self::Lut3d { data, .. } => data,

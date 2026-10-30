@@ -261,48 +261,6 @@ fn blend_luminosity(color: vec4<f32>, c_s: vec4<f32>) -> vec4<f32> {
 	return from_gamma_srgb_channels(vec4<f32>(blended, c_s.a));
 }
 
-fn alpha_blend(color: vec4<f32>, other: vec4<f32>) -> vec4<f32> {
-	let under_weight = color.a * (1. - other.a);
-	let alpha = other.a + under_weight;
-	if alpha == 0. {
-		return vec4<f32>(0.);
-	}
-	return vec4<f32>((other.rgb * other.a + color.rgb * under_weight) / alpha, alpha);
-}
-
-fn alpha_add(color: vec4<f32>, other: vec4<f32>) -> vec4<f32> {
-	return vec4<f32>(color.rgb, clamp(color.a + other.a, 0., 1.));
-}
-
-fn alpha_subtract(color: vec4<f32>, other: vec4<f32>) -> vec4<f32> {
-	return vec4<f32>(color.rgb, clamp(color.a - other.a, 0., 1.));
-}
-
-fn alpha_multiply(color: vec4<f32>, other: vec4<f32>) -> vec4<f32> {
-	return vec4<f32>(color.rgb, clamp(color.a * other.a, 0., 1.));
-}
-
-fn blend_colors(foreground: vec4<f32>, background: vec4<f32>, blend_mode: i32, opacity: f32) -> vec4<f32> {
-	var applied = vec4<f32>(0.);
-	switch blend_mode {
-		case BLEND_MODE_ERASE: {
-			applied = alpha_subtract(background, foreground);
-		}
-		case BLEND_MODE_RESTORE: {
-			applied = alpha_add(background, foreground);
-		}
-		case BLEND_MODE_MULTIPLY_ALPHA: {
-			applied = alpha_multiply(background, foreground);
-		}
-		default: {
-			let target_color = apply_blend_mode(foreground, background, blend_mode);
-			return alpha_blend(background, vec4<f32>(target_color.rgb, target_color.a * opacity));
-		}
-	}
-
-	return vec4<f32>(background.rgb, background.a + (applied.a - background.a) * opacity);
-}
-
 fn apply_blend_mode(foreground: vec4<f32>, background: vec4<f32>, blend_mode: i32) -> vec4<f32> {
 	switch blend_mode {
 		case BLEND_MODE_DARKER_COLOR: {

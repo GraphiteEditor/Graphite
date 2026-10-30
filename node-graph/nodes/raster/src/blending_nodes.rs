@@ -1,9 +1,10 @@
-use crate::raster_kernel::{Adjust, MapColor, Wgsl, raster_kernel_pipeline};
-use crate::{gpu_param_enum, gpu_params};
+use crate::raster_kernel::{Adjust, raster_kernel_pipeline};
+use core_types::Ctx;
+use core_types::Interrupt;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
-use core_types::{Ctx, Interrupt};
+use graphic_types::Adjustment;
 use raster_types::{GPU, Raster};
 use vector_types::Gradient;
 use wgpu_executor::WgpuPipelineCache;
@@ -50,36 +51,12 @@ fn color_overlay<T: Adjust>(
 	opacity: Item<f64>,
 	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
 ) -> Result<Item<T>, Interrupt> {
-	let kernel = ColorOverlay {
+	let adjustment = Adjustment::ColorOverlay {
 		color: color.into_element(),
 		blend_mode: blend_mode.into_element(),
-		opacity: (opacity.into_element() / 100.) as f32,
+		opacity: opacity.into_element(),
 	};
-	Ok(image.adjust(&kernel, pipeline.element())?)
-}
-
-gpu_param_enum!(i32: BlendMode);
-
-gpu_params! {
-	#[derive(Clone)]
-	struct ColorOverlay {
-		color: Color,
-		blend_mode: BlendMode,
-		opacity: f32,
-	}
-}
-
-impl MapColor for ColorOverlay {
-	fn map_cpu(&self, pixel: Color) -> Color {
-		let overlay = apply_blend_mode(self.color, pixel, self.blend_mode);
-		let mix = |image: f32, overlay: f32| image + (overlay - image) * self.opacity;
-
-		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
-	}
-
-	fn wgsl() -> Wgsl {
-		Wgsl::function(format!("{}\n{}", include_str!("wgsl/blending.wgsl"), include_str!("wgsl/color_overlay.wgsl")))
-	}
+	Ok(image.adjust(&adjustment, pipeline.element())?)
 }
 
 #[cfg(test)]

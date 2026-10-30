@@ -18,6 +18,8 @@ workspace = true
 core-types = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 graphene-application-io = { workspace = true, features = ["wgpu"] }
+graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 rendering = { workspace = true }
 dyn-any = { workspace = true }
 node-macro = { workspace = true }
@@ -34,3 +36,6 @@ vello_gpu = { workspace = true }
 bytemuck = { workspace = true }
 thiserror = { workspace = true }
 half = { workspace = true }
+
+[dev-dependencies]
+graphene-resource = { workspace = true }

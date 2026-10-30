@@ -1,6 +1,7 @@
 mod buffer;
 mod context;
 mod pipeline;
+pub mod raster_kernel;
 pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
