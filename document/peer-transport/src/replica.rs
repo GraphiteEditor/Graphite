@@ -170,10 +170,14 @@ impl Replica {
 		self.resync(target)
 	}
 
-	/// Queue pending broadcasts for causal delivery, dropping those that can never come up.
+	/// Queue pending broadcasts for causal delivery after those already held, dropping any that can never come up.
 	fn hold_pending(&mut self, pending: Vec<(PeerId, Broadcast)>) {
-		let worth_holding: Vec<(PeerId, Broadcast)> = pending.into_iter().filter(|(sender, broadcast)| self.worth_holding(*sender, broadcast)).collect();
-		self.held.extend(worth_holding);
+		let held = std::mem::take(&mut self.held);
+		for (sender, broadcast) in held.into_iter().chain(pending) {
+			if self.worth_holding(sender, &broadcast) {
+				self.held.push((sender, broadcast));
+			}
+		}
 	}
 
 	/// Take the host role and tell the room. Broadcasts pending for a sync that now never comes are held for delivery,
@@ -738,13 +742,15 @@ impl Replica {
 					return Ok(());
 				};
 				let sender = remote.peer;
+				if !self.worth_holding(sender, &broadcast) {
+					log::warn!("Dropping broadcast {}:{} from {sender:?}, which can never be delivered", broadcast.epoch, broadcast.seq);
+					return Ok(());
+				}
 				match &mut self.sync {
 					SyncState::AwaitingSync { pending } => pending.push((sender, broadcast)),
 					SyncState::Synced => {
-						if self.worth_holding(sender, &broadcast) {
-							self.held.push((sender, broadcast));
-							self.deliver_held(target, events)?;
-						}
+						self.held.push((sender, broadcast));
+						self.deliver_held(target, events)?;
 					}
 				}
 			}
@@ -896,15 +902,31 @@ impl Replica {
 		broadcast.seen.iter().all(|&mark| mark.peer == sender || self.has_delivered(mark))
 	}
 
-	/// Whether a broadcast can still come up for delivery.
+	/// Whether a broadcast can still come up for delivery. It must directly follow the sender's last one delivered or
+	/// queued here, since its link is ordered and a gap or a repeat never resolves.
 	fn worth_holding(&self, sender: PeerId, broadcast: &Broadcast) -> bool {
-		self.delivered.get(&sender).is_none_or(|progress| progress.epoch == broadcast.epoch && broadcast.seq > progress.seq)
+		let Some(progress) = self.delivered.get(&sender).filter(|progress| progress.epoch == broadcast.epoch) else {
+			return false;
+		};
+		let pending = match &self.sync {
+			SyncState::AwaitingSync { pending } => pending.as_slice(),
+			SyncState::Synced => &[],
+		};
+		let last = self
+			.held
+			.iter()
+			.chain(pending)
+			.filter(|(queued_sender, queued)| *queued_sender == sender && queued.epoch == broadcast.epoch)
+			.fold(progress.seq, |last, (_, queued)| last.max(queued.seq));
+
+		last.checked_add(1) == Some(broadcast.seq)
 	}
 
-	/// Whether a broadcast's dependency is met. One that never can be counts as met rather than stalling its sender.
+	/// Whether a broadcast's dependency is met. One that never can be counts as met rather than stalling its sender,
+	/// so every mark of this peer's own is met: none can be ahead of what it sent.
 	fn has_delivered(&self, mark: PeerSeq) -> bool {
 		if mark.peer == self.peer {
-			return mark.epoch != self.epoch || mark.seq <= self.seq;
+			return true;
 		}
 		match self.delivered.get(&mark.peer) {
 			Some(progress) if progress.epoch != mark.epoch => true,
@@ -939,14 +961,27 @@ mod tests {
 		bare
 	}
 
-	fn hello(seq: u64) -> SyncPacket {
+	fn hello_as(peer: PeerId, role: Role, seq: u64) -> SyncPacket {
 		SyncPacket::Hello {
-			peer: PeerId(2),
-			user: UserId(2),
-			role: Role::Guest,
+			peer,
+			user: UserId(peer.0),
+			role,
 			epoch: 1,
 			seq,
 		}
+	}
+
+	fn hello(seq: u64) -> SyncPacket {
+		hello_as(PeerId(2), Role::Guest, seq)
+	}
+
+	fn broadcast(seq: u64, seen: Vec<PeerSeq>) -> SyncPacket {
+		SyncPacket::Broadcast(Broadcast {
+			epoch: 1,
+			seq,
+			seen,
+			body: BroadcastBody::HotOps(Vec::new()),
+		})
 	}
 
 	fn hosted_room() -> (MockNetwork, Replica, TransportPeerId, Session) {
@@ -957,21 +992,23 @@ mod tests {
 		(network, Replica::host(endpoint, HOST_PEER, UserId(1)), link, Session::with_peer(HOST_PEER))
 	}
 
-	#[test]
-	fn a_hello_at_the_largest_seq_does_not_overflow() {
+	/// A host holding one broadcast from peer 2 that waits on peer 3's seq 5, with both greeted from their own links.
+	fn host_holding_one() -> (MockNetwork, Replica, TransportPeerId, Session, MockEndpoint) {
 		let (mut network, mut host, host_link, mut session) = hosted_room();
-		let mut first_link = connect_bare_peer(&mut network, &mut host, &mut session);
-		let gapped = Broadcast {
-			epoch: 1,
-			seq: 2,
-			seen: Vec::new(),
-			body: BroadcastBody::HotOps(Vec::new()),
-		};
-		first_link.send(host_link, &hello(0)).unwrap();
-		first_link.send(host_link, &SyncPacket::Broadcast(gapped)).unwrap();
+		let mut sender = connect_bare_peer(&mut network, &mut host, &mut session);
+		let mut third = connect_bare_peer(&mut network, &mut host, &mut session);
+		third.send(host_link, &hello_as(PeerId(3), Role::Guest, 0)).unwrap();
+		sender.send(host_link, &hello(0)).unwrap();
+		sender.send(host_link, &broadcast(1, vec![PeerSeq { peer: PeerId(3), epoch: 1, seq: 5 }])).unwrap();
 		network.deliver_all();
 		host.poll(&mut session);
-		assert_eq!(host.held_broadcasts(), 1, "the broadcast waits for seq 1");
+		assert_eq!(host.held_broadcasts(), 1, "the broadcast waits for peer 3");
+		(network, host, host_link, session, sender)
+	}
+
+	#[test]
+	fn a_hello_at_the_largest_seq_does_not_overflow() {
+		let (mut network, mut host, host_link, mut session, _sender) = host_holding_one();
 
 		let mut second_link = connect_bare_peer(&mut network, &mut host, &mut session);
 		second_link.send(host_link, &hello(u64::MAX)).unwrap();
@@ -981,24 +1018,44 @@ mod tests {
 	}
 
 	#[test]
+	fn a_repeated_or_skipping_broadcast_is_never_held() {
+		let (mut network, mut host, host_link, mut session, mut sender) = host_holding_one();
+
+		for seq in [1, 1, 3, 0, u64::MAX] {
+			sender.send(host_link, &broadcast(seq, Vec::new())).unwrap();
+		}
+		network.deliver_all();
+		host.poll(&mut session);
+		assert_eq!(host.held_broadcasts(), 1, "only the next seq can ever be delivered");
+
+		sender.send(host_link, &broadcast(2, Vec::new())).unwrap();
+		network.deliver_all();
+		host.poll(&mut session);
+		assert_eq!(host.held_broadcasts(), 2, "the next seq waits behind the first");
+	}
+
+	#[test]
+	fn a_mark_ahead_of_our_own_seq_does_not_hold_a_broadcast() {
+		let (mut network, mut host, host_link, mut session) = hosted_room();
+		let mut sender = connect_bare_peer(&mut network, &mut host, &mut session);
+		let ahead = PeerSeq {
+			peer: HOST_PEER,
+			epoch: host.epoch,
+			seq: u64::MAX,
+		};
+		sender.send(host_link, &hello(0)).unwrap();
+		sender.send(host_link, &broadcast(1, vec![ahead])).unwrap();
+		network.deliver_all();
+		host.poll(&mut session);
+		assert_eq!(host.held_broadcasts(), 0, "nobody can have seen more of the host than it sent");
+	}
+
+	#[test]
 	fn a_hello_claiming_our_own_id_is_ignored() {
 		let (mut network, mut host, host_link, mut session) = hosted_room();
 		let mut impostor = connect_bare_peer(&mut network, &mut host, &mut session);
-		let own_hello = SyncPacket::Hello {
-			peer: HOST_PEER,
-			user: UserId(2),
-			role: Role::Guest,
-			epoch: 1,
-			seq: 0,
-		};
-		let broadcast = Broadcast {
-			epoch: 1,
-			seq: 1,
-			seen: Vec::new(),
-			body: BroadcastBody::HotOps(Vec::new()),
-		};
-		impostor.send(host_link, &own_hello).unwrap();
-		impostor.send(host_link, &SyncPacket::Broadcast(broadcast)).unwrap();
+		impostor.send(host_link, &hello_as(HOST_PEER, Role::Guest, 0)).unwrap();
+		impostor.send(host_link, &broadcast(1, Vec::new())).unwrap();
 		network.deliver_all();
 		host.poll(&mut session);
 
