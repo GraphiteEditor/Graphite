@@ -229,6 +229,7 @@ fn session_state_encodes_identically() {
 		network_view_settings: BTreeMap::from([(ROOT_NETWORK, BTreeMap::from([("ui::nav".to_string(), Value::Float(2.))]))]),
 		retired_marks: session.retired_marks().clone(),
 		clock_counter: session.clock_counter(),
+		shared: false,
 	};
 
 	assert_eq!(through_frozen_json::<SessionState, latest::SessionState>(&state), serde_json::to_string(&state).unwrap());

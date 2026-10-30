@@ -43,10 +43,23 @@ pub mod rev_attr {
 	pub const TAG_PREFIX: &str = "tag:";
 }
 
-/// The standing fact for each subject and key. Folding the same facts in any order gives the same record.
-#[derive(Clone, Debug, Default, PartialEq)]
+/// The standing fact for each subject and key. Folding the same facts in any order gives the same record, so it travels as its facts.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(from = "Vec<MetadataFact>", into = "Vec<MetadataFact>")]
 pub struct HistoryMetadata {
 	facts: BTreeMap<Subject, BTreeMap<String, MetadataFact>>,
+}
+
+impl From<Vec<MetadataFact>> for HistoryMetadata {
+	fn from(facts: Vec<MetadataFact>) -> Self {
+		Self::fold(facts)
+	}
+}
+
+impl From<HistoryMetadata> for Vec<MetadataFact> {
+	fn from(record: HistoryMetadata) -> Self {
+		record.facts().cloned().collect()
+	}
 }
 
 impl HistoryMetadata {
@@ -107,13 +120,20 @@ impl HistoryMetadata {
 		Some(MetadataFact { subject, key, value, stamp })
 	}
 
-	/// Take on a fact unless the standing one has a later stamp, or the same stamp and a value that encodes no lower.
-	pub fn absorb(&mut self, fact: MetadataFact) {
+	/// Take on a fact unless the standing one has a later stamp, or the same stamp and a value that encodes no lower. Returns whether it landed.
+	pub fn absorb(&mut self, fact: MetadataFact) -> bool {
 		let attributes = self.facts.entry(fact.subject).or_default();
 		let stands = |mine: &MetadataFact| mine.stamp.cmp(&fact.stamp).then_with(|| mine.value.to_string().cmp(&fact.value.to_string())).is_ge();
-		if !attributes.get(&fact.key).is_some_and(stands) {
-			attributes.insert(fact.key.clone(), fact);
+		if attributes.get(&fact.key).is_some_and(stands) {
+			return false;
 		}
+		attributes.insert(fact.key.clone(), fact);
+		true
+	}
+
+	/// Take on another copy's record. Returns the facts that landed.
+	pub fn merge(&mut self, other: &Self) -> Vec<MetadataFact> {
+		other.facts().filter(|fact| self.absorb((*fact).clone())).cloned().collect()
 	}
 }
 
@@ -143,6 +163,17 @@ mod tests {
 		assert_eq!(later, HistoryMetadata::fold([name("Ada", 10), name("Bea", 20)]));
 		assert_eq!(later.user_name(UserId(1)), Some("Bea"));
 		assert_eq!(HistoryMetadata::fold([name("Ada", 10), name("Bea", 10)]), HistoryMetadata::fold([name("Bea", 10), name("Ada", 10)]));
+	}
+
+	#[test]
+	fn merging_copies_agrees_either_way_and_only_once() {
+		let a = HistoryMetadata::fold([fact(ADA, user_attr::NAME, "Ada", 10)]);
+		let b = HistoryMetadata::fold([fact(ADA, user_attr::NAME, "Bea", 20)]);
+		let (mut ab, mut ba) = (a.clone(), b.clone());
+		assert_eq!(ab.merge(&b).len(), 1);
+		assert!(ba.merge(&a).is_empty());
+		assert_eq!(ab, ba);
+		assert!(ab.merge(&b).is_empty(), "merging again changes nothing");
 	}
 
 	#[test]

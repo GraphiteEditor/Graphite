@@ -1,7 +1,9 @@
-//! Peers exchanging retired history: syncing, following and merging lines, moving the shared head, and undo against what
-//! other peers hold.
+//! Peers exchanging retired history, moving the shared head, and undoing against what other peers hold.
 
-use crate::{CrdtError, Delta, History, Implementation, MergeOutcome, Network, NetworkId, Node, NodeId, PeerId, RegistryDelta, ResourceEntry, ResourceHash, ResourceId, Rev, Session, UserId, Value};
+use crate::{
+	AttributeDelta, CrdtError, Delta, History, HotOp, HotOpId, Implementation, InputSlot, MergeOutcome, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry,
+	ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId, Value,
+};
 use std::collections::HashSet;
 
 use super::bookkeeping::{add_network, set_attribute};
@@ -382,6 +384,465 @@ fn a_concurrent_remove_and_attribute_change_commute() {
 	assert_eq!(merged([&removal, &change]), merged([&change, &removal]));
 }
 
+fn sync_pair(peers: &mut [Session], from: usize, to: usize) -> MergeOutcome {
+	let known = peers[to].known_revs();
+	let deltas = peers[from].deltas_unknown_to(known);
+	peers[to].merge(deltas).expect("merge")
+}
+
+/// The retired snapshot with the hot log folded on top, which the working registry must equal.
+fn rebuilt_working(session: &Session) -> Registry {
+	let mut copy = session.clone();
+	copy.document.rebuild_working();
+	copy.document.working_registry
+}
+
+struct Lcg(u64);
+impl Lcg {
+	fn below(&mut self, bound: u64) -> u64 {
+		self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+		(self.0 >> 33) % bound
+	}
+}
+
+/// A local op valid under `Live` against `registry`. It only names entities this peer has seen and indices in range.
+fn local_op(rng: &mut Lcg, registry: &Registry) -> Option<RegistryDelta> {
+	let pick = |rng: &mut Lcg, ids: Vec<u64>| (!ids.is_empty()).then(|| ids[rng.below(ids.len() as u64) as usize]);
+	let mut live_networks: Vec<u64> = registry.networks.keys().map(|id| id.0).collect();
+	live_networks.sort_unstable();
+	let mut seen_networks: Vec<u64> = registry
+		.networks
+		.keys()
+		.chain(registry.removed_networks.iter().filter(|(_, m)| !m.placeholder).map(|(id, _)| id))
+		.map(|id| id.0)
+		.collect();
+	seen_networks.sort_unstable();
+	let mut live_nodes: Vec<u64> = registry.node_instances.keys().map(|id| id.0).collect();
+	live_nodes.sort_unstable();
+	let mut seen_nodes: Vec<u64> = registry
+		.node_instances
+		.keys()
+		.chain(registry.removed_nodes.iter().filter(|(_, m)| !m.placeholder).map(|(id, _)| id))
+		.map(|id| id.0)
+		.collect();
+	seen_nodes.sort_unstable();
+	let content = |id: u64| registry.node_or_removed(NodeId(id)).expect("seen");
+	let value = |rng: &mut Lcg| NodeInput::Value {
+		value: Value::from(serde_json::json!(rng.below(50))),
+		exposed: false,
+	};
+	let input = |rng: &mut Lcg| match pick(rng, live_nodes.clone()) {
+		Some(id) if rng.below(2) == 0 => NodeInput::Node { id: NodeId(id), index: 0 },
+		_ => value(rng),
+	};
+	let attribute = |rng: &mut Lcg, key: &str| AttributeDelta {
+		key: key.into(),
+		value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(50)))),
+	};
+	Some(match rng.below(9) {
+		0 | 1 => RegistryDelta::ChangeDocumentAttribute {
+			delta: {
+				let key = ["x", "y"][rng.below(2) as usize];
+				attribute(rng, key)
+			},
+		},
+		2 => {
+			let id = 1 + rng.below(3);
+			if registry.networks.contains_key(&NetworkId(id)) {
+				return None;
+			}
+			RegistryDelta::AddNetwork {
+				id: NetworkId(id),
+				network: Network::default(),
+			}
+		}
+		3 => {
+			let id = pick(rng, live_networks.clone())?;
+			RegistryDelta::RemoveNetwork {
+				id: NetworkId(id),
+				snapshot: registry.networks[&NetworkId(id)].clone(),
+			}
+		}
+		4 => {
+			let id = 1 + rng.below(4);
+			if registry.node_instances.contains_key(&NodeId(id)) {
+				return None;
+			}
+			let network = pick(rng, seen_networks.clone())?;
+			RegistryDelta::AddNode {
+				id: NodeId(id),
+				node: Node::new(NetworkId(network), Implementation::Network(NetworkId(network)), 1 + rng.below(2) as usize),
+			}
+		}
+		5 => {
+			let id = pick(rng, live_nodes.clone())?;
+			RegistryDelta::RemoveNode {
+				id: NodeId(id),
+				snapshot: registry.node_instances[&NodeId(id)].clone(),
+			}
+		}
+		6 => RegistryDelta::ChangeNodeAttribute {
+			id: NodeId(pick(rng, seen_nodes.clone())?),
+			delta: {
+				let key = ["name", "lock"][rng.below(2) as usize];
+				attribute(rng, key)
+			},
+		},
+		7 => {
+			let id = pick(rng, seen_nodes.clone())?;
+			let len = content(id).inputs().len() as u64;
+			if len == 0 {
+				return None;
+			}
+			RegistryDelta::ChangeNodeInput {
+				id: NodeId(id),
+				index: rng.below(len) as u32,
+				new_input: input(rng),
+			}
+		}
+		_ => {
+			let id = pick(rng, seen_nodes.clone())?;
+			let inputs = (0..1 + rng.below(3))
+				.map(|_| InputSlot {
+					input: input(rng),
+					timestamp: TimeStamp::ORIGIN,
+					attributes: Default::default(),
+				})
+				.collect();
+			RegistryDelta::SetNodeInputs { id: NodeId(id), inputs }
+		}
+	})
+}
+
+fn check_invariants(session: &Session, context: &str) {
+	assert_eq!(
+		session.retired_registry(),
+		&session.snapshot_from_history().unwrap(),
+		"{context}: retired snapshot is not the fold of the head's line"
+	);
+	assert_eq!(session.registry(), &rebuilt_working(session), "{context}: working registry is not snapshot + hot log");
+}
+
+/// A session rebuilt as a reopen does. It loads the retired snapshot, history, head, redo stack and node counter,
+/// then the hot sequence, clock and retired marks from `session.json`, then replays the hot log.
+fn reopened(s: &Session) -> Session {
+	let mut r = Session::load(
+		s.peer(),
+		s.user(),
+		s.retired_registry().clone(),
+		s.cloned_deltas(),
+		s.head_rev(),
+		s.redo_stack().to_vec(),
+		s.next_node_counter(),
+	);
+	r.restore_hot_sequence(s.last_hot_sequence());
+	r.absorb_retired_marks(s.retired_marks());
+	for hot_op in s.hot_log() {
+		r.replay_hot_op(hot_op.clone()).unwrap();
+	}
+	r.restore_clock_counter(s.clock_counter());
+	r
+}
+
+/// Undo `session` only if every delta it would take off the line is unknown to all `others` (the silent zone).
+fn undo_is_silent(session: &Session, others: &[&Session]) -> bool {
+	let mut probe = session.clone();
+	let before = probe.document.history.ancestors(probe.head_rev());
+	probe.undo().unwrap();
+	let after = probe.document.history.ancestors(probe.head_rev());
+	before.difference(&after).all(|rev| others.iter().all(|other| !other.document.history.contains(*rev)))
+}
+
+/// Three peers of different users stage, broadcast, retire, undo, redo, sync and reopen in random order.
+/// After every action the retired snapshot must be the fold of the head's line, and the working registry must be
+/// snapshot + hot log. A reopen must restore both exactly. After flushing and syncing to quiescence, all retired
+/// registries must be identical, stamps included.
+#[test]
+fn peers_keep_the_invariants_and_converge_under_random_undo_redo_sync_and_reopen() {
+	const PEERS: usize = 3;
+	for seed in 0..300u64 {
+		let mut rng = Lcg(seed.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ 0xD1B5);
+		let mut peers: Vec<Session> = (1..=PEERS as u64).map(|id| Session::with_peer(PeerId(id))).collect();
+		// Shared base so every peer has a boundary to undo back to.
+		step(&mut peers[0], set_attribute("base", 0));
+		for i in 1..PEERS {
+			sync_pair(&mut peers, 0, i);
+		}
+		let mut in_flight: Vec<Vec<HotOp>> = vec![Vec::new(); PEERS]; // hot ops on their way to peer i
+		let mut log = Vec::new();
+
+		for action in 0..50 {
+			let me = rng.below(PEERS as u64) as usize;
+			let kind = rng.below(12);
+			log.push(format!("{me}:{kind}"));
+			let context = format!("seed {seed}, action {action}, trace {log:?}");
+			match kind {
+				0..=2 => {
+					let ops: Vec<RegistryDelta> = (0..1 + rng.below(3)).filter_map(|_| local_op(&mut rng, peers[me].registry())).collect();
+					if let Ok(staged) = peers[me].stage_ops(ops) {
+						for hot_op in staged {
+							for other in (0..PEERS).filter(|&other| other != me) {
+								if rng.below(4) == 0 {
+									in_flight[other].push(hot_op.clone());
+								} else {
+									peers[other].replay_hot_op(hot_op.clone()).unwrap();
+								}
+							}
+						}
+					}
+				}
+				3 | 4 => {
+					let stamps: Vec<TimeStamp> = peers[me].hot_log().iter().map(|hot_op| hot_op.timestamp).collect();
+					if stamps.is_empty() {
+						continue;
+					}
+					let up_to = stamps[rng.below(stamps.len() as u64) as usize];
+					let ids: Vec<HotOpId> = peers[me].hot_ops_up_to(up_to);
+					let revs = peers[me].retire(up_to).unwrap();
+					if let Some(&last) = revs.last()
+						&& rng.below(4) > 0
+					{
+						peers[me].mark_interaction_end(last);
+					}
+					for other in (0..PEERS).filter(|&other| other != me) {
+						peers[other].discard_hot_ops(&ids);
+					}
+				}
+				5 => {
+					if peers[me].can_undo() {
+						let others: Vec<&Session> = peers.iter().enumerate().filter(|(i, _)| *i != me).map(|(_, s)| s).collect();
+						if undo_is_silent(&peers[me], &others) {
+							peers[me].undo().unwrap();
+						}
+					}
+				}
+				6 => {
+					if peers[me].can_redo() {
+						peers[me].redo().unwrap();
+					}
+				}
+				7 | 8 => {
+					let from = (me + 1 + rng.below(PEERS as u64 - 1) as usize) % PEERS;
+					sync_pair(&mut peers, from, me);
+				}
+				9 => {
+					let fresh = reopened(&peers[me]);
+					assert_eq!(fresh.retired_registry(), peers[me].retired_registry(), "reopen snapshot, {context}");
+					assert_eq!(fresh.registry(), peers[me].registry(), "reopen working, {context}");
+					assert_eq!(fresh.retired_marks(), peers[me].retired_marks(), "reopen marks, {context}");
+					peers[me] = fresh;
+				}
+				_ => {
+					for hot_op in std::mem::take(&mut in_flight[me]) {
+						peers[me].replay_hot_op(hot_op).unwrap();
+					}
+				}
+			}
+			for (i, peer) in peers.iter().enumerate() {
+				check_invariants(peer, &format!("peer {i}, {context}"));
+			}
+		}
+
+		// Deliver everything, let each peer retire what it holds with the others discarding, then sync to quiescence.
+		for i in 0..PEERS {
+			for hot_op in std::mem::take(&mut in_flight[i]) {
+				peers[i].replay_hot_op(hot_op).unwrap();
+			}
+		}
+		for me in 0..PEERS {
+			if let Some(up_to) = peers[me].hot_log().iter().map(|hot_op| hot_op.timestamp).max() {
+				let ids = peers[me].hot_ops_up_to(up_to);
+				peers[me].retire(up_to).unwrap();
+				for other in (0..PEERS).filter(|&other| other != me) {
+					peers[other].discard_hot_ops(&ids);
+				}
+			}
+		}
+		for _ in 0..2 * PEERS {
+			for from in 0..PEERS {
+				for to in 0..PEERS {
+					if from != to {
+						sync_pair(&mut peers, from, to);
+					}
+				}
+			}
+		}
+		let context = format!("seed {seed}, trace {log:?}");
+		assert!(peers[0].hot_log().is_empty(), "{context}: peer 0 still holds hot ops");
+		for i in 1..PEERS {
+			assert_eq!(peers[0].head_rev(), peers[i].head_rev(), "{context}: heads of 0 and {i} differ after syncing to quiescence");
+			assert_eq!(peers[0].retired_registry(), peers[i].retired_registry(), "{context}: retired registries of 0 and {i} diverged");
+			assert!(peers[i].hot_log().is_empty(), "{context}: peer {i} still holds hot ops");
+		}
+	}
+}
+
+/// A peer's op that was seen and then discarded before its delta arrived is in neither history nor the hot log, so a
+/// reopen takes the clock from `session.json`, so a later write here must still be stamped above it.
+#[test]
+fn a_write_after_a_reopen_beats_a_discarded_op_it_saw() {
+	let mut a = Session::with_peer(PeerId(1));
+	step(&mut a, set_attribute("base", 0));
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&mut a, &mut b);
+	for _ in 0..10 {
+		b.stage_ops([set_attribute("unrelated", 0)]).unwrap();
+	}
+	let seen = b.stage_ops([set_attribute("k", 1)]).unwrap();
+	for hot_op in b.hot_log().to_vec() {
+		a.replay_hot_op(hot_op).unwrap();
+	}
+	let up_to = seen.last().unwrap().timestamp;
+	let ids = b.hot_ops_up_to(up_to);
+	b.retire(up_to).unwrap();
+	a.discard_hot_ops(&ids);
+
+	// A saw k = 1, reopens, then writes k = 2.
+	let mut a = reopened(&a);
+	let written = a.stage_ops([set_attribute("k", 2)]).unwrap();
+	a.retire(written.last().unwrap().timestamp).unwrap();
+	sync(&mut b, &mut a);
+	assert_eq!(
+		a.retired_registry().attributes.get("k").map(|value| value.value.clone()),
+		Some(Value::from(serde_json::json!(2))),
+		"A's write came after it saw k = 1, but is stamped below it"
+	);
+}
+
+/// This peer's own op is retired by another and discarded here before the delta arrives. After a reopen the next op
+/// must not get its stamp, since two ops sharing a stamp tie and peers holding both would show different values.
+#[test]
+fn a_reopen_after_discarding_an_own_op_never_reuses_its_stamp() {
+	let mut a = Session::with_peer(PeerId(1));
+	let registered = a.stage_ops([set_attribute("base", 0)]).unwrap();
+	a.retire(registered.last().unwrap().timestamp).unwrap();
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&mut a, &mut b);
+
+	let first = a.stage_ops([set_attribute("k", 1)]).unwrap();
+	for hot_op in &first {
+		b.replay_hot_op(hot_op.clone()).unwrap();
+	}
+	let up_to = first.last().unwrap().timestamp;
+	let ids = b.hot_ops_up_to(up_to);
+	b.retire(up_to).unwrap();
+	a.discard_hot_ops(&ids);
+
+	let mut a = reopened(&a);
+	let second = a.stage_ops([set_attribute("k", 2)]).unwrap();
+	let reused = second.iter().any(|new| first.iter().any(|old| old.timestamp == new.timestamp));
+	// Both peers hold the same two ops. B has the first as a delta and the second hot, and A matches once B's delta lands.
+	for hot_op in &second {
+		b.replay_hot_op(hot_op.clone()).unwrap();
+	}
+	assert!(matches!(sync(&mut b, &mut a), MergeOutcome::FastForward(_)));
+	let k = |registry: &Registry| registry.attributes.get("k").map(|value| value.value.clone());
+	assert_eq!(k(a.registry()), k(b.registry()), "same ops, different live value; reused stamp: {reused}");
+	assert_eq!(a.registry(), &rebuilt_working(&a), "A's working registry is not snapshot + hot log");
+	assert!(!reused, "a fresh op reused the stamp of the discarded one");
+}
+
+/// Undoing a retired step drops it out of the shared line and mints later steps again on its parent. Every peer
+/// following the head move converges, a field a later step wrote keeps that value, and redo brings the step back
+/// as a copy on top.
+#[test]
+fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
+	fn catch_up(guest: &mut Session, host: &Session) {
+		let missing: Vec<Delta> = host.cloned_deltas().into_iter().filter(|delta| guest.delta(delta.id).is_none()).collect();
+		guest.merge(missing).expect("merge");
+	}
+	let mut host = Session::with_peer(PeerId(1));
+	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = host.head_rev().expect("rev");
+	host.mark_interaction_end(base);
+
+	// The guest's step, retired by the host, writes its own key and one the host writes after it.
+	let mut guest = Session::load(PeerId(2), UserId(2), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let guest_ops = [set_attribute("guest", 1), set_attribute("shared", 1)];
+	let hot = guest.stage_ops(guest_ops).expect("stage");
+	for hot_op in &hot {
+		host.replay_hot_op(hot_op.clone()).expect("the guest's ops reach the host");
+	}
+	let guest_ids: Vec<HotOpId> = hot.iter().map(HotOp::id).collect();
+	let revs = host.retire_hot_ops(&guest_ids).expect("retire");
+	let undone = *revs.last().expect("the guest's step");
+	host.mark_interaction_end(undone);
+	catch_up(&mut guest, &host);
+	guest.discard_hot_ops(&guest_ids);
+
+	// A later step by the host writes the shared key.
+	host.commit_op_for_test(set_attribute("shared", 2)).expect("later step");
+	let later = host.head_rev().expect("rev");
+	host.mark_interaction_end(later);
+	host.document.history.set_retired_at(later, 1_234);
+	catch_up(&mut guest, &host);
+	assert_eq!(guest.head_rev(), host.head_rev());
+	assert_eq!(guest.latest_own_interaction(), Some(undone));
+
+	let (moved, touched) = host.drop_interaction(undone).expect("drop");
+	assert_eq!(moved.from, Some(later));
+	assert_eq!(moved.copies.len(), 1, "the later step is minted again");
+	assert_eq!(moved.copies[0].parent, Some(base), "the copy hangs off the dropped step's parent");
+	assert!(moved.copies[0].is_interaction_end(), "the copy keeps its interaction end");
+	assert_eq!(moved.copies[0].retired_at(), Some(1_234), "the copy keeps when the original was retired");
+	assert!(touched.is_empty(), "document attributes name no graph entity");
+	let snapshot = host.retired_registry();
+	assert!(snapshot.attributes.get("guest").is_none_or(|value| value.deleted), "the dropped step's write is gone");
+	assert_eq!(
+		snapshot.attributes.get("shared").map(|value| &value.value),
+		Some(&Value::from(serde_json::json!(2))),
+		"the later step's write stands"
+	);
+	assert!(host.delta(undone).is_some() && host.delta(later).is_some(), "the dropped line stays as a branch");
+	assert!(host.registry().value_equal(host.retired_registry()));
+
+	guest.apply_head_move(&moved).expect("follow");
+	assert_eq!(guest.head_rev(), host.head_rev());
+	assert_eq!(guest.retired_registry(), host.retired_registry());
+	assert_eq!(guest.history().map(|delta| delta.id).collect::<Vec<_>>(), host.history().map(|delta| delta.id).collect::<Vec<_>>());
+	assert!(
+		matches!(guest.apply_head_move(&moved), Err(CrdtError::CursorMismatch { .. })),
+		"a move only applies from where it started"
+	);
+
+	// The redone step returns as a copy on top, its older stamp losing the shared key.
+	let restored = host.restore_interaction(undone).expect("restore");
+	assert_eq!(restored.len(), 3, "RegisterPeer and the two writes come back");
+	assert!(host.retired_registry().attributes.get("guest").is_some_and(|value| value.value == Value::from(serde_json::json!(1))));
+	assert_eq!(host.retired_registry().attributes.get("shared").map(|value| &value.value), Some(&Value::from(serde_json::json!(2))));
+	catch_up(&mut guest, &host);
+	assert_eq!(guest.head_rev(), host.head_rev());
+	assert_eq!(guest.retired_registry(), host.retired_registry());
+}
+
+/// Undo of a retired step names the person's latest step, not the device's. A fresh copy of the document under a new
+/// peer id still undoes what its user did from the old one, and nobody else's.
+#[test]
+fn undo_in_a_session_finds_the_users_step_from_another_peer() {
+	let mut host = Session::with_identity(PeerId(1), UserId(1));
+	host.commit_op_for_test(set_attribute("base", 0)).expect("base");
+	let base = host.head_rev().expect("rev");
+	host.mark_interaction_end(base);
+
+	let mut old_device = Session::load(PeerId(2), UserId(7), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	let hot = old_device.stage_ops([set_attribute("mine", 1)]).expect("stage");
+	for hot_op in &hot {
+		host.replay_hot_op(hot_op.clone()).expect("the step reaches the host");
+	}
+	let ids: Vec<HotOpId> = hot.iter().map(HotOp::id).collect();
+	let revs = host.retire_hot_ops(&ids).expect("retire");
+	let step = *revs.last().expect("the step");
+	host.mark_interaction_end(step);
+
+	let new_device = Session::load(PeerId(3), UserId(7), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	assert_eq!(new_device.latest_own_interaction(), Some(step), "the same person under a new peer id owns the step");
+	assert!(new_device.is_mine(PeerId(2)));
+
+	let stranger = Session::load(PeerId(4), UserId(8), host.retired_registry().clone(), host.cloned_deltas(), host.head_rev(), Vec::new(), 0);
+	assert_eq!(stranger.latest_own_interaction(), None, "someone else has nothing of theirs to undo");
+	assert!(!stranger.is_mine(PeerId(2)));
+}
+
 /// The retirer moves the head back: the line since stays as a branch, and a follower folds to the same state.
 #[test]
 fn moving_the_head_back_leaves_the_line_since_as_a_branch_everyone_follows() {
@@ -538,4 +999,51 @@ fn a_head_move_publishes_the_new_head() {
 	assert!(!host.can_undo(), "the step the room holds stays put");
 	guest.apply_head_move(&moved).expect("follow");
 	assert!(!guest.can_undo(), "the follower holds the same line");
+}
+
+/// Dropping hot ops another peer retired re-derives the working registry without them until their deltas arrive.
+#[test]
+fn discarded_hot_ops_leave_the_working_registry_at_the_snapshot() {
+	let op = HotOp {
+		op: set_attribute("k", 1),
+		timestamp: TimeStamp { counter: 3, peer: PeerId(2) },
+		sequence: crate::HotSequence(1),
+		attributes: Default::default(),
+	};
+	let mut session = Session::with_peer(PeerId(1));
+	session.replay_hot_op(op.clone()).unwrap();
+	session.discard_hot_ops(&[op.id()]);
+	assert!(session.hot_log().is_empty());
+	assert_eq!(session.registry(), session.retired_registry());
+}
+
+#[test]
+fn a_drop_whose_copy_fails_leaves_the_session_unchanged() {
+	let mut session = Session::with_peer(PeerId(1));
+	session.commit_op_for_test(add_network(3)).expect("base");
+	let base = session.head_rev().expect("rev");
+	session.mark_interaction_end(base);
+	session.commit_op_for_test(set_attribute("dropped", 1)).expect("dropped step");
+	let undone = session.head_rev().expect("rev");
+	session.mark_interaction_end(undone);
+
+	// A later step no fold can apply, so minting its copy fails.
+	let op = RegistryDelta::SetNetworkExport {
+		id: NetworkId(3),
+		index: crate::ids::MAX_EXPORT_SLOTS as u32,
+		export: None,
+	};
+	let reverse = crate::prior::capture(session.retired_registry(), &op);
+	let timestamp = TimeStamp { counter: 100, peer: PeerId(1) };
+	let later = Delta::new(Some(undone), PeerId(1), timestamp, op, reverse);
+	let head = later.id;
+	session.document.history.push(later);
+	session.document.head = Some(head);
+
+	let (registry, retired, history_len) = (session.registry().clone(), session.retired_registry().clone(), session.history_len());
+	assert!(matches!(session.drop_interaction(undone), Err(CrdtError::ExportSlotOutOfBounds(_))));
+	assert_eq!(session.head_rev(), Some(head));
+	assert_eq!(session.history_len(), history_len);
+	assert_eq!(session.retired_registry(), &retired);
+	assert_eq!(session.registry(), &registry);
 }
