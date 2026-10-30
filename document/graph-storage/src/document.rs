@@ -128,7 +128,7 @@ impl Document {
 	pub(crate) fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> (Touched, Vec<HotOp>) {
 		let wanted: HashSet<HotOpId> = ids.iter().copied().collect();
 		let taken: Vec<HotOp> = self.hot_log.extract_if(.., |hot_op| wanted.contains(&hot_op.id())).collect();
-		self.retired.extend(ids.iter().copied());
+		self.retired.take_back(ids);
 
 		let mut touched = Touched::default();
 		for hot_op in &taken {

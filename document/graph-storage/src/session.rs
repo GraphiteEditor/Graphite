@@ -370,7 +370,9 @@ impl Session {
 			return Ok(None);
 		}
 		let ids: Vec<HotOpId> = own[start..].iter().map(|hot_op| hot_op.id()).collect();
-		if ids.iter().any(|&id| self.document.retired.covers(id)) {
+		let retired = &self.document.retired;
+		// A later interaction that retired rather than was taken back is the latest, and undoes through history.
+		if ids.iter().any(|&id| retired.covers(id)) || !retired.took_back_all(peer, own[own.len() - 1].sequence, self.document.last_hot_sequence) {
 			return Ok(None);
 		}
 		self.runtime_base = None;
@@ -1234,6 +1236,9 @@ pub struct RetiredMarks {
 	pub retired_up_to: HashMap<PeerId, HotSequence>,
 	/// retired ops past their author's prefix, as inclusive runs, one per gap in flight.
 	pub retired_runs: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
+	/// Which covered ops their author took back rather than retired, as inclusive runs.
+	#[serde(default)]
+	pub taken_back: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
 }
 
 /// Sort and coalesce runs, joining any that touch or abut.
@@ -1271,7 +1276,27 @@ impl RetiredMarks {
 		for (&peer, runs) in &remote.retired_runs {
 			self.retired_runs.entry(peer).or_default().extend(runs.iter().copied());
 		}
+		for (&peer, runs) in &remote.taken_back {
+			let taken_back = self.taken_back.entry(peer).or_default();
+			taken_back.extend(runs.iter().copied());
+			coalesce(taken_back);
+		}
 		self.compact();
+	}
+
+	/// Record ops their author took back.
+	pub(crate) fn take_back(&mut self, ids: &[HotOpId]) {
+		for id in ids {
+			let runs = self.taken_back.entry(id.peer).or_default();
+			runs.push((id.sequence, id.sequence));
+			coalesce(runs);
+		}
+		self.extend(ids.iter().copied());
+	}
+
+	/// Whether `peer` took back every op it authored after `after`, through `through`.
+	pub(crate) fn took_back_all(&self, peer: PeerId, after: HotSequence, through: HotSequence) -> bool {
+		after >= through || self.taken_back.get(&peer).is_some_and(|runs| runs.iter().any(|&(start, end)| start <= after.next() && through <= end))
 	}
 
 	/// Record newly retired ops.

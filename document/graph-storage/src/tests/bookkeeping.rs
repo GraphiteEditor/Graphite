@@ -533,3 +533,41 @@ fn closing(mut hot_op: crate::HotOp) -> crate::HotOp {
 	hot_op.attributes.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), crate::TimeStamp::ORIGIN);
 	hot_op
 }
+
+#[test]
+fn undo_leaves_an_older_hot_interaction_when_the_latest_retired_out_of_order() {
+	let mut session = Session::with_peer(PeerId(1));
+	for key in ["a", "b"] {
+		session.stage_ops([set_attribute(key, 1)]).unwrap();
+		session.end_interaction().unwrap();
+	}
+	let closed = session.closed_interactions();
+	session.retire_interaction(&closed[1]).unwrap();
+
+	assert!(session.retract_interaction().unwrap().is_none(), "the latest interaction retired, so undo goes through history");
+	assert!(session.registry().attributes.contains_key("a"), "the older hot interaction stays");
+}
+
+#[test]
+fn undo_takes_back_the_interaction_before_one_already_taken_back() {
+	let mut session = Session::with_peer(PeerId(1));
+	for key in ["a", "b", "c"] {
+		session.stage_ops([set_attribute(key, 1)]).unwrap();
+		session.end_interaction().unwrap();
+	}
+	let closed = session.closed_interactions();
+	session.retire_interaction(&closed[1]).unwrap();
+	session.retract_interaction().unwrap().expect("the latest interaction is hot");
+
+	assert!(session.retract_interaction().unwrap().is_none(), "the one before retired, so undo goes through history");
+	assert!(session.registry().attributes.contains_key("a"));
+
+	let mut twice = Session::with_peer(PeerId(1));
+	for key in ["a", "b"] {
+		twice.stage_ops([set_attribute(key, 1)]).unwrap();
+		twice.end_interaction().unwrap();
+	}
+	twice.retract_interaction().unwrap().expect("b is hot");
+	twice.retract_interaction().unwrap().expect("a is hot and now the latest");
+	assert!(twice.hot_log().is_empty());
+}
