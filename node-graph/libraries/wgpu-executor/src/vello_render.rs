@@ -1,14 +1,15 @@
 use crate::WgpuPipelineCache;
 use crate::raster_effects::apply_effects;
-use crate::raster_kernel::adjust_raster;
+use crate::raster_kernel::{adjust_raster, render_generator};
 use core_types::NodeError;
 use core_types::graphene_hash::CacheHash;
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
 use glam::{DMat2, UVec2};
+use graphic_types::generator::GeneratorPattern;
 use graphic_types::{Adjustment, Effects};
 use raster_types::{CPU, GPU, Raster, Texture, WeakCPU};
-use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
+use rendering::vello_scene_builder::{EffectsRenderer, GeneratorTile, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
 use vello_gpu::kurbo::Affine;
@@ -24,6 +25,9 @@ const TEXTURE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 /// How many renders a GPU texture's premultiplied copy survives without being drawn before it is freed.
 const UNUSED_IMAGE_RENDER_LIMIT: u64 = 60;
+
+/// The most tiles of generators kept between renders, past which the least recently drawn are freed.
+const MAX_CACHED_GENERATOR_TILES: usize = 256;
 
 /// How many times a render with too much content for Vello GPU is halved, reaching areas 1/4096 the size of the original.
 const MAX_SPLIT_DEPTH: u32 = 12;
@@ -334,6 +338,59 @@ impl EffectsRenderer for RenderContext<'_> {
 			}
 		}
 	}
+
+	fn prepare_generator_tile(&mut self, pattern: &GeneratorPattern, tile: GeneratorTile) -> bool {
+		let key = ImageKey::GeneratorTile(tile);
+		let render_count = self.canvas.images.render_count;
+		if let Some(image_texture) = self.canvas.images.textures.get_mut(&key) {
+			image_texture.last_used = render_count;
+			return true;
+		}
+
+		let size = UVec2::splat(GeneratorTile::SAMPLES);
+		let rendered = render_generator(pattern, tile.area(), size, self.kernels);
+		let source = match rendered.as_ref().map(|raster| raster.texture()) {
+			Ok(Some(source)) => source,
+			Ok(None) => return false,
+			Err(error) => {
+				log::error!("Failed to render a generator's tile: {error}");
+				return false;
+			}
+		};
+
+		// Unlike a raster's texture, which the texture cache may hand back with new contents, the tile's pixels stay as they are, so its copy for sampling is made once
+		let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+			label: Some("vello_gpu_generator_tile"),
+		});
+		let texture = premultiplied_image_texture(self.device, source, true);
+		self.renderer.alpha_conversion.premultiply_with_mipmaps(self.device, &mut encoder, source, &texture);
+		self.queue.lock().submit([encoder.finish()]);
+
+		self.canvas.images.textures.insert(
+			key,
+			ImageTexture {
+				texture,
+				last_used: render_count,
+				raster: None,
+			},
+		);
+		true
+	}
+}
+
+/// A texture to hold the premultiplied copy of `source` that Vello GPU samples, with mipmaps if it's drawn `minified`.
+fn premultiplied_image_texture(device: &wgpu::Device, source: &wgpu::Texture, minified: bool) -> wgpu::Texture {
+	let level_count = if minified { source.width().max(source.height()).ilog2() + 1 } else { 1 };
+	device.create_texture(&wgpu::TextureDescriptor {
+		label: Some("vello_gpu_premultiplied_image"),
+		size: source.size(),
+		mip_level_count: level_count,
+		sample_count: 1,
+		dimension: wgpu::TextureDimension::D2,
+		format: TEXTURE_FORMAT,
+		usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
+		view_formats: &[],
+	})
 }
 
 /// Leaves `target` transparent.
@@ -343,12 +400,13 @@ fn clear(device: &wgpu::Device, queue: &Queue, target: &wgpu::Texture) {
 	queue.submit([encoder.finish()]);
 }
 
-/// Identifies the pixels behind an image texture: a blob of CPU pixels, or a GPU texture.
+/// Identifies the pixels behind an image texture: a blob of CPU pixels, a GPU texture, or a tile of a generator's pattern.
 #[derive(Clone, PartialEq, Eq, Hash)]
 enum ImageKey {
 	Blob(u64),
 	Raster(u64),
 	Texture(wgpu::Texture, bool),
+	GeneratorTile(GeneratorTile),
 }
 
 /// A premultiplied copy of an image's pixels that Vello GPU samples as an external texture.
@@ -382,6 +440,7 @@ impl ImageTextures {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture { texture, minified } => ImageKey::Texture((**texture).clone(), *minified),
+			SceneImage::GeneratorTile(tile) => ImageKey::GeneratorTile(*tile),
 		};
 
 		if !self.textures.contains_key(&key) {
@@ -398,23 +457,13 @@ impl ImageTextures {
 					let (pixels, width, height) = raster.to_flat_u8();
 					upload_pixels(device, queue, &pixels, width, height, peniko::ImageAlphaType::Alpha, max_texture_size)?
 				}
-				SceneImage::Texture { texture, minified } => {
-					let level_count = if *minified { texture.width().max(texture.height()).ilog2() + 1 } else { 1 };
-					device.create_texture(&wgpu::TextureDescriptor {
-						label: Some("vello_gpu_premultiplied_image"),
-						size: texture.size(),
-						mip_level_count: level_count,
-						sample_count: 1,
-						dimension: wgpu::TextureDimension::D2,
-						format: TEXTURE_FORMAT,
-						usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
-						view_formats: &[],
-					})
-				}
+				SceneImage::Texture { texture, minified } => premultiplied_image_texture(device, texture, *minified),
+				// Kept since it was drawn, so there's nothing to supply if it couldn't be made
+				SceneImage::GeneratorTile(_) => return None,
 			};
 			let raster = match image {
 				SceneImage::Raster(raster) => Some(raster.downgrade()),
-				SceneImage::Pixels(_) | SceneImage::Texture { .. } => None,
+				SceneImage::Pixels(_) | SceneImage::Texture { .. } | SceneImage::GeneratorTile(_) => None,
 			};
 			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0, raster });
 		}
@@ -424,22 +473,7 @@ impl ImageTextures {
 		let view = image_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
 		if let SceneImage::Texture { texture: source, .. } = image {
-			let level_view = |level: u32| {
-				image_texture.texture.create_view(&wgpu::TextureViewDescriptor {
-					base_mip_level: level,
-					mip_level_count: Some(1),
-					..Default::default()
-				})
-			};
-
-			let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
-			let loads_linear_light = source.format().is_srgb() || matches!(source.format(), crate::RASTER_FORMAT | crate::FALLBACK_RASTER_FORMAT);
-			alpha_conversion.premultiply(device, encoder, &source_view, loads_linear_light, &level_view(0));
-
-			// Each mipmap level halves the one before it, so a minified image averages its pixels rather than skipping over them
-			for level in 1..image_texture.texture.mip_level_count() {
-				alpha_conversion.halve(device, encoder, &level_view(level - 1), &level_view(level));
-			}
+			alpha_conversion.premultiply_with_mipmaps(device, encoder, source, &image_texture.texture);
 		}
 
 		Some(view)
@@ -453,9 +487,21 @@ impl ImageTextures {
 				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 				ImageKey::Blob(_) => unused_renders == 0,
 				ImageKey::Raster(_) => unused_renders == 0 || (unused_renders < UNUSED_IMAGE_RENDER_LIMIT && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
-				ImageKey::Texture(..) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
+				ImageKey::Texture(..) | ImageKey::GeneratorTile(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
 			}
 		});
+
+		// Panning and zooming across a generator leaves tiles behind faster than they go unused for long, so the least recent beyond a limit are freed too
+		let mut tile_ages: Vec<u64> = (self.textures.iter())
+			.filter(|(key, _)| matches!(key, ImageKey::GeneratorTile(_)))
+			.map(|(_, image_texture)| image_texture.last_used)
+			.collect();
+		if tile_ages.len() > MAX_CACHED_GENERATOR_TILES {
+			let excess = tile_ages.len() - MAX_CACHED_GENERATOR_TILES;
+			let (_, &mut oldest_kept, _) = tile_ages.select_nth_unstable(excess);
+			self.textures
+				.retain(|key, image_texture| !matches!(key, ImageKey::GeneratorTile(_)) || image_texture.last_used >= oldest_kept);
+		}
 	}
 }
 
@@ -818,6 +864,26 @@ impl AlphaConversion {
 	fn premultiply(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, source_is_srgb: bool, target: &wgpu::TextureView) {
 		let parameters = if source_is_srgb { &self.srgb_source_parameters } else { &self.linear_source_parameters };
 		self.run(device, encoder, &self.premultiply_pipeline, parameters, source, target);
+	}
+
+	/// Fills `target` and each of its mipmap levels with the premultiplied pixels of the straight-alpha `source`.
+	fn premultiply_with_mipmaps(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::Texture, target: &wgpu::Texture) {
+		let level_view = |level: u32| {
+			target.create_view(&wgpu::TextureViewDescriptor {
+				base_mip_level: level,
+				mip_level_count: Some(1),
+				..Default::default()
+			})
+		};
+
+		let source_view = source.create_view(&wgpu::TextureViewDescriptor::default());
+		let loads_linear_light = source.format().is_srgb() || matches!(source.format(), crate::RASTER_FORMAT | crate::FALLBACK_RASTER_FORMAT);
+		self.premultiply(device, encoder, &source_view, loads_linear_light, &level_view(0));
+
+		// Each mipmap level halves the one before it, so a minified image averages its pixels rather than skipping over them
+		for level in 1..target.mip_level_count() {
+			self.halve(device, encoder, &level_view(level - 1), &level_view(level));
+		}
 	}
 
 	fn halve(&self, device: &wgpu::Device, encoder: &mut wgpu::CommandEncoder, source: &wgpu::TextureView, target: &wgpu::TextureView) {

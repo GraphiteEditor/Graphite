@@ -17,7 +17,7 @@ use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
 use graphic_types::graphic::{bake_paint_transforms, is_paint_present};
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Graphic, IntoGraphicList, stamp_coverage};
+use graphic_types::{Appearance, Cover, CoverPlacement, Coverage, Generator, Graphic, IntoGraphicList, stamp_coverage};
 use kurbo::simplify::{SimplifyOptions, simplify_bezpath};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveArclen, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -557,6 +557,7 @@ fn copy_to_points<I: Send + Clone>(
 		Context -> List<Raster<GPU>>,
 		Context -> List<Color>,
 		Context -> List<Gradient>,
+		Context -> List<Generator>,
 	)]
 	content: impl Node<Context<'static>, Output = List<I>>,
 	/// Minimum range of randomized sizes given to each placed copy.

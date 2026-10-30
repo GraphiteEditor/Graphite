@@ -1,4 +1,6 @@
-use glam::{DMat2, UVec2};
+use glam::{DMat2, DVec2, UVec2};
+use graphene_hash::CacheHash;
+use graphic_types::generator::GeneratorPattern;
 use graphic_types::raster_types::{CPU, Raster, Texture};
 use graphic_types::{Adjustment, Effects};
 use kurbo::{Affine, BezPath, PathEl, Point, Rect, Shape, Stroke};
@@ -12,6 +14,16 @@ const SHAPE_TOLERANCE: f64 = 0.1;
 
 /// The texture size an effects group's area rounds up to a multiple of, so a group moving across renders keeps reusing the same pooled textures.
 const EFFECTS_SIZE_CLASS: u32 = 64;
+
+/// The pixels across and down a generator's tile covers, besides the samples bordering it that let neighboring tiles overlap seamlessly.
+const GENERATOR_TILE_PIXELS: u32 = 256;
+
+/// The samples bordering each side of a generator's tile, and how many of them its neighbor's drawing overlaps.
+const GENERATOR_TILE_BORDER: u32 = 2;
+const GENERATOR_TILE_OVERLAP: u32 = 1;
+
+/// The most tiles one generator draws in a render, past which larger tiles render at a lower resolution, as for a view skewed far along one axis.
+const MAX_GENERATOR_TILES_PER_DRAW: f64 = 256.;
 
 /// Builds a Vello GPU scene of a fixed size, recording the images it draws so the renderer can supply their textures at render time.
 pub struct VelloSceneBuilder<'a> {
@@ -40,6 +52,9 @@ pub trait EffectsRenderer: Send {
 	/// A straight-alpha texture of the size of the CPU `raster`, with `adjustments` carried out on its pixels, kept for as long as they're drawn that way.
 	/// `None` if they can't be carried out.
 	fn adjust_raster(&mut self, raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Option<Texture>;
+
+	/// Makes `tile` of `pattern` ready to be drawn as an image, rendering it unless it's been kept from an earlier render. `false` if it can't be rendered.
+	fn prepare_generator_tile(&mut self, pattern: &GeneratorPattern, tile: GeneratorTile) -> bool;
 }
 
 /// The pixels behind an image the scene draws.
@@ -51,6 +66,8 @@ pub enum SceneImage {
 	Raster(Raster<CPU>),
 	/// Straight-alpha pixels in a GPU texture, whose copy for sampling gets mipmaps if it's drawn `minified`.
 	Texture { texture: Texture, minified: bool },
+	/// One tile of a generator's pattern, which the renderer made and kept when it was drawn.
+	GeneratorTile(GeneratorTile),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -58,6 +75,36 @@ enum ImageKey {
 	Blob(u64),
 	Raster(u64),
 	Texture(Texture, bool),
+	GeneratorTile(GeneratorTile),
+}
+
+/// One tile of a generator's pattern, from a grid in the pattern's space whose tiles span a power of two of units.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct GeneratorTile {
+	/// Identifies the pattern by the hash of its settings.
+	pub pattern: u64,
+	/// The tiles span `2^-level` units, so a tile is about the same number of pixels in view at any zoom.
+	pub level: i32,
+	pub column: i64,
+	pub row: i64,
+}
+
+impl GeneratorTile {
+	/// The samples across and down the tile and its border.
+	pub const SAMPLES: u32 = GENERATOR_TILE_PIXELS + 2 * GENERATOR_TILE_BORDER;
+
+	/// The area of the pattern's space the tile and its border's samples cover, from its minimum to its maximum corner.
+	pub fn area(&self) -> [DVec2; 2] {
+		let (corner, texel) = self.corner_and_texel();
+		[corner, corner + DVec2::splat(Self::SAMPLES as f64 * texel)]
+	}
+
+	/// The corner of the tile's samples, including its border, in the pattern's space, and the span of one sample.
+	fn corner_and_texel(&self) -> (DVec2, f64) {
+		let span = 2_f64.powi(-self.level);
+		let texel = span / GENERATOR_TILE_PIXELS as f64;
+		(DVec2::new(self.column as f64, self.row as f64) * span - GENERATOR_TILE_BORDER as f64 * texel, texel)
+	}
 }
 
 #[derive(Debug)]
@@ -241,6 +288,76 @@ impl<'a> VelloSceneBuilder<'a> {
 		self.effects_renderer.as_deref_mut().filter(|renderer| renderer.renders_effects())?.adjust_raster(raster, adjustments)
 	}
 
+	/// Draws a generator's pattern, whose own space `transform` places, across the part of the scene it covers as tiles the renderer makes the first time each is seen.
+	/// The tiles span a power of two of the pattern's units, so a pan reuses them, as does a zoom until the scale nears the next power.
+	pub fn draw_generator(&mut self, pattern: &GeneratorPattern, transform: Affine) {
+		if !self.effects_renderer.as_ref().is_some_and(|renderer| renderer.renders_effects()) {
+			return;
+		}
+
+		let local_to_device = self.view * transform;
+		let [a, b, c, d, _, _] = local_to_device.as_coeffs();
+		let determinant = a * d - b * c;
+		if !determinant.is_normal() {
+			return;
+		}
+
+		// The part of the pattern's space in view
+		let viewport = Rect::new(0., 0., self.width() as f64, self.height() as f64);
+		let visible = local_to_device.inverse().transform_rect_bbox(viewport);
+		if visible.width() <= 0. || visible.height() <= 0. {
+			return;
+		}
+
+		// The tile size nearest to a tile's pixels in view, grown if the view would otherwise need too many
+		let pixels_per_unit = determinant.abs().sqrt();
+		let tile_span = |level: i32| 2_f64.powi(-level);
+		let tile_range = |start: f64, end: f64, span: f64| (start / span).floor() as i64..(end / span).ceil() as i64;
+		let tile_count = |level: i32| {
+			let span = tile_span(level);
+			(tile_range(visible.x0, visible.x1, span).count() * tile_range(visible.y0, visible.y1, span).count()) as f64
+		};
+		let mut level = (pixels_per_unit / GENERATOR_TILE_PIXELS as f64).log2().round() as i32;
+		while tile_count(level) > MAX_GENERATOR_TILES_PER_DRAW {
+			level -= 1;
+		}
+		let span = tile_span(level);
+
+		let mut hasher = std::hash::DefaultHasher::new();
+		pattern.cache_hash(&mut hasher);
+		let pattern_hash = std::hash::Hasher::finish(&hasher);
+
+		let (border, overlap) = (GENERATOR_TILE_BORDER as f64, GENERATOR_TILE_OVERLAP as f64);
+		for row in tile_range(visible.y0, visible.y1, span) {
+			for column in tile_range(visible.x0, visible.x1, span) {
+				let tile = GeneratorTile {
+					pattern: pattern_hash,
+					level,
+					column,
+					row,
+				};
+				if !self.effects_renderer.as_deref_mut().is_some_and(|renderer| renderer.prepare_generator_tile(pattern, tile)) {
+					continue;
+				}
+				let id = *self.image_ids.entry(ImageKey::GeneratorTile(tile)).or_insert_with(|| {
+					self.images.push(SceneImage::GeneratorTile(tile));
+					TextureId(self.images.len() as u64 - 1)
+				});
+
+				// Drawn across the tile and part of its border, overlapping its neighbors' identical samples so no seam shows between them
+				let (corner, texel) = tile.corner_and_texel();
+				self.scene.set_transform(local_to_device * Affine::translate((corner.x, corner.y)) * Affine::scale(texel));
+				self.scene.set_paint(PaintType::Image(Image {
+					image: ImageSource::external_texture(id, TextureRegion::Full, true),
+					sampler: peniko::ImageSampler::new(),
+				}));
+				self.scene.set_paint_transform(Affine::IDENTITY);
+				let (start, end) = (border - overlap, border + GENERATOR_TILE_PIXELS as f64 + overlap);
+				self.scene.fill_rect(&Rect::new(start, start, end, end));
+			}
+		}
+	}
+
 	/// Draws the content `draw` draws with `effects` carried out on it, given the area it covers in the space of the drawn content, or `None` if unbounded.
 	/// `fill` fades the content but not the shadows and glows cast from it. Rendering a split scene calls `draw` again for each part.
 	pub fn draw_effects(&mut self, effects: &Effects, fill: f32, bounds: Option<Rect>, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) {
@@ -318,6 +435,7 @@ impl<'a> VelloSceneBuilder<'a> {
 			SceneImage::Pixels(data) => (data.width, data.height),
 			SceneImage::Raster(raster) => (raster.width, raster.height),
 			SceneImage::Texture { texture, .. } => (texture.width(), texture.height()),
+			SceneImage::GeneratorTile(_) => (GeneratorTile::SAMPLES, GeneratorTile::SAMPLES),
 		};
 		if width == 0 || height == 0 {
 			return None;
@@ -327,6 +445,7 @@ impl<'a> VelloSceneBuilder<'a> {
 			SceneImage::Pixels(data) => ImageKey::Blob(data.data.id()),
 			SceneImage::Raster(raster) => ImageKey::Raster(raster.buffer_id()),
 			SceneImage::Texture { texture, minified } => ImageKey::Texture(texture.clone(), *minified),
+			SceneImage::GeneratorTile(tile) => ImageKey::GeneratorTile(*tile),
 		};
 		let id = *self.image_ids.entry(key).or_insert_with(|| {
 			self.images.push(image);
