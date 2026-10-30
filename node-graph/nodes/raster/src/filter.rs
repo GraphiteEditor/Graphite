@@ -39,6 +39,7 @@ fn blur(
 	// Each pass sums premultiplied colors into a `FILTERABLE_FORMAT` intermediate, and a kernel reaching past `MAX_BLUR_REACH` runs on the image halved
 	// until it fits, weighing each halved texel by how much of the image it covers, then is scaled back up bilinearly
 	let (raster, attributes) = image_frame.into_parts();
+	let coverage = raster.coverage();
 	let space = if gamma { BlurSpace::Gamma } else { BlurSpace::Linear };
 	let size = raster.size();
 	let full_size = size.as_ivec2().to_array();
@@ -71,13 +72,13 @@ fn blur(
 	let horizontal = run_raster_kernel_with_format(&BlurHorizontal(pass.clone()), blur_input(&source), level_size(levels), FILTERABLE_FORMAT, pipeline)?;
 	if levels == 0 {
 		let blurred = run_raster_kernel(&BlurVertical(pass), blur_input(&horizontal), size, pipeline)?;
-		return Ok(Item::from_parts(blurred, attributes));
+		return Ok(Item::from_parts(blurred.with_coverage(coverage), attributes));
 	}
 	let vertical = run_raster_kernel_with_format(&BlurVertical(pass), blur_input(&horizontal), level_size(levels), FILTERABLE_FORMAT, pipeline)?;
 
 	let upsample = BlurUpsample { scale: (1 << levels) as f32, space };
 	let blurred = run_raster_kernel(&upsample, blur_input(&vertical), size, pipeline)?;
-	Ok(Item::from_parts(blurred, attributes))
+	Ok(Item::from_parts(blurred.with_coverage(coverage), attributes))
 }
 
 /// Applies a median filter to reduce noise while preserving edges.
@@ -113,7 +114,7 @@ fn median_filter(
 	};
 	let filtered_image = run_raster_kernel(&kernel, vec![input], size, pipeline.element())?;
 
-	Ok(Item::from_parts(filtered_image, attributes))
+	Ok(Item::from_parts(filtered_image.with_coverage(image.coverage()), attributes))
 }
 
 gpu_params! {

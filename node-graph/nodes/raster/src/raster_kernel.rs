@@ -457,7 +457,8 @@ impl Adjust for Raster<GPU> {
 			raster: &self,
 			output_to_texel: DAffine2::IDENTITY,
 		};
-		run(kernel, map_color_module::<K>, false, vec![input], size, raster_format(pipeline), pipeline)
+		let coverage = self.coverage();
+		run(kernel, map_color_module::<K>, false, vec![input], size, raster_format(pipeline), pipeline).map(|raster| raster.with_coverage(coverage))
 	}
 }
 
@@ -516,9 +517,10 @@ impl KernelFrame {
 	}
 }
 
-/// A raster item's size in pixels and its `ATTR_TRANSFORM`, as [`union_frame`] and [`KernelFrame::new`] take each input.
+/// A raster item's size in pixels and the placement of its pixels, its `ATTR_TRANSFORM` composed with its coverage, as [`union_frame`] and [`KernelFrame::new`] take each input.
 pub fn raster_placement(raster: &Item<Raster<GPU>>) -> (UVec2, DAffine2) {
-	(raster.element().size(), raster.attribute_cloned_or_default(ATTR_TRANSFORM))
+	let transform: DAffine2 = raster.attribute_cloned_or_default(ATTR_TRANSFORM);
+	(raster.element().size(), transform * raster.element().coverage())
 }
 
 /// The frame covering the union of `inputs`, each a raster's size and transform, on the finest of their pixel grids.
