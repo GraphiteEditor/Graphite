@@ -23,3 +23,7 @@ pub mod utility_traits;
 pub mod utility_types;
 
 pub use document_container::store as document_store;
+
+// Referenced so the linker keeps their self-registering migrations, which run as documents open
+use migration_formats as _;
+use migration_nodes as _;

@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 pub use core_types::ops::TypeNode;
 
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
-#[node_macro::node(category("Routing"), icon("NodePassthrough"), skip_impl, forwards_input)]
+#[node_macro::node(category("Routing"), icon("NodePassthrough"), skip_impl, forwards_input, version(2))]
 fn passthrough<'i, T: 'i + Send>(_: impl Ctx, content: T) -> T {
 	content
 }

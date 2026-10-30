@@ -14,6 +14,8 @@ use std::path::Path;
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
+#[cfg(feature = "migrations")]
+use document_graph_storage::Rev;
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
 use document_graph_storage::{HistoryMetadata, PeerId, Registry, Session, UserId};
@@ -28,6 +30,8 @@ pub mod io;
 pub mod layout;
 mod load;
 pub mod manifest;
+#[cfg(feature = "migrations")]
+mod migrate;
 pub mod persist;
 pub mod resource;
 
@@ -85,6 +89,7 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
+	pub(crate) migrated: bool,
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -138,7 +143,34 @@ impl<L: Layout> Gdd<L> {
 		validate_manifest(&manifest)?;
 		let codecs = manifest.codecs;
 
-		let payloads = load::StoredRecords::read(&working, &layout, codecs).await?.decode(codecs)?;
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the stored records"))]
+		let mut records = load::StoredRecords::read(&working, &layout, codecs).await?;
+		#[cfg(feature = "migrations")]
+		let format_outcome = migrate::migrate_format(&mut records, codecs, manifest.format_version)?;
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the decoded payloads"))]
+		let mut payloads = records.decode(codecs)?;
+		#[cfg(feature = "migrations")]
+		let mut rehashed = std::collections::HashMap::new();
+		#[cfg(feature = "migrations")]
+		match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => {
+				// Records changed, so their content-addressed revs did too
+				let revs = migration_runner::rehash_deltas(payloads.history.as_deref_mut().unwrap_or_default());
+				rehashed = revs.clone();
+				let remap = |rev: Rev| revs.get(&rev).copied().unwrap_or(rev);
+				let state = &mut payloads.session;
+				state.head_rev = state.head_rev.map(remap);
+				state.last_broadcast_rev = state.last_broadcast_rev.map(remap);
+				state.redo_stack.iter_mut().for_each(|rev| *rev = remap(*rev));
+			}
+			Some(migration_runner::HistoryOutcome::Truncated) => {
+				let state = &mut payloads.session;
+				state.head_rev = None;
+				state.last_broadcast_rev = None;
+				state.redo_stack.clear();
+			}
+			Some(migration_runner::HistoryOutcome::Untouched) | None => {}
+		}
 		let load::DecodedPayloads {
 			registry,
 			history,
@@ -148,6 +180,12 @@ impl<L: Layout> Gdd<L> {
 		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
 			true => HistoryMetadata::fold(io::iter_lenient(&working, layout.metadata_basename(), METADATA_CODEC).await?),
 			false => HistoryMetadata::default(),
+		};
+		#[cfg(feature = "migrations")]
+		let metadata = match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => migrate::remap_metadata(&metadata, |rev| Some(rehashed.get(&rev).copied().unwrap_or(rev))),
+			Some(migration_runner::HistoryOutcome::Truncated) => migrate::remap_metadata(&metadata, |_| None),
+			_ => metadata,
 		};
 
 		// The history a registry-only document gets here has to be stored before the first edit, which would otherwise append to nothing
@@ -184,9 +222,19 @@ impl<L: Layout> Gdd<L> {
 			view_settings: session_state.view_settings,
 			metadata,
 			network_view_settings: session_state.network_view_settings,
+			migrated: false,
 		};
 
-		if bootstrapped {
+		#[cfg(feature = "migrations")]
+		{
+			let migrated_nodes = gdd.migrate_nodes().await?;
+			gdd.migrated = format_outcome.is_some() || migrated_nodes;
+			if gdd.migrated {
+				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);
+			}
+		}
+
+		if bootstrapped || gdd.migrated {
 			gdd.persist_all().await?;
 		}
 
@@ -217,6 +265,7 @@ impl<L: Layout> Gdd<L> {
 			view_settings: std::collections::BTreeMap::new(),
 			metadata: HistoryMetadata::default(),
 			network_view_settings: std::collections::BTreeMap::new(),
+			migrated: false,
 		})
 	}
 }
@@ -258,6 +307,11 @@ impl<L: Layout> Gdd<L> {
 	/// disk.
 	pub fn manifest(&self) -> &Manifest {
 		&self.manifest
+	}
+
+	/// Whether opening ran a format step or node migration, and so rewrote the working copy.
+	pub fn migrated(&self) -> bool {
+		self.migrated
 	}
 
 	pub fn layout(&self) -> &L {

@@ -61,7 +61,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 }
 
 /// One rendered frame of the document, as SVG text or as 8-bit RGBA pixels with straight alpha.
-enum RenderedFrame {
+pub enum RenderedFrame {
 	Svg(String),
 	Raster { data: Vec<u8>, width: u32, height: u32 },
 }
@@ -152,7 +152,7 @@ fn combine_bounds([a_min, a_max]: [DVec2; 2], [b_min, b_max]: [DVec2; 2]) -> [DV
 }
 
 /// Renders the document at the given animation time, as SVG text for an SVG export and as pixels for every other file type.
-async fn render_frame(
+pub(crate) async fn render_frame(
 	executor: &DynamicExecutor,
 	wgpu_executor: &wgpu_executor::WgpuExecutor,
 	settings: ExportSettings,

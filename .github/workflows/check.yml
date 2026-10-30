@@ -184,6 +184,8 @@ jobs:
           --package migration-nodes
           --package migration-snapshot
           --package document-graph-storage
+          --package document-format
+          --package graphene-cli
 
   # Stored types, node version lineages, and node APIs against the base commit. Only needs the snapshot tool, so it runs on a GitHub runner
   migrations:
