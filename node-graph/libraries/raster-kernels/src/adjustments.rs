@@ -3,15 +3,17 @@
 use crate::blending::ColorOverlay;
 use crate::color_lookup_table::{Lut, parse_cached};
 use crate::{Lut1d, Lut3d, MapColor, ToGpuParams, Wgsl, gpu_param_enum, gpu_params};
+use core_types::CacheHash;
 use core_types::color::Color;
 use core_types::color::{linear_to_srgb, set_luminosity, srgb_to_linear};
 use core_types::transfer_curve::TransferCurveEvaluator;
 use glam::Vec3;
 use graphic_types::EffectOperation;
 use graphic_types::adjustment::{self as settings, Adjustment, DesaturateMethod, RelativeAbsolute, SelectiveColorChoice};
+use graphic_types::raster_types::{CPU, Raster};
 use std::sync::Arc;
 use vector_types::gradient::GradientInterpolation;
-use vector_types::{GradientSettings, GradientSpread};
+use vector_types::{Gradient, GradientSettings, GradientSpace, GradientSpread};
 
 /// Receives the kernel carrying out an [`Adjustment`], whose type depends on which adjustment it is.
 pub trait AdjustmentVisitor {
@@ -294,6 +296,41 @@ pub fn with_color_map<R>(adjustment: &Adjustment, map: impl FnOnce(&dyn Fn(Color
 /// The color with `adjustment` carried out on it.
 pub fn adjust_color(adjustment: &Adjustment, color: Color) -> Color {
 	with_color_map(adjustment, |map| map(color))
+}
+
+/// The gradient with `adjustment` carried out along its ramp, with the settings to read the result with.
+/// A stepped ramp holds each stop's color, so adjusting the stops is exact. Elsewhere an adjustment can bend the ramp between stops,
+/// so the adjusted ramp is resampled into stops that interpolate linearly in gamma.
+pub fn adjust_gradient(adjustment: &Adjustment, gradient: &Gradient, settings: GradientSettings) -> (Gradient, GradientSettings) {
+	with_color_map(adjustment, |map| {
+		if settings.interpolation == GradientInterpolation::Stepped {
+			return (gradient.map_colors(|color| map(*color)), settings);
+		}
+
+		let resampled_settings = GradientSettings {
+			space: GradientSpace::RgbGamma,
+			interpolation: GradientInterpolation::Linear,
+			hue_direction: Default::default(),
+			..settings
+		};
+		(gradient.map_ramp(settings, map), resampled_settings)
+	})
+}
+
+/// The raster with `adjustments` carried out on its colors by their kernels' mappings, even those of transparent pixels, for output with no GPU to run the kernels on.
+/// The result is kept with the raster's pixels, so adjusting them the same way again reuses it, ID and all.
+pub fn adjusted_raster(raster: &Raster<CPU>, adjustments: &[Adjustment]) -> Raster<CPU> {
+	let mut hasher = std::hash::DefaultHasher::new();
+	adjustments.iter().for_each(|adjustment| adjustment.cache_hash(&mut hasher));
+	let key = std::hash::Hasher::finish(&hasher);
+
+	raster.derived(key, |raster| {
+		let mut image = raster.data().clone();
+		for adjustment in adjustments {
+			with_color_map(adjustment, |map| image.data.iter_mut().for_each(|color| *color = map(*color)));
+		}
+		Raster::new_cpu(image)
+	})
 }
 
 /// The red, green, blue, and alpha curves of a per-channel adjustment, each sampled from its kernel at `size` evenly spaced gamma-encoded values from 0 to 1.

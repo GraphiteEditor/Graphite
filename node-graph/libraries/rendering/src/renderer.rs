@@ -31,9 +31,10 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Appearance, Artboard, BevelStyle, Cover, Coverage, Effects, FillAndStroke, Graphic, Vector};
+use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, Effects, FillAndStroke, Graphic, Vector};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
+use raster_kernels::adjustments::{adjusted_raster, leading_adjustments};
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as SkrifaFontRef;
@@ -205,6 +206,45 @@ impl ItemCompositing<'_> {
 	/// How far the effects reach past the content, in document pixels.
 	fn reach(&self) -> f64 {
 		self.effects.map_or(0., |(effects, _)| effects.reach())
+	}
+
+	/// The adjustments at the start of the effects, which can be carried out on the content's own colors ahead of the rest.
+	fn leading_adjustments(&self) -> Vec<Adjustment> {
+		let Some((effects, fill)) = self.effects else { return Vec::new() };
+
+		leading_adjustments(effects.operations(), fill)
+	}
+
+	/// The leading adjustments for the content to carry out on its own colors, and the compositing left for it, holding the effects after them in `remaining`.
+	fn split_leading_adjustments<'b>(&self, remaining: &'b mut Effects) -> (Vec<Adjustment>, ItemCompositing<'b>)
+	where
+		Self: 'b,
+	{
+		let leading_adjustments = self.leading_adjustments();
+		let Some((effects, _)) = self.effects.filter(|_| !leading_adjustments.is_empty()) else {
+			return (leading_adjustments, ItemCompositing { ..*self });
+		};
+
+		*remaining = effects.after(leading_adjustments.len());
+		(leading_adjustments, self.with_remaining_effects(remaining))
+	}
+
+	/// This compositing with only the `remaining` effects, those after the leading adjustments the content has taken.
+	fn with_remaining_effects<'b>(&self, remaining: &'b Effects) -> ItemCompositing<'b> {
+		let fill = self.effects.map_or(1., |(_, fill)| fill);
+
+		match remaining.is_empty() {
+			true => ItemCompositing {
+				opacity: self.opacity * fill,
+				effects: None,
+				pixel_scale: self.pixel_scale,
+			},
+			false => ItemCompositing {
+				opacity: self.opacity,
+				effects: Some((remaining, fill)),
+				pixel_scale: self.pixel_scale,
+			},
+		}
 	}
 
 	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space.
@@ -3040,6 +3080,18 @@ fn render_raster_image_svg<T>(item: ItemRef<'_, T>, image: &Raster<CPU>, coverag
 		return;
 	}
 
+	// SVG filters can't carry out every adjustment, so those leading the effects are carried out in the image's pixels
+	let mut remaining_effects = Effects::default();
+	let (leading_adjustments, compositing) = compositing.split_leading_adjustments(&mut remaining_effects);
+	let adjusted_image;
+	let image = match leading_adjustments.is_empty() {
+		true => image,
+		false => {
+			adjusted_image = adjusted_raster(image, &leading_adjustments);
+			&adjusted_image
+		}
+	};
+
 	let filter = compositing.svg_filter(render, || RenderBoundingBox::Rectangle((transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box()));
 
 	// A filter's wrapping group takes the opacity and blend mode instead
@@ -4417,5 +4469,41 @@ mod tests {
 		// One no primitive expresses passes the content through unchanged
 		let vibrance = filter(Adjustment::Vibrance { vibrance: 50., saturation: 0. });
 		assert!(!vibrance.contains("feComponentTransfer") && !vibrance.contains("feColorMatrix"), "{vibrance}");
+	}
+
+	#[test]
+	fn svg_images_carry_out_their_adjustments_in_their_pixels() {
+		use graphic_types::raster_types::Image;
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		// Vibrance, which no filter primitive expresses, followed by a blur, which one does
+		let orange = Color::from_gamma_srgb_channels(1., 0.5, 0., 1.);
+		let mut item = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, orange)));
+		stamp_effect(&mut item, Effect::new(&EffectOperation::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: -100. })));
+		stamp_effect(
+			&mut item,
+			Effect::new(&EffectOperation::Blur {
+				radius: 1.,
+				box_blur: false,
+				gamma: false,
+			}),
+		);
+		let image = List::new_from_item(item);
+
+		let render_canvas_images = || {
+			let mut render = SvgRender::new();
+			image.render_svg(&mut render, &RenderParams::default());
+			assert!(render.svg_defs.contains("feGaussianBlur") && !render.svg_defs.contains("feComponentTransfer"), "{}", render.svg_defs);
+			render.image_data
+		};
+
+		// The canvas shows gray pixels, and a second render reuses them rather than sending another image
+		let first = render_canvas_images();
+		let [canvas] = first.values().collect::<Vec<_>>()[..] else {
+			panic!("expected one canvas, got {}", first.len())
+		};
+		let [red, green, blue, _] = canvas.raster.data[0].to_gamma_srgb_channels();
+		assert!((red - green).abs() < 1e-3 && (green - blue).abs() < 1e-3, "expected gray, got {:?}", [red, green, blue]);
+		assert_eq!(render_canvas_images().keys().collect::<Vec<_>>(), first.keys().collect::<Vec<_>>());
 	}
 }

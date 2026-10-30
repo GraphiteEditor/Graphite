@@ -1,14 +1,14 @@
 use crate::raster_kernel::raster_kernel_pipeline;
-use core_types::list::{ATTR_EFFECTS, Item};
+use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item};
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
 use core_types::{ATTR_OPACITY_FILL, Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Adjustment, BevelDirection, BevelStyle, Effect, EffectOperation, Effects, GlowSource, Graphic, Vector, stamp_effect};
-use raster_kernels::adjustments::{adjust_color, preserves_alpha, with_color_map};
-use vector_types::Gradient;
+use raster_kernels::adjustments::{adjust_color, adjust_gradient, preserves_alpha};
 use vector_types::vector::style::StrokeAlign;
+use vector_types::{Gradient, GradientSettings};
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::raster_effects::evaluate_raster_effects;
 use wgpu_executor::raster_kernel::adjust_raster;
@@ -42,12 +42,16 @@ impl ApplyEffect for Color {
 	}
 }
 
-/// A gradient has no pixels for an effect to read, so an adjustment is carried out on its colors with its kernel's mapping.
+/// A gradient has no pixels for an effect to read, so an adjustment is carried out along its ramp with its kernel's mapping.
 impl ApplyEffect for Gradient {
 	fn apply_adjustment(item: Item<Self>, adjustment: Adjustment, _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
 		let mut item = item;
-		let adjusted = with_color_map(&adjustment, |map| item.element().map_colors(|color| map(*color)));
+		let (adjusted, settings) = adjust_gradient(&adjustment, item.element(), GradientSettings::from_item_attributes(&item));
 		*item.element_mut() = adjusted;
+
+		item.set_attribute(ATTR_GRADIENT_SPACE, settings.space);
+		item.set_attribute(ATTR_GRADIENT_INTERPOLATION, settings.interpolation);
+		item.set_attribute(ATTR_GRADIENT_HUE_DIRECTION, settings.hue_direction);
 		Ok(item)
 	}
 }
@@ -520,6 +524,64 @@ mod tests {
 			// The two document pixel offset lands the shadow over [4, 8], which it would only half reach if measured through the transform alone
 			assert_color(color_at(&carried_out, DVec2::new(7.5, 4.5), &executor).await, Color::BLACK);
 			assert_color(color_at(&carried_out, DVec2::new(1.5, 4.5), &executor).await, Color::TRANSPARENT);
+		});
+	}
+
+	#[test]
+	fn adjusting_a_raster_follows_its_earlier_effects_and_stays_stamped_until_uploaded() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+			// A white square in the middle of a transparent image, placed one pixel per document unit, then blurred
+			let mut image = Image::new(20, 20, Color::TRANSPARENT);
+			for y in 5..15 {
+				for x in 5..15 {
+					image.data[y * 20 + x] = Color::WHITE;
+				}
+			}
+			let transform = DAffine2::from_scale(DVec2::splat(20.));
+			let item = Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform);
+			let blurred = Raster::<CPU>::apply_effect(
+				item,
+				EffectOperation::Blur {
+					radius: 1.,
+					box_blur: false,
+					gamma: false,
+				},
+				&pipeline,
+			)
+			.unwrap();
+
+			// The pixels wait for the stamps, with the adjustment after the blur
+			let adjusted = Raster::<CPU>::apply_adjustment(blurred, Adjustment::MakeOpaque, &pipeline).unwrap();
+			assert_eq!(adjusted.attribute::<Effects>(ATTR_EFFECTS).map(Effects::len), Some(2));
+			assert_eq!(adjusted.element().data[0], Color::TRANSPARENT);
+
+			// Just outside the square, the blur's faint white becomes opaque white, where making it opaque first would have blurred in black
+			let uploaded = super::eager((), adjusted, Item::new_from_element(pipeline.clone())).unwrap();
+			assert_color(color_at(&uploaded, DVec2::new(4.5, 10.5), &executor).await, Color::WHITE);
+		});
+	}
+
+	#[test]
+	fn a_gpu_raster_is_adjusted_at_once_in_place_of_a_stamp() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+			let coverage = DAffine2::from_translation(DVec2::splat(0.25)) * DAffine2::from_scale(DVec2::splat(0.5));
+			let gpu: Raster<GPU> = Raster::new_cpu(Image::new(2, 2, Color::WHITE)).convert(Footprint::DEFAULT, executor.clone());
+			let item = Item::new_from_element(gpu.with_coverage(coverage)).with_attribute(ATTR_OPACITY_FILL, 0.5_f64);
+
+			let adjusted = Raster::<GPU>::apply_adjustment(item, Adjustment::Invert, &pipeline).unwrap();
+			assert!(adjusted.attribute::<Effects>(ATTR_EFFECTS).is_none());
+			assert_eq!(adjusted.element().coverage(), coverage, "the pixels stay where they were");
+			assert_eq!(adjusted.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.), 0.5, "the fill stays for the render");
+			let raster: Raster<CPU> = adjusted.into_element().convert(Footprint::DEFAULT, executor.clone()).await;
+			assert_color(raster.data[0], Color::BLACK);
 		});
 	}
 }

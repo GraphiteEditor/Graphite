@@ -6,7 +6,7 @@ use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
 use graphic_types::{Adjustment, Graphic, Vector};
-use raster_types::{GPU, Raster};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 use wgpu_executor::WgpuPipelineCache;
 
@@ -38,11 +38,12 @@ fn mix_colors(
 fn color_overlay<T: ApplyEffect>(
 	_: impl Ctx,
 	#[implementations(
+		Raster<CPU>,
+		Color,
+		Gradient,
 		Graphic,
 		Vector,
 		Raster<GPU>,
-		Color,
-		Gradient,
 		String,
 	)]
 	image: Item<T>,
