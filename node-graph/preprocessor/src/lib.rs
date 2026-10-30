@@ -919,4 +919,69 @@ mod tests {
 			"neither the adapter nor what feeds it should read the footprint, leaving it unaffected by panning"
 		);
 	}
+	#[test]
+	fn a_footprint_dependent_raster_warns_at_a_footprint_invariant_node_and_feeds_others_unconverted() {
+		use graph_craft::application_io::PlatformEditorApi;
+		use graph_craft::document::value::TaggedValue;
+		use graph_craft::graphene_compiler::Compiler;
+		use graph_craft::proto::{GraphErrorType, TypingContext};
+		use graphene_std::raster_nodes::dehaze::dehaze;
+		use graphene_std::raster_nodes::filter::median_filter;
+		use graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline;
+		use graphene_std::raster_nodes::std_nodes::mandelbrot;
+		use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+		use interpreted_executor::util::wrap_network_in_scope;
+		use std::sync::Arc;
+
+		struct NoSpawner;
+		impl Spawn for NoSpawner {
+			fn spawn(&self, _: Task) {}
+		}
+
+		let compile = |consumer: ProtoNodeIdentifier| {
+			let network = NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(1), 0)],
+				nodes: [
+					(
+						NodeId(0),
+						DocumentNode {
+							inputs: vec![NodeInput::scope(raster_kernel_pipeline::IDENTIFIER)],
+							implementation: DocumentNodeImplementation::ProtoNode(mandelbrot::IDENTIFIER),
+							..Default::default()
+						},
+					),
+					(
+						NodeId(1),
+						DocumentNode {
+							inputs: vec![
+								NodeInput::node(NodeId(0), 0),
+								NodeInput::value(TaggedValue::Number(10.), false),
+								NodeInput::scope(raster_kernel_pipeline::IDENTIFIER),
+							],
+							implementation: DocumentNodeImplementation::ProtoNode(consumer),
+							..Default::default()
+						},
+					),
+				]
+				.into_iter()
+				.collect(),
+				..Default::default()
+			};
+
+			let runtime = AsyncRuntime::new(Arc::new(NoSpawner), Arc::new(std::time::Instant::now()));
+			let mut network = wrap_network_in_scope(network, Arc::new(PlatformEditorApi::default()), runtime.handle());
+			Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
+			let compiled = Compiler {}.compile_single(network).unwrap();
+
+			let mut typing_context = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
+			typing_context.update(&compiled.network).expect("a GPU raster should reach the GPU-only input");
+			compiled.warnings
+		};
+
+		let warnings = compile(dehaze::IDENTIFIER);
+		assert_eq!(warnings.len(), 1, "Dehaze should warn about reading the footprint through its input: {warnings:?}");
+		assert!(warnings[0].error == GraphErrorType::FootprintDependentInput);
+
+		assert!(compile(median_filter::IDENTIFIER).is_empty(), "a node that isn't footprint invariant shouldn't warn");
+	}
 }
