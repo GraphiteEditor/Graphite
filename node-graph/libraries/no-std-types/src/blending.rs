@@ -198,7 +198,13 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		BlendMode::Erase => return faded_alpha(background.alpha_subtract(foreground)),
 		BlendMode::Restore => return faded_alpha(background.alpha_add(foreground)),
 		BlendMode::MultiplyAlpha => return faded_alpha(background.alpha_multiply(foreground)),
-		blend_mode => apply_blend_mode(foreground, background, blend_mode),
+		blend_mode => {
+			let mixed = apply_blend_mode(foreground, background, blend_mode);
+
+			// The mode only mixes where the backdrop has coverage, so its alpha interpolates each channel from the raw color to the mixed color
+			let channel = |foreground_channel: f32, mixed_channel: f32| foreground_channel * (1. - background.a()) + mixed_channel * background.a();
+			Color::from_rgbaf32_unchecked(channel(foreground.r(), mixed.r()), channel(foreground.g(), mixed.g()), channel(foreground.b(), mixed.b()), mixed.a())
+		}
 	};
 
 	background.alpha_blend(target_color.with_alpha(target_color.a() * opacity))
@@ -280,6 +286,21 @@ mod tests {
 			let blended = apply_blend_mode(foreground, background, mode);
 			assert!((blended.a() - 0.25).abs() < 1e-5, "{mode} alpha was {}", blended.a());
 		}
+	}
+
+	#[test]
+	fn blending_over_nothing_keeps_the_foreground_color() {
+		let red = Color::from_rgbaf32_unchecked(1., 0., 0., 1.);
+
+		// Over a transparent backdrop, Multiply leaves the color alone rather than darkening it toward the backdrop's black
+		let over_nothing = blend_colors(red, Color::TRANSPARENT, BlendMode::Multiply, 1.);
+		assert_eq!(over_nothing, red);
+
+		// A half-covering gray backdrop multiplies in half way
+		let gray = Color::from_rgbaf32_unchecked(0.5, 0.5, 0.5, 0.5);
+		let over_gray = blend_colors(red, gray, BlendMode::Multiply, 1.);
+		assert!((over_gray.r() - 0.75).abs() < 1e-5, "red was {}", over_gray.r());
+		assert!((over_gray.a() - 1.).abs() < 1e-5, "alpha was {}", over_gray.a());
 	}
 
 	#[test]

@@ -79,6 +79,7 @@ graphene-canvas-utils = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 mmap-io = { workspace = true }
+tokio = { workspace = true, features = ["net"] }
 
 [dev-dependencies]
 # Workspace dependencies

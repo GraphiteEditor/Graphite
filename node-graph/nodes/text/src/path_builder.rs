@@ -1,3 +1,4 @@
+use super::text_context::TextToVectorError;
 use core_types::list::{Item, List};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
@@ -64,10 +65,10 @@ impl PathBuilder {
 		style_skew: Option<DAffine2>,
 		skew: DAffine2,
 		per_glyph_items: bool,
-	) -> bool {
+	) -> Result<bool, TextToVectorError> {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
-		glyph.draw(settings, self).unwrap();
+		glyph.draw(settings, self).map_err(TextToVectorError::UndrawableGlyph)?;
 		let has_geometry = !self.glyph_bezpath.is_empty();
 
 		// Apply transforms in correct order: style-based skew first, then user-requested skew
@@ -100,10 +101,10 @@ impl PathBuilder {
 			}
 		}
 
-		has_geometry
+		Ok(has_geometry)
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) -> Result<(), TextToVectorError> {
 		let mut run_x = glyph_run.offset() + x_offset;
 		let run_y = glyph_run.baseline();
 
@@ -148,17 +149,18 @@ impl PathBuilder {
 			run_x += glyph.advance;
 
 			let glyph_id = GlyphId::from(glyph.id);
-			if let Some(glyph_outline) = outlines.get(glyph_id) {
-				if !per_glyph_items {
-					self.origin = glyph_offset;
-				}
-				let drew_geometry = self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_items);
+			let glyph_outline = outlines.get(glyph_id).ok_or(TextToVectorError::MissingOutline)?;
+			if !per_glyph_items {
+				self.origin = glyph_offset;
+			}
+			let drew_geometry = self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_items)?;
 
-				if !drew_geometry && space_extra != 0. && glyph.advance > 0. {
-					run_x += space_extra;
-				}
+			if !drew_geometry && space_extra != 0. && glyph.advance > 0. {
+				run_x += space_extra;
 			}
 		}
+
+		Ok(())
 	}
 
 	pub fn finalize(mut self) -> List<Vector> {

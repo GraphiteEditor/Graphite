@@ -347,21 +347,20 @@ impl DocumentMetadata {
 	}
 
 	/// Get the bounding box of the specified layer in document space, expanded to include the actual rendered
-	/// stroke geometry when the layer is a vector with a stroke style. Falls back to the click-target-based
-	/// bounds for non-vector layers (groups, raster, text, color, gradient).
+	/// stroke geometry when the layer is a vector with a stroke style. Only the first item of a layer's vector data
+	/// is recorded, so the others count through the click-target-based bounds, without their strokes.
 	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
-		if let Some(item) = self.layer_vector_data.get(&layer) {
+		let stroked = self.layer_vector_data.get(&layer).and_then(|item| {
 			let stroke = self
 				.layer_appearance_attributes
 				.get(&layer)
 				.and_then(|appearance| appearance.first_coverage_of(graphene_std::Cover::Stroke))
 				.map(graphene_std::Coverage::stroke_params);
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
-			if let Some(bounds) = item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref()) {
-				return Some(bounds);
-			}
-		}
-		self.bounding_box_document(layer)
+			item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref())
+		});
+
+		[stroked, self.bounding_box_document(layer)].into_iter().flatten().reduce(Quad::combine_bounds)
 	}
 
 	/// Get the bounding box of the click target of the specified layer in viewport space
@@ -716,6 +715,26 @@ pub struct NodeRelations {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn stroked_bounds_include_the_items_after_the_first() {
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId(3));
+		let line = |from: f64, to: f64| {
+			let mut path = BezPath::new();
+			path.move_to((from, 0.));
+			path.line_to((to, 0.));
+			path
+		};
+
+		// Only the first item is recorded as vector data, while click targets cover every item
+		let mut metadata = DocumentMetadata::default();
+		metadata.layer_vector_data.insert(layer, Arc::new(Vector::item_from_bezpath(&line(0., 10.))));
+		let later_item = ClickTarget::new_with_path(line(100., 110.), 0.);
+		metadata.click_targets.insert(layer, vec![Arc::new(later_item)]);
+
+		let [min, max] = metadata.bounding_box_document_with_stroke(layer).unwrap();
+		assert_eq!((min.x, max.x), (0., 110.));
+	}
 
 	#[test]
 	fn the_transform_as_rendered_stays_put_while_the_view_moves_on() {

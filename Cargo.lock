@@ -2157,6 +2157,7 @@ dependencies = [
  "interpreted-executor",
  "log",
  "preprocessor",
+ "serde_json",
  "tokio",
  "wgpu",
  "wgpu-executor",
@@ -2176,6 +2177,7 @@ dependencies = [
  "node-macro",
  "raster-types",
  "serde",
+ "thiserror 2.0.18",
  "tsify",
  "wasm-bindgen",
 ]
@@ -2214,7 +2216,6 @@ dependencies = [
 name = "graphene-std"
 version = "0.0.0"
 dependencies = [
- "base64",
  "blending-nodes",
  "brush-nodes",
  "bytemuck",
@@ -2237,8 +2238,10 @@ dependencies = [
  "repeat-nodes",
  "reqwest",
  "text-nodes",
+ "thiserror 2.0.18",
  "tokio",
  "transform-nodes",
+ "url",
  "vector-nodes",
  "vector-types",
  "vello_gpu",
@@ -2262,6 +2265,7 @@ dependencies = [
  "rand",
  "raster-types",
  "serde",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
@@ -2468,6 +2472,7 @@ dependencies = [
 name = "graphite-wasm-wrapper"
 version = "0.0.0"
 dependencies = [
+ "base64",
  "graph-craft",
  "graphene-std",
  "graphite-editor",
@@ -3611,10 +3616,10 @@ dependencies = [
  "glam 0.33.10",
  "graphene-core",
  "graphic-types",
- "log",
  "math-parser",
  "node-macro",
  "rand",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
@@ -4286,6 +4291,7 @@ dependencies = [
  "node-macro",
  "smallvec",
  "text-nodes",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
@@ -4834,6 +4840,7 @@ dependencies = [
  "raster-types",
  "serde",
  "spirv-std",
+ "thiserror 2.0.18",
  "tokio",
  "tsify",
  "vector-types",
@@ -4871,6 +4878,7 @@ dependencies = [
  "node-macro",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tsify",
  "wasm-bindgen",
  "wgpu",
@@ -6117,13 +6125,13 @@ dependencies = [
  "graphene-hash",
  "graphene-resource",
  "ipsum",
- "log",
  "node-macro",
  "parley",
  "rand",
  "serde",
  "serde_json",
  "skrifa",
+ "thiserror 2.0.18",
  "titlecase",
  "tsify",
  "unicode-segmentation",
@@ -6523,6 +6531,7 @@ dependencies = [
  "node-macro",
  "rand",
  "serde",
+ "thiserror 2.0.18",
  "vector-types",
 ]
 
@@ -6784,6 +6793,7 @@ dependencies = [
  "repeat-nodes",
  "rustc-hash 2.1.1",
  "serde",
+ "thiserror 2.0.18",
  "tokio",
  "tsify",
  "vector-types",
@@ -6813,6 +6823,7 @@ dependencies = [
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
+ "thiserror 2.0.18",
  "tinyvec",
  "tsify",
  "wasm-bindgen",
@@ -7306,6 +7317,7 @@ dependencies = [
  "node-macro",
  "raster-types",
  "rendering",
+ "thiserror 2.0.18",
  "vello_gpu",
  "web-sys",
  "wgpu",

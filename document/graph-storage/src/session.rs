@@ -3,8 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Attributes, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, UserId, Value,
-	to_value,
+	ApplyMode, Attributes, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, Touched, UserId,
+	Value, to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -288,14 +288,99 @@ impl Session {
 		Ok(session)
 	}
 
+	/// Move the shared head back to its ancestor `target`, leaving the line since as a branch. Returns the move to
+	/// broadcast and what the steps left behind named. Only the retirer does this; a guest asks it to.
+	pub fn move_head_to(&mut self, target: Rev) -> Result<(HeadMove, Touched), CrdtError> {
+		let from = self.document.head;
+		if from == Some(target) {
+			return Err(CrdtError::NothingToUndo);
+		}
+		let touched = self.touched_since(Some(target))?;
+		let snapshot = self.fold_at(Some(target))?;
+
+		self.document.head = Some(target);
+		self.document.retired_snapshot = snapshot;
+		self.document.redo_stack.clear();
+		self.document.rebuild_working();
+		self.publish_up_to(target);
+		Ok((
+			HeadMove {
+				from,
+				head: Some(target),
+				copies: Vec::new(),
+			},
+			touched,
+		))
+	}
+
+	/// Follow a peer's [`HeadMove`], returning what the walked-over ops named. Changes nothing when the head is not
+	/// where the move started, since this peer has then diverged, or when the copies don't chain from an ancestor of
+	/// the head to the move's head.
+	pub fn apply_head_move(&mut self, moved: &HeadMove) -> Result<Touched, CrdtError> {
+		if self.document.head != moved.from {
+			return Err(CrdtError::CursorMismatch {
+				expected: moved.from,
+				found: self.document.head,
+			});
+		}
+		let base = moved.copies.first().map_or(moved.head, |copy| copy.parent);
+		let touched = self.touched_since(base)?;
+		let mut tip = base;
+		for copy in &moved.copies {
+			if copy.parent != tip || matches!(copy.kind, RegistryDelta::Merge { .. }) {
+				return Err(CrdtError::MalformedHeadMove);
+			}
+			tip = Some(copy.id);
+		}
+		if tip != moved.head {
+			return Err(CrdtError::MalformedHeadMove);
+		}
+
+		// Like `follow`, a failed fold leaves only the copies behind in history.
+		for copy in &moved.copies {
+			self.document.clock.observe(copy.timestamp);
+			self.document.history.push(copy.clone());
+		}
+		let snapshot = self.fold_at(moved.head)?;
+		self.document.head = moved.head;
+		self.document.retired_snapshot = snapshot;
+		if !moved.copies.is_empty() {
+			self.document.history.canonical_sort();
+		}
+		self.document.redo_stack.clear();
+		self.document.rebuild_working();
+		if let Some(head) = moved.head {
+			self.publish_up_to(head);
+		}
+		Ok(touched)
+	}
+
+	/// What the deltas on the head's line but not on `base`'s named, merged branches included. Fails unless `base` is
+	/// on the head's line.
+	fn touched_since(&self, base: Option<Rev>) -> Result<Touched, CrdtError> {
+		let history = &self.document.history;
+		let line = history.ancestors(self.document.head);
+		if let Some(base) = base
+			&& !line.contains(&base)
+		{
+			return Err(CrdtError::NotAncestor(base));
+		}
+		let kept = history.ancestors(base);
+		let mut touched = Touched::default();
+		for delta in history.iter().filter(|delta| line.contains(&delta.id) && !kept.contains(&delta.id)) {
+			touched.record(&delta.kind);
+		}
+		Ok(touched)
+	}
+
 	/// Which hot ops are done with, for a peer catching up and for persisting. See [`RetiredMarks`].
 	pub fn retired_marks(&self) -> &RetiredMarks {
 		&self.document.retired
 	}
 
-	/// Take on a peer's marks, or this peer's persisted ones, dropping the hot ops they cover.
-	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) {
-		self.document.absorb_retired_marks(remote);
+	/// Take on a peer's marks, or this peer's persisted ones, dropping the hot ops they cover. Returns what those named.
+	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Touched {
+		self.document.absorb_retired_marks(remote)
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -304,41 +389,13 @@ impl Session {
 		self.document.replay_hot_op(hot_op)
 	}
 
-	/// Integrate `incoming` retired deltas from another branch and emit a [`RegistryDelta::Merge`]
-	/// joining the resulting tips, returning the new merge `Rev` (or `None` if `incoming` adds nothing).
-	/// Applies each incoming op to the registry, then hands the set to [`History::merge`]. Incoming
-	/// deltas must arrive in causal order.
-	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<Option<Rev>, CrdtError> {
-		let mut absorbed: Vec<Delta> = Vec::new();
-		for delta in incoming {
-			if self.document.history.contains(delta.id) {
-				continue;
-			}
-			self.document.apply_op_idempotent(delta.kind.clone(), delta.timestamp)?;
-			absorbed.push(delta);
-		}
-		if absorbed.is_empty() {
-			return Ok(None);
-		}
-
-		self.document.history.merge(absorbed);
-		let tips = self.document.history.tips();
-		let timestamp = self.document.clock.tick();
-		let merge = Delta::merge(tips, self.document.peer, timestamp);
-		let merge_rev = merge.id;
-		// The merge's parents are the current tips, so it sorts last: `push` preserves the canonical
-		// order without re-sorting the whole history.
-		self.document.history.push(merge);
-		self.document.head = Some(merge_rev);
-
-		// Merge runs with an empty hot log; keep the retired snapshot in step with the working registry.
-		self.document.retired_snapshot = self.document.working_registry.clone();
-		Ok(Some(merge_rev))
-	}
-
 	/// The retired snapshot as history alone gives it: the fold of `head`'s ancestry, leaving out undone deltas kept for redo.
 	pub fn snapshot_from_history(&self) -> Result<Registry, CrdtError> {
-		let reachable = self.document.history.ancestors(self.document.head);
+		self.fold_at(self.document.head)
+	}
+
+	fn fold_at(&self, head: Option<Rev>) -> Result<Registry, CrdtError> {
+		let reachable = self.document.history.ancestors(head);
 		let mut scratch = Document::empty(self.document.peer, self.document.user);
 		for delta in self.document.history.iter().filter(|delta| reachable.contains(&delta.id)) {
 			scratch.apply_op_with(RegistryTarget::Working, delta.kind.clone(), delta.timestamp, ApplyMode::Idempotent)?;
@@ -402,6 +459,162 @@ impl Session {
 		}
 		closed.sort_by_key(|interaction| interaction.closed_at);
 		closed
+	}
+
+	/// Takes a retirer's deltas and moves the head to `head` (by default the batch's last delta) without minting a
+	/// merge. A batch not extending this head refolds the snapshot, leaving the old tip as a branch.
+	pub fn follow(&mut self, incoming: Vec<Delta>, head: Option<Rev>) -> Result<MergeOutcome, CrdtError> {
+		let before = self.document.head;
+		let length_before = self.document.history.len();
+		let named = head.is_some();
+		let head = head.or_else(|| incoming.last().map(|delta| delta.id)).or(before);
+		if let Some(head) = head
+			&& !self.document.history.contains(head)
+			&& !incoming.iter().any(|delta| delta.id == head)
+		{
+			return Err(CrdtError::NotFoundInHistory(head));
+		}
+
+		for delta in incoming {
+			if self.document.history.contains(delta.id) {
+				continue;
+			}
+			if let Some(parent) = delta.all_parents().find(|&parent| !self.document.history.contains(parent)) {
+				return Err(CrdtError::NotFoundInHistory(parent));
+			}
+			self.document.history.push(delta);
+		}
+		// A late copy of a line this head is already past changes nothing unless the head is named.
+		let stale = |head: Rev| !named && before.is_some_and(|before| self.document.history.is_ancestor(head, before));
+		if self.document.history.len() == length_before && (head == before || head.is_some_and(stale)) {
+			return Ok(MergeOutcome::NoOp);
+		}
+
+		let mut chain = Vec::new();
+		let mut current = head;
+		let extends = loop {
+			if current == before {
+				break true;
+			}
+			let Some(rev) = current else { break false };
+			let Some(delta) = self.document.history.get(rev) else { break false };
+			if self.document.history.position(rev).is_some_and(|position| position < length_before) {
+				break false;
+			}
+			// A merge may join a branch abandoned here, so the snapshot is refolded from the whole ancestry.
+			if delta.all_parents().count() > 1 {
+				break false;
+			}
+			chain.push(delta.clone());
+			current = delta.parent;
+		};
+
+		self.document.head = head;
+		if extends {
+			for delta in chain.into_iter().rev() {
+				self.document.apply_retired_op_idempotent(delta.kind, delta.timestamp)?;
+			}
+		} else {
+			self.document.retired_snapshot = self.snapshot_from_history()?;
+			self.document.rebuild_working();
+		}
+		if !self.document.history.extends_canonically(length_before) {
+			self.document.history.canonical_sort();
+		}
+		self.document.redo_stack.clear();
+		if let Some(head) = head {
+			self.publish_up_to(head);
+		}
+		Ok(head.map_or(MergeOutcome::NoOp, MergeOutcome::FastForward))
+	}
+
+	/// Integrates another peer's retired deltas, in causal order: fast-forwards when they extend `head`, otherwise
+	/// joins `head` and the incoming tips with a [`RegistryDelta::Merge`].
+	pub fn merge(&mut self, incoming: impl IntoIterator<Item = Delta>) -> Result<MergeOutcome, CrdtError> {
+		let length_before = self.document.history.len();
+		let head_before = self.document.head;
+
+		// Applied to both registries, since working is the snapshot plus the hot log.
+		let mut absorbed_ids = HashSet::new();
+		for delta in incoming {
+			if self.document.history.contains(delta.id) {
+				continue;
+			}
+			self.document.apply_retired_op_idempotent(delta.kind.clone(), delta.timestamp)?;
+			absorbed_ids.insert(delta.id);
+			self.document.history.push(delta);
+		}
+		if absorbed_ids.is_empty() {
+			return Ok(MergeOutcome::NoOp);
+		}
+
+		let extends = self.document.history.extends_canonically(length_before);
+		if !extends {
+			self.document.history.canonical_sort();
+		}
+
+		let history = &self.document.history;
+		let last_before = length_before.checked_sub(1).and_then(|position| history.at(position)).map(|delta| delta.id);
+		let parents: Vec<Rev> = if extends && self.document.head == last_before {
+			// The chain hangs off `head`, so its end is the only tip.
+			vec![history.at(history.len() - 1).expect("the batch is non-empty").id]
+		} else {
+			let mut candidates: Vec<Rev> = history.tips().into_iter().filter(|tip| absorbed_ids.contains(tip)).collect();
+			candidates.extend(self.document.head);
+			let is_dominated = |candidate: Rev| candidates.iter().any(|&other| other != candidate && history.is_ancestor(candidate, other));
+			candidates.iter().copied().filter(|&candidate| !is_dominated(candidate)).collect()
+		};
+
+		let outcome = match parents.as_slice() {
+			[tip] => MergeOutcome::FastForward(*tip),
+			_ => {
+				let timestamp = self.document.clock.tick();
+				let merge = Delta::merge(parents, self.document.peer, timestamp);
+				let merge_rev = merge.id;
+				// Its parents are tips, so `push` keeps the canonical order without a re-sort.
+				self.document.history.push(merge);
+				MergeOutcome::Merged(merge_rev)
+			}
+		};
+		self.document.head = outcome.head();
+		// The line moved past what was undone, and a peer holds everything up to here.
+		self.document.redo_stack.clear();
+		if let Some(head) = self.document.head {
+			self.publish_up_to(head);
+		}
+
+		// A merge, or a batch sorted in ahead of the tail, may bring in effects that applying it did not.
+		let mut refold = !extends || matches!(outcome, MergeOutcome::Merged(_));
+		if !refold && let MergeOutcome::FastForward(tip) = outcome {
+			refold = !self.fold_in_skipped(tip, head_before, &absorbed_ids)?;
+		}
+		if refold {
+			self.document.retired_snapshot = self.snapshot_from_history()?;
+			self.document.rebuild_working();
+		}
+
+		Ok(outcome)
+	}
+
+	/// Folds in the deltas between `from` and `tip` that the batch did not bring, such as steps undone here. `false`
+	/// when the walk meets a merge or misses `from`.
+	fn fold_in_skipped(&mut self, tip: Rev, from: Option<Rev>, absorbed: &HashSet<Rev>) -> Result<bool, CrdtError> {
+		let mut skipped = Vec::new();
+		let mut current = Some(tip);
+		while current != from {
+			let Some(delta) = current.and_then(|rev| self.document.history.get(rev)) else { return Ok(false) };
+			if matches!(delta.kind, RegistryDelta::Merge { .. }) {
+				return Ok(false);
+			}
+			if !absorbed.contains(&delta.id) {
+				skipped.push(delta.clone());
+			}
+			current = delta.parent;
+		}
+		for delta in skipped.into_iter().rev() {
+			self.document.apply_retired_op_idempotent(delta.kind, delta.timestamp)?;
+		}
+		Ok(true)
 	}
 
 	/// The hot ops stamped at or before `up_to`, which [`retire`](Self::retire) drains.
@@ -543,6 +756,29 @@ impl Session {
 	/// Retired deltas in append order, which is a valid replay order (parents before children).
 	pub fn history(&self) -> impl Iterator<Item = &Delta> + '_ {
 		self.document.history.iter()
+	}
+
+	/// A sample of `head`'s ancestry, for a peer to work out what this session lacks.
+	pub fn known_revs(&self) -> Vec<Rev> {
+		self.document.head.map(|head| self.document.history.sample_chain(head)).unwrap_or_default()
+	}
+
+	/// The deltas on `head`'s ancestry not reachable from `known`. Abandoned branches stay local, since merging one
+	/// would bring an undone step back. The head counts as published from then on.
+	pub fn deltas_unknown_to(&mut self, known: impl IntoIterator<Item = Rev>) -> Vec<Delta> {
+		let reachable = self.document.history.ancestors(self.document.head);
+		let deltas: Vec<Delta> = self
+			.document
+			.history
+			.deltas_unknown_to(known)
+			.into_iter()
+			.filter(|delta| reachable.contains(&delta.id))
+			.cloned()
+			.collect();
+		if let Some(head) = self.document.head.filter(|_| !deltas.is_empty()) {
+			self.publish_up_to(head);
+		}
+		deltas
 	}
 
 	/// The retired delta for `rev`, or `None` if it isn't in history. O(1) lookup, for callers that
@@ -834,10 +1070,43 @@ pub enum CrdtError {
 	NothingToUndo,
 	#[error("Nothing to redo")]
 	NothingToRedo,
+	#[error("Cursor is at {found:?}, the move expected {expected:?}")]
+	CursorMismatch { expected: Option<Rev>, found: Option<Rev> },
+	#[error("Delta {0} is not on the head's line")]
+	NotAncestor(Rev),
+	#[error("Head move copies do not chain from its base to its head")]
+	MalformedHeadMove,
 	#[error("Node {0} already exists")]
 	NodeAlreadyExists(NodeId),
 	#[error("Network {0} already exists")]
 	NetworkAlreadyExists(NetworkId),
 	#[error("Delta stored under {stored} hashes to {expected}")]
 	RevMismatch { stored: Rev, expected: Rev },
+}
+
+/// A shared head move, as [`Session::move_head_to`] produces it and [`Session::apply_head_move`] follows it.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct HeadMove {
+	pub from: Option<Rev>,
+	pub head: Option<Rev>,
+	/// Steps minted again on top of the line's new end.
+	pub copies: Vec<Delta>,
+}
+
+/// How [`Session::merge`] or [`Session::follow`] moved the head.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MergeOutcome {
+	NoOp,
+	FastForward(Rev),
+	Merged(Rev),
+}
+
+impl MergeOutcome {
+	/// `None` when nothing changed.
+	pub fn head(self) -> Option<Rev> {
+		match self {
+			Self::NoOp => None,
+			Self::FastForward(rev) | Self::Merged(rev) => Some(rev),
+		}
+	}
 }

@@ -60,7 +60,6 @@ fn premultiply_gamma(buffer: Image<Color>) -> Image<PremultipliedGammaPixel> {
 				PremultipliedGammaPixel { r: r * a, g: g * a, b: b * a, a }
 			})
 			.collect(),
-		base64_string: None,
 	}
 }
 
@@ -80,7 +79,6 @@ fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Imag
 				}
 			})
 			.collect(),
-		base64_string: None,
 	}
 }
 
@@ -149,9 +147,10 @@ fn median_filter(
 }
 
 // 1D gaussian kernel
-fn gaussian_kernel(radius: f64) -> Vec<f64> {
+fn gaussian_kernel(radius: f64, image_extent: u32) -> Vec<f64> {
 	// Given radius, compute the size of the kernel that's approximately three times the radius
-	let kernel_radius = (3. * radius).ceil() as usize;
+	// Taps further out than the image extends never land on a pixel, so the kernel stops there while its weights keep the full radius
+	let kernel_radius = ((3. * radius).ceil() as usize).min(image_extent as usize);
 	let kernel_size = 2 * kernel_radius + 1;
 	let mut gaussian_kernel: Vec<f64> = vec![0.; kernel_size];
 
@@ -175,7 +174,7 @@ fn gaussian_kernel(radius: f64) -> Vec<f64> {
 }
 
 fn gaussian_blur_algorithm(buffer: Image<Color>, radius: f64, gamma: bool) -> Image<Color> {
-	let kernel = gaussian_kernel(radius);
+	let kernel = gaussian_kernel(radius, buffer.width.max(buffer.height));
 	if gamma {
 		let working = premultiply_gamma(buffer);
 		let blurred = gaussian_separable(working, &kernel, |r, g, b, a| PremultipliedGammaPixel { r, g, b, a });
@@ -262,6 +261,8 @@ where
 	let mut x_axis = Image::new(width, height, P::default());
 	let mut y_axis = Image::new(width, height, P::default());
 
+	let radius = radius.min(width.max(height) as f64) as i32;
+
 	for pass in [false, true] {
 		let (max, old_buffer, current_buffer) = match pass {
 			false => (width, &buffer, &mut x_axis),
@@ -274,7 +275,7 @@ where
 				let (mut r_sum, mut g_sum, mut b_sum, mut a_sum, mut weight_sum) = (0., 0., 0., 0., 0.);
 
 				let i = [x, y][pass];
-				for d in (i as i32 - radius as i32).max(0)..=(i as i32 + radius as i32).min(max as i32 - 1) {
+				for d in (i as i32 - radius).max(0)..=(i as i32 + radius).min(max as i32 - 1) {
 					if let Some(px) = old_buffer.get_pixel([d as u32, x][pass], [y, d as u32][pass]) {
 						let weight = 1.;
 						r_sum += px.r() as f64 * weight;
@@ -298,8 +299,8 @@ fn median_filter_algorithm(original_buffer: Image<Color>, radius: u32) -> Image<
 	let (width, height) = original_buffer.dimensions();
 	let mut output = Image::new(width, height, Color::TRANSPARENT);
 
-	// Pre-allocate and reuse buffers outside the loops to avoid repeated allocations.
-	let window_capacity = ((2 * radius + 1).pow(2)) as usize;
+	let window_span = |extent: u32| (radius as usize).saturating_mul(2).saturating_add(1).min(extent as usize);
+	let window_capacity = window_span(width) * window_span(height);
 	let mut r_vals: Vec<f32> = Vec::with_capacity(window_capacity);
 	let mut g_vals: Vec<f32> = Vec::with_capacity(window_capacity);
 	let mut b_vals: Vec<f32> = Vec::with_capacity(window_capacity);

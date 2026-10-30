@@ -3,7 +3,7 @@ use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use crate::vello_scene_builder::VelloSceneBuilder;
 use core_types::CacheHash;
 use core_types::FallibleVec2Operations;
-use core_types::blending::{BlendMode, apply_blend_mode};
+use core_types::blending::{BlendMode, blend_colors};
 use core_types::bounds::BoundingBox;
 use core_types::bounds::RenderBoundingBox;
 use core_types::color::Color;
@@ -22,9 +22,8 @@ use core_types::{
 };
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
-use graphene_hash::CacheHashWrapper;
 use graphene_resource::Resource;
-use graphic_types::raster_types::{CPU, GPU, Image, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
@@ -169,39 +168,6 @@ pub(crate) fn faded_paint_color(item: ItemRef<'_, Color>, for_mask: bool) -> Opt
 	Some(color.with_alpha(color.a() * item.paint_opacity(for_mask)))
 }
 
-/// Composites one paint color over the stack beneath it, mixing by the blend mode and then source-over in straight alpha.
-fn composite_paint_over(over: Color, under: Color, blend_mode: BlendMode) -> Color {
-	let (over_alpha, under_alpha) = (over.a(), under.a());
-
-	// These modes only move the backdrop's alpha, leaving its color alone
-	match blend_mode {
-		BlendMode::Erase => return under.with_alpha((under_alpha - over_alpha).clamp(0., 1.)),
-		BlendMode::Restore => return under.with_alpha((under_alpha + over_alpha).clamp(0., 1.)),
-		BlendMode::MultiplyAlpha => return under.with_alpha(under_alpha * over_alpha),
-		_ => {}
-	}
-
-	let result_alpha = over_alpha + under_alpha * (1. - over_alpha);
-	if result_alpha <= 0. {
-		return Color::TRANSPARENT;
-	}
-
-	let mixed = apply_blend_mode(over, under, blend_mode);
-
-	// The mode only mixes where the backdrop has coverage, so its alpha interpolates each source channel from the raw color to the mixed color
-	let source_channel = |over_channel: f32, mixed_channel: f32| over_channel * (1. - under_alpha) + mixed_channel * under_alpha;
-
-	let channel =
-		|mixed_channel: f32, over_channel: f32, under_channel: f32| (source_channel(over_channel, mixed_channel) * over_alpha + under_channel * under_alpha * (1. - over_alpha)) / result_alpha;
-
-	Color::from_rgbaf32_unchecked(
-		channel(mixed.r(), over.r(), under.r()),
-		channel(mixed.g(), over.g(), under.g()),
-		channel(mixed.b(), over.b(), under.b()),
-		result_alpha,
-	)
-}
-
 /// Flattens a rank-1 color paint into the single color the fast path emits, stacking the items in paint order.
 pub(crate) fn composite_paint_colors(list: &List<Color>, for_mask: bool) -> Option<Color> {
 	let mut composited = None;
@@ -213,7 +179,7 @@ pub(crate) fn composite_paint_colors(list: &List<Color>, for_mask: bool) -> Opti
 		composited = Some(match composited {
 			// The lowest paint has nothing beneath it, so its blend mode has nothing to act on
 			None => faded,
-			Some(under) => composite_paint_over(faded, under, item.attribute_cloned_or_default(ATTR_BLEND_MODE)),
+			Some(under) => blend_colors(faded, under, item.attribute_cloned_or_default(ATTR_BLEND_MODE), 1.),
 		});
 	}
 
@@ -248,8 +214,10 @@ impl MaskType {
 pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
+	/// Maps the user space of the content being rendered into the document's space.
 	pub transform: DAffine2,
-	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
+	/// The images drawn to canvases rather than embedded, by the canvas ID their placeholders name.
+	pub image_data: HashMap<u64, CanvasImage>,
 	indent: usize,
 }
 
@@ -343,7 +311,7 @@ impl SvgRender {
 pub struct SvgRenderOutput {
 	pub svg: String,
 	pub svg_defs: String,
-	pub image_data: HashMap<CacheHashWrapper<Image<Color>>, u64>,
+	pub image_data: HashMap<u64, CanvasImage>,
 }
 
 impl From<&SvgRenderOutput> for SvgRender {
@@ -404,6 +372,9 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: Option<f64>,
+	/// Screen pixels per document unit for sizing the images drawn to canvases, rounded up to a power of two so the render reruns only when it doubles or halves.
+	/// Zero sends them at full resolution.
+	pub canvas_image_scale: f64,
 	/// The nearest ancestor's appearance, cascading to items that lack their own.
 	pub inherited_appearance: Option<Appearance>,
 }
@@ -872,7 +843,12 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 					attributes.push("style", blend_mode.render());
 				}
 			},
-			|render| element.render_svg(render, render_params),
+			|render| {
+				let parent_transform = render.transform;
+				render.transform = parent_transform * transform;
+				element.render_svg(render, render_params);
+				render.transform = parent_transform;
+			},
 		);
 	};
 
@@ -1345,7 +1321,11 @@ impl Render for List<Artboard> {
 				|render| {
 					let mut render_params = render_params.clone();
 					render_params.artboard_background = Some(background);
+
+					let parent_transform = render.transform;
+					render.transform = parent_transform * DAffine2::from_translation(location);
 					content.render_svg(render, &render_params);
+					render.transform = parent_transform;
 				},
 			);
 		}
@@ -2357,6 +2337,23 @@ fn extend_free_point_targets<'a>(vector: &'a Vector, geometry_paths: &List<Path>
 	})
 }
 
+/// The most times an image drawn to a canvas is halved, which is when 4096 of its pixels fit on one screen pixel.
+const MAX_CANVAS_HALVINGS: u32 = 12;
+
+/// An image the frontend draws to a canvas rather than an SVG embedding it, at a resolution to suit how large it appears.
+#[derive(Clone, Debug, PartialEq, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CanvasImage {
+	pub raster: Raster<CPU>,
+	/// How many times the pixels are halved along each axis for display.
+	pub halvings: u32,
+}
+
+/// Names the canvas for one resolution of an image's pixels, staying the same while the pixels do.
+fn canvas_image_id(buffer_id: u64, halvings: u32) -> u64 {
+	(buffer_id << 4) | halvings as u64
+}
+
 /// Emits one item of CPU raster content as SVG, as a canvas placeholder or an embedded base64 image.
 fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRender, render_params: &RenderParams) {
 	let Some(image) = item.element() else { return };
@@ -2371,7 +2368,18 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	}
 
 	if render_params.to_canvas() {
-		let id = *render.image_data.entry(CacheHashWrapper(image.clone().into_data())).or_insert_with(generate_uuid);
+		// An image drawn smaller than its pixels is sent at a resolution halved enough times to still cover each screen pixel
+		let document_to_screen = DAffine2::from_scale(DVec2::splat(render_params.canvas_image_scale));
+		let image_to_screen = document_to_screen * render.transform * transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let (largest_scale, _) = singular_values(image_to_screen);
+		let halvings = if largest_scale > 0. {
+			(1. / largest_scale).log2().floor().clamp(0., MAX_CANVAS_HALVINGS as f64) as u32
+		} else {
+			0
+		};
+
+		let id = canvas_image_id(image.buffer_id(), halvings);
+		render.image_data.entry(id).or_insert_with(|| CanvasImage { raster: image.clone(), halvings });
 
 		render.parent_tag(
 			"foreignObject",
@@ -2400,28 +2408,18 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 				render.leaf_tag(
 					"img", // Must be a self-closing (void element) tag, so we can't use `div` or `span`, for example
 					|attributes| {
-						attributes.push("data-canvas-placeholder", id.to_string());
+						// Prefixed to stay apart from the numbered thumbnail and viewport canvases on `window.imageCanvases`
+						attributes.push("data-canvas-placeholder", format!("image-{id}"));
 					},
 				)
 			},
 		);
 	} else {
-		let base64_string = image.base64_string.clone().unwrap_or_else(|| {
-			use base64::Engine;
-
-			let output = image.to_png();
-			let preamble = "data:image/png;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-			base64_string
-		});
-
 		render.leaf_tag("image", |attributes| {
 			attributes.push("width", "1");
 			attributes.push("height", "1");
 			attributes.push("preserveAspectRatio", "none");
-			attributes.push("href", base64_string);
+			attributes.push("href", image.png_data_url().to_string());
 			let matrix = format_transform_matrix(transform);
 			if !matrix.is_empty() {
 				attributes.push(ATTR_TRANSFORM, matrix);
@@ -2480,17 +2478,9 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	}
 
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 
-	let image_brush = peniko::ImageBrush::new(peniko::ImageData {
-		data: image.to_flat_u8().0.into(),
-		format: peniko::ImageFormat::Rgba8,
-		width: image.width,
-		height: image.height,
-		alpha_type: peniko::ImageAlphaType::Alpha,
-	})
-	.with_extend(peniko::Extend::Pad);
-
-	scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
+	scene.draw_raster(image.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()));
 
 	if layer {
 		scene.pop_layer();
@@ -3521,5 +3511,32 @@ mod tests {
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();
 		assert_eq!(colors, vec![Color::TRANSPARENT, Color::BLACK, Color::BLACK, Color::TRANSPARENT]);
+	}
+
+	#[test]
+	fn canvas_images_are_halved_to_suit_the_canvas_image_scale() {
+		use graphic_types::raster_types::Image;
+
+		// An image placed at one pixel per document unit
+		let image = Raster::new_cpu(Image::new(64, 64, Color::WHITE));
+		let list = List::new_from_item(Item::new_from_element(image).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(64.))));
+
+		let halvings = |canvas_image_scale| {
+			let mut render = SvgRender::new();
+			list.render_svg(
+				&mut render,
+				&RenderParams {
+					canvas_image_scale,
+					..Default::default()
+				},
+			);
+			render.image_data.values().map(|canvas_image| canvas_image.halvings).collect::<Vec<_>>()
+		};
+
+		// Zoomed out to a quarter, two halvings still cover each screen pixel
+		assert_eq!(halvings(0.25), [2]);
+		// Zoomed in, or without a scale as in thumbnails, the full resolution is sent
+		assert_eq!(halvings(4.), [0]);
+		assert_eq!(halvings(0.), [0]);
 	}
 }

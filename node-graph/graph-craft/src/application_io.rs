@@ -2,6 +2,7 @@ use dyn_any::StaticType;
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
+pub mod http;
 pub mod resource;
 
 pub use graphene_application_io::ApplicationIo;

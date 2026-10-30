@@ -31,12 +31,7 @@ fn dehaze(
 	// Prepare the image data for returning
 	let buffer = dehazed_dynamic_image.to_rgba32f().into_raw();
 	let color_vec = bytemuck::cast_vec(buffer);
-	let dehazed_image = Image {
-		width,
-		height,
-		data: color_vec,
-		base64_string: None,
-	};
+	let dehazed_image = Image { width, height, data: color_vec };
 
 	Item::from_parts(Raster::new_cpu(dehazed_image), attributes)
 }

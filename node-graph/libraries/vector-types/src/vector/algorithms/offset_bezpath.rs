@@ -1,21 +1,30 @@
 use super::bezpath_algorithms::{clip_simple_bezpaths, miter_line_join, round_line_join};
 use super::consts::MAX_COINCIDENT_POINT_DISTANCE;
 use crate::vector::misc::point_to_dvec2;
-use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
+use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg, Rect, Shape};
 
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
 /// Squared version to avoid sqrt in distance checks.
 const MAX_COINCIDENT_POINT_DISTANCE_SQUARED: f64 = MAX_COINCIDENT_POINT_DISTANCE * MAX_COINCIDENT_POINT_DISTANCE;
 const MAX_FITTED_SEGMENTS: usize = 10000;
+/// The coordinate magnitude from which lyon's curve intersection, used to clip the offset pieces, panics converting it to an `i64`.
+const MAX_CLIPPED_COORDINATE: f64 = i64::MAX as f64;
+
+/// The failure of [`offset_bezpath`].
+#[derive(Debug, thiserror::Error)]
+pub enum OffsetPathError {
+	#[error("The shape or offset distance is too large to offset")]
+	TooLarge,
+}
 
 /// Reduces the segments of the bezpath into simple subcurves, then offset each subcurve a set `distance` away.
 /// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
-pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit: Option<f64>) -> BezPath {
+pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit: Option<f64>) -> Result<BezPath, OffsetPathError> {
 	// An offset at a distance 0 from the curve is simply the same curve.
 	// An offset of a single point is not defined.
 	if distance == 0. || bezpath.get_seg(1).is_none() {
-		return bezpath.clone();
+		return Ok(bezpath.clone());
 	}
 
 	let mut bezpaths = bezpath
@@ -45,7 +54,12 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		.collect::<Vec<BezPath>>();
 
 	if bezpaths.is_empty() {
-		return BezPath::new();
+		return Ok(BezPath::new());
+	}
+
+	let too_large = |bounds: Rect| [bounds.x0, bounds.y0, bounds.x1, bounds.y1].iter().any(|coordinate| coordinate.abs() >= MAX_CLIPPED_COORDINATE);
+	if bezpaths.iter().any(|bezpath| too_large(bezpath.bounding_box())) {
+		return Err(OffsetPathError::TooLarge);
 	}
 
 	// Clip or join consecutive subpaths
@@ -152,5 +166,5 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		offset_bezpath.close_path();
 	}
 
-	offset_bezpath
+	Ok(offset_bezpath)
 }

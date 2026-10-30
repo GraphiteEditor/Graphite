@@ -1,23 +1,25 @@
-use super::{evaluated_output, monitor_parent_node, records_vector};
+use super::evaluated_output;
 use crate::messages::frontend::FrontendMessage;
 #[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::application_io::PlatformEditorApi;
-use graph_craft::document::NodeId;
+use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeNetwork};
 #[cfg(feature = "gpu")]
 use graphene_std::application_io::{ApplicationIo, Texture};
 use graphene_std::bounds::RenderBoundingBox;
+use graphene_std::gradient::Gradient;
+use graphene_std::graphic::extend;
 use graphene_std::list::{Item, List};
 #[cfg(feature = "gpu")]
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasHandle};
-#[cfg(feature = "gpu")]
-use graphene_std::raster_types::Raster;
+use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use graphene_std::transform::{Footprint, RenderQuality};
-use graphene_std::{Artboard, Context, ContextFeatures, Graphic};
+use graphene_std::vector::Vector;
+use graphene_std::{Artboard, Color, Context, ContextFeatures, Graphic, NodeParameter};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
@@ -40,11 +42,13 @@ fn cell_size(scale: f64) -> UVec2 {
 	(CELL_SIZE * scale).round().as_uvec2().max(UVec2::ONE)
 }
 
-/// The thumbnails of the layers, rendered from the content their monitor nodes watch when it changes while they're in view.
+/// The thumbnails of the layers, rendered from their content when it changes while they're in view.
 #[derive(Default)]
 pub struct Thumbnails {
-	/// The monitor nodes whose content changed since their layer's thumbnail was last rendered.
-	stale: HashSet<Vec<NodeId>>,
+	/// The proto node giving the content each layer's thumbnail shows.
+	sources: HashMap<NodeId, NodeId>,
+	/// The layers whose content changed since their thumbnail was last rendered.
+	stale: HashSet<NodeId>,
 	/// The layers whose thumbnails the frontend shows, the only ones rendered.
 	in_view: HashSet<NodeId>,
 	/// The device pixel ratio thumbnails are rendered at.
@@ -73,39 +77,45 @@ impl Thumbnails {
 	}
 
 	/// Thumbnails rendered at another device pixel ratio are rendered again.
-	pub fn set_scale(&mut self, scale: f64, monitor_nodes: &[(Vec<NodeId>, NodeId)]) {
+	pub fn set_scale(&mut self, scale: f64) {
 		if scale != self.scale {
-			self.stale.extend(monitor_nodes.iter().map(|(path, _)| path.clone()));
+			self.stale.extend(self.sources.keys().copied());
 		}
 		self.scale = scale;
 	}
 
-	/// Marks the thumbnails of the monitor nodes whose proto node ID changed as stale.
-	pub fn update_monitors(&mut self, previous_monitor_ids: &HashMap<Vec<NodeId>, NodeId>, monitor_nodes: &[(Vec<NodeId>, NodeId)]) {
-		// A proto node's ID hashes everything upstream of it, so a monitor node whose ID stayed the same records the same output
-		let changed_monitors = monitor_nodes.iter().filter(|(path, id)| previous_monitor_ids.get(path) != Some(id));
-		self.stale.extend(changed_monitors.map(|(path, _)| path.clone()));
+	/// Finds the proto node giving each layer's content in the newly compiled graph, marking the layers whose proto node changed as stale.
+	pub fn update_sources(&mut self, layer_paths: &[Vec<NodeId>], network: &NodeNetwork, executor: &DynamicExecutor) {
+		// O(layers * depth)
+		let sources: HashMap<NodeId, NodeId> = layer_paths
+			.iter()
+			.filter_map(|layer_path| Some((*layer_path.last()?, thumbnail_source(layer_path, network, executor)?)))
+			.collect();
 
-		let current_monitors: HashSet<&Vec<NodeId>> = monitor_nodes.iter().map(|(path, _)| path).collect();
-		self.stale.retain(|path| current_monitors.contains(path));
+		// A proto node's ID hashes everything upstream of it, so a layer whose source kept its ID shows the same content
+		let changed = sources.iter().filter(|(layer, source)| self.sources.get(layer) != Some(source));
+		self.stale.extend(changed.map(|(layer, _)| *layer));
+		self.stale.retain(|layer| sources.contains_key(layer));
+
+		self.sources = sources;
 	}
 
-	/// Forgets the thumbnails of the layers no longer monitored, giving them back so the frontend can clear them.
-	pub fn drop_unmonitored(&mut self, monitor_nodes: &[(Vec<NodeId>, NodeId)]) -> Vec<NodeId> {
-		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
+	/// Forgets the thumbnails of the layers with no content to show anymore, giving them back so the frontend can clear them.
+	pub fn drop_sourceless(&mut self) -> Vec<NodeId> {
 		let mut dropped = Vec::new();
-		let mut keep_monitored = |id: &NodeId| {
-			let monitored = monitor_nodes.iter().any(|(monitor_node_path, _)| monitor_node_path.contains(id));
-			if !monitored && !dropped.contains(id) {
-				dropped.push(*id);
+		let sources = &self.sources;
+		let mut keep_sourced = |layer: &NodeId| {
+			let sourced = sources.contains_key(layer);
+			if !sourced {
+				dropped.push(*layer);
 			}
-			monitored
+			sourced
 		};
 
 		#[cfg(all(target_family = "wasm", feature = "wasm"))]
-		self.canvases.retain(|id, _| keep_monitored(id));
+		self.canvases.retain(|layer, _| keep_sourced(layer));
 		#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
-		self.sent.retain(|id| keep_monitored(id));
+		self.sent.retain(|layer| keep_sourced(layer));
 
 		dropped
 	}
@@ -113,19 +123,16 @@ impl Thumbnails {
 	/// Renders the thumbnails of the layers in view whose content changed since they were last rendered, keeping the others stale until they come into view.
 	pub async fn render_stale(&mut self, executor: &DynamicExecutor, editor_api: &PlatformEditorApi, responses: &mut VecDeque<FrontendMessage>) {
 		let mut contents = HashMap::new();
-		for monitor_node_path in std::mem::take(&mut self.stale) {
-			let Some(layer) = monitor_parent_node(&monitor_node_path) else { continue };
+		for layer in std::mem::take(&mut self.stale) {
+			let Some(&source) = self.sources.get(&layer) else { continue };
 
-			if records_vector(executor, &monitor_node_path) {
-				continue;
-			}
 			if !self.in_view.contains(&layer) {
-				self.stale.insert(monitor_node_path);
+				self.stale.insert(layer);
 				continue;
 			}
 
-			let Some(content) = ThumbnailContent::evaluate(executor, &monitor_node_path) else {
-				self.stale.insert(monitor_node_path);
+			let Some(content) = ThumbnailContent::evaluate(executor, source) else {
+				self.stale.insert(layer);
 				continue;
 			};
 			contents.insert(layer, content);
@@ -298,10 +305,9 @@ enum ThumbnailContent {
 }
 
 impl ThumbnailContent {
-	/// Evaluates the content a monitor node watches again from its last context, normalized so thumbnails don't depend on the view or playhead.
-	fn evaluate(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> Option<Self> {
+	/// Evaluates the content node again from its last context, normalized so thumbnails don't depend on the view or playhead.
+	fn evaluate(executor: &DynamicExecutor, content_node: NodeId) -> Option<Self> {
 		let tree = executor.tree();
-		let content_node = tree.input_node(monitor_node_path, 0).ok()?;
 		let context = tree.last_context(content_node).ok()??;
 
 		// Replacing a feature the content doesn't read would only miss its caches
@@ -324,8 +330,8 @@ impl ThumbnailContent {
 		} else if output.is::<Item<String>>() {
 			Self::Text(List::new_from_item(*output.downcast().ok()?))
 		} else {
-			log::warn!("Failed to downcast the content of monitor node {monitor_node_path:?} for its thumbnail");
-			return None;
+			// Any layer can show other graphical content as a group of its own, and shows nothing for content that isn't graphical
+			Self::Graphics(into_graphic(output).map(List::new_from_element).unwrap_or_default())
 		};
 		Some(content)
 	}
@@ -354,6 +360,51 @@ impl ThumbnailContent {
 		};
 		expand_to_thumbnail_aspect(bounds)
 	}
+}
+
+/// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
+fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<NodeId> {
+	let output = network.output_source(layer_path, 0)?;
+
+	// A hidden layer, or one passing through what's below it, has nothing of its own to show
+	if !output.starts_with(layer_path) {
+		return None;
+	}
+
+	let (node_id, network_path) = output.split_last()?;
+	let node = network.nested_network(network_path)?.nodes.get(node_id)?;
+	let source = if node.implementation == DocumentNodeImplementation::ProtoNode(extend::IDENTIFIER) {
+		network.input_source(network_path, node.inputs.get(extend::NewInput::INDEX)?)?
+	} else {
+		output
+	};
+
+	executor.tree().source_map().get(source.as_slice()).map(|(id, _)| *id)
+}
+
+/// Converts the other kinds of graphical content into a graphic.
+fn into_graphic(output: graphene_std::registry::Any) -> Option<Graphic> {
+	macro_rules! downcast_into_graphic {
+		($($content:ty),*) => {$(
+			if output.is::<$content>() {
+				return output.downcast::<$content>().ok().map(|content| Graphic::from(*content));
+			}
+		)*};
+	}
+
+	downcast_into_graphic!(
+		List<Vector>,
+		Item<Vector>,
+		List<Raster<CPU>>,
+		Item<Raster<CPU>>,
+		List<Raster<GPU>>,
+		Item<Raster<GPU>>,
+		List<Color>,
+		Item<Color>,
+		List<Gradient>,
+		Item<Gradient>
+	);
+	None
 }
 
 /// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
@@ -389,4 +440,59 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 	};
 	let half = DVec2::new(width, height) / 2.;
 	[center - half, center + half]
+}
+
+#[cfg(test)]
+mod tests {
+	use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+	use crate::test_utils::test_prelude::*;
+	use glam::UVec2;
+	use graph_craft::document::NodeId;
+	use graphene_std::application_io::TimingInformation;
+
+	async fn compile_and_run(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+		editor.runtime.run().await;
+		editor.dispatch(Message::Wake);
+	}
+
+	fn compiled_id(editor: &EditorTestUtils, path: &[NodeId]) -> Option<NodeId> {
+		editor.runtime.executor.tree().source_map().get(path).map(|(id, _)| *id)
+	}
+
+	#[tokio::test]
+	async fn a_merge_layer_shows_its_content_and_another_layer_its_output() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
+
+		compile_and_run(&mut editor).await;
+		let merge_content = compiled_id(&editor, &[layer, NodeId(3)]);
+		assert!(merge_content.is_some(), "The Merge layer's content should be compiled");
+		assert_eq!(
+			editor.runtime.thumbnails.sources.get(&layer).copied(),
+			merge_content,
+			"A Merge layer shows only the content it adds to the stack"
+		);
+
+		// The node feeding the layer's content, shown as a layer itself
+		let network_interface = &mut editor.active_document_mut().network_interface;
+		let content_node = network_interface
+			.upstream_flow_back_from_nodes(vec![layer], &[], FlowType::HorizontalFlow)
+			.nth(1)
+			.expect("The layer should have a content chain");
+		network_interface.set_to_node_or_layer(&content_node, &[], true);
+
+		compile_and_run(&mut editor).await;
+		let content_output = compiled_id(&editor, &[content_node]);
+		assert!(content_output.is_some(), "The content node should be compiled");
+		assert_eq!(editor.runtime.thumbnails.sources.get(&content_node).copied(), content_output, "Any other layer shows its output");
+	}
 }

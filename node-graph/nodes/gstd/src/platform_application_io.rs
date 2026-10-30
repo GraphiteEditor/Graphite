@@ -1,43 +1,88 @@
-#[cfg(target_family = "wasm")]
-use base64::Engine;
-#[cfg(target_family = "wasm")]
-use canvas_utils::{Canvas, CanvasHandle};
 use core_types::Ctx;
 use core_types::color::SRGBA8;
-use core_types::list::Item;
-#[cfg(target_family = "wasm")]
-use core_types::list::List;
-#[cfg(target_family = "wasm")]
+use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::ops::Convert;
+use core_types::ops::{Convert, ConvertAsync};
 use core_types::transform::Footprint;
-#[cfg(target_family = "wasm")]
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
+use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, NodeError};
+use glam::{DAffine2, UVec2};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
 pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
-#[cfg(target_family = "wasm")]
 use graphic_types::Graphic;
-use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-#[cfg(target_family = "wasm")]
-use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphic_types::raster_types::{Image, ImageError};
+use rendering::{Render, RenderParams};
 use std::sync::Arc;
 
-fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
+#[derive(Debug, thiserror::Error)]
+pub enum HttpRequestError {
+	#[error("`{url}` is not a valid URL: {source}")]
+	InvalidUrl { url: String, source: url::ParseError },
+	#[error("The header line `{0}` is not a valid `Name: Value` pair")]
+	InvalidHeader(String),
+	#[error("Request to `{url}` failed: {}", error_chain(.source))]
+	Failed { url: String, source: reqwest::Error },
+	#[error(transparent)]
+	Unreachable(http::Error),
+	#[error("Request to `{url}` was answered with {status}: {body}")]
+	Status { url: String, status: reqwest::StatusCode, body: String },
+}
+
+impl HttpRequestError {
+	fn failed(url: &str, error: impl Into<http::Error>) -> Self {
+		match error.into() {
+			http::Error::Request(error) => Self::Failed {
+				url: url.to_string(),
+				source: error.without_url(),
+			},
+			#[cfg(not(target_family = "wasm"))]
+			error => Self::Unreachable(error),
+		}
+	}
+}
+
+fn error_chain(error: &(dyn std::error::Error + 'static)) -> String {
+	std::iter::successors(Some(error), |error| error.source()).map(ToString::to_string).collect::<Vec<_>>().join(": ")
+}
+
+async fn send(url: &str, request: reqwest::Request) -> Result<reqwest::Response, HttpRequestError> {
+	let response = http::send(request).await.map_err(|error| HttpRequestError::failed(url, error))?;
+
+	let status = response.status();
+	if status.is_client_error() || status.is_server_error() {
+		let body = response.text().await.unwrap_or_default();
+		return Err(HttpRequestError::Status {
+			url: url.to_string(),
+			status,
+			body: body.trim().to_string(),
+		});
+	}
+
+	Ok(response)
+}
+
+fn new_request(method: reqwest::Method, url: &str) -> Result<reqwest::Request, HttpRequestError> {
+	let parsed_url = url.parse().map_err(|source| HttpRequestError::InvalidUrl { url: url.to_string(), source })?;
+	Ok(reqwest::Request::new(method, parsed_url))
+}
+
+fn parse_headers(headers: &str) -> Result<reqwest::header::HeaderMap, HttpRequestError> {
 	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
 	let mut header_map = HeaderMap::new();
-	for line in headers.lines() {
-		if let Some((key, value)) = line.split_once(':') {
-			let Ok(header_name) = HeaderName::from_bytes(key.trim().as_bytes()) else { continue };
-			let Ok(header_value) = HeaderValue::from_str(value.trim()) else { continue };
-			header_map.insert(header_name, header_value);
-		}
+	for line in headers.lines().map(str::trim).filter(|line| !line.is_empty()) {
+		let header = line
+			.split_once(':')
+			.and_then(|(key, value)| Some((HeaderName::from_bytes(key.trim().as_bytes()).ok()?, HeaderValue::from_str(value.trim()).ok()?)));
+		let Some((header_name, header_value)) = header else {
+			return Err(HttpRequestError::InvalidHeader(line.to_string()));
+		};
+		header_map.insert(header_name, header_value);
 	}
-	header_map
+	Ok(header_map)
 }
 
 /// Sends an HTTP GET request to a specified URL and optionally waits for the response (unless discarded) which is output as a string.
@@ -51,22 +96,25 @@ async fn get_request(
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: Item<bool>,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
-) -> Item<String> {
+) -> Result<Item<String>, HttpRequestError> {
 	let (url, headers) = (url.into_element(), headers.into_element());
 	let discard_result = *discard_result.element();
 
-	let header_map = parse_headers(&headers);
-	let request = reqwest::Client::new().get(url).headers(header_map);
-
-	if discard_result {
-		let _ = request.send().await;
-		return Item::default();
+	if url.trim().is_empty() {
+		return Ok(Item::default());
 	}
 
-	let Ok(response) = request.send().await else {
-		return Item::default();
-	};
-	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+	let header_map = parse_headers(&headers)?;
+	let mut request = new_request(reqwest::Method::GET, &url)?;
+	*request.headers_mut() = header_map;
+
+	let response = send(&url, request).await?;
+	if discard_result {
+		return Ok(Item::default());
+	}
+
+	let text = response.text().await.map_err(|error| HttpRequestError::failed(&url, error))?;
+	Ok(Item::new_from_element(text))
 }
 
 fn pending_text(_primary: &(), _url: &Item<String>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
@@ -86,24 +134,30 @@ async fn post_request(
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: Item<bool>,
 	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: Item<String>,
-) -> Item<String> {
+) -> Result<Item<String>, HttpRequestError> {
 	let (url, headers) = (url.into_element(), headers.into_element());
 	let discard_result = *discard_result.element();
 
-	let mut header_map = parse_headers(&headers);
-	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
-	let body_bytes: Vec<u8> = body.element().as_ref().to_vec();
-	let request = reqwest::Client::new().post(url).body(body_bytes).headers(header_map);
-
-	if discard_result {
-		let _ = request.send().await;
-		return Item::default();
+	if url.trim().is_empty() {
+		return Ok(Item::default());
 	}
 
-	let Ok(response) = request.send().await else {
-		return Item::default();
-	};
-	Item::new_from_element(response.text().await.ok().unwrap_or_default())
+	let mut header_map = parse_headers(&headers)?;
+	header_map
+		.entry(reqwest::header::CONTENT_TYPE)
+		.or_insert(reqwest::header::HeaderValue::from_static("application/octet-stream"));
+	let body_bytes: Vec<u8> = body.element().as_ref().to_vec();
+	let mut request = new_request(reqwest::Method::POST, &url)?;
+	*request.headers_mut() = header_map;
+	*request.body_mut() = Some(body_bytes.into());
+
+	let response = send(&url, request).await?;
+	if discard_result {
+		return Ok(Item::default());
+	}
+
+	let text = response.text().await.map_err(|error| HttpRequestError::failed(&url, error))?;
+	Ok(Item::new_from_element(text))
 }
 
 fn pending_post_text(_primary: &(), _url: &Item<String>, _body: &Item<Resource>, _discard_result: &Item<bool>, _headers: &Item<String>) -> Item<String> {
@@ -132,27 +186,18 @@ fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
 	Item::new_from_element(Resource::new(bytes))
 }
 
-/// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
+/// Loads binary from URLs and local asset paths.
 #[node_macro::node(category("Data: I/O"), icon("NodeLoadResource"), placeholder = pending_resource)]
-async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Item<Resource> {
+async fn load_resource(_: impl Ctx, _primary: (), #[name("URL")] url: Item<String>) -> Result<Item<Resource>, HttpRequestError> {
 	let url = url.into_element();
-	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
 
-	let response = match reqwest::Client::new().get(&url).send().await {
-		Ok(response) => response,
-		Err(error) => {
-			log::error!("HTTP request for `{url}` failed: {error}");
-			return placeholder();
-		}
-	};
-
-	match response.bytes().await {
-		Ok(bytes) => Item::new_from_element(Resource::new(bytes)),
-		Err(error) => {
-			log::error!("Failed to read HTTP response for `{url}`: {error}");
-			placeholder()
-		}
+	if url.trim().is_empty() {
+		return Ok(Item::new_from_element(Resource::empty()));
 	}
+
+	let response = send(&url, new_request(reqwest::Method::GET, &url)?).await?;
+	let bytes = response.bytes().await.map_err(|error| HttpRequestError::failed(&url, error))?;
+	Ok(Item::new_from_element(Resource::new(bytes)))
 }
 
 fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
@@ -163,82 +208,55 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
 #[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"))]
-fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Item<Raster<CPU>> {
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>, ImageError> {
 	let data = data.into_element();
-	let Some(image) = Image::from_encoded(data.as_ref()) else { return Item::default() };
+	if data.is_empty() {
+		return Ok(Item::default());
+	}
+	let image = Image::from_encoded(data.as_ref())?;
 
-	Item::new_from_element(Raster::new_cpu(image))
-}
-
-#[cfg(target_family = "wasm")]
-#[node_macro::node(category(""))]
-fn create_canvas(_: impl Ctx) -> Item<CanvasHandle> {
-	Item::new_from_element(CanvasHandle::new())
+	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
-#[cfg(target_family = "wasm")]
 #[node_macro::node(category(""), placeholder = pending_raster)]
-async fn rasterize(_: impl Ctx, data: List<Graphic>, footprint: Item<Footprint>, canvas: Item<CanvasHandle>) -> List<Raster<CPU>> {
-	let mut data = data;
-	let mut canvas = canvas.into_element();
-	use glam::{DAffine2, DVec2};
+async fn rasterize(
+	_: impl Ctx,
+	data: List<Graphic>,
+	footprint: Item<Footprint>,
+	#[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>,
+) -> Result<List<Raster<CPU>>, NodeError> {
+	rasterize_with_vello(data, footprint.into_element(), executor.into_element()).await
+}
 
-	let footprint = footprint.into_element();
-
-	if footprint.transform.matrix2.determinant() == 0. {
+async fn rasterize_with_vello(data: List<Graphic>, footprint: Footprint, executor: ::wgpu_executor::WgpuExecutor) -> Result<List<Raster<CPU>>, NodeError> {
+	let resolution = footprint.resolution;
+	if footprint.transform.matrix2.determinant() == 0. || resolution.cmpeq(UVec2::ZERO).any() {
 		log::trace!("Invalid footprint received for rasterization");
-		return List::new();
+		return Ok(List::new());
 	}
 
-	// Snapshot the input as a List<Graphic> so the renderer can recurse into the original child layers
-	// when collecting metadata, exposing their click targets to editor tools (same mechanism as Boolean Operation).
-	let upstream_graphic_list = data.clone();
-
-	let mut render = SvgRender::new();
 	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
-	let size = aabb.size();
-	let resolution = footprint.resolution;
+	let view = DAffine2::from_scale(resolution.as_dvec2() / aabb.size()) * DAffine2::from_translation(-aabb.start);
 	let render_params = RenderParams {
 		footprint,
 		for_export: true,
 		..Default::default()
 	};
+	let texture = executor
+		.render_vello(resolution, view, &mut |scene| data.render_to_vello(scene, DAffine2::IDENTITY, &render_params))
+		.map_err(NodeError::new)?;
+	let raster = ConvertAsync::<Raster<CPU>, _>::convert(Raster::new_gpu(texture), Footprint::DEFAULT, executor).await;
 
-	for transform in data.iter_attribute_values_mut_or_default::<DAffine2>(ATTR_TRANSFORM) {
-		*transform = DAffine2::from_translation(-aabb.start) * *transform;
-	}
-	data.render_svg(&mut render, &render_params);
-	render.format_svg(DVec2::ZERO, size);
-	let svg_string = render.svg.to_svg_string();
-
-	canvas.set_resolution(resolution);
-	let context = canvas.context();
-
-	let preamble = "data:image/svg+xml;base64,";
-	let mut base64_string = String::with_capacity(preamble.len() + svg_string.len() * 4);
-	base64_string.push_str(preamble);
-	base64::engine::general_purpose::STANDARD.encode_string(svg_string, &mut base64_string);
-
-	let image_data = web_sys::HtmlImageElement::new().unwrap();
-	image_data.set_src(base64_string.as_str());
-	wasm_bindgen_futures::JsFuture::from(image_data.decode()).await.unwrap();
-	context
-		.draw_image_with_html_image_element_and_dw_and_dh(&image_data, 0., 0., resolution.x as f64, resolution.y as f64)
-		.unwrap();
-
-	let rasterized = context.get_image_data(0, 0, resolution.x as i32, resolution.y as i32).unwrap();
-
-	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
-	List::new_from_item(
-		Item::new_from_element(Raster::new_cpu(image))
+	// The input's layers stay reachable so the renderer can expose their click targets to the editor's tools
+	Ok(List::new_from_item(
+		Item::new_from_element(raster)
 			.with_attribute(ATTR_TRANSFORM, footprint.transform)
-			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, upstream_graphic_list),
-	)
+			.with_attribute(ATTR_EDITOR_MERGED_LAYERS, data),
+	))
 }
 
-#[cfg(target_family = "wasm")]
-fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _canvas: &Item<CanvasHandle>) -> List<Raster<CPU>> {
+fn pending_raster(_data: &List<Graphic>, _footprint: &Item<Footprint>, _executor: &Item<::wgpu_executor::WgpuExecutor>) -> List<Raster<CPU>> {
 	List::new()
 }
 
@@ -247,53 +265,40 @@ fn editor_api(_: impl Ctx, #[scope("editor-api")] editor_api: Item<Arc<PlatformE
 	editor_api
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Application IO is unavailable")]
+pub struct ApplicationIoError;
+
+#[node_macro::node(category(""), inject_scope)]
+fn application_io(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Result<Item<Arc<PlatformApplicationIo>>, ApplicationIoError> {
+	editor_api.into_element().application_io.clone().map(Item::new_from_element).ok_or(ApplicationIoError)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("Resource {0} was not found")]
+pub struct ResourceError(ResourceHash);
+
 #[node_macro::node(category(""), placeholder = pending_stored_resource)]
 async fn resource(
 	_: impl Ctx,
-	/// The scope-provided editor API giving access to the platform's resource storage.
-	#[scope(editor_api::IDENTIFIER)]
-	editor_api: Item<Arc<PlatformEditorApi>>,
+	/// The scope-provided application IO giving access to the platform's resource storage.
+	#[scope(application_io::IDENTIFIER)]
+	application_io: Item<Arc<PlatformApplicationIo>>,
 	/// The content hash identifying which stored resource to load.
 	hash: Item<ResourceHash>,
-) -> Item<Resource> {
+) -> Result<Item<Resource>, ResourceError> {
 	let hash = hash.into_element();
-	let placeholder = || -> Item<Resource> { Item::new_from_element(Resource::empty()) };
-
-	let editor_api = editor_api.into_element();
-	let Some(application_io) = editor_api.application_io.as_ref() else {
-		log::error!("Resource {hash} is unavailable because the platform's application IO is missing");
-		return placeholder();
-	};
-
-	let Some(resource) = application_io.load_resource(hash).await else {
-		log::error!("Resource {hash} was not found in storage");
-		return placeholder();
-	};
-
-	Item::new_from_element(resource)
+	let resource = application_io.element().load_resource(hash).await.ok_or(ResourceError(hash))?;
+	Ok(Item::new_from_element(resource))
 }
 
-fn pending_stored_resource(_editor_api: &Item<Arc<PlatformEditorApi>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
+fn pending_stored_resource(_application_io: &Item<Arc<PlatformApplicationIo>>, _hash: &Item<ResourceHash>) -> Item<Resource> {
 	Item::new_from_element(Resource::empty())
 }
 
 #[node_macro::node(category(""), inject_scope)]
-fn wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<::wgpu_executor::WgpuExecutor> {
-	let executor = editor_api
-		.into_element()
-		.application_io
-		.as_ref()
-		.expect("ApplicationIo not available")
-		.gpu_executor()
-		.expect("GPU executor not available")
-		.clone();
-	Item::new_from_element(executor)
-}
-
-#[node_macro::node(category(""), inject_scope)]
-fn try_wgpu_executor(_: impl Ctx, #[scope(editor_api::IDENTIFIER)] editor_api: Item<Arc<PlatformEditorApi>>) -> Item<Option<::wgpu_executor::WgpuExecutor>> {
-	let executor = editor_api.into_element().application_io.as_ref().and_then(|application_io| application_io.gpu_executor()).cloned();
-	Item::new_from_element(executor)
+fn wgpu_executor(_: impl Ctx, #[scope(application_io::IDENTIFIER)] application_io: Item<Arc<PlatformApplicationIo>>) -> Result<Item<::wgpu_executor::WgpuExecutor>, ::wgpu_executor::NoGpuError> {
+	application_io.element().gpu_executor().cloned().map(Item::new_from_element).ok_or(::wgpu_executor::NoGpuError)
 }
 
 /// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
@@ -303,4 +308,34 @@ fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor
 	let (raster, attributes) = content.into_parts();
 
 	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::Color;
+	use glam::DVec2;
+
+	#[tokio::test]
+	async fn rasterize_renders_the_footprint_area_at_its_resolution() {
+		let Some(executor) = ::wgpu_executor::WgpuExecutor::new().await else { return };
+
+		let red = Item::new_from_element(Raster::new_cpu(Image::new(1, 1, Color::RED))).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::new(500., 1000.)));
+		let data = List::new_from_item(Item::new_from_element(Graphic::RasterCPU(Box::new(red))));
+		let footprint = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(1000.)),
+			resolution: UVec2::splat(4),
+			..Default::default()
+		};
+
+		let output = rasterize_with_vello(data, footprint, executor).await.expect("Rasterize should render");
+
+		let image = output.iter_element_values().next().expect("Rasterize should output one image").data();
+		assert_eq!((image.width, image.height), (4, 4));
+		for x in 0..4 {
+			let pixel = image.data[(4 + x) as usize];
+			let expected_red = x < 2;
+			assert_eq!(pixel.a() > 0.5, expected_red, "pixel {x} should be {}", if expected_red { "red" } else { "transparent" });
+		}
+	}
 }

@@ -1,7 +1,7 @@
 use core_types::list::{Item, List};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
-use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, OwnedContextImpl, WasmNotSend};
+use core_types::{Color, Context, Ctx, ExtractFootprint, Interrupt, NodeError, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::raster_types::{CPU, Raster};
@@ -73,9 +73,9 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 #[node_macro::node(category(""))]
 fn render(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	data: Item<RenderIntermediate>,
-) -> Item<RenderOutput> {
+) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -101,11 +101,11 @@ fn render(
 
 			RenderOutputType::Svg {
 				svg: output.svg,
-				image_data: output.image_data.into_iter().map(|(image, id)| (id, image.0)).collect(),
+				image_data: output.image_data.into_iter().collect(),
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
-			let executor = executor.into_element().expect("GPU executor not available");
+			let executor = executor.eval(Context::default())?.into_element();
 
 			let mut draw = |scene: &mut VelloSceneBuilder| data.render_to_vello(scene, Default::default(), &render_params);
 			let texture = match executor.render_vello(footprint.resolution, footprint.transform, &mut draw) {
@@ -114,9 +114,7 @@ fn render(
 				Err(error) => {
 					log::error!("Failed to render Vello scene: {error}");
 					let limit = glam::UVec2::splat(executor.context().device.limits().max_texture_dimension_2d);
-					executor
-						.render_vello(footprint.resolution.min(limit), footprint.transform, &mut |_| {})
-						.expect("Failed to render an empty Vello scene")
+					executor.render_vello(footprint.resolution.min(limit), footprint.transform, &mut |_| {}).map_err(NodeError::new)?
 				}
 			};
 			RenderOutputType::Texture(texture)
@@ -124,7 +122,7 @@ fn render(
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
-	Item::new_from_element(RenderOutput { data, metadata })
+	Ok(Item::new_from_element(RenderOutput { data, metadata }))
 }
 
 #[node_macro::node(category(""))]
@@ -149,12 +147,19 @@ fn create_context(
 		..logical_viewport
 	};
 
+	// Rounded up so no image is sent below its on-screen resolution, with a tolerance for float noise at exact powers of two
+	let canvas_image_scale = match render_output_type {
+		RenderOutputTypeRequest::Svg => (footprint.scale_magnitudes().max_element().log2() - 1e-9).ceil().exp2(),
+		RenderOutputTypeRequest::Vello => 0.,
+	};
+
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
 		for_export: render_config.for_export,
 		render_output_type,
 		scale: render_config.scale,
 		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),
+		canvas_image_scale,
 		..Default::default()
 	};
 

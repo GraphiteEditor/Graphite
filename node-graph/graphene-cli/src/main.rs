@@ -1,3 +1,4 @@
+mod dump;
 mod export;
 
 use clap::{Args, Parser, Subcommand};
@@ -30,11 +31,23 @@ pub struct App {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-	/// Help message for compile.
+	#[clap(group(clap::ArgGroup::new("filter").args(["upstream", "downstream"]).multiple(true)))]
 	Compile {
-		/// Print proto network
-		#[clap(long, short = 'p')]
-		print_proto: bool,
+		/// Print the proto network in this format
+		#[clap(long, short = 'f', value_enum)]
+		format: Option<dump::Format>,
+
+		/// Only print the nodes matching this query and their inputs: a node ID prefix, or part of an identifier or document location
+		#[clap(long, requires = "format")]
+		upstream: Option<String>,
+
+		/// Only print the nodes matching this query and the nodes using them
+		#[clap(long, requires = "format")]
+		downstream: Option<String>,
+
+		/// Follow at most this many document nodes from the matching nodes, passing the nodes inserted between them for free
+		#[clap(long, requires = "filter")]
+		depth: Option<usize>,
 
 		/// Path to the .graphite document
 		document: PathBuf,
@@ -141,17 +154,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	}
 
 	// Build the runtime network: from the `.gdd` registry, or by loading a legacy `.graphite` document.
-	let node_network = match &gdd {
+	let print = matches!(app.command, Command::Compile { format: Some(_), .. });
+	let (node_network, names) = match &gdd {
 		Some(gdd) => {
 			let declarations = gdd.declarations(gdd).await;
-			let (node_network, _metadata) = gdd.registry().to_runtime_with_metadata(&declarations)?;
-			node_network
+			let (node_network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations)?;
+			let references = networks.into_iter().filter_map(|network| Some((network.network_path, network.reference?)));
+			let names = nodes.into_iter().filter_map(|node| Some(([node.network_path, vec![node.local_id]].concat(), node.display_name?)));
+			(node_network, print.then(|| references.chain(names).filter(|(_, name)| !name.is_empty()).collect()))
 		}
 		None => {
 			let document_string = std::fs::read_to_string(document_path).map_err(|error| format!("Failed to read document {}: {error}", document_path.display()))?;
-			load_network(&document_string)
+			(load_network(&document_string), print.then(|| dump::legacy_names(&document_string)))
 		}
 	};
+	let document = names.map(|names| dump::document(&node_network, names));
 
 	log::info!("Creating GPU context");
 	let mut application_io = PlatformApplicationIo::new().await;
@@ -173,13 +190,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		application_io: Some(application_io_for_api),
 	});
 	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone());
+	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(std::time::Instant::now()));
 	let proto_graph = compile_graph(node_network, editor_api, gdd.as_ref(), runtime.handle())?;
 
 	match app.command {
-		Command::Compile { print_proto, .. } => {
-			if print_proto {
-				println!("{proto_graph}");
+		Command::Compile {
+			format, upstream, downstream, depth, ..
+		} => {
+			if let Some((format, document)) = format.zip(document) {
+				dump::print(&proto_graph, &document, format, upstream.as_deref(), downstream.as_deref(), depth)?;
 			}
 		}
 		Command::Export {
@@ -218,7 +237,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				scale,
 				size: (width, height),
 				transparent,
-			};
+				framing: None,
+			}
+			.framed(&executor, &runtime, &spawner)
+			.await?;
 			let animation = export::AnimationParams::new(fps, frames, duration);
 			if file_type == export::FileType::Gif {
 				export::export_gif(&executor, wgpu_executor_ref, output, settings, animation, &runtime, &spawner).await?;
@@ -246,7 +268,7 @@ fn init_logging(log_level: u8) {
 	};
 	let colors = ColoredLevelConfig::new().debug(Color::Magenta).info(Color::Green).error(Color::Red);
 	fern::Dispatch::new()
-		.chain(std::io::stdout())
+		.chain(std::io::stderr())
 		.level_for("wgpu", log::LevelFilter::Error)
 		.level_for("naga", log::LevelFilter::Error)
 		.level_for("wgpu_hal", log::LevelFilter::Error)

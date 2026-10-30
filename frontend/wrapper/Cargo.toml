@@ -28,6 +28,7 @@ graphite-proc-macros = { workspace = true }
 graphene-std = { workspace = true, optional = true }
 
 # Workspace dependencies
+base64 = { workspace = true }
 graph-craft = { workspace = true, optional = true }
 log = { workspace = true }
 serde = { workspace = true }
@@ -36,7 +37,7 @@ serde-wasm-bindgen = { workspace = true }
 js-sys = { workspace = true }
 wasm-bindgen-futures = { workspace = true }
 wgpu = { workspace = true, optional = true }
-web-sys = { workspace = true }
+web-sys = { workspace = true, features = ["Performance"] }
 serde_json = { workspace = true }
 spin = { workspace = true, optional = true }
 tsify = { workspace = true }

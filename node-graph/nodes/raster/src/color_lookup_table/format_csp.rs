@@ -82,6 +82,13 @@ mod tests {
 	}
 
 	#[test]
+	fn pre_lut_passes_a_value_that_is_not_a_number_through() {
+		let text = "CSPLUTV100\n1D\n2\n0 2\n0 1\n2\n0 2\n0 1\n2\n0 2\n0 1\n2\n0 0 0\n1 1 1\n";
+		let lut = Lut::parse(text.as_bytes()).unwrap();
+		assert!(lut.apply([f32::NAN, 0.5, 2.])[0].is_nan());
+	}
+
+	#[test]
 	fn pre_lut_under_two_points_is_identity() {
 		let text = "CSPLUTV100\n1D\n0\n1\n0\n2\n0 0 0\n1 1 1\n";
 		let lut = Lut::parse(text.as_bytes()).unwrap();

@@ -500,7 +500,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::mix::IDENTIFIER,
+		node: graphene_std::raster_nodes::blending_nodes::mix_colors::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::BlendNode",
 			"raster_nodes::adjustments::BlendNode",
@@ -508,6 +508,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::BlendNode",
 			"graphene_raster_nodes::blending_nodes::BlendNode",
 			"raster_nodes::blending_nodes::BlendNode",
+			"raster_nodes::blending_nodes::MixNode",
 		],
 	},
 	NodeReplacement {
@@ -1197,6 +1198,7 @@ fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
 
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
+	document.network_interface.migrate_rewired_previews();
 	document.network_interface.normalize_stored_types();
 
 	let network = document.network_interface.document_network().clone();
@@ -1223,6 +1225,14 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				};
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
 				document.network_interface.set_call_argument(node_id, &network_path, default_template.call_argument);
+
+				// 'Mix Colors' takes the under color first, like a 'Merge' takes its stack, where 'Mix' and 'Blend' before it took the over color first
+				if *new == graphene_std::raster_nodes::blending_nodes::mix_colors::IDENTIFIER
+					&& let [over, under, ..] = node.inputs.as_slice()
+				{
+					document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), under.clone(), &network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), over.clone(), &network_path);
+				}
 			}
 		}
 	}
@@ -1316,6 +1326,28 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		if let Some(image_input) = old_inputs.into_iter().find(|input| matches!(input.as_value(), Some(TaggedValue::ImageData(_)))) {
 			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), image_input, network_path);
 		}
+	}
+
+	// The Merge and Artboard networks no longer pass their content through a Monitor node, since thumbnails are found from the layers themselves.
+	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: rebuilding the network orphans its child paths.
+	let monitored_layers: Vec<(NodeId, Vec<NodeId>, DefinitionIdentifier)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::Network(network) = &node.implementation else { return None };
+			let reference = document.network_interface.reference(node_id, &path)?;
+			let is_merge_or_artboard = [DefinitionIdentifier::Network("Merge".into()), DefinitionIdentifier::Network("Artboard".into())].contains(&reference);
+
+			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
+			let has_monitor = network.nodes.values().any(|inner_node| inner_node.implementation == monitor);
+
+			(is_merge_or_artboard && has_monitor).then_some((*node_id, path, reference))
+		})
+		.collect();
+	for (node_id, network_path, reference) in &monitored_layers {
+		let Some(definition) = resolve_document_node_type(reference) else { continue };
+		document.network_interface.replace_implementation(node_id, network_path, &mut definition.default_node_template());
 	}
 
 	// The old "Math" node evaluated an expression over "A" and "B". A lexable static expression not reading a wired `B` becomes "Math f(x)"
@@ -3415,6 +3447,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), old_inputs[2].clone(), network_path);
 	}
 
+	// Load Image's URL is empty until set, it used to be `graphite:null`
+	if reference == DefinitionIdentifier::Network("Load Image".into())
+		&& let Some(url) = node.inputs.get(1)
+		&& matches!(url.as_value(), Some(TaggedValue::String(url)) if url == "graphite:null")
+	{
+		document.network_interface.set_input(
+			&InputConnector::node_at_index(*node_id, 1),
+			NodeInput::value(TaggedValue::String(String::new()), url.is_exposed()),
+			network_path,
+		);
+	}
+
 	// `wgpu-executor` scope was removed, change to the auto injected scope node `graphene_std::platform_application_io::wgpu_executor`
 	for (i, input) in node.inputs.iter().enumerate() {
 		if let NodeInput::Scope(name) = input
@@ -3533,11 +3577,11 @@ fn modifications_following_turned_segments(network: &graph_craft::document::Node
 		};
 
 		// Where the output comes from: the node itself, or the nodes a network node exports
-		let sources: Vec<Location> = match &origin_node.implementation {
-			DocumentNodeImplementation::Network(nested) => (0..nested.exports.len())
+		let sources: Vec<Location> = match network.implementation_network(&origin_node.implementation) {
+			Some(nested) => (0..nested.exports.len())
 				.filter_map(|output| producing_node(network, origin_path, &NodeInput::node(*origin_id, output), 0))
 				.collect(),
-			_ => vec![origin.clone()],
+			None => vec![origin.clone()],
 		};
 
 		let mut reached = HashSet::new();
@@ -3595,9 +3639,9 @@ fn producing_node(network: &graph_craft::document::NodeNetwork, network_path: &[
 	match input {
 		NodeInput::Node { node_id, output_index } => {
 			let node = network.nested_network(network_path)?.nodes.get(node_id)?;
-			match &node.implementation {
-				DocumentNodeImplementation::Network(nested) => producing_node(network, &[network_path, &[*node_id]].concat(), nested.exports.get(*output_index)?, depth + 1),
-				_ => Some((network_path.to_vec(), *node_id)),
+			match network.implementation_network(&node.implementation) {
+				Some(nested) => producing_node(network, &[network_path, &[*node_id]].concat(), nested.exports.get(*output_index)?, depth + 1),
+				None => Some((network_path.to_vec(), *node_id)),
 			}
 		}
 		NodeInput::Import { import_index, .. } => {
@@ -3705,6 +3749,20 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		&& node.inputs.len() == 2
 	{
 		let mut node_template = resolve_proto_node_type(graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+		for (index, input) in old_inputs.iter().take(2).enumerate() {
+			document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+		}
+	}
+
+	// Collapse the legacy "Rasterize" wrapper network, which drew into a browser canvas, into the standalone Vello `rasterize` proto node
+	#[cfg(feature = "gpu")]
+	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
+		&& name == "Rasterize"
+		&& node.inputs.len() == 2
+	{
+		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::rasterize::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		for (index, input) in old_inputs.iter().take(2).enumerate() {
@@ -3836,6 +3894,79 @@ mod tests {
 		};
 		let expected = original.iter().map(|(name, offset)| (swap_name(name), *offset)).collect::<Vec<_>>();
 		assert_eq!(chain_layout(&opened, layer), expected, "the migration should leave the layer's chain intact");
+	}
+
+	#[cfg(feature = "gpu")]
+	#[tokio::test]
+	async fn opening_a_canvas_rasterize_network_upgrades_it_to_the_vello_node() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkTemplate;
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::platform_application_io::rasterize;
+		use graphene_std::transform::Footprint;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let node_id = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER), 0, 0).await;
+		let document = editor.active_document_mut();
+
+		let footprint = Footprint {
+			resolution: glam::UVec2::new(64, 32),
+			..Default::default()
+		};
+		let footprint_input = NodeInput::value(TaggedValue::Footprint(footprint), false);
+		document.network_interface.set_input(&InputConnector::node_at_index(node_id, 1), footprint_input.clone(), &[]);
+
+		// Save the node as the network that drew into a browser canvas
+		let canvas_network = NodeNetworkTemplate {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: [(
+				NodeId(0),
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(rasterize::IDENTIFIER),
+					inputs: vec![NodeInput::import(list!(graphic_types::Graphic), 0), NodeInput::import(item!(Footprint), 1)],
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		let mut legacy = NodeTemplate {
+			implementation: NodeTemplateImplementation::Network(canvas_network),
+			..Default::default()
+		};
+		document.network_interface.replace_implementation(&node_id, &[], &mut legacy);
+		document.network_interface.set_reference(&node_id, &[], Some("Rasterize".into()));
+		let serialized = document.serialize_document();
+
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let interface = &opened.network_interface;
+		assert_eq!(interface.reference(&node_id, &[]), Some(DefinitionIdentifier::ProtoNode(rasterize::IDENTIFIER)));
+		assert_eq!(
+			interface.input_from_connector(&InputConnector::node_at_index(node_id, 1), &[]),
+			Some(&footprint_input),
+			"the footprint should carry over"
+		);
+	}
+
+	#[cfg(feature = "gpu")]
+	#[tokio::test]
+	async fn a_rasterize_node_on_the_export_compiles() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rasterize = editor
+			.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::platform_application_io::rasterize::IDENTIFIER), 0, 0)
+			.await;
+		editor
+			.active_document_mut()
+			.network_interface
+			.create_wire(&OutputConnector::primary_output(rasterize), &InputConnector::Export(0), &[]);
+
+		editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
 	}
 
 	#[test]
@@ -4236,6 +4367,47 @@ mod tests {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
+	}
+
+	// Merge and Artboard networks once passed their content through a Monitor node for thumbnails, so their rebuilt networks drop it
+	#[test]
+	fn merge_and_artboard_networks_drop_their_monitor_node() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplateImplementation;
+
+		for name in ["Merge", "Artboard"] {
+			let node_id = NodeId(1);
+			let mut document = DocumentMessageHandler::default();
+			let mut node_template = resolve_network_node_type(name).expect("The definition should exist").default_node_template();
+			let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
+				panic!("{name} should be a network node")
+			};
+
+			// Splice a Monitor node into the content entering the exported Extend node, where the old network had it
+			let Some(NodeInput::Node { node_id: extend_id, .. }) = network_template.exports.first().cloned() else {
+				panic!("{name} should export a node")
+			};
+			let monitor_id = NodeId(100);
+			let extend = network_template.nodes.get_mut(&extend_id).expect("The exported node should exist");
+			let content = std::mem::replace(&mut extend.inputs[1], NodeInput::node(monitor_id, 0));
+			let monitor_template = NodeTemplate {
+				inputs: vec![content],
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
+				..Default::default()
+			};
+			network_template.nodes.insert(monitor_id, monitor_template);
+			document.network_interface.insert_node(node_id, node_template, &[]);
+
+			migrate(&mut document);
+
+			let DocumentNodeImplementation::Network(network) = &document.network_interface.document_network().nodes[&node_id].implementation else {
+				panic!("{name} should stay a network node")
+			};
+			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
+			assert!(
+				network.nodes.values().all(|inner_node| inner_node.implementation != monitor),
+				"{name} should no longer have a Monitor node"
+			);
+		}
 	}
 
 	// Regex Find's Match Index is now an integer, so an old instance rounds its stored F64 index and rebuilds the subgraph
@@ -4743,6 +4915,43 @@ mod tests {
 			let node = opened.network_interface.document_node(&node_id, &[]).expect("the node should still exist");
 			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(identifier.clone()), "{title}");
 			assert_eq!(opened.network_interface.display_name(&node_id, &[]), *title);
+		}
+	}
+
+	#[test]
+	fn mix_and_blend_nodes_open_as_mix_colors_with_the_under_color_first() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::raster_nodes::blending_nodes::mix_colors;
+
+		let (over, under) = (Color::RED, Color::BLUE);
+		let color_input = |color| NodeInput::value(TaggedValue::Color(color), false);
+
+		// Old Mix and Blend nodes list the over color first, while a node already saved as Mix Colors lists the under color first
+		let saved_nodes = [
+			(ProtoNodeIdentifier::new("raster_nodes::blending_nodes::MixNode"), [over, under]),
+			(ProtoNodeIdentifier::new("raster_nodes::blending_nodes::BlendNode"), [over, under]),
+			(mix_colors::IDENTIFIER, [under, over]),
+		];
+
+		let mut document = DocumentMessageHandler::default();
+		for (index, (identifier, colors)) in saved_nodes.iter().enumerate() {
+			let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(mix_colors::IDENTIFIER))
+				.expect("the Mix Colors definition should exist")
+				.default_node_template();
+			node_template.implementation = NodeTemplateImplementation::ProtoNode(identifier.clone());
+			node_template.inputs[0] = color_input(colors[0]);
+			node_template.inputs[1] = color_input(colors[1]);
+			document.network_interface.insert_node(NodeId(index as u64), node_template, &[]);
+		}
+
+		let opened = load_legacy_document(document.serialize_document(), &HashMapResourceStorage::new(), false).expect("the document should open");
+
+		for (index, (identifier, _)) in saved_nodes.iter().enumerate() {
+			let node = opened.network_interface.document_node(&NodeId(index as u64), &[]).expect("the node should still exist");
+			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(mix_colors::IDENTIFIER), "{}", identifier.as_str());
+			assert_eq!(node.inputs[0], color_input(under), "{} should take the under color first", identifier.as_str());
+			assert_eq!(node.inputs[1], color_input(over), "{} should take the over color second", identifier.as_str());
 		}
 	}
 

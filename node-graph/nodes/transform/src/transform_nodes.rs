@@ -160,14 +160,27 @@ fn extract_transform<T: Send>(_: impl Ctx, #[implementations(Graphic, Vector, Ra
 	Item::new_from_element(content.attribute_cloned_or_default(ATTR_TRANSFORM))
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum InvertTransformError {
+	#[error("The transform can't be inverted because it collapses to a line or point")]
+	Singular,
+	#[error("The transform can't be inverted because it has values that aren't finite")]
+	NotFinite,
+}
+
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.
 #[node_macro::node(category("Transform"), icon("NodeInvertTransform"))]
-fn invert_transform(_: impl Ctx, transform: Item<DAffine2>) -> Item<DAffine2> {
-	let (transform, attributes) = transform.into_parts();
+fn invert_transform(_: impl Ctx, transform: Item<DAffine2>) -> Result<Item<DAffine2>, (Item<DAffine2>, InvertTransformError)> {
+	let element = *transform.element();
+	if !element.is_finite() {
+		return Err((transform, InvertTransformError::NotFinite));
+	}
+	let Some(result) = element.matrix2.determinant().is_normal().then(|| element.inverse()).filter(DAffine2::is_finite) else {
+		return Err((transform, InvertTransformError::Singular));
+	};
 
-	let result = transform.inverse();
-
-	Item::from_parts(result, attributes)
+	let (_, attributes) = transform.into_parts();
+	Ok(Item::from_parts(result, attributes))
 }
 
 /// Extracts the translation component from the input transform.

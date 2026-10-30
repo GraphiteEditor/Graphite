@@ -1,7 +1,7 @@
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::application_io::resource::Resource;
+use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_animation::AnimationCurve;
@@ -10,8 +10,6 @@ use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
-#[cfg(target_family = "wasm")]
-use graphene_std::platform_application_io::canvas_utils::CanvasHandle;
 #[cfg(feature = "gpu")]
 use graphene_std::raster::GPU;
 use graphene_std::raster::color::Color;
@@ -87,13 +85,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<RenderOutput>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => ListDyn, Context => Item<graphene_std::ContextModification>]),
-		#[cfg(target_family = "wasm")]
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<CanvasHandle>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformEditorApi>>, Context => Item<graphene_std::ContextModification>]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformApplicationIo>>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::RuntimeHandle>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::SourceId>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuExecutor>, Context => Item<graphene_std::ContextModification>]),
-		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<Option<wgpu_executor::WgpuExecutor>>, Context => Item<graphene_std::ContextModification>]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>, Context => Item<graphene_std::ContextModification>]),
 		// ==========
 		// MEMO NODES
@@ -136,10 +132,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BlendMode>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<AttributeValueDyn>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => ListDyn]),
-		#[cfg(target_family = "wasm")]
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<CanvasHandle>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<RenderOutput>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformEditorApi>>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Arc<PlatformApplicationIo>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::RuntimeHandle>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<graphene_std::SourceId>]),
 		#[cfg(feature = "gpu")]
@@ -147,7 +142,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<graphene_std::brush::Stroke>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<RenderIntermediate>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuExecutor>]),
-		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Option<wgpu_executor::WgpuExecutor>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>]),
 	];
 	// The per-connector input adapter, registered per element type: an `Item` or `List` wire passes through unchanged.

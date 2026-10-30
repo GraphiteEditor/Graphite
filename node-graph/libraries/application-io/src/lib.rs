@@ -5,7 +5,6 @@ use glam::DVec2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::ptr::addr_of;
 use std::sync::Arc;
 use std::time::Duration;
 use vector_types::vector::style::RenderMode;
@@ -93,7 +92,7 @@ impl<Io: Default> Default for EditorApi<Io> {
 
 impl<Io> Hash for EditorApi<Io> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.application_io.as_ref().map_or(0, |io| io as *const _ as usize).hash(state);
+		self.application_io.is_some().hash(state);
 	}
 }
 
@@ -105,7 +104,7 @@ impl<Io> CacheHash for EditorApi<Io> {
 
 impl<Io> PartialEq for EditorApi<Io> {
 	fn eq(&self, other: &Self) -> bool {
-		self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
+		self.application_io.is_some() == other.application_io.is_some()
 	}
 }
 

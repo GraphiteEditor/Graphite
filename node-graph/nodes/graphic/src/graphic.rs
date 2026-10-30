@@ -298,31 +298,31 @@ fn slice<T: Send + Sync + Clone + 'static>(
 	list.into_iter().skip(start).take(end - start).collect()
 }
 
-/// Pairwise ordering used by the Sort node for element values. Types without a natural
-/// order compare as equal, so the stable sort leaves their items in their original relative positions.
+/// Pairwise ordering used by the Sort node for element values. Types without a natural order give `None`,
+/// so their items can only be sorted by a *Sort Order* list.
 pub trait ElementOrder {
-	fn element_order(&self, _other: &Self) -> Ordering {
-		Ordering::Equal
+	fn element_order(&self, _other: &Self) -> Option<Ordering> {
+		None
 	}
 }
 impl ElementOrder for String {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
 	}
 }
 impl ElementOrder for bool {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
 	}
 }
 impl ElementOrder for f64 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.total_cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.total_cmp(other))
 	}
 }
 impl ElementOrder for i64 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
 	}
 }
 impl ElementOrder for DVec2 {}
@@ -334,6 +334,12 @@ impl ElementOrder for Raster<GPU> {}
 impl ElementOrder for Color {}
 impl ElementOrder for Gradient {}
 impl ElementOrder for Artboard {}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SortError {
+	#[error("These items have no natural order, so connect a Sort Order list to sort them")]
+	NoNaturalOrder,
+}
 
 /// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
 #[node_macro::node(category("Data: List"), icon("NodeSort"))]
@@ -356,21 +362,29 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	sort_order: List<U>,
 	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
 	reverse: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, SortError> {
 	let reverse = reverse.into_element();
 
 	// Order by the parallel keys when provided (repeating the last if there are fewer keys than items), otherwise by the element values themselves
 	let keys = sort_order.iter_element_values().as_slice();
 	let elements: Vec<&T> = list.iter_element_values().collect();
 
+	let mut unordered = false;
 	let mut order: Vec<usize> = (0..list.len()).collect();
 	order.sort_by(|&a, &b| {
 		let ordering = match keys {
 			[] => elements[a].element_order(elements[b]),
 			keys => keys[a.min(keys.len() - 1)].element_order(&keys[b.min(keys.len() - 1)]),
 		};
+		let ordering = ordering.unwrap_or_else(|| {
+			unordered = true;
+			Ordering::Equal
+		});
 		if reverse { ordering.reverse() } else { ordering }
 	});
+	if unordered {
+		return Err(SortError::NoNaturalOrder);
+	}
 
 	let mut result = List::new();
 	for index in order {
@@ -379,7 +393,7 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 		}
 	}
 
-	result
+	Ok(result)
 }
 
 #[node_macro::node(category("Data: List"), icon("NodeMap"))]
@@ -431,8 +445,42 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	Ok(rows)
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum MirrorError {
+	#[error("Text and fills have no bounds to mirror relative to, so set Relative to Bounds to None")]
+	NoBounds,
+}
+
+/// Whether the content holds text, which has no bounds in the graph.
+pub trait HasText {
+	fn has_text(&self) -> bool {
+		false
+	}
+}
+impl HasText for String {
+	fn has_text(&self) -> bool {
+		!self.is_empty()
+	}
+}
+impl HasText for Graphic {
+	fn has_text(&self) -> bool {
+		match self {
+			Graphic::Text(item) => item.element().has_text(),
+			Graphic::TextList(list) => list.iter_element_values().any(HasText::has_text),
+			Graphic::Graphic(item) => item.element().has_text(),
+			Graphic::GraphicList(list) => list.iter_element_values().any(HasText::has_text),
+			_ => false,
+		}
+	}
+}
+impl HasText for Vector {}
+impl HasText for Raster<CPU> {}
+impl HasText for Raster<GPU> {}
+impl HasText for Color {}
+impl HasText for Gradient {}
+
 #[node_macro::node(category("Graphic"), icon("NodeMirror"))]
-fn mirror<T: BoundingBox + Send + Clone>(
+fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Graphic,
@@ -451,7 +499,7 @@ fn mirror<T: BoundingBox + Send + Clone>(
 	#[soft(-90..90)]
 	angle: Item<f64>,
 	#[default(true)] keep_original: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, MirrorError> {
 	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());
 
 	// Normalize the direction vector
@@ -459,12 +507,15 @@ fn mirror<T: BoundingBox + Send + Clone>(
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
 	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return List::new_from_item(content);
+	let mirror_reference_point = match relative_to_bounds {
+		ReferencePoint::None => None,
+		reference_point => match content.bounding_box(DAffine2::IDENTITY, false) {
+			RenderBoundingBox::Rectangle(bounding_box) => reference_point.point_in_bounding_box((bounding_box[0], bounding_box[1]).into()).map(|point| point + normal * offset),
+			// Empty content looks the same mirrored
+			RenderBoundingBox::None if !content.element().has_text() => return Ok(std::iter::repeat_n(content, if keep_original { 2 } else { 1 }).collect()),
+			_ => return Err(MirrorError::NoBounds),
+		},
 	};
-
-	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
-	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
 
 	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
@@ -493,7 +544,7 @@ fn mirror<T: BoundingBox + Send + Clone>(
 	mirrored.set_attribute(ATTR_TRANSFORM, reflected_transform * item_transform);
 	result_list.push(mirrored);
 
-	result_list
+	Ok(result_list)
 }
 
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
@@ -1009,10 +1060,33 @@ pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	output
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FlattenRasterError {
+	#[error("GPU rasters such as brush strokes can't be flattened yet, so they were left out")]
+	GpuRasters,
+}
+
+/// Whether the content holds GPU rasters, which flattening to CPU rasters leaves out.
+fn has_gpu_raster(graphic: &Graphic) -> bool {
+	match graphic {
+		Graphic::RasterGPU(_) => true,
+		Graphic::RasterGPUList(list) => !list.is_empty(),
+		Graphic::Graphic(item) => has_gpu_raster(item.element()),
+		Graphic::GraphicList(list) => list.iter_element_values().any(has_gpu_raster),
+		_ => false,
+	}
+}
+
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Graphic"), icon("NodeFlattenRaster"))]
-fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
-	content.into_flattened_list()
+fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> Result<List<Raster<CPU>>, (List<Raster<CPU>>, FlattenRasterError)> {
+	let has_gpu_rasters = content.iter_element_values().any(has_gpu_raster);
+	let rasters = content.into_flattened_list();
+
+	if has_gpu_rasters {
+		return Err((rasters, FlattenRasterError::GpuRasters));
+	}
+	Ok(rasters)
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
@@ -1059,50 +1133,75 @@ mod test {
 	#[test]
 	fn sorts_elements_by_their_natural_order() {
 		let list = list_of(["banana".to_string(), "apple".to_string(), "cherry".to_string()]);
-		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(false));
+		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), ["apple", "banana", "cherry"]);
 	}
 
 	#[test]
 	fn sorts_elements_in_reverse() {
 		let list = list_of([3., 1., 2.]);
-		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(true));
+		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(true)).unwrap();
 		assert_eq!(elements(&sorted), [3., 2., 1.]);
 	}
 
 	#[test]
 	fn sort_order_keys_override_element_order() {
 		let list = list_of(["apple".to_string(), "banana".to_string(), "cherry".to_string()]);
-		let sorted = sort((), list, list_of([2., 0., 1.]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of([2., 0., 1.]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), ["banana", "cherry", "apple"]);
 	}
 
 	#[test]
 	fn short_sort_order_repeats_its_last_key() {
 		let list = list_of(["a".to_string(), "b".to_string(), "c".to_string()]);
-		let sorted = sort((), list, list_of([2., 1.]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of([2., 1.]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), ["b", "c", "a"]);
 	}
 
 	#[test]
 	fn long_sort_order_ignores_its_extra_keys() {
 		let list = list_of([1., 2.]);
-		let sorted = sort((), list, list_of([3., 1., 0., 5.]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of([3., 1., 0., 5.]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), [2., 1.]);
 	}
 
 	#[test]
 	fn text_sort_order_keys_order_items_alphabetically() {
 		let list = list_of([1., 2., 3.]);
-		let sorted = sort((), list, list_of(["c".to_string(), "a".to_string(), "b".to_string()]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of(["c".to_string(), "a".to_string(), "b".to_string()]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), [2., 3., 1.]);
 	}
 
 	#[test]
-	fn unsortable_elements_keep_their_original_order() {
+	fn unsortable_elements_need_sort_order_keys() {
 		let list = list_of([DVec2::new(3., 3.), DVec2::new(1., 1.), DVec2::new(2., 2.)]);
-		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(false));
-		assert_eq!(elements(&sorted), [DVec2::new(3., 3.), DVec2::new(1., 1.), DVec2::new(2., 2.)]);
+		assert!(matches!(sort((), list.clone(), List::<f64>::new(), Item::new_from_element(false)), Err(SortError::NoNaturalOrder)));
+
+		let sorted = sort((), list, list_of([2., 0., 1.]), Item::new_from_element(false)).unwrap();
+		assert_eq!(elements(&sorted), [DVec2::new(1., 1.), DVec2::new(2., 2.), DVec2::new(3., 3.)]);
+
+		let single = sort((), list_of([DVec2::ONE]), List::<f64>::new(), Item::new_from_element(false)).unwrap();
+		assert_eq!(elements(&single), [DVec2::ONE], "a single item is already in order");
+	}
+
+	fn mirrored<T: BoundingBox + HasText + Send + Clone>(content: T, relative_to_bounds: ReferencePoint) -> Result<List<T>, MirrorError> {
+		mirror((), content.into(), relative_to_bounds.into(), 0.0.into(), 0.0.into(), true.into())
+	}
+
+	#[test]
+	fn mirror_without_bounds_reflects_across_the_origin() {
+		let text = mirrored("text".to_string(), ReferencePoint::None).unwrap();
+		assert_eq!(text.len(), 2);
+		assert_eq!(text.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 1), DAffine2::from_scale(DVec2::new(-1., 1.)));
+
+		assert!(matches!(mirrored("text".to_string(), ReferencePoint::Center), Err(MirrorError::NoBounds)));
+		assert!(matches!(mirrored(Color::RED, ReferencePoint::Center), Err(MirrorError::NoBounds)));
+	}
+
+	#[test]
+	fn mirroring_empty_content_keeps_the_original_and_the_copy() {
+		assert_eq!(mirrored(Vector::default(), ReferencePoint::Center).unwrap().len(), 2);
+		assert_eq!(mirrored(String::new(), ReferencePoint::Center).unwrap().len(), 2);
 	}
 
 	#[test]

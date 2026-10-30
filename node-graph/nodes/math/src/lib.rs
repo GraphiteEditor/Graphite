@@ -1,4 +1,3 @@
-use core_types::FallibleVec2Operations;
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
@@ -7,63 +6,88 @@ use core_types::{Context, Interrupt};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
-use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
+use math_parser::executer::EvalError;
 use math_parser::lexer::Constant;
 use math_parser::matrix::{Affine2, Linear2, Matrix};
 use math_parser::object::Object;
+use math_parser::parser::{MessagePart, ParseError};
 use math_parser::reducer::classify_reducer;
 use math_parser::value::{Value, Vector2, Vector3};
 use rand::{Rng, SeedableRng};
-use std::ops::{Add, Mul, Rem, Sub};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
-/// A parsed source and its tree, which an invalid source lacks.
-type ParsedSource = Option<(String, Option<Arc<ast::Node>>)>;
+/// Why the "Math f(x)" or "Math f(…)" node's expression gives no result.
+#[derive(Debug, thiserror::Error)]
+pub enum MathExpressionError {
+	#[error("The expression is empty")]
+	Empty,
+	#[error("The expression is invalid: {0}")]
+	Invalid(String),
+	#[error(transparent)]
+	Evaluation(#[from] EvalError),
+	#[error("The result {result} can't be read as {output_type}")]
+	OutputType { result: String, output_type: String },
+	#[error("The input can't be read as {0}")]
+	InputType(String),
+	#[error("`{reducer}` gives no result for an empty list")]
+	EmptyReduction { reducer: String },
+	#[error("`{reducer}` gives no result across these items")]
+	NoReduction { reducer: String },
+}
+
+/// A parse error's messages without the byte ranges they point at, which only mean something beside the source.
+fn parse_error_message(error: &ParseError) -> String {
+	let message = |parts: &[MessagePart]| {
+		parts
+			.iter()
+			.map(|part| match part {
+				MessagePart::Text(text) => text.clone(),
+				MessagePart::Code(code) => format!("`{code}`"),
+			})
+			.collect::<String>()
+	};
+	error.messages().iter().map(|error| message(error.parts())).collect::<Vec<_>>().join("; ")
+}
+
+/// A parsed source and its tree, or the message of why it doesn't parse.
+type ParsedSource = Option<(String, Result<Arc<ast::Node>, String>)>;
 
 /// The last expression a node parsed, reused while its source stays the same, so a list of thousands of items or a run of
-/// frames parses once. An invalid source is remembered too, so it is logged once rather than per item.
+/// frames parses once. An invalid source is remembered too, so it is parsed once rather than per item.
 #[derive(Debug, Clone, Default)]
 pub struct ParseCache(Arc<Mutex<ParsedSource>>);
 
 impl ParseCache {
-	/// The parse tree of `source`, or `None` for an invalid math expression.
-	fn parse(&self, source: &str) -> Option<Arc<ast::Node>> {
+	/// The parse tree of `source`, or why it isn't a valid math expression.
+	fn parse(&self, source: &str) -> Result<Arc<ast::Node>, MathExpressionError> {
+		if source.trim().is_empty() {
+			return Err(MathExpressionError::Empty);
+		}
+
 		// A lock poisoned by a panic elsewhere still guards a usable cache
 		let mut cached = self.0.lock().unwrap_or_else(PoisonError::into_inner);
 		if let Some((cached_source, tree)) = cached.as_ref()
 			&& cached_source == source
 		{
-			return tree.clone();
+			return tree.clone().map_err(MathExpressionError::Invalid);
 		}
 
-		let tree = match ast::Node::try_parse_from_str(source) {
-			Ok(tree) => Some(Arc::new(tree)),
-			Err(error) => {
-				warn!("Invalid math expression: `{source}`\n{error}");
-				None
-			}
-		};
+		let tree = ast::Node::try_parse_from_str(source).map(Arc::new).map_err(|error| parse_error_message(&error));
 		*cached = Some((source.to_string(), tree.clone()));
-		tree
+		tree.map_err(MathExpressionError::Invalid)
 	}
 }
 
-/// Evaluates a parsed expression with the given variable bindings, logging and returning `None` on failure.
-fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Option<Object> {
-	match expression.eval(&EvalContext::new(provider, NothingMap)) {
-		Ok(object) => Some(object),
-		Err(error) => {
-			warn!("Expression evaluation error: {error:?}");
-			None
-		}
-	}
+/// Evaluates a parsed expression with the given variable bindings.
+fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Result<Object, MathExpressionError> {
+	Ok(expression.eval(&EvalContext::new(provider, NothingMap))?)
 }
 
 /// Converts a node item type to and from the objects, values or matrices, the expression evaluator runs on.
-trait ExpressionValue: Copy + Default {
+trait ExpressionValue: Copy + Default + 'static {
 	fn into_object(self) -> Object;
 	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool or a matrix read as a Number.
 	fn from_object(object: &Object) -> Option<Self>;
@@ -87,7 +111,7 @@ impl Items {
 }
 
 /// A node item type that is a value in the expression language, so a list of them binds positionally.
-trait ExpressionItem: Copy + Default {
+trait ExpressionItem: Copy + Default + 'static {
 	/// Binds this value into the expression language, exactly for an integer.
 	fn into_value(self) -> Value;
 	fn from_value(value: &Value) -> Option<Self>;
@@ -119,17 +143,12 @@ impl ExpressionItem for f64 {
 	}
 }
 
-/// Reads an expression's result into the node's output type, warning and falling back to the type's default when it does not fit.
-fn output<T: ExpressionValue>(result: Option<Object>) -> T {
-	result
-		.and_then(|object| {
-			let output = T::from_object(&object);
-			if output.is_none() {
-				warn!("The expression's result {object} does not fit the output type");
-			}
-			output
-		})
-		.unwrap_or_default()
+/// Reads an expression's result as the node's output type.
+fn output<T: ExpressionValue>(result: &Object) -> Result<T, MathExpressionError> {
+	T::from_object(result).ok_or_else(|| MathExpressionError::OutputType {
+		result: result.to_string(),
+		output_type: core_types::concrete!(T).to_string(),
+	})
 }
 
 impl ExpressionItem for i64 {
@@ -194,11 +213,11 @@ impl ExpressionValue for DAffine2 {
 }
 
 /// Supplies the value of `x`, or the matrix of `X`, for the "Math f(x)" node's expression.
-struct SingleVariableMathContext {
-	x: Object,
+struct SingleVariableMathContext<'a> {
+	x: &'a Object,
 }
 
-impl ValueProvider for SingleVariableMathContext {
+impl ValueProvider for SingleVariableMathContext<'_> {
 	fn get_value(&self, name: &str) -> Option<Value> {
 		// Bound by exact spelling, per the language's rule that a binding shadows the builtin of exactly its spelling
 		(name == "x").then(|| self.x.as_value().copied()).flatten()
@@ -233,7 +252,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	#[name("Output Type")]
 	output_type: Item<U>,
 	#[data] parsed: ParseCache,
-) -> Item<U> {
+) -> Result<Item<U>, (Item<U>, MathExpressionError)> {
 	// The output type input is a type witness: its type selects the implementation, and its value is never read
 	let _ = output_type;
 
@@ -243,9 +262,19 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 
 	// The default `x` passes any input through, including a Transform, which an expression names `X`
 	let source = if x.as_matrix().is_some() && fx.element().trim() == "x" { "X" } else { fx.element() };
-	let result = output(parsed.parse(source).and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x })));
+	let result = parsed
+		.parse(source)
+		.and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x: &x }))
+		.and_then(|result| output(&result));
 
-	Item::from_parts(result, attributes)
+	match result {
+		Ok(result) => Ok(Item::from_parts(result, attributes)),
+		// The input passes through as the default `x` reads it, unless the output type can't hold it
+		Err(error) => match U::from_object(&x) {
+			Some(input) => Err((Item::from_parts(input, attributes), error)),
+			None => Err((Item::from_parts(U::default(), attributes), MathExpressionError::InputType(core_types::concrete!(U).to_string()))),
+		},
+	}
 }
 
 /// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on, or `A`, `B`, `C` for matrices.
@@ -308,7 +337,7 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 	#[name("Output Type")]
 	output_type: Item<U>,
 	#[data] parsed: ParseCache,
-) -> Item<U> {
+) -> Result<Item<U>, MathExpressionError> {
 	// The output type input is a type witness: its type selects the implementation, and its value is never read
 	let _ = output_type;
 
@@ -324,19 +353,143 @@ fn math_f<T: ExpressionValue, U: ExpressionValue>(
 			Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
 		};
 		let Some(result) = result else {
-			warn!("The `{expression}` reducer cannot be applied to {} items", bindings.items.len());
-			return Item::new_from_element(U::default());
+			let name = expression.trim();
+			return match bindings.items.len() {
+				// Like the dedicated nodes, the minimum, maximum and mean of no values are 0
+				0 if matches!(bindings.items, Items::Values(_)) && matches!(name.trim_start_matches('\\'), "min" | "max" | "mean") => Ok(Item::new_from_element(U::default())),
+				0 => Err(MathExpressionError::EmptyReduction { reducer: name.to_string() }),
+				_ => Err(MathExpressionError::NoReduction { reducer: name.to_string() }),
+			};
 		};
-		return Item::new_from_element(output(Some(result)));
+		return Ok(Item::new_from_element(output(&result)?));
 	}
 
-	let result = output(parsed.parse(expression).and_then(|expression| evaluate_expression(&expression, bindings)));
-	Item::new_from_element(result)
+	let tree = parsed.parse(expression)?;
+	let result = evaluate_expression(&tree, bindings)?;
+	Ok(Item::new_from_element(output(&result)?))
+}
+
+/// An Integer result too large or too small for the Integer type to hold.
+#[derive(Debug, thiserror::Error)]
+pub enum IntegerOverflowError {
+	#[error("The result is outside the Integer range")]
+	OutOfRange,
+}
+
+pub trait TryAdd<Rhs = Self> {
+	type Output;
+	fn try_add(self, addend: Rhs) -> Result<Self::Output, IntegerOverflowError>;
+}
+impl TryAdd for f64 {
+	type Output = f64;
+	fn try_add(self, addend: f64) -> Result<f64, IntegerOverflowError> {
+		Ok(self + addend)
+	}
+}
+impl TryAdd for i64 {
+	type Output = i64;
+	fn try_add(self, addend: i64) -> Result<i64, IntegerOverflowError> {
+		self.checked_add(addend).ok_or(IntegerOverflowError::OutOfRange)
+	}
+}
+impl TryAdd for DVec2 {
+	type Output = DVec2;
+	fn try_add(self, addend: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self + addend)
+	}
+}
+impl TryAdd<f64> for DVec2 {
+	type Output = DVec2;
+	fn try_add(self, addend: f64) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self + addend)
+	}
+}
+impl TryAdd<DVec2> for f64 {
+	type Output = DVec2;
+	fn try_add(self, addend: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self + addend)
+	}
+}
+
+pub trait TrySub<Rhs = Self> {
+	type Output;
+	fn try_sub(self, subtrahend: Rhs) -> Result<Self::Output, IntegerOverflowError>;
+}
+impl TrySub for f64 {
+	type Output = f64;
+	fn try_sub(self, subtrahend: f64) -> Result<f64, IntegerOverflowError> {
+		Ok(self - subtrahend)
+	}
+}
+impl TrySub for i64 {
+	type Output = i64;
+	fn try_sub(self, subtrahend: i64) -> Result<i64, IntegerOverflowError> {
+		self.checked_sub(subtrahend).ok_or(IntegerOverflowError::OutOfRange)
+	}
+}
+impl TrySub for DVec2 {
+	type Output = DVec2;
+	fn try_sub(self, subtrahend: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self - subtrahend)
+	}
+}
+impl TrySub<f64> for DVec2 {
+	type Output = DVec2;
+	fn try_sub(self, subtrahend: f64) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self - subtrahend)
+	}
+}
+impl TrySub<DVec2> for f64 {
+	type Output = DVec2;
+	fn try_sub(self, subtrahend: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self - subtrahend)
+	}
+}
+
+pub trait TryMul<Rhs = Self> {
+	type Output;
+	fn try_mul(self, multiplicand: Rhs) -> Result<Self::Output, IntegerOverflowError>;
+}
+impl TryMul for f64 {
+	type Output = f64;
+	fn try_mul(self, multiplicand: f64) -> Result<f64, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul for i64 {
+	type Output = i64;
+	fn try_mul(self, multiplicand: i64) -> Result<i64, IntegerOverflowError> {
+		self.checked_mul(multiplicand).ok_or(IntegerOverflowError::OutOfRange)
+	}
+}
+impl TryMul for DVec2 {
+	type Output = DVec2;
+	fn try_mul(self, multiplicand: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul<f64> for DVec2 {
+	type Output = DVec2;
+	fn try_mul(self, multiplicand: f64) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul<DVec2> for f64 {
+	type Output = DVec2;
+	fn try_mul(self, multiplicand: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul for DAffine2 {
+	type Output = DAffine2;
+	fn try_mul(self, multiplicand: DAffine2) -> Result<DAffine2, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
 }
 
 /// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeAdd"))]
-fn add<A: Add<B>, B>(
+fn add<A: TryAdd<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the addition operation.
 	#[implementations(f64, i64, DVec2, f64, DVec2)]
@@ -344,15 +497,15 @@ fn add<A: Add<B>, B>(
 	/// The right-hand side of the addition operation.
 	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	addend: Item<B>,
-) -> Item<<A as Add<B>>::Output> {
+) -> Result<Item<<A as TryAdd<B>>::Output>, IntegerOverflowError> {
 	let (augend, attributes) = augend.into_parts();
 
-	Item::from_parts(augend + addend.into_element(), attributes)
+	Ok(Item::from_parts(augend.try_add(addend.into_element())?, attributes))
 }
 
 /// The subtraction operation (`-`) calculates the difference between two scalar numbers or vec2s.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeSubtract"))]
-fn subtract<A: Sub<B>, B>(
+fn subtract<A: TrySub<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the subtraction operation.
 	#[implementations(f64, i64, DVec2, f64, DVec2)]
@@ -360,15 +513,15 @@ fn subtract<A: Sub<B>, B>(
 	/// The right-hand side of the subtraction operation.
 	#[implementations(f64, i64, DVec2, DVec2, f64)]
 	subtrahend: Item<B>,
-) -> Item<<A as Sub<B>>::Output> {
+) -> Result<Item<<A as TrySub<B>>::Output>, IntegerOverflowError> {
 	let (minuend, attributes) = minuend.into_parts();
 
-	Item::from_parts(minuend - subtrahend.into_element(), attributes)
+	Ok(Item::from_parts(minuend.try_sub(subtrahend.into_element())?, attributes))
 }
 
 /// The multiplication operation (`×`) calculates the product of two scalar numbers, vec2s, or transforms.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeMultiply"))]
-fn multiply<A: Mul<B>, B>(
+fn multiply<A: TryMul<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
 	#[implementations(f64, i64, DVec2, f64, DVec2, DAffine2)]
@@ -377,44 +530,47 @@ fn multiply<A: Mul<B>, B>(
 	#[default(1.)]
 	#[implementations(f64, i64, DVec2, DVec2, f64, DAffine2)]
 	multiplicand: Item<B>,
-) -> Item<<A as Mul<B>>::Output> {
+) -> Result<Item<<A as TryMul<B>>::Output>, IntegerOverflowError> {
 	let (multiplier, attributes) = multiplier.into_parts();
 
-	Item::from_parts(multiplier * multiplicand.into_element(), attributes)
+	Ok(Item::from_parts(multiplier.try_mul(multiplicand.into_element())?, attributes))
 }
 
 pub trait SafeDivide<Rhs = Self> {
 	type Output;
-	fn safe_divide(self, denominator: Rhs) -> Self::Output;
+	fn safe_divide(self, denominator: Rhs) -> Result<Self::Output, IntegerOverflowError>;
 }
 impl SafeDivide for f64 {
 	type Output = f64;
-	fn safe_divide(self, denominator: f64) -> f64 {
-		if denominator == 0. { 0. } else { self / denominator }
+	fn safe_divide(self, denominator: f64) -> Result<f64, IntegerOverflowError> {
+		Ok(if denominator == 0. { 0. } else { self / denominator })
 	}
 }
 impl SafeDivide for i64 {
 	type Output = i64;
-	fn safe_divide(self, denominator: i64) -> i64 {
-		self.checked_div(denominator).unwrap_or(0)
+	fn safe_divide(self, denominator: i64) -> Result<i64, IntegerOverflowError> {
+		if denominator == 0 {
+			return Ok(0);
+		}
+		self.checked_div(denominator).ok_or(IntegerOverflowError::OutOfRange)
 	}
 }
 impl SafeDivide for DVec2 {
 	type Output = DVec2;
-	fn safe_divide(self, denominator: DVec2) -> DVec2 {
-		DVec2::new(self.x.safe_divide(denominator.x), self.y.safe_divide(denominator.y))
+	fn safe_divide(self, denominator: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(DVec2::new(self.x.safe_divide(denominator.x)?, self.y.safe_divide(denominator.y)?))
 	}
 }
 impl SafeDivide<f64> for DVec2 {
 	type Output = DVec2;
-	fn safe_divide(self, denominator: f64) -> DVec2 {
-		DVec2::new(self.x.safe_divide(denominator), self.y.safe_divide(denominator))
+	fn safe_divide(self, denominator: f64) -> Result<DVec2, IntegerOverflowError> {
+		Ok(DVec2::new(self.x.safe_divide(denominator)?, self.y.safe_divide(denominator)?))
 	}
 }
 impl SafeDivide<DVec2> for f64 {
 	type Output = DVec2;
-	fn safe_divide(self, denominator: DVec2) -> DVec2 {
-		DVec2::new(self.safe_divide(denominator.x), self.safe_divide(denominator.y))
+	fn safe_divide(self, denominator: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(DVec2::new(self.safe_divide(denominator.x)?, self.safe_divide(denominator.y)?))
 	}
 }
 
@@ -431,10 +587,10 @@ fn divide<A: SafeDivide<B>, B>(
 	#[default(1.)]
 	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	denominator: Item<B>,
-) -> Item<<A as SafeDivide<B>>::Output> {
+) -> Result<Item<<A as SafeDivide<B>>::Output>, IntegerOverflowError> {
 	let (numerator, attributes) = numerator.into_parts();
 
-	Item::from_parts(numerator.safe_divide(denominator.into_element()), attributes)
+	Ok(Item::from_parts(numerator.safe_divide(denominator.into_element())?, attributes))
 }
 
 trait Componentwise {
@@ -466,11 +622,72 @@ fn reciprocal<T: Componentwise>(
 	Item::from_parts(value.componentwise(|value| if value == 0. { 0. } else { 1. / value }), attributes)
 }
 
+/// Why a modulo has no result.
+#[derive(Debug, thiserror::Error)]
+pub enum ModuloError {
+	#[error("The modulus can't be 0")]
+	ZeroModulus,
+}
+
+pub trait Modulo<Rhs = Self> {
+	type Output;
+	fn modulo(self, modulus: Rhs, always_positive: bool) -> Result<Self::Output, ModuloError>;
+}
+
+fn scalar_modulo(numerator: f64, modulus: f64, always_positive: bool) -> Result<f64, ModuloError> {
+	if modulus == 0. {
+		return Err(ModuloError::ZeroModulus);
+	}
+	Ok(if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus })
+}
+impl Modulo for f64 {
+	type Output = f64;
+	fn modulo(self, modulus: f64, always_positive: bool) -> Result<f64, ModuloError> {
+		scalar_modulo(self, modulus, always_positive)
+	}
+}
+impl Modulo for i64 {
+	type Output = i64;
+	fn modulo(self, modulus: i64, always_positive: bool) -> Result<i64, ModuloError> {
+		if modulus == 0 {
+			return Err(ModuloError::ZeroModulus);
+		}
+
+		// Only `i64::MIN % -1` wraps, to its true remainder of 0
+		let remainder = self.wrapping_rem(modulus);
+
+		// Adding the modulus only to a remainder of the opposite sign gives it the modulus's sign without overflowing
+		Ok(if always_positive && remainder != 0 && (remainder < 0) != (modulus < 0) {
+			remainder + modulus
+		} else {
+			remainder
+		})
+	}
+}
+impl Modulo for DVec2 {
+	type Output = DVec2;
+	fn modulo(self, modulus: DVec2, always_positive: bool) -> Result<DVec2, ModuloError> {
+		Ok(DVec2::new(scalar_modulo(self.x, modulus.x, always_positive)?, scalar_modulo(self.y, modulus.y, always_positive)?))
+	}
+}
+impl Modulo<f64> for DVec2 {
+	type Output = DVec2;
+	fn modulo(self, modulus: f64, always_positive: bool) -> Result<DVec2, ModuloError> {
+		Ok(DVec2::new(scalar_modulo(self.x, modulus, always_positive)?, scalar_modulo(self.y, modulus, always_positive)?))
+	}
+}
+impl Modulo<DVec2> for f64 {
+	type Output = DVec2;
+	fn modulo(self, modulus: DVec2, always_positive: bool) -> Result<DVec2, ModuloError> {
+		Ok(DVec2::new(scalar_modulo(self, modulus.x, always_positive)?, scalar_modulo(self, modulus.y, always_positive)?))
+	}
+}
+
 /// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vec2s.
 ///
-/// The sign of the result shares the sign of the numerator unless *Always Positive* is enabled.
+/// The sign of the result shares the sign of the numerator, or of the modulus if *Always Positive* is enabled.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeModulo"))]
-fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy>(
+fn modulo<A: Modulo<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the modulo operation.
 	#[implementations(f64, i64, DVec2, DVec2, f64)]
@@ -479,59 +696,59 @@ fn modulo<A: Rem<B, Output: Add<B, Output: Rem<B, Output = A::Output>>>, B: Copy
 	#[default(2.)]
 	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	modulus: Item<B>,
-	/// Ensures the result is always positive, even if the numerator is negative.
+	/// Ensures the result is positive for a positive modulus, even if the numerator is negative.
 	#[default(true)]
 	always_positive: Item<bool>,
-) -> Item<<A as Rem<B>>::Output> {
+) -> Result<Item<<A as Modulo<B>>::Output>, ModuloError> {
 	let (numerator, attributes) = numerator.into_parts();
-	let (modulus, always_positive) = (*modulus.element(), *always_positive.element());
 
-	let result = if always_positive { (numerator % modulus + modulus) % modulus } else { numerator % modulus };
-	Item::from_parts(result, attributes)
+	Ok(Item::from_parts(numerator.modulo(modulus.into_element(), *always_positive.element())?, attributes))
 }
 
 pub trait Exponent<Rhs = Self> {
 	type Output;
-	fn power(self, power: Rhs) -> Self::Output;
+	fn power(self, power: Rhs) -> Result<Self::Output, IntegerOverflowError>;
 }
 impl Exponent for f64 {
 	type Output = f64;
-	fn power(self, power: f64) -> f64 {
-		self.powf(power)
+	fn power(self, power: f64) -> Result<f64, IntegerOverflowError> {
+		Ok(self.powf(power))
 	}
 }
 impl Exponent for i64 {
 	type Output = i64;
-	// Only ±1 stay representable once the exponent is negative or too large, so everything else falls to 0
-	fn power(self, power: i64) -> i64 {
+	fn power(self, power: i64) -> Result<i64, IntegerOverflowError> {
 		if let Ok(power) = u32::try_from(power) {
-			return self.checked_pow(power).unwrap_or(0);
+			return self.checked_pow(power).ok_or(IntegerOverflowError::OutOfRange);
 		}
 
+		// A negative power truncates toward 0, which only ±1 escape, and a power beyond 32 bits overflows for any other base but 0
 		match self {
-			1 => 1,
-			-1 if power % 2 == 0 => 1,
-			-1 => -1,
-			_ => 0,
+			1 => Ok(1),
+			-1 if power % 2 == 0 => Ok(1),
+			-1 => Ok(-1),
+			0 => Ok(0),
+			_ if power < 0 => Ok(0),
+			_ => Err(IntegerOverflowError::OutOfRange),
 		}
 	}
 }
 impl Exponent for DVec2 {
 	type Output = DVec2;
-	fn power(self, power: DVec2) -> DVec2 {
-		DVec2::new(self.x.powf(power.x), self.y.powf(power.y))
+	fn power(self, power: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(DVec2::new(self.x.powf(power.x), self.y.powf(power.y)))
 	}
 }
 impl Exponent<f64> for DVec2 {
 	type Output = DVec2;
-	fn power(self, power: f64) -> DVec2 {
-		DVec2::new(self.x.powf(power), self.y.powf(power))
+	fn power(self, power: f64) -> Result<DVec2, IntegerOverflowError> {
+		Ok(DVec2::new(self.x.powf(power), self.y.powf(power)))
 	}
 }
 impl Exponent<DVec2> for f64 {
 	type Output = DVec2;
-	fn power(self, power: DVec2) -> DVec2 {
-		DVec2::new(self.powf(power.x), self.powf(power.y))
+	fn power(self, power: DVec2) -> Result<DVec2, IntegerOverflowError> {
+		Ok(DVec2::new(self.powf(power.x), self.powf(power.y)))
 	}
 }
 
@@ -548,10 +765,10 @@ fn exponent<A: Exponent<B>, B>(
 	#[implementations(f64, i64, DVec2, f64, DVec2)]
 	#[default(2.)]
 	power: Item<B>,
-) -> Item<<A as Exponent<B>>::Output> {
+) -> Result<Item<<A as Exponent<B>>::Output>, IntegerOverflowError> {
 	let (base, attributes) = base.into_parts();
 
-	Item::from_parts(base.power(power.into_element()), attributes)
+	Ok(Item::from_parts(base.power(power.into_element())?, attributes))
 }
 
 fn scalar_nth_root(radicand: f64, degree: f64) -> f64 {
@@ -561,6 +778,8 @@ fn scalar_nth_root(radicand: f64, degree: f64) -> f64 {
 		radicand.cbrt()
 	} else if degree <= 0. {
 		0.
+	} else if radicand < 0. && degree % 2. == 1. {
+		-(-radicand).powf(1. / degree)
 	} else {
 		radicand.powf(1. / degree)
 	}
@@ -806,6 +1025,13 @@ impl TangentInverse for DVec2 {
 	}
 }
 
+/// Why a remap has no result.
+#[derive(Debug, thiserror::Error)]
+pub enum RemapError {
+	#[error("Input Min and Input Max can't be equal")]
+	FlatInputRange,
+}
+
 /// Linearly maps an input value from one range to another. The ranges may be reversed.
 ///
 /// For example, 0.5 in the input range `[0, 1]` would map to 0 in the output range `[-180, 180]`.
@@ -826,17 +1052,15 @@ fn remap(
 	output_max: Item<f64>,
 	/// Whether to constrain the result within the output range instead of extrapolating beyond its bounds.
 	clamped: Item<bool>,
-) -> Item<f64> {
+) -> Result<Item<f64>, RemapError> {
 	let (value, attributes) = value.into_parts();
 	let (input_min, input_max, output_min, output_max) = (*input_min.element(), *input_max.element(), *output_min.element(), *output_max.element());
 
-	let input_range = input_max - input_min;
-
-	// Handle division by zero
-	if input_range.abs() < f64::EPSILON {
-		return Item::from_parts(output_min, attributes);
+	if input_min == input_max {
+		return Err(RemapError::FlatInputRange);
 	}
 
+	let input_range = input_max - input_min;
 	let normalized = (value - input_min) / input_range;
 	let output_range = output_max - output_min;
 
@@ -846,14 +1070,17 @@ fn remap(
 		// Handle both normal and inverted ranges, since we want to allow the user to use this node to also reverse a range.
 		if output_min <= output_max {
 			result.clamp(output_min, output_max)
-		} else {
+		} else if output_max < output_min {
 			result.clamp(output_max, output_min)
+		} else {
+			// A NaN bound gives no range to clamp within, and has already made the result NaN
+			result
 		}
 	} else {
 		result
 	};
 
-	Item::from_parts(result, attributes)
+	Ok(Item::from_parts(result, attributes))
 }
 
 trait Lerp {
@@ -991,22 +1218,22 @@ fn ceiling<T: Componentwise>(
 	Item::from_parts(value.componentwise(f64::ceil), attributes)
 }
 
-trait AbsoluteValue {
-	fn abs(self) -> Self;
+trait AbsoluteValue: Sized {
+	fn abs(self) -> Result<Self, IntegerOverflowError>;
 }
 impl AbsoluteValue for DVec2 {
-	fn abs(self) -> Self {
-		DVec2::new(self.x.abs(), self.y.abs())
+	fn abs(self) -> Result<Self, IntegerOverflowError> {
+		Ok(DVec2::new(self.x.abs(), self.y.abs()))
 	}
 }
 impl AbsoluteValue for f64 {
-	fn abs(self) -> Self {
-		self.abs()
+	fn abs(self) -> Result<Self, IntegerOverflowError> {
+		Ok(self.abs())
 	}
 }
 impl AbsoluteValue for i64 {
-	fn abs(self) -> Self {
-		self.abs()
+	fn abs(self) -> Result<Self, IntegerOverflowError> {
+		self.checked_abs().ok_or(IntegerOverflowError::OutOfRange)
 	}
 }
 
@@ -1019,10 +1246,10 @@ fn absolute_value<T: AbsoluteValue>(
 	/// The number to be made positive.
 	#[implementations(f64, i64, DVec2)]
 	value: Item<T>,
-) -> Item<T> {
+) -> Result<Item<T>, IntegerOverflowError> {
 	let (value, attributes) = value.into_parts();
 
-	Item::from_parts(value.abs(), attributes)
+	Ok(Item::from_parts(value.abs()?, attributes))
 }
 
 /// The sign function (`sign`) reports whether an input value is positive (1), negative (-1), or zero (0).
@@ -1037,15 +1264,7 @@ fn sign<T: Componentwise>(
 ) -> Item<T> {
 	let (value, attributes) = value.into_parts();
 
-	let result = value.componentwise(|value| {
-		if value > 0. {
-			1.
-		} else if value < 0. {
-			-1.
-		} else {
-			0.
-		}
-	});
+	let result = value.componentwise(|value| if value == 0. { 0. } else { value.signum() });
 	Item::from_parts(result, attributes)
 }
 
@@ -1570,11 +1789,23 @@ fn hsla_to_color(
 	Item::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
 }
 
-/// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). Invalid inputs produce a transparent color.
+/// A string that isn't a CSS color.
+#[derive(Debug, thiserror::Error)]
+pub enum StringToColorError {
+	#[error("`{0}` isn't a valid color")]
+	InvalidColor(String),
+}
+
+/// Constructs a color value from a CSS color string. Accepts hex (`#RRGGBB`, `#RRGGBBAA`, plus bare and shorthand variants), CSS named colors (like `red`), and functional notations (`rgb(...)`, `hsl(...)`, etc.). An empty string produces a transparent color.
 #[node_macro::node(category("Color"), icon("NodeStringToColor"), name("String to Color"))]
-fn string_to_color(_: impl Ctx, string: Item<String>) -> Item<Color> {
-	let color = core_types::misc::parse_css_color(string.element()).unwrap_or_default();
-	Item::new_from_element(color)
+fn string_to_color(_: impl Ctx, string: Item<String>) -> Result<Item<Color>, StringToColorError> {
+	let string = string.into_element();
+	if string.trim().is_empty() {
+		return Ok(Item::new_from_element(Color::default()));
+	}
+
+	let color = core_types::misc::parse_css_color(&string).ok_or(StringToColorError::InvalidColor(string))?;
+	Ok(Item::new_from_element(color))
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
@@ -1777,6 +2008,11 @@ fn vec2_to_numbers(_: impl Ctx, #[name("Vec2")] vec2: Item<DVec2>) -> Vec2Compon
 	}
 }
 
+/// Divides a vec2 by its largest absolute component, so normalizing it can't overflow or underflow; a zero or non-finite vec2 gets a NaN component.
+fn scaled_to_unit_box(vec2: DVec2) -> DVec2 {
+	vec2 / vec2.abs().max_element()
+}
+
 /// The dot product operation (`·`) calculates the degree of similarity of a vec2 pair based on their angles and lengths.
 ///
 /// Calculated as `‖a‖‖b‖cos(θ)`, it represents the product of their lengths (`‖a‖‖b‖`) scaled by the alignment of their directions (`cos(θ)`).
@@ -1797,7 +2033,7 @@ fn dot_product(
 	let other_value = *other_value.element();
 
 	let result = if *normalize.element() {
-		value.normalize_or_zero().dot(other_value.normalize_or_zero())
+		scaled_to_unit_box(value).normalize_or_zero().dot(scaled_to_unit_box(other_value).normalize_or_zero())
 	} else {
 		value.dot(other_value)
 	};
@@ -1843,10 +2079,8 @@ fn angle_between(
 		return Item::from_parts(0., attributes);
 	}
 
-	let angle = direction_from.try_angle_to(direction_to).unwrap_or_else(|| {
-		warn!("Angle to could not be computed");
-		0.
-	});
+	let (from, to) = (scaled_to_unit_box(direction_from), scaled_to_unit_box(direction_to));
+	let angle = from.perp_dot(to).atan2(from.dot(to));
 	let result = if *radians.element() { angle } else { angle.to_degrees() };
 	Item::from_parts(result, attributes)
 }
@@ -1918,14 +2152,14 @@ fn distance(
 fn normalize(_: impl Ctx, vec2: Item<DVec2>) -> Item<DVec2> {
 	let (vec2, attributes) = vec2.into_parts();
 
-	Item::from_parts(vec2.normalize_or_zero(), attributes)
+	Item::from_parts(scaled_to_unit_box(vec2).normalize_or_zero(), attributes)
 }
 
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::Node;
 	use core_types::generic::FnNode;
+	use core_types::{Node, concrete};
 
 	#[test]
 	pub fn dot_product_function() {
@@ -2051,7 +2285,7 @@ mod test {
 		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
 		assert_eq!(super::min((), Item::new_from_element(0_f64), vec2(-5., 5.)).into_element(), DVec2::new(-5., 0.));
 		assert_eq!(super::max((), Item::new_from_element(0_f64), vec2(-5., 5.)).into_element(), DVec2::new(0., 5.));
-		assert_eq!(exponent((), Item::new_from_element(2_f64), vec2(2., 3.)).into_element(), DVec2::new(4., 8.));
+		assert_eq!(exponent((), Item::new_from_element(2_f64), vec2(2., 3.)).unwrap().into_element(), DVec2::new(4., 8.));
 		assert_eq!(root((), Item::new_from_element(64_f64), vec2(2., 3.)).into_element(), DVec2::new(8., 4.));
 		assert_eq!(logarithm((), Item::new_from_element(8_f64), vec2(2., 10.)).into_element(), DVec2::new(3., 8_f64.log10()));
 		assert_eq!(clamp((), Item::new_from_element(5_f64), vec2(0., 6.), vec2(1., 10.)).into_element(), DVec2::new(1., 6.));
@@ -2074,6 +2308,7 @@ mod test {
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(0_i64),
 			)
+			.unwrap()
 			.into_element()
 		};
 		assert_eq!(integer(3, "x * 2"), 6);
@@ -2083,7 +2318,9 @@ mod test {
 
 		let items: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
+				.unwrap()
+				.into_element(),
 			2,
 			"7/3 rounds to 2"
 		);
@@ -2100,6 +2337,7 @@ mod test {
 				Item::new_from_element("x * 2".to_string()),
 				Item::new_from_element(0_i64)
 			)
+			.unwrap()
 			.into_element(),
 			5
 		);
@@ -2111,6 +2349,7 @@ mod test {
 				Item::new_from_element("x > 2".to_string()),
 				Item::new_from_element(false)
 			)
+			.unwrap()
 			.into_element()
 		);
 		assert_eq!(
@@ -2121,13 +2360,16 @@ mod test {
 				Item::new_from_element("x / 2".to_string()),
 				Item::new_from_element(0.)
 			)
+			.unwrap()
 			.into_element(),
 			0.5
 		);
 
 		let items: List<f64> = [1., 2.].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64)).into_element(),
+			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
+				.unwrap()
+				.into_element(),
 			2,
 			"1.5 rounds to 2"
 		);
@@ -2150,7 +2392,7 @@ mod test {
 			Item::new_from_element("2 + 2".to_string()),
 			Item::new_from_element(0.),
 		);
-		assert_eq!(result.into_element(), 4.);
+		assert_eq!(result.unwrap().into_element(), 4.);
 	}
 
 	#[test]
@@ -2162,7 +2404,7 @@ mod test {
 			Item::new_from_element("(5 * 3) + (10 / 2)".to_string()),
 			Item::new_from_element(0.),
 		);
-		assert_eq!(result.into_element(), 20.);
+		assert_eq!(result.unwrap().into_element(), 20.);
 	}
 
 	#[test]
@@ -2174,7 +2416,7 @@ mod test {
 			Item::new_from_element("x * 2".to_string()),
 			Item::new_from_element(0.),
 		);
-		assert_eq!(result.into_element(), 14.);
+		assert_eq!(result.unwrap().into_element(), 14.);
 	}
 
 	#[test]
@@ -2186,7 +2428,7 @@ mod test {
 			Item::new_from_element("invalid".to_string()),
 			Item::new_from_element(0.),
 		);
-		assert_eq!(result.into_element(), 0.);
+		assert_eq!(result.unwrap_err().0.into_element(), 0.);
 	}
 
 	#[test]
@@ -2195,28 +2437,51 @@ mod test {
 		let first = cache.parse("x * 2").unwrap();
 		assert!(Arc::ptr_eq(&first, &cache.parse("x * 2").unwrap()));
 		assert!(!Arc::ptr_eq(&first, &cache.parse("x * 3").unwrap()));
-		assert!(cache.parse("invalid(").is_none());
+		assert!(cache.parse("invalid(").is_err());
 	}
 
 	#[test]
 	fn test_boolean_items() {
 		// Booleans read as exactly 0 and 1, and logical results convert back
 		let as_bool = Item::new_from_element(false);
-		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone()).into_element());
-		assert!(math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone()).into_element());
+		assert!(
+			!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone())
+				.unwrap()
+				.into_element()
+		);
+		assert!(
+			math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone())
+				.unwrap()
+				.into_element()
+		);
 
-		// A result that is not exactly 0 or 1 cannot be a truth value, so it reads as false
-		assert!(!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).into_element());
+		// A result that is not exactly 0 or 1 cannot be a truth value, so the input passes through
+		let (stand_in, error) = math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
+		assert!(stand_in.into_element());
+		assert!(matches!(&error, MathExpressionError::OutputType { output_type, .. } if output_type == "Bool"));
+
+		// An input that is not exactly 0 or 1 cannot pass through as a truth value either, so the output falls back to false
+		let (stand_in, error) = math_fx((), &ParseCache::default(), Item::new_from_element(2.), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
+		assert!(!stand_in.into_element());
+		assert!(matches!(&error, MathExpressionError::InputType(output_type) if output_type == "Bool"));
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).into_element());
-		assert!(math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).into_element());
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).into_element());
+		assert!(
+			!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone())
+				.unwrap()
+				.into_element()
+		);
+		assert!(
+			math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone())
+				.unwrap()
+				.into_element()
+		);
+		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).unwrap().into_element());
 	}
 
 	#[test]
 	fn test_transform_items() {
-		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> U {
+		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> Result<U, U> {
 			math_fx(
 				(),
 				&ParseCache::default(),
@@ -2224,40 +2489,50 @@ mod test {
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(output_type),
 			)
-			.into_element()
+			.map(Item::into_element)
+			.map_err(|(stand_in, _)| stand_in.into_element())
 		}
 		let shear = DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::new(5., 4.));
 
 		// A Transform binds as `X`, and a matrix result reads back as one, so the default `x` passes it through
-		assert_eq!(fx(shear, "x", shear), shear);
-		assert_eq!(fx(shear, "X (2i + 2j)", DVec2::ZERO), DVec2::new(8., 6.));
-		assert_eq!(fx(shear, "X^-1 X", shear), DAffine2::IDENTITY);
-		assert_eq!(fx(shear, "linear(X) + 1i", DAffine2::IDENTITY), DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::X));
-		assert_eq!(fx(2., "rotation(pi/2) + x i", DAffine2::IDENTITY).translation, DVec2::new(2., 0.));
-		assert_eq!(fx(shear, "det(X)", 0.), 1.);
+		assert_eq!(fx(shear, "x", shear), Ok(shear));
+		assert_eq!(fx(shear, "X (2i + 2j)", DVec2::ZERO), Ok(DVec2::new(8., 6.)));
+		assert_eq!(fx(shear, "X^-1 X", shear), Ok(DAffine2::IDENTITY));
+		assert_eq!(
+			fx(shear, "linear(X) + 1i", DAffine2::IDENTITY),
+			Ok(DAffine2::from_cols(DVec2::new(1., 0.), DVec2::new(0.5, 1.), DVec2::X))
+		);
+		assert_eq!(fx(2., "rotation(pi/2) + x i", DAffine2::IDENTITY).unwrap().translation, DVec2::new(2., 0.));
+		assert_eq!(fx(shear, "det(X)", 0.), Ok(1.));
 
-		// A value, or a matrix touching the weight, is no Transform, so the output falls back to its default
-		assert_eq!(fx(shear, "X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
-		assert_eq!(fx(shear, "[1;i] + X 0", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		// A value, or a matrix touching the weight, is no Transform, so the input passes through
+		assert_eq!(fx(shear, "X 0", DAffine2::IDENTITY), Err(shear));
+		assert_eq!(fx(shear, "[1;i] + X 0", DAffine2::IDENTITY), Err(shear));
+
+		// A Transform can't pass through as a Number, so the output falls back to its default
+		assert_eq!(fx(shear, "x", 0.), Err(0.));
 
 		// A Transform list binds as `A`, `B`, `C`, and a lone operator composes, averages, or counts across it
 		let scale = DAffine2::from_scale(DVec2::splat(2.));
-		fn f<U: ExpressionValue>(items: [DAffine2; 2], expression: &str, output_type: U) -> U {
+		fn f<U: ExpressionValue>(items: [DAffine2; 2], expression: &str, output_type: U) -> Result<U, MathExpressionError> {
 			let items: List<DAffine2> = items.into_iter().map(Item::new_from_element).collect();
-			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).into_element()
+			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
 		}
-		assert_eq!(f([shear, scale], "A B", DAffine2::IDENTITY), shear * scale);
-		assert_eq!(f([shear, scale], "A C", DAffine2::IDENTITY), shear);
-		assert_eq!(f([shear, scale], "*", DAffine2::IDENTITY), shear * scale);
-		assert_eq!(f([shear, scale], "/", DAffine2::IDENTITY), shear * scale.inverse());
-		assert_eq!(f([shear, scale], "mean", DAffine2::IDENTITY).translation, DVec2::new(2.5, 2.));
-		assert_eq!(f([shear, scale], "count", 0.), 2.);
-		assert_eq!(f([shear, scale], "det(A)", 0.), 1.);
-		assert_eq!(f([shear, scale], "min", DAffine2::IDENTITY), DAffine2::IDENTITY);
-		assert_eq!(f([shear, scale], "a", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		assert_eq!(f([shear, scale], "A B", DAffine2::IDENTITY).unwrap(), shear * scale);
+		assert_eq!(f([shear, scale], "A C", DAffine2::IDENTITY).unwrap(), shear);
+		assert_eq!(f([shear, scale], "*", DAffine2::IDENTITY).unwrap(), shear * scale);
+		assert_eq!(f([shear, scale], "/", DAffine2::IDENTITY).unwrap(), shear * scale.inverse());
+		assert_eq!(f([shear, scale], "mean", DAffine2::IDENTITY).unwrap().translation, DVec2::new(2.5, 2.));
+		assert_eq!(f([shear, scale], "count", 0.).unwrap(), 2.);
+		assert_eq!(f([shear, scale], "det(A)", 0.).unwrap(), 1.);
+		assert!(matches!(f([shear, scale], "min", DAffine2::IDENTITY), Err(MathExpressionError::NoReduction { .. })));
+		assert!(f([shear, scale], "a", DAffine2::IDENTITY).is_err());
 
-		// A sum of Transforms doubles the weight row, so it reads as no Transform and the output falls back to its default
-		assert_eq!(f([shear, scale], "+", DAffine2::IDENTITY), DAffine2::IDENTITY);
+		// A sum of Transforms doubles the weight row, so it reads as no Transform
+		assert!(matches!(
+			f([shear, scale], "+", DAffine2::IDENTITY),
+			Err(MathExpressionError::OutputType { output_type, .. }) if output_type == "Transform"
+		));
 	}
 
 	#[test]
@@ -2270,11 +2545,14 @@ mod test {
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(output_type),
 			)
+			.unwrap_or_else(|(_, error)| panic!("`{expression}` fails: {error}"))
 			.into_element()
 		}
 		fn f<U: ExpressionValue>(expression: &str, output_type: U) -> U {
 			let items: List<DVec2> = [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect();
-			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).into_element()
+			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type))
+				.unwrap()
+				.into_element()
 		}
 
 		assert_eq!(fx(DVec2::new(3., 4.), "2x + i", DVec2::ZERO), DVec2::new(7., 8.));
@@ -2315,14 +2593,21 @@ mod test {
 		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
 		let as_number = Item::new_from_element(0.);
 		assert_eq!(
-			math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone()).into_element(),
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone())
+				.unwrap()
+				.into_element(),
 			10.
 		);
 		assert_eq!(
-			math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone()).into_element(),
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone())
+				.unwrap()
+				.into_element(),
 			1.
 		);
-		assert_eq!(math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).into_element(), 12.);
+		assert_eq!(
+			math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).unwrap().into_element(),
+			12.
+		);
 	}
 
 	#[test]
@@ -2333,29 +2618,37 @@ mod test {
 
 	#[test]
 	pub fn add_vectors() {
-		assert_eq!(super::add((), Item::new_from_element(DVec2::ONE), Item::new_from_element(DVec2::ONE)).into_element(), DVec2::ONE * 2.);
+		assert_eq!(
+			super::add((), Item::new_from_element(DVec2::ONE), Item::new_from_element(DVec2::ONE)).unwrap().into_element(),
+			DVec2::ONE * 2.
+		);
 	}
 
 	#[test]
 	pub fn subtract_f64() {
-		assert_eq!(super::subtract((), Item::new_from_element(5_f64), Item::new_from_element(3_f64)).into_element(), 2.);
+		assert_eq!(super::subtract((), Item::new_from_element(5_f64), Item::new_from_element(3_f64)).unwrap().into_element(), 2.);
 	}
 
 	#[test]
 	pub fn divide_vectors() {
-		assert_eq!(super::divide((), Item::new_from_element(DVec2::ONE), Item::new_from_element(2_f64)).into_element(), DVec2::ONE / 2.);
+		assert_eq!(
+			super::divide((), Item::new_from_element(DVec2::ONE), Item::new_from_element(2_f64)).unwrap().into_element(),
+			DVec2::ONE / 2.
+		);
 	}
 
 	#[test]
 	pub fn divide_vector_by_partially_zero_vector() {
 		let (numerator, denominator) = (Item::new_from_element(DVec2::new(1., 2.)), Item::new_from_element(DVec2::new(2., 0.)));
-		assert_eq!(super::divide((), numerator, denominator).into_element(), DVec2::new(0.5, 0.));
+		assert_eq!(super::divide((), numerator, denominator).unwrap().into_element(), DVec2::new(0.5, 0.));
 	}
 
 	#[test]
 	pub fn modulo_positive() {
 		assert_eq!(
-			super::modulo((), Item::new_from_element(-5_f64), Item::new_from_element(2_f64), Item::new_from_element(true)).into_element(),
+			super::modulo((), Item::new_from_element(-5_f64), Item::new_from_element(2_f64), Item::new_from_element(true))
+				.unwrap()
+				.into_element(),
 			1_f64
 		);
 	}
@@ -2363,8 +2656,134 @@ mod test {
 	#[test]
 	pub fn modulo_negative() {
 		assert_eq!(
-			super::modulo((), Item::new_from_element(-5_f64), Item::new_from_element(2_f64), Item::new_from_element(false)).into_element(),
+			super::modulo((), Item::new_from_element(-5_f64), Item::new_from_element(2_f64), Item::new_from_element(false))
+				.unwrap()
+				.into_element(),
 			-1_f64
 		);
+	}
+
+	#[test]
+	fn expression_errors() {
+		assert_eq!(
+			[concrete!(f64), concrete!(i64), concrete!(bool), concrete!(DVec2), concrete!(DAffine2)].map(|ty| ty.to_string()),
+			["Number", "Integer", "Bool", "Vec2", "Transform"]
+		);
+
+		let fx = |value: f64, expression: &str| {
+			math_fx(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(value),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(0.),
+			)
+			.map(Item::into_element)
+			.map_err(|(stand_in, error)| (stand_in.into_element(), error))
+		};
+		assert!(matches!(fx(3., " "), Err((3., MathExpressionError::Empty))));
+		assert!(matches!(fx(3., "y * 2"), Err((3., MathExpressionError::Evaluation(_)))));
+		let Err((3., MathExpressionError::Invalid(message))) = fx(3., "x +") else {
+			panic!("`x +` doesn't parse")
+		};
+		assert!(!message.contains(", at "), "{message}");
+
+		let values = |values: &[f64]| values.iter().copied().map(Item::new_from_element).collect::<List<f64>>();
+		let f = |items, expression: &str| math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		assert!(matches!(f(values(&[1.]), ""), Err(MathExpressionError::Empty)));
+		assert!(matches!(f(values(&[1.]), "a +"), Err(MathExpressionError::Invalid(_))));
+		assert_eq!(f(values(&[]), "min").unwrap(), 0.);
+		assert_eq!(f(values(&[]), "mean").unwrap(), 0.);
+		assert!(matches!(f(values(&[]), "-"), Err(MathExpressionError::EmptyReduction { .. })));
+		assert!(matches!(f(values(&[0., 0.]), "/"), Err(MathExpressionError::NoReduction { .. })));
+	}
+
+	#[test]
+	fn integer_overflow_is_an_error() {
+		let integer = Item::new_from_element;
+		assert!(super::add((), integer(i64::MAX), integer(1)).is_err());
+		assert!(super::subtract((), integer(i64::MIN), integer(1)).is_err());
+		assert!(super::multiply((), integer(i64::MAX), integer(2)).is_err());
+		assert!(super::divide((), integer(i64::MIN), integer(-1)).is_err());
+		assert_eq!(super::divide((), integer(5), integer(0)).unwrap().into_element(), 0);
+		assert!(exponent((), integer(2), integer(63)).is_err());
+		assert!(exponent((), integer(2), integer(1 << 40)).is_err());
+		assert_eq!(exponent((), integer(-1), integer(1 << 40)).unwrap().into_element(), 1);
+		assert_eq!(exponent((), integer(0), integer(1 << 40)).unwrap().into_element(), 0);
+		assert_eq!(exponent((), integer(2), integer(-1)).unwrap().into_element(), 0);
+		assert!(absolute_value((), integer(i64::MIN)).is_err());
+		assert_eq!(absolute_value((), integer(i64::MIN + 1)).unwrap().into_element(), i64::MAX);
+	}
+
+	#[test]
+	fn modulo_of_zero_is_an_error_and_integer_extremes_are_exact() {
+		let modulo = |numerator: i64, modulus: i64, always_positive| {
+			super::modulo((), Item::new_from_element(numerator), Item::new_from_element(modulus), Item::new_from_element(always_positive)).map(Item::into_element)
+		};
+		assert!(modulo(5, 0, true).is_err());
+		assert_eq!(modulo(i64::MIN, -1, false).unwrap(), 0);
+		assert_eq!(modulo(i64::MIN, -1, true).unwrap(), 0);
+		assert_eq!(modulo(-1, i64::MIN, true).unwrap(), -1);
+		assert_eq!(modulo(-5, 3, true).unwrap(), 1);
+		assert_eq!(modulo(5, -3, true).unwrap(), -1);
+		assert_eq!(modulo(-5, 3, false).unwrap(), -2);
+
+		assert!(super::modulo((), Item::new_from_element(1.), Item::new_from_element(0.), Item::new_from_element(false)).is_err());
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		assert!(super::modulo((), vec2(1., 2.), vec2(2., 0.), Item::new_from_element(true)).is_err());
+	}
+
+	#[test]
+	fn remap_refuses_a_flat_input_range_and_leaves_nan_bounds_unclamped() {
+		let remap = |input_min: f64, input_max: f64, output_min: f64, output_max: f64| {
+			super::remap(
+				(),
+				Item::new_from_element(0.5),
+				Item::new_from_element(input_min),
+				Item::new_from_element(input_max),
+				Item::new_from_element(output_min),
+				Item::new_from_element(output_max),
+				Item::new_from_element(true),
+			)
+			.map(Item::into_element)
+		};
+		assert!(remap(1., 1., 0., 1.).is_err());
+		assert_eq!(remap(0., 1e-17, 0., 1.).unwrap(), 1.);
+		assert!(remap(0., 1., f64::NAN, 1.).unwrap().is_nan());
+		assert!(remap(0., 1., 0., f64::NAN).unwrap().is_nan());
+	}
+
+	#[test]
+	fn odd_roots_of_negative_numbers_are_real() {
+		let root_of = |radicand: f64, degree: f64| root((), Item::new_from_element(radicand), Item::new_from_element(degree)).into_element();
+		assert_eq!(root_of(-32., 5.), -root_of(32., 5.));
+		assert_eq!(root_of(-8., 3.), -2.);
+		assert!(root_of(-16., 4.).is_nan());
+		assert!(root_of(-16., 2.5).is_nan());
+	}
+
+	#[test]
+	fn sign_of_nan_is_nan() {
+		assert!(sign((), Item::new_from_element(f64::NAN)).into_element().is_nan());
+	}
+
+	#[test]
+	fn vec2_directions_of_extreme_length() {
+		let vec2 = |x, y| Item::new_from_element(DVec2::new(x, y));
+		for scale in [1e200, 1e-200, 1.] {
+			assert!((normalize((), vec2(3. * scale, 4. * scale)).into_element() - DVec2::new(0.6, 0.8)).length() < 1e-15);
+			assert!((dot_product((), vec2(scale, scale), vec2(scale, 0.), Item::new_from_element(true)).into_element() - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-15);
+			assert!((angle_between((), vec2(scale, scale), vec2(scale, 0.), Item::new_from_element(false)).into_element() + 45.).abs() < 1e-12);
+		}
+		assert_eq!(normalize((), vec2(f64::INFINITY, 1.)).into_element(), DVec2::ZERO);
+		assert!(angle_between((), vec2(f64::NAN, 1.), vec2(1., 0.), Item::new_from_element(false)).into_element().is_nan());
+	}
+
+	#[test]
+	fn string_to_color_refuses_invalid_strings() {
+		let color = |string: &str| string_to_color((), Item::new_from_element(string.to_string())).map(Item::into_element);
+		assert_eq!(color("").unwrap(), Color::default());
+		assert!(color("not a color").is_err());
+		assert!(color("red").is_ok());
 	}
 }

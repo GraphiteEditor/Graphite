@@ -3,97 +3,35 @@ use crate::adjust::Adjust;
 use core_types::list::Item;
 use no_std_types::Ctx;
 use no_std_types::blending::BlendMode;
-use no_std_types::color::{Color, Pixel};
+use no_std_types::color::Color;
 #[cfg(not(feature = "std"))]
 use no_std_types::list::ShaderItem as Item;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::{Gradient, GradientStop};
-
-pub trait Blend<P: Pixel> {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
-}
-impl Blend<Color> for Color {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		blend_fn(*self, *under)
-	}
-}
-
-#[cfg(feature = "std")]
-mod blend_std {
-	use super::*;
-	use core::cmp::Ordering;
-	use raster_types::Image;
-	use raster_types::Raster;
-
-	impl Blend<Color> for Raster<CPU> {
-		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let data = self.data.iter().zip(under.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
-
-			Raster::new_cpu(Image {
-				data,
-				width: self.width,
-				height: self.height,
-				base64_string: None,
-			})
-		}
-	}
-	impl Blend<Color> for Gradient {
-		// TODO: This joining is unfaithful in several ways: it samples only at stop positions so midpoint curves flatten away;
-		// TODO: it evaluates both sources with default whole-ramp attributes rather than their own (which this element-level impl cannot read);
-		// TODO: and the output keeps over's attributes despite being sampled with defaults
-		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut combined_stops = self.positions(false).into_iter().chain(under.positions(false)).collect::<Vec<_>>();
-			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
-			let over_evaluator = self.evaluator(Default::default());
-			let under_evaluator = under.evaluator(Default::default());
-			let stops = combined_stops.into_iter().map(|position| {
-				let color = blend_fn(over_evaluator.evaluate(position), under_evaluator.evaluate(position));
-				GradientStop { position, midpoint: 0.5, color }
-			});
-
-			// Positions stay explicit because eliding them needs the cyclic flag this impl can't read, and a wrong guess would relocate the stops
-			Gradient::new(stops)
-		}
-	}
-}
+use vector_types::Gradient;
 
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
-#[node_macro::node(category("Raster"), icon("NodeMix"), cfg(feature = "std"))]
-fn mix<T: Blend<Color> + Send>(
+/// Mixes the over color onto the under color by a blend mode and opacity, as if they were stacked layers.
+#[node_macro::node(category("Color"), icon("NodeMixColors"), cfg(feature = "std"))]
+fn mix_colors(
 	_: impl Ctx,
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
-	#[gpu_image]
-	over: Item<T>,
-	#[expose]
-	#[implementations(
-		Raster<CPU>,
-		Color,
-		Gradient,
-	)]
-	#[gpu_image]
-	under: Item<T>,
+	under: Item<Color>,
+	#[expose] over: Item<Color>,
 	blend_mode: Item<BlendMode>,
 	#[unit("%")]
 	#[range]
 	#[hard(0..100)]
 	#[default(100.)]
 	opacity: Item<f64>,
-) -> Item<T> {
-	let mut over = over;
+) -> Item<Color> {
+	let mut under = under;
 	let blend_mode = blend_mode.into_element();
 	let opacity = (opacity.into_element() / 100.) as f32;
 
-	let blended = over.element().blend(under.element(), |a, b| blend_colors(a, b, blend_mode, opacity));
-	*over.element_mut() = blended;
-	over
+	*under.element_mut() = blend_colors(*over.element(), *under.element(), blend_mode, opacity);
+	under
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
@@ -159,5 +97,15 @@ mod test {
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
+	}
+
+	#[test]
+	fn mix_colors_paints_over_at_its_opacity() {
+		let red = Color::from_rgbaf32_unchecked(1., 0., 0., 1.);
+		let blue = Color::from_rgbaf32_unchecked(0., 0., 1., 1.);
+
+		let mixed = super::mix_colors((), blue.into(), red.into(), BlendMode::Normal.into(), 25_f64.into()).into_element();
+
+		assert_eq!(mixed, Color::from_rgbaf32_unchecked(0.25, 0., 0.75, 1.));
 	}
 }

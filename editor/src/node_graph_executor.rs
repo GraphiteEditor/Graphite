@@ -36,7 +36,7 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: ExecutionResult,
 	responses: VecDeque<FrontendMessage>,
-	/// The layers whose thumbnails the runtime let go of, which it renders anew if they're monitored again.
+	/// The layers whose thumbnails the runtime let go of, which it renders anew if they have content to show again.
 	dropped_thumbnails: Vec<NodeId>,
 	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
@@ -58,7 +58,7 @@ pub type NodeErrorTrace = Box<[NodePaths]>;
 pub type NodePaths = Box<[Box<[NodeId]>]>;
 
 impl EvaluationErrors {
-	fn iter(&self) -> impl Iterator<Item = (&(dyn std::error::Error + Send + Sync), &NodeErrorTrace)> {
+	pub(crate) fn iter(&self) -> impl Iterator<Item = (&(dyn std::error::Error + Send + Sync + 'static), &NodeErrorTrace)> {
 		self.0.iter().map(|(error, trace)| (&**error, trace))
 	}
 }
@@ -97,6 +97,11 @@ pub struct NodeGraphExecutor {
 	node_graph_document: Option<DocumentId>,
 	/// Full path from the root document network to the node currently being inspected by the Data panel, or empty if nothing is selected.
 	previous_node_to_inspect: Vec<NodeId>,
+	/// The canvas images the frontend holds, so a render sends only those it lacks.
+	canvas_images_sent: HashSet<u64>,
+	/// Evaluation errors of the last evaluation, used in tests
+	#[cfg(test)]
+	evaluation_errors: Option<EvaluationErrors>,
 	// TODO: Eventually remove this document upgrade code
 	/// In-progress one-time pre-pass that converts legacy bounding-box-relative gradients to absolute space, if any.
 	gradient_migration: Option<GradientMigration>,
@@ -138,24 +143,38 @@ impl NodeGraphExecutor {
 		let node_runtime = NodeRuntime::new(request_receiver, response_sender, editor_wake);
 
 		let node_executor = Self {
-			futures: Default::default(),
 			sender: request_sender,
 			receiver: response_receiver,
+			futures: Default::default(),
+			pending: None,
+			current_execution_id: 0,
 			node_graph_hash: 0,
 			node_graph_document: None,
-			current_execution_id: 0,
 			previous_node_to_inspect: Vec::new(),
+			canvas_images_sent: HashSet::new(),
+			#[cfg(test)]
+			evaluation_errors: None,
 			gradient_migration: None,
 			gradient_migration_attempted: HashSet::new(),
-			pending: None,
 		};
 		(node_executor, node_runtime)
+	}
+
+	/// Forgets which canvas images the frontend holds, for a frontend that started over without them.
+	pub fn forget_canvas_images(&mut self) {
+		self.canvas_images_sent.clear();
 	}
 
 	/// Allows the test runner to see if any more executions have been queued.
 	#[cfg(test)]
 	pub fn current_execution_id(&self) -> u64 {
 		self.current_execution_id
+	}
+
+	/// Allows the test runner to access last executions evaluation errors.
+	#[cfg(test)]
+	pub fn take_evaluation_errors(&mut self) -> Option<EvaluationErrors> {
+		self.evaluation_errors.take()
 	}
 
 	/// Execute the network by flattening it and creating a borrow stack.
@@ -190,6 +209,7 @@ impl NodeGraphExecutor {
 		// We should always invalidate the cache.
 		self.node_graph_hash = crate::application::generate_uuid();
 		let mut network = document.network_interface.document_network().clone();
+		network.inline_definitions().map_err(|error| error.to_string())?;
 		let instrumented = Instrumented::new(&mut network);
 
 		let resources = document.resources.registry.clone();
@@ -199,6 +219,8 @@ impl NodeGraphExecutor {
 				network,
 				resources,
 				node_to_inspect: Vec::new(),
+				previewed: Vec::new(),
+				layers: document.network_interface.layer_paths(),
 			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
@@ -209,6 +231,8 @@ impl NodeGraphExecutor {
 		let network_hash = document.network_interface.network_hash();
 		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
+			let previewed = document.network_interface.previewed_nodes();
+			let layers = document.network_interface.layer_paths();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 			self.node_graph_document = Some(document_id);
@@ -216,7 +240,13 @@ impl NodeGraphExecutor {
 			let resources = document.resources.registry.clone();
 
 			self.sender
-				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }))
+				.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+					network,
+					resources,
+					node_to_inspect,
+					previewed,
+					layers,
+				}))
 				.map_err(|e| e.to_string())?;
 		} else if self.previous_node_to_inspect != node_to_inspect {
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
@@ -343,6 +373,7 @@ impl NodeGraphExecutor {
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
@@ -389,6 +420,8 @@ impl NodeGraphExecutor {
 				network,
 				resources,
 				node_to_inspect: Vec::new(),
+				previewed,
+				layers: document.network_interface.layer_paths(),
 			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
@@ -472,7 +505,10 @@ impl NodeGraphExecutor {
 					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
-								let in_document = |path: &&[NodeId]| path.split_last().is_some_and(|(node, network)| document.network_interface.document_node(node, network).is_some());
+								let in_document = |path: &&[NodeId]| {
+									path.split_last()
+										.is_some_and(|(node, network)| document.network_interface.view(network).and_then(|view| view.node(node)).is_ok())
+								};
 								errors
 									.iter()
 									.flat_map(|(error, trace)| {
@@ -494,10 +530,28 @@ impl NodeGraphExecutor {
 						responses.add(NodeGraphMessage::UpdateEvaluationErrors { errors });
 					}
 
+					#[cfg(test)]
+					{
+						self.evaluation_errors = None;
+					}
 					let node_graph_output = match result {
 						ExecutionResult::Pending => Ok(None),
-						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Ok(Some(value)),
-						ExecutionResult::Error(errors) => Err(errors.to_string()),
+						ExecutionResult::Value(value) => Ok(Some(value)),
+						ExecutionResult::Fallback(value, _errors) => {
+							#[cfg(test)]
+							{
+								self.evaluation_errors = Some(_errors);
+							}
+							Ok(Some(value))
+						}
+						ExecutionResult::Error(errors) => {
+							let message = errors.to_string();
+							#[cfg(test)]
+							{
+								self.evaluation_errors = Some(errors);
+							}
+							Err(message)
+						}
 						ExecutionResult::Panic(payload) => {
 							let message = payload.downcast_ref::<&str>().copied().or_else(|| payload.downcast_ref::<String>().map(String::as_str));
 							Err(format!("Panicked: {}", message.unwrap_or("no message")))
@@ -708,6 +762,12 @@ impl NodeGraphExecutor {
 		// On this throwaway clone, redirect each level's export down to the Fill, un-hiding the Fill and its enclosing subnetworks so it's measured as a real Fill rather than a passthrough.
 		// But upstream generators keep their visibility, so a hidden one intentionally contributes no geometry.
 		let full_path: Vec<NodeId> = network_path.iter().copied().chain(std::iter::once(fill_node_id)).collect();
+		if let Err(error) = network.inline_definitions() {
+			log::error!("Gradient migration: could not inline the document's network definitions: {error}; dropping the pending gradient bake of fill node {fill_node_id:?}");
+			remove_pending_gradient_bake(document, &network_path, fill_node_id);
+			self.advance_gradient_migration(document, document_id, responses);
+			return;
+		}
 		if !redirect_export_chain(&mut network, &full_path) {
 			// The fill was deleted or is otherwise unreachable, so drop its stale entry instead of retrying it on every open
 			log::warn!("Gradient migration: could not redirect the document network's export chain to fill node {fill_node_id:?}; dropping its pending gradient bake");
@@ -723,6 +783,8 @@ impl NodeGraphExecutor {
 				network,
 				resources,
 				node_to_inspect: full_path.clone(),
+				previewed: Vec::new(),
+				layers: document.network_interface.layer_paths(),
 			}))
 			.is_err()
 		{
@@ -846,18 +908,28 @@ impl NodeGraphExecutor {
 
 		match render_output.data {
 			RenderOutputType::Svg { svg, image_data } => {
-				// Convert each linear-light `Image<Color>` into gamma sRGB bytes (the DOM boundary form) before dispatching.
+				// The frontend keeps the canvases it was sent until a render stops using them, so only the images it lacks are sent
+				let canvas_ids_in_use: Vec<u64> = image_data.iter().map(|(id, _)| *id).collect();
+				let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
+				self.canvas_images_sent.retain(|id| in_use.contains(id));
+
+				// Convert each linear-light image, at its display resolution, into gamma sRGB bytes (the DOM boundary form)
 				let rgba8_bytes = |&color: &_| <[u8; 4]>::from(SRGBA8::from(color));
 				let image_data = image_data
 					.into_iter()
-					.map(|(id, image)| RasterizedImage {
-						id,
-						width: image.width,
-						height: image.height,
-						pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+					.filter(|(id, _)| self.canvas_images_sent.insert(*id))
+					.map(|(id, canvas_image)| {
+						let image = canvas_image.raster.halved(canvas_image.halvings);
+						RasterizedImage {
+							id,
+							width: image.width,
+							height: image.height,
+							pixels: image.data.iter().flat_map(rgba8_bytes).collect::<Vec<u8>>().into(),
+						}
 					})
 					.collect();
-				responses.add(FrontendMessage::UpdateImageData { image_data });
+
+				responses.add(FrontendMessage::UpdateImageData { image_data, canvas_ids_in_use });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			#[cfg(target_family = "wasm")]

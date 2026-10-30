@@ -4,10 +4,10 @@ use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
-use vector_types::vector::algorithms::shapes;
+use vector_types::vector::SetVectorPaths;
+use vector_types::vector::algorithms::shapes::{self, PolygonError, SpiralError};
 use vector_types::vector::misc::SpiralType;
 use vector_types::vector::misc::{ArcType, BoxCorners, GridTopology, GridType};
-use vector_types::vector::{Path, SetVectorPaths};
 
 /// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Geometry"), icon("NodeCircle"))]
@@ -69,7 +69,7 @@ fn spiral(
 	#[unit("°")]
 	#[default(90.)]
 	angular_resolution: Item<f64>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, SpiralError> {
 	let (turns, start_angle, inner_radius, outer_radius, angular_resolution) = (
 		*turns.element(),
 		*start_angle.element(),
@@ -77,14 +77,15 @@ fn spiral(
 		*outer_radius.element(),
 		*angular_resolution.element(),
 	);
-	Vector::item_from_bezpath(&shapes::spiral_bezpath(
+
+	Ok(Vector::item_from_bezpath(&shapes::spiral_bezpath(
 		inner_radius,
 		outer_radius,
 		turns,
 		start_angle.to_radians(),
 		angular_resolution.to_radians(),
 		spiral_type.into_element(),
-	))
+	)?))
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
@@ -132,6 +133,9 @@ fn rectangle(
 	let size = DVec2::new(*width.element(), *height.element());
 	let radii = corner_radius.element().to_corner_values();
 
+	let mirror = DVec2::new(if size.x < 0. { -1. } else { 1. }, if size.y < 0. { -1. } else { 1. });
+	let size = size * mirror;
+
 	// Scale down overlapping adjacent radii to fit, following the CSS spec: <https://drafts.csswg.org/css-backgrounds/#corner-overlap>
 	let radii = if *clamped.element() {
 		let radii = radii.map(|radius| radius.max(0.));
@@ -150,7 +154,12 @@ fn rectangle(
 		radii
 	};
 
-	Vector::item_from_bezpath(&shapes::rounded_rectangle_bezpath(size / -2., size / 2., radii))
+	let mut bezpath = shapes::rounded_rectangle_bezpath(size / -2., size / 2., radii);
+	if mirror != DVec2::ONE {
+		bezpath.apply_affine(kurbo::Affine::scale_non_uniform(mirror.x, mirror.y));
+	}
+
+	Vector::item_from_bezpath(&bezpath)
 }
 
 /// Builds a set of four corner values, such as a rectangle's corner radii, from a list of one, two, three, or four values.
@@ -175,9 +184,9 @@ fn regular_polygon(
 	#[unit(" px")]
 	#[default(50)]
 	radius: Item<f64>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, PolygonError> {
 	let points = *sides.element() as u64;
-	Vector::item_from_bezpath(&shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element()))
+	Ok(Vector::item_from_bezpath(&shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())?))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
@@ -194,9 +203,9 @@ fn star(
 	#[unit(" px")]
 	#[default(25)]
 	radius_2: Item<f64>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, PolygonError> {
 	let points = *sides.element() as u64;
-	Vector::item_from_bezpath(&shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element()))
+	Ok(Vector::item_from_bezpath(&shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())?))
 }
 
 /// Generates a heart shape with adjustable lobes, cleft, sides, and point.
@@ -272,6 +281,12 @@ pub enum QRCodeErrorCorrectionLevel {
 	High,
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum QrCodeError {
+	#[error("The text is too long for a QR code at this error correction level ({0})")]
+	TextTooLong(#[from] qrcodegen::DataTooLong),
+}
+
 /// Generates a QR code from the input text.
 #[node_macro::node(category("Vector: Geometry"), icon("NodeQrCode"), name("QR Code"))]
 fn qr_code(
@@ -287,7 +302,7 @@ fn qr_code(
 	size: Item<f64>,
 	error_correction: Item<QRCodeErrorCorrectionLevel>,
 	individual_squares: Item<bool>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, QrCodeError> {
 	let (text, error_correction) = (text.into_element(), error_correction.into_element());
 	let (has_size, size, individual_squares) = (*has_size.element(), *size.element(), *individual_squares.element());
 
@@ -298,9 +313,7 @@ fn qr_code(
 		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
-		return Item::new_from_element(Vector::default()).with_paths(List::<Path>::new());
-	};
+	let qr_code = qrcodegen::QrCode::encode_text(&text, ecc)?;
 
 	let (mut vector, paths) = match individual_squares {
 		true => {
@@ -323,7 +336,7 @@ fn qr_code(
 		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size / qr_code.size() as f64)));
 	}
 
-	Item::new_from_element(vector).with_paths(paths)
+	Ok(Item::new_from_element(vector).with_paths(paths))
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
@@ -376,6 +389,12 @@ impl GridSpacing for DVec2 {
 	}
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum GridError {
+	#[error("The isometric angles cancel out, which makes the cells infinitely wide")]
+	AnglesCancelOut,
+}
+
 /// Generates a rectangular or isometric grid of points with the chosen number of columns and rows, joined into paths by the chosen topology.
 #[node_macro::node(category("Vector: Geometry"), icon("NodeGrid"), inspector("grid_inspector"))]
 fn grid<T: GridSpacing>(
@@ -400,7 +419,7 @@ fn grid<T: GridSpacing>(
 	#[unit("°")]
 	#[default(30., 30.)]
 	angles: Item<DVec2>,
-) -> Item<Vector> {
+) -> Result<Item<Vector>, GridError> {
 	let (grid_type, topology, staggered, columns, rows, angles) = (
 		lattice.into_element(),
 		topology.into_element(),
@@ -417,6 +436,9 @@ fn grid<T: GridSpacing>(
 	// Isometric grid spacing based on the two skew angles. Unused for rectangular grids.
 	let tan_a = angle_a.to_radians().tan();
 	let tan_b = angle_b.to_radians().tan();
+	if grid_type.is_isometric() && tan_a + tan_b == 0. {
+		return Err(GridError::AnglesCancelOut);
+	}
 	let isometric_spacing = DVec2::new(y_spacing / (tan_a + tan_b), y_spacing);
 
 	// The position of the grid point at column `x`, row `y`.
@@ -432,9 +454,9 @@ fn grid<T: GridSpacing>(
 		DVec2::new(isometric_spacing.x * x as f64, isometric_spacing.y * y as f64 + offset_y_fraction * isometric_spacing.x)
 	};
 
-	Lattice::new(grid_type, columns, rows, staggered && topology.supports_staggered(), position)
+	Ok(Lattice::new(grid_type, columns, rows, staggered && topology.supports_staggered(), position)
 		.layout(topology)
-		.into_item()
+		.into_item())
 }
 
 #[cfg(test)]
@@ -451,17 +473,20 @@ mod tests {
 
 	#[test]
 	fn isometric_grid_test() {
-		// Doesn't crash with weird angles
-		grid(
-			(),
-			(),
-			item(GridType::IsometricTiling),
-			item(GridTopology::Edges),
-			item(false),
-			item(5_i64),
-			item(5_i64),
-			item(0.),
-			item((0., 0.).into()),
+		// Doesn't crash with weird angles, and errors where they cancel out
+		assert!(
+			grid(
+				(),
+				(),
+				item(GridType::IsometricTiling),
+				item(GridTopology::Edges),
+				item(false),
+				item(5_i64),
+				item(5_i64),
+				item(0.),
+				item((0., 0.).into()),
+			)
+			.is_err()
 		);
 		grid(
 			(),
@@ -473,7 +498,8 @@ mod tests {
 			item(5_i64),
 			item(90.),
 			item((90., 90.).into()),
-		);
+		)
+		.unwrap();
 
 		// Works properly
 		let grid = grid(
@@ -486,7 +512,8 @@ mod tests {
 			item(5_i64),
 			item(10.),
 			item((30., 30.).into()),
-		);
+		)
+		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
@@ -509,7 +536,8 @@ mod tests {
 			item(5_i64),
 			item(10.),
 			item((40., 30.).into()),
-		);
+		)
+		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
 		assert_eq!(grid.element().anchor_points(&paths).count(), 5 * 5);
 		assert_eq!(grid.element().segment_iter(&paths).count(), 4 * 5 + 4 * 9);
@@ -533,7 +561,8 @@ mod tests {
 			item(3_i64),
 			item(10.),
 			item((30., 30.).into()),
-		);
+		)
+		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 
@@ -554,7 +583,8 @@ mod tests {
 			item(4_i64),
 			item(10.),
 			item((30., 30.).into()),
-		);
+		)
+		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 
@@ -576,7 +606,8 @@ mod tests {
 			item(3_i64),
 			item(10.),
 			item((30., 30.).into()),
-		);
+		)
+		.unwrap();
 		let paths = shared_paths_from_item_attributes(&grid);
 		let vector = grid.element();
 		assert_eq!(vector.stroke_manipulator_groups(&paths).filter(|(_, closed)| *closed).count(), 4);
@@ -624,9 +655,55 @@ mod tests {
 			item(1.),
 			item(QRCodeErrorCorrectionLevel::Low),
 			item(true),
-		);
+		)
+		.unwrap();
 		let paths = shared_paths_from_item_attributes(&qr);
 		assert!(qr.element().anchor_points(&paths).count() > 0);
 		assert!(!qr.element().segment_ids(&paths).is_empty());
+	}
+
+	#[test]
+	fn qr_code_reports_text_too_long() {
+		let qr = qr_code((), (), item("x".repeat(3000)), item(false), item(1.), item(QRCodeErrorCorrectionLevel::High), item(true));
+		assert!(matches!(qr, Err(QrCodeError::TextTooLong(_))));
+	}
+
+	// A radius small enough to underflow leaves no direction from its anchor to the corner to put the handle along
+	#[test]
+	fn rectangle_with_a_vanishing_corner_radius() {
+		let rectangle = rectangle((), (), item(100.), item(100.), item(BoxCorners::from(vec![1e-160, 10., 0., 0.])), item(false), item(true));
+		assert!(rectangle.element().positions().all(|position| position.is_finite()));
+	}
+
+	// A negative width mirrors the rectangle, rounding its corners inward as at the positive width
+	#[test]
+	fn rectangle_with_a_negative_width_keeps_its_rounded_corners() {
+		let anchors = |width: f64, clamped: bool| {
+			let rectangle = rectangle((), (), item(width), item(100.), item(BoxCorners::from(vec![30.])), item(clamped), item(false));
+			rectangle.element().anchor_positions(&shared_paths_from_item_attributes(&rectangle))
+		};
+
+		for clamped in [false, true] {
+			let mirrored: Vec<DVec2> = anchors(50., clamped).into_iter().map(|position| position * DVec2::new(-1., 1.)).collect();
+			assert_eq!(anchors(-50., clamped), mirrored);
+		}
+	}
+
+	#[test]
+	fn polygons_report_more_sides_than_can_be_allocated() {
+		assert!(matches!(regular_polygon((), (), item(i64::MAX), item(50.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
+		assert!(matches!(star((), (), item(i64::MAX), item(50.), item(25.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
+		assert!(regular_polygon((), (), item(6), item(50.)).is_ok());
+	}
+
+	// With the inner and outer radius the same, the spiral doesn't grow, so it winds around a circle
+	#[test]
+	fn spiral_between_equal_radii_is_a_circle() {
+		for spiral_type in [SpiralType::Archimedean, SpiralType::Logarithmic] {
+			let spiral = spiral((), (), item(spiral_type), item(2.), item(0.), item(25.), item(25.), item(90.)).unwrap();
+			assert!(spiral.element().positions().all(|position| position.is_finite()));
+			let anchors = spiral.element().anchor_positions(&shared_paths_from_item_attributes(&spiral));
+			assert!(anchors.iter().all(|anchor| (anchor.length() - 25.).abs() < 1e-9));
+		}
 	}
 }

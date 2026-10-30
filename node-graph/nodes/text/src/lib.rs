@@ -22,7 +22,7 @@ use unicode_segmentation::UnicodeSegmentation;
 pub use core_types as gcore;
 pub use fallback::FALLBACK_FONT_RESOURCE;
 pub use font::*;
-pub use text_context::{TextContext, for_each_styled_glyph_run};
+pub use text_context::{TextContext, TextToVectorError, for_each_styled_glyph_run};
 pub use to_path::*;
 pub use vector_types;
 
@@ -247,7 +247,7 @@ fn lorem_ipsum(
 	let rng = |n| rng.random_range(0..n);
 
 	let text = ipsum::generate(
-		*lorem_intro.element() as usize,
+		usize::try_from(*lorem_intro.element()).unwrap_or(usize::MAX),
 		(*lorem_intro_in.element()).into(),
 		*length.element() as usize,
 		(*length_in.element()).into(),
@@ -319,7 +319,7 @@ fn string_truncate(
 	suffix: Item<String>,
 ) -> Item<String> {
 	let mut string = string;
-	let max_length = *length.element() as usize;
+	let max_length = usize::try_from(*length.element()).unwrap_or(usize::MAX);
 	let grapheme_count = string.element().graphemes(true).count();
 
 	if grapheme_count <= max_length {
@@ -363,7 +363,7 @@ fn format_number(
 ) -> Item<String> {
 	let (number, attributes) = number.into_parts();
 	let number = round_away_float_noise(number);
-	if number.is_infinite() {
+	if !number.is_finite() {
 		return Item::from_parts(format_f64(number), attributes);
 	}
 	let (decimal_places, fixed_decimals, use_thousands_separator, start_at_10000) =
@@ -391,15 +391,15 @@ fn format_number(
 	let places = requested_places.min(max_places);
 	let formatted = format!("{number:.places$}");
 
-	// If the user requested more decimal places than the float can represent, pad with zeros
-	let extra_zeros = requested_places.saturating_sub(places);
+	// If the user requested more decimal places than the float can represent, pad with zeros, which only fixed decimals keep
+	let extra_zeros = if fixed_decimals { requested_places.saturating_sub(places) } else { 0 };
 
 	// Split into sign, whole, and decimal parts
 	let (sign, unsigned) = if let Some(rest) = formatted.strip_prefix('-') { ("-", rest) } else { ("", formatted.as_str()) };
 
 	let (whole_string, decimal_string) = match unsigned.split_once('.') {
 		Some((w, d)) => {
-			let padded = if extra_zeros > 0 { format!("{d}{:0>width$}", "", width = extra_zeros) } else { d.to_string() };
+			let padded = format!("{d}{}", "0".repeat(extra_zeros));
 			(w.to_string(), Some(padded))
 		}
 		None => (unsigned.to_string(), None),
@@ -548,6 +548,13 @@ fn string_reverse(
 	string
 }
 
+/// A text result longer than a string can hold.
+#[derive(Debug, thiserror::Error)]
+pub enum TextTooLongError {
+	#[error("Repeating the string {0} times would be too long")]
+	Repeat(i64),
+}
+
 /// Repeats the string a given number of times, optionally with a separator between each repetition.
 #[node_macro::node(category("String"), icon("NodeStringRepeat"))]
 fn string_repeat(
@@ -565,14 +572,21 @@ fn string_repeat(
 	/// `\n` (newline), `\r` (carriage return), `\t` (tab), `\0` (null), and `\\` (backslash).
 	#[default(true)]
 	separator_escaping: Item<bool>,
-) -> Item<String> {
+) -> Result<Item<String>, TextTooLongError> {
 	let mut string = string;
 	let separator = separator.element().clone();
 	let separator = if *separator_escaping.element() { unescape_string(separator) } else { separator };
 
-	let count = *count.element() as usize;
+	if string.element().is_empty() && separator.is_empty() {
+		return Ok(string);
+	}
 
-	let mut result = String::with_capacity((string.element().len() + separator.len()).saturating_mul(count));
+	let too_long = || TextTooLongError::Repeat(*count.element());
+	let count = usize::try_from(*count.element()).map_err(|_| too_long())?;
+	let capacity = (string.element().len() + separator.len()).checked_mul(count).ok_or_else(too_long)?;
+
+	let mut result = String::new();
+	result.try_reserve_exact(capacity).map_err(|_| too_long())?;
 	for i in 0..count {
 		if i > 0 {
 			result.push_str(&separator);
@@ -581,7 +595,7 @@ fn string_repeat(
 	}
 
 	*string.element_mut() = result;
-	string
+	Ok(string)
 }
 
 /// Pads the string to a target length by filling with the given repeated substring. If the string already meets or exceeds the target length, it is returned unchanged.
@@ -969,13 +983,20 @@ fn string_map(
 	Ok(result)
 }
 
+/// Read String evaluated where no loop over strings supplies one.
+#[derive(Debug, thiserror::Error)]
+pub enum ReadStringError {
+	#[error("No string to read: this node only works inside a loop over string items, like in a String Map node")]
+	NoLoopItem,
+}
+
 /// Reads the current string from within a **String Map** node's loop.
 #[node_macro::node(category("Data: Context"), icon("NodeReadContext"))]
-fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Item<String> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Item::new_from_element(String::new()) };
+fn read_string(ctx: impl Ctx + ExtractVarArgs) -> Result<Item<String>, ReadStringError> {
+	let var_arg = ctx.vararg(0).map_err(|_| ReadStringError::NoLoopItem)?;
 	let var_arg = var_arg as &dyn std::any::Any;
 
-	var_arg.downcast_ref::<Item<String>>().cloned().unwrap_or_default()
+	var_arg.downcast_ref::<Item<String>>().cloned().ok_or(ReadStringError::NoLoopItem)
 }
 
 #[cfg(test)]
@@ -1032,5 +1053,52 @@ mod tests {
 		assert_eq!(run("  leading words", SentenceCase, Some(" ")), "Leading words");
 		assert_eq!(run("__init__", CamelCase, Some("")), "init");
 		assert_eq!(run(" ", CapitalCase, Some("_")), "");
+	}
+
+	#[test]
+	fn format_number_pads_many_decimal_places_and_leaves_nan_alone() {
+		let format = |number: f64, decimal_places: i64, fixed_decimals: bool| {
+			format_number(
+				(),
+				Item::new_from_element(number),
+				Item::new_from_element(decimal_places),
+				Item::new_from_element(".".to_string()),
+				Item::new_from_element(fixed_decimals),
+				Item::new_from_element(false),
+				Item::new_from_element(",".to_string()),
+				Item::new_from_element(false),
+			)
+			.into_element()
+		};
+		assert_eq!(format(1.5, 70_000, true).len(), "1.".len() + 70_000);
+		assert_eq!(format(1.5, 70_000, false), "1.5");
+		assert_eq!(format(f64::NAN, 2, true), "NaN");
+	}
+
+	#[test]
+	fn string_repeat_refuses_results_too_long_to_hold() {
+		let repeat = |string: &str, count: i64, separator: &str| {
+			string_repeat(
+				(),
+				Item::new_from_element(string.to_string()),
+				Item::new_from_element(count),
+				Item::new_from_element(separator.to_string()),
+				Item::new_from_element(false),
+			)
+			.map(Item::into_element)
+		};
+		assert_eq!(repeat("ab", 3, ", ").unwrap(), "ab, ab, ab");
+		assert!(repeat("ab", i64::MAX, "").is_err());
+		assert!(repeat("", i64::MAX, ",,").is_err());
+		assert_eq!(repeat("", i64::MAX, "").unwrap(), "");
+	}
+
+	#[test]
+	fn read_string_only_reads_inside_a_loop_over_strings() {
+		assert!(read_string(OwnedContextImpl::default().into_context()).is_err());
+		let string_loop = OwnedContextImpl::default().with_vararg(Box::new(Item::new_from_element("a".to_string()))).into_context();
+		assert_eq!(read_string(string_loop).unwrap().into_element(), "a");
+		let number_loop = OwnedContextImpl::default().with_vararg(Box::new(Item::new_from_element(1_i64))).into_context();
+		assert!(read_string(number_loop).is_err());
 	}
 }

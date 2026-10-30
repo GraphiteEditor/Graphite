@@ -142,6 +142,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
+				self.executor.forget_canvas_images();
+
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
 
@@ -514,6 +516,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_path,
 				document_serialized_content,
 			} => {
+				if let Some(path) = &document_path
+					&& let Some(&document_id) = self.document_ids.iter().find(|&&id| self.document_details(id).is_some_and(|info| info.path.as_ref() == Some(path)))
+				{
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+					responses.add(AppWindowMessage::Focus);
+					return;
+				}
+
 				let mut document = match load_legacy_document(document_serialized_content, &resource_storage.resources_mut(), reset_node_definitions_on_open) {
 					Ok(document) => document,
 					Err(error) => {
@@ -537,6 +547,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document_path,
 				content,
 			} => {
+				if let Some(path) = &document_path
+					&& let Some(&document_id) = self.document_ids.iter().find(|&&id| self.document_details(id).is_some_and(|info| info.path.as_ref() == Some(path)))
+				{
+					responses.add(PortfolioMessage::SelectDocument { document_id });
+					responses.add(AppWindowMessage::Focus);
+					return;
+				}
+
 				let document_id = DocumentId(generate_uuid());
 
 				// Suppress resource GC until the open completes

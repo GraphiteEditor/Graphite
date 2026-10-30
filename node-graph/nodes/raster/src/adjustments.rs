@@ -2,7 +2,7 @@
 
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
-use crate::color_lookup_table::LutCache;
+use crate::color_lookup_table::{LutCache, LutParseError};
 use core::fmt::Debug;
 #[cfg(feature = "std")]
 use core_types::list::{Item, List};
@@ -169,12 +169,7 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 
 	// Each channel image keeps the source image's attributes, such as its transform
 	let [red, green, blue, alpha] = channels.map(|data| {
-		let channel_image = Image {
-			width,
-			height,
-			data,
-			base64_string: None,
-		};
+		let channel_image = Image { width, height, data };
 		Item::from_parts(Raster::new_cpu(channel_image), attributes.clone())
 	});
 
@@ -710,6 +705,11 @@ fn curves<T: Adjust<Color> + Send>(
 	image
 }
 
+#[cfg(feature = "std")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("A control point has a coordinate that isn't finite")]
+pub struct NonFinitePointError;
+
 /// Builds a transfer curve from a `Vec2[]` of control points, each mapping the input value at its x to the output value at its y. A smooth spline runs through them, holding the outermost points' values beyond them.
 #[cfg(feature = "std")]
 #[node_macro::node(category("Raster: Adjustment"), icon("NodePointsToTransferCurve"), name("Points to Transfer Curve"))]
@@ -717,9 +717,12 @@ fn points_to_transfer_curve(
 	_: impl Ctx,
 	/// The control points, in any order, with both coordinates on the 0 to 1 range.
 	points: List<DVec2>,
-) -> Item<TransferCurve> {
+) -> Result<Item<TransferCurve>, NonFinitePointError> {
 	let points: Vec<DVec2> = points.iter_element_values().copied().collect();
-	Item::new_from_element(TransferCurve::new(points))
+	if !points.iter().all(|point| point.is_finite()) {
+		return Err(NonFinitePointError);
+	}
+	Ok(Item::new_from_element(TransferCurve::new(points)))
 }
 
 // Aims for interoperable compatibility with:
@@ -2182,9 +2185,9 @@ fn selective_color<T: Adjust<Color>>(
 				}
 			};
 
-			let offset_r = f32::clamp(ink(c) * slope_r, -r, -r + 1.) * color_parameter_group_scale_factor;
-			let offset_g = f32::clamp(ink(m) * slope_g, -g, -g + 1.) * color_parameter_group_scale_factor;
-			let offset_b = f32::clamp(ink(y) * slope_b, -b, -b + 1.) * color_parameter_group_scale_factor;
+			let offset_r = (ink(c) * slope_r).max(-r).min(-r + 1.) * color_parameter_group_scale_factor;
+			let offset_g = (ink(m) * slope_g).max(-g).min(-g + 1.) * color_parameter_group_scale_factor;
+			let offset_b = (ink(y) * slope_b).max(-b).min(-b + 1.) * color_parameter_group_scale_factor;
 
 			// An 8-bit PSD document sums the groups' 8-bit offsets, which this float node does not currently attempt to reproduce
 			sum += Vec3::new(offset_r, offset_g, offset_b);
@@ -2547,9 +2550,12 @@ fn color_lookup<T: Adjust<Color> + Send>(
 	#[widget(ParsedWidgetOverride::Custom = "lut_file")]
 	lut_file: Item<Resource>,
 	#[data] lut_cache: LutCache,
-) -> Item<T> {
+) -> Result<Item<T>, LutParseError> {
 	let mut image = image;
-	let Ok(lut) = lut_cache.parse(lut_file.element()) else { return image };
+	if lut_file.element().is_empty() {
+		return Ok(image);
+	}
+	let lut = lut_cache.parse(lut_file.element())?;
 
 	image.element_mut().adjust(|color| {
 		// Lookup tables address the gamma-encoded channels
@@ -2559,7 +2565,7 @@ fn color_lookup<T: Adjust<Color> + Send>(
 		Color::from_gamma_srgb_channels(r, g, b, a)
 	});
 
-	image
+	Ok(image)
 }
 
 #[cfg(feature = "std")]
@@ -3066,6 +3072,15 @@ mod tests {
 		groups[7] = [0., -100., 0., 0.];
 		assert_close(run_selective_color([100., 0., 130.], RelativeAbsolute::Relative, groups), [100., 125., 130.]);
 		assert_close(run_selective_color([100., 50., 130.], RelativeAbsolute::Relative, groups), [100., 191., 130.]);
+	}
+
+	#[test]
+	fn selective_color_survives_a_channel_that_is_not_a_number() {
+		let mut groups = [[0.; 4]; 9];
+		groups[7] = [10., 0., 0., 0.];
+		for mode in [RelativeAbsolute::Relative, RelativeAbsolute::Absolute] {
+			run_selective_color([f32::NAN, 100., 130.], mode, groups);
+		}
 	}
 
 	/// Runs Posterize on one gamma-space gray value (0..255) and returns the gamma-space result on the same scale.

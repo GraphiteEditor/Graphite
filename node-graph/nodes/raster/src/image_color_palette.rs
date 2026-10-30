@@ -233,7 +233,6 @@ mod test {
 			width: data.len() as u32,
 			height: 1,
 			data,
-			base64_string: None,
 		});
 
 		let palette = image_color_palette((), Item::new_from_element(image), Item::new_from_element(count));

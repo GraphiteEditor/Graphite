@@ -3,7 +3,7 @@
 use core_types::list::Item;
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, OwnedContextImpl, Poll};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, Generations, NodeError, OwnedContextImpl, Poll};
 use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
@@ -320,7 +320,7 @@ fn split_oversized_region(region: RenderRegion, max_region_size: u32) -> Vec<Ren
 #[node_macro::node(category(""))]
 fn render_output_cache(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: impl Node<Context<'static>, Output = Item<WgpuExecutor>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 	#[data] tile_cache: TileCache,
 ) -> Poll<Item<RenderOutput>> {
@@ -335,10 +335,25 @@ fn render_output_cache(
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
-	let executor = executor.into_element();
-	let Some(executor) = executor.filter(|_| matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) && physical_resolution.x > 0 && physical_resolution.y > 0) else {
+	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
 		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(&context.into_context());
+	}
+
+	let (executor, executor_partial, executor_error) = match executor.eval(&Context::default()) {
+		Poll::Final(executor) => (executor.into_element(), false, None),
+		Poll::Partial(executor) => (executor.into_element(), true, None),
+		Poll::Fallback(boxed) => {
+			let (executor, error) = *boxed;
+			(executor.into_element(), false, Some(error))
+		}
+		Poll::Pending => return Poll::Pending,
+		Poll::Error(error) => return Poll::Error(error),
+	};
+	let finish = |output, partial, error: Option<NodeError>| match (partial || executor_partial, error.or(executor_error)) {
+		(true, _) => Poll::Partial(output),
+		(false, Some(error)) => Poll::Fallback(Box::new((output, error))),
+		(false, None) => Poll::Final(output),
 	};
 
 	let zoom = footprint.scale_magnitudes().x;
@@ -365,7 +380,16 @@ fn render_output_cache(
 			max_region_size,
 			&executor,
 		);
-		return output.map(Item::new_from_element);
+		return match output.map(Item::new_from_element) {
+			Poll::Final(output) => finish(output, false, None),
+			Poll::Partial(output) => finish(output, true, None),
+			Poll::Fallback(boxed) => {
+				let (output, error) = *boxed;
+				finish(output, false, Some(error))
+			}
+			Poll::Pending => Poll::Pending,
+			Poll::Error(error) => Poll::Error(error),
+		};
 	}
 
 	let cache_key = CacheKey::new(
@@ -418,11 +442,7 @@ fn render_output_cache(
 		data: RenderOutputType::Texture(output_texture),
 		metadata: combined_metadata,
 	});
-	match (partial, error) {
-		(true, _) => Poll::Partial(output),
-		(false, Some(error)) => Poll::Fallback(Box::new((output, error))),
-		(false, None) => Poll::Final(output),
-	}
+	finish(output, partial, error)
 }
 
 fn render_missing_region<F>(

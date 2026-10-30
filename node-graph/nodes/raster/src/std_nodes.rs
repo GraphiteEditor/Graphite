@@ -8,13 +8,13 @@ use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
 use fastnoise_lite;
-use glam::{DAffine2, DVec2, Vec2};
+use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graphene_resource::Resource;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
-use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
+use raster_types::{Image, ImageError};
 use std::fmt::Debug;
 use std::hash::Hash;
 
@@ -30,6 +30,16 @@ impl From<std::io::Error> for Error {
 	}
 }
 
+/// Two rasters that must line up pixel for pixel but differ in size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[error("{first} and {second} must be the same size, but {first} is {}×{} pixels and {second} is {}×{}", .first_size.x, .first_size.y, .second_size.x, .second_size.y)]
+pub struct SizeMismatchError {
+	pub first: &'static str,
+	pub first_size: UVec2,
+	pub second: &'static str,
+	pub second_size: UVec2,
+}
+
 #[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"))]
 fn channels_to_image(
 	_: impl Ctx,
@@ -38,24 +48,31 @@ fn channels_to_image(
 	#[expose] green: Item<Raster<CPU>>,
 	#[expose] blue: Item<Raster<CPU>>,
 	#[expose] alpha: Item<Raster<CPU>>,
-) -> Item<Raster<CPU>> {
+) -> Result<Item<Raster<CPU>>, SizeMismatchError> {
 	// An unconnected channel arrives as the default zero-sized raster, which counts as absent
 	let present = |channel: Item<Raster<CPU>>| (channel.element().width > 0 && channel.element().height > 0).then_some(channel);
 	let (red, green, blue, alpha) = (present(red), present(green), present(blue), present(alpha));
 
 	// Take this item's transform and blending attributes from the first present channel
 	let Some(attributes) = [&red, &green, &blue, &alpha].iter().find_map(|channel| channel.as_ref()).map(|channel| channel.attributes().clone()) else {
-		return Item::default();
+		return Ok(Item::default());
 	};
 
-	// All present channels must share the same dimensions; a mismatch yields the default zero-sized raster
-	let channel_dimensions = [&red, &green, &blue, &alpha].map(|channel| channel.as_ref().map(|channel| (channel.element().width, channel.element().height)));
-	let Some(&(width, height)) = channel_dimensions.iter().flatten().next() else {
-		return Item::default();
+	// All present channels must share the same dimensions
+	let channel_dimensions = [("Red", &red), ("Green", &green), ("Blue", &blue), ("Alpha", &alpha)]
+		.map(|(name, channel)| channel.as_ref().map(|channel| (name, UVec2::new(channel.element().width, channel.element().height))));
+	let Some(&(first, first_size)) = channel_dimensions.iter().flatten().next() else {
+		return Ok(Item::default());
 	};
-	if channel_dimensions.iter().flatten().any(|&(other_width, other_height)| other_width != width || other_height != height) {
-		return Item::default();
+	if let Some(&(second, second_size)) = channel_dimensions.iter().flatten().find(|&&(_, size)| size != first_size) {
+		return Err(SizeMismatchError {
+			first,
+			first_size,
+			second,
+			second_size,
+		});
 	}
+	let (width, height) = (first_size.x, first_size.y);
 
 	// Set each output pixel's channels from the present inputs, defaulting absent color channels to 0 and absent alpha to 1
 	let mut image = Image::new(width, height, Color::TRANSPARENT);
@@ -82,7 +99,7 @@ fn channels_to_image(
 		}
 	}
 
-	Item::from_parts(Raster::new_cpu(image), attributes)
+	Ok(Item::from_parts(Raster::new_cpu(image), attributes))
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMask"))]
@@ -103,9 +120,8 @@ fn mask(
 	let mut row = image;
 	let image_size = DVec2::new(row.element().width as f64, row.element().height as f64);
 	let stencil_transform: DAffine2 = stencil.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let mask_size = stencil_transform.scale_magnitudes();
 
-	if mask_size == DVec2::ZERO {
+	if stencil_transform.matrix2.determinant() == 0. {
 		return row;
 	}
 
@@ -132,20 +148,22 @@ fn mask(
 }
 
 #[node_macro::node(category(""))]
-fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Item<Raster<CPU>> {
+fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Result<Item<Raster<CPU>>, (Item<Raster<CPU>>, ImageError)> {
 	let bounds = *bounds.element();
 
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let image_aabb = Bbox::unit().affine_transform(image_transform).to_axis_aligned_bbox();
 	let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
 	if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
-		return image;
+		return Ok(image);
 	}
 
-	let (image, mut attributes) = image.into_parts();
-	let (image_width, image_height) = (image.width, image.height);
+	let (image_width, image_height) = (image.element().width, image.element().height);
 	if image_width == 0 || image_height == 0 {
-		return empty_image(bounds, Color::TRANSPARENT);
+		return empty_image(bounds, Color::TRANSPARENT).map_err(|error| (image, error));
+	}
+	if image_transform.matrix2.determinant() == 0. {
+		return Ok(image);
 	}
 
 	let orig_image_scale = DVec2::new(image_width as f64, image_height as f64);
@@ -157,7 +175,11 @@ fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DA
 	let new_scale = new_end - new_start;
 
 	// Copy over original image into enlarged image.
-	let mut new_image = Image::new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT);
+	let mut new_image = match Image::try_new(new_scale.x as u32, new_scale.y as u32, Color::TRANSPARENT) {
+		Ok(new_image) => new_image,
+		Err(error) => return Err((image, error)),
+	};
+	let (image, mut attributes) = image.into_parts();
 	let offset_in_new_image = (-new_start).as_uvec2();
 	for y in 0..image_height {
 		let old_start = y * image_width;
@@ -172,34 +194,37 @@ fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DA
 	let new_texture_to_layer_space = image_transform * DAffine2::from_scale(1. / orig_image_scale) * DAffine2::from_translation(new_start) * DAffine2::from_scale(new_scale);
 
 	attributes.insert(ATTR_TRANSFORM, new_texture_to_layer_space);
-	Item::from_parts(Raster::new_cpu(new_image), attributes)
+	Ok(Item::from_parts(Raster::new_cpu(new_image), attributes))
 }
 
 /// Creates an image filled with one color, sized in pixels by the transform's scale and placed by the transform.
-fn empty_image(transform: DAffine2, color: Color) -> Item<Raster<CPU>> {
+fn empty_image(transform: DAffine2, color: Color) -> Result<Item<Raster<CPU>>, ImageError> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;
 
-	let image = Image::new(width, height, color);
+	let image = Image::try_new(width, height, color)?;
 
-	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
+	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 /// Displays an image from a file.
 ///
 /// Reads PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, and EXR files. Light brighter than white, as HDR and EXR files can hold, is clipped to white.
-#[node_macro::node(category("Raster"), icon("NodeImage"))]
+#[node_macro::node(category("Raster"), icon("NodeImage"), memoize)]
 fn image(
 	_: impl Ctx,
 	_primary: (),
 	/// The image file to display.
 	#[widget(ParsedWidgetOverride::Custom = "image_file")]
 	resource: Item<Resource>,
-) -> Item<Raster<CPU>> {
+) -> Result<Item<Raster<CPU>>, ImageError> {
 	let resource = resource.into_element();
-	let Some(image) = Image::from_encoded(resource.as_ref()) else { return Item::default() };
+	if resource.is_empty() {
+		return Ok(Item::default());
+	}
+	let image = Image::from_encoded(resource.as_ref())?;
 
-	Item::new_from_element(Raster::new_cpu(image))
+	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
 /// Generates customizable procedural noise patterns.
@@ -238,7 +263,7 @@ fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: Item<f64>,
-) -> Item<Raster<CPU>> {
+) -> Result<Item<Raster<CPU>>, ImageError> {
 	let (clip, seed, scale, domain_warp_amplitude) = (*clip.element(), *seed.element(), *scale.element(), *domain_warp_amplitude.element());
 	let (fractal_octaves, fractal_lacunarity, fractal_gain) = (*fractal_octaves.element(), *fractal_lacunarity.element(), *fractal_gain.element());
 	let (fractal_weighted_strength, fractal_ping_pong_strength, cellular_jitter) = (*fractal_weighted_strength.element(), *fractal_ping_pong_strength.element(), *cellular_jitter.element());
@@ -262,7 +287,7 @@ fn noise_pattern(
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Item::default();
+		return Ok(Item::default());
 	}
 
 	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
@@ -272,7 +297,7 @@ fn noise_pattern(
 	let height = (size.y * footprint_scale.y) as u32;
 
 	// All
-	let mut image = Image::new(width, height, Color::from_luminance(0.5));
+	let mut image = Image::try_new(width, height, Color::from_luminance(0.5))?;
 	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
 	noise.set_frequency(Some(1. / (scale as f32).max(f32::EPSILON)));
 
@@ -308,7 +333,7 @@ fn noise_pattern(
 				}
 			}
 
-			return Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform);
+			return Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
 		}
 	};
 	noise.set_noise_type(Some(noise_type));
@@ -366,11 +391,11 @@ fn noise_pattern(
 		}
 	}
 
-	Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform)
+	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMandelbrot"))]
-fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
+fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Result<Item<Raster<CPU>>, ImageError> {
 	let footprint = ctx.footprint();
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
@@ -382,14 +407,14 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 
 	// If the image would not be visible, return an empty image
 	if size.x <= 0. || size.y <= 0. {
-		return Item::default();
+		return Ok(Item::default());
 	}
 
 	let scale = footprint.scale();
 	let width = (size.x * scale.x) as u32;
 	let height = (size.y * scale.y) as u32;
 
-	let mut data = Vec::with_capacity(width as usize * height as usize);
+	let mut image = Image::try_new(width, height, Color::TRANSPARENT)?;
 	let max_iter = 255;
 
 	let scale = 3. * size.as_vec2() / Vec2::new(width as f32, height as f32);
@@ -400,17 +425,11 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Item<Raster<CPU>> {
 			let c = pos * scale + coordinate_offset;
 
 			let iter = mandelbrot_impl(c, max_iter);
-			data.push(map_color(iter, max_iter));
+			*image.get_mut(x as usize, y as usize) = map_color(iter, max_iter);
 		}
 	}
 
-	Item::new_from_element(Raster::new_cpu(Image {
-		width,
-		height,
-		data,
-		..Default::default()
-	}))
-	.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size))
+	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)))
 }
 
 #[inline(always)]

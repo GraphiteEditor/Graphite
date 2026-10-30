@@ -956,7 +956,6 @@ impl NodeNetworkInterface {
 		}
 
 		// Disconnect layer to move
-		self.stop_previewing(network_path);
 		self.remove_references_from_network(&layer.to_node(), network_path);
 
 		let post_node = self.post_node_with_index(parent, insert_index, network_path);

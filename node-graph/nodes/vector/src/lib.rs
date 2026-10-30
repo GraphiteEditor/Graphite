@@ -5,9 +5,6 @@ pub mod vector_modification_nodes;
 mod vector_nodes;
 mod voronoi;
 
-#[macro_use]
-extern crate log;
-
 // Re-export for convenience
 pub use core_types as gcore;
 pub use generator_nodes::*;

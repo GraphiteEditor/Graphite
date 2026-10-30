@@ -169,27 +169,27 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(5), 0)],
+					exports: vec![NodeInput::node(NodeId(4), 0)],
 					nodes: [
 						// Primary (bottom) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -2)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -2)),
 							..Default::default()
 						},
 						// Secondary (left) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
 							..Default::default()
 						},
 						// Derive the parent layer's NodeId from the document path
 						NodeTemplate {
 							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 0)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 0)),
 							..Default::default()
 						},
 						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
@@ -201,20 +201,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::node(NodeId(2), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-							..Default::default()
-						},
-						// The monitor node is used to display a thumbnail in the UI
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(3), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							skip_deduplication: true,
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 							..Default::default()
 						},
 						NodeTemplate {
 							call_argument: generic!(T),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
 							..Default::default()
@@ -245,7 +237,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(4), 0)],
+					exports: vec![NodeInput::node(NodeId(3), 0)],
 					nodes: [
 						NodeTemplate {
 							call_argument: generic!(T),
@@ -257,14 +249,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::import(item!(TaggedValue), 4),
 								NodeInput::import(item!(TaggedValue), 5),
 							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
 							..Default::default()
 						},
 						// Derive the parent layer's NodeId from the document path
 						NodeTemplate {
 							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 3)),
 							..Default::default()
 						},
 						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
@@ -276,22 +268,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::node(NodeId(1), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-							..Default::default()
-						},
-						// The monitor node is used to display a thumbnail in the UI.
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(2), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							call_argument: generic!(T),
-							skip_deduplication: true,
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
 							..Default::default()
 						},
 						NodeTemplate {
 							inputs: vec![
 								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
-								NodeInput::node(NodeId(3), 0),
+								NodeInput::node(NodeId(2), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
@@ -640,53 +623,25 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
+				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String(String::new()), false)],
 				input_metadata: vec![
 					("Empty", "Has no effect, since the image is loaded from the URL.").into(),
 					("URL", "The web address or local asset path of the image to load.").into(),
 				],
 				output_names: vec!["Image".to_string()],
-				output_descriptions: vec!["The loaded image, which is empty if it fails to load or decode.".to_string()],
+				output_descriptions: vec!["The loaded image.".to_string()],
 				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),
 			inspector: None,
 		},
-		#[cfg(all(feature = "gpu", target_family = "wasm"))]
+		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
 			icon: Some("NodeRasterize"),
 			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(2), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(item!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
+				implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
 				inputs: vec![
 					NodeInput::type_default(list!(Vector), true),
 					NodeInput::value(
@@ -885,7 +840,7 @@ fn static_node_inspector() -> NodeInspector {
 	map.insert("sample_polyline_inspector".to_string(), Box::new(node_inspector::sample_polyline_inspector));
 	map.insert(
 		"monitor_inspector".to_string(),
-		Box::new(|_node_id, _context| node_inspector::string_inspector("Used internally by the editor to obtain a layer thumbnail.")),
+		Box::new(|_node_id, _context| node_inspector::string_inspector("Used internally by the editor to read the data passing through it.")),
 	);
 	map
 }
@@ -1591,6 +1546,10 @@ impl InputTypeConstraint {
 			}
 			NodeTemplateImplementation::Extract => {
 				warn!("Input types for extract node {name} not supported");
+				Self::All
+			}
+			NodeTemplateImplementation::Definition(_) => {
+				warn!("Input types for definition node {name} not supported");
 				Self::All
 			}
 		}

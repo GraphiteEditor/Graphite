@@ -1,6 +1,7 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use crate::task::{Spawn, Spawner, Task};
+use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
+use crate::task::{Scheduling, Spawn, Spawner, Task};
 use glam::{DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -17,15 +18,15 @@ use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
-use graphene_std::runtime::AsyncRuntime;
+use graphene_std::runtime::{AsyncRuntime, Clock};
 use graphene_std::vector::style::RenderMode;
 use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
 use graphene_std::{Context, ContextFeatures, ContextOverrides, NodeError, OwnedContextImpl, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use std::time::Duration;
 use thumbnails::Thumbnails;
 
 mod thumbnails;
@@ -41,11 +42,15 @@ pub struct NodeRuntime {
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
 	editor_wake: Wake,
-	dirty: Arc<AtomicBool>,
+	/// A re-evaluation waiting for the next frame, or for the end of an export.
+	rerun: bool,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
+	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
+	scheduling: Scheduling,
+	frame_start: Duration,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -90,6 +95,19 @@ pub struct GraphUpdate {
 	pub(super) resources: ResourceRegistry,
 	/// Full path from the root network to the node the Data panel inspects.
 	pub(super) node_to_inspect: Vec<NodeId>,
+	/// The node each network renders in place of its export, paired with that network's path.
+	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+	/// Full path from the root network to every layer, which are the nodes with thumbnails.
+	pub(super) layers: Vec<Vec<NodeId>>,
+}
+
+/// Replaces each network's primary export with its previewed node.
+pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
+	for (network_path, previewed) in previewed {
+		let Some(nested) = network.nested_network_mut(network_path) else { continue };
+		let Some(export) = nested.exports.first_mut() else { continue };
+		*export = NodeInput::node(previewed.node_id, previewed.output_index);
+	}
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -110,12 +128,14 @@ impl NodeRuntime {
 			receiver,
 			sender,
 			editor_wake,
-			dirty: Default::default(),
+			rerun: false,
 			pending: None,
 			pending_export: None,
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
+			scheduling: Scheduling::default(),
+			frame_start: Duration::ZERO,
 
 			editor_api: PlatformEditorApi {
 				#[cfg(not(test))]
@@ -201,8 +221,13 @@ impl NodeRuntime {
 			}
 		}
 
-		if self.dirty.swap(false, Ordering::Acquire) && execution.is_none() {
-			execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
+		let rerun = std::mem::take(&mut self.rerun) | self.async_runtime().take_bumped();
+		if rerun && execution.is_none() {
+			if self.frame_has_budget() {
+				execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
+			} else {
+				self.rerun = true;
+			}
 		}
 
 		// Eydropper should use the same time and pointer to not invalidate the cache
@@ -218,18 +243,29 @@ impl NodeRuntime {
 		for request in requests {
 			match request {
 				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, resources, node_to_inspect }) => {
+				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
+					mut network,
+					resources,
+					node_to_inspect,
+					previewed,
+					layers,
+				}) => {
+					apply_previews(&mut network, &previewed);
+
 					match &mut self.inspect_state {
 						Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
 						_ => self.inspect_state = InspectState::new(node_to_inspect),
 					}
 
-					self.old_graph = Some(network.clone());
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
 					self.node_graph_warnings.clear();
-					let result = self.update_network(network);
+					let result = self.update_network(network.clone());
+					if result.is_ok() {
+						self.thumbnails.update_sources(&layers, &network, &self.executor);
+						self.old_graph = Some(network);
+					}
 					let node_graph_errors = self.node_graph_errors.clone();
 					let node_graph_warnings = self.node_graph_warnings.clone();
 
@@ -243,7 +279,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
 					if !render_config.for_export && !render_config.for_eyedropper {
-						self.thumbnails.set_scale(render_config.scale, &self.monitor_nodes);
+						self.thumbnails.set_scale(render_config.scale);
 						self.pending = Some(request);
 					}
 					if render_config.for_export {
@@ -286,7 +322,7 @@ impl NodeRuntime {
 							self.pending_export = Some(request);
 							return None;
 						}
-						(true, _) => self.dirty.store(true, Ordering::Release),
+						(true, _) => self.rerun = true,
 						_ => {}
 					}
 
@@ -297,7 +333,7 @@ impl NodeRuntime {
 						Vec::new()
 					};
 
-					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
 
 					let output = match &mut result {
 						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
@@ -372,7 +408,7 @@ impl NodeRuntime {
 
 		// Without an execution to send it along with, the inspected node is evaluated again with its new overrides once the graph is up to date
 		if inspect_again && let Some(inspect_state) = &mut self.inspect_state {
-			let inspect_result = inspect_state.access(&self.executor);
+			let inspect_result = inspect_state.access(&self.executor, self.old_graph.as_ref());
 			self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
 		}
 
@@ -400,14 +436,12 @@ impl NodeRuntime {
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings = warnings;
-		let previous_monitor_ids: HashMap<Vec<NodeId>, NodeId> = std::mem::take(&mut self.monitor_nodes).into_iter().collect();
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
 			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
 			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
 			.collect();
-		self.thumbnails.update_monitors(&previous_monitor_ids, &self.monitor_nodes);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -451,9 +485,9 @@ impl NodeRuntime {
 		EvaluationErrors(errors.into())
 	}
 
-	/// Updates state data, giving back the layers whose thumbnails were dropped because they're no longer monitored.
+	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
 	async fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
-		let dropped_thumbnails = self.thumbnails.drop_unmonitored(&self.monitor_nodes);
+		let dropped_thumbnails = self.thumbnails.drop_sourceless();
 
 		for (monitor_node_path, _) in &self.monitor_nodes {
 			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {
@@ -543,33 +577,54 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
-		let spawn = NodeTaskExecutor {
-			spawner,
-			dirty: self.dirty.clone(),
-			wake,
-		};
-		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake, clock: Arc<dyn Clock>) {
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(NodeTaskExecutor { spawner, wake }), clock));
+		self.begin_frame();
 	}
 
-	fn async_runtime(&self) -> &AsyncRuntime {
+	pub fn set_scheduling(&mut self, scheduling: Scheduling) {
+		self.scheduling = scheduling;
+	}
+
+	/// Called by the host once the previous output was presented.
+	pub fn begin_frame(&mut self) {
+		self.frame_start = self.async_runtime().clock().now();
+	}
+
+	/// How long a deferred re-evaluation waits for the next frame.
+	pub fn until_next_frame(&self) -> Option<Duration> {
+		let budget = self.frame_budget()?;
+		let elapsed = self.frame_elapsed().as_nanos() % budget.as_nanos();
+		self.rerun.then(|| budget - Duration::from_nanos(elapsed as u64))
+	}
+
+	fn frame_elapsed(&self) -> Duration {
+		self.async_runtime().clock().now().saturating_sub(self.frame_start)
+	}
+
+	fn frame_budget(&self) -> Option<Duration> {
+		self.scheduling.frame_budget.filter(|budget| !budget.is_zero())
+	}
+
+	fn frame_has_budget(&self) -> bool {
+		self.frame_budget().is_none_or(|budget| self.frame_elapsed() < budget)
+	}
+
+	pub(crate) fn async_runtime(&self) -> &AsyncRuntime {
 		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
 	}
 }
 
 struct NodeTaskExecutor {
 	spawner: Spawner,
-	dirty: Arc<AtomicBool>,
 	wake: Wake,
 }
 
 impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
-		let dirty = self.dirty.clone();
 		let wake = self.wake.clone();
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
-			dirty.store(true, Ordering::Release);
 			wake();
 		}));
 	}
@@ -628,8 +683,8 @@ impl InspectState {
 		})
 	}
 
-	fn access(&mut self, executor: &DynamicExecutor) -> InspectResult {
-		let node = executor.tree().output_node(&self.inspect_node_path, executor.output());
+	fn access(&mut self, executor: &DynamicExecutor, network: Option<&NodeNetwork>) -> InspectResult {
+		let node = network.and_then(|network| executor.tree().output_node(network, &self.inspect_node_path));
 		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
 
 		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));
@@ -672,5 +727,98 @@ impl InspectState {
 		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
 		self.last_evaluation = Some((node, context_hash, data.clone()));
 		data
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::test_utils::{EditorTestUtils, FakeClock};
+	use graph_craft::document::DocumentNode;
+	use graphene_std::SourceId;
+	use graphene_std::runtime::Runtime;
+
+	#[test]
+	fn a_preview_replaces_the_export_of_the_graph_being_compiled() {
+		let previewed_node = NodeId(1);
+		let exported_node = NodeId(2);
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(exported_node, 0)],
+			nodes: [(previewed_node, DocumentNode::default()), (exported_node, DocumentNode::default())].into_iter().collect(),
+			..Default::default()
+		};
+
+		apply_previews(
+			&mut network,
+			&[(
+				Vec::new(),
+				RootNode {
+					node_id: previewed_node,
+					output_index: 0,
+				},
+			)],
+		);
+
+		assert_eq!(network.exports.first().and_then(|export| export.as_node()), Some(previewed_node));
+	}
+
+	const SOURCE: SourceId = SourceId(1);
+
+	async fn editor(clock: &Arc<FakeClock>) -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create_with(Scheduling::default(), clock.clone());
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.runtime.async_runtime().retain_sources(&[SOURCE]);
+		editor.runtime.begin_frame();
+		editor
+	}
+
+	fn finish_task(editor: &EditorTestUtils) {
+		editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
+	}
+
+	async fn evaluates(editor: &mut EditorTestUtils) -> bool {
+		editor.runtime.run().await;
+		let messages = editor.editor.handle_message(Message::Wake);
+		messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
+	}
+
+	#[tokio::test]
+	async fn reevaluations_past_the_frame_budget_wait_for_the_next_frame() {
+		let clock = Arc::new(FakeClock::default());
+		let mut editor = editor(&clock).await;
+
+		finish_task(&editor);
+		finish_task(&editor);
+		assert!(evaluates(&mut editor).await);
+		assert!(!evaluates(&mut editor).await, "two finished tasks re-evaluated twice");
+
+		clock.advance(Duration::from_millis(20));
+		finish_task(&editor);
+		assert!(!evaluates(&mut editor).await);
+		assert_eq!(editor.runtime.until_next_frame(), Some(Duration::from_millis(12)));
+
+		editor.runtime.begin_frame();
+		assert!(evaluates(&mut editor).await);
+		assert_eq!(editor.runtime.until_next_frame(), None);
+	}
+
+	#[tokio::test]
+	async fn explicit_requests_ignore_the_frame_budget() {
+		let clock = Arc::new(FakeClock::default());
+		let mut editor = editor(&clock).await;
+
+		clock.advance(Duration::from_millis(100));
+		finish_task(&editor);
+		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO)
+			.unwrap();
+
+		assert!(evaluates(&mut editor).await);
+		assert!(!evaluates(&mut editor).await, "the finished task re-evaluated after the explicit request");
 	}
 }

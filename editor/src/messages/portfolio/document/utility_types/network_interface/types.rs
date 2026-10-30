@@ -450,13 +450,58 @@ impl RootNode {
 	}
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
+/// Which node the node graph renders in place of the network's export, as per-peer view state that leaves the export untouched.
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize)]
 pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
+	Yes {
+		previewed: RootNode,
+	},
+	// TODO: Eventually remove this document upgrade code
+	/// Written by versions that previewed by rewiring the export, and converted to `Yes` when the document is opened.
+	LegacyRewired {
+		root_node_to_restore: Option<RootNode>,
+	},
 	#[default]
 	No,
+}
+
+impl Previewing {
+	pub fn previewed(&self) -> Option<RootNode> {
+		match self {
+			Previewing::Yes { previewed } => Some(*previewed),
+			_ => None,
+		}
+	}
+
+	pub fn previews(&self, node_id: NodeId) -> bool {
+		self.previewed().is_some_and(|previewed| previewed.node_id == node_id)
+	}
+}
+
+// TODO: Eventually remove this document upgrade code, restoring the derived `Deserialize`
+impl<'de> serde::Deserialize<'de> for Previewing {
+	/// Also accepts the shape written by versions that previewed by rewiring the export.
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(serde::Deserialize)]
+		enum Stored {
+			Yes(YesFields),
+			LegacyRewired { root_node_to_restore: Option<RootNode> },
+			No,
+		}
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum YesFields {
+			Current { previewed: RootNode },
+			Rewired { root_node_to_restore: Option<RootNode> },
+		}
+
+		Ok(match Stored::deserialize(deserializer)? {
+			Stored::Yes(YesFields::Current { previewed }) => Previewing::Yes { previewed },
+			Stored::Yes(YesFields::Rewired { root_node_to_restore }) | Stored::LegacyRewired { root_node_to_restore } => Previewing::LegacyRewired { root_node_to_restore },
+			Stored::No => Previewing::No,
+		})
+	}
 }
 
 /// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
@@ -483,27 +528,29 @@ impl PartialEq for NodeNetworkMetadata {
 }
 
 impl NodeNetworkMetadata {
-	pub fn nested_metadata(&self, nested_path: &[NodeId]) -> Option<&Self> {
-		let mut network_metadata = Some(self);
+	pub fn nested_metadata(&self, location: NetworkLocation) -> Option<&Self> {
+		let mut network_metadata = match location.definition {
+			Some(id) => self.persistent_metadata.definitions.get(&id)?,
+			None => self,
+		};
 
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network| network.persistent_metadata.node_metadata.get(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_ref());
+		for segment in location.inline_path {
+			network_metadata = network_metadata.persistent_metadata.node_metadata.get(segment)?.persistent_metadata.network_metadata.as_ref()?;
 		}
-		network_metadata
+		Some(network_metadata)
 	}
 
 	/// Get the mutable nested network given by the path of node ids
-	pub fn nested_metadata_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network_metadata = Some(self);
+	pub fn nested_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
+		let mut network_metadata = match location.definition {
+			Some(id) => self.persistent_metadata.definitions.get_mut(&id)?,
+			None => self,
+		};
 
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
+		for segment in location.inline_path {
+			network_metadata = network_metadata.persistent_metadata.node_metadata.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?;
 		}
-		network_metadata
+		Some(network_metadata)
 	}
 }
 
@@ -532,6 +579,8 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Stack of selection snapshots for future history states.
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
+	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
+	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
@@ -1088,6 +1137,9 @@ pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl Fn
 	for node in network.nodes.values() {
 		visit_node_resources(node, visit);
 	}
+	for definition in network.definitions.values() {
+		visit_network_resources(definition, visit);
+	}
 }
 
 pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {
@@ -1141,6 +1193,37 @@ mod tests {
 		visit_network_resources(&outer, &mut |id| visits.push(id));
 		assert_eq!(visits.iter().filter(|id| **id == shared).count(), 3);
 		assert_eq!(visits.len(), 4);
+	}
+
+	#[test]
+	fn resource_visits_reach_each_definition_once() {
+		let definition = NetworkId(1);
+		let used = ResourceId::from(1);
+		let instance = || DocumentNode {
+			implementation: DocumentNodeImplementation::Definition(definition),
+			..Default::default()
+		};
+		let body = NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::Resource(used), false)],
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			nodes: [(NodeId(1), instance()), (NodeId(2), instance())].into_iter().collect(),
+			definitions: [(definition, body)].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut visits = Vec::new();
+		visit_network_resources(&network, &mut |id| visits.push(id));
+		assert_eq!(visits, vec![used]);
 	}
 
 	#[test]
