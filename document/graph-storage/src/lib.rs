@@ -33,8 +33,8 @@ pub use value::{ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
 pub use from_runtime::{
-	PathResolver, RuntimeConversion, ScopedConversion, convert_input_attributes, convert_resource_entry, decode_declaration, encode_declaration, encode_input_ui_attributes, encode_node_ui_attributes,
-	node_value_resource_refs, value_resource_ref,
+	EncodedDeclaration, PathResolver, RuntimeConversion, ScopedConversion, convert_input_attributes, convert_resource_entry, decode_declaration, encode_declaration, encode_input_ui_attributes,
+	encode_node_ui_attributes, node_value_resource_refs, value_resource_ref,
 };
 #[cfg(any(feature = "conversion", test))]
 pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};

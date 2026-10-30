@@ -14,9 +14,11 @@ use std::path::Path;
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
+#[cfg(feature = "migrations")]
+use document_graph_storage::Rev;
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{PeerId, Registry, Session, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::ResourceHash;
@@ -26,7 +28,10 @@ pub mod error;
 pub mod export;
 pub mod io;
 pub mod layout;
+mod load;
 pub mod manifest;
+#[cfg(feature = "migrations")]
+mod migrate;
 pub mod persist;
 pub mod resource;
 
@@ -131,28 +136,45 @@ impl<L: Layout> Gdd<L> {
 		validate_manifest(&manifest)?;
 		let codecs = manifest.codecs;
 
-		let session_state: SessionState = match io::exists(&working, layout.session_basename(), codecs.session).await {
-			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
-			false => SessionState::default(),
-		};
-
-		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
-		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the stored records"))]
+		let mut records = load::StoredRecords::read(&working, &layout, codecs).await?;
+		#[cfg(feature = "migrations")]
+		let format_outcome = migrate::migrate_format(&mut records, codecs, manifest.format_version)?;
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the decoded payloads"))]
+		let mut payloads = records.decode(codecs)?;
+		#[cfg(feature = "migrations")]
+		match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => {
+				// Records changed, so their content-addressed revs did too
+				let revs = migration_runner::rehash_deltas(payloads.history.as_deref_mut().unwrap_or_default());
+				let remap = |rev: Rev| revs.get(&rev).copied().unwrap_or(rev);
+				let state = &mut payloads.session;
+				state.head_rev = state.head_rev.map(remap);
+				state.last_broadcast_rev = state.last_broadcast_rev.map(remap);
+				state.redo_stack.iter_mut().for_each(|rev| *rev = remap(*rev));
+			}
+			Some(migration_runner::HistoryOutcome::Truncated) => {
+				let state = &mut payloads.session;
+				state.head_rev = None;
+				state.last_broadcast_rev = None;
+				state.redo_stack.clear();
+			}
+			Some(migration_runner::HistoryOutcome::Untouched) | None => {}
+		}
+		let load::DecodedPayloads {
+			registry,
+			history,
+			hot_log,
+			session: session_state,
+		} = payloads;
 
 		let peer = session_state.peer_id;
 		let user = session_state.user_id;
-		let mut session = match (has_registry, has_history) {
-			(true, true) => {
-				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
-			}
-			(true, false) => {
-				// Registry-only export: synthesize a history that reproduces this state.
-				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(peer, user, registry)?
-			}
-			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+		let mut session = match (registry, history) {
+			(Some(registry), Some(history)) => Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter),
+			// Registry-only export: synthesize a history that reproduces this state.
+			(Some(registry), None) => Session::bootstrap_from_registry(peer, user, registry)?,
+			(None, history) => Session::replay_from_history(peer, user, history.unwrap_or_default(), session_state.next_node_counter)?,
 		};
 
 		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
@@ -164,16 +186,30 @@ impl<L: Layout> Gdd<L> {
 		session.restore_clock_counter(session_state.clock_counter);
 		// Before the hot log replays, so a retired op in it is dropped rather than staged again.
 		session.absorb_retired_marks(&session_state.retired_marks);
-		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
+		for hot_op in hot_log {
+			session.replay_hot_op(hot_op)?;
+		}
 
-		Ok(Self {
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only migrations change the opened document"))]
+		let mut gdd = Self {
 			session,
 			working,
 			layout,
 			manifest,
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
-		})
+		};
+
+		#[cfg(feature = "migrations")]
+		{
+			let migrated_nodes = gdd.migrate_nodes().await?;
+			if format_outcome.is_some() || migrated_nodes {
+				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);
+				gdd.persist_all()?;
+			}
+		}
+
+		Ok(gdd)
 	}
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
@@ -215,23 +251,6 @@ fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {
 			found: manifest.format_version,
 			max_supported: manifest::SUPPORTED_FORMAT_VERSION,
 		});
-	}
-	Ok(())
-}
-
-async fn load_history<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec) -> Result<Vec<Delta>, Error> {
-	if !io::exists(working, layout.history_basename(), codec).await {
-		return Ok(Vec::new());
-	}
-	Ok(io::iter::<Delta>(working, layout.history_basename(), codec).await?)
-}
-
-async fn replay_hot_log<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec, session: &mut Session) -> Result<(), Error> {
-	if !io::exists(working, layout.hot_log_basename(), codec).await {
-		return Ok(());
-	}
-	for hot_op in io::iter::<HotOp>(working, layout.hot_log_basename(), codec).await? {
-		session.replay_hot_op(hot_op)?;
 	}
 	Ok(())
 }

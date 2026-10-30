@@ -6,7 +6,7 @@
 
 use graphene_resource::ResourceHash;
 
-pub trait Layout {
+pub trait Layout: Send + Sync {
 	fn manifest_basename(&self) -> &str;
 	fn session_basename(&self) -> &str;
 	fn registry_basename(&self) -> &str;

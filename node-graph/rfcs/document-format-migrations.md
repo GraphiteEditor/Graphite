@@ -332,6 +332,8 @@ A node migration is pending when its source declaration is referenced anywhere i
 4. Persist the rewritten history, registry snapshot, session, and the `Rev` mapping.
 5. Hand off to `to_runtime`.
 
+`Gdd::open_in` runs this pipeline when `document-format` is built with its `migrations` feature, using the steps and migrations the binary links. Hot ops retire into history before the node tier, so they migrate with it. The resource a migrated node references is the content-addressed `ProtoNode { identifier, version }` with no attributes, the same one runtime conversion stores for a node at that version, so the runner registers it and stores its bytes without the target binary. A first version omits `version` from its encoding, which keeps declarations written before versions existed at their `ResourceId`. Format version 2 introduced the field, so older builds refuse documents that may contain later versions.
+
 ## Determinism and causal past
 
 `rewritten(d)` depends only on `d` and its ancestors. The canonical order interleaves concurrent branches, so the linear replay state before `d` can contain deltas concurrent to `d`. Evaluating `M` there would make a peer that knows more history rewrite the shared prefix differently, and the `Rev`s would diverge. Restricting to the causal past makes the rewrite prefix-stable: learning more history never changes an already rewritten delta. Two peers that hold the same delta compute the same rewritten chain and the same `Rev`s, which is the same argument by which `Merge` dedups.

@@ -5,10 +5,10 @@ use migration_core::{FormatMigration, HistoryPolicy, Payload};
 
 /// The serialized payloads of one document, as handed over by the load path before typed
 /// deserialization. History records are unframed: one [`Payload`] per retired delta, in stored
-/// (topological) order.
+/// (topological) order. A working copy that only has history has no registry.
 pub struct DocumentPayloads {
 	pub format_version: u32,
-	pub registry: Payload,
+	pub registry: Option<Payload>,
 	pub history: Vec<Payload>,
 	pub hot_log: Vec<Payload>,
 	pub session: Option<Payload>,
@@ -40,7 +40,9 @@ pub fn run_format_migrations(migrations: &[&'static dyn FormatMigration], payloa
 		};
 		let fail = |error| RunnerError::Format { from: version, error };
 
-		payloads.registry = step.migrate_registry(&payloads.registry).map_err(fail)?;
+		if let Some(registry) = &payloads.registry {
+			payloads.registry = Some(step.migrate_registry(registry).map_err(fail)?);
+		}
 
 		match step.history_policy() {
 			HistoryPolicy::Untouched => {}

@@ -98,6 +98,13 @@ pub fn apply_migration(migration: &dyn NodeMigration, source: &Registry, resolve
 		}
 	}
 
+	let added_declarations = runs.iter().flat_map(|(_, edits)| edits.added_nodes.iter().map(|added| added.node.declaration));
+	for declaration in std::iter::once(migration.target()).chain(added_declarations) {
+		if let Some(entry) = resolver.resource_entry(declaration) {
+			target.resources.entry(resolver.resource(declaration)).or_insert(entry);
+		}
+	}
+
 	Ok(target)
 }
 

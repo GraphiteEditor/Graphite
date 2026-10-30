@@ -233,6 +233,7 @@ fn session_state_encodes_identically() {
 fn declarations_encode_identically() {
 	let mut declaration = ProtoNode {
 		identifier: "math_nodes::add".to_string(),
+		version: 2,
 		attributes: Default::default(),
 	};
 	declaration.attributes.set("ui::category", nested_value(), Default::default());

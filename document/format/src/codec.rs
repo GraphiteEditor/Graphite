@@ -121,6 +121,45 @@ impl Codec {
 	}
 }
 
+impl Codec {
+	/// Each value's bytes in `bytes`, unframed, so format migrations can transform them before they decode into the live types.
+	pub fn records(self, bytes: &[u8]) -> Result<Vec<&[u8]>, CodecError> {
+		match self {
+			Codec::Json | Codec::Postcard => Ok(vec![bytes]),
+			Codec::JsonLines => Ok(bytes.split(|&byte| byte == b'\n').map(trim_ascii).filter(|line| !line.is_empty()).collect()),
+			Codec::PostcardFrames => {
+				let mut records = Vec::new();
+				let mut remaining = bytes;
+				while !remaining.is_empty() {
+					let Some((length_bytes, tail)) = remaining.split_first_chunk::<4>() else {
+						return Err(CodecError::TruncatedLengthPrefix(remaining.len()));
+					};
+					let length = u32::from_be_bytes(*length_bytes) as usize;
+					if tail.len() < length {
+						return Err(CodecError::TruncatedFrame {
+							declared: length,
+							remaining: tail.len(),
+						});
+					}
+
+					let (record, after) = tail.split_at(length);
+					records.push(record);
+					remaining = after;
+				}
+				Ok(records)
+			}
+		}
+	}
+
+	/// Decode one record [`records`](Self::records) split out.
+	pub fn decode_record<T: DeserializeOwned>(self, record: &[u8]) -> Result<T, CodecError> {
+		match self {
+			Codec::Json | Codec::JsonLines => Ok(serde_json::from_slice(record)?),
+			Codec::Postcard | Codec::PostcardFrames => Ok(postcard::from_bytes(record)?),
+		}
+	}
+}
+
 struct JsonLineIter<'a, T> {
 	remaining: &'a [u8],
 	_marker: std::marker::PhantomData<fn() -> T>,
@@ -298,6 +337,25 @@ mod tests {
 		Codec::JsonLines.append(&mut buffer, &Frame { id: 2, label: "b".into() }).unwrap();
 		let result: Result<Frame, _> = Codec::JsonLines.read_single(&buffer);
 		assert!(matches!(result, Err(CodecError::ExpectedSingle)), "got {result:?}");
+	}
+
+	#[test]
+	fn records_split_every_codec_like_iter() {
+		let frames = frames();
+		for codec in [Codec::JsonLines, Codec::PostcardFrames] {
+			let mut buffer = Vec::new();
+			for frame in &frames {
+				codec.append(&mut buffer, frame).unwrap();
+			}
+			let decoded: Vec<Frame> = codec.records(&buffer).unwrap().into_iter().map(|record| codec.decode_record(record).unwrap()).collect();
+			assert_eq!(decoded, frames, "codec {codec:?}");
+		}
+
+		for codec in [Codec::Json, Codec::Postcard] {
+			let bytes = codec.write_single(&frames[0]).unwrap();
+			let records = codec.records(&bytes).unwrap();
+			assert_eq!(codec.decode_record::<Frame>(records[0]).unwrap(), frames[0], "codec {codec:?}");
+		}
 	}
 
 	#[test]

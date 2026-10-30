@@ -182,6 +182,24 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Rewrite every payload and the manifest from memory, after opening changed what the files hold.
+	#[cfg(feature = "migrations")]
+	pub(crate) fn persist_all(&mut self) -> Result<(), Error> {
+		self.rewrite_history()?;
+		self.persist_registry_snapshot()?;
+
+		let mut hot_buffer = Vec::new();
+		for hot_op in self.session.hot_log() {
+			self.manifest.codecs.hot_log.append(&mut hot_buffer, hot_op)?;
+		}
+		self.working
+			.write_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &hot_buffer)?;
+
+		self.persist_session_state()?;
+		io::write_single(&self.working, self.layout.manifest_basename(), MANIFEST_CODEC, &self.manifest)?;
+		Ok(())
+	}
+
 	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
 	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
 	fn rewrite_history(&mut self) -> Result<(), Error> {

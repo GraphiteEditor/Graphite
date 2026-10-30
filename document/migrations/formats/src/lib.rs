@@ -5,4 +5,7 @@
 //! `latest` matches the live types in `graph-storage`, which `cargo run migration check` enforces.
 
 pub mod v1;
-pub use v1 as latest;
+pub mod v2;
+pub use v2 as latest;
+
+mod steps;

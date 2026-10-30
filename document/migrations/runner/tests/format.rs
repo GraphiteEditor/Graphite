@@ -27,7 +27,7 @@ impl FormatMigration for RenameKey {
 fn format_tier_chains_and_bumps_version() {
 	let mut payloads = DocumentPayloads {
 		format_version: 1,
-		registry: Payload::encode(&serde_json::json!({ "old_key": 42 }), PayloadCodec::Json).unwrap(),
+		registry: Some(Payload::encode(&serde_json::json!({ "old_key": 42 }), PayloadCodec::Json).unwrap()),
 		history: vec![Payload::new(vec![1, 2, 3], PayloadCodec::Postcard)],
 		hot_log: Vec::new(),
 		session: None,
@@ -38,7 +38,7 @@ fn format_tier_chains_and_bumps_version() {
 	assert_eq!(payloads.format_version, 2);
 	assert_eq!(outcome, HistoryOutcome::Truncated);
 	assert!(payloads.history.is_empty());
-	let registry: serde_json::Value = payloads.registry.decode().unwrap();
+	let registry: serde_json::Value = payloads.registry.unwrap().decode().unwrap();
 	assert_eq!(registry, serde_json::json!({ "new_key": 42 }));
 }
 
@@ -46,7 +46,7 @@ fn format_tier_chains_and_bumps_version() {
 fn format_tier_errors_on_missing_step() {
 	let mut payloads = DocumentPayloads {
 		format_version: 0,
-		registry: Payload::encode(&serde_json::json!({}), PayloadCodec::Json).unwrap(),
+		registry: Some(Payload::encode(&serde_json::json!({}), PayloadCodec::Json).unwrap()),
 		history: Vec::new(),
 		hot_log: Vec::new(),
 		session: None,

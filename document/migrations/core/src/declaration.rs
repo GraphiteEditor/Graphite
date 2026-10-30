@@ -1,4 +1,4 @@
-use document_graph_storage::ResourceId;
+use document_graph_storage::{ResourceEntry, ResourceId};
 use serde::Serialize;
 
 /// A proto-node declaration at one version, written `identifier@version`.
@@ -34,4 +34,8 @@ pub trait DeclarationResolver {
 	fn declaration(&self, resource: ResourceId) -> Option<Declaration>;
 	/// The resource a node of `declaration` references.
 	fn resource(&self, declaration: Declaration) -> ResourceId;
+	/// The registry entry of that resource, added when a migration first references it. `None` leaves the registry's resources alone.
+	fn resource_entry(&self, _declaration: Declaration) -> Option<ResourceEntry> {
+		None
+	}
 }

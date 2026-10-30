@@ -88,5 +88,19 @@ pub struct ExportSlot {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ProtoNode {
 	pub identifier: String,
+	/// The declaration's position in its node's lineage. Omitted at version 1, so first versions keep the bytes, and with them the
+	/// content-addressed `ResourceId`, they had before declarations were versioned.
+	#[serde(default = "ProtoNode::first_version", skip_serializing_if = "ProtoNode::is_first_version")]
+	pub version: u32,
 	pub attributes: Attributes,
+}
+
+impl ProtoNode {
+	fn first_version() -> u32 {
+		1
+	}
+
+	fn is_first_version(version: &u32) -> bool {
+		*version == 1
+	}
 }

@@ -10,7 +10,7 @@ pub const FORMAT_MAGIC: &str = "gdd";
 
 /// Maximum manifest version this build can open. Bumped when manifest layout changes
 /// in a way that older builds can't safely read.
-pub const SUPPORTED_FORMAT_VERSION: u32 = 1;
+pub const SUPPORTED_FORMAT_VERSION: u32 = 2;
 
 /// The on-disk codec for each working-copy payload, recorded so reads/writes never have to probe
 /// the filesystem to discover it. The manifest itself is excluded: it is always JSON, since it must
