@@ -4845,6 +4845,7 @@ dependencies = [
  "log",
  "num-traits",
  "parley",
+ "raster-kernels",
  "serde",
  "skrifa",
  "text-nodes",

@@ -1,10 +1,11 @@
-use crate::raster_kernel::{Adjust, raster_kernel_pipeline};
+use crate::effects::ApplyEffect;
+use crate::raster_kernel::raster_kernel_pipeline;
 use core_types::Ctx;
 use core_types::Interrupt;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
-use graphic_types::Adjustment;
+use graphic_types::{Adjustment, Graphic, Vector};
 use raster_types::{GPU, Raster};
 use vector_types::Gradient;
 use wgpu_executor::WgpuPipelineCache;
@@ -34,12 +35,15 @@ fn mix_colors(
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
 #[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
-fn color_overlay<T: Adjust>(
+fn color_overlay<T: ApplyEffect>(
 	_: impl Ctx,
 	#[implementations(
+		Graphic,
+		Vector,
 		Raster<GPU>,
 		Color,
 		Gradient,
+		String,
 	)]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
@@ -56,7 +60,7 @@ fn color_overlay<T: Adjust>(
 		blend_mode: blend_mode.into_element(),
 		opacity: opacity.into_element(),
 	};
-	Ok(image.adjust(&adjustment, pipeline.element())?)
+	Ok(T::apply_adjustment(image, adjustment, pipeline.element())?)
 }
 
 #[cfg(test)]

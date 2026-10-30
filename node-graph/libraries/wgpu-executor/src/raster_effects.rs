@@ -2,14 +2,15 @@
 //! for the renderer drawing an effects group and for the nodes and the Eager node carrying out a raster's effects into its pixels.
 
 use crate::WgpuPipelineCache;
-use crate::raster_kernel::{MAX_FRAME_SIDE, blur_raster, run_raster_kernel};
+use crate::raster_kernel::{MAX_FRAME_SIDE, adjust_raster, blur_raster, run_raster_kernel};
 use crate::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
 use graphic_types::effects::{bevel_light, bevel_smoothing, outline_extents};
-use graphic_types::{BevelDirection, EffectOperation, Effects, GlowSource};
+use graphic_types::{Adjustment, BevelDirection, EffectOperation, Effects, GlowSource};
 use raster_kernels::RasterKernel;
+use raster_kernels::adjustments::{leading_adjustments, preserves_alpha};
 use raster_kernels::blur::BlurSpace;
 use raster_kernels::effects::*;
 use raster_types::{GPU, Raster, Storage};
@@ -49,6 +50,18 @@ fn evaluate(raster: &Raster<GPU>, transform: DAffine2, operations: &[EffectOpera
 	if (operations.is_empty() && fill >= 1.) || size.x == 0 || size.y == 0 || placement.matrix2.determinant() == 0. {
 		return Ok(None);
 	}
+
+	// Leading adjustments change the raster's own colors, keeping even transparent pixels' colors
+	let leading = leading_adjustments(operations.iter().cloned(), fill);
+	let operations = &operations[leading.len()..];
+	let mut adjusted = raster.clone();
+	for adjustment in &leading {
+		adjusted = adjust_raster(adjustment, adjusted, pipeline)?;
+	}
+	if operations.is_empty() && fill >= 1. {
+		return Ok(Some(adjusted));
+	}
+	let raster = &adjusted;
 
 	// Lengths in the document map onto the raster's own pixels, through which the margin the effects cast into is measured along each axis
 	let lengths_to_pixels = DMat2::from_diagonal(size.as_dvec2()) * placement.matrix2.inverse();
@@ -231,6 +244,12 @@ impl<'a> EffectsPass<'a> {
 					self.shade_within(&coverage, color)?;
 				}
 			}
+			EffectOperation::Adjustment(ref adjustment) => {
+				self.full = self.adjust_image(&self.full, adjustment)?;
+				if let Some(filled) = &self.filled {
+					self.filled = Some(self.adjust_image(filled, adjustment)?);
+				}
+			}
 		}
 
 		Ok(())
@@ -256,6 +275,19 @@ impl<'a> EffectsPass<'a> {
 			})
 			.collect();
 		run_raster_kernel(kernel, inputs, self.size, self.pipeline)
+	}
+
+	/// Carries out an adjustment on an image's straight colors, leaving its fully transparent pixels empty since they keep no color to adjust.
+	fn adjust_image(&self, image: &Raster<GPU>, adjustment: &Adjustment) -> Result<Raster<GPU>, NodeError> {
+		let decoded = self.run(&EffectDecode {}, &[image])?;
+		let adjusted = adjust_raster(adjustment, decoded, self.pipeline)?;
+		let encoded = self.run(&EffectEncode { amount: 1. }, &[&adjusted])?;
+
+		// Only an adjustment that changes alpha can put anything in them
+		if preserves_alpha(adjustment) {
+			return Ok(encoded);
+		}
+		self.run(&KeepEmpty {}, &[&encoded, image])
 	}
 
 	/// Blurs an image by `radius` pixels, in linear light unless `gamma`.

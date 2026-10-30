@@ -231,3 +231,16 @@ impl RasterKernel for BevelShading {
 		Wgsl::function(include_str!("wgsl/effect_bevel_shading.wgsl"))
 	}
 }
+
+gpu_params! {
+	/// The first image, emptied wherever the second is empty, since an adjustment that changes alpha would otherwise conjure content from the empty space around it.
+	#[derive(Clone)]
+	pub struct KeepEmpty {}
+}
+
+impl RasterKernel for KeepEmpty {
+	const INPUTS: usize = 2;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/effect_keep_empty.wgsl"))
+	}
+}

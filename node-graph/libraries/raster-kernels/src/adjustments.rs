@@ -7,6 +7,7 @@ use core_types::color::Color;
 use core_types::color::{linear_to_srgb, set_luminosity, srgb_to_linear};
 use core_types::transfer_curve::TransferCurveEvaluator;
 use glam::Vec3;
+use graphic_types::EffectOperation;
 use graphic_types::adjustment::{self as settings, Adjustment, DesaturateMethod, RelativeAbsolute, SelectiveColorChoice};
 use std::sync::Arc;
 use vector_types::gradient::GradientInterpolation;
@@ -293,6 +294,48 @@ pub fn with_color_map<R>(adjustment: &Adjustment, map: impl FnOnce(&dyn Fn(Color
 /// The color with `adjustment` carried out on it.
 pub fn adjust_color(adjustment: &Adjustment, color: Color) -> Color {
 	with_color_map(adjustment, |map| map(color))
+}
+
+/// The red, green, blue, and alpha curves of a per-channel adjustment, each sampled from its kernel at `size` evenly spaced gamma-encoded values from 0 to 1.
+pub fn channel_curves(adjustment: &Adjustment, size: usize) -> Option<[Vec<f32>; 4]> {
+	if !adjustment.is_per_channel() || size < 2 {
+		return None;
+	}
+
+	// Each sample feeds the same value to every channel, which the curves map independently
+	let channels: Vec<[f32; 4]> = with_color_map(adjustment, |map| {
+		(0..size)
+			.map(|index| {
+				let value = index as f32 / (size - 1) as f32;
+				map(Color::from_gamma_srgb_channels(value, value, value, value)).to_gamma_srgb_channels()
+			})
+			.collect()
+	});
+
+	Some(std::array::from_fn(|channel| channels.iter().map(|values| values[channel]).collect()))
+}
+
+/// The adjustments at the start of a content's effects, which can be carried out on its own colors ahead of the rest.
+/// A fill fades the content before the effects adjust it, so with one, only adjustments that keep alpha commute with it.
+pub fn leading_adjustments(operations: impl IntoIterator<Item = EffectOperation>, fill: f32) -> Vec<Adjustment> {
+	operations
+		.into_iter()
+		.map_while(|operation| match operation {
+			EffectOperation::Adjustment(adjustment) if fill == 1. || preserves_alpha(&adjustment) => Some(adjustment),
+			_ => None,
+		})
+		.collect()
+}
+
+/// Whether every color keeps its alpha to within half an 8-bit level.
+/// Only a per-channel adjustment's alpha curve can change it, since the kernels of the others all keep alpha.
+pub fn preserves_alpha(adjustment: &Adjustment) -> bool {
+	const LEVELS: usize = 256;
+
+	channel_curves(adjustment, LEVELS).is_none_or(|[.., alpha]| {
+		let identity = |index: usize| index as f32 / (LEVELS - 1) as f32;
+		alpha.iter().enumerate().all(|(index, value)| (value - identity(index)).abs() <= 0.5 / 255.)
+	})
 }
 
 gpu_param_enum!(u32: DesaturateMethod);

@@ -2,6 +2,7 @@
 //! Each row is an [`EffectKind`] whose parameters ride its item as attributes, read as their defaults when absent.
 //! Each renderer decodes the rows into [`EffectOperation`]s and carries them out its own way, at the resolution of each render.
 
+use crate::adjustment::Adjustment;
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::graphene_hash::CacheHash;
@@ -31,6 +32,27 @@ pub enum EffectKind {
 	Outline,
 	/// Lights the content as if raised from the surface or pressed into it, with highlights and shadows along its edges.
 	BevelAndEmboss,
+	// The adjustments, which change each color of the content on its own, as their nodes of the same names do
+	Desaturate,
+	GammaCorrection,
+	MakeOpaque,
+	BrightnessContrast,
+	Levels,
+	Curves,
+	BlackAndWhite,
+	HueSaturation,
+	Invert,
+	Threshold,
+	GradientMap,
+	Vibrance,
+	ChannelMixer,
+	SelectiveColor,
+	Posterize,
+	Exposure,
+	ColorBalance,
+	PhotoFilter,
+	ColorLookup,
+	ColorOverlay,
 }
 
 impl std::fmt::Display for EffectKind {
@@ -44,6 +66,26 @@ impl std::fmt::Display for EffectKind {
 			Self::Satin => "Satin",
 			Self::Outline => "Outline",
 			Self::BevelAndEmboss => "Bevel & Emboss",
+			Self::Desaturate => "Desaturate",
+			Self::GammaCorrection => "Gamma Correction",
+			Self::MakeOpaque => "Make Opaque",
+			Self::BrightnessContrast => "Brightness/Contrast",
+			Self::Levels => "Levels",
+			Self::Curves => "Curves",
+			Self::BlackAndWhite => "Black & White",
+			Self::HueSaturation => "Hue/Saturation",
+			Self::Invert => "Invert",
+			Self::Threshold => "Threshold",
+			Self::GradientMap => "Gradient Map",
+			Self::Vibrance => "Vibrance",
+			Self::ChannelMixer => "Channel Mixer",
+			Self::SelectiveColor => "Selective Color",
+			Self::Posterize => "Posterize",
+			Self::Exposure => "Exposure",
+			Self::ColorBalance => "Color Balance",
+			Self::PhotoFilter => "Photo Filter",
+			Self::ColorLookup => "Color Lookup",
+			Self::ColorOverlay => "Color Overlay",
 		})
 	}
 }
@@ -244,6 +286,7 @@ pub enum EffectOperation {
 		highlight_color: Color,
 		shadow_color: Color,
 	},
+	Adjustment(Adjustment),
 }
 
 impl EffectOperation {
@@ -262,6 +305,7 @@ impl EffectOperation {
 			Self::Satin { .. } => EffectKind::Satin,
 			Self::Outline { .. } => EffectKind::Outline,
 			Self::BevelAndEmboss { .. } => EffectKind::BevelAndEmboss,
+			Self::Adjustment(adjustment) => adjustment.kind(),
 		}
 	}
 
@@ -277,6 +321,7 @@ impl EffectOperation {
 			Self::Satin { offset, blur, .. } => offset.length() + 3. * blur.max(0.),
 			Self::Outline { weight, .. } => weight.max(0.),
 			Self::BevelAndEmboss { size, soften, .. } => size.max(0.) + 3. * (soften.max(0.) + bevel_smoothing(*size)),
+			Self::Adjustment(_) => 0.,
 		}
 	}
 
@@ -333,6 +378,46 @@ impl EffectOperation {
 				highlight_color: Color::TRANSPARENT,
 				shadow_color: Color::TRANSPARENT,
 			},
+			EffectKind::Desaturate => Self::Adjustment(Adjustment::Desaturate { method: Default::default() }),
+			EffectKind::GammaCorrection => Self::Adjustment(Adjustment::GammaCorrection { gamma: 0., inverse: false }),
+			EffectKind::MakeOpaque => Self::Adjustment(Adjustment::MakeOpaque),
+			EffectKind::BrightnessContrast => Self::Adjustment(Adjustment::BrightnessContrast {
+				brightness: 0.,
+				contrast: 0.,
+				use_classic: false,
+				classic_pivot: 0.,
+			}),
+			EffectKind::Levels => Self::Adjustment(Adjustment::Levels(Default::default())),
+			EffectKind::Curves => Self::Adjustment(Adjustment::Curves(Default::default())),
+			EffectKind::BlackAndWhite => Self::Adjustment(Adjustment::BlackAndWhite(Default::default())),
+			EffectKind::HueSaturation => Self::Adjustment(Adjustment::HueSaturation(Default::default())),
+			EffectKind::Invert => Self::Adjustment(Adjustment::Invert),
+			EffectKind::Threshold => Self::Adjustment(Adjustment::Threshold { min_luminance: 0., max_luminance: 0. }),
+			EffectKind::GradientMap => Self::Adjustment(Adjustment::GradientMap {
+				gradient: Default::default(),
+				reverse: false,
+			}),
+			EffectKind::Vibrance => Self::Adjustment(Adjustment::Vibrance { vibrance: 0., saturation: 0. }),
+			EffectKind::ChannelMixer => Self::Adjustment(Adjustment::ChannelMixer(Default::default())),
+			EffectKind::SelectiveColor => Self::Adjustment(Adjustment::SelectiveColor(Default::default())),
+			EffectKind::Posterize => Self::Adjustment(Adjustment::Posterize { levels: 0 }),
+			EffectKind::Exposure => Self::Adjustment(Adjustment::Exposure {
+				exposure: 0.,
+				offset: 0.,
+				gamma_correction: 0.,
+			}),
+			EffectKind::ColorBalance => Self::Adjustment(Adjustment::ColorBalance(Default::default())),
+			EffectKind::PhotoFilter => Self::Adjustment(Adjustment::PhotoFilter {
+				color: Color::TRANSPARENT,
+				density: 0.,
+				preserve_luminosity: false,
+			}),
+			EffectKind::ColorLookup => Self::Adjustment(Adjustment::ColorLookup { lut_file: Default::default() }),
+			EffectKind::ColorOverlay => Self::Adjustment(Adjustment::ColorOverlay {
+				color: Color::TRANSPARENT,
+				blend_mode: Default::default(),
+				opacity: 0.,
+			}),
 		}
 	}
 
@@ -393,6 +478,7 @@ impl EffectOperation {
 				visitor.parameter("highlight_color", highlight_color, Color::from(SRGBA8::new(0xff, 0xff, 0xff, 0xbf)));
 				visitor.parameter("shadow_color", shadow_color, Color::from(SRGBA8::new(0, 0, 0, 0xbf)));
 			}
+			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
 	}
 }
@@ -486,5 +572,46 @@ mod tests {
 
 		let default_row = Effect::new(&EffectOperation::default_for(EffectKind::DropShadow));
 		assert_eq!(default_row.0.attributes().iter_any().count(), 0, "a default operation stamps no parameters");
+	}
+
+	#[test]
+	fn adjustment_rows_elide_their_defaults_and_name_grouped_parameters() {
+		use EffectKind::*;
+		let kinds = [
+			Desaturate,
+			GammaCorrection,
+			MakeOpaque,
+			BrightnessContrast,
+			Levels,
+			Curves,
+			BlackAndWhite,
+			HueSaturation,
+			Invert,
+			Threshold,
+			GradientMap,
+			Vibrance,
+			ChannelMixer,
+			SelectiveColor,
+			Posterize,
+			Exposure,
+			ColorBalance,
+			PhotoFilter,
+			ColorLookup,
+			ColorOverlay,
+		];
+		for kind in kinds {
+			let operation = EffectOperation::default_for(kind);
+			assert_eq!(operation.kind(), kind);
+			assert_eq!(Effect::new(&operation).0.attributes().iter_any().count(), 0, "{kind} stamps no defaults");
+		}
+
+		// A parameter in one of the node's groups rides the attribute named with the group's prefix
+		let mut levels = EffectOperation::default_for(Levels);
+		if let EffectOperation::Adjustment(Adjustment::Levels(settings)) = &mut levels {
+			settings.blue.midtones = 1.5;
+		}
+		let row = Effect::new(&levels);
+		assert_eq!(row.0.attribute::<f64>("blue_midtones"), Some(&1.5));
+		assert_eq!(row.operation(), levels);
 	}
 }

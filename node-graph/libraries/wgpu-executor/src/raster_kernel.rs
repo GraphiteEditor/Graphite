@@ -488,7 +488,7 @@ mod tests {
 				for (color, actual) in colors.iter().zip(&adjusted.data().data) {
 					let expected = adjust_color(&adjustment, *color);
 					let difference = (expected.to_vec4() - actual.to_vec4()).abs().max_element();
-					assert!(difference < 0.01, "{adjustment}: {color:?} became {actual:?} on the GPU but {expected:?} on the CPU");
+					assert!(difference < 0.01, "{}: {color:?} became {actual:?} on the GPU but {expected:?} on the CPU", adjustment.kind());
 				}
 			}
 		});

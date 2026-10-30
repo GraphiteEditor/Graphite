@@ -1,15 +1,17 @@
 use crate::raster_kernel::raster_kernel_pipeline;
-use core_types::list::Item;
+use core_types::list::{ATTR_EFFECTS, Item};
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
-use core_types::{Color, Ctx, Interrupt, NodeError};
+use core_types::{ATTR_OPACITY_FILL, Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{BevelDirection, BevelStyle, Effect, EffectOperation, GlowSource, Graphic, Vector, stamp_effect};
+use graphic_types::{Adjustment, BevelDirection, BevelStyle, Effect, EffectOperation, Effects, GlowSource, Graphic, Vector, stamp_effect};
+use raster_kernels::adjustments::{adjust_color, preserves_alpha, with_color_map};
 use vector_types::Gradient;
 use vector_types::vector::style::StrokeAlign;
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::raster_effects::evaluate_raster_effects;
+use wgpu_executor::raster_kernel::adjust_raster;
 
 /// Content an effect can be carried out on. A GPU raster has the effect carried out into its pixels at once, with the same kernels the renderer uses,
 /// while other content has it stamped onto its effects, to be carried out wherever it's rendered or read.
@@ -19,20 +21,53 @@ pub trait ApplyEffect: Sized {
 		stamp_effect(&mut item, Effect::new(&operation));
 		Ok(item)
 	}
+
+	/// The item with an adjustment applied after everything done to it so far.
+	fn apply_adjustment(item: Item<Self>, adjustment: Adjustment, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		Self::apply_effect(item, EffectOperation::Adjustment(adjustment), pipeline)
+	}
 }
 
 impl ApplyEffect for Graphic {}
 impl ApplyEffect for Vector {}
 impl ApplyEffect for Raster<CPU> {}
-impl ApplyEffect for Color {}
-impl ApplyEffect for Gradient {}
 impl ApplyEffect for String {}
+
+/// A color has no pixels for an effect to read, so an adjustment is carried out on the color itself with its kernel's mapping.
+impl ApplyEffect for Color {
+	fn apply_adjustment(item: Item<Self>, adjustment: Adjustment, _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		let mut item = item;
+		*item.element_mut() = adjust_color(&adjustment, *item.element());
+		Ok(item)
+	}
+}
+
+/// A gradient has no pixels for an effect to read, so an adjustment is carried out on its colors with its kernel's mapping.
+impl ApplyEffect for Gradient {
+	fn apply_adjustment(item: Item<Self>, adjustment: Adjustment, _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		let mut item = item;
+		let adjusted = with_color_map(&adjustment, |map| item.element().map_colors(|color| map(*color)));
+		*item.element_mut() = adjusted;
+		Ok(item)
+	}
+}
 
 impl ApplyEffect for Raster<GPU> {
 	fn apply_effect(item: Item<Self>, operation: EffectOperation, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
 		let mut item = item;
 		stamp_effect(&mut item, Effect::new(&operation));
 		evaluate_raster_effects(item, pipeline)
+	}
+
+	fn apply_adjustment(item: Item<Self>, adjustment: Adjustment, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		// With a fill to fade the content first, an adjustment changing alpha goes through the effects that apply it in that order
+		let fill = item.attribute_cloned_or::<f64>(ATTR_OPACITY_FILL, 1.);
+		if item.attribute::<Effects>(ATTR_EFFECTS).is_some() || (fill < 1. && !preserves_alpha(&adjustment)) {
+			return Self::apply_effect(item, EffectOperation::Adjustment(adjustment), pipeline);
+		}
+
+		let (raster, attributes) = item.into_parts();
+		Ok(Item::from_parts(adjust_raster(&adjustment, raster, pipeline)?, attributes))
 	}
 }
 

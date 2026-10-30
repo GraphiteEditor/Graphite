@@ -596,6 +596,7 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 	use core_types::transform::Footprint;
 	use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM};
 	use glam::DVec2;
+	use graphic_types::adjustment::{Adjustment, LevelsRecord, LevelsSettings};
 	use graphic_types::raster_types::{CPU, GPU, Image, Raster, Storage};
 	use graphic_types::vector_types::vector::style::StrokeAlign;
 	use graphic_types::{BevelDirection, BevelStyle, EffectOperation, Effects, GlowSource};
@@ -614,6 +615,13 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 		altitude: 30.,
 		highlight_color: GraphicColor::from_rgbaf32_unchecked(1., 0.9, 0.2, 0.75),
 		shadow_color,
+	};
+	let identity = LevelsRecord {
+		shadows: 0.,
+		midtones: 1.,
+		highlights: 100.,
+		output_minimums: 0.,
+		output_maximums: 100.,
 	};
 
 	let cases = [
@@ -683,6 +691,30 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 		vec![bevel(BevelStyle::OuterBevel, BevelDirection::Down, 6., 2.)],
 		vec![bevel(BevelStyle::Emboss, BevelDirection::Up, 10., 0.)],
 		vec![bevel(BevelStyle::PillowEmboss, BevelDirection::Up, 12., 1.)],
+		// Bends alpha, so the fill must fade the content before it on both
+		vec![EffectOperation::Adjustment(Adjustment::Levels(Box::new(LevelsSettings {
+			composite: identity,
+			red: identity,
+			green: identity,
+			blue: identity,
+			alpha: LevelsRecord { midtones: 2.2, ..identity },
+		})))],
+		// An adjustment between two effects acts on the first's result, and one after the shadows leaves what lies beneath alone
+		vec![
+			blur(3., false, false),
+			EffectOperation::Adjustment(Adjustment::Invert),
+			EffectOperation::DropShadow {
+				color: shadow_color,
+				offset: DVec2::new(5., 5.),
+				blur: 2.,
+				spread: 0.,
+			},
+			EffectOperation::Adjustment(Adjustment::Exposure {
+				exposure: -0.5,
+				offset: 0.,
+				gamma_correction: 1.,
+			}),
+		],
 	];
 
 	let Some(executor) = executor() else { return };
@@ -737,4 +769,162 @@ fn a_rasters_evaluated_effects_match_the_rendered_effects_group() {
 			assert!(worst <= 2, "{effects:?} at fill {fill} differs from the render by up to {worst} levels");
 		}
 	}
+}
+
+#[test]
+fn effects_groups_carry_out_adjustments_like_their_kernels_map_colors() {
+	use core_types::Color as GraphicColor;
+	use core_types::list::Item;
+	use graphic_types::adjustment::*;
+	use graphic_types::raster_types::{Image, Raster};
+	use graphic_types::{EffectOperation, Effects};
+	use raster_kernels::adjustments::adjust_color;
+
+	// Opaque colors spread across the RGB cube, one per pixel, on whole 8-bit levels as the content's 8-bit render holds them
+	let size = UVec2::new(64, 64);
+	let channel = |value: u32| ((value % 64) * 4) as f32 / 255.;
+	let colors: Vec<GraphicColor> = (0..size.x * size.y)
+		.map(|index| GraphicColor::from_gamma_srgb_channels(channel(index % 64), channel(index / 64), channel(index * 7 + index / 64 * 13), 1.))
+		.collect();
+	let raster = Raster::new_cpu(Image {
+		width: size.x,
+		height: size.y,
+		data: colors.clone(),
+	});
+
+	let levels_record = |shadows, midtones, highlights| LevelsRecord {
+		shadows,
+		midtones,
+		highlights,
+		output_minimums: 0.,
+		output_maximums: 100.,
+	};
+	let identity = levels_record(0., 1., 100.);
+	let sliders = |hue, saturation, lightness| HueSaturationSliders { hue, saturation, lightness };
+	let range = |sliders, falloff_start, range_start, range_end, falloff_end| HueRangeSettings {
+		sliders,
+		falloff_start,
+		range_start,
+		range_end,
+		falloff_end,
+	};
+	let zero = sliders(0., 0., 0.);
+
+	let runs: Vec<Vec<Adjustment>> = vec![
+		vec![
+			Adjustment::Levels(Box::new(LevelsSettings {
+				composite: levels_record(10., 1.4, 90.),
+				red: identity,
+				green: levels_record(5., 0.8, 100.),
+				blue: identity,
+				alpha: identity,
+			})),
+			Adjustment::Exposure {
+				exposure: 0.5,
+				offset: 0.,
+				gamma_correction: 1.2,
+			},
+			Adjustment::Invert,
+		],
+		vec![
+			Adjustment::HueSaturation(Box::new(HueSaturationSettings {
+				master: sliders(25., 30., 5.),
+				colorize: false,
+				colorize_sliders: zero,
+				reds: range(sliders(-15., 40., 0.), 315., 345., 15., 45.),
+				yellows: range(zero, 15., 45., 75., 105.),
+				greens: range(zero, 75., 105., 135., 165.),
+				cyans: range(zero, 135., 165., 195., 225.),
+				blues: range(zero, 195., 225., 255., 285.),
+				magentas: range(zero, 255., 285., 315., 345.),
+			})),
+			Adjustment::Desaturate { method: DesaturateMethod::LumaRec601 },
+		],
+		vec![Adjustment::GradientMap {
+			gradient: Item::new_from_element(graphic_types::vector_types::Gradient::from(vec![
+				GraphicColor::from_rgbaf32_unchecked(0.1, 0., 0.4, 1.),
+				GraphicColor::from_rgbaf32_unchecked(1., 0.8, 0.2, 1.),
+			])),
+			reverse: false,
+		}],
+		vec![Adjustment::Vibrance { vibrance: 60., saturation: 20. }],
+		vec![Adjustment::Threshold {
+			min_luminance: 30.,
+			max_luminance: 70.,
+		}],
+		vec![Adjustment::Posterize { levels: 3 }],
+	];
+
+	for run in runs {
+		let effects = Effects::from_operations(run.iter().cloned().map(EffectOperation::Adjustment));
+		let draw = |scene: &mut VelloSceneBuilder| {
+			let bounds = Rect::new(0., 0., size.x as f64, size.y as f64);
+			scene.draw_effects(&effects, 1., Some(bounds), &mut |scene| {
+				scene.draw_raster(raster.clone(), peniko::ImageSampler::new(), Affine::IDENTITY)
+			});
+		};
+		let Some(gpu) = render(size, draw) else { return };
+
+		let mut worst = 0;
+		for (index, color) in colors.iter().enumerate() {
+			let mapped = run.iter().fold(*color, |color, adjustment| adjust_color(adjustment, color));
+			let cpu = mapped.to_gamma_srgb_channels().map(|channel| (channel * 255.).round() as i32);
+			for channel in 0..3 {
+				worst = worst.max((cpu[channel] - gpu[index][channel] as i32).unsigned_abs());
+			}
+		}
+		let names = run.iter().map(|adjustment| adjustment.kind().to_string()).collect::<Vec<_>>().join(" + ");
+		assert!(worst <= 1, "{names} differs from its kernels' CPU mapping by up to {worst} levels");
+	}
+}
+
+#[test]
+fn effects_groups_keep_the_empty_space_empty_when_an_adjustment_changes_alpha() {
+	use graphic_types::adjustment::Adjustment;
+	use graphic_types::{EffectOperation, Effects};
+
+	// A half-transparent square made opaque, around which nothing should appear
+	let size = UVec2::new(16, 16);
+	let square = Rect::new(4., 4., 12., 12.);
+	let effects = Effects::from_operations([EffectOperation::Adjustment(Adjustment::MakeOpaque)]);
+	let draw = |scene: &mut VelloSceneBuilder| {
+		scene.draw_effects(&effects, 1., Some(Rect::new(0., 0., 16., 16.)), &mut |scene| {
+			scene.fill(Fill::NonZero, Affine::IDENTITY, Color::new([1., 1., 1., 0.5]), None, &square)
+		});
+	};
+
+	let Some(pixels) = render(size, draw) else { return };
+	assert_eq!(pixels[(8 * size.x + 8) as usize][3], 255, "the content becomes opaque");
+	assert_eq!(pixels[(size.x + 1) as usize], [0; 4], "the empty space stays empty");
+}
+
+#[test]
+fn evaluating_leading_adjustments_keeps_the_colors_of_transparent_pixels() {
+	use crate::WgpuPipelineCache;
+	use crate::raster_effects::evaluate_raster_effects;
+	use crate::shader_runtime::raster_kernel_runtime::RasterKernelRuntime;
+	use core_types::Color as GraphicColor;
+	use core_types::list::{ATTR_EFFECTS, Item};
+	use core_types::ops::{Convert, ConvertAsync};
+	use core_types::transform::Footprint;
+	use graphic_types::adjustment::Adjustment;
+	use graphic_types::raster_types::{CPU, GPU, Image, Raster};
+	use graphic_types::{EffectOperation, Effects};
+	use raster_kernels::adjustments::adjust_color;
+
+	let Some(executor) = executor() else { return };
+	let pipeline = WgpuPipelineCache::default();
+	executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+
+	// A color hidden under full transparency, which only the straight colors of the raster itself keep for Make Opaque to reveal
+	let hidden = GraphicColor::from_rgbaf32_unchecked(0.8, 0.4, 0.2, 0.);
+	let uploaded: Raster<GPU> = Raster::new_cpu(Image::new(2, 2, hidden)).convert(Footprint::DEFAULT, executor.clone());
+	let effects = Effects::from_operations([Adjustment::MakeOpaque, Adjustment::Invert].map(EffectOperation::Adjustment));
+	let item = Item::new_from_element(uploaded).with_attribute(ATTR_EFFECTS, effects);
+
+	let evaluated = evaluate_raster_effects(item, &pipeline).unwrap();
+	let raster: Raster<CPU> = futures::executor::block_on(evaluated.into_element().convert(Footprint::DEFAULT, executor.clone()));
+	let expected = adjust_color(&Adjustment::Invert, hidden.with_alpha(1.));
+	let difference = (raster.data[0].to_vec4() - expected.to_vec4()).abs().max_element();
+	assert!(difference < 1e-3, "got {:?} rather than {expected:?}", raster.data[0]);
 }
