@@ -173,14 +173,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
 
-				#[cfg(target_family = "wasm")]
+				#[cfg(all(target_family = "wasm", feature = "wasm"))]
 				responses.add(async {
 					PortfolioMessage::DocumentStoreClaimed {
 						owned: super::document_store_owner::claim().await,
 					}
 					.into()
 				});
-				#[cfg(not(target_family = "wasm"))]
+				#[cfg(not(all(target_family = "wasm", feature = "wasm")))]
 				responses.add(PortfolioMessage::DocumentStoreClaimed { owned: true });
 
 				// Initialize the frontend with environment information
