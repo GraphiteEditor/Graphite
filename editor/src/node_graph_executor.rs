@@ -36,7 +36,7 @@ pub struct ExecutionResponse {
 	execution_id: u64,
 	result: ExecutionResult,
 	responses: VecDeque<FrontendMessage>,
-	/// The layers whose thumbnails the runtime let go of, which it renders anew if they're monitored again.
+	/// The layers whose thumbnails the runtime let go of, which it renders anew if they have content to show again.
 	dropped_thumbnails: Vec<NodeId>,
 	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
@@ -200,6 +200,7 @@ impl NodeGraphExecutor {
 				resources,
 				node_to_inspect: Vec::new(),
 				previewed: Vec::new(),
+				layers: document.network_interface.layer_paths(),
 			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
@@ -211,6 +212,7 @@ impl NodeGraphExecutor {
 		if network_hash != self.node_graph_hash || self.node_graph_document != Some(document_id) || ignore_hash {
 			let network = document.network_interface.document_network().clone();
 			let previewed = document.network_interface.previewed_nodes();
+			let layers = document.network_interface.layer_paths();
 			self.previous_node_to_inspect.clone_from(&node_to_inspect);
 			self.node_graph_hash = network_hash;
 			self.node_graph_document = Some(document_id);
@@ -223,6 +225,7 @@ impl NodeGraphExecutor {
 					resources,
 					node_to_inspect,
 					previewed,
+					layers,
 				}))
 				.map_err(|e| e.to_string())?;
 		} else if self.previous_node_to_inspect != node_to_inspect {
@@ -398,6 +401,7 @@ impl NodeGraphExecutor {
 				resources,
 				node_to_inspect: Vec::new(),
 				previewed,
+				layers: document.network_interface.layer_paths(),
 			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
@@ -733,6 +737,7 @@ impl NodeGraphExecutor {
 				resources,
 				node_to_inspect: full_path.clone(),
 				previewed: Vec::new(),
+				layers: document.network_interface.layer_paths(),
 			}))
 			.is_err()
 		{

@@ -1319,6 +1319,28 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		}
 	}
 
+	// The Merge and Artboard networks no longer pass their content through a Monitor node, since thumbnails are found from the layers themselves.
+	// Pre-pass for the same reason as the Brush, Transform, and Image migrations above: rebuilding the network orphans its child paths.
+	let monitored_layers: Vec<(NodeId, Vec<NodeId>, DefinitionIdentifier)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::Network(network) = &node.implementation else { return None };
+			let reference = document.network_interface.reference(node_id, &path)?;
+			let is_merge_or_artboard = [DefinitionIdentifier::Network("Merge".into()), DefinitionIdentifier::Network("Artboard".into())].contains(&reference);
+
+			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
+			let has_monitor = network.nodes.values().any(|inner_node| inner_node.implementation == monitor);
+
+			(is_merge_or_artboard && has_monitor).then_some((*node_id, path, reference))
+		})
+		.collect();
+	for (node_id, network_path, reference) in &monitored_layers {
+		let Some(definition) = resolve_document_node_type(reference) else { continue };
+		document.network_interface.replace_implementation(node_id, network_path, &mut definition.default_node_template());
+	}
+
 	// The old "Math" node evaluated an expression over "A" and "B". A lexable static expression not reading a wired `B` becomes "Math f(x)"
 	// with `A` as `x` and a constant `B` inlined. Anything else becomes "Extend" feeding "Math f(…)", which reads the pair as `a` and `b`.
 	let math_nodes: Vec<(NodeId, Vec<NodeId>, Vec<NodeInput>)> = document
@@ -4324,6 +4346,47 @@ mod tests {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
+	}
+
+	// Merge and Artboard networks once passed their content through a Monitor node for thumbnails, so their rebuilt networks drop it
+	#[test]
+	fn merge_and_artboard_networks_drop_their_monitor_node() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplateImplementation;
+
+		for name in ["Merge", "Artboard"] {
+			let node_id = NodeId(1);
+			let mut document = DocumentMessageHandler::default();
+			let mut node_template = resolve_network_node_type(name).expect("The definition should exist").default_node_template();
+			let NodeTemplateImplementation::Network(network_template) = &mut node_template.implementation else {
+				panic!("{name} should be a network node")
+			};
+
+			// Splice a Monitor node into the content entering the exported Extend node, where the old network had it
+			let Some(NodeInput::Node { node_id: extend_id, .. }) = network_template.exports.first().cloned() else {
+				panic!("{name} should export a node")
+			};
+			let monitor_id = NodeId(100);
+			let extend = network_template.nodes.get_mut(&extend_id).expect("The exported node should exist");
+			let content = std::mem::replace(&mut extend.inputs[1], NodeInput::node(monitor_id, 0));
+			let monitor_template = NodeTemplate {
+				inputs: vec![content],
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
+				..Default::default()
+			};
+			network_template.nodes.insert(monitor_id, monitor_template);
+			document.network_interface.insert_node(node_id, node_template, &[]);
+
+			migrate(&mut document);
+
+			let DocumentNodeImplementation::Network(network) = &document.network_interface.document_network().nodes[&node_id].implementation else {
+				panic!("{name} should stay a network node")
+			};
+			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
+			assert!(
+				network.nodes.values().all(|inner_node| inner_node.implementation != monitor),
+				"{name} should no longer have a Monitor node"
+			);
+		}
 	}
 
 	// Regex Find's Match Index is now an integer, so an old instance rounds its stored F64 index and rebuilds the subgraph

@@ -45,6 +45,7 @@ pub struct NodeRuntime {
 	dirty: Arc<AtomicBool>,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
+	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
 
@@ -93,6 +94,8 @@ pub struct GraphUpdate {
 	pub(super) node_to_inspect: Vec<NodeId>,
 	/// The node each network renders in place of its export, paired with that network's path.
 	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+	/// Full path from the root network to every layer, which are the nodes with thumbnails.
+	pub(super) layers: Vec<Vec<NodeId>>,
 }
 
 /// Replaces each network's primary export with its previewed node.
@@ -235,6 +238,7 @@ impl NodeRuntime {
 					resources,
 					node_to_inspect,
 					previewed,
+					layers,
 				}) => {
 					apply_previews(&mut network, &previewed);
 
@@ -243,12 +247,15 @@ impl NodeRuntime {
 						_ => self.inspect_state = InspectState::new(node_to_inspect),
 					}
 
-					self.old_graph = Some(network.clone());
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
 					self.node_graph_warnings.clear();
-					let result = self.update_network(network);
+					let result = self.update_network(network.clone());
+					if result.is_ok() {
+						self.thumbnails.update_sources(&layers, &network, &self.executor);
+						self.old_graph = Some(network);
+					}
 					let node_graph_errors = self.node_graph_errors.clone();
 					let node_graph_warnings = self.node_graph_warnings.clone();
 
@@ -262,7 +269,7 @@ impl NodeRuntime {
 				}
 				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
 					if !render_config.for_export && !render_config.for_eyedropper {
-						self.thumbnails.set_scale(render_config.scale, &self.monitor_nodes);
+						self.thumbnails.set_scale(render_config.scale);
 						self.pending = Some(request);
 					}
 					if render_config.for_export {
@@ -316,7 +323,7 @@ impl NodeRuntime {
 						Vec::new()
 					};
 
-					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor));
+					let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
 
 					let output = match &mut result {
 						ExecutionResult::Value(value) | ExecutionResult::Fallback(value, _) => Some(value),
@@ -391,7 +398,7 @@ impl NodeRuntime {
 
 		// Without an execution to send it along with, the inspected node is evaluated again with its new overrides once the graph is up to date
 		if inspect_again && let Some(inspect_state) = &mut self.inspect_state {
-			let inspect_result = inspect_state.access(&self.executor);
+			let inspect_result = inspect_state.access(&self.executor, self.old_graph.as_ref());
 			self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
 		}
 
@@ -419,14 +426,12 @@ impl NodeRuntime {
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings = warnings;
-		let previous_monitor_ids: HashMap<Vec<NodeId>, NodeId> = std::mem::take(&mut self.monitor_nodes).into_iter().collect();
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
 			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
 			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
 			.collect();
-		self.thumbnails.update_monitors(&previous_monitor_ids, &self.monitor_nodes);
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -470,9 +475,9 @@ impl NodeRuntime {
 		EvaluationErrors(errors.into())
 	}
 
-	/// Updates state data, giving back the layers whose thumbnails were dropped because they're no longer monitored.
+	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
 	async fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
-		let dropped_thumbnails = self.thumbnails.drop_unmonitored(&self.monitor_nodes);
+		let dropped_thumbnails = self.thumbnails.drop_sourceless();
 
 		for (monitor_node_path, _) in &self.monitor_nodes {
 			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {
@@ -647,8 +652,8 @@ impl InspectState {
 		})
 	}
 
-	fn access(&mut self, executor: &DynamicExecutor) -> InspectResult {
-		let node = executor.tree().output_node(&self.inspect_node_path, executor.output());
+	fn access(&mut self, executor: &DynamicExecutor, network: Option<&NodeNetwork>) -> InspectResult {
+		let node = network.and_then(|network| executor.tree().output_node(network, &self.inspect_node_path));
 		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
 
 		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));

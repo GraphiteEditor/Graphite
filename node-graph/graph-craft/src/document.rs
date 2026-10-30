@@ -771,6 +771,35 @@ impl NodeNetwork {
 		}
 	}
 
+	/// The path of the node producing this output once compiled, following network exports and the primary inputs of hidden and Passthrough nodes.
+	pub fn output_source(&self, node_path: &[NodeId], output_index: usize) -> Option<Vec<NodeId>> {
+		let (node_id, network_path) = node_path.split_last()?;
+		let node = self.nested_network(network_path)?.nodes.get(node_id)?;
+
+		let passthrough = DocumentNodeImplementation::ProtoNode(graphene_core::ops::passthrough::IDENTIFIER);
+		if !node.visible || node.implementation == passthrough {
+			return self.input_source(network_path, node.inputs.first()?);
+		}
+
+		match self.implementation_network(&node.implementation) {
+			Some(network) => self.input_source(node_path, network.exports.get(output_index)?),
+			None => Some(node_path.to_vec()),
+		}
+	}
+
+	/// The path of the node producing what this input in the network at the path receives, following imports out to the network node's inputs.
+	pub fn input_source(&self, network_path: &[NodeId], input: &NodeInput) -> Option<Vec<NodeId>> {
+		match input {
+			NodeInput::Node { node_id, output_index } => self.output_source(&[network_path, &[*node_id]].concat(), *output_index),
+			NodeInput::Import { import_index, .. } => {
+				let (network_node_id, parent_network_path) = network_path.split_last()?;
+				let network_node = self.nested_network(parent_network_path)?.nodes.get(network_node_id)?;
+				self.input_source(parent_network_path, network_node.inputs.get(*import_index)?)
+			}
+			_ => None,
+		}
+	}
+
 	pub fn inline_definitions(&mut self) -> Result<(), DefinitionError> {
 		let mut inliner = DefinitionInliner {
 			definitions: std::mem::take(&mut self.definitions),
@@ -1563,6 +1592,60 @@ mod test {
 			..Default::default()
 		};
 		assert_eq!(network, mapped_add);
+	}
+
+	#[test]
+	fn output_source_follows_exports_imports_and_hidden_nodes() {
+		let proto_node = |inputs: Vec<NodeInput>| DocumentNode {
+			inputs,
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
+			..Default::default()
+		};
+		let network_node = |input: NodeInput, network: NodeNetwork| DocumentNode {
+			inputs: vec![input],
+			implementation: DocumentNodeImplementation::Network(network),
+			..Default::default()
+		};
+
+		// Network 2 passes its import through to its export, network 3 exports its inner node 0, and node 4 is hidden
+		let passing_network = NodeNetwork {
+			exports: vec![NodeInput::import(concrete!(i64), 0)],
+			..Default::default()
+		};
+		let wrapping_network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(0), 0)],
+			nodes: [(NodeId(0), proto_node(vec![NodeInput::import(concrete!(i64), 0)]))].into_iter().collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(4), 0)],
+			nodes: [
+				(NodeId(1), proto_node(vec![NodeInput::value(TaggedValue::Integer(1), false)])),
+				(NodeId(2), network_node(NodeInput::node(NodeId(1), 0), passing_network)),
+				(NodeId(3), network_node(NodeInput::node(NodeId(2), 0), wrapping_network)),
+				(
+					NodeId(4),
+					DocumentNode {
+						visible: false,
+						..proto_node(vec![NodeInput::node(NodeId(3), 0)])
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		assert_eq!(network.output_source(&[NodeId(1)], 0), Some(vec![NodeId(1)]));
+		assert_eq!(
+			network.output_source(&[NodeId(2)], 0),
+			Some(vec![NodeId(1)]),
+			"A network passing its import through gives what's wired to it"
+		);
+		assert_eq!(network.output_source(&[NodeId(3)], 0), Some(vec![NodeId(3), NodeId(0)]), "A network gives what its export is wired to");
+		assert_eq!(network.output_source(&[NodeId(4)], 0), Some(vec![NodeId(3), NodeId(0)]), "A hidden node gives its primary input");
+		assert_eq!(network.input_source(&[NodeId(3)], &NodeInput::import(concrete!(i64), 0)), Some(vec![NodeId(1)]));
+		assert_eq!(network.output_source(&[NodeId(5)], 0), None);
 	}
 
 	#[test]

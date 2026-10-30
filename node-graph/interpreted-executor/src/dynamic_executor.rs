@@ -1,8 +1,8 @@
 use crate::node_registry;
 use core_types::{NodeError, Poll, SourceId, WasmNotSend};
 use graph_craft::Type;
-use graph_craft::document::NodeId;
 use graph_craft::document::value::{TaggedValue, UpcastNode};
+use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::{Any, AnyInput, ConstructionArgs, GraphError, NodeContainer, ProtoNetwork, ProtoNode, SharedNode, SharedNodeContainer, TypeErasedBox, TypeErasedNode, TypingContext};
 use graph_craft::proto::{GraphErrorType, GraphErrors};
@@ -322,25 +322,10 @@ impl BorrowTree {
 		self.nodes.get(&id).map(|(node, _, _)| node.clone() as SharedNodeContainer)
 	}
 
-	/// The proto node giving the output of the document node at this path, which for a document node that became several proto nodes
-	/// (like a subnetwork or a node the preprocessor wrapped) is the one among them used outside of them.
-	pub fn output_node(&self, node_path: &[NodeId], graph_output: NodeId) -> Option<NodeId> {
-		if let Some((id, _)) = self.source_map.get(node_path) {
-			return Some(*id);
-		}
-
-		let within = |path: &[NodeId]| path.starts_with(node_path);
-		let inner_nodes: HashSet<NodeId> = self.nodes.iter().filter(|(_, (_, path, _))| within(path)).map(|(id, _)| *id).collect();
-		if inner_nodes.contains(&graph_output) {
-			return Some(graph_output);
-		}
-		self.nodes
-			.values()
-			.filter(|(_, path, _)| !within(path))
-			.flat_map(|(_, _, inputs)| inputs.iter())
-			.filter(|input| inner_nodes.contains(input))
-			.min()
-			.copied()
+	/// The proto node giving the output of the document node at this path in the network the tree was compiled from.
+	pub fn output_node(&self, network: &NodeNetwork, node_path: &[NodeId]) -> Option<NodeId> {
+		let source = network.output_source(node_path, 0)?;
+		self.source_map.get(source.as_slice()).map(|(id, _)| *id)
 	}
 
 	/// The context features this node's output depends on.
