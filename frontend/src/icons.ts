@@ -259,7 +259,7 @@ import NodeMerge from "/../branding/assets/16x16-nodes/node-merge.svg";
 import NodeMin from "/../branding/assets/16x16-nodes/node-min.svg";
 import NodeMinimum from "/../branding/assets/16x16-nodes/node-minimum.svg";
 import NodeMirror from "/../branding/assets/16x16-nodes/node-mirror.svg";
-import NodeMix from "/../branding/assets/16x16-nodes/node-mix.svg";
+import NodeMixColors from "/../branding/assets/16x16-nodes/node-mix-colors.svg";
 import NodeModulo from "/../branding/assets/16x16-nodes/node-modulo.svg";
 import NodeMorph from "/../branding/assets/16x16-nodes/node-morph.svg";
 import NodeMultiply from "/../branding/assets/16x16-nodes/node-multiply.svg";
@@ -538,7 +538,7 @@ export const ICON_16X16_NODES = {
 	NodeMin: { svg: NodeMin, size: 16 },
 	NodeMinimum: { svg: NodeMinimum, size: 16 },
 	NodeMirror: { svg: NodeMirror, size: 16 },
-	NodeMix: { svg: NodeMix, size: 16 },
+	NodeMixColors: { svg: NodeMixColors, size: 16 },
 	NodeModulo: { svg: NodeModulo, size: 16 },
 	NodeMorph: { svg: NodeMorph, size: 16 },
 	NodeMultiply: { svg: NodeMultiply, size: 16 },
