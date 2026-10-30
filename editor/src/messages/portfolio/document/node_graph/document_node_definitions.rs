@@ -611,10 +611,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							..Default::default()
 						},
 						NodeTemplate {
-							inputs: vec![
-								NodeInput::node(NodeId(0), 0),
-								NodeInput::scope(raster_nodes::raster_kernel::raster_kernel_pipeline::IDENTIFIER.as_str().to_string()),
-							],
+							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::bytes_to_image::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 							..Default::default()

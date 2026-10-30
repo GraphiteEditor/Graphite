@@ -16,7 +16,6 @@ use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::RedGreenBlueAlpha;
-use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
@@ -1859,35 +1858,6 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::Integer(integer), exposed), &network_path);
 	}
 
-	let cpu_raster_type_defaults: Vec<(NodeId, Vec<NodeId>, usize, Type, bool)> = document
-		.network_interface
-		.document_network()
-		.recursive_nodes()
-		.flat_map(|(node_id, node, path)| {
-			node.inputs
-				.iter()
-				.enumerate()
-				.filter_map(|(index, input)| {
-					let NodeInput::Value { tagged_value, exposed } = input else { return None };
-					let TaggedValue::TypeDefault(stored_type) = &**tagged_value else { return None };
-					let gpu_type = if *stored_type == item!(Raster<CPU>) {
-						item!(Raster<GPU>)
-					} else if *stored_type == list!(Raster<CPU>) {
-						list!(Raster<GPU>)
-					} else {
-						return None;
-					};
-					Some((*node_id, path.clone(), index, gpu_type, *exposed))
-				})
-				.collect::<Vec<_>>()
-		})
-		.collect();
-	for (node_id, network_path, index, gpu_type, exposed) in cpu_raster_type_defaults {
-		document
-			.network_interface
-			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::type_default(gpu_type, exposed), &network_path);
-	}
-
 	// Bringing an old document up to date is not a set of edits on it, it is how the document arrives.
 	// The upgrades run through the ordinary mutators, so the store records them; dropping what they
 	// recorded leaves the opened document as the baseline rather than as a pile of changes to itself.
@@ -3575,8 +3545,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			graphene_std::raster_nodes::effects::blur::IDENTIFIER,
 			graphene_std::raster_nodes::image_color_palette::image_color_palette::IDENTIFIER,
 			graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
-			graphene_std::raster_nodes::std_nodes::image::IDENTIFIER,
-			graphene_std::platform_application_io::bytes_to_image::IDENTIFIER,
 			graphene_std::platform_application_io::image_to_bytes::IDENTIFIER,
 			graphene_std::platform_application_io::rasterize::IDENTIFIER,
 		]
@@ -4672,7 +4640,7 @@ mod tests {
 			migrate(&mut document);
 
 			let image_node = &document.network_interface.document_network().nodes[&image_id];
-			assert_eq!(image_node.inputs.len(), 3, "the image node should gain its placeholder primary input and pipeline scope input");
+			assert_eq!(image_node.inputs.len(), 2, "the image node should gain its placeholder primary input");
 			let migrated = &image_node.inputs[1];
 			match legacy_input.as_value() {
 				None => assert_eq!(migrated.as_node(), Some(upstream_id), "the wire should sit at input 1"),
@@ -4704,27 +4672,6 @@ mod tests {
 
 		let migrated = &document.network_interface.document_network().nodes[&node_id].inputs[1];
 		assert_eq!(migrated.as_value(), Some(&TaggedValue::TypeDefault(item!(Resource))), "the bare default should become the item default");
-		assert!(matches!(migrated, NodeInput::Value { exposed: true, .. }), "the exposed flag should be kept");
-	}
-
-	#[test]
-	fn cpu_raster_type_defaults_become_gpu_defaults() {
-		let node_id = NodeId(1);
-		let mut document = DocumentMessageHandler::default();
-		let mut blur_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::effects::blur::IDENTIFIER))
-			.expect("the definition should exist")
-			.default_node_template();
-		blur_template.inputs[0] = NodeInput::type_default(item!(Raster<CPU>), true);
-		document.network_interface.insert_node(node_id, blur_template, &[]);
-
-		migrate(&mut document);
-
-		let migrated = &document.network_interface.document_network().nodes[&node_id].inputs[0];
-		assert_eq!(
-			migrated.as_value(),
-			Some(&TaggedValue::TypeDefault(item!(Raster<GPU>))),
-			"the CPU raster default should become the GPU raster default"
-		);
 		assert!(matches!(migrated, NodeInput::Value { exposed: true, .. }), "the exposed flag should be kept");
 	}
 

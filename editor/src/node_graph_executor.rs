@@ -1238,3 +1238,82 @@ mod test {
 		}
 	}
 }
+
+#[cfg(test)]
+mod raster_input_adapter_tests {
+	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::ProtoNodeIdentifier;
+	use graph_craft::document::{DocumentNodeImplementation, NodeId};
+	use graphene_std::Effects;
+	use graphene_std::list::{ATTR_EFFECTS, Item};
+	use graphene_std::ops::ConvertAsync;
+	use graphene_std::raster_nodes::adjustments::invert;
+	use graphene_std::raster_nodes::dehaze::dehaze;
+	use graphene_std::raster_nodes::filter::median_filter;
+	use graphene_std::raster_types::{CPU, GPU, Raster};
+	use graphene_std::transform::Footprint;
+
+	/// A document whose image feeds `nodes` in turn, ending in the export, with each node's ID.
+	async fn image_through(editor: &mut EditorTestUtils, color: Color, nodes: &[ProtoNodeIdentifier]) -> Vec<NodeId> {
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(4, 4, color), None).await;
+		let image = editor
+			.active_document()
+			.network_interface
+			.document_network()
+			.nodes
+			.iter()
+			.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::raster_nodes::std_nodes::image::IDENTIFIER))
+			.map(|(id, _)| *id)
+			.expect("the pasted image should be an Image node");
+
+		let mut ids = Vec::new();
+		let mut previous = OutputConnector::node(image, 0);
+		for (index, identifier) in nodes.iter().enumerate() {
+			let id = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(identifier.clone()), (index as i32 + 1) * 10, 0).await;
+			let input = InputConnector::node_at_index(id, 0);
+			editor.active_document_mut().network_interface.create_wire(&previous, &input, &[]);
+			previous = OutputConnector::node(id, 0);
+			ids.push(id);
+		}
+		editor.active_document_mut().network_interface.create_wire(&previous, &InputConnector::Export(0), &[]);
+		ids
+	}
+
+	async fn read(editor: &EditorTestUtils, raster: Raster<GPU>) -> Raster<CPU> {
+		let executor = editor.gpu_executor();
+		raster.convert(Footprint::DEFAULT, executor).await
+	}
+
+	#[tokio::test]
+	async fn an_images_stamped_effects_are_carried_out_before_the_gpu_only_node_it_feeds() {
+		let mut editor = EditorTestUtils::create();
+		image_through(&mut editor, Color::WHITE, &[invert::IDENTIFIER, median_filter::IDENTIFIER, invert::IDENTIFIER]).await;
+
+		let instrumented = editor.eval_graph_until_finished().await.expect("the CPU raster should reach Median through its input adapter");
+		let reached_median: Item<Raster<CPU>> = instrumented
+			.grab_all_input::<median_filter::ImageFrameInput, Item<Raster<CPU>>>(&editor.runtime)
+			.next()
+			.expect("the image should arrive at Median as a CPU raster");
+		assert!(reached_median.attribute::<Effects>(ATTR_EFFECTS).is_some(), "the first Invert should only stamp the image");
+
+		// Median at its default radius passes its input through, so its output shows what the adapter gave it
+		let output = instrumented
+			.grab_all_input::<invert::InputInput, Item<Raster<GPU>>>(&editor.runtime)
+			.next()
+			.expect("Median should output a GPU raster");
+		assert!(output.attribute::<Effects>(ATTR_EFFECTS).is_none(), "no stamp should be left to apply after Median");
+		let raster = read(&editor, output.into_element()).await;
+		assert!(raster.data[0].r() < 0.01, "the white image should be black by the time Median reads it, not {:?}", raster.data[0]);
+	}
+
+	#[tokio::test]
+	async fn an_image_feeding_dehaze_compiles_and_renders_without_a_migration() {
+		let mut editor = EditorTestUtils::create();
+		image_through(&mut editor, Color::from_rgbaf32_unchecked(0.5, 0.6, 0.7, 1.), &[dehaze::IDENTIFIER]).await;
+
+		// A compile error or a failed render fails this
+		editor.eval_graph_uninstrumented().await.expect("the image should reach Dehaze through its input adapter");
+	}
+}

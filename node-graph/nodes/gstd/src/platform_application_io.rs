@@ -1,10 +1,11 @@
 use core_types::Ctx;
+use core_types::NodeError;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::ops::{Convert, ConvertAsync};
+use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
-use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, Interrupt, NodeError};
+use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM};
 use glam::{DAffine2, UVec2};
 pub use graph_craft::application_io::resource::{Resource, ResourceHash};
 pub use graph_craft::application_io::*;
@@ -12,8 +13,8 @@ pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
-use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{GPU, Raster, Storage};
+use graphic_types::raster_types::{CPU, GPU, Raster, Storage};
+use graphic_types::raster_types::{Image, ImageError};
 use raster_nodes::raster_kernel::raster_kernel_pipeline;
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
@@ -219,15 +220,14 @@ fn pending_resource(_primary: &(), _url: &Item<String>) -> Item<Resource> {
 ///
 /// Supports the formats: PNG, JPG, GIF, WEBP, TIFF, BMP, TGA, ICO, HDR, EXR.
 #[node_macro::node(category("Data: I/O"), icon("NodeBytesToImage"), name("Bytes to Image"), memoize)]
-fn bytes_to_image(_: impl Ctx, data: Item<Resource>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<::wgpu_executor::WgpuPipelineCache>) -> Result<Item<Raster<GPU>>, Interrupt> {
+fn bytes_to_image(_: impl Ctx, data: Item<Resource>) -> Result<Item<Raster<CPU>>, ImageError> {
 	let data = data.into_element();
 	if data.is_empty() {
 		return Ok(Item::default());
 	}
-	let image = Image::from_encoded(data.as_ref()).map_err(NodeError::new)?;
+	let image = Image::from_encoded(data.as_ref())?;
 
-	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to load an image"))?;
-	Ok(Item::new_from_element(Raster::new_cpu(image).convert(Footprint::DEFAULT, executor)))
+	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
 /// Renders a view of the input graphic within an area defined by the *Footprint*.
@@ -325,7 +325,6 @@ mod tests {
 	use super::*;
 	use core_types::Color;
 	use glam::DVec2;
-	use graphic_types::raster_types::CPU;
 
 	#[tokio::test]
 	async fn rasterize_renders_the_footprint_area_at_its_resolution() {

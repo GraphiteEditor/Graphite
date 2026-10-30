@@ -5,14 +5,13 @@ use core_types::ATTR_TRANSFORM;
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
-use core_types::ops::Convert;
-use core_types::transform::{Footprint, Transform};
+use core_types::transform::Transform;
 use core_types::{Interrupt, NodeError};
 use glam::{DAffine2, DVec2, UVec2};
 use graphene_resource::Resource;
 use graphic_types::generator::{GeneratorPattern, NoiseSettings};
-use raster_types::Image;
-use raster_types::{GPU, Raster, Storage};
+use raster_types::{CPU, GPU, Raster, Storage};
+use raster_types::{Image, ImageError};
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::raster_kernel::render_generator;
 
@@ -204,16 +203,14 @@ fn image(
 	/// The image file to display.
 	#[widget(ParsedWidgetOverride::Custom = "image_file")]
 	resource: Item<Resource>,
-	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
-) -> Result<Item<Raster<GPU>>, Interrupt> {
+) -> Result<Item<Raster<CPU>>, ImageError> {
 	let resource = resource.into_element();
 	if resource.is_empty() {
 		return Ok(Item::default());
 	}
-	let image = Image::from_encoded(resource.as_ref()).map_err(NodeError::new)?;
+	let image = Image::from_encoded(resource.as_ref())?;
 
-	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to load an image"))?;
-	Ok(Item::new_from_element(Raster::new_cpu(image).convert(Footprint::DEFAULT, executor)))
+	Ok(Item::new_from_element(Raster::new_cpu(image)))
 }
 
 /// Generates customizable procedural noise patterns.
