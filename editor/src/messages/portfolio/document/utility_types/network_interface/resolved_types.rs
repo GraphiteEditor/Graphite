@@ -738,6 +738,22 @@ mod tests {
 	}
 
 	#[test]
+	fn a_cpu_raster_feeds_an_input_that_only_takes_gpu_rasters() {
+		use graphene_std::raster_nodes::dehaze::dehaze::ImageFrameInput;
+		use graphene_std::raster_types::{CPU, GPU, Raster};
+
+		let dehaze_image = input_conversions(&ImageFrameInput::NODE_IDENTIFIER).get(ImageFrameInput::INDEX).copied().flatten();
+
+		assert!(
+			type_feeds_input(&item!(Raster<CPU>), &item!(Raster<GPU>), dehaze_image),
+			"a CPU raster should upload through the input adapter"
+		);
+		assert!(type_feeds_input(&list!(Raster<CPU>), &list!(Raster<GPU>), dehaze_image), "a list of CPU rasters should too");
+		assert!(type_feeds_input(&item!(Raster<GPU>), &item!(Raster<GPU>), dehaze_image), "a GPU raster should pass through");
+		assert!(!type_feeds_input(&item!(Raster<GPU>), &item!(Raster<CPU>), None), "nothing downloads a GPU raster implicitly");
+	}
+
+	#[test]
 	fn items_promote_onto_list_inputs() {
 		let paint_conversions = input_conversions(&PaintInput::NODE_IDENTIFIER).get(PaintInput::INDEX).copied().flatten();
 

@@ -383,8 +383,28 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// The nested-generic `Box<VectorModification>` registers directly rather than through the shared callback, since the
 	// extra macro layer mangles the `stringify!` whitespace in its adapter identifier; its cache chain is likewise direct below
 	node_types.extend(rank_adapter_nodes!(Box<VectorModification>));
+	// A GPU raster's input adapter also takes the pipeline to upload a CPU raster wire with, so its rows don't come from `rank_adapter_nodes`
 	#[cfg(feature = "gpu")]
-	node_types.extend(rank_adapter_nodes!(Raster<GPU>));
+	{
+		use graphene_std::raster_nodes::effects::{PassRasterNode, UploadItemNode, UploadListNode};
+		use wgpu_executor::WgpuPipelineCache;
+
+		macro_rules! gpu_raster_input_adapter {
+			($path:ty, $from:ty) => {
+				async_node!(
+					identifier: ProtoNodeIdentifier::new("input_adapter<Raster<GPU>>"),
+					$path,
+					input: Context,
+					fn_params: [Context => $from, Context => Item<WgpuPipelineCache>]
+				)
+			};
+		}
+		node_types.push(gpu_raster_input_adapter!(PassRasterNode<_, _>, Item<Raster<GPU>>));
+		node_types.push(gpu_raster_input_adapter!(PassRasterNode<_, _>, List<Raster<GPU>>));
+		node_types.push(gpu_raster_input_adapter!(UploadItemNode<_, _>, Item<Raster<CPU>>));
+		node_types.push(gpu_raster_input_adapter!(UploadListNode<_, _>, List<Raster<CPU>>));
+		node_types.push(item_to_list_node!(element: Raster<GPU>));
+	}
 	// Type-erased rows for the `ListDyn` connectors (`Read Attribute`, `Count`): any `List` wire erases its element type
 	macro_rules! list_dyn_rows {
 		($($element:ty),* $(,)?) => {{

@@ -25,6 +25,7 @@ interpreted-executor = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
+interpreted-executor = { workspace = true, features = ["gpu"] }
 core-types = { workspace = true }
 dyn-any = { workspace = true }
 futures = { workspace = true }

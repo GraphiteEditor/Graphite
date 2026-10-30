@@ -216,8 +216,17 @@ impl Preprocessor {
 						generated_nodes += 1;
 						let mut original_location = OriginalLocation::default();
 						original_location.auto_convert_index = Some(i);
+						// An adapter whose rows also take a second input gets the pipeline, which it uploads a CPU raster wire with
+						let takes_pipeline = into_node_registry
+							.get(&input_adapter_identifier)
+							.is_some_and(|rows| rows.keys().any(|node_io| node_io.inputs.len() == 2));
+						let mut adapter_inputs = vec![NodeInput::import(generic!(X), i)];
+						if takes_pipeline {
+							adapter_inputs.push(NodeInput::scope(graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline::IDENTIFIER));
+						}
+
 						let document_node = DocumentNode {
-							inputs: vec![NodeInput::import(generic!(X), i)],
+							inputs: adapter_inputs,
 							implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
 							visible: true,
 							compile_metadata: forwarding,
@@ -689,6 +698,8 @@ pub fn input_adapter_identifier<Implementations>(input_types: &HashSet<Type>, no
 		_ => collapse_item_list_pair(input_types)?,
 	};
 	let element_name = match input_type.nested_type() {
+		// Type names drop the generics that tell a GPU raster from a CPU one
+		Type::Item(element) | Type::List(element) if **element == concrete!(raster_types::Raster<raster_types::GPU>) => "Raster<GPU>".to_string(),
 		Type::Item(element) | Type::List(element) => element.identifier_name(),
 		nested if nested.identifier_name() == "ListDyn" => "ListDyn".to_string(),
 		_ => return None,
@@ -828,5 +839,84 @@ mod tests {
 		for identifier in [graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::monitor::IDENTIFIER, ops::passthrough::IDENTIFIER] {
 			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
 		}
+	}
+
+	#[test]
+	fn a_cpu_raster_wire_uploads_through_one_adapter_that_ignores_the_footprint() {
+		use graph_craft::application_io::PlatformEditorApi;
+		use graph_craft::document::value::TaggedValue;
+		use graph_craft::graphene_compiler::Compiler;
+		use graph_craft::item;
+		use graph_craft::proto::TypingContext;
+		use graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline;
+		use graphene_std::raster_nodes::std_nodes::channels_to_image;
+		use graphene_std::raster_types::{CPU, Raster};
+		use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+		use interpreted_executor::util::wrap_network_in_scope;
+		use std::sync::Arc;
+
+		struct NoSpawner;
+		impl Spawn for NoSpawner {
+			fn spawn(&self, _: Task) {}
+		}
+
+		// A CPU raster wired to all four of a node's inputs which only take GPU rasters
+		let source = NodeId(0);
+		let wire = || NodeInput::node(source, 0);
+		let network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [
+				(
+					source,
+					DocumentNode {
+						inputs: vec![NodeInput::value(TaggedValue::TypeDefault(item!(Raster<CPU>)), false)],
+						implementation: DocumentNodeImplementation::ProtoNode(ops::passthrough::IDENTIFIER),
+						..Default::default()
+					},
+				),
+				(
+					NodeId(1),
+					DocumentNode {
+						inputs: vec![
+							NodeInput::value(TaggedValue::None, false),
+							wire(),
+							wire(),
+							wire(),
+							wire(),
+							NodeInput::scope(raster_kernel_pipeline::IDENTIFIER),
+						],
+						implementation: DocumentNodeImplementation::ProtoNode(channels_to_image::IDENTIFIER),
+						..Default::default()
+					},
+				),
+			]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		let runtime = AsyncRuntime::new(Arc::new(NoSpawner), Arc::new(std::time::Instant::now()));
+		let mut network = wrap_network_in_scope(network, Arc::new(PlatformEditorApi::default()), runtime.handle());
+		Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
+		let proto_network = Compiler {}.compile_single(network).unwrap().network;
+
+		// The compiled graph type checks, since a CPU raster feeds the GPU-only inputs through the adapter
+		let mut typing_context = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
+		typing_context.update(&proto_network).expect("the CPU raster wire should reach the GPU-only inputs");
+
+		let identifier = ProtoNodeIdentifier::new("input_adapter<Raster<GPU>>");
+		let adapters: Vec<_> = proto_network.nodes.iter().filter(|(_, node)| node.identifier == identifier).collect();
+		let distinct_ids: HashSet<_> = adapters.iter().map(|(id, _)| *id).collect();
+		assert_eq!(
+			distinct_ids.len(),
+			1,
+			"the identical adapters of the four inputs should share one stable ID, and so one node in the executor"
+		);
+
+		let (_, adapter) = adapters[0];
+		assert!(
+			!adapter.upstream_context_features.contains(core_types::ContextFeatures::FOOTPRINT),
+			"neither the adapter nor what feeds it should read the footprint, leaving it unaffected by panning"
+		);
 	}
 }
