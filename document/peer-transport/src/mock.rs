@@ -89,13 +89,13 @@ impl MockNetwork {
 		while self.step() {}
 	}
 
-	/// Deliver everything in flight to one peer only, so a test can put a packet in one peer's hands and not another's.
+	/// Deliver everything in flight to one peer only.
 	pub fn deliver_to(&mut self, to: TransportPeerId) {
 		let mut shared = self.shared.lock().unwrap();
 		let queues: Vec<_> = shared.in_flight.keys().copied().filter(|&(_, receiver)| receiver == to).collect();
 
 		for key in queues {
-			let packets: VecDeque<SyncPacket> = shared.in_flight.get_mut(&key).map(std::mem::take).unwrap_or_default();
+			let packets = shared.in_flight.get_mut(&key).map(std::mem::take).unwrap_or_default();
 			for packet in packets {
 				shared.inboxes.entry(to).or_default().push_back(TransportEvent::Packet(key.0, packet));
 			}
@@ -107,8 +107,7 @@ impl MockNetwork {
 	}
 }
 
-/// Like a real socket, an endpoint knows only the peers whose connect events it has polled, so it can't send to
-/// a peer before greeting it.
+/// Like a real socket, an endpoint sends only to the peers whose connect events it has polled.
 pub struct MockEndpoint {
 	id: TransportPeerId,
 	shared: Arc<Mutex<Shared>>,

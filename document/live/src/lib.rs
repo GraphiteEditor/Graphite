@@ -1,6 +1,5 @@
-//! A document that lives in a collaborative session rather than on disk. Hosts a session or follows
-//! one, and hands out the current runtime `NodeNetwork` on demand. Owns no executor, window, or
-//! async runtime: the caller spawns the transport driver and decides how to render.
+//! A memory-backed document hosting or following a collaborative session, handing out its runtime `NodeNetwork`
+//! on demand. Owns no executor or async runtime: the caller spawns the transport driver.
 
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
@@ -35,21 +34,22 @@ impl LiveDocument {
 		Ok(Self::host_document(gdd, signaling_server, token, user, spawn))
 	}
 
-	/// Host a session on an already opened document.
 	pub fn host_document(mut gdd: GddV1, signaling_server: &str, token: SessionToken, user: UserId, spawn: impl FnOnce(MessageLoopFuture)) -> Self {
-		let (room, driver) = Room::connect(&token.signaling_url(signaling_server));
-		spawn(driver);
-		gdd.share(room, user);
+		gdd.share(Self::connect(signaling_server, token, spawn), user);
 		Self { gdd, token }
 	}
 
 	/// Join the session under `token`; the document fills in once the host's sync arrives.
 	pub async fn join(signaling_server: &str, token: SessionToken, peer: PeerId, user: UserId, spawn: impl FnOnce(MessageLoopFuture)) -> Result<Self, LiveError> {
 		let mut gdd = Self::empty_document(peer).await?;
+		gdd.join(Self::connect(signaling_server, token, spawn), user);
+		Ok(Self { gdd, token })
+	}
+
+	fn connect(signaling_server: &str, token: SessionToken, spawn: impl FnOnce(MessageLoopFuture)) -> Room {
 		let (room, driver) = Room::connect(&token.signaling_url(signaling_server));
 		spawn(driver);
-		gdd.join(room, user);
-		Ok(Self { gdd, token })
+		room
 	}
 
 	async fn empty_document(peer: PeerId) -> Result<GddV1, FormatError> {
@@ -69,19 +69,19 @@ impl LiveDocument {
 		self.gdd.is_synced()
 	}
 
-	/// Synced and holding every resource the document references, so `network` can be built and run.
+	/// Synced and holding every resource the document references, so [`network`](Self::network) can be built and run.
 	pub fn is_ready(&self) -> bool {
 		self.is_synced() && SyncTarget::missing_resources(&self.gdd).is_empty()
 	}
 
-	/// Resources the document references whose bytes no peer has sent yet; `is_ready` waits on them.
+	/// Referenced resources whose bytes no peer has sent yet.
 	pub fn missing_resources(&self) -> Vec<ResourceHash> {
 		let mut missing: Vec<ResourceHash> = SyncTarget::missing_resources(&self.gdd).into_iter().collect();
 		missing.sort_unstable();
 		missing
 	}
 
-	/// Apply whatever peers sent since the last call and answer their resource requests. Call it regularly.
+	/// Apply what peers sent since the last call and answer their resource requests. Call it regularly.
 	pub async fn poll(&mut self) -> Vec<Event> {
 		let events = self.gdd.poll_peers();
 		for event in &events {
@@ -106,14 +106,14 @@ impl LiveDocument {
 		&mut self.gdd
 	}
 
-	/// The current runtime graph, rebuilt from the registry. Async because proto-node declarations are resources.
+	/// The runtime graph, rebuilt from the registry. Async because proto-node declarations are resources.
 	pub async fn network(&self) -> Result<NodeNetwork, LiveError> {
 		let declarations = self.gdd.declarations(&self.gdd).await;
 		let (network, _metadata) = self.gdd.registry().to_runtime_with_metadata(&declarations)?;
 		Ok(network)
 	}
 
-	/// Byte store for resources received from peers, for an executor to load from.
+	/// Byte store of resources received from peers, for an executor to load from.
 	pub fn resource_proxy(&self) -> ResourceProxy<GddV1Layout> {
 		self.gdd.resource_proxy()
 	}

@@ -6,12 +6,12 @@ use serde::{Deserialize, Serialize};
 pub enum Role {
 	Host,
 	Guest,
-	/// Not yet greeted by a host. See [`Replica::connect`](crate::Replica::connect).
+	/// Not greeted by a host yet. See [`Replica::connect`](crate::Replica::connect).
 	Undecided,
 }
 
-/// How far one peer's broadcasts had got. A peer keeps its `PeerId` across a reconnect but restarts `seq`,
-/// so `epoch` names the incarnation and counters from different epochs are never compared.
+/// How far one peer's broadcasts had got. A peer keeps its `PeerId` across a reconnect but restarts `seq`, so
+/// `epoch` names the connection and counters from different epochs are never compared.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerSeq {
 	pub peer: PeerId,
@@ -22,8 +22,8 @@ pub struct PeerSeq {
 /// MessagePack-encoded on the wire.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum SyncPacket {
-	/// Sent first on every connection. `epoch` and `seq` anchor the receiver's counter for this sender,
-	/// since earlier broadcasts were never sent to it.
+	/// Sent first on every connection and again on a role change. `epoch` and `seq` anchor the receiver's counter
+	/// for this sender, since earlier broadcasts were never sent to it.
 	Hello {
 		peer: PeerId,
 		user: UserId,
@@ -31,7 +31,7 @@ pub enum SyncPacket {
 		epoch: u64,
 		seq: u64,
 	},
-	/// `known_revs` come from `Session::known_revs`, so the host can send only what's missing.
+	/// `known_revs` come from `Session::known_revs`, so the host sends only what is missing.
 	SyncRequest {
 		known_revs: Vec<Rev>,
 	},
@@ -54,16 +54,15 @@ pub enum SyncPacket {
 		#[serde(with = "serde_bytes")]
 		bytes: Vec<u8>,
 	},
-	/// The sender's display name, sent after the hello and on change; the newest wins. Presence is not history,
-	/// so it stays outside the causal broadcast.
+	/// The sender's display name, sent after the hello and on change.
 	Profile {
 		name: String,
 	},
-	/// The sender's pointer, `None` when it left the viewport. Sent at most once a frame; the link identifies the sender.
+	/// The sender's pointer, `None` when it left the viewport.
 	Cursor {
 		position: Option<CursorPosition>,
 	},
-	/// A peer's record of the history's users and their names. Outside the causal order, since it merges in any order.
+	/// Outside the causal broadcast, since it merges in any order.
 	Metadata(HistoryMetadata),
 }
 
@@ -78,13 +77,10 @@ pub struct SyncPayload {
 	pub hot_log: Vec<HotOp>,
 	pub known_revs: Vec<Rev>,
 	pub seen: Vec<PeerSeq>,
-	/// Which hot ops are retired or taken back, so the requester drops any it holds rather than re-entering it as
-	/// live work.
+	/// So the requester drops the retired or taken back hot ops it holds rather than re-entering them as live work.
 	pub retired: RetiredMarks,
-	/// Adopted by a peer that started empty, so opening its own copy later reconnects to the same room.
 	#[serde(default)]
 	pub document_id: Option<u64>,
-	/// So a joiner can name every author.
 	#[serde(default)]
 	pub metadata: HistoryMetadata,
 }
@@ -109,10 +105,9 @@ pub enum BroadcastBody {
 	},
 	/// Hot ops their author took back: they leave every hot log and never retire.
 	Retract(Vec<HotOpId>),
-	/// Everything a peer knows is retired, re-announced with hot ops on a membership change so a peer that joined
-	/// during a retirement or retraction still hears of it.
+	/// Re-announced with hot ops on a membership change, so a peer that joined during a retirement or retraction
+	/// still hears of it.
 	RetiredMarks(RetiredMarks),
-	/// The host dropped a retired interaction out of the line: every peer walks back and follows the head.
 	HeadMove(HeadMove),
 }
 
@@ -134,12 +129,11 @@ impl SyncPacket {
 	}
 }
 
-/// A peer's pointer, with its space so it is drawn only where it means something.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CursorPosition {
 	pub position: [f64; 2],
 	pub space: CursorSpace,
-	/// Icon name of the peer's tool, shown beside the pointer; `None` from a viewer with no tools.
+	/// Icon name of the peer's tool; `None` from a viewer with no tools.
 	pub tool: Option<String>,
 }
 

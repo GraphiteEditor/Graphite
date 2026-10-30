@@ -9,8 +9,8 @@ pub enum TransportEvent {
 	Malformed(TransportPeerId, PacketError),
 }
 
-/// Packet delivery between the peers of one session. Delivery must be reliable and ordered per
-/// sender, which is what lets the `Replica` skip acknowledgement and retransmission.
+/// Packet delivery between the peers of one session. Delivery must be reliable and ordered per sender, since the
+/// `Replica` neither acknowledges nor retransmits.
 pub trait Transport: Send + Sync {
 	fn send(&mut self, to: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError>;
 	fn broadcast_except(&mut self, excluded: Option<TransportPeerId>, packet: &SyncPacket) -> Result<(), PacketError>;
