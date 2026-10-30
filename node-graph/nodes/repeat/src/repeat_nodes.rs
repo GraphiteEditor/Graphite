@@ -1,12 +1,45 @@
 use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, Interrupt, OwnedContextImpl};
+use core_types::transform::Footprint;
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, InjectVarArgs, Interrupt, LazyInput, Node, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
 use vector_types::vector::{no_paths, paths_from_list_row_attributes};
+
+/// The footprint covering what every instance shows of its content, each instance given as the context its content is evaluated in and how it places a row of that content from the row's own transform.
+/// Each instance's content is first probed to learn its rows' transforms. `None` without a `footprint` to cover.
+fn instances_footprint<T, N: Node<Context<'static>, Output = List<T>>, P: Fn(DAffine2) -> DAffine2>(
+	footprint: Option<Footprint>,
+	content: LazyInput<'_, N>,
+	instances: impl IntoIterator<Item = (OwnedContextImpl, P)>,
+) -> Result<Option<Footprint>, Interrupt> {
+	let Some(footprint) = footprint else { return Ok(None) };
+
+	let mut instance_transforms = Vec::new();
+	for (context, place) in instances {
+		let probe = content.eval(context.with_probe_footprint().into_context())?;
+		let placements = probe.iter_attribute_values_or_default::<DAffine2>(ATTR_TRANSFORM).filter(|local| local.matrix2.determinant() != 0.);
+		instance_transforms.extend(placements.map(|local| place(local) * local.inverse()));
+	}
+
+	Ok(Some(footprint.for_instances(instance_transforms)))
+}
+
+/// The context to evaluate an instance's content in, with the `footprint` covering every instance if there is one.
+fn instance_context(context: OwnedContextImpl, footprint: Option<Footprint>) -> OwnedContextImpl {
+	match footprint {
+		Some(footprint) => context.with_footprint(footprint),
+		None => context,
+	}
+}
+
+/// Places a row of repeated content by an instance `transform` applied in place, around the row's own translation.
+fn repeat_placement(local: DAffine2, transform: DAffine2) -> DAffine2 {
+	DAffine2::from_translation(local.translation) * transform * DAffine2::from_mat2(local.matrix2)
+}
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeat"))]
 fn repeat<T: Send + Clone + 'static>(
@@ -88,24 +121,25 @@ fn repeat_array<T: Send + Clone + 'static>(
 	let angle = angle.to_radians();
 	// A single copy has no steps between copies, so the denominator is kept at 1 to avoid `0. / 0.` producing a NaN transform
 	let total = (count - 1).max(1) as f64;
+	let instance_transform = |index: i64| DAffine2::from_angle(index as f64 * angle / total) * DAffine2::from_translation(index as f64 * direction / total);
+	let instance_ctx = |index: i64| OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
+
+	let instances = (0..count).map(|index| (instance_ctx(index), move |local| repeat_placement(local, instance_transform(index))));
+	let footprint = instances_footprint(ctx.try_footprint().copied(), content, instances)?;
 
 	let mut result_list = List::new();
 
 	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
+		let transform = instance_transform(index);
 
-		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
+		let new_ctx = instance_context(instance_ctx(index), footprint);
 		let generated_content = content.eval(new_ctx.into_context())?;
 
 		for row_index in 0..generated_content.len() {
 			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let local_translation = DAffine2::from_translation(local_transform.translation);
-			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
-			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
+			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = repeat_placement(local_transform, transform);
 
 			result_list.push(row);
 		}
@@ -146,23 +180,25 @@ fn repeat_radial<T: Send + Clone + 'static>(
 ) -> Result<List<T>, Interrupt> {
 	let (start_angle, radius, count) = (start_angle.into_element(), radius.into_element(), count.into_element());
 
+	let instance_transform = |index: i64| DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians()) * DAffine2::from_translation(radius * DVec2::Y);
+	let instance_ctx = |index: i64| OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
+
+	let instances = (0..count).map(|index| (instance_ctx(index), move |local| repeat_placement(local, instance_transform(index))));
+	let footprint = instances_footprint(ctx.try_footprint().copied(), content, instances)?;
+
 	let mut result_list = List::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
-		let translation = DAffine2::from_translation(radius * DVec2::Y);
-		let transform = angle * translation;
+		let transform = instance_transform(index);
 
-		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index as usize);
+		let new_ctx = instance_context(instance_ctx(index), footprint);
 		let generated_content = content.eval(new_ctx.into_context())?;
 
 		for row_index in 0..generated_content.len() {
 			let Some(mut row) = generated_content.clone_item(row_index) else { continue };
 
 			let local_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-			let local_translation = DAffine2::from_translation(local_transform.translation);
-			let local_matrix = DAffine2::from_mat2(local_transform.matrix2);
-			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = local_translation * transform * local_matrix;
+			*row.attribute_mut_or_insert_default(ATTR_TRANSFORM) = repeat_placement(local_transform, transform);
 
 			result_list.push(row);
 		}
@@ -195,36 +231,37 @@ fn repeat_on_points<T: Send + Clone + 'static>(
 ) -> Result<List<T>, Interrupt> {
 	let reverse = reverse.into_element();
 
-	let mut result_list = List::new();
-
+	let mut instances = Vec::new();
 	for points_index in 0..points.len() {
 		let Some(points_element) = points.element(points_index) else { continue };
 		let transform: DAffine2 = points.attribute_cloned_or_default(ATTR_TRANSFORM, points_index);
 
-		let mut iteration = |index, point| -> Result<(), Interrupt> {
-			let transformed_point = transform.transform_point2(point);
-
-			let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(transformed_point);
-			let generated_content = content.eval(new_ctx.into_context())?;
-
-			for mut generated_row in generated_content.into_iter() {
-				generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = transformed_point;
-				result_list.push(generated_row);
-			}
-			Ok(())
-		};
-
 		let paths = paths_from_list_row_attributes(&points, points_index).unwrap_or_else(|| no_paths());
 		let positions = points_element.anchor_positions(paths);
-		let range = positions.iter().enumerate();
+		let mut row_instances = positions.iter().enumerate().map(|(index, &point)| (index, transform.transform_point2(point))).collect::<Vec<_>>();
 		if reverse {
-			for (index, &point) in range.rev() {
-				iteration(index, point)?;
-			}
-		} else {
-			for (index, &point) in range {
-				iteration(index, point)?;
-			}
+			row_instances.reverse();
+		}
+		instances.extend(row_instances);
+	}
+
+	let instance_ctx = |index: usize, point: DVec2| OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(point);
+	let placements = instances.iter().map(|&(index, point)| {
+		(instance_ctx(index, point), move |local: DAffine2| {
+			DAffine2::from_translation(point) * DAffine2::from_mat2(local.matrix2)
+		})
+	});
+	let footprint = instances_footprint(ctx.try_footprint().copied(), content, placements)?;
+
+	let mut result_list = List::new();
+
+	for (index, point) in instances {
+		let new_ctx = instance_context(instance_ctx(index, point), footprint);
+		let generated_content = content.eval(new_ctx.into_context())?;
+
+		for mut generated_row in generated_content.into_iter() {
+			generated_row.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM).translation = point;
+			result_list.push(generated_row);
 		}
 	}
 

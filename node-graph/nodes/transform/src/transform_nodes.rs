@@ -2,7 +2,7 @@ use core::f64;
 use core_types::color::Color;
 use core_types::list::{Item, List};
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
-use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, Interrupt, ModifyFootprint, OwnedContextImpl};
+use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, Interrupt, LazyInput, ModifyFootprint, Node, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
@@ -90,68 +90,94 @@ fn transform_list<T: Send + 'static>(
 /// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.
 /// Shear is represented jointly by rotation and scale, so resetting both will also remove any shear.
 #[node_macro::node(category("Transform"), icon("NodeResetTransform"))]
-fn reset_transform<T>(
-	_: impl Ctx,
+fn reset_transform<T: 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
-		Graphic,
-		Vector,
-		Raster<GPU>,
-		Raster<CPU>,
-		Color,
-		Gradient,
-		String,
+		Context -> Item<Graphic>,
+		Context -> Item<Vector>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+		Context -> Item<String>,
 	)]
-	content: Item<T>,
+	content: impl Node<Context<'static>, Output = Item<T>>,
 	#[default(true)] reset_translation: Item<bool>,
 	reset_rotation: Item<bool>,
 	reset_scale: Item<bool>,
-) -> Item<T> {
-	let mut content = content;
+) -> Result<Item<T>, Interrupt> {
 	let (reset_translation, reset_rotation, reset_scale) = (*reset_translation.element(), *reset_rotation.element(), *reset_scale.element());
 
+	let reset = |mut item_transform: DAffine2| {
+		if reset_translation {
+			item_transform.translation = DVec2::ZERO;
+		}
+
+		match (reset_rotation, reset_scale) {
+			(true, true) => item_transform.matrix2 = DMat2::IDENTITY,
+			(true, false) => {
+				let scale = item_transform.scale_magnitudes();
+				item_transform.matrix2 = DMat2::from_diagonal(scale);
+			}
+			(false, true) => {
+				let rotation = item_transform.decompose_rotation();
+				item_transform.matrix2 = DMat2::from_angle(rotation);
+			}
+			(false, false) => {}
+		}
+
+		item_transform
+	};
+
+	let mut content = content.eval(replaced_transform_context(&ctx, content, reset)?.into_context())?;
 	let item_transform = content.attribute_mut_or_insert_default::<DAffine2>(ATTR_TRANSFORM);
+	*item_transform = reset(*item_transform);
 
-	if reset_translation {
-		item_transform.translation = DVec2::ZERO;
-	}
-
-	match (reset_rotation, reset_scale) {
-		(true, true) => item_transform.matrix2 = DMat2::IDENTITY,
-		(true, false) => {
-			let scale = item_transform.scale_magnitudes();
-			item_transform.matrix2 = DMat2::from_diagonal(scale);
-		}
-		(false, true) => {
-			let rotation = item_transform.decompose_rotation();
-			item_transform.matrix2 = DMat2::from_angle(rotation);
-		}
-		(false, false) => {}
-	}
-
-	content
+	Ok(content)
 }
 
 /// Overwrites the transform of the input content with the specified transform.
 #[node_macro::node(category("Transform"), icon("NodeReplaceTransform"))]
-fn replace_transform<T>(
-	_: impl Ctx + InjectFootprint,
+fn replace_transform<T: 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
-		Graphic,
-		Vector,
-		Raster<GPU>,
-		Raster<CPU>,
-		Color,
-		Gradient,
-		String,
+		Context -> Item<Graphic>,
+		Context -> Item<Vector>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+		Context -> Item<String>,
 	)]
-	content: Item<T>,
+	content: impl Node<Context<'static>, Output = Item<T>>,
 	transform: Item<DAffine2>,
-) -> Item<T> {
-	let mut content = content;
-	let transform = *transform.element();
+) -> Result<Item<T>, Interrupt> {
+	let transform = transform.element().transform();
 
-	content.set_attribute(ATTR_TRANSFORM, transform.transform());
-	content
+	let mut content = content.eval(replaced_transform_context(&ctx, content, |_| transform)?.into_context())?;
+	content.set_attribute(ATTR_TRANSFORM, transform);
+
+	Ok(content)
+}
+
+/// The context to evaluate content in whose transform `replace` rewrites, with a footprint covering where that moves the content, learned by probing the content for its transform.
+fn replaced_transform_context<T, N: Node<Context<'static>, Output = Item<T>>>(
+	ctx: &(impl Ctx + CloneVarArgs + ExtractAll),
+	content: LazyInput<'_, N>,
+	replace: impl Fn(DAffine2) -> DAffine2,
+) -> Result<OwnedContextImpl, Interrupt> {
+	let context = OwnedContextImpl::from(ctx.clone());
+	if ctx.try_footprint().is_none() {
+		return Ok(context);
+	}
+
+	let probe = content.eval(OwnedContextImpl::from(ctx.clone()).with_probe_footprint().into_context())?;
+	let item_transform: DAffine2 = probe.attribute_cloned_or_default(ATTR_TRANSFORM);
+	if item_transform.matrix2.determinant() == 0. {
+		return Ok(context);
+	}
+
+	Ok(context.with_instances_footprint([replace(item_transform) * item_transform.inverse()]))
 }
 
 /// Obtains the transform of the input content.
