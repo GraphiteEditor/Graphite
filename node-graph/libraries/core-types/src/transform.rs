@@ -179,6 +179,8 @@ impl Footprint {
 		quality: RenderQuality::Full,
 	};
 
+	pub const MAX_UNION_RESOLUTION: u32 = 8192;
+
 	pub const BOUNDLESS: Self = Self {
 		transform: DAffine2 {
 			matrix2: DMat2::from_diagonal(DVec2::splat(f64::INFINITY)),
@@ -199,6 +201,61 @@ impl Footprint {
 			start: c0.min(c1).min(c2).min(c3),
 			end: c0.max(c1).max(c2).max(c3),
 		}
+	}
+
+	/// The same view squeezed into a single pixel, for evaluating content only to learn where it's placed. A boundless footprint stays boundless.
+	pub fn probe(&self) -> Footprint {
+		if !self.transform.is_finite() {
+			return *self;
+		}
+
+		Footprint {
+			transform: DAffine2::from_scale(1. / self.resolution.max(UVec2::ONE).as_dvec2()) * self.transform,
+			resolution: UVec2::ONE,
+			..*self
+		}
+	}
+
+	/// The footprint for content shown once per transform in `instance_transforms`, covering what every instance shows of it. A boundless footprint stays boundless.
+	pub fn for_instances(&self, instance_transforms: impl IntoIterator<Item = DAffine2>) -> Footprint {
+		if !self.transform.is_finite() {
+			return *self;
+		}
+
+		let views = instance_transforms.into_iter().map(|instance_transform| Footprint {
+			transform: self.transform * instance_transform,
+			..*self
+		});
+		Self::union(views).unwrap_or(*self)
+	}
+
+	/// The footprint covering everything each of `views` shows of the content, axis-aligned in the content's space at the finest pixel density any of them needs.
+	/// Its density is lowered to keep each side within [`Self::MAX_UNION_RESOLUTION`]. `None` when no view has an invertible transform.
+	pub fn union(views: impl IntoIterator<Item = Footprint>) -> Option<Footprint> {
+		let mut bounds: Option<AxisAlignedBbox> = None;
+		let mut density = 0_f64;
+		let mut quality = RenderQuality::Full;
+		for view in views {
+			if view.transform.matrix2.determinant() == 0. {
+				continue;
+			}
+
+			let view_bounds = view.viewport_bounds_in_local_space();
+			bounds = Some(bounds.map_or(view_bounds.clone(), |bounds| bounds.union(&view_bounds)));
+			density = density.max(view.scale().max_element());
+			quality = view.quality;
+		}
+
+		let bounds = bounds?;
+		let size = bounds.size();
+		let density = density.min(Self::MAX_UNION_RESOLUTION as f64 / size.max_element());
+		let resolution = (size * density).ceil().as_uvec2().max(UVec2::ONE);
+
+		Some(Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(density)) * DAffine2::from_translation(-bounds.start),
+			resolution,
+			quality,
+		})
 	}
 
 	pub fn scale(&self) -> DVec2 {
@@ -251,5 +308,61 @@ impl ApplyTransform for DVec2 {
 	}
 	fn left_apply_transform(&mut self, modification: &DAffine2) {
 		*self = modification.transform_point2(*self);
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	fn view(width: u32, height: u32) -> Footprint {
+		Footprint {
+			resolution: UVec2::new(width, height),
+			..Footprint::DEFAULT
+		}
+	}
+
+	#[test]
+	fn instances_footprint_covers_every_instance() {
+		let footprint = view(100, 100).for_instances([DAffine2::IDENTITY, DAffine2::from_translation(DVec2::new(200., 0.))]);
+
+		let bounds = footprint.viewport_bounds_in_local_space();
+		assert!(bounds.start.abs_diff_eq(DVec2::new(-200., 0.), 1e-9), "{bounds:?}");
+		assert!(bounds.end.abs_diff_eq(DVec2::new(100., 100.), 1e-9), "{bounds:?}");
+		assert_eq!(footprint.resolution, UVec2::new(300, 100));
+	}
+
+	#[test]
+	fn instances_footprint_takes_the_finest_density() {
+		let footprint = view(100, 100).for_instances([DAffine2::IDENTITY, DAffine2::from_scale(DVec2::splat(4.))]);
+
+		assert!((footprint.scale().x - 4.).abs() < 1e-9);
+		assert_eq!(footprint.resolution, UVec2::new(400, 400));
+	}
+
+	#[test]
+	fn instances_footprint_caps_its_resolution() {
+		let footprint = view(1000, 1000).for_instances([DAffine2::IDENTITY, DAffine2::from_translation(DVec2::new(1e6, 0.))]);
+
+		assert!(footprint.resolution.max_element() <= Footprint::MAX_UNION_RESOLUTION);
+	}
+
+	#[test]
+	fn boundless_footprint_stays_boundless() {
+		assert_eq!(Footprint::BOUNDLESS.for_instances([DAffine2::from_translation(DVec2::ONE)]), Footprint::BOUNDLESS);
+		assert_eq!(Footprint::BOUNDLESS.probe(), Footprint::BOUNDLESS);
+	}
+
+	#[test]
+	fn probe_covers_the_same_view_in_one_pixel() {
+		let footprint = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(2.)),
+			..view(100, 50)
+		};
+		let probe = footprint.probe();
+
+		assert_eq!(probe.resolution, UVec2::ONE);
+		let (bounds, probe_bounds) = (footprint.viewport_bounds_in_local_space(), probe.viewport_bounds_in_local_space());
+		assert!(bounds.start.abs_diff_eq(probe_bounds.start, 1e-9) && bounds.end.abs_diff_eq(probe_bounds.end, 1e-9));
 	}
 }

@@ -1,6 +1,6 @@
 use crate::runtime::{Generations, SourceId};
 use crate::transform::Footprint;
-use glam::DVec2;
+use glam::{DAffine2, DVec2};
 use std::any::Any;
 use std::borrow::Borrow;
 use std::collections::BTreeSet;
@@ -770,6 +770,20 @@ impl OwnedContextImpl {
 
 	pub fn with_footprint(mut self, footprint: Footprint) -> Self {
 		self.footprint = Some(footprint);
+		self
+	}
+	/// Replaces any footprint with [`Footprint::for_instances`] for content placed once per transform in `instance_transforms`.
+	pub fn with_instances_footprint(mut self, instance_transforms: impl IntoIterator<Item = DAffine2>) -> Self {
+		if let Some(footprint) = &self.footprint {
+			self.footprint = Some(footprint.for_instances(instance_transforms));
+		}
+		self
+	}
+	/// Replaces any footprint with its [`Footprint::probe`].
+	pub fn with_probe_footprint(mut self) -> Self {
+		if let Some(footprint) = &self.footprint {
+			self.footprint = Some(footprint.probe());
+		}
 		self
 	}
 	pub fn with_real_time(mut self, real_time: f64) -> Self {

@@ -9,7 +9,7 @@ use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
-	ExtractAll, OwnedContextImpl,
+	ExtractAll, ModifyFootprint, OwnedContextImpl,
 };
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Vector;
@@ -525,12 +525,20 @@ fn dash_pattern(
 
 #[node_macro::node(category("Graphic"), icon("NodeRepeatOnPoints"), name("Copy to Points"), path(core_types::vector))]
 fn copy_to_points<I: Send + Clone>(
-	_: impl Ctx,
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	points: List<Vector>,
 	/// Artwork to be copied and placed at each point.
 	#[expose]
-	#[implementations(List<Graphic>, List<Vector>, List<String>, List<Raster<GPU>>, List<Raster<CPU>>, List<Color>, List<Gradient>)]
-	content: List<I>,
+	#[implementations(
+		Context -> List<Graphic>,
+		Context -> List<Vector>,
+		Context -> List<String>,
+		Context -> List<Raster<GPU>>,
+		Context -> List<Raster<CPU>>,
+		Context -> List<Color>,
+		Context -> List<Gradient>,
+	)]
+	content: impl Node<Context<'static>, Output = List<I>>,
 	/// Minimum range of randomized sizes given to each placed copy.
 	#[default(1)]
 	#[range]
@@ -558,13 +566,12 @@ fn copy_to_points<I: Send + Clone>(
 	/// Seed to determine unique variations on all the randomized copy angles.
 	#[hard(0..)]
 	random_rotation_seed: Item<i64>,
-) -> List<I> {
+) -> Result<List<I>, Interrupt> {
 	let (random_scale_min, random_scale_max, random_scale_bias) = (random_scale_min.into_element(), random_scale_max.into_element(), random_scale_bias.into_element());
 	let (random_scale_seed, random_rotation, random_rotation_seed) = (random_scale_seed.into_element(), random_rotation.into_element(), random_rotation_seed.into_element());
 
-	let mut result_list = List::new();
-
 	let random_scale_difference = random_scale_max - random_scale_min;
+	let mut instance_transforms = Vec::new();
 
 	for row in points.into_iter() {
 		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed as u64);
@@ -599,19 +606,29 @@ fn copy_to_points<I: Send + Clone>(
 				random_scale_min
 			};
 
-			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
-
-			for row_index in 0..content.len() {
-				let Some(mut row) = content.clone_item(row_index) else { continue };
-				let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-				row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
-
-				result_list.push(row);
-			}
+			instance_transforms.push(DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation));
 		}
 	}
 
-	result_list
+	if instance_transforms.is_empty() {
+		return Ok(List::new());
+	}
+
+	let ctx = OwnedContextImpl::from(ctx).with_instances_footprint(instance_transforms.iter().copied());
+	let content = content.eval(ctx.into_context())?;
+
+	let mut result_list = List::new();
+	for transform in instance_transforms {
+		for row_index in 0..content.len() {
+			let Some(mut row) = content.clone_item(row_index) else { continue };
+			let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
+			row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
+
+			result_list.push(row);
+		}
+	}
+
+	Ok(result_list)
 }
 
 #[node_macro::node(category("Vector: Path"), icon("NodeRoundCorners"), path(core_types::vector))]
@@ -3885,7 +3902,7 @@ fn element_centroid(element: &Vector, paths: &List<Path>, transform: DAffine2, c
 #[cfg(test)]
 mod test {
 	use super::*;
-	use core_types::{Node, Poll};
+	use core_types::{LazyInput, Node, Poll, Status};
 	use kurbo::{CubicBez, ParamCurveNearest, Point, Rect};
 	use vector_types::vector::algorithms::bezpath_algorithms::{TValue, trim_pathseg};
 	use vector_types::vector::algorithms::shapes::ellipse_bezpath;
@@ -3894,9 +3911,9 @@ mod test {
 	#[derive(Clone)]
 	pub struct ValueNode<T: Clone>(T);
 
-	impl<T: Clone> Node<Footprint> for ValueNode<T> {
+	impl<I, T: Clone> Node<I> for ValueNode<T> {
 		type Output = T;
-		fn eval(&self, _input: &Footprint) -> Poll<T> {
+		fn eval(&self, _input: &I) -> Poll<T> {
 			Poll::Final(self.0.clone())
 		}
 	}
@@ -4187,17 +4204,20 @@ mod test {
 			vector.anchor_positions(&paths)
 		};
 
+		let status = Status::new();
+		let element = ValueNode(vector_node_from_bezpath(element));
 		let copy_to_points = super::copy_to_points(
-			Footprint::default(),
+			OwnedContextImpl::default().into_context(),
 			vector_node_from_bezpath(points),
-			vector_node_from_bezpath(element),
+			LazyInput::new(&element, &status, 1),
 			Item::new_from_element(1.),
 			Item::new_from_element(1.),
 			Item::new_from_element(0.),
 			Item::new_from_element(0),
 			Item::new_from_element(0.),
 			Item::new_from_element(0),
-		);
+		)
+		.unwrap();
 		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))));
 		let combined_paths = row_paths(&combined, 0);
 		let combined_copy_to_points = combined.element(0).unwrap();

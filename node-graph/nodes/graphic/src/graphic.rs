@@ -1,7 +1,9 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
+use core_types::{
+	ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, ModifyFootprint, OwnedContextImpl,
+};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
@@ -433,18 +435,18 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 }
 
 #[node_macro::node(category("Graphic"), icon("NodeMirror"))]
-fn mirror<T: BoundingBox + Send + Clone>(
-	_: impl Ctx,
+fn mirror<T: BoundingBox + Send + Clone + 'static>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll + ModifyFootprint,
 	#[implementations(
-		Graphic,
-		Vector,
-		Raster<GPU>,
-		Raster<CPU>,
-		Color,
-		Gradient,
-		String,
+		Context -> Item<Graphic>,
+		Context -> Item<Vector>,
+		Context -> Item<Raster<GPU>>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+		Context -> Item<String>,
 	)]
-	content: Item<T>,
+	content: impl Node<Context<'static>, Output = Item<T>>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: Item<ReferencePoint>,
 	#[unit(" px")] offset: Item<f64>,
 	#[unit("°")]
@@ -452,16 +454,45 @@ fn mirror<T: BoundingBox + Send + Clone>(
 	#[soft(-90..90)]
 	angle: Item<f64>,
 	#[default(true)] keep_original: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, Interrupt> {
 	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());
 
+	let mut content_ctx = OwnedContextImpl::from(ctx.clone());
+	if ctx.try_footprint().is_some() {
+		let probe = content.eval(OwnedContextImpl::from(ctx.clone()).with_probe_footprint().into_context())?;
+		if let Some(reflected_transform) = mirror_reflection(&probe, relative_to_bounds, offset, angle) {
+			content_ctx = content_ctx.with_instances_footprint([DAffine2::IDENTITY, reflected_transform]);
+		}
+	}
+	let content = content.eval(content_ctx.into_context())?;
+
+	let Some(reflected_transform) = mirror_reflection(&content, relative_to_bounds, offset, angle) else {
+		return Ok(List::new_from_item(content));
+	};
+	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+
+	let mut result_list = List::new();
+
+	if keep_original {
+		result_list.push(content.clone());
+	}
+
+	// Add the mirrored copy with the reflection composed onto its transform
+	let mut mirrored = content;
+	mirrored.set_attribute(ATTR_TRANSFORM, reflected_transform * item_transform);
+	result_list.push(mirrored);
+
+	Ok(result_list)
+}
+
+/// The reflection mirroring `content` across the line through its reference point at `angle`, or `None` without rectangular bounds to place it by.
+fn mirror_reflection<T: BoundingBox>(content: &Item<T>, relative_to_bounds: ReferencePoint, offset: f64, angle: f64) -> Option<DAffine2> {
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return List::new_from_item(content);
+		return None;
 	};
 
 	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
@@ -477,24 +508,11 @@ fn mirror<T: BoundingBox + Send + Clone>(
 	);
 
 	// Apply reflection around the reference point
-	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
+	Some(if let Some(mirror_reference_point) = mirror_reference_point {
 		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
 	} else {
 		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
-	};
-
-	let mut result_list = List::new();
-
-	if keep_original {
-		result_list.push(content.clone());
-	}
-
-	// Add the mirrored copy with the reflection composed onto its transform
-	let mut mirrored = content;
-	mirrored.set_attribute(ATTR_TRANSFORM, reflected_transform * item_transform);
-	result_list.push(mirrored);
-
-	result_list
+	})
 }
 
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
