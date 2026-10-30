@@ -6,7 +6,7 @@
 use document_container::{AnyContainer, AsyncContainer};
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, Subject, TimeStamp, Value, WallStamp};
+use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, Sorted, Subject, TimeStamp, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -270,9 +270,12 @@ impl<L: Layout> Gdd<L> {
 			(io::path_for(self.layout.hot_log_basename(), codecs.hot_log), hot_log),
 			(
 				io::path_for(self.layout.registry_basename(), codecs.registry),
-				codecs.registry.write_single(self.session.retired_registry())?,
+				codecs.registry.write_single(&Sorted(self.session.retired_registry()))?,
 			),
-			(io::path_for(self.layout.session_basename(), codecs.session), codecs.session.write_single(&self.session_state())?),
+			(
+				io::path_for(self.layout.session_basename(), codecs.session),
+				codecs.session.write_single(&Sorted(&self.session_state()))?,
+			),
 			(io::path_for(self.layout.manifest_basename(), MANIFEST_CODEC), MANIFEST_CODEC.write_single(&self.manifest)?),
 		];
 
@@ -323,14 +326,14 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	pub(crate) fn persist_session_state(&mut self) -> Result<(), Error> {
-		io::write_single(&self.working, self.layout.session_basename(), self.manifest.codecs.session, &self.session_state())?;
+		io::write_single(&self.working, self.layout.session_basename(), self.manifest.codecs.session, &Sorted(&self.session_state()))?;
 		Ok(())
 	}
 
 	/// Re-snapshot the retired registry to `registry.bin`. `Session::load` trusts it to match the persisted `head`
 	/// and replays the hot log on top, so it must hold no hot op, and any cursor move must re-persist it.
 	pub(crate) fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
-		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.retired_registry())?;
+		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, &Sorted(self.session.retired_registry()))?;
 		Ok(())
 	}
 
