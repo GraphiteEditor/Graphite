@@ -247,9 +247,10 @@ impl MaskType {
 pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
+	/// Maps the user space of the content being rendered into the document's space.
 	pub transform: DAffine2,
-	/// The rasters drawn to canvases rather than embedded, by the buffer ID their placeholders name.
-	pub image_data: HashMap<u64, Raster<CPU>>,
+	/// The images drawn to canvases rather than embedded, by the canvas ID their placeholders name.
+	pub image_data: HashMap<u64, CanvasImage>,
 	indent: usize,
 }
 
@@ -343,7 +344,7 @@ impl SvgRender {
 pub struct SvgRenderOutput {
 	pub svg: String,
 	pub svg_defs: String,
-	pub image_data: HashMap<u64, Raster<CPU>>,
+	pub image_data: HashMap<u64, CanvasImage>,
 }
 
 impl From<&SvgRenderOutput> for SvgRender {
@@ -404,6 +405,9 @@ pub struct RenderParams {
 	pub artboard_background: Option<Color>,
 	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
 	pub viewport_zoom: Option<f64>,
+	/// Screen pixels per document unit for sizing the images drawn to canvases, rounded up to a power of two so the render reruns only when it doubles or halves.
+	/// Zero sends them at full resolution.
+	pub canvas_image_scale: f64,
 	/// The nearest ancestor's appearance, cascading to items that lack their own.
 	pub inherited_appearance: Option<Appearance>,
 }
@@ -872,7 +876,12 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 					attributes.push("style", blend_mode.render());
 				}
 			},
-			|render| element.render_svg(render, render_params),
+			|render| {
+				let parent_transform = render.transform;
+				render.transform = parent_transform * transform;
+				element.render_svg(render, render_params);
+				render.transform = parent_transform;
+			},
 		);
 	};
 
@@ -1345,7 +1354,11 @@ impl Render for List<Artboard> {
 				|render| {
 					let mut render_params = render_params.clone();
 					render_params.artboard_background = Some(background);
+
+					let parent_transform = render.transform;
+					render.transform = parent_transform * DAffine2::from_translation(location);
 					content.render_svg(render, &render_params);
+					render.transform = parent_transform;
 				},
 			);
 		}
@@ -2357,6 +2370,23 @@ fn extend_free_point_targets<'a>(vector: &'a Vector, geometry_paths: &List<Path>
 	})
 }
 
+/// The most times an image drawn to a canvas is halved, which is when 4096 of its pixels fit on one screen pixel.
+const MAX_CANVAS_HALVINGS: u32 = 12;
+
+/// An image the frontend draws to a canvas rather than an SVG embedding it, at a resolution to suit how large it appears.
+#[derive(Clone, Debug, PartialEq, CacheHash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct CanvasImage {
+	pub raster: Raster<CPU>,
+	/// How many times the pixels are halved along each axis for display.
+	pub halvings: u32,
+}
+
+/// Names the canvas for one resolution of an image's pixels, staying the same while the pixels do.
+fn canvas_image_id(buffer_id: u64, halvings: u32) -> u64 {
+	(buffer_id << 4) | halvings as u64
+}
+
 /// Emits one item of CPU raster content as SVG, as a canvas placeholder or an embedded base64 image.
 fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRender, render_params: &RenderParams) {
 	let Some(image) = item.element() else { return };
@@ -2371,8 +2401,18 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 	}
 
 	if render_params.to_canvas() {
-		let id = image.buffer_id();
-		render.image_data.entry(id).or_insert_with(|| image.clone());
+		// An image drawn smaller than its pixels is sent at a resolution halved enough times to still cover each screen pixel
+		let document_to_screen = DAffine2::from_scale(DVec2::splat(render_params.canvas_image_scale));
+		let image_to_screen = document_to_screen * render.transform * transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+		let (largest_scale, _) = singular_values(image_to_screen);
+		let halvings = if largest_scale > 0. {
+			(1. / largest_scale).log2().floor().clamp(0., MAX_CANVAS_HALVINGS as f64) as u32
+		} else {
+			0
+		};
+
+		let id = canvas_image_id(image.buffer_id(), halvings);
+		render.image_data.entry(id).or_insert_with(|| CanvasImage { raster: image.clone(), halvings });
 
 		render.parent_tag(
 			"foreignObject",
@@ -3504,5 +3544,32 @@ mod tests {
 		);
 		let colors: Vec<Color> = samples.iter().map(|&(_, color, _)| color).collect();
 		assert_eq!(colors, vec![Color::TRANSPARENT, Color::BLACK, Color::BLACK, Color::TRANSPARENT]);
+	}
+
+	#[test]
+	fn canvas_images_are_halved_to_suit_the_canvas_image_scale() {
+		use graphic_types::raster_types::Image;
+
+		// An image placed at one pixel per document unit
+		let image = Raster::new_cpu(Image::new(64, 64, Color::WHITE));
+		let list = List::new_from_item(Item::new_from_element(image).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(64.))));
+
+		let halvings = |canvas_image_scale| {
+			let mut render = SvgRender::new();
+			list.render_svg(
+				&mut render,
+				&RenderParams {
+					canvas_image_scale,
+					..Default::default()
+				},
+			);
+			render.image_data.values().map(|canvas_image| canvas_image.halvings).collect::<Vec<_>>()
+		};
+
+		// Zoomed out to a quarter, two halvings still cover each screen pixel
+		assert_eq!(halvings(0.25), [2]);
+		// Zoomed in, or without a scale as in thumbnails, the full resolution is sent
+		assert_eq!(halvings(4.), [0]);
+		assert_eq!(halvings(0.), [0]);
 	}
 }

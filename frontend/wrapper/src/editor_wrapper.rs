@@ -7,12 +7,12 @@ use crate::EDITOR;
 use crate::MESSAGE_BUFFER;
 #[cfg(all(feature = "native", target_family = "wasm"))]
 use crate::editor_commands::EditorCommand;
+#[cfg(feature = "editor")]
+use crate::helpers::render_image_data_to_canvases;
 #[cfg(not(feature = "native"))]
 use crate::helpers::run_node_runtime;
 #[cfg(any(not(feature = "native"), target_family = "wasm"))]
 use crate::helpers::wrapper;
-#[cfg(feature = "editor")]
-use crate::helpers::{calculate_hash, render_image_data_to_canvases};
 use crate::helpers::{request_animation_frame, set_timeout};
 use crate::{EDITOR_HAS_CRASHED, FRONTEND_READY};
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
@@ -22,11 +22,9 @@ use editor::messages::prelude::*;
 #[cfg(feature = "editor")]
 use serde::Serialize;
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use wasm_bindgen::prelude::*;
-
-pub(crate) static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
 #[wasm_bindgen]
 #[derive(Clone)]
@@ -128,14 +126,13 @@ impl EditorWrapper {
 
 	#[cfg(feature = "editor")]
 	pub(crate) fn send_frontend_message_to_js(&self, message: FrontendMessage) {
-		if let FrontendMessage::UpdateImageData { ref image_data } = message {
-			let new_hash = calculate_hash(image_data);
-			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
-
-			if new_hash != prev_hash {
-				render_image_data_to_canvases(image_data.iter());
-				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
-			}
+		if let FrontendMessage::UpdateImageData {
+			ref image_data,
+			ref canvas_ids_in_use,
+		} = message
+		{
+			let images = image_data.iter().map(|image| (image.id, image.width, image.height, image.pixels.as_slice()));
+			render_image_data_to_canvases(images, canvas_ids_in_use);
 			return;
 		}
 

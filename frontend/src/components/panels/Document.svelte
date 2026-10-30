@@ -192,6 +192,7 @@
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			let canvas = window.imageCanvases[canvasName];
+			if (!canvas) return;
 
 			// Get logical dimensions from foreignObject parent (set by backend)
 			const foreignObject = placeholder.parentElement;

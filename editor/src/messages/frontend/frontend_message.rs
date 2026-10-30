@@ -263,8 +263,11 @@ pub enum FrontendMessage {
 	UpdateRenderStatus {
 		status: RenderStatus,
 	},
+	/// Gives the frontend the canvas images it lacks, and names every canvas the latest render uses so it can drop the rest.
 	UpdateImageData {
 		image_data: Vec<RasterizedImage>,
+		#[serde(rename = "canvasIdsInUse")]
+		canvas_ids_in_use: Vec<u64>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
