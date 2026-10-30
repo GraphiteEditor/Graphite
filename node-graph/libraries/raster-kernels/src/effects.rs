@@ -3,6 +3,7 @@
 
 use crate::{RasterKernel, Wgsl, gpu_params};
 use core_types::Color;
+use core_types::blending::BlendMode;
 
 /// A color as the premultiplied, gamma-encoded channels the passes work with, carried in a [`Color`] to be passed to them.
 pub fn premultiplied_gamma_channels(color: Color) -> Color {
@@ -242,5 +243,21 @@ impl RasterKernel for KeepEmpty {
 	const INPUTS: usize = 2;
 	fn wgsl() -> Wgsl {
 		Wgsl::function(include_str!("wgsl/effect_keep_empty.wgsl"))
+	}
+}
+
+gpu_params! {
+	/// The image (input 0) with a straight-alpha linear-light paint (input 1) mixed over its colors by a blend mode, as much as the paint covers and `opacity` lets it, keeping the image's alpha.
+	#[derive(Clone)]
+	pub struct PaintOverlay {
+		pub blend_mode: BlendMode,
+		pub opacity: f32,
+	}
+}
+
+impl RasterKernel for PaintOverlay {
+	const INPUTS: usize = 2;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(format!("{}\n{}", include_str!("wgsl/blending.wgsl"), include_str!("wgsl/effect_paint_overlay.wgsl")))
 	}
 }

@@ -6,7 +6,7 @@ use core_types::graphene_hash::CacheHash;
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
 use glam::{DMat2, UVec2};
-use graphic_types::{Adjustment, Effects};
+use graphic_types::{Adjustment, Effects, Graphic};
 use raster_types::{CPU, GPU, Raster, Texture, WeakCPU};
 use rendering::vello_scene_builder::{EffectsRenderer, SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
@@ -305,14 +305,31 @@ impl EffectsRenderer for RenderContext<'_> {
 		self.kernels.executor().is_some()
 	}
 
-	fn render_effects(&mut self, size: UVec2, view: Affine, effects: &Effects, fill: f32, lengths_to_pixels: DMat2, draw: &mut dyn FnMut(&mut VelloSceneBuilder)) -> Texture {
+	fn render_effects(
+		&mut self,
+		size: UVec2,
+		view: Affine,
+		effects: &Effects,
+		fill: f32,
+		lengths_to_pixels: DMat2,
+		draw_paint: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
+		draw: &mut dyn FnMut(&mut VelloSceneBuilder),
+	) -> Texture {
 		// Rendered into a raster of the content, which the effects are carried out on with the same kernels as a raster's own effects
-		let executor = self.kernels.executor().expect("effects are only rendered with a GPU");
+		let kernels = self.kernels;
+		let executor = kernels.executor().expect("effects are only rendered with a GPU");
 		let content = executor.request_texture_with_format(size, executor.raster_format());
 		self.render_area(draw, view, size, &content);
 		let content = Raster::<GPU>::new_gpu(content);
 
-		match apply_effects(&content, effects.operations(), fill, lengths_to_pixels, self.kernels) {
+		// The paint overlays' paints, each rendered over the same pixels as the content
+		let mut render_paint = |index: usize, _: &Graphic| {
+			let paint = executor.request_texture_with_format(size, executor.raster_format());
+			self.render_area(&mut |scene| draw_paint(index, scene), view, size, &paint);
+			Ok(Raster::<GPU>::new_gpu(paint))
+		};
+
+		match apply_effects(&content, effects.operations(), fill, lengths_to_pixels, &mut render_paint, kernels) {
 			Ok(result) => result
 				.texture()
 				.cloned()

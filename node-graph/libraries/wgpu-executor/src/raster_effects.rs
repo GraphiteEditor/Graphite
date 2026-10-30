@@ -5,17 +5,20 @@ use crate::WgpuPipelineCache;
 use crate::raster_kernel::{MAX_FRAME_SIDE, adjust_raster, blur_raster, run_raster_kernel};
 use crate::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 use core_types::list::{ATTR_EFFECTS, Item};
+use core_types::math::quad::Quad;
 use core_types::ops::Convert;
 use core_types::transform::Footprint;
 use core_types::{ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
-use graphic_types::effects::{bevel_light, bevel_smoothing, outline_extents};
-use graphic_types::{Adjustment, BevelDirection, EffectOperation, Effects, GlowSource};
+use graphic_types::effects::{bevel_light, bevel_smoothing, fitted_paint, outline_extents};
+use graphic_types::{Adjustment, BevelDirection, EffectOperation, Effects, GlowSource, Graphic};
 use raster_kernels::RasterKernel;
 use raster_kernels::adjustments::{leading_adjustments, preserves_alpha};
 use raster_kernels::blur::BlurSpace;
 use raster_kernels::effects::*;
 use raster_types::{CPU, GPU, Raster, Storage};
+use rendering::vello_scene_builder::VelloSceneBuilder;
+use rendering::{Render, RenderParams};
 
 /// Blurs and spreads shorter than this, in pixels, leave no visible trace.
 pub const NEGLIGIBLE_LENGTH: f64 = 0.01;
@@ -90,9 +93,24 @@ fn evaluate(raster: &Raster<GPU>, transform: DAffine2, operations: &[EffectOpera
 	margin = margin.min(((DVec2::splat(MAX_FRAME_SIDE as f64) - size.as_dvec2()) / 2.).max(DVec2::ZERO).floor());
 	let grown_size = grown(margin).as_uvec2();
 
+	// A paint is placed in the space the raster's item is placed in, or fitted to the raster's extent there, and rendered over the grown raster's pixels
+	let parent_to_pixels = DAffine2::from_translation(margin) * DAffine2::from_scale(size.as_dvec2()) * placement.inverse();
+	let bounds = (placement * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box();
+	let mut render_paint = |_: usize, paint: &Graphic| {
+		let executor = pipeline.executor().ok_or_else(|| NodeError::new("A GPU is required to render a paint"))?;
+		let fitted = fitted_paint(paint, bounds);
+		let paint = fitted.as_ref().unwrap_or(paint);
+		let render_params = RenderParams::default().for_pattern();
+		let mut draw = |scene: &mut VelloSceneBuilder| paint.render_to_vello(scene, DAffine2::IDENTITY, &render_params);
+		let texture = executor
+			.render_vello_raster(grown_size, parent_to_pixels, &mut draw)
+			.map_err(|error| NodeError::new(error.to_string()))?;
+		Ok(Raster::<GPU>::new_gpu(texture))
+	};
+
 	let mut pass = EffectsPass::new(raster, grown_size, DAffine2::from_translation(-margin), fill, lengths_to_pixels, pipeline)?;
 	for operation in operations {
-		pass.apply(operation)?;
+		pass.apply(operation, &mut render_paint)?;
 	}
 	let result = pass.finish()?;
 
@@ -101,17 +119,18 @@ fn evaluate(raster: &Raster<GPU>, transform: DAffine2, operations: &[EffectOpera
 }
 
 /// Carries out `operations` in order on `content`, a straight-alpha raster in the pixels `lengths_to_pixels` maps the effects' lengths onto, into a raster of its size.
-/// `fill` fades the content but not the shadows and glows cast from it.
+/// `fill` fades the content but not the shadows and glows cast from it, and `render_paint` renders each paint overlay's paint, by its index among them, over the same pixels.
 pub fn apply_effects(
 	content: &Raster<GPU>,
 	operations: impl IntoIterator<Item = EffectOperation>,
 	fill: f32,
 	lengths_to_pixels: DMat2,
+	render_paint: &mut dyn FnMut(usize, &Graphic) -> Result<Raster<GPU>, NodeError>,
 	pipeline: &WgpuPipelineCache,
 ) -> Result<Raster<GPU>, NodeError> {
 	let mut pass = EffectsPass::new(content, content.size(), DAffine2::IDENTITY, fill, lengths_to_pixels, pipeline)?;
 	for operation in operations {
-		pass.apply(&operation)?;
+		pass.apply(&operation, render_paint)?;
 	}
 	Ok(pass.finish()?.with_coverage(content.coverage()))
 }
@@ -127,6 +146,8 @@ pub struct EffectsPass<'a> {
 	filled: Option<Raster<GPU>>,
 	/// The shadows and glows stacked beneath the content.
 	beneath: Option<Raster<GPU>>,
+	/// How many paint overlays have been carried out.
+	paint_overlays: usize,
 }
 
 impl<'a> EffectsPass<'a> {
@@ -143,11 +164,12 @@ impl<'a> EffectsPass<'a> {
 			full,
 			filled,
 			beneath: None,
+			paint_overlays: 0,
 		})
 	}
 
-	/// Carries out the next effect.
-	pub fn apply(&mut self, operation: &EffectOperation) -> Result<(), NodeError> {
+	/// Carries out the next effect, with `render_paint` rendering a paint overlay's paint, by its index among them, into a straight-alpha raster over the images' pixels.
+	pub fn apply(&mut self, operation: &EffectOperation, render_paint: &mut dyn FnMut(usize, &Graphic) -> Result<Raster<GPU>, NodeError>) -> Result<(), NodeError> {
 		let lengths_to_pixels = self.lengths_to_pixels;
 		let length_scale = lengths_to_pixels.determinant().abs().sqrt();
 
@@ -254,6 +276,19 @@ impl<'a> EffectsPass<'a> {
 
 					self.accumulate(&coverage, color)?;
 					self.shade_within(&coverage, color)?;
+				}
+			}
+			EffectOperation::PaintOverlay { ref paint, blend_mode, opacity } => {
+				let paint = render_paint(self.paint_overlays, paint)?;
+				self.paint_overlays += 1;
+
+				let overlay = PaintOverlay {
+					blend_mode,
+					opacity: (opacity / 100.) as f32,
+				};
+				self.full = self.run(&overlay, &[&self.full, &paint])?;
+				if let Some(filled) = &self.filled {
+					self.filled = Some(self.run(&overlay, &[filled, &paint])?);
 				}
 			}
 			EffectOperation::Adjustment(ref adjustment) => {

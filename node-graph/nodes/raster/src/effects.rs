@@ -1,4 +1,5 @@
 use crate::raster_kernel::raster_kernel_pipeline;
+use core_types::blending::BlendMode;
 use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, Item, List};
 use core_types::{ATTR_OPACITY_FILL, CacheHash, Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
@@ -397,6 +398,40 @@ fn bevel_and_emboss<T: ApplyEffect>(
 	)
 }
 
+/// Paints over the input graphics within their shape, mixing the paint with their colors by a blend mode.
+#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
+fn paint_overlay<T: ApplyEffect>(
+	_: impl Ctx,
+	/// The content to paint over.
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	content: Item<T>,
+	/// The color, gradient, image, or other graphic to paint with. A gradient or image without its own placement stretches across the content.
+	#[default(Color::BLACK)]
+	paint: Item<Graphic>,
+	/// How the paint mixes with the content's colors.
+	blend_mode: Item<BlendMode>,
+	/// How strongly the paint shows.
+	#[unit("%")]
+	#[range]
+	#[hard(0..100)]
+	#[default(100.)]
+	opacity: Item<f64>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	let (blend_mode, opacity) = (blend_mode.into_element(), opacity.into_element());
+
+	// The paint is the element alone, since the wire envelope's attributes would nest it as a group
+	Ok(match paint.into_element() {
+		Graphic::None(_) | Graphic::NoneList(_) => content,
+		// A solid paint mixes the same into every pixel, as an adjustment
+		Graphic::Color(color) => {
+			let color = *color.element();
+			T::apply_adjustment(content, Adjustment::ColorOverlay { color, blend_mode, opacity }, pipeline.element())?
+		}
+		paint => T::apply_effect(content, EffectOperation::PaintOverlay { paint, blend_mode, opacity }, pipeline.element())?,
+	})
+}
+
 /// Uploads an image to the GPU and carries out its effects into the pixels, at the image's own resolution, for what comes next to run on the GPU right away.
 #[node_macro::node(category("Raster"), icon("NodeUploadTexture"))]
 fn eager(
@@ -618,6 +653,23 @@ mod tests {
 			let raster: Raster<CPU> = adjusted.into_element().convert(Footprint::DEFAULT, executor.clone()).await;
 			assert_color(raster.data[0], Color::BLACK);
 		});
+	}
+
+	#[test]
+	fn paint_overlay_multiplies_a_color_into_the_content() {
+		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
+
+		let result = super::paint_overlay(
+			(),
+			Item::new_from_element(image_color),
+			Item::new_from_element(Graphic::from(Color::GREEN)),
+			BlendMode::Multiply.into(),
+			100_f64.into(),
+			Item::default(),
+		);
+
+		// Multiplying by green keeps only the green channel, and the content keeps its own alpha
+		assert_eq!(result.unwrap().into_element(), Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
 	}
 
 	#[test]
