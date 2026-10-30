@@ -12,7 +12,7 @@ fn executor() -> Option<&'static WgpuExecutor> {
 	EXECUTOR.get_or_init(|| futures::executor::block_on(WgpuExecutor::new())).as_ref()
 }
 
-/// Held while a test uses the shared GPU, since another test's work can delay or intercept a render's readback.
+/// Held while a test uses the shared GPU, since another test's work can delay a render's readback.
 fn take_turn() -> std::sync::MutexGuard<'static, ()> {
 	static TURN: std::sync::Mutex<()> = std::sync::Mutex::new(());
 	TURN.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
