@@ -274,6 +274,40 @@ fn degenerate_strokes_render() {
 	let Some(_) = render(size, draw) else { return };
 }
 
+#[test]
+fn dial_gradients_match_their_cpu_evaluation() {
+	use rendering::dial_gradient::PencilParameters;
+
+	let size = UVec2::new(200, 200);
+	// Gradient space spans 4 units across the render, with the gradient line from (60, 100) to (110, 100)
+	let gradient_to_pixels = Affine::new([50., 0., 0., 50., 60., 100.]);
+
+	for dials in [(1., 0.6), (0.6, 0.6), (-0.5, 0.2952), (1., 1.), (0.5, 0.25), (0.3, -0.3)] {
+		let parameters = PencilParameters::new(dials.0, dials.1);
+		let ramp = peniko::Gradient::new_linear((0., 0.), (1., 0.)).with_stops([Color::from_rgb8(0, 0, 0), Color::from_rgb8(255, 255, 255)]);
+		let gradient = vello_gpu::PencilGradient {
+			ramp,
+			geometry: parameters.to_vello(),
+		};
+
+		let draw = |scene: &mut VelloSceneBuilder| scene.fill_viewport(gradient.clone(), Some(gradient_to_pixels));
+
+		let Some(pixels) = render(size, draw) else { return };
+
+		let mut worst = 0_i32;
+		for y in (5..195).step_by(10) {
+			for x in (5..195).step_by(10) {
+				let point = gradient_to_pixels.inverse() * vello_gpu::kurbo::Point::new(x as f64 + 0.5, y as f64 + 0.5);
+				let t = parameters.t(glam::DVec2::new(point.x, point.y)).clamp(0., 1.);
+				let expected = (t * 255.).round() as i32;
+				let actual = pixel(&pixels, size, x, y)[0] as i32;
+				worst = worst.max((expected - actual).abs());
+			}
+		}
+		assert!(worst <= 3, "dials {dials:?} differ from the CPU evaluation by up to {worst} levels");
+	}
+}
+
 /// Renders an opaque white square from (`min`, `min`) to (`max`, `max`) through `effects` with `fill`.
 fn render_square_with_effects(effects: Vec<graphic_types::EffectOperation>, fill: f32, min: f64, max: f64, size: UVec2) -> Option<Vec<[u8; 4]>> {
 	use rendering::{Render, RenderParams};

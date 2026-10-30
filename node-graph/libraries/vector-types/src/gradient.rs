@@ -16,6 +16,26 @@ pub enum GradientForm {
 	Radial,
 }
 
+/// The curvature dials of the linear form: both ends are lines.
+pub const LINEAR_DIALS: [f64; 2] = [0., 0.];
+/// The curvature dials of the radial form: the start is a point at the center, and the end is the circle around it through the end point.
+pub const RADIAL_DIALS: [f64; 2] = [1., 0.5];
+
+impl GradientForm {
+	/// The curvature dials of the start and end contours that make this form.
+	pub fn dials(self) -> [f64; 2] {
+		match self {
+			Self::Linear => LINEAR_DIALS,
+			Self::Radial => RADIAL_DIALS,
+		}
+	}
+}
+
+/// A curvature dial wrapped into the range ending at 1, since -1 and 1 are both the end's own point, or `preset` if it isn't finite.
+pub fn wrapped_dial(dial: f64, preset: f64) -> f64 {
+	if dial.is_finite() { 1. - (1. - dial).rem_euclid(2.) } else { preset }
+}
+
 /// A gradient's stops: a list of colors (linear, unassociated alpha) whose optional `position` and `midpoint`
 /// attributes place each stop along the 0 to 1 range. Stops lacking the `position` attribute distribute evenly,
 /// and stops lacking the `midpoint` attribute interpolate linearly (`0.5`).

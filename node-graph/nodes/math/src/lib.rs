@@ -1816,11 +1816,25 @@ fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHIT
 	gradient
 }
 
-/// Sets the form (linear or radial) of each gradient in the input list.
-#[node_macro::node(category("Gradient"), icon("NodeGradientForm"))]
-fn gradient_form(_: impl Ctx, gradient: Item<Gradient>, gradient_form: Item<vector_types::GradientForm>) -> Item<Gradient> {
+/// Curves the contours at the start and end of each gradient in the input list between straight lines, circles, and points, with the contours between following along.
+///
+/// Each end runs from -1 to 1. At 0 its contour is a straight line, at 1 or -1 it shrinks to the end's own point, and between it is a circle through the end that bows toward the other end when positive or away from it when negative. A linear gradient is 0 at both ends, and a radial gradient is 1 at its start and 0.5 at its end.
+#[node_macro::node(category("Gradient"), icon("NodeGradientForm"), inspector("gradient_curvature_inspector"))]
+fn gradient_curvature(
+	_: impl Ctx,
+	gradient: Item<Gradient>,
+	/// The curve of the contour through the start.
+	#[range]
+	#[soft(-1..1)]
+	start_curvature: Item<f64>,
+	/// The curve of the contour through the end.
+	#[range]
+	#[soft(-1..1)]
+	end_curvature: Item<f64>,
+) -> Item<Gradient> {
 	let mut gradient = gradient;
-	gradient.set_attribute(core_types::ATTR_GRADIENT_FORM, *gradient_form.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_START_CURVATURE, *start_curvature.element());
+	gradient.set_attribute(core_types::ATTR_GRADIENT_END_CURVATURE, *end_curvature.element());
 	gradient
 }
 
