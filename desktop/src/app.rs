@@ -111,14 +111,8 @@ impl App {
 			loop {
 				let texture = async_runtime.block_on(node_runtime.run());
 				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
-				let frame_ended = match node_runtime.until_next_frame() {
-					Some(wait) => {
-						thread::sleep(wait);
-						true
-					}
-					None => start_render_receiver.recv_timeout(Duration::from_millis(10)).is_err(),
-				};
-				if frame_ended {
+				let timeout = node_runtime.until_next_frame().unwrap_or(Duration::from_millis(10));
+				if start_render_receiver.recv_timeout(timeout).is_err() {
 					node_runtime.begin_frame();
 				}
 				if exiting_clone.load(Ordering::Relaxed) {

@@ -215,7 +215,7 @@ pub trait Spawn {
 
 /// Node-facing scope input.
 pub trait Runtime {
-	fn spawn(&self, source: SourceId, task: Task);
+	fn spawn(&self, source: SourceId, task: Task) -> AbortHandle;
 }
 ```
 

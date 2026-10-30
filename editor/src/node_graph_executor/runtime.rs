@@ -593,7 +593,7 @@ impl NodeRuntime {
 
 	/// How long a deferred re-evaluation waits for the next frame.
 	pub fn until_next_frame(&self) -> Option<Duration> {
-		let budget = self.scheduling.frame_budget.filter(|budget| !budget.is_zero())?;
+		let budget = self.frame_budget()?;
 		let elapsed = self.frame_elapsed().as_nanos() % budget.as_nanos();
 		self.rerun.then(|| budget - Duration::from_nanos(elapsed as u64))
 	}
@@ -602,8 +602,12 @@ impl NodeRuntime {
 		self.async_runtime().clock().now().saturating_sub(self.frame_start)
 	}
 
+	fn frame_budget(&self) -> Option<Duration> {
+		self.scheduling.frame_budget.filter(|budget| !budget.is_zero())
+	}
+
 	fn frame_has_budget(&self) -> bool {
-		self.scheduling.frame_budget.is_none_or(|budget| self.frame_elapsed() < budget)
+		self.frame_budget().is_none_or(|budget| self.frame_elapsed() < budget)
 	}
 
 	pub(crate) fn async_runtime(&self) -> &AsyncRuntime {
