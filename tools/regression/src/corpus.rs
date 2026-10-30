@@ -4,12 +4,31 @@
 //! corpus.json                       Which documents to render, how, and how closely they must match
 //! documents/<name>.gdd
 //! references/<name>/<time>s.png     One reference per animation time
+//! ingest/                           Documents waiting for `regression ingest` to add them
 //! ```
 
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
 pub const MANIFEST: &str = "corpus.json";
+pub const INGEST: &str = "ingest";
+
+const README: &str = "# Graphite regression corpus
+
+Documents and the images they must render, for `cargo run regression check` in the Graphite repository.
+
+To add documents, put `.gdd` files in `ingest/` and run this from a Graphite checkout:
+
+```sh
+cargo run regression --corpus <this directory> ingest
+```
+
+Each one moves to `documents/` with new references under `references/`, and gets an entry in `corpus.json`. Commit the result. A document renders once at time zero unless a `<name>.json` next to it says otherwise, for example `{ \"times\": [0, 0.5, 1], \"scale\": 2 }`.
+
+Old documents are the point of this repository, because they prove that migrations still reach them. Don't upgrade or replace a document here. When a change to how documents look is intended, run `bless` and commit the new references.
+";
+
+const GIT_ATTRIBUTES: &str = "*.png filter=lfs diff=lfs merge=lfs -text\n";
 
 #[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Manifest {
@@ -30,6 +49,25 @@ pub struct Entry {
 	pub size: Option<(u32, u32)>,
 	#[serde(default)]
 	pub tolerance: Tolerance,
+}
+
+/// How to render a document in the ingest folder, from an optional `<name>.json` beside it.
+#[derive(Debug, Deserialize)]
+#[serde(default)]
+pub struct IngestSettings {
+	pub times: Vec<f64>,
+	pub scale: f64,
+	pub size: Option<(u32, u32)>,
+}
+
+impl Default for IngestSettings {
+	fn default() -> Self {
+		Self {
+			times: Entry::default_times(),
+			scale: Entry::default_scale(),
+			size: None,
+		}
+	}
 }
 
 impl Entry {
@@ -73,6 +111,25 @@ pub struct Corpus {
 }
 
 impl Corpus {
+	/// Create the corpus layout at `root`, keeping whatever is already there.
+	pub fn init(root: &Path) -> Result<Self, String> {
+		for directory in ["documents", "references", INGEST] {
+			let path = root.join(directory);
+			std::fs::create_dir_all(&path).map_err(|error| format!("{}: {error}", path.display()))?;
+		}
+
+		let keep_ingest = root.join(INGEST).join(".gitkeep");
+		for (path, contents) in [(root.join("README.md"), README), (root.join(".gitattributes"), GIT_ATTRIBUTES), (keep_ingest, "")] {
+			if !path.exists() {
+				std::fs::write(&path, contents).map_err(|error| format!("{}: {error}", path.display()))?;
+			}
+		}
+
+		let corpus = Self::open(root)?;
+		corpus.save()?;
+		Ok(corpus)
+	}
+
 	/// Open the corpus at `root`, starting an empty one if it has no manifest yet.
 	pub fn open(root: &Path) -> Result<Self, String> {
 		let manifest_path = root.join(MANIFEST);

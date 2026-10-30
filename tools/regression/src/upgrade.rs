@@ -24,14 +24,17 @@ pub fn expand(paths: &[PathBuf]) -> Result<Vec<PathBuf>, Box<dyn Error>> {
 	Ok(documents)
 }
 
-/// Open `path`, which migrates it, and save it back as a state-only xz archive if it needed migrating. Returns whether it did.
+/// Open `path`, which migrates it, and unless `check_only`, save it back as a state-only xz archive if it needed migrating. Returns whether it did.
 ///
 /// An archive's bytes aren't stable across a reopen, so the file is only rewritten when it changed. The embedded legacy `.graphite` is dropped, since it doesn't migrate and the editor would open it in place of the migrated state.
-pub async fn upgrade(path: &Path) -> Result<bool, Box<dyn Error>> {
+pub async fn upgrade(path: &Path, check_only: bool) -> Result<bool, Box<dyn Error>> {
 	let archive = std::fs::read(path)?;
 	let gdd = graphene_cli::open_gdd(&archive).await?;
 	if !gdd.migrated() {
 		return Ok(false);
+	}
+	if check_only {
+		return Ok(true);
 	}
 
 	let options = ExportOptions {

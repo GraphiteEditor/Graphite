@@ -1,5 +1,6 @@
 mod compare;
 mod corpus;
+mod ingest;
 mod render;
 mod upgrade;
 
@@ -30,7 +31,14 @@ enum Command {
 		/// Documents, or directories whose .gdd files to upgrade
 		#[clap(default_value = "demo-artwork")]
 		paths: Vec<PathBuf>,
+		/// Fail if a document needs upgrading, without rewriting anything
+		#[clap(long)]
+		check: bool,
 	},
+	/// Create the corpus layout in the corpus directory
+	Init,
+	/// Move the documents in the corpus's ingest folder into the corpus and render their references
+	Ingest,
 	/// Copy a document into the corpus and render its references
 	Add {
 		document: PathBuf,
@@ -86,13 +94,26 @@ async fn run(app: App) -> Result<bool, Box<dyn Error>> {
 	};
 
 	match app.command {
-		Command::Upgrade { paths } => {
+		Command::Upgrade { paths, check } => {
+			let mut up_to_date = true;
 			for path in upgrade::expand(&paths)? {
-				let changed = upgrade::upgrade(&path).await.map_err(|error| format!("{}: {error}", path.display()))?;
-				println!("{} {}", if changed { "Upgraded" } else { "Up to date" }, path.display());
+				let changed = upgrade::upgrade(&path, check).await.map_err(|error| format!("{}: {error}", path.display()))?;
+				up_to_date &= !changed;
+				match (changed, check) {
+					(true, true) => println!("Needs upgrading: {}. Run `cargo run regression upgrade`", path.display()),
+					(true, false) => println!("Upgraded {}", path.display()),
+					(false, _) => println!("Up to date {}", path.display()),
+				}
 			}
+			Ok(up_to_date || !check)
+		}
+		Command::Init => {
+			let root = corpus_root()?;
+			Corpus::init(&root)?;
+			println!("Set up the corpus layout in {}", root.display());
 			Ok(true)
 		}
+		Command::Ingest => ingest::ingest(&mut Corpus::open(&corpus_root()?)?).await,
 		Command::Add { document, name, times, scale, size } => {
 			let mut corpus = Corpus::open(&corpus_root()?)?;
 			let name = match name {
@@ -128,7 +149,7 @@ async fn run(app: App) -> Result<bool, Box<dyn Error>> {
 	}
 }
 
-async fn bless(corpus: &Corpus, entry: &Entry) -> Result<(), Box<dyn Error>> {
+pub async fn bless(corpus: &Corpus, entry: &Entry) -> Result<(), Box<dyn Error>> {
 	let images = render::render(&corpus.document(&entry.name), entry).await?;
 	for (time, image) in entry.times.iter().zip(images) {
 		let reference = corpus.reference(&entry.name, *time);
