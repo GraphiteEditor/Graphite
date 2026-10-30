@@ -1,4 +1,5 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
+use crate::parallel_rows::fill_rows;
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
@@ -40,7 +41,7 @@ pub struct SizeMismatchError {
 	pub second_size: UVec2,
 }
 
-#[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"))]
+#[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"), memoize)]
 fn channels_to_image(
 	_: impl Ctx,
 	_primary: (),
@@ -102,7 +103,7 @@ fn channels_to_image(
 	Ok(Item::from_parts(Raster::new_cpu(image), attributes))
 }
 
-#[node_macro::node(category("Raster"), icon("NodeMask"))]
+#[node_macro::node(category("Raster"), icon("NodeMask"), memoize)]
 fn mask(
 	_: impl Ctx,
 	/// The image to be masked.
@@ -130,19 +131,20 @@ fn mask(
 	let bg_to_fg = transform_attribute * DAffine2::from_scale(1. / image_size);
 	let stencil_transform_inverse = stencil_transform.inverse();
 
-	for y in 0..row.element().height {
-		for x in 0..row.element().width {
+	let width = row.element().width as usize;
+	let stencil_image = stencil.element();
+	fill_rows(&mut row.element_mut().data_mut().data, width, |y, pixels| {
+		for (x, image_pixel) in pixels.iter_mut().enumerate() {
 			let image_point = DVec2::new(x as f64, y as f64);
 			let mask_point = bg_to_fg.transform_point2(image_point);
 			let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
 			let mask_point = stencil_transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
 			let mask_point = (DAffine2::from_scale(stencil_size) * stencil_transform.inverse()).transform_point2(mask_point);
 
-			let image_pixel = row.element_mut().data_mut().get_pixel_mut(x, y).unwrap();
-			let mask_pixel = stencil.element().sample(mask_point);
+			let mask_pixel = stencil_image.sample(mask_point);
 			*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
 		}
-	}
+	});
 
 	row
 }
