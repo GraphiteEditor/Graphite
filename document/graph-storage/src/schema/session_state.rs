@@ -1,10 +1,10 @@
-//! Persistent cursor state for the local peer. Separate from [`crate::Manifest`] because the
+//! Persistent cursor state for the local peer. Separate from the document manifest because the
 //! manifest describes document identity (what this document *is*), while [`SessionState`]
 //! describes where the local peer's cursor sits inside it.
 //!
 //! Lives in `session.json`. Rewritten on retirement.
 
-use document_graph_storage::{HotSequence, NetworkId, PeerId, RetiredMarks, Rev, UserId, Value};
+use super::{HotSequence, NetworkId, PeerId, RetiredMarks, Rev, UserId, Value};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -23,7 +23,7 @@ pub struct SessionState {
 	#[serde(default)]
 	pub head_rev: Option<Rev>,
 	/// Published frontier: the latest retired commit broadcast to a peer. Commits after it are silently
-	/// rewritable on undo; commits at or before it are published. `None` until broadcast transport lands.
+	/// rewritable on undo; commits at or before it are published. `None` until the first broadcast.
 	#[serde(default)]
 	pub last_broadcast_rev: Option<Rev>,
 	/// Revs the user has undone past, so redo survives a reopen. (The legacy `VecDeque` redo history

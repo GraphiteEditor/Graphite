@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use core_types::Context;
+use core_types::registry::NODE_METADATA;
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
@@ -136,6 +137,32 @@ pub struct RuntimeConversion {
 pub fn encode_declaration(proto: &ProtoNode) -> Result<Vec<u8>, String> {
 	let value = to_value(proto).map_err(|error| error.to_string())?;
 	postcard::to_stdvec(&value).map_err(|error| error.to_string())
+}
+
+/// A declaration with no attributes, as runtime conversion stores `identifier@version` and node migrations switch nodes to it.
+pub struct EncodedDeclaration {
+	pub id: ResourceId,
+	pub hash: ResourceHash,
+	pub bytes: Vec<u8>,
+	pub proto: ProtoNode,
+}
+
+impl EncodedDeclaration {
+	pub fn new(identifier: String, version: u32) -> Result<Self, String> {
+		let proto = ProtoNode {
+			identifier,
+			version,
+			attributes: Default::default(),
+		};
+		let bytes = encode_declaration(&proto)?;
+		let hash = ResourceHash::from(bytes.as_slice());
+		Ok(Self {
+			id: ResourceId::from_hash(&hash),
+			hash,
+			bytes,
+			proto,
+		})
+	}
 }
 
 /// Decode a [`ProtoNode`] declaration from the bytes [`encode_declaration`] produced.
@@ -669,14 +696,10 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 				return Ok(Implementation::ProtoNode(*id));
 			}
 
-			let proto = ProtoNode {
-				identifier: identifier_str.clone(),
-				attributes: Default::default(),
-			};
-			// Content-address the declaration: serialize, hash, derive a deterministic id.
-			let bytes = encode_declaration(&proto).map_err(|error| ConversionError::SerializationError(format!("proto-node {identifier_str}: {error}")))?;
-			let hash = ResourceHash::from(bytes.as_slice());
-			let id = ResourceId::from_hash(&hash);
+			// Nodes the binary doesn't register, such as in tests, are at their first version
+			let version = NODE_METADATA.lock().ok().and_then(|metadata| metadata.get(identifier).map(|metadata| metadata.version)).unwrap_or(1);
+			let EncodedDeclaration { id, hash, bytes, proto } =
+				EncodedDeclaration::new(identifier_str.clone(), version).map_err(|error| ConversionError::SerializationError(format!("proto-node {identifier_str}: {error}")))?;
 
 			register_declaration_resource(registry, id, hash, ctx.peer);
 			ctx.declaration_bytes.insert(hash, bytes);

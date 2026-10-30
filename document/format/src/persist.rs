@@ -3,18 +3,48 @@
 //! Synchronous and read-free (the manifest is cached on the handle); the container's `*_non_blocking`
 //! surface absorbs durability.
 
-use document_container::AsyncContainer;
+use document_container::{AnyContainer, AsyncContainer};
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
 use document_graph_storage::{HistoryMetadata, HotOp, Rev, Subject, TimeStamp, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
+use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
-use crate::session_state::SessionState;
 use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
+
+/// Written after every staged payload, so its presence means the whole rewrite is ready to move into place.
+const STAGING_COMMITTED: &str = "committed";
+
+/// Complete or discard a rewrite of every payload. Staged files with the marker move into place, which is safe to repeat if interrupted.
+/// Without it the rewrite never finished, so they go and the document stays as it was, to be migrated again.
+pub(crate) async fn finish_staged_rewrite<L: Layout>(working: &AnyContainer, layout: &L) -> Result<(), Error> {
+	let staging = layout.staging_dir();
+	let staged = working.list(staging).await?;
+	if staged.is_empty() {
+		return Ok(());
+	}
+
+	let marker = format!("{staging}/{STAGING_COMMITTED}");
+	if staged.contains(&marker) {
+		for path in staged.iter().filter(|path| **path != marker) {
+			let Some(destination) = path.strip_prefix(&format!("{staging}/")).map(str::to_string) else {
+				continue;
+			};
+			// Awaited, since a queued write only logs its failure and the marker has to outlive a failed move
+			working.write(&destination, working.read(path).await?.as_slice()).await?;
+		}
+		working.remove(&marker).await?;
+	}
+
+	for path in staged.iter().filter(|path| **path != marker) {
+		working.remove(path).await?;
+	}
+	Ok(())
+}
 
 impl<L: Layout> Gdd<L> {
 	/// Move the undo cursor back one commit (silent-zone reflog undo) and persist the new cursor. Returns
@@ -201,6 +231,40 @@ impl<L: Layout> Gdd<L> {
 		Ok(true)
 	}
 
+	/// Rewrite every payload and the manifest from memory, after opening changed what the files hold. All of it lands or none does,
+	/// since a reopen after a partial rewrite would trust a registry and cursors that don't match the history. See [`finish_staged_rewrite`].
+	pub(crate) async fn persist_all(&mut self) -> Result<(), Error> {
+		let codecs = self.manifest.codecs;
+
+		let mut history = Vec::new();
+		for delta in self.session.history() {
+			codecs.history.append(&mut history, delta)?;
+		}
+		let mut hot_log = Vec::new();
+		for hot_op in self.session.hot_log() {
+			codecs.hot_log.append(&mut hot_log, hot_op)?;
+		}
+		let payloads = [
+			(io::path_for(self.layout.history_basename(), codecs.history), history),
+			(io::path_for(self.layout.hot_log_basename(), codecs.hot_log), hot_log),
+			(
+				io::path_for(self.layout.registry_basename(), codecs.registry),
+				codecs.registry.write_single(self.session.retired_registry())?,
+			),
+			(io::path_for(self.layout.session_basename(), codecs.session), codecs.session.write_single(&self.session_state())?),
+			(io::path_for(self.layout.manifest_basename(), MANIFEST_CODEC), MANIFEST_CODEC.write_single(&self.manifest)?),
+		];
+
+		let staging = self.layout.staging_dir();
+		// Awaited, since a queued write only logs its failure and the marker must not follow a payload that didn't land
+		for (path, bytes) in &payloads {
+			self.working.write(&format!("{staging}/{path}"), bytes).await?;
+		}
+		self.working.write(&format!("{staging}/{STAGING_COMMITTED}"), &[]).await?;
+
+		finish_staged_rewrite(&self.working, &self.layout).await
+	}
+
 	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
 	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
 	fn rewrite_history(&mut self) -> Result<(), Error> {
@@ -212,8 +276,8 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	fn persist_session_state(&mut self) -> Result<(), Error> {
-		let state = SessionState {
+	fn session_state(&self) -> SessionState {
+		SessionState {
 			peer_id: self.session.peer(),
 			user_id: self.session.user(),
 			head_rev: self.session.head_rev(),
@@ -225,8 +289,11 @@ impl<L: Layout> Gdd<L> {
 			clock_counter: self.session.clock_counter(),
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
-		};
-		io::write_single(&self.working, self.layout.session_basename(), self.manifest.codecs.session, &state)?;
+		}
+	}
+
+	fn persist_session_state(&mut self) -> Result<(), Error> {
+		io::write_single(&self.working, self.layout.session_basename(), self.manifest.codecs.session, &self.session_state())?;
 		Ok(())
 	}
 
