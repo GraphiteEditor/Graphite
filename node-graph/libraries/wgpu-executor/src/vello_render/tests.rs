@@ -300,3 +300,20 @@ fn rasters_upload_once_across_scenes_until_modified() {
 	executor.render_vello_scene_on_canvas(&mut canvas, scene_drawing(&modified)).unwrap();
 	assert_eq!(canvas.images.textures.len(), 2, "modified pixels get a texture of their own");
 }
+
+#[test]
+fn textures_of_dropped_rasters_are_freed() {
+	use raster_types::{Image, Raster};
+
+	let Some(executor) = executor() else { return };
+	let max_texture_size = executor.context().device.limits().max_texture_dimension_2d;
+
+	// Each render draws new pixels and drops the last ones, as dragging a slider on a raster node does
+	let mut canvas = crate::VelloCanvas::default();
+	for _ in 0..10 {
+		let mut scene = VelloSceneBuilder::new(64, 64, Affine::IDENTITY, max_texture_size);
+		scene.draw_raster(Raster::new_cpu(Image::new(8, 8, core_types::Color::WHITE)), peniko::ImageSampler::new(), Affine::scale(8.));
+		executor.render_vello_scene_on_canvas(&mut canvas, scene).unwrap();
+	}
+	assert_eq!(canvas.images.textures.len(), 1, "only the texture of pixels that still exist stays");
+}

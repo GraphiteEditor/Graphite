@@ -1,4 +1,5 @@
 use glam::UVec2;
+use raster_types::WeakCPU;
 use rendering::vello_scene_builder::{SceneImage, VelloSceneBuilder, image_downscale_factor, image_texture_size};
 use std::collections::HashMap;
 use std::sync::{Mutex, PoisonError};
@@ -297,6 +298,8 @@ enum ImageKey {
 struct ImageTexture {
 	texture: wgpu::Texture,
 	last_used: u64,
+	/// The CPU raster pixels copied into the texture, which is freed once they're gone since they can't be drawn again.
+	raster: Option<WeakCPU>,
 }
 
 /// The textures of the images recent renders drew, each freed once it goes unused for long enough.
@@ -345,7 +348,11 @@ impl ImageTextures {
 					wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::RENDER_ATTACHMENT,
 				),
 			};
-			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0 });
+			let raster = match image {
+				SceneImage::Raster(raster) => Some(raster.downgrade()),
+				SceneImage::Pixels(_) | SceneImage::Texture(_) => None,
+			};
+			self.textures.insert(key.clone(), ImageTexture { texture, last_used: 0, raster });
 		}
 
 		let image_texture = self.textures.get_mut(&key)?;
@@ -367,7 +374,8 @@ impl ImageTextures {
 			match key {
 				// CPU pixels get a new blob ID at every render, so a blob this render didn't draw is unlikely to return
 				ImageKey::Blob(_) => unused_renders == 0,
-				ImageKey::Raster(_) | ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
+				ImageKey::Raster(_) => unused_renders == 0 || (unused_renders < UNUSED_IMAGE_RENDER_LIMIT && image_texture.raster.as_ref().is_some_and(WeakCPU::is_alive)),
+				ImageKey::Texture(_) => unused_renders < UNUSED_IMAGE_RENDER_LIMIT,
 			}
 		});
 	}

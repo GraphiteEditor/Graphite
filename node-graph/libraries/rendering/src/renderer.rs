@@ -2401,7 +2401,8 @@ fn render_raster_cpu_item_svg(item: ItemRef<'_, Raster<CPU>>, render: &mut SvgRe
 				render.leaf_tag(
 					"img", // Must be a self-closing (void element) tag, so we can't use `div` or `span`, for example
 					|attributes| {
-						attributes.push("data-canvas-placeholder", id.to_string());
+						// Prefixed to stay apart from the numbered thumbnail and viewport canvases on `window.imageCanvases`
+						attributes.push("data-canvas-placeholder", format!("image-{id}"));
 					},
 				)
 			},

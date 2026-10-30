@@ -70,13 +70,13 @@ where
 	}
 }
 
-pub use cpu::CPU;
+pub use cpu::{CPU, WeakCPU};
 
 mod cpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
 	use std::sync::atomic::{AtomicU64, Ordering};
-	use std::sync::{Arc, OnceLock};
+	use std::sync::{Arc, OnceLock, Weak};
 
 	/// Pixels in CPU memory, shared between clones and identified by an ID that changes whenever they are modified.
 	/// So cloning is a reference count increment, and hashing for caches reads the ID rather than every pixel.
@@ -123,6 +123,20 @@ mod cpu {
 		}
 	}
 
+	/// Refers to a CPU raster's pixels without keeping them in memory.
+	#[derive(Clone, Debug)]
+	pub struct WeakCPU {
+		buffer: Weak<Buffer>,
+		id: u64,
+	}
+
+	impl WeakCPU {
+		/// Whether a clone still holds these pixels without having modified them.
+		pub fn is_alive(&self) -> bool {
+			self.buffer.upgrade().is_some_and(|buffer| buffer.id.load(Ordering::Relaxed) == self.id)
+		}
+	}
+
 	impl PartialEq for CPU {
 		fn eq(&self, other: &Self) -> bool {
 			Arc::ptr_eq(&self.0, &other.0) || self.0.image == other.0.image
@@ -155,6 +169,14 @@ mod cpu {
 
 		pub fn data_mut(&mut self) -> &mut Image<Color> {
 			self
+		}
+
+		/// A reference to these pixels that doesn't keep them in memory.
+		pub fn downgrade(&self) -> WeakCPU {
+			WeakCPU {
+				id: self.buffer_id(),
+				buffer: Arc::downgrade(&self.storage.0),
+			}
 		}
 
 		/// The pixels, copied only if another clone shares them.
