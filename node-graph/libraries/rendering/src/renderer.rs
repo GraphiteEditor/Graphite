@@ -32,7 +32,7 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, Effects, FillAndStroke, Generator, Graphic, Vector};
+use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector, fitted_paint};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use raster_kernels::adjustments::{adjust_color, adjusted_raster, leading_adjustments, preserves_alpha};
@@ -255,17 +255,45 @@ impl ItemCompositing<'_> {
 		}
 	}
 
-	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space.
-	/// Rendering a split scene calls `draw` again for each part.
-	fn draw_with_effects(&self, scene: &mut VelloSceneBuilder, bounds: impl FnOnce() -> RenderBoundingBox, mut draw: impl FnMut(&mut VelloSceneBuilder)) {
+	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space. Rendering a split scene calls `draw` again for each part.
+	/// `transform` maps the space the content's item is placed in, where the paint overlays' paints are placed too, into the scene's space.
+	fn draw_with_effects(
+		&self,
+		scene: &mut VelloSceneBuilder,
+		transform: DAffine2,
+		render_params: &RenderParams,
+		bounds: impl FnOnce() -> RenderBoundingBox,
+		mut draw: impl FnMut(&mut VelloSceneBuilder),
+	) {
 		let Some((effects, fill)) = self.effects else { return draw(scene) };
 
 		let bounds = match bounds() {
-			RenderBoundingBox::Rectangle([min, max]) => Some(kurbo::Rect::new(min.x, min.y, max.x, max.y)),
+			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 			RenderBoundingBox::Infinite => None,
 			RenderBoundingBox::None => return draw(scene),
 		};
-		scene.draw_effects(effects, fill, bounds, &mut draw);
+
+		// A paint fitted to the content's bounds is placed in the scene's space they're measured in
+		let paint_params = render_params.for_pattern();
+		let paints: Vec<(Graphic, DAffine2)> = effects
+			.operations()
+			.filter_map(|operation| match operation {
+				EffectOperation::PaintOverlay { paint, .. } => Some(paint),
+				_ => None,
+			})
+			.map(|paint| match bounds.and_then(|bounds| fitted_paint(&paint, bounds)) {
+				Some(fitted) => (fitted, DAffine2::IDENTITY),
+				None => (paint, transform),
+			})
+			.collect();
+		let mut draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
+			if let Some((paint, transform)) = paints.get(index) {
+				paint.render_to_vello(scene, *transform, &paint_params);
+			}
+		};
+
+		let bounds = bounds.map(|[min, max]| kurbo::Rect::new(min.x, min.y, max.x, max.y));
+		scene.draw_effects(effects, fill, bounds, &mut draw_paint, &mut draw);
 	}
 
 	/// The opacity for content drawn without the effects group, as SVG draws content its filter can't apply to.
@@ -311,13 +339,30 @@ impl ItemCompositing<'_> {
 
 	/// Writes the SVG filter carrying out the effects, if there are any to apply, given the content's bounds in the current user space.
 	/// Returns the reference for the `filter` attribute of a group wrapping the content, which also takes the item's opacity and blend mode.
-	fn svg_filter(&self, render: &mut SvgRender, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<String> {
+	fn svg_filter(&self, render: &mut SvgRender, render_params: &RenderParams, bounds: impl FnOnce() -> RenderBoundingBox) -> Option<String> {
 		let (effects, fill) = self.effects?;
 
 		// Effects change nothing visible about content without edges, like a color or gradient layer filling everything
 		let RenderBoundingBox::Rectangle(bounds) = bounds() else { return None };
 
-		let id = write_svg_effects_filter(&mut render.svg_defs, effects, fill, bounds, render.transform, self.pixel_scale)?;
+		// The paint overlays' paints that aren't solid colors, drawn as markup in the user space, where the content's bounds fit those without a placement
+		let paint_params = render_params.for_pattern();
+		let paints: Vec<String> = effects
+			.operations()
+			.filter_map(|operation| match operation {
+				EffectOperation::PaintOverlay { paint, .. } => Some(paint),
+				_ => None,
+			})
+			.map(|paint| {
+				let paint = fitted_paint(&paint, bounds).unwrap_or(paint);
+				let mut paint_render = SvgRender::new();
+				paint_render.transform = render.transform;
+				paint.render_svg(&mut paint_render, &paint_params);
+				format!("<defs>{}</defs>{}", paint_render.svg_defs, paint_render.svg.to_svg_string())
+			})
+			.collect();
+
+		let id = write_svg_effects_filter(&mut render.svg_defs, effects, fill, bounds, render.transform, self.pixel_scale, &paints)?;
 		Some(format!("url(#{id})"))
 	}
 }
@@ -497,6 +542,30 @@ impl SvgFilterPrimitives {
 		)
 	}
 
+	/// A paint's markup, drawn in the user space, as an image filling the `region` of it from its minimum to its maximum corner.
+	/// Filters take outside graphics only as images, which an embedded SVG document keeps portable to viewers that can't reference elements.
+	fn paint_image(&mut self, markup: &str, [min, max]: [DVec2; 2]) -> String {
+		use base64::Engine;
+
+		let size = max - min;
+		let document = format!(
+			r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:graphite="https://graphite.art" viewBox="{} {} {} {}" width="{}" height="{}" preserveAspectRatio="none">{markup}</svg>"#,
+			min.x, min.y, size.x, size.y, size.x, size.y
+		);
+		let href = format!("data:image/svg+xml;base64,{}", base64::engine::general_purpose::STANDARD.encode(document));
+
+		let placement = format!(r#"x="{}" y="{}" width="{}" height="{}" preserveAspectRatio="none""#, min.x, min.y, size.x, size.y);
+		self.push("feImage", &format!(r#"href="{href}" {placement}"#), "")
+	}
+
+	/// The image with the paint mixed over its colors by the blend mode, keeping its alpha.
+	fn overlay(&mut self, image: &str, paint: &str, blend_mode: BlendMode) -> String {
+		// SVG has no counterpart for some blend modes, which paint normally instead
+		let mode = blend_mode.to_svg_style_name().unwrap_or("normal");
+		let blended = self.push("feBlend", &format!(r#"in="{paint}" in2="{image}" mode="{mode}""#), "");
+		self.push("feComposite", &format!(r#"in="{blended}" in2="{image}" operator="atop""#), "")
+	}
+
 	/// The coverage tinted `color`.
 	fn tint(&mut self, coverage: &str, color: Color) -> String {
 		let flood = self.push(
@@ -614,8 +683,8 @@ impl SvgFilterPrimitives {
 
 /// Writes an SVG filter into `svg_defs` that carries out `effects` like the GPU passes do, returning its ID, or `None` if the user space is degenerate.
 /// `bounds` is the content's extent in the filtered group's user space, which `user_to_document` maps into the document space the effects' lengths are measured in.
-/// `pixel_scale` is how many output pixels span a document unit.
-fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], user_to_document: DAffine2, pixel_scale: f64) -> Option<String> {
+/// `pixel_scale` is how many output pixels span a document unit, and `paints` holds the markup of the paint overlays' paints that aren't solid colors, in order.
+fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32, bounds: [DVec2; 2], user_to_document: DAffine2, pixel_scale: f64, paints: &[String]) -> Option<String> {
 	use graphic_types::effects::{bevel_light, outline_extents};
 	use graphic_types::{BevelDirection, EffectOperation, GlowSource};
 
@@ -626,7 +695,12 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 	let document_to_user = user_to_document.matrix2.inverse();
 	let length_scale = determinant.abs().sqrt().recip();
 
+	// The filter covers how far the effects reach past the content
+	let reach = effects.reach() * length_scale;
+	let region = [bounds[0] - reach, bounds[1] + reach];
+
 	let mut primitives = SvgFilterPrimitives::default();
+	let mut paints = paints.iter();
 
 	// The content at full strength, which casts every silhouette, and the content faded by the fill, which shows in the result
 	let mut full = "SourceGraphic".to_string();
@@ -731,6 +805,18 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 					primitives.shade_within(&mut full, &mut filled, &coverage, color);
 				}
 			}
+			EffectOperation::PaintOverlay { blend_mode, opacity, .. } => {
+				let Some(markup) = paints.next() else { continue };
+
+				let mut paint = primitives.paint_image(markup, region);
+				if opacity < 100. {
+					let slope = opacity / 100.;
+					paint = primitives.push("feComponentTransfer", &format!(r#"in="{paint}""#), &format!(r#"<feFuncA type="linear" slope="{slope}" />"#));
+				}
+
+				filled = filled.map(|filled| primitives.overlay(&filled, &paint, blend_mode));
+				full = primitives.overlay(&full, &paint, blend_mode);
+			}
 			EffectOperation::Adjustment(ref adjustment) => {
 				filled = filled.map(|filled| primitives.adjust(&filled, adjustment));
 				full = primitives.adjust(&full, adjustment);
@@ -749,9 +835,7 @@ fn write_svg_effects_filter(svg_defs: &mut String, effects: &Effects, fill: f32,
 		}
 	}
 
-	// The filter covers how far the effects reach past the content
-	let reach = effects.reach() * length_scale;
-	let (min, max) = (bounds[0] - reach, bounds[1] + reach);
+	let [min, max] = region;
 	let id = format!("effects-{}", generate_uuid());
 	write!(
 		svg_defs,
@@ -1453,7 +1537,7 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 	let render_item = |render: &mut SvgRender| {
 		// The filter also covers how far the effects nested inside reach past the content, measured in this user space
 		let document_scale = render.transform.matrix2.determinant().abs().sqrt();
-		let filter = compositing.svg_filter(render, || match element.bounding_box(transform, true) {
+		let filter = compositing.svg_filter(render, render_params, || match element.bounding_box(transform, true) {
 			RenderBoundingBox::Rectangle([min, max]) => {
 				let nested_reach = nested_effects_reach(element) / document_scale;
 				RenderBoundingBox::Rectangle([min - nested_reach, max + nested_reach])
@@ -1509,12 +1593,12 @@ fn render_graphic_item_to_vello<'a>(
 	next_clips: bool,
 	mask_element_and_transform: &mut Option<(&'a Graphic, DAffine2)>,
 	scene: &mut VelloSceneBuilder,
-	transform: DAffine2,
+	parent_transform: DAffine2,
 	render_params: &RenderParams,
 ) {
 	let Some(element) = item.element() else { return };
 	let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let transform = transform * item_transform;
+	let transform = parent_transform * item_transform;
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	// This item's declared appearance (if any) cascades to descendants lacking their own
 	let child_render_params = item
@@ -1560,7 +1644,7 @@ fn render_graphic_item_to_vello<'a>(
 		bounds => bounds,
 	};
 	let draw_content = |scene: &mut VelloSceneBuilder| {
-		compositing.draw_with_effects(scene, effects_bounds, |scene| element.render_to_vello(scene, transform, render_params));
+		compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, |scene| element.render_to_vello(scene, transform, render_params));
 	};
 
 	if next_clips && mask_element_and_transform.is_none() {
@@ -1752,7 +1836,7 @@ impl Render for Graphic {
 			}
 			Graphic::RasterCPU(item) => render_raster_cpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, render_params),
+			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Generator(item) => render_generator_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
@@ -2434,7 +2518,7 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 	};
 
 	let render_shape = |render: &mut SvgRender| {
-		let filter = compositing.svg_filter(render, || {
+		let filter = compositing.svg_filter(render, render_params, || {
 			let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 			let stroke = appearance().and_then(|appearance| appearance.fill_and_stroke().stroke);
 			let paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
@@ -2779,7 +2863,7 @@ fn render_vector_item_to_vello(
 		}
 		_ => {
 			let effects_bounds = || layer_geometry.map_or(RenderBoundingBox::None, |(layer_affine, layer_rect)| rect_bounds(layer_affine.transform_rect_bbox(layer_rect)));
-			compositing.draw_with_effects(scene, effects_bounds, |scene| {
+			compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, |scene| {
 				if use_layer {
 					let cloned_element = element.clone();
 
@@ -3198,7 +3282,9 @@ fn render_raster_image_svg<T>(item: ItemRef<'_, T>, image: &Raster<CPU>, coverag
 		}
 	};
 
-	let filter = compositing.svg_filter(render, || RenderBoundingBox::Rectangle((transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box()));
+	let filter = compositing.svg_filter(render, render_params, || {
+		RenderBoundingBox::Rectangle((transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
+	});
 
 	// A filter's wrapping group takes the opacity and blend mode instead
 	let (opacity, blend_mode) = match filter {
@@ -3335,7 +3421,7 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	compositing.draw_with_effects(scene, item_bounds, |scene| {
+	compositing.draw_with_effects(scene, transform, render_params, item_bounds, |scene| {
 		let image_transform = kurbo::Affine::new(image_transform.to_cols_array());
 		match &adjusted_texture {
 			Some(texture) => scene.draw_texture(texture.clone(), sampler, image_transform),
@@ -3377,7 +3463,13 @@ fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut Vell
 	}
 
 	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
-	compositing.draw_with_effects(scene, || bounds, |scene| scene.draw_generator(&pattern, kurbo::Affine::new(local_to_scene.to_cols_array())));
+	compositing.draw_with_effects(
+		scene,
+		transform,
+		render_params,
+		|| bounds,
+		|scene| scene.draw_generator(&pattern, kurbo::Affine::new(local_to_scene.to_cols_array())),
+	);
 
 	if layer {
 		scene.pop_layer();
@@ -3542,7 +3634,7 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 	let image_transform = transform * transform_attribute * coverage * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * coverage * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	compositing.draw_with_effects(scene, item_bounds, |scene| {
+	compositing.draw_with_effects(scene, transform, render_params, item_bounds, |scene| {
 		scene.draw_texture(texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
 	});
 
@@ -3569,9 +3661,9 @@ impl Render for List<Color> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, _parent_transform: DAffine2, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 		for index in 0..self.len() {
-			render_color_item_to_vello(ItemRef::ListItem(self, index), scene, render_params);
+			render_color_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
 		}
 	}
 }
@@ -3606,7 +3698,7 @@ fn render_color_item_svg(item: ItemRef<'_, Color>, render: &mut SvgRender, rende
 }
 
 /// Draws one item of color content into the Vello scene, covering the whole render area.
-fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBuilder, render_params: &RenderParams) {
+fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 	let Some(color) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let compositing = item.compositing(render_params);
@@ -3621,7 +3713,7 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBu
 		layer = true;
 	}
 
-	compositing.draw_with_effects(scene, || RenderBoundingBox::Infinite, |scene| scene.fill_viewport(vello_color, None));
+	compositing.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, |scene| scene.fill_viewport(vello_color, None));
 
 	if layer {
 		scene.pop_layer();
@@ -3831,7 +3923,13 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 			layer = true;
 		}
 
-		compositing.draw_with_effects(scene, || RenderBoundingBox::Infinite, |scene| scene.fill_viewport(&fill, Some(brush_transform)));
+		compositing.draw_with_effects(
+			scene,
+			parent_transform,
+			render_params,
+			|| RenderBoundingBox::Infinite,
+			|scene| scene.fill_viewport(&fill, Some(brush_transform)),
+		);
 
 		if layer {
 			scene.pop_layer();
@@ -4138,7 +4236,7 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 		return;
 	}
 
-	let filter = compositing.svg_filter(render, || layout_bounds);
+	let filter = compositing.svg_filter(render, render_params, || layout_bounds);
 	let filtered = filter.is_some();
 
 	// Wrap all glyph <path> elements in a <g> with the item's transform/opacity/blend-mode, which a filter's wrapping group takes instead
@@ -4237,6 +4335,8 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 
 		compositing.draw_with_effects(
 			scene,
+			transform,
+			render_params,
 			|| rect_bounds(transformed_bounds()),
 			|scene| {
 				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
@@ -4510,6 +4610,7 @@ mod tests {
 			[DVec2::ZERO, DVec2::splat(10.)],
 			DAffine2::from_scale(DVec2::splat(2.)),
 			1.,
+			&[],
 		)
 		.unwrap();
 
@@ -4528,7 +4629,7 @@ mod tests {
 			gamma: false,
 		};
 		let mut defs = String::new();
-		write_svg_effects_filter(&mut defs, &Effects::from_operations([blur]), 0.5, [DVec2::ZERO, DVec2::ONE], DAffine2::IDENTITY, 1.).unwrap();
+		write_svg_effects_filter(&mut defs, &Effects::from_operations([blur]), 0.5, [DVec2::ZERO, DVec2::ONE], DAffine2::IDENTITY, 1., &[]).unwrap();
 
 		// The fill fades a copy of the content, which is blurred in linear light and passed through as the filter's last result
 		assert!(defs.contains(r#"<feFuncA type="linear" slope="0.5" />"#), "{defs}");
@@ -4537,13 +4638,13 @@ mod tests {
 	}
 
 	#[test]
-	fn svg_effects_filters_carry_out_inner_glows_satins_outlines_and_bevels() {
+	fn svg_effects_filters_carry_out_inner_glows_satins_outlines_bevels_and_paint_overlays() {
 		use graphic_types::vector_types::vector::style::StrokeAlign;
 		use graphic_types::{BevelDirection, EffectOperation, GlowSource};
 
 		let filter = |operation| {
 			let mut defs = String::new();
-			write_svg_effects_filter(&mut defs, &Effects::from_operations([operation]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 1.).unwrap();
+			write_svg_effects_filter(&mut defs, &Effects::from_operations([operation]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 1., &[]).unwrap();
 			defs
 		};
 		let invert = r#"<feFuncA type="linear" slope="-1" intercept="1" />"#;
@@ -4592,9 +4693,34 @@ mod tests {
 			shadow_color: Color::BLACK,
 		};
 		let mut bevel_defs = String::new();
-		write_svg_effects_filter(&mut bevel_defs, &Effects::from_operations([bevel]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 2.).unwrap();
+		write_svg_effects_filter(&mut bevel_defs, &Effects::from_operations([bevel]), 1., [DVec2::ZERO, DVec2::splat(10.)], DAffine2::IDENTITY, 2., &[]).unwrap();
 		assert!(bevel_defs.contains(r#"operator="erode" radius="2""#) && bevel_defs.contains(r#"stdDeviation="1""#), "{bevel_defs}");
 		assert_eq!(bevel_defs.matches(r#"surfaceScale="4""#).count(), 2, "{bevel_defs}");
+
+		// A paint overlay embeds its paint's markup as an image of the filter region, then blends it over the content within the content's alpha
+		let overlay = EffectOperation::PaintOverlay {
+			paint: Graphic::from(Gradient::default()),
+			blend_mode: BlendMode::Multiply,
+			opacity: 50.,
+		};
+		let mut overlay_defs = String::new();
+		let paints = [r#"<rect width="10" height="10" fill="red" />"#.to_string()];
+		write_svg_effects_filter(
+			&mut overlay_defs,
+			&Effects::from_operations([overlay]),
+			1.,
+			[DVec2::ZERO, DVec2::splat(10.)],
+			DAffine2::IDENTITY,
+			1.,
+			&paints,
+		)
+		.unwrap();
+		assert!(
+			overlay_defs.contains(r#"<feImage href="data:image/svg+xml;base64,"#) && overlay_defs.contains(r#"x="0" y="0" width="10" height="10""#),
+			"{overlay_defs}"
+		);
+		assert!(overlay_defs.contains(r#"<feFuncA type="linear" slope="0.5" />"#), "{overlay_defs}");
+		assert!(overlay_defs.contains(r#"mode="multiply""#) && overlay_defs.contains(r#"operator="atop""#), "{overlay_defs}");
 	}
 
 	#[test]
@@ -4611,6 +4737,7 @@ mod tests {
 				[DVec2::ZERO, DVec2::ONE],
 				DAffine2::IDENTITY,
 				1.,
+				&[],
 			)
 			.unwrap();
 			defs
@@ -4668,7 +4795,16 @@ mod tests {
 				true
 			}
 
-			fn render_effects(&mut self, _: glam::UVec2, _: kurbo::Affine, _: &Effects, _: f32, _: DMat2, _: &mut dyn FnMut(&mut VelloSceneBuilder)) -> graphic_types::raster_types::Texture {
+			fn render_effects(
+				&mut self,
+				_: glam::UVec2,
+				_: kurbo::Affine,
+				_: &Effects,
+				_: f32,
+				_: DMat2,
+				_: &mut dyn FnMut(usize, &mut VelloSceneBuilder),
+				_: &mut dyn FnMut(&mut VelloSceneBuilder),
+			) -> graphic_types::raster_types::Texture {
 				panic!("the vector is drawn through an effects group");
 			}
 

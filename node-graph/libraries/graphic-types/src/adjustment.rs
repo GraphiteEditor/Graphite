@@ -1,5 +1,6 @@
 //! Color adjustments as plain data holding their nodes' settings in the nodes' own units, decoded from effect rows, carried out by the kernels of the `raster-kernels` crate.
 
+use crate::Graphic;
 use crate::effects::EffectKind;
 use crate::parameters::ParameterVisitor;
 use core_types::Color;
@@ -121,7 +122,7 @@ impl Adjustment {
 			Self::ColorBalance(_) => EffectKind::ColorBalance,
 			Self::PhotoFilter { .. } => EffectKind::PhotoFilter,
 			Self::ColorLookup { .. } => EffectKind::ColorLookup,
-			Self::ColorOverlay { .. } => EffectKind::ColorOverlay,
+			Self::ColorOverlay { .. } => EffectKind::PaintOverlay,
 		}
 	}
 
@@ -271,7 +272,12 @@ impl Adjustment {
 			}
 			Self::ColorLookup { lut_file } => visitor.parameter("lut_file", lut_file, Resource::default()),
 			Self::ColorOverlay { color, blend_mode, opacity } => {
-				visitor.parameter("color", color, Color::BLACK);
+				// Rides the row as the paint of the Paint Overlay node, which stamps it
+				let mut paint = Graphic::from(*color);
+				visitor.parameter("paint", &mut paint, Graphic::from(Color::BLACK));
+				if let Graphic::Color(paint) = paint {
+					*color = *paint.element();
+				}
 				visitor.parameter("blend_mode", blend_mode, BlendMode::default());
 				visitor.parameter("opacity", opacity, 100.);
 			}
