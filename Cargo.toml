@@ -96,7 +96,6 @@ transform-nodes = { path = "node-graph/nodes/transform" }
 vector-nodes = { path = "node-graph/nodes/vector" }
 repeat-nodes = { path = "node-graph/nodes/repeat" }
 vectorize-nodes = { path = "node-graph/nodes/vectorize" }
-ollev = { git = "https://github.com/tagtraumen/ollev" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
@@ -244,6 +243,7 @@ tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.7", features = ["html_reports"] }
 gungraun = { version = "0.18" }
 ndarray = "0.16"
+ollev = "0.1"
 dirs = "6.0"
 cef = "156"
 cef-dll-sys = "156"

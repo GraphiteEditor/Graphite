@@ -4029,7 +4029,8 @@ dependencies = [
 [[package]]
 name = "ollev"
 version = "0.1.1"
-source = "git+https://github.com/tagtraumen/ollev#a4bdcd142a66f503dcc5c6323ebef3bb0550e63e"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8269c17c8b0db511ee0c1b480dcf580c9ca931aa9f42de66bfaa325d553ddfb"
 dependencies = [
  "glam",
 ]
