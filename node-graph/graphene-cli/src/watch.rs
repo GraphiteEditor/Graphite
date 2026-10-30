@@ -32,7 +32,7 @@ pub async fn run(live: LiveDocument) -> Result<(), Box<dyn Error>> {
 		editor_api,
 		runtime: tokio::runtime::Handle::current(),
 		spawner: spawner.clone(),
-		graph_runtime: AsyncRuntime::new(spawner),
+		graph_runtime: AsyncRuntime::new(spawner, Arc::new(std::time::Instant::now())),
 		window: None,
 		surface: None,
 		blitter: None,
