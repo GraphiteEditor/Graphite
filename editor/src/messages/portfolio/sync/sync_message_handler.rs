@@ -9,7 +9,7 @@ use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
 use crate::messages::viewport::Position;
 use document_format::GddV1;
-use document_graph_storage::{HistoryMetadata, UserId, user_attr};
+use document_graph_storage::{HistoryMetadata, Subject, UserId, user_attr};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
 use peer_transport::{CursorPosition, CursorSpace, DEFAULT_SIGNALING_SERVER, Event, Incoming, MessageLoopFuture, RemotePeer, Role, Room, SessionToken, SyncTarget, TransportPeerId};
@@ -650,7 +650,7 @@ fn record_profile(gdd: &mut GddV1, preferences: &PreferencesMessageHandler) {
 	if gdd.metadata().user_name(user).unwrap_or_default() == name {
 		return;
 	}
-	if let Err(error) = gdd.record_user_attribute(user, user_attr::NAME, serde_json::Value::from(name), now_ms()) {
+	if let Err(error) = gdd.record(Subject::User(user), user_attr::NAME, serde_json::Value::from(name), now_ms()) {
 		log::warn!("Recording the display name failed: {error}");
 	}
 }

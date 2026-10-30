@@ -55,7 +55,7 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
 /// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
-/// Facts are appended one per line and folded on read, so the file is never rewritten.
+/// One fact per line, so recording one only appends.
 pub const METADATA_CODEC: Codec = Codec::JsonLines;
 
 /// The facts as lines of the metadata file.
@@ -88,7 +88,7 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
 	/// and synchronous.
 	pub(crate) manifest: Manifest,
-	/// What people state about the history, such as user names. See [`HistoryMetadata`].
+	/// See [`HistoryMetadata`].
 	pub(crate) metadata: HistoryMetadata,
 	/// The Unix-epoch wall clock in milliseconds as of the last [`retire_due`](Self::retire_due) tick, recorded on each
 	/// retirement. `None` before the first tick.
@@ -221,7 +221,7 @@ impl<L: Layout> Gdd<L> {
 			false => SessionState::default(),
 		};
 		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
-			true => HistoryMetadata::fold(io::iter_lenient::<MetadataFact>(&working, layout.metadata_basename(), METADATA_CODEC).await?),
+			true => HistoryMetadata::fold(io::iter_lenient(&working, layout.metadata_basename(), METADATA_CODEC).await?),
 			false => HistoryMetadata::default(),
 		};
 

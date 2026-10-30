@@ -217,36 +217,17 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// What people state about the history, such as user names.
 	pub fn metadata(&self) -> &HistoryMetadata {
 		&self.metadata
 	}
 
-	/// Record a fact about a user at wall time `wall_ms`, persisted and told to the room. Returns whether it
-	/// changed anything.
-	pub fn record_user_attribute(&mut self, user: UserId, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
-		self.record(Subject::User(user), key, value, wall_ms)
-	}
-
-	/// Record a fact about a rev, such as a label or tag on the interaction it closes. Otherwise like
-	/// [`record_user_attribute`](Self::record_user_attribute).
-	pub fn record_rev_attribute(&mut self, rev: Rev, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
-		self.record(Subject::Rev(rev), key, value, wall_ms)
-	}
-
-	fn wall_stamp(&self, wall_ms: f64) -> WallStamp {
-		WallStamp {
+	/// State a fact at wall time `wall_ms`, taken on only once it is on disk, and tell the room. Returns whether it changed anything.
+	pub fn record(&mut self, subject: Subject, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
+		let stamp = WallStamp {
 			ms: wall_ms as u64,
 			peer: self.session.peer(),
-		}
-	}
-
-	/// States a fact, taken on only once it is on disk, so a failed write leaves nothing behind that a retry would take
-	/// for no change.
-	fn record(&mut self, subject: Subject, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
-		let Some(fact) = self.metadata.statement(subject, key, value, self.wall_stamp(wall_ms)) else {
-			return Ok(false);
 		};
+		let Some(fact) = self.metadata.statement(subject, key, value, stamp) else { return Ok(false) };
 		self.append_facts(std::slice::from_ref(&fact))?;
 		self.metadata.absorb(fact);
 		#[cfg(feature = "network")]

@@ -27,7 +27,7 @@ pub use attributes::*;
 pub use crdt::*;
 pub use document::*;
 pub use history::History;
-pub use history_metadata::{Fact, HistoryMetadata, MetadataFact, RevRecord, Subject, UserRecord, WallStamp, rev_attr, user_attr};
+pub use history_metadata::{HistoryMetadata, MetadataFact, Subject, WallStamp, rev_attr, user_attr};
 pub use ids::*;
 pub use model::*;
 pub use prior::{NetworkField, NodeField, Prior};

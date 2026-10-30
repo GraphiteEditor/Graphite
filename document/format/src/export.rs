@@ -199,9 +199,9 @@ impl<L: Layout> Gdd<L> {
 		};
 
 		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
-		// The facts are about the history, so a copy without it carries none.
+		// The facts name revs, so a copy without the history carries none.
 		if options.include_history && !self.metadata.is_empty() {
-			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &encode_facts(&self.metadata.facts())?)?;
+			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &encode_facts(self.metadata.facts())?)?;
 		}
 
 		if options.include_registry {

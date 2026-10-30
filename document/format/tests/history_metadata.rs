@@ -3,7 +3,7 @@
 use document_container::backends::memory::MemoryBackend;
 use document_container::{AnyContainer, AsyncContainer};
 use document_format::{GddV1, GddV1Layout, Layout};
-use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, Rev, TimeStamp, UserId, rev_attr, user_attr};
+use document_graph_storage::{Network, NetworkId, PeerId, RegistryDelta, Rev, Subject, TimeStamp, UserId, rev_attr, user_attr};
 
 const NOW_MS: f64 = 1_700_000_000_000.;
 
@@ -29,21 +29,21 @@ fn settle(network: &mut peer_transport::mock::MockNetwork, peers: &mut [&mut Gdd
 fn a_recorded_name_survives_a_reopen() {
 	futures::executor::block_on(async {
 		let mut gdd = document(1, 10);
-		assert!(gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record"));
+		assert!(gdd.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS).expect("record"));
 		assert!(
-			!gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS + 1.).expect("record"),
+			!gdd.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS + 1.).expect("record"),
 			"the same name is no change"
 		);
 
 		let step = Rev::new(7).expect("non-zero");
-		assert!(gdd.record_rev_attribute(step, rev_attr::LABEL, "Fixed the eye".into(), NOW_MS).expect("record"));
-		assert!(gdd.record_rev_attribute(step, "tag:v1", true.into(), NOW_MS).expect("record"));
+		assert!(gdd.record(Subject::Rev(step), rev_attr::LABEL, "Fixed the eye".into(), NOW_MS).expect("record"));
+		assert!(gdd.record(Subject::Rev(step), "tag:v1", true.into(), NOW_MS).expect("record"));
 		let (working, layout) = gdd.into_storage();
 		let mut reopened = GddV1::open_in(working, layout).await.expect("open");
 		assert_eq!(reopened.metadata().user_name(UserId(10)), Some("Ada"));
 
 		// A fact recorded after the torn tail is not joined to it.
-		reopened.record_user_attribute(UserId(11), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
+		reopened.record(Subject::User(UserId(11)), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
 		let (working, layout) = reopened.into_storage();
 		let reopened = GddV1::open_in(working, layout).await.expect("open");
 		assert_eq!(reopened.metadata().user_name(UserId(11)), Some("Bea"));
@@ -56,14 +56,14 @@ fn a_recorded_name_survives_a_reopen() {
 fn recording_an_unchanged_value_writes_nothing() {
 	futures::executor::block_on(async {
 		let mut gdd = document(1, 10);
-		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+		gdd.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
 		let metadata = gdd.metadata().clone();
 		let (working, layout) = gdd.into_storage();
 		let path = document_format::io::path_for(layout.metadata_basename(), document_format::METADATA_CODEC);
 		let before = working.read(&path).await.expect("read").as_slice().to_vec();
 
 		let mut reopened = GddV1::open_in(working, layout).await.expect("open");
-		assert!(!reopened.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS + 1.).expect("record"));
+		assert!(!reopened.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS + 1.).expect("record"));
 		assert_eq!(reopened.metadata(), &metadata);
 		let (working, _) = reopened.into_storage();
 		assert_eq!(working.read(&path).await.expect("read").as_slice(), before.as_slice());
@@ -76,7 +76,7 @@ fn recording_an_unchanged_value_writes_nothing() {
 fn an_unreadable_metadata_line_is_skipped() {
 	futures::executor::block_on(async {
 		let mut gdd = document(1, 10);
-		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+		gdd.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
 		let (working, layout) = gdd.into_storage();
 		let path = document_format::io::path_for(layout.metadata_basename(), document_format::METADATA_CODEC);
 		working
@@ -97,9 +97,9 @@ fn names_reach_the_room_with_the_sync_and_as_they_change() {
 	futures::executor::block_on(async {
 		let mut host = document(1, 10);
 		let mut guest = document(2, 20);
-		host.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+		host.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
 		// A name given before joining travels with the joiner and reaches the host.
-		guest.record_user_attribute(UserId(20), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
+		guest.record(Subject::User(UserId(20)), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
 
 		let mut network = peer_transport::mock::MockNetwork::new(1);
 		let host_endpoint = network.endpoint();
@@ -116,7 +116,7 @@ fn names_reach_the_room_with_the_sync_and_as_they_change() {
 		assert_eq!(host.metadata().user_name(UserId(20)), Some("Bea"), "the guest's record came back to the host");
 
 		// A rename while in the room goes round on its own.
-		assert!(guest.record_user_attribute(UserId(20), user_attr::NAME, "Beatrix".into(), NOW_MS + 5_000.).expect("record"));
+		assert!(guest.record(Subject::User(UserId(20)), user_attr::NAME, "Beatrix".into(), NOW_MS + 5_000.).expect("record"));
 		settle(&mut network, &mut [&mut host, &mut guest]);
 		assert_eq!(host.metadata().user_name(UserId(20)), Some("Beatrix"));
 		assert_eq!(host.metadata(), guest.metadata(), "both copies hold the same record");
@@ -153,7 +153,7 @@ fn a_retirement_records_when_it_happened() {
 fn an_export_carries_the_metadata_only_with_the_history() {
 	futures::executor::block_on(async {
 		let mut gdd = document(1, 10);
-		gdd.record_user_attribute(UserId(10), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+		gdd.record(Subject::User(UserId(10)), user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
 
 		let byte_store = graph_craft::application_io::resource::HashMapResourceStorage::new();
 		for include_history in [true, false] {

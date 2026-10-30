@@ -4,7 +4,7 @@ use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::portfolio::sync::now_ms;
 use crate::messages::prelude::*;
 use document_format::GddV1;
-use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, UserId, rev_attr};
+use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, Subject, UserId, rev_attr};
 use peer_transport::RemotePeer;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -98,7 +98,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::Rename { id, label } => {
 				let Some((gdd, rev)) = active_storage_mut(&mut context).zip(parse_rev(&id)) else { return };
-				if let Err(error) = gdd.record_rev_attribute(rev, rev_attr::LABEL, serde_json::Value::from(label.trim()), now_ms()) {
+				if let Err(error) = gdd.record(Subject::Rev(rev), rev_attr::LABEL, serde_json::Value::from(label.trim()), now_ms()) {
 					log::warn!("Naming the step failed: {error}");
 				}
 				self.send(&context, responses, true);
@@ -109,7 +109,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 					return;
 				}
 				let Some((gdd, rev)) = active_storage_mut(&mut context).zip(parse_rev(&id)) else { return };
-				if let Err(error) = gdd.record_rev_attribute(rev, &format!("{}{tag}", rev_attr::TAG_PREFIX), serde_json::Value::Bool(on), now_ms()) {
+				if let Err(error) = gdd.record(Subject::Rev(rev), &format!("{}{tag}", rev_attr::TAG_PREFIX), serde_json::Value::Bool(on), now_ms()) {
 					log::warn!("Tagging the step failed: {error}");
 				}
 				self.send(&context, responses, true);
@@ -186,20 +186,14 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expan
 	session.redo_stack().hash(&mut hasher);
 	session.hot_log().len().hash(&mut hasher);
 	gdd.role().is_some().hash(&mut hasher);
-	for record in gdd.metadata().users() {
-		record.user.hash(&mut hasher);
-		gdd.metadata().user_name(record.user).hash(&mut hasher);
-	}
 	for remote in gdd.peers() {
 		remote.user.hash(&mut hasher);
 		remote.name.hash(&mut hasher);
 	}
-	for record in gdd.metadata().revs() {
-		record.rev.hash(&mut hasher);
-		for (key, fact) in &record.attributes {
-			key.hash(&mut hasher);
-			fact.stamp.hash(&mut hasher);
-		}
+	for fact in gdd.metadata().facts() {
+		fact.subject.hash(&mut hasher);
+		fact.key.hash(&mut hasher);
+		fact.stamp.hash(&mut hasher);
 	}
 	limit.hash(&mut hasher);
 	expanded.len().hash(&mut hasher);
