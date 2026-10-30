@@ -45,7 +45,7 @@ pub struct NodeRuntime {
 	dirty: Arc<AtomicBool>,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
-	/// The network the executor was last compiled from, with previews applied.
+	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
 
@@ -247,16 +247,14 @@ impl NodeRuntime {
 						_ => self.inspect_state = InspectState::new(node_to_inspect),
 					}
 
-					self.old_graph = Some(network.clone());
 					self.resources = resources;
 
 					self.node_graph_errors.clear();
 					self.node_graph_warnings.clear();
-					let result = self.update_network(network);
-					if result.is_ok()
-						&& let Some(compiled_network) = &self.old_graph
-					{
-						self.thumbnails.update_sources(&layers, compiled_network, &self.executor);
+					let result = self.update_network(network.clone());
+					if result.is_ok() {
+						self.thumbnails.update_sources(&layers, &network, &self.executor);
+						self.old_graph = Some(network);
 					}
 					let node_graph_errors = self.node_graph_errors.clone();
 					let node_graph_warnings = self.node_graph_warnings.clone();
