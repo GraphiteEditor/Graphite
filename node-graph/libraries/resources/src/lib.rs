@@ -371,7 +371,7 @@ pub struct ResourceInfo<'a> {
 #[cfg(feature = "serde")]
 fn serialize_sorted<K: Ord + serde::Serialize, V: serde::Serialize, S: serde::Serializer>(map: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error> {
 	let mut entries: Vec<_> = map.iter().collect();
-	entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+	entries.sort_unstable_by_key(|&(key, _)| key);
 	serializer.collect_map(entries)
 }
 

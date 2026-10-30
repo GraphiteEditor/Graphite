@@ -4,7 +4,7 @@ use std::collections::HashMap;
 /// Serializes a hash map as a map in ascending key order, so equal maps write equal bytes whatever their iteration order.
 pub(crate) fn serialize_sorted<K: Ord + Serialize, V: Serialize, H, S: Serializer>(map: &HashMap<K, V, H>, serializer: S) -> Result<S::Ok, S::Error> {
 	let mut entries: Vec<_> = map.iter().collect();
-	entries.sort_unstable_by(|(a, _), (b, _)| a.cmp(b));
+	entries.sort_unstable_by_key(|&(key, _)| key);
 	serializer.collect_map(entries)
 }
 

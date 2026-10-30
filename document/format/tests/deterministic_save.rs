@@ -24,7 +24,7 @@ fn edits(peer: u64, byte_store: &HashMapResourceStorage) -> Vec<RegistryDelta> {
 	let mut ops = Vec::new();
 	for index in 0..8 {
 		let network = NetworkId(peer * 1000 + index);
-		let removed = index % 3 == 0;
+		let removed = index.is_multiple_of(3);
 		ops.push(RegistryDelta::AddNetwork {
 			id: network,
 			network: Network::default(),
@@ -33,7 +33,7 @@ fn edits(peer: u64, byte_store: &HashMapResourceStorage) -> Vec<RegistryDelta> {
 			let id = NodeId(network.0 * 100 + node);
 			let node = Node::new(network, Implementation::ProtoNode(ResourceId::new()), 2);
 			ops.push(RegistryDelta::AddNode { id, node: node.clone() });
-			if removed || id.0 % 3 == 0 {
+			if removed || id.0.is_multiple_of(3) {
 				ops.push(RegistryDelta::RemoveNode { id, snapshot: node });
 			}
 		}
