@@ -320,4 +320,54 @@ mod network_interface_tests {
 		assert_eq!(view.persistent_input_metadata(&NodeId(11), 0).unwrap().input_name, "Shared");
 		assert_eq!(view.output_names(&NodeId(11)).unwrap(), ["Result".to_string()]);
 	}
+
+	#[test]
+	fn interface_edits_through_one_instance_reach_every_instance() {
+		use super::*;
+
+		let definition = NetworkId(1);
+		let instances = [NodeId(10), NodeId(11)];
+		let network = NodeNetwork {
+			nodes: instances
+				.iter()
+				.map(|&id| {
+					let node = DocumentNode {
+						implementation: DocumentNodeImplementation::Definition(definition),
+						..Default::default()
+					};
+					(id, node)
+				})
+				.collect(),
+			definitions: [(definition, NodeNetwork::value_network(DocumentNode::default()))].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut definition_metadata = NodeNetworkMetadata::default();
+		definition_metadata.persistent_metadata.node_metadata.insert(NodeId(0), DocumentNodeMetadata::default());
+		definition_metadata.persistent_metadata.export_names = vec![String::new()];
+		let mut network_metadata = NodeNetworkMetadata::default();
+		for id in instances {
+			network_metadata.persistent_metadata.node_metadata.insert(id, DocumentNodeMetadata::default());
+		}
+		network_metadata.persistent_metadata.definitions.insert(definition, definition_metadata);
+
+		let mut interface = NodeNetworkInterface::from_trees(network, network_metadata);
+		let through_first = [NodeId(10)];
+
+		interface.add_import(TaggedValue::Integer(1), true, -1, "Amount", "", &through_first);
+		interface.add_import(TaggedValue::Integer(2), true, -1, "Scale", "", &through_first);
+		assert_eq!(instances.map(|id| interface.number_of_inputs(&id, &[])), [2, 2]);
+		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
+
+		interface.reorder_import(1, 0, &through_first);
+		let view = interface.view(&[]).unwrap();
+		assert_eq!(view.persistent_input_metadata(&NodeId(11), 0).unwrap().input_name, "Scale");
+		assert_eq!(view.input(&InputConnector::node_at_index(NodeId(11), 0)).unwrap().as_value(), Some(&TaggedValue::Integer(2)));
+
+		interface.remove_import(0, &through_first);
+		interface.add_export(TaggedValue::None, -1, "Extra", &through_first);
+		assert_eq!(instances.map(|id| interface.number_of_inputs(&id, &[])), [1, 1]);
+		assert_eq!(instances.map(|id| interface.number_of_outputs(&id, &[])), [2, 2]);
+		assert_eq!(interface.validate_invariants(), Vec::<String>::new());
+	}
 }

@@ -85,13 +85,6 @@ impl NodeNetworkInterface {
 		Some(&mut network_metadata.persistent_metadata.node_metadata.get_mut(node_id)?.transient_metadata)
 	}
 
-	/// The transient caches of the network that the network at `network_path` sits inside.
-	pub(in super::super) fn encapsulating_network_transient_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkTransientMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		encapsulating_path.pop()?;
-		self.network_transient_mut(&encapsulating_path)
-	}
-
 	/// The selection undo and redo stacks. Per-peer state that is not recorded and does not reach storage.
 	pub(in super::super) fn selection_history_mut(&mut self, network_path: &[NodeId]) -> Option<SelectionHistoryMut<'_>> {
 		let persistent = &mut self.network_metadata_mut(network_path)?.persistent_metadata;

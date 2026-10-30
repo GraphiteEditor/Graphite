@@ -192,6 +192,32 @@ impl NodeNetworkInterface {
 		self.query_encapsulating(network_path, "encapsulating_node_metadata", |view| view.encapsulating_node_metadata())
 	}
 
+	pub fn encapsulating_nodes(&self, network_path: &[NodeId]) -> Vec<(Vec<NodeId>, NodeId)> {
+		let Some((&node_id, parent_path)) = network_path.split_last() else { return Vec::new() };
+		let Some(NetworkLocation {
+			definition: Some(instantiated),
+			inline_path: [],
+		}) = self.locate(network_path)
+		else {
+			return vec![(parent_path.to_vec(), node_id)];
+		};
+
+		let mut seen = HashSet::new();
+		let mut instances = Vec::new();
+		self.for_each_network(&mut |path, _| {
+			let (Some(network), Some(location)) = (self.document_network().nested_network(path), self.locate(path)) else {
+				return;
+			};
+			for (id, node) in &network.nodes {
+				let is_instance = node.implementation == DocumentNodeImplementation::Definition(instantiated);
+				if is_instance && seen.insert((location.definition, location.inline_path.to_vec(), *id)) {
+					instances.push((path.to_vec(), *id));
+				}
+			}
+		});
+		instances
+	}
+
 	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
 	pub fn downstream_layer_for_chain_node(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
 		let mut id = *node_id;

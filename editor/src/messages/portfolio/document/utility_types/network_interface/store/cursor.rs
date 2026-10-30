@@ -510,13 +510,34 @@ impl NodeMut<'_> {
 	/// Records the node's input list and the metadata array indexed by it, which change together
 	/// whenever the number or order of slots does.
 	pub(super) fn emit_inputs(&mut self) {
+		self.emit_graph_inputs();
+		self.emit_input_metadata();
+	}
+
+	/// Inserts an input at `index`, clamped to the end, leaving the metadata its inputs index alone.
+	pub(crate) fn insert_input(&mut self, index: usize, input: NodeInput) {
+		let index = index.min(self.node.inputs.len());
+		self.node.inputs.insert(index, input);
+		self.emit_graph_inputs();
+	}
+
+	/// Removes the input at `index`, leaving the metadata its inputs index alone.
+	pub(crate) fn remove_input(&mut self, index: usize) -> Option<NodeInput> {
+		if index >= self.node.inputs.len() {
+			return None;
+		}
+		let input = self.node.inputs.remove(index);
+		self.emit_graph_inputs();
+		Some(input)
+	}
+
+	fn emit_graph_inputs(&mut self) {
 		let delta = RuntimeDelta::SetInputs {
 			network_path: self.deltas.network_path(),
 			node_id: self.deltas.node_id(),
 			inputs: self.node.inputs.clone(),
 		};
 		self.deltas.graph(delta);
-		self.emit_input_metadata();
 	}
 
 	fn emit_input_metadata(&mut self) {
@@ -561,6 +582,23 @@ impl NetworkMut<'_> {
 			self.emit(change);
 		}
 		changed
+	}
+
+	pub(crate) fn insert_import_metadata(&mut self, index: usize, input_metadata: InputMetadata) {
+		let index = index.min(self.metadata.import_metadata.len());
+		self.metadata.import_metadata.insert(index, input_metadata);
+		let change = NetworkMetadataChange::ImportMetadata(self.metadata.import_metadata.clone());
+		self.emit(change);
+	}
+
+	pub(crate) fn remove_import_metadata(&mut self, index: usize) -> Option<InputMetadata> {
+		if index >= self.metadata.import_metadata.len() {
+			return None;
+		}
+		let removed = self.metadata.import_metadata.remove(index);
+		let change = NetworkMetadataChange::ImportMetadata(self.metadata.import_metadata.clone());
+		self.emit(change);
+		Some(removed)
 	}
 
 	pub(crate) fn set_import_metadata(&mut self, import_metadata: Vec<InputMetadata>) -> bool {
