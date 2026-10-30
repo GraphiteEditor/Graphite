@@ -40,6 +40,7 @@ winit = { workspace = true }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
 serde_json = { workspace = true }
+getrandom = "0.3"
 wgpu-executor = { workspace = true, optional = true }
 
 [package.metadata.cargo-shear]

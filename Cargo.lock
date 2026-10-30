@@ -2820,6 +2820,7 @@ dependencies = [
  "document-graph-storage",
  "document-live",
  "fern",
+ "getrandom 0.3.3",
  "graph-craft",
  "graphene-std",
  "image",

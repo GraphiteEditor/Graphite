@@ -8,7 +8,6 @@ use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{PeerId, UserId};
 use document_live::{LiveDocument, SessionToken};
 use std::error::Error;
-use std::hash::{BuildHasher, Hasher, RandomState};
 use std::path::Path;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -16,11 +15,15 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 pub use document_live::DEFAULT_SIGNALING_SERVER;
 
 pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dyn Error>> {
-	let (peer, user) = identity();
-	let token = SessionToken(random_bytes());
+	let (peer, user) = identity()?;
 	let live = match document {
-		Some(path) => LiveDocument::host_document(open_archive(path).await?, signaling, token, user, spawn_driver),
-		None => LiveDocument::host(signaling, token, peer, user, spawn_driver).await?,
+		Some(path) => {
+			let gdd = open_archive(path).await?;
+			let token = SessionToken::for_document(gdd.manifest().document_id);
+			LiveDocument::host_document(gdd, signaling, token, user, spawn_driver)
+		}
+		// An empty document takes the peer id as its document id
+		None => LiveDocument::host(signaling, SessionToken::for_document(peer.0), peer, user, spawn_driver).await?,
 	};
 	println!("hosting session {}", live.token());
 	drive_from_stdin(live).await;
@@ -28,7 +31,7 @@ pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dy
 }
 
 pub async fn join(signaling: &str, token: SessionToken) -> Result<(), Box<dyn Error>> {
-	let (peer, user) = identity();
+	let (peer, user) = identity()?;
 	let live = LiveDocument::join(signaling, token, peer, user, spawn_driver).await?;
 	println!("joining session {token}");
 	drive_from_stdin(live).await;
@@ -36,7 +39,7 @@ pub async fn join(signaling: &str, token: SessionToken) -> Result<(), Box<dyn Er
 }
 
 pub async fn watch(signaling: &str, token: SessionToken) -> Result<(), Box<dyn Error>> {
-	let (peer, user) = identity();
+	let (peer, user) = identity()?;
 	let live = LiveDocument::join(signaling, token, peer, user, spawn_driver).await?;
 	crate::watch::run(live).await
 }
@@ -73,18 +76,7 @@ fn spawn_driver(driver: document_live::MessageLoopFuture) {
 	tokio::spawn(driver);
 }
 
-fn identity() -> (PeerId, UserId) {
-	let peer = PeerId(random_u64());
-	(peer, UserId(peer.0))
-}
-
-fn random_u64() -> u64 {
-	RandomState::new().build_hasher().finish()
-}
-
-fn random_bytes() -> [u8; 16] {
-	let mut bytes = [0; 16];
-	bytes[..8].copy_from_slice(&random_u64().to_le_bytes());
-	bytes[8..].copy_from_slice(&random_u64().to_le_bytes());
-	bytes
+fn identity() -> Result<(PeerId, UserId), getrandom::Error> {
+	let peer = PeerId(getrandom::u64()?);
+	Ok((peer, UserId(peer.0)))
 }
