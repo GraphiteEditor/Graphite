@@ -234,7 +234,7 @@ impl<L: Layout> Gdd<L> {
 			(true, true) => {
 				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
 				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
+				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack.clone(), session_state.next_node_counter)
 			}
 			(true, false) => {
 				// Registry-only export: synthesize a history that reproduces this state.
@@ -244,15 +244,8 @@ impl<L: Layout> Gdd<L> {
 			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
 		};
 
-		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
-		if let Some(rev) = session_state.last_broadcast_rev {
-			session.publish_up_to(rev);
-		}
-
-		session.restore_hot_sequence(session_state.last_hot_sequence);
-		session.restore_clock_counter(session_state.clock_counter);
 		// Before the hot log replays, so a retired op in it is dropped rather than staged again.
-		session.absorb_retired_marks(&session_state.retired_marks);
+		restore_cursor(&mut session, &session_state);
 		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
 
 		Ok(Self {
@@ -281,6 +274,16 @@ impl<L: Layout> Gdd<L> {
 
 		Ok(Self::assemble(session, working, layout, manifest, HistoryMetadata::default()))
 	}
+}
+
+/// Carry the persisted cursor onto a freshly loaded session, whichever way it was loaded.
+pub(crate) fn restore_cursor(session: &mut Session, state: &SessionState) {
+	if let Some(rev) = state.last_broadcast_rev {
+		session.publish_up_to(rev);
+	}
+	session.restore_hot_sequence(state.last_hot_sequence);
+	session.restore_clock_counter(state.clock_counter);
+	session.absorb_retired_marks(&state.retired_marks);
 }
 
 fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {

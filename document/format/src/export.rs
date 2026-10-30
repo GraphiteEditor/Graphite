@@ -11,7 +11,8 @@ use graphene_resource::{LoadResource, Resource, ResourceHash};
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::session_state::SessionState;
-use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io, restore_cursor};
+use document_graph_storage::Session;
 
 /// Export wrapping. Payloads keep the working copy's recorded per-payload codecs (see
 /// [`crate::manifest::PayloadCodecs`]); export does not re-encode.
@@ -143,28 +144,6 @@ impl<L: Layout> Gdd<L> {
 		let codecs = self.manifest.codecs;
 		sink.write_entry(&io::path_for(self.layout.manifest_basename(), MANIFEST_CODEC), &MANIFEST_CODEC.write_single(&self.manifest)?)?;
 
-		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
-		let session_state = SessionState {
-			peer_id: self.session.peer(),
-			user_id: self.session.user(),
-			head_rev: self.session.head_rev(),
-			last_broadcast_rev: self.session.last_broadcast_rev(),
-			redo_stack: self.session.redo_stack().to_vec(),
-			next_node_counter: self.session.next_node_counter(),
-			last_hot_sequence: self.session.last_hot_sequence(),
-			retired_marks: self.session.retired_marks().clone(),
-			clock_counter: self.session.clock_counter(),
-			// A copy does not join the room on its own.
-			shared: false,
-			view_settings: self.view_settings.clone(),
-			network_view_settings: self.network_view_settings.clone(),
-		};
-		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
-		// The facts are about the history, so a copy without it carries none.
-		if options.include_history && !self.metadata.is_empty() {
-			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &encode_facts(&self.metadata.facts())?)?;
-		}
-
 		let working_copy_hashes: std::collections::HashSet<ResourceHash> = self.resource_hashes().await?.into_iter().collect();
 
 		// Resources to embed as bytes: every `Embedded` entry, plus link-only ones when
@@ -189,6 +168,7 @@ impl<L: Layout> Gdd<L> {
 
 		hashes_from_store.sort_unstable();
 		hashes_from_store.dedup();
+		links_to_promote.sort_unstable();
 
 		// Fail fast if an embedded resource is missing, then promote link-only sources on the clone so
 		// the exported registry and history stay consistent. The live `Gdd` is untouched.
@@ -201,17 +181,34 @@ impl<L: Layout> Gdd<L> {
 		}
 		export_session.embed_resource_sources(links_to_promote)?;
 
+		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
+		let mut session_state = self.session_state(&export_session);
+
+		// Without history, open rebuilds the whole document from the registry, tombstones gone, as a history of its own.
+		// The copy holds that rebuilt document, so reopening and saving it again writes the same bytes. Rebuilding
+		// restamps the registry and a reopen rebuilds from the restamped one, so the copy is built from that too.
+		let flat = if options.include_history {
+			None
+		} else {
+			let (peer, user) = (self.session.peer(), self.session.user());
+			let restamped = Session::bootstrap_from_registry(peer, user, export_session.registry().without_tombstones())?.registry().clone();
+			let mut flat = Session::bootstrap_from_registry(peer, user, restamped)?;
+			restore_cursor(&mut flat, &session_state);
+			session_state = self.session_state(&flat);
+			Some(flat)
+		};
+
+		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
+		// The facts are about the history, so a copy without it carries none.
+		if options.include_history && !self.metadata.is_empty() {
+			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &encode_facts(&self.metadata.facts())?)?;
+		}
+
 		if options.include_registry {
-			// With history, the persisted snapshot is the retired registry and the hot log layers on top
-			// (mirrors `Session::load`); without history it must be the full working registry, since
-			// `bootstrap_from_registry` reconstructs the whole document from it alone. That document starts a history of
-			// its own, so the tombstones go.
-			let live;
-			let snapshot = if options.include_history {
-				export_session.retired_registry()
-			} else {
-				live = export_session.registry().without_tombstones();
-				&live
+			// With history, the persisted snapshot is the retired registry and the hot log layers on top (mirrors `Session::load`).
+			let snapshot = match &flat {
+				Some(flat) => flat.registry(),
+				None => export_session.retired_registry(),
 			};
 			sink.write_entry(&io::path_for(self.layout.registry_basename(), codecs.registry), &codecs.registry.write_single(snapshot)?)?;
 		}
@@ -237,36 +234,53 @@ impl<L: Layout> Gdd<L> {
 			}
 		}
 
-		// Copy bytes the working copy already holds, tracking covered hashes so the embed pass below
-		// doesn't re-emit them.
-		let mut emitted = std::collections::HashSet::new();
+		// Every resource in path order, whether its bytes sit in the working copy or come from the byte store, so where
+		// they sat does not change the archive. `None` marks bytes the working copy already holds.
+		let mut resources: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
 		let resources_dir = self.layout.resources_dir();
 		if self.working.list_dirs("").await?.iter().any(|d| d == resources_dir) {
-			let prefix = format!("{resources_dir}/");
-			for path in self.working.list(resources_dir).await? {
-				if let Some(hash) = path.strip_prefix(&prefix).and_then(|name| name.parse::<ResourceHash>().ok()) {
-					emitted.insert(hash);
-				}
-				let holder = self.working.read(&path).await?;
-
-				// Native `External` (mmap'd) holders copy CoW via a source path; others write bytes.
-				#[cfg(not(target_family = "wasm"))]
-				match holder.source_path() {
-					Some(src_path) => sink.write_entry_from_path(&path, src_path)?,
-					None => sink.write_entry(&path, holder.as_slice())?,
-				}
-				#[cfg(target_family = "wasm")]
-				sink.write_entry(&path, holder.as_slice())?;
-			}
+			resources.extend(self.working.list(resources_dir).await?.into_iter().map(|path| (path, None)));
+		}
+		for (hash, resource) in embedded_bytes {
+			resources.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
 		}
 
-		for (hash, resource) in &embedded_bytes {
-			if emitted.insert(*hash) {
-				sink.write_entry(&self.layout.resource_path(hash), resource.as_ref())?;
+		for (path, resource) in resources {
+			if let Some(resource) = resource {
+				sink.write_entry(&path, resource.as_ref())?;
+				continue;
 			}
+			let holder = self.working.read(&path).await?;
+
+			// Native `External` (mmap'd) holders copy CoW via a source path; others write bytes.
+			#[cfg(not(target_family = "wasm"))]
+			match holder.source_path() {
+				Some(src_path) => sink.write_entry_from_path(&path, src_path)?,
+				None => sink.write_entry(&path, holder.as_slice())?,
+			}
+			#[cfg(target_family = "wasm")]
+			sink.write_entry(&path, holder.as_slice())?;
 		}
 
 		Ok(())
+	}
+
+	/// The cursor and view settings `session` would persist. A copy does not join the room on its own.
+	fn session_state(&self, session: &Session) -> SessionState {
+		SessionState {
+			peer_id: session.peer(),
+			user_id: session.user(),
+			head_rev: session.head_rev(),
+			last_broadcast_rev: session.last_broadcast_rev(),
+			redo_stack: session.redo_stack().to_vec(),
+			next_node_counter: session.next_node_counter(),
+			last_hot_sequence: session.last_hot_sequence(),
+			retired_marks: session.retired_marks().clone(),
+			clock_counter: session.clock_counter(),
+			shared: false,
+			view_settings: self.view_settings.clone(),
+			network_view_settings: self.network_view_settings.clone(),
+		}
 	}
 }
 
