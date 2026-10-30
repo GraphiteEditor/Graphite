@@ -500,7 +500,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
-		node: graphene_std::raster_nodes::blending_nodes::mix::IDENTIFIER,
+		node: graphene_std::raster_nodes::blending_nodes::mix_colors::IDENTIFIER,
 		aliases: &[
 			"graphene_raster_nodes::adjustments::BlendNode",
 			"raster_nodes::adjustments::BlendNode",
@@ -508,6 +508,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::BlendNode",
 			"graphene_raster_nodes::blending_nodes::BlendNode",
 			"raster_nodes::blending_nodes::BlendNode",
+			"raster_nodes::blending_nodes::MixNode",
 		],
 	},
 	NodeReplacement {
@@ -1224,6 +1225,14 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				};
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
 				document.network_interface.set_call_argument(node_id, &network_path, default_template.call_argument);
+
+				// 'Mix Colors' takes the under color first, like a 'Merge' takes its stack, where 'Mix' and 'Blend' before it took the over color first
+				if *new == graphene_std::raster_nodes::blending_nodes::mix_colors::IDENTIFIER
+					&& let [over, under, ..] = node.inputs.as_slice()
+				{
+					document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), under.clone(), &network_path);
+					document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), over.clone(), &network_path);
+				}
 			}
 		}
 	}
@@ -4894,6 +4903,43 @@ mod tests {
 			let node = opened.network_interface.document_node(&node_id, &[]).expect("the node should still exist");
 			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(identifier.clone()), "{title}");
 			assert_eq!(opened.network_interface.display_name(&node_id, &[]), *title);
+		}
+	}
+
+	#[test]
+	fn mix_and_blend_nodes_open_as_mix_colors_with_the_under_color_first() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::raster_nodes::blending_nodes::mix_colors;
+
+		let (over, under) = (Color::RED, Color::BLUE);
+		let color_input = |color| NodeInput::value(TaggedValue::Color(color), false);
+
+		// Old Mix and Blend nodes list the over color first, while a node already saved as Mix Colors lists the under color first
+		let saved_nodes = [
+			(ProtoNodeIdentifier::new("raster_nodes::blending_nodes::MixNode"), [over, under]),
+			(ProtoNodeIdentifier::new("raster_nodes::blending_nodes::BlendNode"), [over, under]),
+			(mix_colors::IDENTIFIER, [under, over]),
+		];
+
+		let mut document = DocumentMessageHandler::default();
+		for (index, (identifier, colors)) in saved_nodes.iter().enumerate() {
+			let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(mix_colors::IDENTIFIER))
+				.expect("the Mix Colors definition should exist")
+				.default_node_template();
+			node_template.implementation = NodeTemplateImplementation::ProtoNode(identifier.clone());
+			node_template.inputs[0] = color_input(colors[0]);
+			node_template.inputs[1] = color_input(colors[1]);
+			document.network_interface.insert_node(NodeId(index as u64), node_template, &[]);
+		}
+
+		let opened = load_legacy_document(document.serialize_document(), &HashMapResourceStorage::new(), false).expect("the document should open");
+
+		for (index, (identifier, _)) in saved_nodes.iter().enumerate() {
+			let node = opened.network_interface.document_node(&NodeId(index as u64), &[]).expect("the node should still exist");
+			assert_eq!(node.implementation, DocumentNodeImplementation::ProtoNode(mix_colors::IDENTIFIER), "{}", identifier.as_str());
+			assert_eq!(node.inputs[0], color_input(under), "{} should take the under color first", identifier.as_str());
+			assert_eq!(node.inputs[1], color_input(over), "{} should take the over color second", identifier.as_str());
 		}
 	}
 
