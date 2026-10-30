@@ -156,7 +156,7 @@ Because `parent` is itself a `Rev`, an `id` transitively commits to the delta's 
 
 One timestamp per `Delta` applies to every LWW-eligible write inside its `kind`. Slot writes, attribute writes, and whole-list writes all read the same `Delta.timestamp`.
 
-`Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only labels: the `interaction_end` marker that bounds undo units, and later commit messages. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later relabel rewrites that frame.
+`Delta.attributes` is a type-erased annotation bucket (the same shape as the registry's attribute buckets) for mutable, local-only annotations such as the `interaction_end` marker that bounds undo units. Step labels and tags are not annotations; they live in `metadata.jsonl`. It is **excluded from `id`** so that annotating a delta never changes its content-addressed identity. An inline write sets it before the delta's history frame is persisted, while a later annotation rewrites that frame.
 
 `HotOp.attributes` is the same bucket on a hot op, but shared: it travels with the op to every peer and is left behind at retirement. The same `interaction_end` key marks the last op of its author's interaction, so the retirer takes the author's ops through it as one unit. When the boundary comes after the last write was sent, a data-less `RegistryDelta::Meta` op carries the flag; retirement drops `Meta` ops. The retirer marks the unit's last retired delta with `Delta.attributes`' own `interaction_end`, so the boundary survives without the hot op.
 
@@ -286,7 +286,7 @@ A document contains:
 - `history.{jsonl,frames}` is the serialized retired delta DAG, appended a record at a time. JSON history is line-oriented (one delta per line). Binary history is length-prefixed postcard frames, the prefix guarding against a torn final frame from a crash.
 - `hot-log.{jsonl,frames}` is the un-retired hot ops, persisted as a sidecar for crash recovery and GC'd at retirement.
 - `session.{json,bin}` is per-peer local state: this peer's `PeerId`, the history cursor (`head_rev`), the redo stack, `last_broadcast_rev`, and view settings. It is local-view state, not part of the shared document.
-- `metadata.jsonl` is what people state about the history beside it rather than in it: user names, step labels and tags, each a fact with a wall-clock stamp where the newer of two about the same thing wins. Facts are appended one per line, never rewritten, and folded on read; a line that does not decode is skipped. An export carries it only with history.
+- `metadata.jsonl` is what people state about the history beside it rather than in it: user names, step labels and tags, each a fact stamped with wall-clock milliseconds and the stating peer. Of two facts about the same thing, the one with the later milliseconds wins, then the one with the greater peer ID, then the one whose value encodes to the greater JSON text, so every fold of the same facts agrees. Facts are appended one per line, never rewritten, and folded on read; a line that does not decode is skipped. An export carries it only with history.
 - `resources/<hash>` is embedded resource bytes, keyed by `ResourceHash`.
 
 The folder backend stores these as plain files on disk, and an archive codec packs the same named entries into a single file.
