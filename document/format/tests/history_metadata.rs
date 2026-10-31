@@ -6,8 +6,26 @@ use document_graph_storage::{PeerId, Rev, Subject, UserId, rev_attr, user_attr};
 const NOW_MS: f64 = 1_700_000_000_000.;
 const ADA: Subject = Subject::User(UserId(10));
 
+fn document(peer: u64) -> GddV1 {
+	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
+}
+
+/// Let the room settle through greetings, the sync handshake and whatever was broadcast.
+#[cfg(feature = "network")]
+fn settle(network: &mut peer_transport::mock::MockNetwork, peers: &mut [&mut GddV1]) {
+	for _ in 0..16 {
+		for peer in peers.iter_mut() {
+			peer.poll_peers();
+		}
+		network.deliver_all();
+	}
+	for peer in peers.iter_mut() {
+		peer.poll_peers();
+	}
+}
+
 fn document_naming_ada() -> GddV1 {
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 1, "editor".into(), "stdlib".into()).expect("create");
+	let mut gdd = document(1);
 	assert!(gdd.record(ADA, user_attr::NAME, "Ada".into(), NOW_MS).expect("record"));
 	gdd
 }
@@ -59,4 +77,34 @@ fn a_torn_tail_is_skipped_and_the_next_fact_is_not_joined_to_it() {
 		assert_eq!(reopened.metadata().user_name(UserId(10)), Some("Ada"));
 		assert_eq!(reopened.metadata().user_name(UserId(11)), Some("Bea"));
 	});
+}
+
+#[cfg(feature = "network")]
+#[test]
+fn names_reach_the_room_with_the_sync_and_as_they_change() {
+	let mut host = document(1);
+	let mut guest = document(2);
+	host.record(ADA, user_attr::NAME, "Ada".into(), NOW_MS).expect("record");
+	// A name given before joining travels with the joiner and reaches the host.
+	guest.record(Subject::User(UserId(20)), user_attr::NAME, "Bea".into(), NOW_MS).expect("record");
+
+	let mut network = peer_transport::mock::MockNetwork::new(1);
+	let host_endpoint = network.endpoint();
+	let guest_endpoint = network.endpoint();
+	let (host_id, guest_id) = (host_endpoint.id(), guest_endpoint.id());
+	host.share(host_endpoint, UserId(10)).expect("share");
+	guest.connect(guest_endpoint, UserId(20)).expect("connect");
+	network.connect(host_id);
+	network.connect(guest_id);
+	settle(&mut network, &mut [&mut host, &mut guest]);
+
+	assert!(guest.is_synced());
+	assert_eq!(guest.metadata().user_name(UserId(10)), Some("Ada"), "the host's record came with the sync");
+	assert_eq!(host.metadata().user_name(UserId(20)), Some("Bea"), "the guest's record came back to the host");
+
+	// A rename while in the room goes round on its own.
+	assert!(guest.record(Subject::User(UserId(20)), user_attr::NAME, "Beatrix".into(), NOW_MS + 5_000.).expect("record"));
+	settle(&mut network, &mut [&mut host, &mut guest]);
+	assert_eq!(host.metadata().user_name(UserId(20)), Some("Beatrix"));
+	assert_eq!(host.metadata(), guest.metadata(), "both copies hold the same record");
 }
