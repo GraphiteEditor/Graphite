@@ -11,6 +11,18 @@ use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graph_craft::runtime_delta::RuntimeDelta;
 use std::collections::{HashMap, HashSet};
 
+/// Why a batch could not be staged from its recorded deltas.
+#[derive(Debug, thiserror::Error)]
+pub enum StagingError {
+	/// The batch changed something its deltas do not describe yet, which a whole-document stage carries instead.
+	#[error("The batch needs a whole-document stage: {0}")]
+	NeedsWholeDocument(String),
+	#[error(transparent)]
+	Conversion(#[from] ConversionError),
+	#[error("{0}")]
+	Storage(String),
+}
+
 /// A [`RuntimeDelta`] extended with the editor-only change kinds, which carry the `ui::*` metadata
 /// the compiler has no use for. The compiler consumes only the `Graph` variant.
 #[derive(Debug, Clone, PartialEq)]
@@ -115,7 +127,7 @@ pub fn construct_batch(
 	resources: &ResourceRegistry,
 	metadata: &dyn NodeMetadataSource,
 	peer: document_graph_storage::PeerId,
-) -> Result<ConstructedOps, ConversionError> {
+) -> Result<ConstructedOps, StagingError> {
 	let identities = IdentitiesOnly(metadata);
 	let context = ConversionContext {
 		network,
@@ -150,10 +162,10 @@ struct ConversionContext<'a> {
 }
 
 impl ConversionContext<'_> {
-	fn locate<'a>(&self, network_path: &'a [NodeId]) -> Result<NetworkLocation<'a>, ConversionError> {
+	fn locate<'a>(&self, network_path: &'a [NodeId]) -> Result<NetworkLocation<'a>, StagingError> {
 		self.network
 			.locate(network_path)
-			.ok_or_else(|| ConversionError::InvalidNetwork(format!("No network at {network_path:?}")))
+			.ok_or_else(|| StagingError::NeedsWholeDocument(format!("no network is at {network_path:?} any more")))
 	}
 }
 
@@ -165,7 +177,7 @@ impl EditorDelta {
 		batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
 		ops: &mut Vec<RegistryDelta>,
 		declarations: &mut BatchDeclarations,
-	) -> Result<(), ConversionError> {
+	) -> Result<(), StagingError> {
 		match self {
 			EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, node }) => {
 				construct_structural_additions(context.locate(network_path)?, *node_id, node, batch, context, ops, declarations)?;
@@ -210,7 +222,8 @@ impl EditorDelta {
 			}
 
 			EditorDelta::Graph(RuntimeDelta::SetExport { network_path, export_index, input }) => {
-				let export = input.as_ref().map(|input| context.resolver.convert_input_at(input, context.locate(network_path)?)).transpose()?;
+				let location = context.locate(network_path)?;
+				let export = input.as_ref().map(|input| context.resolver.convert_input_at(input, location)).transpose()?;
 				if let Some(export) = export.as_ref() {
 					construct_referenced_resource(None, export, context, batch, ops)?;
 				}
@@ -235,11 +248,12 @@ impl EditorDelta {
 
 			EditorDelta::Graph(RuntimeDelta::SetInputs { network_path, node_id, inputs }) => {
 				// The slots' `ui::*` attributes arrive with the paired input metadata delta
+				let location = context.locate(network_path)?;
 				let inputs = inputs
 					.iter()
 					.map(|input| {
 						Ok(document_graph_storage::InputSlot {
-							input: context.resolver.convert_input_at(input, context.locate(network_path)?)?,
+							input: context.resolver.convert_input_at(input, location)?,
 							timestamp: TimeStamp::ORIGIN,
 							attributes: convert_input_attributes(input)?,
 						})
@@ -310,7 +324,7 @@ impl EditorDelta {
 				});
 			}
 
-			EditorDelta::DefinitionsChanged => return Err(ConversionError::InvalidNetwork("The definitions table changed".to_string())),
+			EditorDelta::DefinitionsChanged => return Err(StagingError::NeedsWholeDocument("the definitions table changed".to_string())),
 		}
 
 		Ok(())
@@ -402,7 +416,7 @@ fn construct_structural_additions(
 	context: &ConversionContext,
 	ops: &mut Vec<RegistryDelta>,
 	declarations: &mut BatchDeclarations,
-) -> Result<(), ConversionError> {
+) -> Result<(), StagingError> {
 	let mut scoped = ScopedConversion::new(context.identities, context.peer);
 	let mut scratch = Registry::default();
 	scoped.convert_node_at(&mut scratch, location, node_id, node, true)?;
@@ -415,7 +429,7 @@ fn construct_structural_additions(
 	});
 	for implemented in implemented_networks {
 		if !scratch.networks.contains_key(&implemented) && batch.network(implemented).is_none() {
-			return Err(ConversionError::InvalidNetwork(format!("Network {implemented} is not staged")));
+			return Err(StagingError::NeedsWholeDocument(format!("network {implemented} is not staged")));
 		}
 	}
 	declarations.bytes.extend(bytes);
@@ -655,7 +669,7 @@ fn construct_removals(
 	batch: &mut BatchRegistry,
 	batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
 	ops: &mut Vec<RegistryDelta>,
-) -> Result<(), ConversionError> {
+) -> Result<(), StagingError> {
 	construct_removals_with(node_id, true, batch, batch_removed_nodes, ops)
 }
 
@@ -666,7 +680,7 @@ fn construct_removals_below(
 	batch: &mut BatchRegistry,
 	batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
 	ops: &mut Vec<RegistryDelta>,
-) -> Result<(), ConversionError> {
+) -> Result<(), StagingError> {
 	construct_removals_with(node_id, false, batch, batch_removed_nodes, ops)
 }
 
@@ -676,7 +690,7 @@ fn construct_removals_with(
 	batch: &mut BatchRegistry,
 	batch_removed_nodes: &mut Vec<(document_graph_storage::NodeId, document_graph_storage::Node)>,
 	ops: &mut Vec<RegistryDelta>,
-) -> Result<(), ConversionError> {
+) -> Result<(), StagingError> {
 	let (mut removed_nodes, mut removed_networks) = removal_closure(node_id, batch);
 
 	removed_nodes.sort();
@@ -688,7 +702,7 @@ fn construct_removals_with(
 		Implementation::ProtoNode(_) => false,
 	});
 	if still_implemented {
-		return Err(ConversionError::InvalidNetwork("Removal reaches a network other nodes implement".to_string()));
+		return Err(StagingError::NeedsWholeDocument("the removal reaches a network other nodes implement".to_string()));
 	}
 
 	for id in &removed_nodes {
