@@ -133,10 +133,9 @@ impl DocumentHistory {
 	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
 	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
 	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
-		let needs_whole_document_stage = self.needs_whole_document_stage || deltas.iter().any(|delta| matches!(delta, EditorDelta::DefinitionsChanged));
 		let Some(storage) = self.storage.as_mut() else { return };
 
-		let staged = match needs_whole_document_stage {
+		let staged = match self.needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
 			// An autosave with nothing edited since the last commit still persists the view state below.
 			false if deltas.is_empty() => Ok(Declarations::new()),
@@ -191,7 +190,7 @@ impl DocumentHistory {
 	) -> Result<Declarations, StagingError> {
 		let peer = storage.session().peer();
 		let metadata_view = StorageMetadataView::new(interface);
-		let constructed = construct_batch(deltas, interface.document_network(), storage.registry(), registry, &metadata_view, peer)?;
+		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer)?;
 
 		storage
 			.stage_constructed_ops(constructed.ops, &constructed.declarations.bytes, byte_store)

@@ -399,11 +399,7 @@ impl NodeNetworkInterface {
 		let (new_implementation, new_network_metadata) = std::mem::take(&mut new_template.implementation).into_parts();
 		let old_output_count = self.number_of_outputs(node_id, network_path);
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in replace_implementation");
-			return;
-		};
-		node.replace_implementation(new_implementation, new_network_metadata);
+		self.replace_node_implementation(NodeLocator::new(*node_id, network_path), new_implementation, new_network_metadata);
 
 		let new_output_count = self.number_of_outputs(node_id, network_path);
 		self.update_outward_wires_for_outputs(network_path, node_id, old_output_count, new_output_count);

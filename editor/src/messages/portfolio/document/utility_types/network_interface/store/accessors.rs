@@ -16,24 +16,23 @@ impl NodeNetworkInterface {
 		self.network.get_mut().network_mut()
 	}
 
-	/// The graph of the network at `network_path`, written only by the store's primitives.
-	pub(super) fn network_graph_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
-		self.document_network_mut().nested_network_mut(network_path)
+	/// The graph of the network at `location`, written only by the store's primitives.
+	pub(super) fn network_graph_mut(&mut self, location: NetworkLocation) -> Option<&mut NodeNetwork> {
+		self.document_network_mut().located_network_mut(location)
+	}
+
+	/// The persistent metadata of the network at `location`, or `None` for the document network, which no node implements.
+	pub(super) fn subnetwork_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut NodeNetworkPersistentMetadata> {
+		if location.is_root() {
+			return None;
+		}
+		Some(&mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata)
 	}
 
 	/// The metadata tree at `network_path`.
 	fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
 		let location = self.locate(network_path)?;
 		self.network_metadata.get_mut().nested_metadata_mut(location)
-	}
-
-	/// The persistent metadata of the network at `network_path`, or `None` for the document network, which
-	/// no node implements.
-	pub(super) fn subnetwork_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkPersistentMetadata> {
-		if network_path.is_empty() {
-			return None;
-		}
-		Some(&mut self.network_metadata_mut(network_path)?.persistent_metadata)
 	}
 
 	// TODO: Eventually remove this document upgrade code, along with the migrations that call it
@@ -51,20 +50,12 @@ impl NodeNetworkInterface {
 		migrate(self.network_metadata.get_mut(), self.network.network());
 	}
 
-	/// Updates the definitions table after a transaction.
-	/// It lifts the inline networks the transaction added and drops the entries no node reaches.
-	///
-	/// Only the lifting is recorded. The removals that left an entry unreachable were recorded already.
+	/// Drops the definitions table entries no node reaches any more after a transaction, recording each removal.
 	pub(crate) fn settle_definitions(&mut self) {
-		let lifted = self.document_network_mut().lift_nested_networks();
-		if !lifted.is_empty() {
-			self.network_metadata.get_mut().lift_nested_metadata(&lifted);
-			self.deltas.push(EditorDelta::DefinitionsChanged);
-		}
-
-		if self.document_network_mut().retain_reachable_definitions() {
-			let network = self.network.network();
-			self.network_metadata.get_mut().retain_definitions_of(network);
+		let dropped = self.document_network_mut().retain_reachable_definitions();
+		for id in dropped {
+			self.network_metadata.get_mut().persistent_metadata.definitions.remove(&id);
+			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }));
 		}
 	}
 
@@ -73,21 +64,31 @@ impl NodeNetworkInterface {
 	/// The persistent metadata of a network, or `None` if the network is missing.
 	pub(crate) fn network_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
 		let location = self.locate(network_path)?;
+		self.network_mut_at(location)
+	}
+
+	/// The persistent metadata of the network at `location`.
+	pub(crate) fn network_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>) -> Option<NetworkMut<'a>> {
 		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata;
-		Some(NetworkMut::new(metadata, &mut self.deltas, network_path))
+		Some(NetworkMut::new(metadata, &mut self.deltas, location))
 	}
 
 	/// Both halves of a node, or `None` if either is missing.
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
 		let location = self.locate(locator.network_path)?;
-		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&locator.node_id)?;
+		self.node_mut_at(location, locator.node_id)
+	}
+
+	/// Both halves of the node `node_id` in the network at `location`, or `None` if either is missing.
+	pub(crate) fn node_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>, node_id: NodeId) -> Option<NodeMut<'a>> {
+		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&node_id)?;
 		let instantiated = match node.implementation {
 			DocumentNodeImplementation::Definition(id) => Some(id),
 			_ => None,
 		};
-		let (metadata, definition_metadata) = self.network_metadata.get_mut().node_metadata_with_definition_mut(location, &locator.node_id, instantiated)?;
+		let (metadata, definition_metadata) = self.network_metadata.get_mut().node_metadata_with_definition_mut(location, &node_id, instantiated)?;
 
-		Some(NodeMut::new(node, &mut metadata.persistent_metadata, definition_metadata, &mut self.deltas, locator))
+		Some(NodeMut::new(node, &mut metadata.persistent_metadata, definition_metadata, &mut self.deltas, location, node_id))
 	}
 
 	// ===== Unrecorded state, reachable from the whole network interface =====

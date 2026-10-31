@@ -1167,8 +1167,10 @@ pub fn document_migration_replace_resources_referenced_by_hash(document_serializ
 }
 
 /// Whether the node is a subgraph that feeds its first input through a Monitor into a Transform proto node and forwards the other four inputs unchanged, making it equivalent to a bare Transform node.
-fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
-	let DocumentNodeImplementation::Network(network) = &node.implementation else { return false };
+fn is_monitored_transform_subgraph(node: &DocumentNode, document_network: &graph_craft::document::NodeNetwork) -> bool {
+	let Some(network) = document_network.implementation_network(&node.implementation) else {
+		return false;
+	};
 	if node.inputs.len() < 5 || network.nodes.len() != 2 {
 		return false;
 	}
@@ -1285,7 +1287,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.recursive_nodes()
 		.filter_map(|(node_id, node, path)| {
 			let reference = document.network_interface.reference(node_id, &path);
-			let is_transform_wrapper = reference == Some(DefinitionIdentifier::Network("Transform".into())) || (reference.is_none() && is_monitored_transform_subgraph(node));
+			let is_transform_wrapper =
+				reference == Some(DefinitionIdentifier::Network("Transform".into())) || (reference.is_none() && is_monitored_transform_subgraph(node, document.network_interface.document_network()));
 
 			is_transform_wrapper.then_some((*node_id, path, node.inputs.len()))
 		})
@@ -1374,7 +1377,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		.document_network()
 		.recursive_nodes()
 		.filter_map(|(node_id, node, path)| {
-			let DocumentNodeImplementation::Network(network) = &node.implementation else { return None };
+			let network = document.network_interface.document_network().implementation_network(&node.implementation)?;
 			let reference = document.network_interface.reference(node_id, &path)?;
 			let is_merge_or_artboard = [DefinitionIdentifier::Network("Merge".into()), DefinitionIdentifier::Network("Artboard".into())].contains(&reference);
 
@@ -1907,7 +1910,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Rebuild stale Merge/Artboard subgraphs that still use the removed LegacyLayerExtendNode internally
-	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+	if let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation)
 		&& inner
 			.nodes
 			.values()
@@ -1919,7 +1922,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Rebuild the Blend subgraph that still floors its Count import, since the now-integer Count enters through As Number instead
-	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+	if let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation)
 		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Blend".into()))
 		&& inner.nodes.values().any(|n| {
 			matches!(&n.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::math_nodes::floor::IDENTIFIER)
@@ -1930,7 +1933,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Rebuild the Regex Find subgraph that still imports its Match Index as a decimal, since that index is now an integer
-	if let DocumentNodeImplementation::Network(inner) = &node.implementation
+	if let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation)
 		&& document.network_interface.reference(node_id, network_path) == Some(DefinitionIdentifier::Network("Regex Find".into()))
 		&& inner.nodes.values().any(|n| {
 			n.inputs
@@ -3594,7 +3597,7 @@ fn modifications_following_turned_segments(network: &graph_craft::document::Node
 		}
 
 		// A network node's inputs only pass through to the nodes inside it, which are wired as readers themselves
-		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+		if matches!(node.implementation, DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) {
 			continue;
 		}
 		for input in &node.inputs {
@@ -3730,8 +3733,8 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	// Collapse the legacy "Sample Points" and "Sample Polyline" wrapper networks into the standalone `sample_polyline`
 	// proto node, which now computes per-bezpath segment lengths inline instead of through the wrapper's helper nodes.
 	// The oldest documents lose their stored reference on load, so the wrapper is recognized by the nodes it encloses.
-	let wrapper_inputs = match &node.implementation {
-		DocumentNodeImplementation::Network(inner) => {
+	let wrapper_inputs = match document.network_interface.document_network().implementation_network(&node.implementation) {
+		Some(inner) => {
 			let helpers = [graphene_std::ops::passthrough::IDENTIFIER, graphene_std::memo::memoize::IDENTIFIER];
 			let mut sample_nodes = 0;
 			let only_helpers = inner.nodes.values().all(|inner_node| match &inner_node.implementation {
@@ -4458,7 +4461,7 @@ mod tests {
 			Some(TaggedValue::Integer(6)),
 			"the count truncates as the retired Floor did, so the document keeps drawing six"
 		);
-		let DocumentNodeImplementation::Network(inner) = &node.implementation else {
+		let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation) else {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(
@@ -4485,7 +4488,11 @@ mod tests {
 
 		migrate(&mut document);
 
-		let DocumentNodeImplementation::Network(inner) = &document.network_interface.document_network().nodes[&node_id].implementation else {
+		let Some(inner) = document
+			.network_interface
+			.document_network()
+			.implementation_network(&document.network_interface.document_network().nodes[&node_id].implementation)
+		else {
 			panic!("Blend should stay a network node")
 		};
 		assert_eq!(inner.nodes[&NodeId(5)].inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::Number(42.)));
@@ -4521,7 +4528,11 @@ mod tests {
 
 			migrate(&mut document);
 
-			let DocumentNodeImplementation::Network(network) = &document.network_interface.document_network().nodes[&node_id].implementation else {
+			let Some(network) = document
+				.network_interface
+				.document_network()
+				.implementation_network(&document.network_interface.document_network().nodes[&node_id].implementation)
+			else {
 				panic!("{name} should stay a network node")
 			};
 			let monitor = DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER);
@@ -4557,7 +4568,7 @@ mod tests {
 			Some(TaggedValue::Integer(1)),
 			"the match index truncates as the retired cast did"
 		);
-		let DocumentNodeImplementation::Network(inner) = &node.implementation else {
+		let Some(inner) = document.network_interface.document_network().implementation_network(&node.implementation) else {
 			panic!("Regex Find should stay a network node")
 		};
 		assert_eq!(inner.nodes[&NodeId(0)].inputs.get(2), Some(&NodeInput::import(item!(i64), 2)));

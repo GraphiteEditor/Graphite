@@ -574,6 +574,18 @@ impl NetworkLocation<'_> {
 		location.inline_path.push(node_id);
 		location
 	}
+
+	/// The location of the network that the node `node_id` in this network implements with `implementation`.
+	pub fn implemented_by(self, node_id: NodeId, implementation: &DocumentNodeImplementation) -> OwnedNetworkLocation {
+		match implementation {
+			DocumentNodeImplementation::Definition(id) => OwnedNetworkLocation::definition(*id),
+			_ => self.child(node_id),
+		}
+	}
+
+	pub fn is_root(self) -> bool {
+		self == Self::ROOT
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -583,6 +595,11 @@ pub struct OwnedNetworkLocation {
 }
 
 impl OwnedNetworkLocation {
+	pub const ROOT: OwnedNetworkLocation = OwnedNetworkLocation {
+		definition: None,
+		inline_path: Vec::new(),
+	};
+
 	pub fn definition(id: NetworkId) -> Self {
 		Self {
 			definition: Some(id),
@@ -889,12 +906,15 @@ impl NodeNetwork {
 		reached
 	}
 
-	/// Drops every table entry the document network does not reach, and returns whether it dropped any.
-	pub fn retain_reachable_definitions(&mut self) -> bool {
+	/// Drops every table entry the document network does not reach, and returns their IDs in sorted order.
+	pub fn retain_reachable_definitions(&mut self) -> Vec<NetworkId> {
 		let reached = self.reachable_definitions();
-		let before = self.definitions.len();
-		self.definitions.retain(|id, _| reached.contains(id));
-		self.definitions.len() != before
+		let mut dropped: Vec<NetworkId> = self.definitions.keys().filter(|id| !reached.contains(id)).copied().collect();
+		dropped.sort();
+		for id in &dropped {
+			self.definitions.remove(id);
+		}
+		dropped
 	}
 
 	pub fn inline_definitions(&mut self) -> Result<(), DefinitionError> {
