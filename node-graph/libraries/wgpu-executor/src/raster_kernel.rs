@@ -12,7 +12,7 @@ use raster_kernels::adjustments::{AdjustmentVisitor, visit_kernel};
 use raster_kernels::blur::{BlurHalve, BlurHorizontal, BlurPass, BlurSpace, BlurUpsample, BlurVertical, MAX_BLUR_REACH, blur_extent};
 use raster_kernels::generators::visit_generator_kernel;
 use raster_kernels::{GpuParams, MapColor, RasterKernel, RasterKernelVisitor, ToGpuParams, map_color_module, raster_kernel_module};
-use raster_types::{GPU, Raster, Storage};
+use raster_types::{GPU, ImageError, Raster, Storage};
 use std::any::{TypeId, type_name};
 
 /// The format of intermediate rasters a [`RasterKernel::FILTERED`] kernel reads, half-float precision but filterable on WebGL2 unlike [`RASTER_FORMAT`].
@@ -41,9 +41,17 @@ fn run<K: ToGpuParams + 'static>(
 		output_size,
 		output_format,
 	};
-	pipeline
-		.try_run::<RasterKernelRuntime>(&args)
-		.ok_or_else(|| NodeError::new("A GPU is required to process a GPU raster"))
+	if let Some(executor) = pipeline.executor() {
+		let limit = executor.context().device.limits().max_texture_dimension_2d;
+		if output_size.max_element() > limit {
+			return Err(ImageError::TooLarge {
+				width: output_size.x,
+				height: output_size.y,
+			}
+			.into());
+		}
+	}
+	Ok(pipeline.run::<RasterKernelRuntime>(&args)?)
 }
 
 fn raster_format(pipeline: &WgpuPipelineCache) -> WgpuTextureFormat {

@@ -48,12 +48,6 @@ impl PipelineCache {
 	pub fn executor(&self) -> Option<&WgpuExecutor> {
 		self.executor.get()
 	}
-
-	/// Runs the pipeline, or returns `None` when it was never initialized because no GPU is available.
-	pub fn try_run<P: Pipeline>(&self, args: &P::Args<'_>) -> Option<P::Out> {
-		self.executor.get()?;
-		self.run::<P>(args).ok()
-	}
 }
 
 impl std::fmt::Debug for PipelineCache {
