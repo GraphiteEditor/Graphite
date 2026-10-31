@@ -5,15 +5,15 @@ title = "Document migrations"
 order = 2 # Page number after chapter intro
 +++
 
-A document saved today has to open after you change the node it uses. A migration is the code that upgrades it: when a `.gdd` opens, the format steps run on its stored bytes, and then node migrations rewrite its history, undo included, so replaying that history gives the upgraded document at every step. The design and its reasoning are in the [migrations RFC](https://github.com/GraphiteEditor/Graphite/blob/master/node-graph/rfcs/document-format-migrations.md), which also describes parts that don't exist yet. This page covers what you can use now.
+A document saved today has to open after you change the node it uses. A migration is the code that upgrades it. When a `.gdd` opens, the format steps run on its stored bytes first. Then node migrations rewrite its history, including undo, so that replaying the history gives the upgraded document at every step. The design and its reasoning are in the [migrations RFC](https://github.com/GraphiteEditor/Graphite/blob/master/node-graph/rfcs/document-format-migrations.md), which also describes parts that don't exist yet. This page covers what you can use now.
 
 Most changes need a node migration, written as a function in `document/migrations/nodes`. If you changed a type under `document/graph-storage/src/schema`, you need a format step instead, and the tooling writes most of it for you (see [format steps](#format-steps)).
 
 ## Node migrations
 
-Bump a node's version when a document saved before your change would load wrongly after it. Adding, removing, reordering, or retyping an input counts. So does changing what an output means, moving the node to a new identifier, or replacing it with another node. A behavior change with the same inputs counts too, like reading an angle in degrees instead of radians. An internal refactor doesn't.
+Bump a node's version when a document saved before your change would load wrongly after it. That includes adding, removing, reordering, or retyping an input, changing what an output means, moving the node to a new identifier, and replacing it with another node. It also includes behavior changes that keep the same inputs, like reading an angle in degrees instead of radians. Internal refactors don't need a bump.
 
-CI catches the changes it can see: it compares every node's parameters and output against the base commit, and fails if they differ without a version bump or if a node disappeared without a migration. It compares names as well as types, so renaming a parameter also asks for a bump. It can't see behavior changes, so those bumps are on you. Run the same check locally with `cargo run migration check --baseline master`.
+CI compares every node's parameters and output against the base commit. It fails if they differ without a version bump, or if a node disappeared without a migration. It compares names as well as types, so renaming a parameter also asks for a bump. It can't see behavior changes, so those bumps are on you. Run the same check locally with `cargo run migration check --baseline master`.
 
 ### Writing one
 
@@ -87,7 +87,7 @@ You ask for what you need through the function's parameters, in any order. The f
 | `&mut Upstream` | Nodes feeding the anchor | `add_node`, `add_node_keyed`, `remove_node` |
 | `&mut Downstream` | Whatever reads the anchor's outputs | `consumers`, `add_node`, `add_node_keyed`, `connect` |
 
-Reads always see the old document. `node.inputs()` returns the old layout however many edits you've made, and nodes you add never show up in `consumers`. `Inputs` edits, on the other hand, apply in order to the layout being built: after `inputs.insert(1, ...)`, the old slot 1 is slot 2 for later `Inputs` calls, while `node.inputs()[1]` is still the old slot 1.
+Reads always see the old document. `node.inputs()` returns the old layout however many edits you've made, and nodes you add never show up in `consumers`. `Inputs` edits apply in order to the layout being built. After `inputs.insert(1, ...)`, later `Inputs` calls see the old slot 1 as slot 2. `node.inputs()[1]` is still the old slot 1.
 
 ### Values
 
@@ -105,7 +105,7 @@ enum Tagged {
 }
 ```
 
-`literal(value)` makes an unexposed literal input, and `encode(&value)` makes the stored value when you're building a `NodeInput::Value` that keeps its `exposed` flag. `literal_of::<Tagged>(&input)` reads one back, and gives `None` for a wire or for a variant your enum doesn't list.
+`literal(value)` makes an unexposed literal input. Use `encode(&value)` instead when you build a `NodeInput::Value` yourself to keep its `exposed` flag. `literal_of::<Tagged>(&input)` reads a value back. It returns `None` for a wire or for a variant your enum doesn't list.
 
 ### Adding nodes
 
@@ -136,7 +136,7 @@ pub fn star_v1(node: &Node, inputs: &mut Inputs, upstream: &mut Upstream) {
 }
 ```
 
-`decl!` names the exact version you built `inputs` for. The runner orders migrations so the node you add has that shape, and any later migration of `MultiplyNode` upgrades it along with all the others, so you never go back and edit an old migration. Adding two nodes of one kind for one anchor needs a different key on each: `add_node_keyed(node, "x")`.
+`decl!` names the exact version you built `inputs` for. The runner orders migrations so the node you add has that shape. Any later migration of `MultiplyNode` upgrades it along with all the others, so you never go back and edit an old migration. To add two nodes of one kind for one anchor, give each a different key with `add_node_keyed(node, "x")`.
 
 If the output is what changed, put the new node after the anchor and move its consumers over:
 
@@ -170,7 +170,7 @@ pub fn angle_between_v1(node: &Node, downstream: &mut Downstream) {
 
 ### Renames and replacements
 
-A node that only moved keeps its inputs, so it needs no function. Set its version one above the old one and register the rename, which adds a line to that crate's `renames.rs`. The same goes for a version step where stored nodes don't change, written `rename!("a::Node"@1 => @2);`, which you need when another node's migration is what caused the bump:
+A node that only moved keeps its inputs, so it needs no function. Set its version one above the old one and register the rename. This adds a line to that crate's `renames.rs`. A version step where stored nodes don't change works the same way, written `rename!("a::Node"@1 => @2);`. You need one when another node's migration caused the bump. Moving `AddNode` looks like this:
 
 ```sh
 cargo run migration rename graphene_core::ops::AddNode@1 math_nodes::AddNode
@@ -186,9 +186,9 @@ When the replacement also changes the inputs, scaffold a function with `cargo ru
 
 ### What the function may depend on
 
-A migration runs many times on one document, once per relevant step of its history, and every collaborator has to get the same result. So it can only depend on its parameters: no randomness, no clocks, no global state, no calls into live node code.
+A migration runs many times on one document, once per relevant step of its history, and every collaborator has to get the same result. So it can only depend on its parameters. Randomness, clocks, global state, and calls into live node code are all off limits.
 
-It also has to handle every state the old version allowed, including wired inputs and exposed literals. Return `MigrationError::invariant` if the old state breaks its own node's rules, and `MigrationError::unrepresentable` if the new version can't express something the old one could, which usually means the new version should change. Both are bugs. If one fires on an old step of a document's history, the document opens with its history cut off at that point; if it fires on the current state, the document doesn't open.
+It also has to handle every state the old version allowed, including wired inputs and exposed literals. Return `MigrationError::invariant` if the old state breaks its own node's rules. Return `MigrationError::unrepresentable` if the new version can't express something the old one could, which usually means the new version should change. Both are bugs. If one fires on an old step of a document's history, the document opens with its history cut off at that point. If it fires on the current state, the document doesn't open.
 
 ### Testing
 
@@ -247,13 +247,13 @@ impl Upgrade for v1::ExportSlot {
 }
 ```
 
-Finish with `cargo run migration check` and `cargo test -p migration-formats`, whose tests encode live documents and decode them through the newest frozen version. Don't edit a frozen version once it's released, because old documents decode through it. Comments and formatting in the `schema` module don't count as changes.
+Finish with `cargo run migration check` and `cargo test -p migration-formats`. The tests encode live documents and decode them through the newest frozen version. Don't edit a frozen version once it's released, because old documents decode through it. Comments and formatting in the `schema` module don't count as changes.
 
-`ProtoNode` is the exception. Declarations are stored as resources rather than in the payloads a step converts, so `snapshot` warns when `ProtoNode` changes, and any new field has to be optional.
+`ProtoNode` works differently. Declarations are stored as resources, outside the payloads a step converts, so `snapshot` warns when `ProtoNode` changes, and any new field has to be optional.
 
 ## Regression corpus
 
-The [corpus](https://github.com/tagtraumen/graphite-corpus) is a separate repository of real documents and the images they should render, and CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
+The [corpus](https://github.com/tagtraumen/graphite-corpus) is a separate repository of real documents and the images they should render. CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
 
 ```sh
 cargo run regression --corpus <directory> check
@@ -261,7 +261,7 @@ cargo run regression --corpus <directory> check
 
 On a mismatch, the render and a diff image go to `target/regression`. Setting `GRAPHITE_REGRESSION_CORPUS` saves passing `--corpus` every time. To add a document, put the `.gdd` in the corpus's `ingest` folder, run `ingest`, and commit the result. Its images are stored with Git LFS, so you need `git-lfs` installed. After an intended visual change, `bless <name>` accepts the new render.
 
-The corpus documents stay as they were added, since they exist to prove that old files still upgrade.
+Leave corpus documents as they were added. They're there to prove that old files still upgrade.
 
 ## Current limits
 
