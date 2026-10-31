@@ -28,6 +28,12 @@ pub const CAPABILITIES: ollev::Capabilities = ollev::Capabilities {
 /// overrun it by about half a second on a large image.
 const SLICE: Duration = Duration::from_millis(10);
 
+/// A trace's peak memory per traced pixel, measured on a busy image.
+const BYTES_PER_PIXEL: f64 = 800.;
+
+/// The most memory a trace may take in the browser without the override, which is also the default limit everywhere.
+const BROWSER_MAX_MEGABYTES: f64 = 1000.;
+
 /// Traces an image into a stack of filled and stroked shapes, drawn bottom to top as an artist would layer them.
 ///
 /// The trace runs in slices, one per evaluation, showing the shapes traced so far until it is done.
@@ -62,10 +68,14 @@ fn vectorize(
 	/// Fits gradients along a curve of a shape's boundary to shaded bands. Off, bands take linear or radial gradients.
 	#[default(false)]
 	path_gradients: Item<bool>,
-	/// The most pixels traced: a larger image is traced at the size holding this many and its shapes scaled back up. 0 traces every pixel.
-	#[default(0)]
+	/// The most memory the trace may take: a larger image is traced at a size that fits and its shapes scaled back up. 0 traces every pixel.
+	#[default(1000.)]
 	#[hard(0..)]
-	max_pixels: Item<i64>,
+	#[unit(" MB")]
+	max_memory: Item<f64>,
+	/// Allows a memory limit above 1000 MB, or none, in the browser, where the trace can run out of memory and crash the editor. The desktop app has no such limit.
+	#[default(false)]
+	exceed_browser_limit: Item<bool>,
 	#[scope("runtime")] runtime: Item<RuntimeHandle>,
 	#[source_id] source: Item<SourceId>,
 	#[data] trace: TraceSlot,
@@ -78,7 +88,14 @@ fn vectorize(
 		instancing: *instancing.element(),
 		path_gradients: *path_gradients.element(),
 	};
-	let max_pixels = usize::try_from(*max_pixels.element()).ok().filter(|&pixels| pixels > 0);
+	let max_megabytes = Some(*max_memory.element()).filter(|&megabytes| megabytes > 0.);
+	if cfg!(target_family = "wasm") && !*exceed_browser_limit.element() && max_megabytes.is_none_or(|megabytes| megabytes > BROWSER_MAX_MEGABYTES) {
+		trace.clear();
+		return Poll::error(format!(
+			"A memory limit above {BROWSER_MAX_MEGABYTES} MB can crash the editor in the browser. Lower the limit or turn on \"Exceed Browser Limit\"."
+		));
+	}
+	let max_pixels = max_megabytes.map(|megabytes| (megabytes * 1e6 / BYTES_PER_PIXEL) as usize);
 	let runtime = runtime.element();
 	let state = trace_slice(&image, *detail.element(), *tolerance.element(), stages, max_pixels, trace, SLICE, runtime.clock());
 	if let Poll::Partial(_) = state {
@@ -348,7 +365,8 @@ mod test {
 			on(),
 			on(),
 			on(),
-			Item::new_from_element(0),
+			Item::new_from_element(BROWSER_MAX_MEGABYTES),
+			Item::new_from_element(false),
 			Item::new_from_element(runtime.handle()),
 			Item::new_from_element(SOURCE),
 		)
