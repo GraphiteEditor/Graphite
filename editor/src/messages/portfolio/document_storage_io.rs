@@ -363,6 +363,7 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 		}
 	}
 
+	document.network_interface.lift_nested_networks();
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();
 

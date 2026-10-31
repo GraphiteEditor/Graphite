@@ -113,6 +113,8 @@ impl NodeNetworkInterface {
 					NetworkMetadataChange::ExportDescriptions(export_descriptions) => network.set_export_descriptions(export_descriptions.clone()),
 				};
 			}
+
+			EditorDelta::DefinitionsChanged => {}
 		}
 	}
 }

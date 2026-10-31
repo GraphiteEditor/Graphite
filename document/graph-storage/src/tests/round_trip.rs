@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use core_types::uuid::NodeId;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeInput, NodeNetwork, OwnedNetworkLocation};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 
@@ -12,8 +12,11 @@ use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry, from_valu
 /// Note: This only works for complete networks with all inputs resolved.
 /// Test networks with Import inputs will fail compilation (which is expected).
 fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
+	let mut network = network.clone();
+	network.inline_definitions().map_err(|e| format!("Inlining failed: {e}"))?;
+
 	let compiler = Compiler {};
-	compiler.compile_single(network.clone()).map_err(|e| format!("Compilation failed: {:?}", e))?;
+	compiler.compile_single(network).map_err(|e| format!("Compilation failed: {:?}", e))?;
 	Ok(())
 }
 
@@ -191,9 +194,10 @@ fn test_nested_network_round_trip() {
 	let orig_nested_node = original_network.nodes.get(&NodeId(0)).expect("Node 0 should exist");
 	let conv_nested_node = converted_network.nodes.get(&NodeId(0)).expect("Node 0 should exist after round-trip");
 
-	// Verify nested network is preserved
+	// Verify nested network is preserved, now as an entry of the root's definitions table
 	match (&orig_nested_node.implementation, &conv_nested_node.implementation) {
-		(DocumentNodeImplementation::Network(orig_inner), DocumentNodeImplementation::Network(conv_inner)) => {
+		(DocumentNodeImplementation::Network(orig_inner), DocumentNodeImplementation::Definition(id)) => {
+			let conv_inner = converted_network.definitions.get(id).expect("the nested network is a table entry");
 			assert_eq!(orig_inner.nodes.len(), conv_inner.nodes.len(), "Inner network node count should be preserved");
 			assert_eq!(orig_inner.exports.len(), conv_inner.exports.len(), "Inner network export count should be preserved");
 		}
@@ -367,7 +371,7 @@ fn test_demo_artwork_round_trip() {
 	}
 }
 
-/// Per-node UI state used by the in-test metadata source. Keyed by `(network_path, local_id)`.
+/// Per-node UI state used by the in-test metadata source. Keyed by `(network, local_id)`.
 #[derive(Clone, Debug, Default, PartialEq)]
 struct UiState {
 	position: Option<Position>,
@@ -377,10 +381,10 @@ struct UiState {
 	pinned: bool,
 }
 
-/// In-test `NodeMetadataSource` backed by a `HashMap` keyed on the full `(network_path, local_id)`
-/// addressing the editor would use.
+/// In-test `NodeMetadataSource` backed by a `HashMap` keyed on the `(network, local_id)` addressing
+/// the editor would use.
 struct TestMetadata {
-	entries: HashMap<(Vec<NodeId>, NodeId), UiState>,
+	entries: HashMap<(OwnedNetworkLocation, NodeId), UiState>,
 }
 
 impl TestMetadata {
@@ -388,30 +392,30 @@ impl TestMetadata {
 		Self { entries: HashMap::new() }
 	}
 
-	fn insert(&mut self, network_path: &[NodeId], local_id: NodeId, state: UiState) {
-		self.entries.insert((network_path.to_vec(), local_id), state);
+	fn insert(&mut self, network: NetworkLocation, local_id: NodeId, state: UiState) {
+		self.entries.insert((network.to_owned(), local_id), state);
 	}
 
-	fn get(&self, network_path: &[NodeId], local_id: NodeId) -> Option<&UiState> {
-		self.entries.get(&(network_path.to_vec(), local_id))
+	fn get(&self, network: NetworkLocation, local_id: NodeId) -> Option<&UiState> {
+		self.entries.get(&(network.to_owned(), local_id))
 	}
 }
 
 impl NodeMetadataSource for TestMetadata {
-	fn position(&self, network_path: &[NodeId], local_id: NodeId) -> Option<Position> {
-		self.get(network_path, local_id).and_then(|s| s.position)
+	fn position(&self, network: NetworkLocation, local_id: NodeId) -> Option<Position> {
+		self.get(network, local_id).and_then(|s| s.position)
 	}
-	fn is_layer(&self, network_path: &[NodeId], local_id: NodeId) -> bool {
-		self.get(network_path, local_id).is_some_and(|s| s.is_layer)
+	fn is_layer(&self, network: NetworkLocation, local_id: NodeId) -> bool {
+		self.get(network, local_id).is_some_and(|s| s.is_layer)
 	}
-	fn display_name(&self, network_path: &[NodeId], local_id: NodeId) -> Option<&str> {
-		self.get(network_path, local_id).and_then(|s| s.display_name.as_deref())
+	fn display_name(&self, network: NetworkLocation, local_id: NodeId) -> Option<&str> {
+		self.get(network, local_id).and_then(|s| s.display_name.as_deref())
 	}
-	fn locked(&self, network_path: &[NodeId], local_id: NodeId) -> bool {
-		self.get(network_path, local_id).is_some_and(|s| s.locked)
+	fn locked(&self, network: NetworkLocation, local_id: NodeId) -> bool {
+		self.get(network, local_id).is_some_and(|s| s.locked)
 	}
-	fn pinned(&self, network_path: &[NodeId], local_id: NodeId) -> bool {
-		self.get(network_path, local_id).is_some_and(|s| s.pinned)
+	fn pinned(&self, network: NetworkLocation, local_id: NodeId) -> bool {
+		self.get(network, local_id).is_some_and(|s| s.pinned)
 	}
 }
 
@@ -425,9 +429,9 @@ fn test_ui_metadata_round_trip() {
 	let mut metadata = TestMetadata::new();
 
 	// Root-network node 0 (the one with a nested network): a layer at an absolute position with
-	// a display name. Editor `network_path` for root-network nodes is empty.
+	// a display name.
 	metadata.insert(
-		&[],
+		NetworkLocation::ROOT,
 		NodeId(0),
 		UiState {
 			position: Some(Position::Absolute([3, 5])),
@@ -440,7 +444,7 @@ fn test_ui_metadata_round_trip() {
 
 	// Root-network node 1: a plain node in a chain.
 	metadata.insert(
-		&[],
+		NetworkLocation::ROOT,
 		NodeId(1),
 		UiState {
 			position: Some(Position::Chain),
@@ -450,7 +454,10 @@ fn test_ui_metadata_round_trip() {
 
 	// Nested-network node 10 (lives under node 0): a layer in a stack.
 	metadata.insert(
-		&[NodeId(0)],
+		NetworkLocation {
+			definition: None,
+			inline_path: &[NodeId(0)],
+		},
 		NodeId(10),
 		UiState {
 			position: Some(Position::Stack(7)),
@@ -472,20 +479,23 @@ fn test_ui_metadata_round_trip() {
 	assert_eq!(entries.len(), 3, "expected 3 metadata entries, got {}: {entries:#?}", entries.len());
 
 	// Look entries back up by their address so we don't rely on emission order.
-	let lookup: HashMap<(Vec<NodeId>, NodeId), &crate::NodeMetadataEntry> = entries.iter().map(|e| ((e.network_path.clone(), e.local_id), e)).collect();
+	let lookup: HashMap<(OwnedNetworkLocation, NodeId), &crate::NodeMetadataEntry> = entries.iter().map(|e| ((e.network.clone(), e.local_id), e)).collect();
 
-	let root_layer = lookup.get(&(vec![], NodeId(0))).expect("entry for root-network layer node missing");
+	let root_layer = lookup.get(&(OwnedNetworkLocation::default(), NodeId(0))).expect("entry for root-network layer node missing");
 	assert_eq!(root_layer.position, Some(Position::Absolute([3, 5])));
 	assert!(root_layer.is_layer);
 	assert_eq!(root_layer.display_name.as_deref(), Some("Outer layer"));
 	assert!(root_layer.locked);
 	assert!(!root_layer.pinned);
 
-	let root_node = lookup.get(&(vec![], NodeId(1))).expect("entry for root-network chain node missing");
+	let root_node = lookup.get(&(OwnedNetworkLocation::default(), NodeId(1))).expect("entry for root-network chain node missing");
 	assert_eq!(root_node.position, Some(Position::Chain));
 	assert!(!root_node.is_layer);
 
-	let nested_layer = lookup.get(&(vec![NodeId(0)], NodeId(10))).expect("entry for nested layer-in-stack missing");
+	let DocumentNodeImplementation::Definition(nested) = converted.nodes[&NodeId(0)].implementation else {
+		panic!("the nested network converts back as a table entry")
+	};
+	let nested_layer = lookup.get(&(OwnedNetworkLocation::definition(nested), NodeId(10))).expect("entry for nested layer-in-stack missing");
 	assert_eq!(nested_layer.position, Some(Position::Stack(7)));
 	assert!(nested_layer.is_layer);
 }
@@ -778,4 +788,46 @@ fn first_version_declarations_keep_their_unversioned_bytes() {
 	assert_ne!(second.id, first.id);
 	assert_eq!(crate::decode_declaration(&second.bytes).unwrap().version, 2);
 	assert_eq!(crate::decode_declaration(&first.bytes).unwrap().version, 1);
+}
+
+/// The definitions table maps onto the stored networks one to one: a table entry several nodes name is
+/// one stored network under the entry's own ID, and converting back restores the table as it was.
+#[test]
+fn a_shared_table_entry_round_trips_as_one_network() {
+	use graph_craft::document::NetworkId as RuntimeNetworkId;
+
+	let shared = RuntimeNetworkId(77);
+	let mut network = create_nested_network();
+	let DocumentNodeImplementation::Network(body) = std::mem::take(&mut network.nodes.get_mut(&NodeId(0)).expect("node 0").implementation) else {
+		panic!("node 0 implements the nested network")
+	};
+	network.definitions.insert(shared, body);
+	network.nodes.get_mut(&NodeId(0)).expect("node 0").implementation = DocumentNodeImplementation::Definition(shared);
+	network.nodes.get_mut(&NodeId(1)).expect("node 1").implementation = DocumentNodeImplementation::Definition(shared);
+	network.nodes.get_mut(&NodeId(1)).expect("node 1").inputs = vec![NodeInput::node(NodeId(0), 0)];
+
+	let (registry, declarations) = to_registry(&network);
+
+	assert_eq!(registry.networks.len(), 2, "the root and the one shared entry");
+	assert!(registry.networks.contains_key(&NetworkId(shared.0)), "the entry is stored under its own ID");
+	assert_eq!(
+		registry.node_instances.values().filter(|node| node.network == NetworkId(shared.0)).count(),
+		1,
+		"the shared body is stored once"
+	);
+
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	assert_eq!(converted, network);
+}
+
+/// A table entry no node reaches is not part of the document, so it is not stored.
+#[test]
+fn an_unreached_table_entry_is_not_stored() {
+	use graph_craft::document::NetworkId as RuntimeNetworkId;
+
+	let mut network = create_simple_network();
+	network.definitions.insert(RuntimeNetworkId(5), create_simple_network());
+
+	let (registry, _) = to_registry(&network);
+	assert_eq!(registry.networks.keys().copied().collect::<Vec<_>>(), vec![crate::ROOT_NETWORK]);
 }

@@ -1,10 +1,8 @@
-use std::collections::BTreeSet;
-
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NodeInput, NodeNetwork, OwnedNetworkLocation};
 
 use crate::to_runtime::ConversionError;
 use crate::{Declarations, Network, NetworkId, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, Registry};
@@ -70,44 +68,27 @@ fn projecting_a_node_matches_the_whole_conversion() {
 	let resources = graphene_resource::ResourceRegistry::new();
 	let conversion = Registry::convert_from_runtime(&nested_network(), &NoMetadata, &resources, PeerId(1)).expect("conversion");
 	let registry = &conversion.registry;
-	let (whole, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&conversion.declarations).expect("whole conversion");
+	let (whole, node_entries, _) = registry.to_runtime_with_full_metadata(&conversion.declarations).expect("whole conversion");
 
 	let projection = registry.runtime_projection(&conversion.declarations);
 	for &id in registry.node_instances.keys() {
 		let projected = projection.node(id).expect("every stored node projects");
-		let (path, local_id) = projection.node_address(id).expect("every stored node has an address");
-		assert_eq!((path.as_slice(), local_id), (projected.network_path.as_slice(), projected.local_id));
+		let (network, local_id) = projection.node_address(id).expect("every stored node has an address");
+		assert_eq!((&network, local_id), (&projected.network, projected.local_id));
 
 		assert_eq!(
-			whole.nested_network(&path).and_then(|network| network.nodes.get(&local_id)),
+			whole.located_network(network.as_location()).and_then(|network| network.nodes.get(&local_id)),
 			Some(&projected.node),
 			"node {id} projected differently than the whole conversion converts it"
 		);
 
 		let own_entry = node_entries.iter().find(|entry| entry.storage_id == id).expect("the whole conversion emits an entry per node");
-		assert_eq!(projected.node_entries.first(), Some(own_entry), "the node's own entry comes first");
-
-		let nested_prefix: Vec<RuntimeNodeId> = [path.as_slice(), &[local_id]].concat();
-		let expected_nested: BTreeSet<_> = node_entries
-			.iter()
-			.filter(|entry| entry.network_path.starts_with(&nested_prefix))
-			.map(|entry| entry.storage_id)
-			.collect();
-		let projected_nested: BTreeSet<_> = projected.node_entries.iter().skip(1).map(|entry| entry.storage_id).collect();
-		assert_eq!(projected_nested, expected_nested, "nested node entries under {id}");
-
-		let expected_networks: BTreeSet<_> = network_entries
-			.iter()
-			.filter(|entry| entry.network_path.starts_with(&nested_prefix))
-			.map(|entry| entry.network_id)
-			.collect();
-		let projected_networks: BTreeSet<_> = projected.network_entries.iter().map(|entry| entry.network_id).collect();
-		assert_eq!(projected_networks, expected_networks, "nested network entries under {id}");
+		assert_eq!(&projected.metadata, own_entry);
 	}
 }
 
 #[test]
-fn a_network_entry_projects_its_dense_exports_and_path() {
+fn a_network_entry_projects_its_dense_exports_and_location() {
 	let resources = graphene_resource::ResourceRegistry::new();
 	let conversion = Registry::convert_from_runtime(&nested_network(), &NoMetadata, &resources, PeerId(1)).expect("conversion");
 	let registry = &conversion.registry;
@@ -115,22 +96,14 @@ fn a_network_entry_projects_its_dense_exports_and_path() {
 	let projection = registry.runtime_projection(&conversion.declarations);
 
 	let root = projection.network_entry(ROOT_NETWORK).expect("root");
-	assert!(root.network_path.is_empty());
+	assert_eq!(root.network, OwnedNetworkLocation::default());
 	assert_eq!(root.exports, whole.exports);
 
 	for &network_id in registry.networks.keys() {
 		let entry = projection.network_entry(network_id).expect("every stored network projects");
-		let nested = whole.nested_network(&entry.network_path).expect("the projected path exists in the whole conversion");
-		assert_eq!(entry.exports, nested.exports, "exports of the network at {:?}", entry.network_path);
-		assert_eq!(entry.scope_injections, nested.scope_injections);
-		if let Some(owner) = projection.owner(network_id) {
-			let (owner_path, owner_local) = projection.node_address(owner).expect("owner address");
-			assert_eq!(
-				entry.network_path,
-				[owner_path.as_slice(), &[owner_local]].concat(),
-				"a network's path ends in the node implementing it"
-			);
-		}
+		let located = whole.located_network(entry.network.as_location()).expect("the projected location exists in the whole conversion");
+		assert_eq!(entry.exports, located.exports, "exports of the network at {:?}", entry.network);
+		assert_eq!(entry.scope_injections, located.scope_injections);
 	}
 }
 
@@ -145,29 +118,26 @@ fn an_unreachable_network_has_no_address() {
 
 	let declarations = Declarations::new();
 	let projection = registry.runtime_projection(&declarations);
-	assert_eq!(projection.network_path(NetworkId(5)), None);
+	assert_eq!(projection.network_location(NetworkId(5)), None);
 	assert_eq!(projection.node_address(NodeId(9)), None);
 	assert!(matches!(projection.node(NodeId(9)), Err(ConversionError::NetworkNotFound(_))));
 }
 
-/// The runtime holds a copy of a network under each node implementing it, so one several nodes implement has no single
-/// address, and the root, which a node may name too, has no owner.
+/// A network several nodes implement is one table entry, which every one of them names.
 #[test]
-fn a_network_several_nodes_implement_has_no_owner_and_neither_has_the_root() {
+fn a_network_several_nodes_implement_has_one_location() {
 	let mut registry = Registry::default();
 	registry.networks.insert(ROOT_NETWORK, Network::default());
 	registry.networks.insert(NetworkId(5), Network::default());
-	for (id, implemented) in [(1, NetworkId(5)), (2, NetworkId(5)), (3, ROOT_NETWORK)] {
+	for id in [1, 2] {
 		let mut node = Node::dummy();
 		node.network = ROOT_NETWORK;
-		node.implementation = crate::Implementation::Network(implemented);
+		node.implementation = crate::Implementation::Network(NetworkId(5));
 		registry.node_instances.insert(NodeId(id), node);
 	}
 
 	let declarations = Declarations::new();
 	let projection = registry.runtime_projection(&declarations);
-	assert_eq!(projection.owner(NetworkId(5)), None);
-	assert_eq!(projection.network_path(NetworkId(5)), None);
-	assert_eq!(projection.owner(ROOT_NETWORK), None);
-	assert_eq!(projection.network_path(ROOT_NETWORK), Some(Vec::new()));
+	assert_eq!(projection.network_location(NetworkId(5)), Some(OwnedNetworkLocation::definition(RuntimeNetworkId(5))));
+	assert_eq!(projection.network_location(ROOT_NETWORK), Some(OwnedNetworkLocation::default()));
 }

@@ -30,9 +30,16 @@ fn convert(editor: &EditorTestUtils) -> Registry {
 
 fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
 	let document = editor.active_document();
-	construct_batch(deltas, working, &document.resources.registry, &StorageMetadataView::new(&document.network_interface), PEER)
-		.expect("construction should succeed")
-		.ops
+	construct_batch(
+		deltas,
+		document.network_interface.document_network(),
+		working,
+		&document.resources.registry,
+		&StorageMetadataView::new(&document.network_interface),
+		PEER,
+	)
+	.expect("construction should succeed")
+	.ops
 }
 
 fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersistentMetadata {
@@ -777,4 +784,86 @@ async fn exports_past_the_end_of_the_description_list_emit_no_description_write(
 		})
 		.count();
 	assert_eq!(description_writes, 0, "the description list didn't change, so it shouldn't be written: {emitted:#?}");
+}
+
+fn table_layer(editor: &EditorTestUtils) -> (NodeId, graph_craft::document::NetworkId) {
+	editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find_map(|(id, node)| match node.implementation {
+			graph_craft::document::DocumentNodeImplementation::Definition(definition) => Some((*id, definition)),
+			_ => None,
+		})
+		.expect("a committed layer should name a table entry")
+}
+
+/// A committed document holds every nested network in the definitions table, and a commit drops the entries no node reaches any more.
+#[tokio::test]
+async fn a_commit_lifts_new_networks_and_drops_unreached_entries() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let network = editor.active_document().network_interface.document_network();
+	let inline_remains = std::iter::once(network)
+		.chain(network.definitions.values())
+		.flat_map(|network| network.nodes.values())
+		.any(|node| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
+	assert!(!inline_remains, "the commit should have lifted every inline network");
+	assert!(network.definitions.contains_key(&definition));
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.delete_nodes(vec![layer], true, &[]);
+	interface.settle_definitions();
+
+	let network = editor.active_document().network_interface.document_network();
+	assert!(!network.definitions.contains_key(&definition), "the deleted layer's entry should be gone");
+	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
+}
+
+/// An edit inside a table entry stages incrementally, onto the same stored network a whole-document conversion produces.
+#[tokio::test]
+async fn an_edit_inside_a_table_entry_constructs_the_diff() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let (inner, input_index) = editor.active_document().network_interface.document_network().definitions[&definition]
+		.nodes
+		.iter()
+		.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
+		.expect("the layer's network should have a node with a value input");
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	editor
+		.active_document_mut()
+		.network_interface
+		.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	assert!(!emitted.iter().any(|delta| matches!(delta, EditorDelta::DefinitionsChanged)));
+
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "edit inside a table entry");
+}
+
+/// A template made from a node that names a table entry carries a copy of it, so it can be inserted where the entry does not exist.
+#[tokio::test]
+async fn a_template_of_a_table_node_stands_alone() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, _) = table_layer(&editor);
+	let template = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
+	let (node, _) = template.into_parts();
+	assert!(matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
 }
