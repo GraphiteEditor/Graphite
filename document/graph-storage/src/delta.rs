@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use crate::{AttributeDelta, NetworkId, Node, NodeId, Registry, RegistryDelta, ResourceEntry, ResourceId};
+use crate::{AttributeDelta, NetworkId, NodeId, Registry, RegistryDelta, ResourceEntry, ResourceId};
 
 /// Collect a `HashSet` walk (difference/intersection) into ascending order. The sets iterate in
 /// random order, so sorting keeps `compute_deltas` emitting a deterministic delta sequence.
@@ -51,12 +51,8 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 		let from_node = &from.node_instances[&node_id];
 		let to_node = &to.node_instances[&node_id];
 
-		// No `ChangeImplementation` op; the only path is remove + re-add. Same for input-count and
-		// containing-network changes (a moved node has no in-place op either). `inputs_attributes` is
-		// checked too: the per-slot loops below `zip` only the shared prefix, so a length change there
-		// must force a remove + re-add rather than silently dropping the extra slots.
-		let structural_change = !nodes_have_same_implementation(from_node, to_node) || from_node.inputs.len() != to_node.inputs.len() || from_node.network != to_node.network;
-		if structural_change {
+		// A moved node has no in-place op, so the only path is remove + re-add
+		if from_node.network != to_node.network {
 			deltas.push(RegistryDelta::RemoveNode {
 				id: node_id,
 				snapshot: from_node.clone(),
@@ -65,16 +61,34 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 			continue;
 		}
 
+		if from_node.implementation != to_node.implementation {
+			deltas.push(RegistryDelta::SetNodeImplementation {
+				id: node_id,
+				implementation: to_node.implementation.clone(),
+			});
+		}
+
+		// A changed slot count moves indices, so the whole list is restated instead of diffed per slot
+		let inputs_resized = from_node.inputs.len() != to_node.inputs.len();
+		if inputs_resized {
+			deltas.push(RegistryDelta::SetNodeInputs {
+				id: node_id,
+				inputs: to_node.inputs.clone(),
+			});
+		}
+
 		// Compare by value, ignoring the per-slot timestamp. Timestamps are derived from the diff
 		// (assigned by the caller via clock.tick), not part of the diff itself: a slot whose value
 		// is unchanged but whose timestamp differs should not emit a delta.
-		for (input_idx, (from_slot, to_slot)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
-			if from_slot.input != to_slot.input {
-				deltas.push(RegistryDelta::ChangeNodeInput {
-					id: node_id,
-					index: input_idx as u32,
-					new_input: to_slot.input.clone(),
-				});
+		if !inputs_resized {
+			for (input_idx, (from_slot, to_slot)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
+				if from_slot.input != to_slot.input {
+					deltas.push(RegistryDelta::ChangeNodeInput {
+						id: node_id,
+						index: input_idx as u32,
+						new_input: to_slot.input.clone(),
+					});
+				}
 			}
 		}
 
@@ -82,13 +96,15 @@ pub fn compute_deltas(from: &Registry, to: &Registry) -> Vec<RegistryDelta> {
 			deltas.push(RegistryDelta::ChangeNodeAttribute { id: node_id, delta });
 		}
 
-		for (input_idx, (from_input, to_input)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
-			for delta in compute_attribute_deltas(&from_input.attributes, &to_input.attributes) {
-				deltas.push(RegistryDelta::ChangeNodeInputAttribute {
-					id: node_id,
-					index: input_idx as u32,
-					delta,
-				});
+		if !inputs_resized {
+			for (input_idx, (from_input, to_input)) in from_node.inputs.iter().zip(&to_node.inputs).enumerate() {
+				for delta in compute_attribute_deltas(&from_input.attributes, &to_input.attributes) {
+					deltas.push(RegistryDelta::ChangeNodeInputAttribute {
+						id: node_id,
+						index: input_idx as u32,
+						delta,
+					});
+				}
 			}
 		}
 	}
@@ -184,15 +200,6 @@ fn diff_resource_entry(id: ResourceId, from: &ResourceEntry, to: &ResourceEntry,
 	}
 }
 
-fn nodes_have_same_implementation(a: &Node, b: &Node) -> bool {
-	use crate::Implementation::*;
-	match (&a.implementation, &b.implementation) {
-		(ProtoNode(a_id), ProtoNode(b_id)) => a_id == b_id,
-		(Network(a_id), Network(b_id)) => a_id == b_id,
-		_ => false,
-	}
-}
-
 fn compute_attribute_deltas(from: &crate::Attributes, to: &crate::Attributes) -> Vec<AttributeDelta> {
 	let mut deltas = Vec::new();
 
@@ -272,15 +279,12 @@ mod tests {
 		assert!(matches!(deltas[0], RegistryDelta::AddNode { id: NodeId(42), .. }));
 	}
 
-	/// A change in `inputs_attributes` length is structural: the per-slot diff only `zip`s the shared
-	/// prefix, so it must force a remove + re-add rather than dropping the extra attribute slots.
+	/// A changed slot count restates the whole input list: the per-slot diff only `zip`s the shared prefix, so it
+	/// would drop the extra slots, and a remove + re-add would clear the node's attributes.
 	#[test]
-	fn compute_deltas_treats_inputs_attributes_length_change_as_structural() {
-		// Same implementation/inputs/network in both registries; only `inputs_attributes` length differs.
-		let base = Node::dummy();
-
+	fn compute_deltas_restates_inputs_on_length_change() {
 		let mut from = Registry::default();
-		from.node_instances.insert(NodeId(42), base.clone());
+		from.node_instances.insert(NodeId(42), Node::dummy());
 
 		let mut to = from.clone();
 		to.node_instances.get_mut(&NodeId(42)).unwrap().inputs.push(crate::InputSlot {
@@ -291,9 +295,23 @@ mod tests {
 
 		let deltas = compute_deltas(&from, &to);
 		assert!(
-			deltas.iter().any(|delta| matches!(delta, RegistryDelta::RemoveNode { id: NodeId(42), .. })) && deltas.iter().any(|delta| matches!(delta, RegistryDelta::AddNode { id: NodeId(42), .. })),
-			"an inputs_attributes length change must emit RemoveNode + AddNode, got {deltas:?}"
+			matches!(deltas.as_slice(), [RegistryDelta::SetNodeInputs { id: NodeId(42), inputs }] if inputs.len() == 1),
+			"a slot count change must emit one SetNodeInputs, got {deltas:?}"
 		);
+	}
+
+	/// Swapping what a node computes keeps its identity and attributes, so it must not remove and re-add the node.
+	#[test]
+	fn compute_deltas_swaps_implementation_in_place() {
+		let mut from = Registry::default();
+		from.node_instances.insert(NodeId(42), Node::dummy());
+
+		let mut to = from.clone();
+		let implementation = crate::Implementation::ProtoNode(crate::ResourceId::new());
+		to.node_instances.get_mut(&NodeId(42)).unwrap().implementation = implementation.clone();
+
+		let deltas = compute_deltas(&from, &to);
+		assert_eq!(deltas, vec![RegistryDelta::SetNodeImplementation { id: NodeId(42), implementation }]);
 	}
 
 	#[test]

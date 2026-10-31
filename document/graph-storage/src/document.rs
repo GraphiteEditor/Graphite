@@ -3,7 +3,7 @@ use std::hash::Hash;
 
 use crate::{
 	Attributes, CrdtError, Delta, ExportSlot, History, HotOp, HotSequence, Implementation, InputSlot, LamportClock, MAX_EXPORT_SLOTS, MAX_INPUT_SLOTS, Network, NetworkId, Node, NodeId, NodeInput,
-	PeerId, PeerRegistration, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, Touched, UserId,
+	PeerId, PeerRegistration, Prior, Registry, RegistryDelta, ResourceEntry, ResourceId, RetiredMarks, Rev, SourceValue, TimeStamp, Tombstone, Touched, UserId,
 };
 
 #[derive(Clone, Debug)]
@@ -363,6 +363,19 @@ impl Document {
 		}
 		Ok(())
 	}
+}
+
+/// Apply `op` at `timestamp` the way replaying a retired delta does, returning what it overwrote for the delta's `reverse`.
+/// For building history outside a [`Session`](crate::Session), such as a migration's history rewrite.
+pub fn apply_retired_op(registry: &mut Registry, op: RegistryDelta, timestamp: TimeStamp) -> Result<Vec<Prior>, CrdtError> {
+	let reverse = crate::prior::capture(registry, &op);
+
+	let mut scratch = Document::empty(timestamp.peer, UserId::default());
+	scratch.working_registry = std::mem::take(registry);
+	let result = scratch.apply_op_with(RegistryTarget::Working, op, timestamp, ApplyMode::Idempotent);
+	*registry = scratch.working_registry;
+
+	result.map(|()| reverse)
 }
 
 /// An entity whose existence and every field are last-writer-wins on a timestamp.

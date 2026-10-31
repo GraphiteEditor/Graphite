@@ -767,3 +767,15 @@ fn cyclic_network_reference_is_rejected() {
 	let error = registry.to_runtime_with_metadata(&crate::Declarations::new()).expect_err("cyclic network reference must error");
 	assert!(matches!(error, ConversionError::CyclicNetwork(_)), "expected CyclicNetwork, got {error:?}");
 }
+
+#[test]
+fn first_version_declarations_keep_their_unversioned_bytes() {
+	let first = crate::EncodedDeclaration::new("math_nodes::AddNode".to_string(), 1).unwrap();
+	let unversioned = crate::to_value(&serde_json::json!({ "identifier": "math_nodes::AddNode", "attributes": crate::Attributes::default() })).unwrap();
+	assert_eq!(first.bytes, postcard::to_stdvec(&unversioned).unwrap());
+
+	let second = crate::EncodedDeclaration::new("math_nodes::AddNode".to_string(), 2).unwrap();
+	assert_ne!(second.id, first.id);
+	assert_eq!(crate::decode_declaration(&second.bytes).unwrap().version, 2);
+	assert_eq!(crate::decode_declaration(&first.bytes).unwrap().version, 1);
+}

@@ -1422,3 +1422,23 @@ fn an_input_naming_a_node_not_yet_added_renders_dangling() {
 
 	document.working_registry.to_runtime_with_metadata(&crate::Declarations::new()).expect("converts with a dangling input");
 }
+
+/// Remapped tips can swap order, and a merge's `parent` has to stay the lowest.
+#[test]
+fn rehash_keeps_a_merges_parents_sorted() {
+	for seed in 0..32 {
+		let tip = |value: i32| Delta::new(None, PeerId(1), TimeStamp::default(), RegistryDelta::Other(Value::Int(value.into())), Default::default());
+		let (first, second) = (tip(seed), tip(seed + 1000));
+		let merge = Delta::merge([first.id, second.id], PeerId(1), TimeStamp::default());
+
+		let mut deltas = [first, second, merge];
+		deltas[0].kind = RegistryDelta::Other(Value::Int((seed + 2000).into()));
+		deltas[1].kind = RegistryDelta::Other(Value::Int((seed + 3000).into()));
+		crate::rehash_deltas(&mut deltas);
+
+		let [_, _, merge] = &deltas;
+		let RegistryDelta::Merge { extra_parents } = &merge.kind else { panic!("the merge stays a merge") };
+		assert!(merge.parent.is_some_and(|parent| parent < extra_parents[0]));
+		assert!(merge.has_valid_id());
+	}
+}

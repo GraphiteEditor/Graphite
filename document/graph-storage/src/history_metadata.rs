@@ -2,7 +2,7 @@
 //! and tags. None of it is folded into the document, so moving the head never changes it and stating it
 //! never rewrites a delta.
 
-use crate::ids::{PeerId, Rev, UserId};
+use crate::{PeerId, Rev, UserId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 

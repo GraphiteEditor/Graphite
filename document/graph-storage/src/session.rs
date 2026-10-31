@@ -3,8 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Attributes, Delta, Document, History, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry, Rev, TimeStamp, Touched, UserId,
-	Value, to_value,
+	ApplyMode, Attributes, Delta, Document, History, HotOp, HotOpId, HotSequence, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry,
+	RetiredMarks, Rev, TimeStamp, Touched, UserId, Value, to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -94,6 +94,20 @@ impl Session {
 	pub fn network_ids<M: NodeMetadataSource>(&self, network: &graph_craft::document::NodeNetwork, metadata: &M) -> Result<HashMap<Vec<core_types::uuid::NodeId>, NetworkId>, CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
 		Ok(conversion.network_ids)
+	}
+
+	/// Retire every pending hot op, without marking an interaction boundary. Convenience over
+	/// [`Session::retire`] for callers that don't track hot-op timestamps themselves.
+	pub fn retire_all(&mut self) -> Result<Vec<Rev>, CrdtError> {
+		match self.document.hot_log.iter().map(|hot_op| hot_op.timestamp).max() {
+			Some(up_to) => self.retire(up_to),
+			None => Ok(Vec::new()),
+		}
+	}
+
+	/// Mint a fresh peer-scoped `NodeId`.
+	pub fn next_node_id(&mut self) -> NodeId {
+		self.document.next_node_id()
 	}
 
 	/// Register a content-addressed resource as a single `DataSource::Embedded` source resolved to
@@ -821,16 +835,17 @@ impl Session {
 			}
 		}
 
-		let current_nodes = registry.node_instances.values();
-		let historic_nodes = self.document.history.iter().filter_map(|delta| match &delta.kind {
-			RegistryDelta::AddNode { node, .. } => Some(node),
-			RegistryDelta::RemoveNode { snapshot, .. } => Some(snapshot),
+		let current = registry.node_instances.values().map(|node| node.implementation());
+		let historic = self.document.history.iter().filter_map(|delta| match &delta.kind {
+			RegistryDelta::AddNode { node, .. } => Some(node.implementation()),
+			RegistryDelta::RemoveNode { snapshot, .. } => Some(snapshot.implementation()),
+			RegistryDelta::SetNodeImplementation { implementation, .. } => Some(implementation),
 			_ => None,
 		});
 
-		current_nodes
-			.chain(historic_nodes)
-			.filter_map(|node| match node.implementation() {
+		current
+			.chain(historic)
+			.filter_map(|implementation| match implementation {
 				Implementation::ProtoNode(id) => Some(*id),
 				Implementation::Network(_) => None,
 			})
@@ -895,6 +910,11 @@ impl Session {
 		self.document.clock.counter = self.document.clock.counter.max(counter);
 	}
 
+	/// Raise the node counter to a persisted value, so new node IDs can't repeat ones the document already holds.
+	pub fn restore_next_node_counter(&mut self, counter: u64) {
+		self.document.next_node_counter = self.document.next_node_counter.max(counter);
+	}
+
 	/// Restore the hot op sequence after a load. Raises only, as replaying the hot log may already have.
 	pub fn restore_hot_sequence(&mut self, sequence: HotSequence) {
 		self.document.last_hot_sequence = self.document.last_hot_sequence.max(sequence);
@@ -916,19 +936,6 @@ impl Default for Session {
 	fn default() -> Self {
 		Self::new()
 	}
-}
-
-/// One live op in the hot zone. Carries only enough to drive live LWW; no parents (transient),
-/// no Rev (not content-addressed in the durable DAG). GC'd at retirement.
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct HotOp {
-	pub op: RegistryDelta,
-	pub timestamp: TimeStamp,
-	/// Position in its author's run. See [`HotSequence`].
-	pub sequence: HotSequence,
-	/// Shared with every peer, unlike `Delta::attributes`. Dropped at retirement.
-	#[serde(default)]
-	pub attributes: Attributes,
 }
 
 impl HotOp {
@@ -956,12 +963,6 @@ pub struct ClosedInteraction {
 	pub contiguous: bool,
 }
 
-/// Position in one author's run of hot ops, counting from 1 with no gaps. Kept apart from the Lamport
-/// counter, which skips on observing a higher remote timestamp and so cannot bound a contiguous prefix.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct HotSequence(pub u64);
-
 impl HotSequence {
 	/// Before this author has written anything, covering no op.
 	pub const NONE: Self = Self(0);
@@ -970,22 +971,6 @@ impl HotSequence {
 	pub fn next(self) -> Self {
 		Self(self.0.saturating_add(1))
 	}
-}
-
-/// One hot op's author and position in its run, as the retired marks name it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct HotOpId {
-	pub peer: PeerId,
-	pub sequence: HotSequence,
-}
-
-/// Which hot ops are retired: each author's gap-free prefix, plus runs past it while ops are in flight. Persisted, so
-/// a late copy of a retired op is dropped.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RetiredMarks {
-	pub retired_up_to: HashMap<PeerId, HotSequence>,
-	/// retired ops past their author's prefix, as inclusive runs, one per gap in flight.
-	pub retired_runs: HashMap<PeerId, Vec<(HotSequence, HotSequence)>>,
 }
 
 /// Sort and coalesce runs, joining any that touch or abut.

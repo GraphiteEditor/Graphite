@@ -250,3 +250,31 @@ impl History {
 		Ok(())
 	}
 }
+
+/// Recompute every delta's content-addressed `Rev` after delta payloads were rewritten, walking in
+/// topological order and remapping parent links (including `Merge` extra parents) along the way.
+/// Returns the old → new mapping for remapping cursors (`head`, redo stack, broadcast tip).
+pub fn rehash_deltas(deltas: &mut [Delta]) -> HashMap<Rev, Rev> {
+	let mut mapping: HashMap<Rev, Rev> = HashMap::new();
+
+	for delta in deltas.iter_mut() {
+		let remapped = |rev: Rev| mapping.get(&rev).copied().unwrap_or(rev);
+
+		if let RegistryDelta::Merge { extra_parents } = &mut delta.kind {
+			// A merge's `parent` is its lowest, and remapping can change which that is
+			let mut parents: Vec<Rev> = delta.parent.into_iter().chain(extra_parents.iter().copied()).map(remapped).collect();
+			parents.sort_unstable();
+			parents.dedup();
+			delta.parent = parents.first().copied();
+			*extra_parents = parents.split_first().map(|(_, rest)| rest.to_vec()).unwrap_or_default();
+		} else {
+			delta.parent = delta.parent.map(remapped);
+		}
+
+		let new_id = delta.recomputed_id();
+		mapping.insert(delta.id, new_id);
+		delta.id = new_id;
+	}
+
+	mapping
+}

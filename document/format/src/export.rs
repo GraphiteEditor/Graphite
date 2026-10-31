@@ -8,9 +8,9 @@ use std::path::Path;
 
 use graphene_resource::{LoadResource, Resource, ResourceHash};
 
+use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
-use crate::session_state::SessionState;
 use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
 
 /// Export wrapping. Payloads keep the working copy's recorded per-payload codecs (see
