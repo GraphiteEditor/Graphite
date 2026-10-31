@@ -3,9 +3,6 @@
 //! These work in `f32` at full precision. For round-trip-exact `u8` ⇄ `f32` conversion at the
 //! display byte boundary, use the lookup tables in [`super::discrete_srgb`] instead.
 
-#[cfg(not(feature = "std"))]
-use num_traits::float::Float;
-
 /// Decode an sRGB gamma-encoded channel value to linear-light.
 #[inline(always)]
 pub fn srgb_to_linear(channel: f32) -> f32 {

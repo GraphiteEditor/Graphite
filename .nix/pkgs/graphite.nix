@@ -35,7 +35,6 @@ let
         inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
         cargoLockList = [
           "${info.src}/Cargo.lock"
-          "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
         ];
       }
     );
@@ -97,7 +96,6 @@ deps.crane.lib.buildPackage (
     makeCacheWritable = true;
 
     env = {
-      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
       GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
       GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
       CEF_PATH = "${self.packages.${system}.graphite-cef}/lib";

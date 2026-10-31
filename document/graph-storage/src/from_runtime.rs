@@ -625,8 +625,6 @@ fn convert_input<M: NodeMetadataSource + ?Sized>(input: &GraphCraftNodeInput, pa
 			index: (*import_index).try_into().map_err(|_| ConversionError::IndexOverflow(*import_index))?,
 		},
 		GraphCraftNodeInput::Reflection(_) => NodeInput::Reflection,
-		// GPU-specific; not modeled in the Registry format.
-		GraphCraftNodeInput::Inline(_) => return Err(ConversionError::UnsupportedImplementation),
 	})
 }
 

@@ -13,7 +13,6 @@ use syn::{
 
 use crate::codegen::generate_node_code;
 use crate::crate_ident::CrateIdent;
-use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Implementation {
@@ -66,8 +65,6 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) inspector_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
-	/// if this node should get a gpu implementation, defaults to None
-	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
 	pub(crate) flags: NodeFlags,
@@ -164,8 +161,6 @@ impl ParsedField {
 				number_hard_max: None,
 				number_mode_range: false,
 				implementations: Default::default(),
-				gpu_image: false,
-				narrowed_body_ty: None,
 			}),
 			number_display_decimal_places: None,
 			number_step: None,
@@ -248,14 +243,6 @@ impl ParsedFieldType {
 		match self {
 			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => &field.value_source,
 			ParsedFieldType::Node(field) => &field.value_source,
-		}
-	}
-
-	/// The element type `T` of a rank-0 `Item<T>` field, or `None` for any other shape.
-	pub fn item_element(&self) -> Option<&Type> {
-		match self {
-			ParsedFieldType::Item { element, .. } => Some(element),
-			_ => None,
 		}
 	}
 
@@ -382,17 +369,6 @@ pub struct RegularParsedField {
 	/// Whether the number input renders as a draggable slider (the `#[range]` attribute) rather than the default increment field.
 	pub number_mode_range: bool,
 	pub implementations: Punctuated<Type, Comma>,
-	pub gpu_image: bool,
-	/// Set for a shader node's `f64` or `i64` parameter: `ty` keeps the type it was declared with, which the graph and the
-	/// CPU fn use, while the shader build's fn variant and the GPU uniform take this `f32` or `i32` counterpart.
-	pub narrowed_body_ty: Option<Type>,
-}
-
-impl RegularParsedField {
-	/// The type the shader build's fn variant is handed: the 32-bit counterpart of a shader node's declared `f64` or `i64`, otherwise `ty` itself.
-	pub fn body_ty(&self) -> &Type {
-		self.narrowed_body_ty.as_ref().unwrap_or(&self.ty)
-	}
 }
 
 /// a param of `impl Node` with `#[implementation(in -> out)]`
@@ -401,7 +377,7 @@ pub struct NodeParsedField {
 	pub input_type: Type,
 	pub output_type: Type,
 	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
-	pub output_element: Option<Type>,
+	pub output_element: Option<Box<Type>>,
 	pub implementations: Punctuated<Implementation, Comma>,
 	pub value_source: ParsedValueSource,
 }
@@ -462,7 +438,6 @@ impl Parse for NodeFnAttributes {
 		let mut path = None;
 		let mut inspector_string = None;
 		let mut cfg = None;
-		let mut shader_node = None;
 		let mut serialize = None;
 		let mut flags = NodeFlags::default();
 		let mut placeholder = None;
@@ -557,24 +532,13 @@ impl Parse for NodeFnAttributes {
 				// Conditional compilation tokens to gate when this node is included in the build.
 				//
 				// Example usage:
-				// #[node_macro::node(..., cfg(feature = "std"), ...)]
+				// #[node_macro::node(..., cfg(feature = "gpu"), ...)]
 				"cfg" => {
 					if cfg.is_some() {
 						return Err(Error::new_spanned(path, "Multiple 'cfg' attributes are not allowed"));
 					}
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
-				}
-				// Reference to a specific shader definition struct that is used to run the logic of this node on the GPU.
-				//
-				// Example usage:
-				// #[node_macro::node(..., shader_node(PerPixelAdjust), ...)]
-				"shader_node" => {
-					if shader_node.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'shader_node' attributes are not allowed"));
-					}
-					let meta = meta.require_list()?;
-					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
 				}
 				// Function name for custom serialization of this node's data. This is only used by the Monitor node.
 				//
@@ -636,7 +600,7 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', and 'no_partial'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', and 'no_partial'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -666,7 +630,6 @@ impl Parse for NodeFnAttributes {
 			path,
 			inspector_string,
 			cfg,
-			shader_node,
 			serialize,
 			flags,
 			placeholder,
@@ -694,10 +657,7 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, mut fields) = parse_inputs(&input_fn.sig.inputs)?;
-	if matches!(attributes.shader_node, Some(ShaderNodeType::PerPixelAdjust(_))) {
-		narrow_shader_fields(&mut fields)?;
-	}
+	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let output_element = peel_item(&output_payload(&output_type));
 	let where_clause = input_fn.sig.generics.where_clause;
@@ -988,7 +948,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{ident}': {e}\nUSAGE EXAMPLE: #[step(2.)]")))
 		})
 		.transpose()?;
-	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -1027,7 +986,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
-		let output_element = peel_item(&output_type);
+		let output_element = peel_item(&output_type).map(Box::new);
 
 		Ok(ParsedField {
 			pat_ident,
@@ -1089,8 +1048,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				ty,
 				value_source,
 				implementations,
-				gpu_image,
-				narrowed_body_ty: None,
 			}),
 			name,
 			description,
@@ -1126,69 +1083,6 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 		}
 	}
 	(false, None, None)
-}
-
-/// A `PerPixelAdjust` shader node is declared with the catalog's `f64` and `i64` parameters, and its fn is emitted twice
-/// from the one body: as declared for the CPU, and with the `f32` and `i32` counterparts recorded here for the shader
-/// build, which cannot represent a 64-bit number. Declaring `f32` or `i32` directly is refused so the node's definition
-/// only ever speaks the graph's types.
-fn narrow_shader_fields(fields: &mut [ParsedField]) -> syn::Result<()> {
-	for field in fields.iter_mut() {
-		let Some(regular) = field.ty.regular() else { continue };
-		let declared = regular.ty.clone();
-
-		if peel_list(&declared).is_some() {
-			return Err(Error::new_spanned(
-				&declared,
-				"A per-pixel shader node cannot take a `List` parameter, since its values ride in a uniform buffer and the shader cannot allocate; declare an `Item` instead",
-			));
-		}
-
-		let element = peel_item(&declared).unwrap_or_else(|| declared.clone());
-		if is_primitive_type(&element, "f32") || is_primitive_type(&element, "i32") {
-			return Err(Error::new_spanned(
-				&declared,
-				"A shader node's parameters are declared as `f64` or `i64`, the graph's Number and Integer types; the macro narrows them to the `f32` or `i32` the shader computes with",
-			));
-		}
-
-		let counterpart: Type = if is_primitive_type(&element, "f64") {
-			parse_quote!(f32)
-		} else if is_primitive_type(&element, "i64") {
-			parse_quote!(i32)
-		} else {
-			continue;
-		};
-		let body_ty = if peel_item(&declared).is_some() {
-			replace_wrapper_element(&declared, counterpart)
-		} else {
-			counterpart
-		};
-
-		let mut regular = regular.clone();
-		regular.narrowed_body_ty = Some(body_ty);
-		field.ty = ParsedFieldType::classify(regular);
-	}
-
-	Ok(())
-}
-
-/// Swaps the element type inside a wrapper like `Item<T>`, keeping the wrapper's path as it was written.
-fn replace_wrapper_element(ty: &Type, element: Type) -> Type {
-	let mut ty = ty.clone();
-	if let Type::Path(type_path) = &mut ty
-		&& let Some(segment) = type_path.path.segments.last_mut()
-		&& let syn::PathArguments::AngleBracketed(arguments) = &mut segment.arguments
-		&& let Some(syn::GenericArgument::Type(inner)) = arguments.args.first_mut()
-	{
-		*inner = element;
-	}
-	ty
-}
-
-fn is_primitive_type(ty: &Type, name: &str) -> bool {
-	let Type::Path(type_path) = ty else { return false };
-	type_path.path.segments.last().is_some_and(|segment| segment.ident == name)
 }
 
 fn is_integer_type(ty: &Type) -> bool {
@@ -1457,8 +1351,6 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: false,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1545,8 +1437,6 @@ mod tests {
 						number_hard_max: None,
 						number_mode_range: false,
 						implementations: Punctuated::new(),
-						gpu_image: false,
-						narrowed_body_ty: None,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
@@ -1610,8 +1500,6 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: false,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1678,8 +1566,6 @@ mod tests {
 						p.push(parse_quote!(f64));
 						p
 					},
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1749,8 +1635,6 @@ mod tests {
 					number_hard_max: Some(parse_quote!(500)),
 					number_mode_range: true,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -1827,8 +1711,6 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: false,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
@@ -2018,56 +1900,6 @@ mod tests {
 		// Instead of checking for exact line and column,
 		// verify that the error span is the one we specified
 		assert_eq!(error.span().start(), problem_span.start());
-	}
-
-	#[test]
-	fn test_shader_node_parameters_narrow_for_the_body() {
-		let attr = quote!(category("Raster: Adjustment"), shader_node(PerPixelAdjust));
-		let input = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amount: Item<f64>, scale: f64, steps: Item<i64>) -> Item<T> {
-				image
-			}
-		);
-		let parsed = parse_node_fn(attr.clone(), input).unwrap();
-
-		let types = |index: usize| {
-			let regular = parsed.fields[index].ty.regular().unwrap();
-			let body = regular.narrowed_body_ty.as_ref().map(|ty| ty.to_token_stream().to_string());
-			(regular.ty.to_token_stream().to_string(), body)
-		};
-		assert_eq!(types(0), ("Item < T >".to_string(), None), "the image parameter is left alone");
-		assert_eq!(
-			types(1),
-			("Item < f64 >".to_string(), Some("Item < f32 >".to_string())),
-			"an Item<f64> stays on the wire and reaches the body as Item<f32>"
-		);
-		assert_eq!(types(2), ("f64".to_string(), Some("f32".to_string())), "a bare f64 reaches the body as f32");
-		assert_eq!(
-			types(3),
-			("Item < i64 >".to_string(), Some("Item < i32 >".to_string())),
-			"an Item<i64> stays on the wire and reaches the body as Item<i32>"
-		);
-
-		let declared_f32 = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amount: Item<f32>) -> Item<T> {
-				image
-			}
-		);
-		assert!(parse_node_fn(attr.clone(), declared_f32).is_err(), "a shader node must not declare f32 itself");
-
-		let declared_i32 = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, steps: Item<i32>) -> Item<T> {
-				image
-			}
-		);
-		assert!(parse_node_fn(attr.clone(), declared_i32).is_err(), "a shader node must not declare i32 itself");
-
-		let declared_list = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amounts: List<f64>) -> Item<T> {
-				image
-			}
-		);
-		assert!(parse_node_fn(attr, declared_list).is_err(), "a uniform cannot carry a List");
 	}
 
 	#[test]

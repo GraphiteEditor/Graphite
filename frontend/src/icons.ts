@@ -374,7 +374,6 @@ import NodeThreshold from "/../branding/assets/16x16-nodes/node-threshold.svg";
 import NodeTransform from "/../branding/assets/16x16-nodes/node-transform.svg";
 import NodeTriangulate from "/../branding/assets/16x16-nodes/node-triangulate.svg";
 import NodeUnweld from "/../branding/assets/16x16-nodes/node-unweld.svg";
-import NodeUploadTexture from "/../branding/assets/16x16-nodes/node-upload-texture.svg";
 import NodeVec2ToNumbers from "/../branding/assets/16x16-nodes/node-vec2-to-numbers.svg";
 import NodeVec2Value from "/../branding/assets/16x16-nodes/node-vec2-value.svg";
 import NodeVibrance from "/../branding/assets/16x16-nodes/node-vibrance.svg";
@@ -653,7 +652,6 @@ export const ICON_16X16_NODES = {
 	NodeTransform: { svg: NodeTransform, size: 16 },
 	NodeTriangulate: { svg: NodeTriangulate, size: 16 },
 	NodeUnweld: { svg: NodeUnweld, size: 16 },
-	NodeUploadTexture: { svg: NodeUploadTexture, size: 16 },
 	NodeVec2ToNumbers: { svg: NodeVec2ToNumbers, size: 16 },
 	NodeVec2Value: { svg: NodeVec2Value, size: 16 },
 	NodeVibrance: { svg: NodeVibrance, size: 16 },

@@ -3,8 +3,6 @@ use bytemuck::{Pod, Zeroable};
 use core::fmt::Debug;
 use glam::DVec2;
 use num_derive::*;
-#[cfg(not(feature = "std"))]
-use num_traits::float::Float;
 
 pub trait Linear {
 	fn from_f32(x: f32) -> Self;
@@ -88,7 +86,6 @@ pub trait SRGB: Rec709Primaries {}
 
 // TODO: Come up with a better name for this trait
 pub trait Pixel: Clone + Pod + Zeroable + Default {
-	#[cfg(feature = "std")]
 	fn to_bytes(&self) -> Vec<u8> {
 		bytemuck::bytes_of(self).to_vec()
 	}

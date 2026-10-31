@@ -2,51 +2,11 @@ use crate::{Buffer, WgpuExecutor};
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
-use core_types::ops::{Convert, ConvertAsync};
+use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
 use raster_types::Image;
-use raster_types::{CPU, GPU, Raster, Texture};
-use wgpu::{Extent3d, TextureFormat};
-
-/// Uploads CPU image data to a GPU texture
-fn upload_to_texture(executor: &WgpuExecutor, queue: &wgpu::Queue, image: &Raster<CPU>) -> Texture {
-	let texture = executor.request_texture_with_format(glam::UVec2::new(image.width, image.height), TextureFormat::Rgba8UnormSrgb);
-
-	if image.width == 0 || image.height == 0 {
-		queue.write_texture(
-			texture.as_image_copy(),
-			bytemuck::bytes_of(&SRGBA8::TRANSPARENT),
-			wgpu::TexelCopyBufferLayout {
-				offset: 0,
-				bytes_per_row: Some(4),
-				rows_per_image: Some(1),
-			},
-			Extent3d {
-				width: 1,
-				height: 1,
-				depth_or_array_layers: 1,
-			},
-		);
-		return texture;
-	}
-
-	let rgba8_data: Vec<SRGBA8> = image.data.iter().map(|x| (*x).into()).collect();
-	queue.write_texture(
-		texture.as_image_copy(),
-		bytemuck::cast_slice(rgba8_data.as_slice()),
-		wgpu::TexelCopyBufferLayout {
-			offset: 0,
-			bytes_per_row: Some(4 * image.width),
-			rows_per_image: Some(image.height),
-		},
-		Extent3d {
-			width: image.width,
-			height: image.height,
-			depth_or_array_layers: 1,
-		},
-	);
-	texture
-}
+use raster_types::{CPU, GPU, Raster};
+use wgpu::Extent3d;
 
 /// Converts a Raster<GPU> texture to Raster<CPU> by downloading the underlying texture data.
 ///
@@ -209,50 +169,6 @@ async fn yield_to_event_loop() -> bool {
 		}
 	})
 	.await
-}
-
-/// Passthrough conversion for GPU `List`s - no conversion needed
-impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<GPU>> {
-	fn convert(self, _: Footprint, _converter: WgpuExecutor) -> List<Raster<GPU>> {
-		self
-	}
-}
-
-/// Converts a `List<Raster<CPU>>` to `List<Raster<GPU>>` by uploading each image to a texture
-impl Convert<List<Raster<GPU>>, WgpuExecutor> for List<Raster<CPU>> {
-	fn convert(self, _: Footprint, executor: WgpuExecutor) -> List<Raster<GPU>> {
-		let queue = executor.context().queue.lock();
-		let list = self
-			.into_iter()
-			.map(|row| {
-				let (image, attributes) = row.into_parts();
-				let texture = upload_to_texture(&executor, &queue, &image);
-
-				Item::from_parts(Raster::new_gpu(texture), attributes)
-			})
-			.collect();
-
-		queue.submit([]);
-		list
-	}
-}
-
-/// Converts single CPU raster to GPU by uploading to texture
-impl Convert<Raster<GPU>, WgpuExecutor> for Raster<CPU> {
-	fn convert(self, _: Footprint, executor: WgpuExecutor) -> Raster<GPU> {
-		let queue = executor.context().queue.lock();
-		let texture = upload_to_texture(&executor, &queue, &self);
-
-		queue.submit([]);
-		Raster::new_gpu(texture)
-	}
-}
-
-/// Passthrough conversion for CPU `List`s - no conversion needed
-impl Convert<List<Raster<CPU>>, WgpuExecutor> for List<Raster<CPU>> {
-	fn convert(self, _: Footprint, _converter: WgpuExecutor) -> List<Raster<CPU>> {
-		self
-	}
 }
 
 /// Converts a `List<Raster<GPU>>` to `List<Raster<CPU>>` by downloading texture data in one go then asynchronously maps all buffers and processes the results.

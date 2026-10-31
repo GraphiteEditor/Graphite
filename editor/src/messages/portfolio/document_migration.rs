@@ -522,6 +522,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::raster::adjustments::BrightnessContrastNode",
 			"graphene_raster_nodes::adjustments::brightness_contrast_classic",
 			"graphene_raster_nodes::adjustments::BrightnessContrastClassicNode",
+			"raster_nodes::adjustments::BrightnessContrastClassicNode",
 		],
 	},
 	NodeReplacement {
@@ -1196,10 +1197,48 @@ fn is_monitored_transform_subgraph(node: &DocumentNode) -> bool {
 	monitor_reads_first_import && transform_reads_monitor_and_other_imports && exports_transform
 }
 
+/// The CPU node a removed GPU twin was generated from, as named in its era, like `raster_nodes::adjustments::InvertNode` for `raster_nodes::adjustments::invert_shader_node::InvertShaderNodeNode`.
+fn cpu_node_of_gpu_twin(identifier: &str) -> Option<String> {
+	let identifier = identifier.split('<').next()?;
+	let (module_path, struct_name) = identifier.rsplit_once("::")?;
+	let (parent_module_path, twin_module) = module_path.rsplit_once("::")?;
+	let cpu_struct_name = struct_name.strip_suffix("ShaderNodeNode")?;
+
+	twin_module.ends_with("_shader_node").then(|| format!("{parent_module_path}::{cpu_struct_name}Node"))
+}
+
 pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) {
 	document.network_interface.migrate_path_modify_node();
 	document.network_interface.migrate_rewired_previews();
 	document.network_interface.normalize_stored_types();
+
+	// The removed GPU twins become their CPU nodes minus the trailing executor input, so the renames below carry them forward like their era's CPU nodes
+	let gpu_twins = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter_map(|(node_id, node, path)| {
+			let DocumentNodeImplementation::ProtoNode(identifier) = &node.implementation else { return None };
+			let kept_input_count = node.inputs.len().saturating_sub(1);
+			Some((*node_id, path, cpu_node_of_gpu_twin(identifier.as_str())?, node.inputs[..kept_input_count].to_vec()))
+		})
+		.collect::<Vec<_>>();
+	for (node_id, network_path, cpu_identifier, inputs) in gpu_twins {
+		let input_metadata = document
+			.network_interface
+			.node_metadata(&node_id, &network_path)
+			.map(|metadata| metadata.persistent_metadata.input_metadata.iter().take(inputs.len()).cloned().collect())
+			.unwrap_or_default();
+
+		let mut node_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::with_owned_string(cpu_identifier)),
+			inputs,
+			input_metadata,
+			..Default::default()
+		};
+		document.network_interface.replace_implementation(&node_id, &network_path, &mut node_template);
+		document.network_interface.replace_inputs(&node_id, &network_path, &mut node_template);
+	}
 
 	let network = document.network_interface.document_network().clone();
 
@@ -3783,11 +3822,14 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 		}
 	}
 
-	// The Upload Texture node's old wrapper-network form maps onto its proto node form, which draws the executor from scope
-	if let Some(DefinitionIdentifier::Network(name)) = document.network_interface.reference(node_id, network_path)
-		&& name == "Upload Texture"
-	{
-		let mut node_template = resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER)?.default_node_template();
+	// The removed Upload Texture node, in its proto node or older wrapper network form, degrades to a passthrough of its content
+	let is_upload_texture = match document.network_interface.reference(node_id, network_path) {
+		Some(DefinitionIdentifier::Network(name)) => name == "Upload Texture",
+		Some(DefinitionIdentifier::ProtoNode(identifier)) => identifier.as_str().ends_with("::UploadTextureNode"),
+		None => false,
+	};
+	if is_upload_texture {
+		let mut node_template = resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 		if let Some(content) = old_inputs.first() {
@@ -4004,7 +4046,87 @@ mod tests {
 	#[test]
 	fn removed_definition_swap_targets_resolve() {
 		assert!(resolve_proto_node_type(graphene_std::ops::passthrough::IDENTIFIER).is_some());
-		assert!(resolve_proto_node_type(graphene_std::platform_application_io::upload_texture::IDENTIFIER).is_some());
+	}
+
+	#[test]
+	fn gpu_twins_name_the_cpu_nodes_they_came_from() {
+		assert_eq!(
+			cpu_node_of_gpu_twin("raster_nodes::adjustments::desaturate_shader_node::DesaturateShaderNodeNode").as_deref(),
+			Some(graphene_std::raster_nodes::adjustments::desaturate::IDENTIFIER.as_str())
+		);
+		assert_eq!(
+			cpu_node_of_gpu_twin("graphene_raster_nodes::blending_nodes::color_overlay_shader_node::ColorOverlayShaderNodeNode").as_deref(),
+			Some("graphene_raster_nodes::blending_nodes::ColorOverlayNode")
+		);
+		assert_eq!(cpu_node_of_gpu_twin(graphene_std::raster_nodes::adjustments::invert::IDENTIFIER.as_str()), None);
+	}
+
+	// Upload Texture opens as a passthrough, and GPU twins open as the CPU nodes they were generated from, keeping their wires but not their executor input
+	#[test]
+	fn gpu_twins_and_upload_texture_open_as_cpu_nodes() {
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::raster_nodes::adjustments::desaturate;
+
+		let executor = || NodeInput::scope("graphene_std::platform_application_io::WgpuExecutorNode");
+		let legacy_node = |identifier: &'static str, inputs: Vec<NodeInput>| NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new(identifier)),
+			input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
+			inputs,
+			..Default::default()
+		};
+
+		let desaturate_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(desaturate::IDENTIFIER))
+			.expect("the Desaturate definition should exist")
+			.default_node_template();
+		let content = NodeInput::value(TaggedValue::Color(Color::RED), false);
+		let method = desaturate_template.inputs[1].clone();
+		let brightness = NodeInput::value(TaggedValue::Number(25.), false);
+		let contrast = NodeInput::value(TaggedValue::Number(-10.), false);
+
+		// Uploaded content feeds a Desaturate GPU twin, which feeds a Brightness/Contrast Classic GPU twin saved under the `raster_nodes` crate name
+		let saved_nodes = [
+			legacy_node("graphene_std::platform_application_io::UploadTextureNode", vec![content.clone(), executor()]),
+			legacy_node(
+				"raster_nodes::adjustments::desaturate_shader_node::DesaturateShaderNodeNode",
+				vec![NodeInput::node(NodeId(0), 0), method.clone(), executor()],
+			),
+			legacy_node(
+				"raster_nodes::adjustments::brightness_contrast_classic_shader_node::BrightnessContrastClassicShaderNodeNode",
+				vec![NodeInput::node(NodeId(1), 0), brightness.clone(), contrast.clone(), executor()],
+			),
+		];
+		let nodes = saved_nodes
+			.into_iter()
+			.enumerate()
+			.map(|(index, node_template)| (NodeId(index as u64), node_template))
+			.collect::<Vec<_>>();
+		let unchanged_ids = nodes.iter().map(|(node_id, _)| (*node_id, *node_id)).collect();
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node_group(nodes, unchanged_ids, &[]);
+
+		let opened = load_legacy_document(document.serialize_document(), &HashMapResourceStorage::new(), false).expect("the document should open");
+		let node = |index: u64| opened.network_interface.document_node(&NodeId(index), &[]).expect("the node should still exist");
+
+		let upload_texture = node(0);
+		assert_eq!(upload_texture.implementation, DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
+		assert_eq!(upload_texture.inputs, [content]);
+
+		let desaturate_node = node(1);
+		assert_eq!(desaturate_node.implementation, DocumentNodeImplementation::ProtoNode(desaturate::IDENTIFIER));
+		assert_eq!(desaturate_node.inputs, [NodeInput::node(NodeId(0), 0), method]);
+
+		let brightness_contrast = node(2);
+		assert_eq!(
+			brightness_contrast.implementation,
+			DocumentNodeImplementation::ProtoNode(graphene_std::raster::brightness_contrast::IDENTIFIER)
+		);
+		assert_eq!(brightness_contrast.inputs[..3], [NodeInput::node(NodeId(1), 0), brightness, contrast]);
+		assert_eq!(
+			brightness_contrast.inputs[3],
+			NodeInput::value(TaggedValue::Bool(true), false),
+			"the Classic twin should turn on the Use Classic toggle"
+		);
 	}
 
 	// Migrating a Merge network's coercion nodes by alias would leave a reducer in the primary slot, so every alias must reset instead

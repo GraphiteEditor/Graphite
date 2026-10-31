@@ -2,7 +2,7 @@ use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::list::{Item, List};
 use core_types::math::bbox::Bbox;
-use core_types::ops::{Convert, ConvertAsync};
+use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
 use core_types::{ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, NodeError};
 use glam::{DAffine2, UVec2};
@@ -12,7 +12,7 @@ pub use graph_craft::document::value::RenderOutputType;
 #[cfg(target_family = "wasm")]
 pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
-use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::raster_types::{Image, ImageError};
 use rendering::{Render, RenderParams};
 use std::sync::Arc;
@@ -299,15 +299,6 @@ fn pending_stored_resource(_application_io: &Item<Arc<PlatformApplicationIo>>, _
 #[node_macro::node(category(""), inject_scope)]
 fn wgpu_executor(_: impl Ctx, #[scope(application_io::IDENTIFIER)] application_io: Item<Arc<PlatformApplicationIo>>) -> Result<Item<::wgpu_executor::WgpuExecutor>, ::wgpu_executor::NoGpuError> {
 	application_io.element().gpu_executor().cloned().map(Item::new_from_element).ok_or(::wgpu_executor::NoGpuError)
-}
-
-/// Uploads image data from CPU memory into a GPU texture so that GPU-based nodes can process it.
-#[node_macro::node(category("Raster"), icon("NodeUploadTexture"), memoize)]
-fn upload_texture(_: impl Ctx, content: Item<Raster<CPU>>, #[scope(wgpu_executor::IDENTIFIER)] executor: Item<::wgpu_executor::WgpuExecutor>) -> Item<Raster<GPU>> {
-	let executor = executor.into_element();
-	let (raster, attributes) = content.into_parts();
-
-	Item::from_parts(raster.convert(Footprint::DEFAULT, executor), attributes)
 }
 
 #[cfg(test)]

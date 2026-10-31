@@ -313,7 +313,6 @@ version = "2.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 dependencies = [
- "bytemuck",
  "serde_core",
 ]
 
@@ -336,7 +335,7 @@ name = "blending-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "glam 0.33.10",
+ "glam",
  "graphic-types",
  "node-macro",
  "serde",
@@ -378,7 +377,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "graphic-types",
  "half",
@@ -396,7 +395,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "serde",
 ]
@@ -489,29 +488,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo-gpu-install"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "668b4bd1b59810c4f907eeb36bb0f0a450c824219b2e599b9b8ef2b3ae056e94"
-dependencies = [
- "anyhow",
- "cargo_metadata 0.21.0",
- "directories",
- "log",
- "serde",
- "spirv-builder",
-]
-
-[[package]]
-name = "cargo-platform"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "84982c6c0ae343635a3a4ee6dedef965513735c8b183caa7289fa6e27399ebd4"
-dependencies = [
- "serde",
-]
-
-[[package]]
 name = "cargo-platform"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -551,44 +527,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "cargo-util-schemas"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7dc1a6f7b5651af85774ae5a34b4e8be397d9cf4bc063b7e6dbd99a841837830"
-dependencies = [
- "semver",
- "serde",
- "serde-untagged",
- "serde-value",
- "thiserror 2.0.18",
- "toml 0.8.23",
- "unicode-xid",
- "url",
-]
-
-[[package]]
-name = "cargo_metadata"
-version = "0.21.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cfca2aaa699835ba88faf58a06342a314a950d2b9686165e038286c30316868"
-dependencies = [
- "camino",
- "cargo-platform 0.2.0",
- "cargo-util-schemas",
- "semver",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
 name = "cargo_metadata"
 version = "0.23.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef987d17b0a113becdd19d3d0022d04d7ef41f9efe4f3fb63ac44ba61df3ade9"
 dependencies = [
  "camino",
- "cargo-platform 0.3.3",
+ "cargo-platform",
  "semver",
  "serde",
  "serde_json",
@@ -619,7 +564,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fb823e721b3ea203f4635e71532db2b010696c074518eb4f6154fd7f47fc6fcb"
 dependencies = [
  "anyhow",
- "cargo_metadata 0.23.1",
+ "cargo_metadata",
  "cef-dll-sys",
  "clap",
  "libloading 0.9.0",
@@ -781,8 +726,6 @@ version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "af491d569909a7e4dee0ad7db7f5341fef5c614d5b8ec8cf765732aba3cff681"
 dependencies = [
- "serde",
- "termcolor",
  "unicode-width",
 ]
 
@@ -859,7 +802,7 @@ checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
 name = "control-protocol"
 version = "0.0.0"
 dependencies = [
- "glam 0.33.10",
+ "glam",
  "serde",
  "serde_json",
 ]
@@ -948,7 +891,7 @@ dependencies = [
  "ctor",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "image",
  "kurbo",
@@ -958,7 +901,7 @@ dependencies = [
  "node-macro",
  "num-traits",
  "parley",
- "petgraph 0.7.1",
+ "petgraph",
  "polycool",
  "rand",
  "rand_chacha",
@@ -1227,15 +1170,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "directories"
-version = "6.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16f5094c54661b38d03bd7e50df373292118db60b585c08a411c6d840017fe7d"
-dependencies = [
- "dirs-sys",
-]
-
-[[package]]
 name = "dirs"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1427,7 +1361,7 @@ name = "dyn-any"
 version = "0.3.1"
 dependencies = [
  "dyn-any-derive",
- "glam 0.33.10",
+ "glam",
  "reqwest",
 ]
 
@@ -1524,16 +1458,6 @@ name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
-
-[[package]]
-name = "erased-serde"
-version = "0.4.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e004d887f51fcb9fef17317a2f3525c887d8aa3f4f50fed920816a688284a5b7"
-dependencies = [
- "serde",
- "typeid",
-]
 
 [[package]]
 name = "errno"
@@ -1978,36 +1902,6 @@ dependencies = [
 
 [[package]]
 name = "glam"
-version = "0.30.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "19fc433e8437a212d1b6f1e68c7824af3aed907da60afa994e7f542d18d12aa9"
-dependencies = [
- "bytemuck",
- "libm",
-]
-
-[[package]]
-name = "glam"
-version = "0.31.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "556f6b2ea90b8d15a74e0e7bb41671c9bdf38cd9f78c284d750b9ce58a2b5be7"
-dependencies = [
- "bytemuck",
- "libm",
-]
-
-[[package]]
-name = "glam"
-version = "0.32.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f70749695b063ecbf6b62949ccccde2e733ec3ecbbd71d467dca4e5c6c97cca0"
-dependencies = [
- "bytemuck",
- "libm",
-]
-
-[[package]]
-name = "glam"
 version = "0.33.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "928452f9c953e142b2f0973e4bd5f34445fcaa8069556ea97a3c9d34d15a4cf8"
@@ -2066,7 +1960,7 @@ dependencies = [
  "core-types",
  "criterion",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graph-craft",
  "graphene-animation",
  "graphene-application-io",
@@ -2101,7 +1995,7 @@ name = "graphene-animation"
 version = "0.0.0"
 dependencies = [
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "kurbo",
  "serde",
@@ -2114,7 +2008,7 @@ dependencies = [
  "blake3",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "graphene-resource",
  "log",
@@ -2131,7 +2025,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-application-io",
  "log",
  "serde",
@@ -2169,7 +2063,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-animation",
  "graphene-hash",
  "graphic-types",
@@ -2186,7 +2080,7 @@ dependencies = [
 name = "graphene-hash"
 version = "0.0.0"
 dependencies = [
- "glam 0.33.10",
+ "glam",
  "graphene-hash-derive",
  "kurbo",
 ]
@@ -2221,7 +2115,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graph-craft",
  "graphene-application-io",
  "graphene-canvas-utils",
@@ -2259,7 +2153,7 @@ dependencies = [
  "brush-types",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphic-types",
  "node-macro",
  "rand",
@@ -2276,7 +2170,7 @@ dependencies = [
  "brush-types",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "node-macro",
  "raster-types",
@@ -2297,7 +2191,7 @@ dependencies = [
  "dirs",
  "fd-lock",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graphite-desktop-ui",
  "graphite-desktop-wrapper",
  "interprocess",
@@ -2394,7 +2288,6 @@ dependencies = [
  "base64",
  "dirs",
  "graph-craft",
- "graphene-std",
  "graphite-editor",
  "graphite-wasm-wrapper",
  "image",
@@ -2422,7 +2315,7 @@ dependencies = [
  "dyn-any",
  "env_logger",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graph-craft",
  "graphene-hash",
  "graphene-std",
@@ -3026,7 +2919,7 @@ dependencies = [
  "criterion",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graph-craft",
  "graphene-animation",
  "graphene-core",
@@ -3304,7 +3197,7 @@ dependencies = [
  "ena",
  "itertools 0.14.0",
  "lalrpop-util",
- "petgraph 0.7.1",
+ "petgraph",
  "regex",
  "regex-syntax 0.8.6",
  "sha3",
@@ -3613,7 +3506,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-core",
  "graphic-types",
  "math-parser",
@@ -3749,7 +3642,6 @@ dependencies = [
  "naga-types",
  "num-traits",
  "once_cell",
- "petgraph 0.8.2",
  "rustc-hash 1.1.0",
  "spirv",
  "thiserror 2.0.18",
@@ -3838,16 +3730,14 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "half",
  "log",
- "node-macro",
  "num-derive",
  "num-traits",
  "num_enum",
  "serde",
- "spirv-std",
  "tsify",
  "wasm-bindgen",
 ]
@@ -3876,7 +3766,6 @@ dependencies = [
  "proc-macro-error2",
  "proc-macro2",
  "quote",
- "strum",
  "syn 2.0.106",
 ]
 
@@ -4188,15 +4077,6 @@ dependencies = [
 
 [[package]]
 name = "ordered-float"
-version = "2.10.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "68f19d67e5a2795c94e73e0bb1cc1a7edeb2e28efd39e2e1c9b7a40c1108b11c"
-dependencies = [
- "num-traits",
-]
-
-[[package]]
-name = "ordered-float"
 version = "4.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7bb71e1b3fa6ca1c61f383464aaf2bb0e2f8e772a1f01d486832464de363b951"
@@ -4284,7 +4164,7 @@ name = "path-bool-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "glam 0.33.10",
+ "glam",
  "graphic-types",
  "linesweeper",
  "log",
@@ -4327,17 +4207,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3672b37090dbd86368a4145bc067582552b29c27377cad4e0a306c97f9bd7772"
 dependencies = [
  "fixedbitset",
- "indexmap",
-]
-
-[[package]]
-name = "petgraph"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54acf3a685220b533e437e264e4d932cfbdc4cc7ec0cd232ed73c08d03b8a7ca"
-dependencies = [
- "fixedbitset",
- "hashbrown 0.15.5",
  "indexmap",
 ]
 
@@ -4601,7 +4470,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graph-craft",
  "graphene-std",
  "interpreted-executor",
@@ -4823,45 +4692,24 @@ dependencies = [
  "dyn-any",
  "fastnoise-lite",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graphene-core",
  "graphene-hash",
  "graphene-resource",
  "image",
- "kurbo",
  "ndarray",
  "no-std-types",
  "node-macro",
- "num-traits",
  "num_enum",
  "rand",
  "rand_chacha",
- "raster-nodes-shaders",
  "raster-types",
  "serde",
- "spirv-std",
  "thiserror 2.0.18",
  "tokio",
  "tsify",
  "vector-types",
  "wasm-bindgen",
- "wgpu-executor",
-]
-
-[[package]]
-name = "raster-nodes-shaders"
-version = "0.0.0"
-dependencies = [
- "cargo-gpu-install",
- "env_logger",
- "log",
-]
-
-[[package]]
-name = "raster-nodes-shaders-entrypoint"
-version = "0.0.0"
-dependencies = [
- "raster-nodes",
 ]
 
 [[package]]
@@ -4872,7 +4720,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "image",
  "node-macro",
@@ -4883,12 +4731,6 @@ dependencies = [
  "wasm-bindgen",
  "wgpu",
 ]
-
-[[package]]
-name = "raw-string"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e0501e134c6905fee1f10fed25b0a7e1261bf676cffac9543a7d0730dec01af2"
 
 [[package]]
 name = "raw-window-handle"
@@ -5050,7 +4892,7 @@ dependencies = [
  "brush-types",
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "graphene-resource",
  "graphic-types",
@@ -5072,7 +4914,7 @@ version = "0.0.0"
 dependencies = [
  "core-types",
  "dyn-any",
- "glam 0.33.10",
+ "glam",
  "graphene-core",
  "graphic-types",
  "kurbo",
@@ -5203,16 +5045,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rspirv"
-version = "0.13.0+sdk-1.4.341.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "091dca2e1d6fd3098417b5ec88e77e80d1ba5945750943419dc976858082c296"
-dependencies = [
- "rustc-hash 1.1.0",
- "spirv",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.26"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5229,20 +5061,6 @@ name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
-
-[[package]]
-name = "rustc_codegen_spirv-types"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d703f5624720c5b6012f4b88d6e6766f43ed50d80144eaffd6791c3270754cdc"
-dependencies = [
- "rspirv",
- "semver",
- "serde",
- "serde_json",
- "spirv",
- "thiserror 2.0.18",
-]
 
 [[package]]
 name = "rustc_version"
@@ -5499,27 +5317,6 @@ checksum = "9a8e94ea7f378bd32cbbd37198a4a91436180c5bb472411e48b5ec2e2124ae9e"
 dependencies = [
  "serde_core",
  "serde_derive",
-]
-
-[[package]]
-name = "serde-untagged"
-version = "0.1.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "34836a629bcbc6f1afdf0907a744870039b1e14c0561cb26094fa683b158eff3"
-dependencies = [
- "erased-serde",
- "serde",
- "typeid",
-]
-
-[[package]]
-name = "serde-value"
-version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3a1a3341211875ef120e117ea7fd5228530ae7e7036a779fdc9117be6b3282c"
-dependencies = [
- "ordered-float 2.10.1",
- "serde",
 ]
 
 [[package]]
@@ -5789,7 +5586,7 @@ name = "snapping"
 version = "0.0.0"
 dependencies = [
  "criterion",
- "glam 0.33.10",
+ "glam",
  "kurbo",
 ]
 
@@ -5830,61 +5627,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9571ea910ebd84c86af4b3ed27f9dbdc6ad06f17c5f96146b2b671e2976744f"
 dependencies = [
  "bitflags 2.13.2",
- "serde",
 ]
-
-[[package]]
-name = "spirv-builder"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57fa119866f0311546e5309b18770b72141c25d185452c11a812be2c7b9d84e9"
-dependencies = [
- "cargo_metadata 0.21.0",
- "log",
- "memchr",
- "raw-string",
- "rustc_codegen_spirv-types",
- "semver",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
-]
-
-[[package]]
-name = "spirv-std"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d98471765e294d4dd6289350e3633b5c5ba57bb382c3287d83e69ee737179e0"
-dependencies = [
- "bitflags 2.13.2",
- "bytemuck",
- "glam 0.30.10",
- "glam 0.31.1",
- "glam 0.32.1",
- "glam 0.33.10",
- "libm",
- "num-traits",
- "spirv-std-macros",
- "spirv-std-types",
-]
-
-[[package]]
-name = "spirv-std-macros"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13a6a0d063d4dd003e43818135b7aa4a30c41c48b5d0efe2cac02220448d4f19"
-dependencies = [
- "proc-macro2",
- "quote",
- "spirv-std-types",
- "syn 3.0.6",
-]
-
-[[package]]
-name = "spirv-std-types"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "655632248eaaa205cea4656bc73c8285cbd8109fc784010b24ea6bd0bab79ac1"
 
 [[package]]
 name = "stable_deref_trait"
@@ -5948,27 +5691,6 @@ name = "strsim"
 version = "0.11.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
-
-[[package]]
-name = "strum"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
-dependencies = [
- "strum_macros",
-]
-
-[[package]]
-name = "strum_macros"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn 2.0.106",
-]
 
 [[package]]
 name = "subtle"
@@ -6105,15 +5827,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "termcolor"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06794f8f6c5c898b3275aebefa6b8a1cb24cd2c6c79397ab15774837a0bc5755"
-dependencies = [
- "winapi-util",
-]
-
-[[package]]
 name = "text-nodes"
 version = "0.0.0"
 dependencies = [
@@ -6121,7 +5834,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "fancy-regex",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "graphene-resource",
  "ipsum",
@@ -6526,7 +6239,7 @@ name = "transform-nodes"
 version = "0.0.0"
 dependencies = [
  "core-types",
- "glam 0.33.10",
+ "glam",
  "graphic-types",
  "node-macro",
  "rand",
@@ -6781,7 +6494,7 @@ dependencies = [
  "delaunator",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graphene-core",
  "graphene-hash",
  "graphic-types",
@@ -6810,14 +6523,14 @@ dependencies = [
  "core-types",
  "dyn-any",
  "fixedbitset",
- "glam 0.33.10",
+ "glam",
  "graphene-hash",
  "kurbo",
  "log",
  "lyon_geom",
  "node-macro",
  "num-traits",
- "petgraph 0.7.1",
+ "petgraph",
  "polycool",
  "robust",
  "rustc-hash 2.1.1",
@@ -7108,7 +6821,7 @@ dependencies = [
  "clap",
  "control-protocol",
  "getrandom 0.3.3",
- "glam 0.33.10",
+ "glam",
  "image",
  "interprocess",
  "serde",
@@ -7216,7 +6929,6 @@ dependencies = [
  "hashbrown 0.17.1",
  "js-sys",
  "log",
- "naga",
  "parking_lot",
  "portable-atomic",
  "profiling",
@@ -7311,7 +7023,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "futures",
- "glam 0.33.10",
+ "glam",
  "graphene-application-io",
  "log",
  "node-macro",
@@ -7358,7 +7070,7 @@ dependencies = [
  "objc2-metal",
  "objc2-quartz-core",
  "once_cell",
- "ordered-float 4.6.0",
+ "ordered-float",
  "parking_lot",
  "portable-atomic",
  "portable-atomic-util",
