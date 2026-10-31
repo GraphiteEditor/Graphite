@@ -3577,6 +3577,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "migration-formats"
+version = "0.0.0"
+dependencies = [
+ "document-graph-storage",
+ "graphene-resource",
+ "migration-core",
+ "postcard",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "migration-macros"
 version = "0.0.0"
 dependencies = [
@@ -3589,6 +3602,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "migration-nodes"
+version = "0.0.0"
+dependencies = [
+ "migration-core",
+ "migration-runner",
+ "serde",
+]
+
+[[package]]
 name = "migration-runner"
 version = "0.0.0"
 dependencies = [
@@ -3598,6 +3620,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "migration-snapshot"
+version = "0.0.0"
+dependencies = [
+ "convert_case 0.12.0",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.106",
 ]
 
 [[package]]
