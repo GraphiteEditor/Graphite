@@ -538,7 +538,7 @@ fn construct_metadata_snapshot(
 		metadata,
 	};
 
-	let mut pending = vec![(location.to_owned(), node_id, metadata)];
+	let mut pending = vec![(location.to_owned_location(), node_id, metadata)];
 	while let Some((network, id, node_metadata)) = pending.pop() {
 		let global_id = resolver.node_id(network.as_location(), id);
 		let working_node = batch.node(global_id);

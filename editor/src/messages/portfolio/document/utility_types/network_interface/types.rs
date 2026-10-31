@@ -585,8 +585,8 @@ impl NodeNetworkMetadata {
 		}
 	}
 
-	/// Drops every table entry the document network no longer reaches, in both trees.
-	pub fn retain_reachable_definitions(&mut self, document_network: &NodeNetwork) {
+	/// Drops the metadata of every table entry `document_network` no longer holds, which a caller pruning that table follows with.
+	pub fn retain_definitions_of(&mut self, document_network: &NodeNetwork) {
 		self.persistent_metadata.definitions.retain(|id, _| document_network.definitions.contains_key(id));
 	}
 

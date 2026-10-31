@@ -51,14 +51,6 @@ impl NodeNetworkInterface {
 		migrate(self.network_metadata.get_mut(), self.network.network());
 	}
 
-	/// Moves every inline network into the definitions table, for a document that predates the table.
-	///
-	/// Nothing is recorded, like a migration: the document arrives in the shape it should have had.
-	pub(crate) fn lift_nested_networks(&mut self) {
-		let lifted = self.document_network_mut().lift_nested_networks();
-		self.network_metadata.get_mut().lift_nested_metadata(&lifted);
-	}
-
 	/// Brings the definitions table in step with a finished transaction: lifts the inline networks it introduced, and
 	/// drops the entries no node reaches any more.
 	///
@@ -72,7 +64,7 @@ impl NodeNetworkInterface {
 
 		if self.document_network_mut().retain_reachable_definitions() {
 			let network = self.network.network();
-			self.network_metadata.get_mut().retain_reachable_definitions(network);
+			self.network_metadata.get_mut().retain_definitions_of(network);
 		}
 	}
 

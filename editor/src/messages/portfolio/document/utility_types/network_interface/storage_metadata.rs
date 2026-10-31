@@ -5,7 +5,7 @@
 //! directly) because several trait method names collide with inherent methods, and Rust silently
 //! resolves bare calls to the inherent ones.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 use document_graph_storage::attr::session;
 use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
@@ -286,11 +286,6 @@ pub fn apply_network_view_settings(
 ) {
 	for (network, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
-		let network_nodes: HashSet<NodeId> = interface
-			.document_network()
-			.located_network(network.as_location())
-			.map(|located| located.nodes.keys().copied().collect())
-			.unwrap_or_default();
 		let Some(view_state) = interface.located_view_state_mut(network.as_location()) else {
 			continue;
 		};
@@ -316,7 +311,7 @@ pub fn apply_network_view_settings(
 			&& let Ok(previewing) = from_value::<Previewing>(value)
 		{
 			*view_state.previewing = match previewing.previewed() {
-				Some(previewed) if !network_nodes.contains(&previewed.node_id) => Previewing::No,
+				Some(previewed) if !view_state.nodes.contains_key(&previewed.node_id) => Previewing::No,
 				_ => previewing,
 			};
 		}

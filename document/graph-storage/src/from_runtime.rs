@@ -241,6 +241,9 @@ impl Registry {
 		convert_network(node_network, &NetworkOwner::Table(None), NetworkLocation::ROOT, &mut registry, &mut ctx)?;
 
 		let reachable = node_network.reachable_definitions();
+		if let Some(missing) = reachable.iter().find(|id| !node_network.definitions.contains_key(id)) {
+			return Err(ConversionError::InvalidNetwork(format!("Definition {missing:?} is referenced but not defined")));
+		}
 		for (&id, definition) in node_network.definitions.iter().filter(|(id, _)| reachable.contains(id)) {
 			if storage_network_id(id) == ROOT_NETWORK {
 				return Err(ConversionError::InvalidNetwork(format!("Definition {id:?} collides with the root network ID")));
@@ -412,7 +415,7 @@ fn convert_network<M: NodeMetadataSource + ?Sized>(
 
 	let network = convert_network_entry(node_network, owner, network_id, location, ctx)?;
 	registry.networks.insert(network_id, network);
-	ctx.network_ids.insert(location.to_owned(), network_id);
+	ctx.network_ids.insert(location.to_owned_location(), network_id);
 
 	Ok(())
 }

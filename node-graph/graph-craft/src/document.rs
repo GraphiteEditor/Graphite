@@ -562,7 +562,7 @@ pub struct NetworkLocation<'a> {
 impl NetworkLocation<'_> {
 	pub const ROOT: NetworkLocation<'static> = NetworkLocation { definition: None, inline_path: &[] };
 
-	pub fn to_owned(self) -> OwnedNetworkLocation {
+	pub fn to_owned_location(self) -> OwnedNetworkLocation {
 		OwnedNetworkLocation {
 			definition: self.definition,
 			inline_path: self.inline_path.to_vec(),
@@ -570,7 +570,7 @@ impl NetworkLocation<'_> {
 	}
 
 	pub fn child(self, node_id: NodeId) -> OwnedNetworkLocation {
-		let mut location = self.to_owned();
+		let mut location = self.to_owned_location();
 		location.inline_path.push(node_id);
 		location
 	}

@@ -393,11 +393,11 @@ impl TestMetadata {
 	}
 
 	fn insert(&mut self, network: NetworkLocation, local_id: NodeId, state: UiState) {
-		self.entries.insert((network.to_owned(), local_id), state);
+		self.entries.insert((network.to_owned_location(), local_id), state);
 	}
 
 	fn get(&self, network: NetworkLocation, local_id: NodeId) -> Option<&UiState> {
-		self.entries.get(&(network.to_owned(), local_id))
+		self.entries.get(&(network.to_owned_location(), local_id))
 	}
 }
 

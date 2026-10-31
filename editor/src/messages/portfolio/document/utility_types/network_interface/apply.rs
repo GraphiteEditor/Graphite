@@ -114,7 +114,7 @@ impl NodeNetworkInterface {
 				};
 			}
 
-			EditorDelta::DefinitionsChanged => {}
+			EditorDelta::DefinitionsChanged => log::warn!("Replayed a definitions table change, which apply cannot mirror yet, so this peer's definitions table may be stale"),
 		}
 	}
 }

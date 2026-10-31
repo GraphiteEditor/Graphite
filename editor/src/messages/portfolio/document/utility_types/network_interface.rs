@@ -136,6 +136,14 @@ impl NodeNetworkInterface {
 	}
 
 	// TODO: Eventually remove this document upgrade code
+	/// Moves every inline network into the definitions table, for a document that predates the table.
+	pub fn lift_nested_networks(&mut self) {
+		let mut lifted = Vec::new();
+		self.migrate_graph(|network| lifted = network.lift_nested_networks());
+		self.migrate_metadata(|metadata, _| metadata.lift_nested_metadata(&lifted));
+	}
+
+	// TODO: Eventually remove this document upgrade code
 	/// Normalizes the stored types of every node at every nesting level, for an older document whose stored types predate the current form.
 	pub fn normalize_stored_types(&mut self) {
 		self.migrate_graph(NodeNetwork::normalize_stored_types);

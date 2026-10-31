@@ -202,6 +202,12 @@ impl RuntimeProjection<'_> {
 		let network = self.network_location(node.network).ok_or(ConversionError::NetworkNotFound(node.network))?;
 		let local_id = runtime_node_id(id, node);
 
+		// The whole-document conversion rejects a node naming a missing or cyclic network, so a projection of it must too
+		if let Implementation::Network(nested) = node.implementation {
+			self.context.registry.network_or_removed(nested).ok_or(ConversionError::NetworkNotFound(nested))?;
+			detect_network_cycle(&self.context, nested)?;
+		}
+
 		Ok(ProjectedNode {
 			node: convert_node(&self.context, node)?,
 			metadata: extract_ui_metadata(node, id, network.clone(), local_id),
