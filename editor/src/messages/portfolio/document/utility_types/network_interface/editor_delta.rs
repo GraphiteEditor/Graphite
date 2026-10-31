@@ -512,7 +512,12 @@ fn stage_conversion(
 			ops.push(RegistryDelta::AddResource { id, entry });
 		}
 	}
-	let mut tagged: Vec<ResourceId> = scratch.node_instances.values().flat_map(node_value_resource_refs).collect();
+	let mut tagged: Vec<ResourceId> = scratch
+		.node_instances
+		.values()
+		.flat_map(node_value_resource_refs)
+		.chain(scratch.networks.values().flat_map(network_resource_refs))
+		.collect();
 	tagged.sort();
 	tagged.dedup();
 	for id in tagged {
@@ -710,8 +715,11 @@ fn construct_network_removal(
 	}
 
 	let Some(snapshot) = batch.network(network_id).cloned() else { return };
-	ops.push(RegistryDelta::RemoveNetwork { id: network_id, snapshot });
-	batch.record_network_removal(network_id);
+	ops.push(RegistryDelta::RemoveNetwork {
+		id: network_id,
+		snapshot: snapshot.clone(),
+	});
+	batch.record_network_removal(network_id, snapshot);
 }
 
 /// Emits removals for resources referenced only by the batch's removed nodes, checked after every
@@ -729,6 +737,7 @@ fn construct_resource_removals(batch_removed_nodes: &[(document_graph_storage::N
 			};
 			declaration.into_iter().chain(node_value_resource_refs(node))
 		}))
+		.chain(batch.removed_networks.values().flat_map(network_resource_refs))
 		.collect();
 	candidates.sort();
 	candidates.dedup();
@@ -748,9 +757,15 @@ fn construct_resource_removals(batch_removed_nodes: &[(document_graph_storage::N
 		still_referenced.extend(batch.input_resources.get(&id).into_iter().flatten().copied());
 	}
 	// The batch's own networks count too: one added earlier in it can export a resource the removal would
-	// otherwise see as orphaned.
-	for network in batch.working.networks.values().chain(batch.added_networks.values()) {
-		still_referenced.extend(network.exports.iter().filter_map(|slot| slot.target.as_ref().and_then(value_resource_ref)));
+	// otherwise see as orphaned. One it removed no longer does.
+	let live_networks = batch
+		.working
+		.networks
+		.iter()
+		.chain(batch.added_networks.iter())
+		.filter(|(id, _)| !batch.removed_networks.contains_key(id));
+	for (_, network) in live_networks {
+		still_referenced.extend(network_resource_refs(network));
 	}
 
 	for candidate in candidates {
@@ -775,7 +790,8 @@ struct BatchRegistry<'a> {
 	working: &'a Registry,
 	added: HashMap<document_graph_storage::NodeId, document_graph_storage::Node>,
 	added_networks: HashMap<document_graph_storage::NetworkId, document_graph_storage::Network>,
-	removed_networks: HashSet<document_graph_storage::NetworkId>,
+	/// Networks the batch has removed and not since re-added, with what they held when removed.
+	removed_networks: HashMap<document_graph_storage::NetworkId, document_graph_storage::Network>,
 	added_resources: HashMap<ResourceId, document_graph_storage::ResourceEntry>,
 	by_network: HashMap<document_graph_storage::NetworkId, Vec<document_graph_storage::NodeId>>,
 	/// Nodes the batch has removed and not since re-added, so a lookup answers with the state the ops so
@@ -797,7 +813,7 @@ impl<'a> BatchRegistry<'a> {
 			working,
 			added: HashMap::new(),
 			added_networks: HashMap::new(),
-			removed_networks: HashSet::new(),
+			removed_networks: HashMap::new(),
 			added_resources: HashMap::new(),
 			by_network,
 			removed: HashSet::new(),
@@ -830,9 +846,9 @@ impl<'a> BatchRegistry<'a> {
 	}
 
 	/// Records a network this batch removed, so a later delta reading it back finds it gone.
-	fn record_network_removal(&mut self, id: document_graph_storage::NetworkId) {
+	fn record_network_removal(&mut self, id: document_graph_storage::NetworkId, snapshot: document_graph_storage::Network) {
 		self.added_networks.remove(&id);
-		self.removed_networks.insert(id);
+		self.removed_networks.insert(id, snapshot);
 	}
 
 	/// Records a resource this batch added. Returns whether it is new to the batch, so the caller emits
@@ -862,7 +878,7 @@ impl<'a> BatchRegistry<'a> {
 	}
 
 	fn network(&self, id: document_graph_storage::NetworkId) -> Option<&document_graph_storage::Network> {
-		if self.removed_networks.contains(&id) {
+		if self.removed_networks.contains_key(&id) {
 			return None;
 		}
 		self.added_networks.get(&id).or_else(|| self.working.networks.get(&id))
@@ -875,6 +891,11 @@ impl<'a> BatchRegistry<'a> {
 	fn children(&self, network_id: document_graph_storage::NetworkId) -> &[document_graph_storage::NodeId] {
 		self.by_network.get(&network_id).map_or(&[], Vec::as_slice)
 	}
+}
+
+/// The resources a stored network's exports hold as values.
+fn network_resource_refs(network: &document_graph_storage::Network) -> impl Iterator<Item = ResourceId> + '_ {
+	network.exports.iter().filter_map(|slot| slot.target.as_ref().and_then(value_resource_ref))
 }
 
 /// Narrows a metadata source to the node identities alone, so a scoped conversion addresses nodes the

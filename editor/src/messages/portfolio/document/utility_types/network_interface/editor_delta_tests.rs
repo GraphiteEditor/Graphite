@@ -1024,3 +1024,39 @@ async fn replaying_the_removal_of_a_table_entry_reproduces_the_interface() {
 	})
 	.await;
 }
+
+/// A table entry whose export holds a resource stages that resource with the entry, and drops it with the entry.
+#[tokio::test]
+async fn a_resource_an_entry_exports_follows_the_entry() {
+	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let resource = ResourceId::new();
+	let registry = &mut editor.active_document_mut().resources.registry;
+	registry.push_source_back(&resource, DataSource::Embedded);
+	registry.resolve(&resource, ResourceHash::from(&b"exported bytes"[..]));
+
+	let (layer, _) = table_layer(&editor);
+	let template = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
+	let (mut node, metadata) = template.into_parts();
+	let graph_craft::document::DocumentNodeImplementation::Network(network) = &mut node.implementation else {
+		panic!("the template should carry the layer's network inline")
+	};
+	network.exports[0] = NodeInput::value(TaggedValue::Resource(resource), false);
+	let exporting = super::NodeTemplate::from_parts(node, metadata);
+
+	let copy = NodeId::new();
+	let added = assert_stages_incrementally(&mut editor, "add an entry exporting a resource", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node_entry(super::NodeLocator::new(copy, &[]), exporting);
+		interface.unload_outward_wires(&[]);
+	});
+	assert!(added.iter().any(|delta| matches!(delta, EditorDelta::Graph(RuntimeDelta::AddNetwork { .. }))));
+
+	assert_stages_incrementally(&mut editor, "remove the entry exporting a resource", |editor| {
+		editor.active_document_mut().network_interface.delete_nodes(vec![copy], true, &[]);
+	});
+}
