@@ -14,7 +14,7 @@ use std::collections::{HashMap, HashSet};
 /// Why a batch could not be staged from its recorded deltas.
 #[derive(Debug, thiserror::Error)]
 pub enum StagingError {
-	/// The batch changed something its deltas do not describe yet, which a whole-document stage carries instead.
+	/// The batch made a change its deltas cannot describe yet, so only a whole-document stage can carry it.
 	#[error("The batch needs a whole-document stage: {0}")]
 	NeedsWholeDocument(String),
 	#[error(transparent)]
@@ -57,8 +57,8 @@ pub enum EditorDelta {
 		network_path: Vec<NodeId>,
 		change: NetworkMetadataChange,
 	},
-	/// Entries were added to the definitions table, which no other delta describes yet, so staging
-	/// converts the whole document instead.
+	/// Entries were added to the definitions table.
+	/// No delta describes this yet, so staging converts the whole document.
 	DefinitionsChanged,
 }
 
@@ -422,7 +422,7 @@ fn construct_structural_additions(
 	scoped.convert_node_at(&mut scratch, location, node_id, node, true)?;
 	let (bytes, decoded) = scoped.finish();
 
-	// A table entry the batch does not hold is a write the deltas do not describe, which only a whole-document stage carries
+	// A node that implements a network the batch has not staged needs a whole-document stage
 	let implemented_networks = scratch.node_instances.values().filter_map(|node| match node.implementation() {
 		Implementation::Network(id) => Some(*id),
 		Implementation::ProtoNode(_) => None,
@@ -696,7 +696,7 @@ fn construct_removals_with(
 	removed_nodes.sort();
 	removed_networks.sort();
 
-	// A network a node outside the closure also implements stays, which is a write the deltas do not describe
+	// A network that a node outside the closure still implements stays, and the deltas cannot describe that
 	let still_implemented = batch.live_nodes().any(|(id, node)| match node.implementation() {
 		Implementation::Network(network_id) => removed_networks.binary_search(network_id).is_ok() && removed_nodes.binary_search(&id).is_err(),
 		Implementation::ProtoNode(_) => false,

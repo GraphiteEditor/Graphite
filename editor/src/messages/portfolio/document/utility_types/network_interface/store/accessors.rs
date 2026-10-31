@@ -51,10 +51,10 @@ impl NodeNetworkInterface {
 		migrate(self.network_metadata.get_mut(), self.network.network());
 	}
 
-	/// Brings the definitions table in step with a finished transaction: lifts the inline networks it introduced, and
-	/// drops the entries no node reaches any more.
+	/// Updates the definitions table after a transaction.
+	/// It lifts the inline networks the transaction added and drops the entries no node reaches.
 	///
-	/// Only the lifting is recorded, since the removals that left an entry unreached already were.
+	/// Only the lifting is recorded. The removals that left an entry unreachable were recorded already.
 	pub(crate) fn settle_definitions(&mut self) {
 		let lifted = self.document_network_mut().lift_nested_networks();
 		if !lifted.is_empty() {
@@ -129,7 +129,7 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// The view state of the network at `location`, for state keyed by network rather than by the path it is reached through.
+	/// The view state of the network at `location`, which every instance of the network shares.
 	pub(in super::super) fn located_view_state_mut(&mut self, location: NetworkLocation) -> Option<NetworkViewStateMut<'_>> {
 		let network_metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?;
 		Some(NetworkViewStateMut::of(&mut network_metadata.persistent_metadata))

@@ -168,8 +168,7 @@ pub struct RuntimeConversion {
 	pub registry: Registry,
 	pub declaration_bytes: DeclarationBytes,
 	pub declarations: crate::Declarations,
-	/// Each network's runtime location mapped to its stable storage `NetworkId`, for associating
-	/// per-network, per-peer view state (`session.json`) without re-deriving ids.
+	/// The storage `NetworkId` of each runtime network location, to key per-network view state in `session.json`.
 	pub network_ids: HashMap<OwnedNetworkLocation, NetworkId>,
 }
 
@@ -369,8 +368,7 @@ struct ConversionContext<'m, M: NodeMetadataSource + ?Sized> {
 	declaration_bytes: DeclarationBytes,
 	/// The same declarations decoded, keyed by id, handed back for the caller's declaration cache.
 	declarations: crate::Declarations,
-	/// Maps each network's runtime location to its stable storage `NetworkId`, so the caller can
-	/// associate per-network, per-peer view state (in `session.json`) with networks without re-deriving ids.
+	/// The storage `NetworkId` of each runtime network location, to key per-network view state in `session.json`.
 	network_ids: HashMap<OwnedNetworkLocation, NetworkId>,
 	metadata: &'m M,
 	peer: PeerId,
@@ -813,8 +811,8 @@ fn convert_implementation<M: NodeMetadataSource + ?Sized>(
 	})
 }
 
-/// Derives the storage IDs for entities addressed by runtime network locations, resolving each through
-/// the same [`NodeIds`] a whole-document conversion uses so scoped and whole-document conversions agree.
+/// Derives storage IDs from runtime network locations.
+/// It uses the same [`NodeIds`] as a whole-document conversion, so both give the same IDs.
 pub struct PathResolver<'m> {
 	metadata: Option<&'m dyn NodeMetadataSource>,
 	peer: PeerId,
@@ -839,8 +837,7 @@ impl<'m> PathResolver<'m> {
 		self.ids(location).resolve(&owner.child_path(network_id, local_id), local_id)
 	}
 
-	/// Converts one runtime input inside the network at `location` to its storage form, resolving
-	/// node references to their storage IDs.
+	/// Converts one runtime input in the network at `location` to storage form, with node references mapped to storage IDs.
 	pub fn convert_input_at(&self, input: &GraphCraftNodeInput, location: NetworkLocation<'_>) -> Result<NodeInput, ConversionError> {
 		let owner = NetworkOwner::of(location, self.peer);
 		convert_input(input, &owner, owner.network_id(self.peer), self.ids(location))
@@ -881,9 +878,8 @@ impl<'m> ScopedConversion<'m> {
 		}
 	}
 
-	/// Converts the node with `local_id` in the network at `location` into `registry` under its
-	/// stable IDs. `recurse` also converts the contents of any inline network the node implements;
-	/// without it only the node itself is converted, with its nested network referenced by ID.
+	/// Converts the node `local_id` in the network at `location` into `registry`.
+	/// With `recurse`, it also converts the inline network the node implements. Without it, that network is only referenced by ID.
 	pub fn convert_node_at(&mut self, registry: &mut Registry, location: NetworkLocation<'_>, local_id: RuntimeNodeId, doc_node: &DocumentNode, recurse: bool) -> Result<(), ConversionError> {
 		let owner = NetworkOwner::of(location, self.ctx.peer);
 		let node_location = NodeLocation {
@@ -899,8 +895,7 @@ impl<'m> ScopedConversion<'m> {
 		Ok(())
 	}
 
-	/// Converts the entry of the network at `location` (its export slots and network-level
-	/// attributes, not its nodes) into `registry`.
+	/// Converts the export slots and attributes of the network at `location` into `registry`, without its nodes.
 	pub fn convert_network_entry_at(&mut self, registry: &mut Registry, location: NetworkLocation<'_>, node_network: &NodeNetwork) -> Result<(), ConversionError> {
 		let owner = NetworkOwner::of(location, self.ctx.peer);
 		let network_id = owner.network_id(self.ctx.peer);

@@ -68,7 +68,8 @@ pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocume
 	Ok(OpenedDocument { gdd: Some(gdd), network, names })
 }
 
-/// Each node's name keyed by the path the dump walks it at: its display name, or else the reference of the network it implements.
+/// The name of each node, keyed by the path the dump visits it at.
+/// This is its display name, or else the reference of the network it implements.
 fn instance_names(network: &NodeNetwork, references: &HashMap<OwnedNetworkLocation, String>, display_names: &HashMap<(OwnedNetworkLocation, NodeId), String>) -> HashMap<Vec<NodeId>, String> {
 	network
 		.recursive_nodes()

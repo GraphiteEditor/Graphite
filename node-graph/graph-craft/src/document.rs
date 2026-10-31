@@ -598,8 +598,8 @@ impl OwnedNetworkLocation {
 	}
 }
 
-/// One inline network [`NodeNetwork::lift_nested_networks`] moved into the definitions table: the
-/// node `node_id` in the table entry `containing` (the document network for `None`) now names it as `id`.
+/// One inline network that [`NodeNetwork::lift_nested_networks`] moved into the definitions table.
+/// The node `node_id` in table entry `containing` (`None` for the document network) now names it as `id`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct LiftedNetwork {
 	pub containing: Option<NetworkId>,
@@ -824,8 +824,8 @@ impl NodeNetwork {
 		}
 	}
 
-	/// Moves every inline network, at every nesting level, into the definitions table under a fresh ID,
-	/// returning each move outermost first.
+	/// Moves every inline network at every nesting level into the definitions table under a fresh ID.
+	/// Returns the moves with the outermost first.
 	pub fn lift_nested_networks(&mut self) -> Vec<LiftedNetwork> {
 		let mut lifted = Vec::new();
 		let mut pending: Vec<Option<NetworkId>> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();
@@ -889,7 +889,7 @@ impl NodeNetwork {
 		reached
 	}
 
-	/// Drops every table entry the document network does not reach, returning whether any went.
+	/// Drops every table entry the document network does not reach, and returns whether it dropped any.
 	pub fn retain_reachable_definitions(&mut self) -> bool {
 		let reached = self.reachable_definitions();
 		let before = self.definitions.len();

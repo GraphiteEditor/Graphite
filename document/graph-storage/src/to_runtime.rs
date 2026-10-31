@@ -48,15 +48,15 @@ impl Registry {
 	/// Like `to_runtime_with_metadata` but also returns per-network entries (navigation, previewing).
 	/// Used by the editor's full-rebuild path.
 	///
-	/// Every network the root reaches other than the root itself becomes an entry of the root's
-	/// definitions table under its storage ID, and every node implementing one names it by that ID.
+	/// Every network the root reaches becomes an entry in the root's definitions table under its storage ID.
+	/// The nodes that implement it name it by that ID.
 	pub fn to_runtime_with_full_metadata(&self, declarations: &Declarations) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>, Vec<NetworkMetadataEntry>), ConversionError> {
 		let mut node_metadata = Vec::new();
 		let mut network_metadata = Vec::new();
 
 		let context = ConversionContext::new(self, declarations);
 
-		// Reject cycles up front, since the runtime cannot inline a definition that reaches itself.
+		// Reject cycles first because the runtime cannot inline a definition that contains itself
 		detect_network_cycle(&context, ROOT_NETWORK)?;
 
 		let mut network = convert_network(&context, ROOT_NETWORK, &mut node_metadata, &mut network_metadata)?;
@@ -136,7 +136,7 @@ fn runtime_network_id(id: NetworkId) -> RuntimeNetworkId {
 	RuntimeNetworkId(id.0)
 }
 
-/// Where the network stored as `id` sits in the runtime: the root, or its entry in the root's table.
+/// Where the network stored as `id` sits in the runtime. This is the root or an entry in the root's table.
 fn runtime_location(id: NetworkId) -> OwnedNetworkLocation {
 	match id {
 		ROOT_NETWORK => OwnedNetworkLocation::default(),
@@ -185,12 +185,12 @@ impl Registry {
 }
 
 impl RuntimeProjection<'_> {
-	/// The runtime location of `network`, or `None` for a network the root does not reach, which the runtime does not hold.
+	/// The runtime location of `network`, or `None` if the root does not reach it.
 	pub fn network_location(&self, network: NetworkId) -> Option<OwnedNetworkLocation> {
 		(network == ROOT_NETWORK || self.reachable.contains(&network)).then(|| runtime_location(network))
 	}
 
-	/// Where the node sits in the runtime: the location of its network, and its id within that network.
+	/// The location of the node's network in the runtime, and the node's ID in that network.
 	pub fn node_address(&self, id: NodeId) -> Option<(OwnedNetworkLocation, RuntimeNodeId)> {
 		let node = self.context.registry.node_instances.get(&id)?;
 		Some((self.network_location(node.network)?, runtime_node_id(id, node)))
@@ -202,7 +202,7 @@ impl RuntimeProjection<'_> {
 		let network = self.network_location(node.network).ok_or(ConversionError::NetworkNotFound(node.network))?;
 		let local_id = runtime_node_id(id, node);
 
-		// The whole-document conversion rejects a node naming a missing or cyclic network, so a projection of it must too
+		// Reject a missing or cyclic network, like the whole-document conversion does
 		if let Implementation::Network(nested) = node.implementation {
 			self.context.registry.network_or_removed(nested).ok_or(ConversionError::NetworkNotFound(nested))?;
 			detect_network_cycle(&self.context, nested)?;
@@ -231,10 +231,8 @@ impl RuntimeProjection<'_> {
 	}
 }
 
-/// Walk the network reference graph (edges are `Implementation::Network` references between a
-/// network and the networks its nodes embed) and reject any cycle, which the runtime could never
-/// inline. Iterative DFS with an explicit stack and a gray set
-/// for the active path; a child already on the active path is a back edge, i.e. a cycle.
+/// Rejects any cycle in the graph of `Implementation::Network` references from a network to the networks its nodes implement.
+/// The runtime cannot inline a cycle. This is an iterative DFS, and a child already on the active path is a back edge.
 fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<(), ConversionError> {
 	// Networks reachable from `root` that referenced networks, used by an embedded node, are pushed in
 	// reverse so the natural processing order matches a recursive walk. `Enter`/`Leave` frames let us
@@ -278,12 +276,12 @@ fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<
 
 /// Converts a single network, naming the networks its nodes implement by their table entries.
 ///
-/// **ID remapping:** Registry uses globally hashed IDs; runtime networks need local IDs. We pull
-/// the original local ID from `attr::ORIGINAL_NODE_ID` on each node and on each `NodeInput::Node`
-/// reference. References only point within the same network, so per-network lookup suffices.
+/// The registry uses globally hashed IDs, and runtime networks need local IDs.
+/// Each node and each `NodeInput::Node` reference gets its local ID back from `attr::ORIGINAL_NODE_ID`.
+/// References only point within the same network, so a lookup per network is enough.
 ///
-/// **Exports:** the storage-side `Vec<ExportSlot>` is sparse (`None` slots are valid). Compacted
-/// here into the runtime's dense `Vec<NodeInput>` — slot stability is a storage-side concern.
+/// Storage keeps exports in a sparse `Vec<ExportSlot>` where `None` slots are valid.
+/// They are compacted here into the runtime's dense `Vec<NodeInput>`, since slot stability only matters in storage.
 fn convert_network(
 	context: &ConversionContext,
 	network_id: NetworkId,

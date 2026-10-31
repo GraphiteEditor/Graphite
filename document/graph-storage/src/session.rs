@@ -87,9 +87,8 @@ impl Session {
 		Ok((hot_ops, conversion))
 	}
 
-	/// Resolve each runtime network location to its stable [`NetworkId`] for this document's peer, so the
-	/// caller can key per-network, per-peer view state (`session.json`) by a stable id. Derived from the
-	/// network structure alone; resources/declarations are irrelevant to the ids.
+	/// The stable [`NetworkId`] of each runtime network location for this document's peer, to key per-network view state in `session.json`.
+	/// It depends only on the network structure, not on resources or declarations.
 	#[cfg(any(feature = "conversion", test))]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,

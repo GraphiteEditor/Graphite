@@ -218,16 +218,14 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
 
-/// Build the runtime-location -> stable-`NetworkId` map from the `NetworkMetadataEntry`s that
-/// `to_runtime_with_full_metadata` emits, so the open path can apply per-network view settings.
+/// Maps each runtime network location to its stable `NetworkId`, from the entries `to_runtime_with_full_metadata` returns.
 pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId> {
 	network_entries.iter().map(|entry| (entry.network.clone(), entry.network_id)).collect()
 }
 
-/// Collect the per-network, per-peer view state (node-graph nav + previewing) from `interface` into a
-/// `session.json` map keyed by the stable storage [`NetworkId`](document_graph_storage::NetworkId), which
-/// `network_ids` resolves from each runtime location. Networks at their default nav with no preview
-/// produce no entry.
+/// Collects each network's view state (node graph navigation and previewing) into a `session.json` map.
+/// The map is keyed by the [`NetworkId`](document_graph_storage::NetworkId) that `network_ids` gives each runtime location.
+/// Networks with default navigation and no preview get no entry.
 pub fn collect_network_view_settings(
 	interface: &NodeNetworkInterface,
 	network_ids: &HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId>,
@@ -275,10 +273,7 @@ pub fn collect_network_view_settings(
 	out
 }
 
-/// Apply persisted per-network view state (node-graph nav + previewing) from `session.json` onto
-/// `interface`. Inverse of [`collect_network_view_settings`]: `network_ids` resolves each runtime
-/// location to its [`NetworkId`](document_graph_storage::NetworkId), and the matching inner map is decoded
-/// back onto the network's navigation/previewing metadata.
+/// Applies the view state stored in `session.json` onto `interface`. The inverse of [`collect_network_view_settings`].
 pub fn apply_network_view_settings(
 	interface: &mut NodeNetworkInterface,
 	network_ids: &HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId>,
@@ -318,7 +313,7 @@ pub fn apply_network_view_settings(
 	}
 }
 
-/// Entries whose location doesn't resolve are skipped with a warning (per-network drift is more often a stale location than corruption).
+/// Entries with an unresolved location are skipped with a warning, since that is usually a stale location and not corruption.
 fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: Vec<NetworkMetadataEntry>) {
 	for entry in entries {
 		let Some(network_metadata) = metadata.nested_metadata_mut(entry.network.as_location()) else {
@@ -336,8 +331,8 @@ fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: 
 	}
 }
 
-/// Walks `network` and its definitions table, ensuring `metadata` has a default `DocumentNodeMetadata` slot for every node at every nesting level.
-/// Mirrors the editor invariant that `NodeNetworkPersistentMetadata::node_metadata` contains every document-node key.
+/// Gives every node of `network` and its definitions table a default `DocumentNodeMetadata` entry, at every nesting level.
+/// The editor requires `NodeNetworkPersistentMetadata::node_metadata` to hold every node.
 fn seed_metadata_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata) {
 	seed_network_metadata(network, metadata);
 
@@ -359,7 +354,8 @@ fn seed_network_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetada
 }
 
 /// Patches entries onto the metadata tree previously seeded by [`seed_metadata_tree`].
-/// Entries with stale `(network, local_id)` are skipped with a warning; `input_metadata` length mismatches escalate to `InterfaceRebuildError`.
+/// Entries with a stale `(network, local_id)` are skipped with a warning.
+/// An `input_metadata` length mismatch returns an `InterfaceRebuildError`.
 fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, entries: Vec<NodeMetadataEntry>) -> Result<(), InterfaceRebuildError> {
 	// Group entries by network so we do one nested_metadata_mut lookup per network.
 	let mut by_network: HashMap<OwnedNetworkLocation, Vec<NodeMetadataEntry>> = HashMap::new();

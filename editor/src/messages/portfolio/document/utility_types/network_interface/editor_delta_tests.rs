@@ -855,7 +855,7 @@ async fn an_edit_inside_a_table_entry_constructs_the_diff() {
 	assert_same_stored_effect(&working, constructed, diffed, "edit inside a table entry");
 }
 
-/// A template made from a node that names a table entry carries a copy of it, so it can be inserted where the entry does not exist.
+/// A template of a node that names a table entry carries a copy of the entry, so it also works where the entry does not exist.
 #[tokio::test]
 async fn a_template_of_a_table_node_stands_alone() {
 	let mut editor = EditorTestUtils::create();

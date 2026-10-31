@@ -194,7 +194,7 @@ fn test_nested_network_round_trip() {
 	let orig_nested_node = original_network.nodes.get(&NodeId(0)).expect("Node 0 should exist");
 	let conv_nested_node = converted_network.nodes.get(&NodeId(0)).expect("Node 0 should exist after round-trip");
 
-	// Verify nested network is preserved, now as an entry of the root's definitions table
+	// The nested network is preserved as an entry of the root's definitions table
 	match (&orig_nested_node.implementation, &conv_nested_node.implementation) {
 		(DocumentNodeImplementation::Network(orig_inner), DocumentNodeImplementation::Definition(id)) => {
 			let conv_inner = converted_network.definitions.get(id).expect("the nested network is a table entry");
@@ -790,8 +790,7 @@ fn first_version_declarations_keep_their_unversioned_bytes() {
 	assert_eq!(crate::decode_declaration(&first.bytes).unwrap().version, 1);
 }
 
-/// The definitions table maps onto the stored networks one to one: a table entry several nodes name is
-/// one stored network under the entry's own ID, and converting back restores the table as it was.
+/// A table entry that several nodes name is stored once under its own ID, and converts back to the same table.
 #[test]
 fn a_shared_table_entry_round_trips_as_one_network() {
 	use graph_craft::document::NetworkId as RuntimeNetworkId;

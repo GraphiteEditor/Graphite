@@ -330,8 +330,7 @@ impl<L: Layout> Gdd<L> {
 		&self.network_view_settings
 	}
 
-	/// Resolve each runtime network location to its stable [`NetworkId`](document_graph_storage::NetworkId), so the
-	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
+	/// The stable [`NetworkId`](document_graph_storage::NetworkId) of each runtime network location, to key per-network view state. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,

@@ -70,7 +70,8 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 	out
 }
 
-/// Every network the document holds, once each: the document network, its definitions, and the inline networks nested in either.
+/// Every network the document holds, once each.
+/// This is the document network, its definitions, and the inline networks nested in them.
 pub fn network_locations(interface: &NodeNetworkInterface) -> Vec<OwnedNetworkLocation> {
 	fn walk(network: &NodeNetwork, location: OwnedNetworkLocation, out: &mut Vec<OwnedNetworkLocation>) {
 		for (&local_id, node) in &network.nodes {
@@ -90,7 +91,8 @@ pub fn network_locations(interface: &NodeNetworkInterface) -> Vec<OwnedNetworkLo
 	out
 }
 
-/// Every node the document holds, once each, addressed by the location of the network holding it.
+/// Every node the document holds, once each.
+/// Each node is addressed by the location of its network.
 pub fn node_locations(interface: &NodeNetworkInterface) -> Vec<(OwnedNetworkLocation, NodeId)> {
 	network_locations(interface)
 		.into_iter()

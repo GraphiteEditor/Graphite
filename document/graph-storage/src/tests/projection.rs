@@ -123,7 +123,7 @@ fn an_unreachable_network_has_no_address() {
 	assert!(matches!(projection.node(NodeId(9)), Err(ConversionError::NetworkNotFound(_))));
 }
 
-/// A network several nodes implement is one table entry, which every one of them names.
+/// Nodes that implement the same network all name one table entry.
 #[test]
 fn a_network_several_nodes_implement_has_one_location() {
 	let mut registry = Registry::default();
