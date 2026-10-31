@@ -244,7 +244,12 @@ impl<L: Layout> Gdd<L> {
 		for hot_op in self.session.hot_log() {
 			codecs.hot_log.append(&mut hot_log, hot_op)?;
 		}
+		let mut metadata = Vec::new();
+		for fact in self.metadata.facts() {
+			METADATA_CODEC.append(&mut metadata, fact)?;
+		}
 		let payloads = [
+			(io::path_for(self.layout.metadata_basename(), METADATA_CODEC), metadata),
 			(io::path_for(self.layout.history_basename(), codecs.history), history),
 			(io::path_for(self.layout.hot_log_basename(), codecs.hot_log), hot_log),
 			(

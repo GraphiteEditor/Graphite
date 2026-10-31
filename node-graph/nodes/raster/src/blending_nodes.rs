@@ -9,7 +9,7 @@ use vector_types::Gradient;
 pub use no_std_types::blending::{apply_blend_mode, blend_colors};
 
 /// Mixes the over color onto the under color by a blend mode and opacity, as if they were stacked layers.
-#[node_macro::node(category("Color"), icon("NodeMixColors"))]
+#[node_macro::node(category("Color"), icon("NodeMixColors"), version(2))]
 fn mix_colors(
 	_: impl Ctx,
 	under: Item<Color>,

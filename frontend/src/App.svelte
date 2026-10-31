@@ -16,7 +16,7 @@
 		// Initialize the editor wrapper
 		const wrapper = await initWasm();
 		for (const [name, f] of Object.entries(wrapper)) {
-			if (name.startsWith("__node_registry")) f();
+			if (name.startsWith("__node_registry") || name.startsWith("__migration_registry")) f();
 		}
 		window.imageCanvases = {};
 		window.receiveNativeMessage = receiveNativeMessage;

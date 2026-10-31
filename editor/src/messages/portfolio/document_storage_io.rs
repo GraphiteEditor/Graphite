@@ -77,7 +77,7 @@ pub(super) async fn load_stored_document(store: DocumentStoreHandle, document_id
 			(None, None)
 		}
 	};
-	let declarations = load_declarations(gdd.as_ref(), &resources).await;
+	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::StoredDocumentLoaded {
 		document_id,
 		document: document.map(Box::new),
@@ -107,7 +107,7 @@ pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: Do
 	} else {
 		None
 	};
-	let declarations = load_declarations(gdd.as_ref(), &resources).await;
+	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::StorageAttached {
 		document_id,
 		container: Some(container),
@@ -120,7 +120,7 @@ pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: Do
 /// Opens the storage of a document that already has its container.
 pub(super) async fn open_storage(container: AnyContainer, document_id: DocumentId, resources: ResourcesHandle) -> Message {
 	let gdd = open_storage_or_fallback_to_legacy(container.clone(), document_id).await;
-	let declarations = load_declarations(gdd.as_ref(), &resources).await;
+	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::StorageAttached {
 		document_id,
 		container: Some(container),
@@ -161,7 +161,7 @@ pub(super) async fn open_document_file(
 			(None, None)
 		}
 	};
-	let declarations = load_declarations(gdd.as_ref(), &resources).await;
+	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::DocumentFileLoaded {
 		document_id,
 		document_name,
@@ -213,8 +213,8 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 	match GddV1::open_in(container.clone(), GddV1Layout).await {
 		Ok(gdd) => return Some(gdd),
 		Err(DocumentFormatError::MissingManifest) => {}
-		// Container I/O and newer-format errors keep the existing files; anything else is broken data the legacy document replaces.
-		Err(error @ (DocumentFormatError::Container(_) | DocumentFormatError::Read(ReadError::Container(_)) | DocumentFormatError::UnsupportedVersion { .. })) => {
+		// Container I/O, newer-format, and migration errors keep the existing files, since a later build can still read them. Anything else is broken data the legacy document replaces.
+		Err(error @ (DocumentFormatError::Container(_) | DocumentFormatError::Read(ReadError::Container(_)) | DocumentFormatError::UnsupportedVersion { .. } | DocumentFormatError::Migration(_))) => {
 			log::error!("Opening storage for {document_id:?} failed: {error}");
 			return None;
 		}
@@ -240,28 +240,37 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 }
 
 /// Decoded proto-node declarations for every node `gdd` or its history references, from the global cache.
-async fn load_declarations(gdd: Option<&GddV1>, resources: &ResourcesHandle) -> Declarations {
-	match gdd {
-		Some(gdd) => gdd.declarations(resources).await,
-		None => Declarations::new(),
+async fn load_declarations(gdd: Option<&GddV1>, resources: &ResourcesHandle, document_id: DocumentId) -> Declarations {
+	let Some(gdd) = gdd else { return Declarations::new() };
+
+	// Migrations store the declarations they introduce in the container, which this device's cache may not have seen
+	hydrate_resources(gdd, resources, document_id).await;
+	gdd.declarations(resources).await
+}
+
+/// Copy every resource stored in `gdd`'s container that the global cache lacks into it.
+async fn hydrate_resources(gdd: &GddV1, byte_store: &ResourcesHandle, document_id: DocumentId) {
+	let hashes = match gdd.resource_hashes().await {
+		Ok(hashes) => hashes,
+		Err(error) => {
+			log::error!("Opening document {document_id:?}: failed to list resources: {error}");
+			return;
+		}
+	};
+
+	for hash in hashes.into_iter().filter(|hash| !byte_store.contains(hash)) {
+		match gdd.read_resource(&hash).await {
+			Ok(holder) => {
+				byte_store.store(holder.as_slice());
+			}
+			Err(error) => log::error!("Opening document {document_id:?}: failed to read resource {hash}: {error}"),
+		}
 	}
 }
 
 /// Storage session -> runtime interface. Resources stored in the container are hydrated into the global cache first.
 async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, document_id: DocumentId) -> Option<DocumentMessageHandler> {
-	match gdd.resource_hashes().await {
-		Ok(hashes) => {
-			for hash in hashes {
-				match gdd.read_resource(&hash).await {
-					Ok(holder) => {
-						byte_store.store(holder.as_slice());
-					}
-					Err(error) => log::error!("Opening document {document_id:?}: failed to read resource {hash}: {error}"),
-				}
-			}
-		}
-		Err(error) => log::error!("Opening document {document_id:?}: failed to list resources: {error}"),
-	}
+	hydrate_resources(&gdd, byte_store, document_id).await;
 
 	let declarations = gdd.declarations(byte_store).await;
 	let (network, node_entries, network_entries) = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
@@ -358,4 +367,28 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	document.require_whole_document_stage();
 
 	Ok(document)
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use document_container::backends::memory::MemoryBackend;
+
+	#[tokio::test]
+	async fn a_failed_migration_keeps_the_stored_document() {
+		let container = AnyContainer::Memory(MemoryBackend::new());
+		let mut gdd = GddV1::create_in(container.clone(), GddV1Layout, PeerId(1), 1, "editor".into(), "std".into()).unwrap();
+
+		// No format step starts from version 0, so the migration fails
+		gdd.update_manifest(|manifest| manifest.format_version = 0).unwrap();
+		let files = container.list("").await.unwrap();
+
+		assert!(open_storage_or_fallback_to_legacy(container.clone(), DocumentId(1)).await.is_none());
+		assert_eq!(container.list("").await.unwrap(), files, "the document's files should survive for a build that can migrate them");
+		let manifest = container
+			.read(&document_format::io::path_for(GddV1Layout.manifest_basename(), document_format::MANIFEST_CODEC))
+			.await
+			.unwrap();
+		assert!(String::from_utf8_lossy(manifest.as_slice()).contains("\"format_version\": 0"));
+	}
 }
