@@ -574,6 +574,18 @@ impl NetworkLocation<'_> {
 		location.inline_path.push(node_id);
 		location
 	}
+
+	/// The location of the network that the node `node_id` in this network implements with `implementation`.
+	pub fn implemented_by(self, node_id: NodeId, implementation: &DocumentNodeImplementation) -> OwnedNetworkLocation {
+		match implementation {
+			DocumentNodeImplementation::Definition(id) => OwnedNetworkLocation::definition(*id),
+			_ => self.child(node_id),
+		}
+	}
+
+	pub fn is_root(self) -> bool {
+		self == Self::ROOT
+	}
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -583,6 +595,11 @@ pub struct OwnedNetworkLocation {
 }
 
 impl OwnedNetworkLocation {
+	pub const ROOT: OwnedNetworkLocation = OwnedNetworkLocation {
+		definition: None,
+		inline_path: Vec::new(),
+	};
+
 	pub fn definition(id: NetworkId) -> Self {
 		Self {
 			definition: Some(id),
@@ -594,6 +611,17 @@ impl OwnedNetworkLocation {
 		NetworkLocation {
 			definition: self.definition,
 			inline_path: &self.inline_path,
+		}
+	}
+
+	/// Rewrites the location to name the same network after [`NodeNetwork::lift_nested_networks`] made the moves in `lifted`.
+	pub fn follow_lifts(&mut self, lifted: &[LiftedNetwork]) {
+		// A network is listed before the networks lifted out of it, so one pass follows a chain of nested lifts
+		for lift in lifted {
+			if self.definition == lift.containing && self.inline_path.first() == Some(&lift.node_id) {
+				self.definition = Some(lift.id);
+				self.inline_path.remove(0);
+			}
 		}
 	}
 }
@@ -2280,6 +2308,38 @@ mod test {
 
 		network.inline_definitions().unwrap();
 		assert_eq!(network, original);
+	}
+
+	#[test]
+	fn locations_follow_their_networks_through_lifting() {
+		let outer = NetworkId(2);
+		let nested = network_with([(NodeId(10), DocumentNodeImplementation::Network(add_network()))], []);
+		let marker = network_with([(NodeId(13), DocumentNodeImplementation::Extract)], []);
+		let mut network = network_with(
+			[(NodeId(10), DocumentNodeImplementation::Network(nested)), (NodeId(11), DocumentNodeImplementation::Definition(outer))],
+			[(outer, network_with([(NodeId(12), DocumentNodeImplementation::Network(marker))], []))],
+		);
+
+		// Each of these networks has its own set of node IDs, which identifies it after the move
+		let locations = [
+			NetworkLocation::ROOT.child(NodeId(10)),
+			NetworkLocation::ROOT.child(NodeId(10)).as_location().child(NodeId(10)),
+			OwnedNetworkLocation::definition(outer).as_location().child(NodeId(12)),
+		];
+		let node_ids = |network: &NodeNetwork, location: &OwnedNetworkLocation| {
+			let mut ids: Vec<NodeId> = network.located_network(location.as_location()).expect("the location resolves").nodes.keys().copied().collect();
+			ids.sort();
+			ids
+		};
+		let before: Vec<_> = locations.iter().map(|location| node_ids(&network, location)).collect();
+
+		let lifted = network.lift_nested_networks();
+
+		for (mut location, expected) in locations.into_iter().zip(before) {
+			location.follow_lifts(&lifted);
+			assert!(location.definition.is_some() && location.inline_path.is_empty(), "{location:?} should name a table entry");
+			assert_eq!(node_ids(&network, &location), expected, "{location:?} should name the same network");
+		}
 	}
 
 	#[test]

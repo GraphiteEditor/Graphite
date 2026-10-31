@@ -122,7 +122,16 @@ impl NodeNetworkInterface {
 	/// Inserts an export at `index`, clamped to the end, along with the name and description the encapsulating
 	/// node shows for it. The document network has no encapsulating node, so it carries neither.
 	pub(crate) fn insert_export_slot(&mut self, network_path: &[NodeId], index: usize, export: NodeInput, output_name: String, output_description: String) -> bool {
-		let Some(network) = self.network_graph_mut(network_path) else {
+		let Some(location) = self.locate(network_path) else {
+			log::error!("Could not locate network {network_path:?} in insert_export_slot");
+			return false;
+		};
+		self.insert_export_slot_at(location, index, export, output_name, output_description)
+	}
+
+	/// Inserts an export into the network at `location`, like [`Self::insert_export_slot`].
+	pub(crate) fn insert_export_slot_at(&mut self, location: NetworkLocation, index: usize, export: NodeInput, output_name: String, output_description: String) -> bool {
+		let Some(network) = self.network_graph_mut(location) else {
 			log::error!("Could not get nested network in insert_export_slot");
 			return false;
 		};
@@ -131,7 +140,7 @@ impl NodeNetworkInterface {
 		network.exports.insert(index, export);
 
 		let mut descriptions_changed = false;
-		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(network_path) {
+		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(location) {
 			persistent_metadata.export_names.insert(index.min(persistent_metadata.export_names.len()), output_name);
 
 			// A missing description is empty, so only a non-empty one past the end needs the gap filled
@@ -144,13 +153,22 @@ impl NodeNetworkInterface {
 				output_descriptions.push(output_description);
 			}
 		}
-		self.emit_exports_from(network_path, index, None, descriptions_changed);
+		self.emit_exports_from(location, index, None, descriptions_changed);
 		true
 	}
 
 	/// Removes the export at `index` together with the encapsulating node's name and description for it.
 	pub(crate) fn remove_export_slot(&mut self, network_path: &[NodeId], index: usize) -> Option<NodeInput> {
-		let Some(network) = self.network_graph_mut(network_path) else {
+		let Some(location) = self.locate(network_path) else {
+			log::error!("Could not locate network {network_path:?} in remove_export_slot");
+			return None;
+		};
+		self.remove_export_slot_at(location, index)
+	}
+
+	/// Removes the export at `index` from the network at `location`, like [`Self::remove_export_slot`].
+	pub(crate) fn remove_export_slot_at(&mut self, location: NetworkLocation, index: usize) -> Option<NodeInput> {
+		let Some(network) = self.network_graph_mut(location) else {
 			log::error!("Could not get nested network in remove_export_slot");
 			return None;
 		};
@@ -164,7 +182,7 @@ impl NodeNetworkInterface {
 		let vacated = network.exports.len();
 
 		let mut descriptions_changed = false;
-		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(network_path) {
+		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(location) {
 			if index < persistent_metadata.export_names.len() {
 				persistent_metadata.export_names.remove(index);
 			}
@@ -173,7 +191,7 @@ impl NodeNetworkInterface {
 				persistent_metadata.export_descriptions.remove(index);
 			}
 		}
-		self.emit_exports_from(network_path, index, Some(vacated), descriptions_changed);
+		self.emit_exports_from(location, index, Some(vacated), descriptions_changed);
 		Some(export)
 	}
 
@@ -182,34 +200,34 @@ impl NodeNetworkInterface {
 	/// Export slots are addressed by index, so inserting or removing one changes the meaning of every
 	/// later slot and each has to be restated. The encapsulating node's names, and its descriptions unless
 	/// they're all empty, ride along as whole-array metadata writes.
-	fn emit_exports_from(&mut self, network_path: &[NodeId], index: usize, vacated: Option<usize>, descriptions_changed: bool) {
-		let Some(network) = self.network.network().nested_network(network_path) else { return };
+	fn emit_exports_from(&mut self, location: NetworkLocation, index: usize, vacated: Option<usize>, descriptions_changed: bool) {
+		let Some(network) = self.network.network().located_network(location) else { return };
 		let exports: Vec<_> = network.exports.iter().skip(index).cloned().collect();
 
 		for (offset, export) in exports.into_iter().enumerate() {
 			self.deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-				network_path: network_path.to_vec(),
+				network: location.to_owned_location(),
 				export_index: index + offset,
 				input: Some(export),
 			}));
 		}
 		if let Some(vacated) = vacated {
 			self.deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-				network_path: network_path.to_vec(),
+				network: location.to_owned_location(),
 				export_index: vacated,
 				input: None,
 			}));
 		}
 
-		if network_path.is_empty() {
+		if location.is_root() {
 			return;
 		}
-		let Some(metadata) = self.nested_metadata(network_path) else { return };
+		let Some(metadata) = self.network_metadata.nested_metadata(location) else { return };
 		let export_names = NetworkMetadataChange::ExportNames(metadata.persistent_metadata.export_names.clone());
 		let export_descriptions = descriptions_changed.then(|| NetworkMetadataChange::ExportDescriptions(metadata.persistent_metadata.export_descriptions.clone()));
 		for change in std::iter::once(export_names).chain(export_descriptions) {
 			self.deltas.push(EditorDelta::NetworkMetadata {
-				network_path: network_path.to_vec(),
+				network: location.to_owned_location(),
 				change,
 			});
 		}
@@ -234,7 +252,16 @@ impl NodeNetworkInterface {
 
 	/// Writes the input at `connector`, returning the input it replaced.
 	pub(crate) fn set_input_slot(&mut self, connector: &InputConnector, network_path: &[NodeId], input: NodeInput) -> Option<NodeInput> {
-		let Some(network) = self.network_graph_mut(network_path) else {
+		let Some(location) = self.locate(network_path) else {
+			log::error!("Could not locate network {network_path:?} in set_input_slot");
+			return None;
+		};
+		self.set_input_slot_at(connector, location, input)
+	}
+
+	/// Writes the input at `connector` in the network at `location`, like [`Self::set_input_slot`].
+	pub(crate) fn set_input_slot_at(&mut self, connector: &InputConnector, location: NetworkLocation, input: NodeInput) -> Option<NodeInput> {
+		let Some(network) = self.network_graph_mut(location) else {
 			log::error!("Could not get nested network in set_input_slot");
 			return None;
 		};
@@ -249,7 +276,7 @@ impl NodeNetworkInterface {
 		}
 		let previous = std::mem::replace(slot, input.clone());
 
-		self.deltas.push(input_write_delta(connector, network_path, input));
+		self.deltas.push(input_write_delta(connector, location, input));
 		Some(previous)
 	}
 
@@ -259,7 +286,11 @@ impl NodeNetworkInterface {
 	/// which avoids copying the value out and back. The recorded delta still carries the whole result,
 	/// since the storage op is a whole-value write.
 	pub(crate) fn edit_input_value(&mut self, connector: &InputConnector, network_path: &[NodeId], edit: impl FnOnce(&mut TaggedValue) -> bool) -> bool {
-		let Some(network) = self.network_graph_mut(network_path) else {
+		let Some(location) = self.locate(network_path) else {
+			log::error!("Could not locate network {network_path:?} in edit_input_value");
+			return false;
+		};
+		let Some(network) = self.network_graph_mut(location) else {
 			log::error!("Could not get nested network in edit_input_value");
 			return false;
 		};
@@ -286,14 +317,23 @@ impl NodeNetworkInterface {
 		}
 
 		let input = slot.clone();
-		self.deltas.push(input_write_delta(connector, network_path, input));
+		self.deltas.push(input_write_delta(connector, location, input));
 		true
 	}
 
 	/// Inserts a node and its metadata, returning the entry it replaced.
 	pub(crate) fn insert_node_entry(&mut self, locator: NodeLocator, template: NodeTemplate) -> Option<NodeTemplate> {
-		if !self.network_pair_exists(locator.network_path) {
-			log::error!("Could not get network {:?} in insert_node_entry", locator.network_path);
+		let Some(location) = self.locate(locator.network_path) else {
+			log::error!("Could not locate network {:?} in insert_node_entry", locator.network_path);
+			return None;
+		};
+		self.insert_node_entry_at(location, locator.node_id, template)
+	}
+
+	/// Inserts the node `node_id` into the network at `location`, like [`Self::insert_node_entry`].
+	pub(crate) fn insert_node_entry_at(&mut self, location: NetworkLocation, node_id: NodeId, template: NodeTemplate) -> Option<NodeTemplate> {
+		if !self.network_pair_exists(location) {
+			log::error!("Could not get network {location:?} in insert_node_entry");
 			return None;
 		}
 
@@ -301,10 +341,9 @@ impl NodeNetworkInterface {
 		let node = Box::new(document_node.clone());
 		let metadata = Box::new(persistent_metadata.clone());
 
-		let location = self.locate(locator.network_path)?;
-		let previous_node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.insert(locator.node_id, document_node);
+		let previous_node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.insert(node_id, document_node);
 		let previous_metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata.node_metadata.insert(
-			locator.node_id,
+			node_id,
 			DocumentNodeMetadata {
 				persistent_metadata,
 				transient_metadata: DocumentNodeTransientMetadata::default(),
@@ -313,21 +352,20 @@ impl NodeNetworkInterface {
 
 		// Overwriting an existing entry replaces the node and everything nested under it, which is what
 		// distinguishes the two from the storage side.
-		let network_path = locator.network_path.to_vec();
-		let node_id = locator.node_id;
+		let network = location.to_owned_location();
 		self.deltas.push(EditorDelta::Graph(match previous_node.is_some() {
 			true => RuntimeDelta::ReplaceNode {
-				network_path: network_path.clone(),
+				network: network.clone(),
 				node_id,
 				node,
 			},
 			false => RuntimeDelta::AddNode {
-				network_path: network_path.clone(),
+				network: network.clone(),
 				node_id,
 				node,
 			},
 		}));
-		self.deltas.push(EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata });
+		self.deltas.push(EditorDelta::NodeMetadataSnapshot { network, node_id, metadata });
 
 		previous_node
 			.zip(previous_metadata)
@@ -336,25 +374,27 @@ impl NodeNetworkInterface {
 
 	/// Removes a node and its metadata, returning them joined as a template.
 	pub(crate) fn remove_node_entry(&mut self, locator: NodeLocator) -> Option<NodeTemplate> {
-		if !self.network_pair_exists(locator.network_path) {
-			log::error!("Could not get network {:?} in remove_node_entry", locator.network_path);
+		let Some(location) = self.locate(locator.network_path) else {
+			log::error!("Could not locate network {:?} in remove_node_entry", locator.network_path);
+			return None;
+		};
+		self.remove_node_entry_at(location, locator.node_id)
+	}
+
+	/// Removes the node `node_id` from the network at `location`, like [`Self::remove_node_entry`].
+	pub(crate) fn remove_node_entry_at(&mut self, location: NetworkLocation, node_id: NodeId) -> Option<NodeTemplate> {
+		if !self.network_pair_exists(location) {
+			log::error!("Could not get network {location:?} in remove_node_entry");
 			return None;
 		}
 
-		let location = self.locate(locator.network_path)?;
-		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.remove(&locator.node_id);
-		let metadata = self
-			.network_metadata
-			.get_mut()
-			.nested_metadata_mut(location)?
-			.persistent_metadata
-			.node_metadata
-			.remove(&locator.node_id);
+		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.remove(&node_id);
+		let metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata.node_metadata.remove(&node_id);
 
 		if node.is_some() {
 			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNode {
-				network_path: locator.network_path.to_vec(),
-				node_id: locator.node_id,
+				network: location.to_owned_location(),
+				node_id,
 			}));
 		}
 
@@ -363,9 +403,8 @@ impl NodeNetworkInterface {
 
 	/// Whether both trees hold the network, checked before a write so a missing one cannot leave the two
 	/// halves out of step.
-	fn network_pair_exists(&self, network_path: &[NodeId]) -> bool {
-		self.locate(network_path)
-			.is_some_and(|location| self.network.network().located_network(location).is_some() && self.network_metadata.nested_metadata(location).is_some())
+	fn network_pair_exists(&self, location: NetworkLocation) -> bool {
+		self.network.network().located_network(location).is_some() && self.network_metadata.nested_metadata(location).is_some()
 	}
 
 	/// Takes what the writes since the last drain changed, in write order, leaving the buffer empty
@@ -421,11 +460,9 @@ impl NodeNetworkInterface {
 			let edited_nodes = new_deltas
 				.iter()
 				.filter_map(|delta| match delta {
-					EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, .. } | RuntimeDelta::ReplaceNode { network_path, node_id, .. }) if network_path.is_empty() => Some(*node_id),
+					EditorDelta::Graph(RuntimeDelta::AddNode { network, node_id, .. } | RuntimeDelta::ReplaceNode { network, node_id, .. }) if network.as_location().is_root() => Some(*node_id),
 					// Judged by what the input holds now, since splicing in a node briefly disconnects a wire to a placeholder value
-					EditorDelta::Graph(RuntimeDelta::SetInput {
-						network_path, node_id, input_index, ..
-					}) if network_path.is_empty() => {
+					EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, .. }) if network.as_location().is_root() => {
 						let input = self.input_from_connector(&InputConnector::node_at_index(*node_id, *input_index), &[]);
 						input.is_some_and(|input| input.as_value().is_some()).then_some(*node_id)
 					}
@@ -471,16 +508,16 @@ fn input_slot_mut<'a>(network: &'a mut NodeNetwork, connector: &InputConnector) 
 
 /// What a whole-value write to `connector` records, which is a different delta for an input than for
 /// an export.
-fn input_write_delta(connector: &InputConnector, network_path: &[NodeId], input: NodeInput) -> EditorDelta {
+fn input_write_delta(connector: &InputConnector, location: NetworkLocation, input: NodeInput) -> EditorDelta {
 	EditorDelta::Graph(match connector {
 		InputConnector::Node { node_id, input_index } => RuntimeDelta::SetInput {
-			network_path: network_path.to_vec(),
+			network: location.to_owned_location(),
 			node_id: *node_id,
 			input_index: *input_index,
 			input,
 		},
 		InputConnector::Export(export_index) => RuntimeDelta::SetExport {
-			network_path: network_path.to_vec(),
+			network: location.to_owned_location(),
 			export_index: *export_index,
 			input: Some(input),
 		},

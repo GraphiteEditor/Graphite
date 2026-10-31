@@ -5,8 +5,8 @@ use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{PeerId, Registry, RegistryDelta, Session};
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeInput, OwnedNetworkLocation};
 use graph_craft::runtime_delta::RuntimeDelta;
 use graphene_std::uuid::NodeId;
 
@@ -30,16 +30,9 @@ fn convert(editor: &EditorTestUtils) -> Registry {
 
 fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
 	let document = editor.active_document();
-	construct_batch(
-		deltas,
-		document.network_interface.document_network(),
-		working,
-		&document.resources.registry,
-		&StorageMetadataView::new(&document.network_interface),
-		PEER,
-	)
-	.expect("construction should succeed")
-	.ops
+	construct_batch(deltas, working, &document.resources.registry, &StorageMetadataView::new(&document.network_interface), PEER)
+		.expect("construction should succeed")
+		.ops
 }
 
 fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersistentMetadata {
@@ -54,7 +47,7 @@ fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersi
 
 fn metadata_change(node_id: NodeId, change: NodeMetadataChange) -> EditorDelta {
 	EditorDelta::NodeMetadata {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		node_id,
 		change,
 	}
@@ -89,7 +82,7 @@ async fn set_input_value_constructs_the_exact_diff_op() {
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(node, 1), input.clone(), &[]);
 
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		node_id: node,
 		input_index: 1,
 		input,
@@ -111,7 +104,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let wire = NodeInput::node(b, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(a, 1), wire.clone(), &[]);
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		node_id: a,
 		input_index: 1,
 		input: wire,
@@ -124,7 +117,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let export = NodeInput::node(a, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::Export(0), export.clone(), &[]);
 	let delta = EditorDelta::Graph(RuntimeDelta::SetExport {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		export_index: 0,
 		input: Some(export),
 	});
@@ -148,12 +141,12 @@ async fn adding_a_node_as_structure_plus_metadata_matches_the_diff() {
 
 	let deltas = [
 		EditorDelta::Graph(RuntimeDelta::AddNode {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			node_id,
 			node: Box::new(document_node),
 		}),
 		EditorDelta::NodeMetadataSnapshot {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			node_id,
 			metadata: Box::new(metadata),
 		},
@@ -187,13 +180,13 @@ async fn per_field_metadata_edits_match_the_diff() {
 		metadata_change(node, NodeMetadataChange::Pinned(metadata.pinned)),
 		metadata_change(node, NodeMetadataChange::NodeType(metadata.node_type_metadata.clone())),
 		EditorDelta::Graph(RuntimeDelta::SetVisibility {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			node_id: node,
 			visible: false,
 		}),
 		// Pinning a node also appends it to the network's display order, which is network state.
 		EditorDelta::NetworkMetadata {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			change: NetworkMetadataChange::PinnedOrder(vec![node]),
 		},
 	];
@@ -530,14 +523,14 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 		.filter(|id| !network.nodes.contains_key(id))
 		.map(|id| {
 			EditorDelta::Graph(RuntimeDelta::RemoveNode {
-				network_path: Vec::new(),
+				network: OwnedNetworkLocation::ROOT,
 				node_id: *id,
 			})
 		})
 		.collect();
 	for (index, export) in network.exports.iter().enumerate() {
 		deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			export_index: index,
 			input: Some(export.clone()),
 		}));
@@ -545,7 +538,7 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 	for (node_id, node) in &network.nodes {
 		for (index, input) in node.inputs.iter().enumerate() {
 			deltas.push(EditorDelta::Graph(RuntimeDelta::SetInput {
-				network_path: Vec::new(),
+				network: OwnedNetworkLocation::ROOT,
 				node_id: *node_id,
 				input_index: index,
 				input: input.clone(),
@@ -800,6 +793,26 @@ fn table_layer(editor: &EditorTestUtils) -> (NodeId, graph_craft::document::Netw
 		.expect("a committed layer should name a table entry")
 }
 
+/// A node inside the table entry `definition`, and the index of one of its value inputs.
+fn value_input_inside(editor: &EditorTestUtils, definition: graph_craft::document::NetworkId) -> (NodeId, usize) {
+	editor.active_document().network_interface.document_network().definitions[&definition]
+		.nodes
+		.iter()
+		.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
+		.expect("the layer's network should have a node with a value input")
+}
+
+/// The network location `deltas` recorded for a write to an input of `node_id`.
+fn recorded_input_write(deltas: &[EditorDelta], node_id: NodeId) -> OwnedNetworkLocation {
+	deltas
+		.iter()
+		.find_map(|delta| match delta {
+			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id: written, .. }) if *written == node_id => Some(network.clone()),
+			_ => None,
+		})
+		.expect("the input write should be recorded")
+}
+
 /// A committed document holds every nested network in the definitions table, and a commit drops the entries no node reaches any more.
 #[tokio::test]
 async fn a_commit_lifts_new_networks_and_drops_unreached_entries() {
@@ -833,11 +846,7 @@ async fn an_edit_inside_a_table_entry_constructs_the_diff() {
 	editor.draw_rect(0., 0., 100., 100.).await;
 
 	let (layer, definition) = table_layer(&editor);
-	let (inner, input_index) = editor.active_document().network_interface.document_network().definitions[&definition]
-		.nodes
-		.iter()
-		.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
-		.expect("the layer's network should have a node with a value input");
+	let (inner, input_index) = value_input_inside(&editor, definition);
 
 	let working = convert(&editor);
 	editor.active_document_mut().network_interface.discard_deltas();
@@ -866,4 +875,53 @@ async fn a_template_of_a_table_node_stands_alone() {
 	let template = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
 	let (node, _) = template.into_parts();
 	assert!(matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
+}
+
+/// A write inside an instance stays with the network it was made in, even when the instance changes implementation later in the same batch.
+#[tokio::test]
+async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let (inner, input_index) = value_input_inside(&editor, definition);
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.discard_deltas();
+
+	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
+	let mut inline_copy = interface.create_node_template(&layer, &[]).expect("template");
+	interface.replace_implementation(&layer, &[], &mut inline_copy);
+
+	let deltas = interface.take_deltas();
+	assert_eq!(recorded_input_write(&deltas, inner), OwnedNetworkLocation::definition(definition));
+}
+
+/// Writes inside a network that is still inline name its table entry once the commit lifts it.
+#[tokio::test]
+async fn recorded_locations_follow_the_networks_a_commit_lifts() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let (inner, input_index) = value_input_inside(&editor, definition);
+	let interface = &mut editor.active_document_mut().network_interface;
+	let inline_copy = interface.create_node_template(&layer, &[]).expect("template");
+	interface.discard_deltas();
+
+	let copy = NodeId::new();
+	interface.insert_node_entry(super::NodeLocator::new(copy, &[]), inline_copy);
+	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[copy]);
+	interface.settle_definitions();
+
+	let mut deltas = interface.take_deltas();
+	let graph_craft::document::DocumentNodeImplementation::Definition(lifted) = interface.document_network().nodes[&copy].implementation else {
+		panic!("the commit should have lifted the copy's network")
+	};
+	assert_eq!(recorded_input_write(&deltas, inner), OwnedNetworkLocation::definition(lifted));
+
+	for location in deltas.iter_mut().filter_map(EditorDelta::network_mut) {
+		assert!(interface.document_network().located_network(location.as_location()).is_some(), "{location:?} should still resolve");
+	}
 }

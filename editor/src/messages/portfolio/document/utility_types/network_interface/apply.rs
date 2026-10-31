@@ -19,26 +19,21 @@ impl NodeNetworkInterface {
 		match delta {
 			// The metadata arrives separately, so a node lands with default metadata that the paired
 			// snapshot then fills in
-			EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, node }) | EditorDelta::Graph(RuntimeDelta::ReplaceNode { network_path, node_id, node }) => {
+			EditorDelta::Graph(RuntimeDelta::AddNode { network, node_id, node }) | EditorDelta::Graph(RuntimeDelta::ReplaceNode { network, node_id, node }) => {
 				let template = NodeTemplate::from_parts((**node).clone(), DocumentNodePersistentMetadata::default());
-				self.insert_node_entry(NodeLocator::new(*node_id, network_path), template);
+				self.insert_node_entry_at(network.as_location(), *node_id, template);
 			}
 
-			EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id }) => {
-				self.remove_node_entry(NodeLocator::new(*node_id, network_path));
+			EditorDelta::Graph(RuntimeDelta::RemoveNode { network, node_id }) => {
+				self.remove_node_entry_at(network.as_location(), *node_id);
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetInput {
-				network_path,
-				node_id,
-				input_index,
-				input,
-			}) => {
-				self.set_input_slot(&InputConnector::node_at_index(*node_id, *input_index), network_path, input.clone());
+			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, input }) => {
+				self.set_input_slot_at(&InputConnector::node_at_index(*node_id, *input_index), network.as_location(), input.clone());
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetInputs { network_path, node_id, inputs }) => {
-				let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+			EditorDelta::Graph(RuntimeDelta::SetInputs { network, node_id, inputs }) => {
+				let Some(mut node) = self.node_mut_at(network.as_location(), *node_id) else { return };
 
 				// The slots are what changed; their metadata follows in the paired delta. Resizing keeps the
 				// two arrays the same length in the meantime, which the rest of the interface assumes.
@@ -47,50 +42,50 @@ impl NodeNetworkInterface {
 				node.replace_inputs(inputs.clone(), input_metadata);
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetExport { network_path, export_index, input }) => match input {
-				None => {
-					self.remove_export_slot(network_path, *export_index);
+			EditorDelta::Graph(RuntimeDelta::SetExport { network, export_index, input }) => {
+				let location = network.as_location();
+				let number_of_exports = self.document_network().located_network(location).map_or(0, |network| network.exports.len());
+				match input {
+					None => {
+						self.remove_export_slot_at(location, *export_index);
+					}
+					// A peer can name a slot past the end of this network's exports, which is an insert here
+					// rather than a write to a slot that does not exist yet.
+					Some(input) if *export_index >= number_of_exports => {
+						self.insert_export_slot_at(location, *export_index, input.clone(), String::new(), String::new());
+					}
+					Some(input) => {
+						self.set_input_slot_at(&InputConnector::Export(*export_index), location, input.clone());
+					}
 				}
-				// A peer can name a slot past the end of this network's exports, which is an insert here
-				// rather than a write to a slot that does not exist yet.
-				Some(input) if *export_index >= self.number_of_exports(network_path) => {
-					self.insert_export_slot(network_path, *export_index, input.clone(), String::new(), String::new());
-				}
-				Some(input) => {
-					self.set_input_slot(&InputConnector::Export(*export_index), network_path, input.clone());
-				}
-			},
+			}
 
-			EditorDelta::Graph(RuntimeDelta::SetVisibility { network_path, node_id, visible }) => {
-				if let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) {
+			EditorDelta::Graph(RuntimeDelta::SetVisibility { network, node_id, visible }) => {
+				if let Some(mut node) = self.node_mut_at(network.as_location(), *node_id) {
 					node.set_visible(*visible);
 				}
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network_path, node_id, call_argument }) => {
-				if let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) {
+			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network, node_id, call_argument }) => {
+				if let Some(mut node) = self.node_mut_at(network.as_location(), *node_id) {
 					node.set_call_argument(call_argument.clone());
 				}
 			}
 
-			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
-				if let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) {
+			EditorDelta::NodeMetadataSnapshot { network, node_id, metadata } => {
+				if let Some(mut node) = self.node_mut_at(network.as_location(), *node_id) {
 					node.replace_metadata((**metadata).clone());
 				}
 			}
 
-			EditorDelta::NodeInputMetadata {
-				network_path,
-				node_id,
-				input_metadata,
-			} => {
-				if let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) {
+			EditorDelta::NodeInputMetadata { network, node_id, input_metadata } => {
+				if let Some(mut node) = self.node_mut_at(network.as_location(), *node_id) {
 					node.set_input_metadata(input_metadata.clone());
 				}
 			}
 
-			EditorDelta::NodeMetadata { network_path, node_id, change } => {
-				let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+			EditorDelta::NodeMetadata { network, node_id, change } => {
+				let Some(mut node) = self.node_mut_at(network.as_location(), *node_id) else { return };
 				match change {
 					NodeMetadataChange::NodeType(node_type) => node.set_node_type(node_type.clone()),
 					NodeMetadataChange::DisplayName(display_name) => node.set_display_name(display_name.clone()),
@@ -103,8 +98,8 @@ impl NodeNetworkInterface {
 				};
 			}
 
-			EditorDelta::NetworkMetadata { network_path, change } => {
-				let Some(mut network) = self.network_mut(network_path) else { return };
+			EditorDelta::NetworkMetadata { network, change } => {
+				let Some(mut network) = self.network_mut_at(network.as_location()) else { return };
 				match change {
 					NetworkMetadataChange::Reference(reference) => network.set_reference(reference.clone()),
 					NetworkMetadataChange::PinnedOrder(order) => network.set_pinned_order(order.clone()),

@@ -7,7 +7,7 @@ use document_graph_storage::from_runtime::{ConversionError, DeclarationBytes};
 use document_graph_storage::{AttributeDelta, AttributeValue, Attributes, Implementation, NodeMetadataSource, PathResolver, Position, Registry, RegistryDelta, ScopedConversion, TimeStamp, Value};
 use document_graph_storage::{convert_input_attributes, convert_resource_entry, encode_input_ui_attributes, encode_node_ui_attributes, node_value_resource_refs, value_resource_ref};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry};
-use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
+use graph_craft::document::{NetworkLocation, NodeId, OwnedNetworkLocation};
 use graph_craft::runtime_delta::RuntimeDelta;
 use std::collections::{HashMap, HashSet};
 
@@ -35,31 +35,42 @@ pub enum EditorDelta {
 	/// written, so there is no concurrent peer holding state for it to clobber. An edit to an existing
 	/// node must use [`EditorDelta::NodeMetadata`] instead.
 	NodeMetadataSnapshot {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		metadata: Box<DocumentNodePersistentMetadata>,
 	},
 	/// One field of an existing node's metadata.
 	NodeMetadata {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		change: NodeMetadataChange,
 	},
 	/// A node's whole input metadata array, paired with the `SetInputs` that changed the slots it
 	/// indexes. Whole-array for the same reason: an insert shifts every later entry.
 	NodeInputMetadata {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		input_metadata: Vec<InputMetadata>,
 	},
 	/// One field of an existing network's metadata.
 	NetworkMetadata {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		change: NetworkMetadataChange,
 	},
 	/// Entries were added to the definitions table.
 	/// No delta describes this yet, so staging converts the whole document.
 	DefinitionsChanged,
+}
+
+impl EditorDelta {
+	/// The location of the network the delta changed, if it names one.
+	pub(crate) fn network_mut(&mut self) -> Option<&mut OwnedNetworkLocation> {
+		match self {
+			Self::Graph(delta) => Some(delta.network_mut()),
+			Self::NodeMetadataSnapshot { network, .. } | Self::NodeMetadata { network, .. } | Self::NodeInputMetadata { network, .. } | Self::NetworkMetadata { network, .. } => Some(network),
+			Self::DefinitionsChanged => None,
+		}
+	}
 }
 
 /// One field of a node's persistent metadata, named the way the store writes it so each write has
@@ -122,7 +133,6 @@ pub struct BatchDeclarations {
 /// land on the same nodes a whole-document conversion of that interface would produce.
 pub fn construct_batch(
 	deltas: &[EditorDelta],
-	network: &NodeNetwork,
 	working: &Registry,
 	resources: &ResourceRegistry,
 	metadata: &dyn NodeMetadataSource,
@@ -130,7 +140,6 @@ pub fn construct_batch(
 ) -> Result<ConstructedOps, StagingError> {
 	let identities = IdentitiesOnly(metadata);
 	let context = ConversionContext {
-		network,
 		resources,
 		identities: &identities,
 		resolver: PathResolver::new(Some(&identities), peer),
@@ -154,19 +163,10 @@ pub fn construct_batch(
 
 /// What every delta in a batch converts against, fixed for the whole batch.
 struct ConversionContext<'a> {
-	network: &'a NodeNetwork,
 	resources: &'a ResourceRegistry,
 	identities: &'a dyn NodeMetadataSource,
 	resolver: PathResolver<'a>,
 	peer: document_graph_storage::PeerId,
-}
-
-impl ConversionContext<'_> {
-	fn locate<'a>(&self, network_path: &'a [NodeId]) -> Result<NetworkLocation<'a>, StagingError> {
-		self.network
-			.locate(network_path)
-			.ok_or_else(|| StagingError::NeedsWholeDocument(format!("no network is at {network_path:?} any more")))
-	}
 }
 
 impl EditorDelta {
@@ -179,25 +179,25 @@ impl EditorDelta {
 		declarations: &mut BatchDeclarations,
 	) -> Result<(), StagingError> {
 		match self {
-			EditorDelta::Graph(RuntimeDelta::AddNode { network_path, node_id, node }) => {
-				construct_structural_additions(context.locate(network_path)?, *node_id, node, batch, context, ops, declarations)?;
+			EditorDelta::Graph(RuntimeDelta::AddNode { network, node_id, node }) => {
+				construct_structural_additions(network.as_location(), *node_id, node, batch, context, ops, declarations)?;
 			}
 
-			EditorDelta::Graph(RuntimeDelta::ReplaceNode { network_path, node_id, node }) => {
+			EditorDelta::Graph(RuntimeDelta::ReplaceNode { network, node_id, node }) => {
 				// Only what the previous implementation owned goes; the node stays so the addition below
 				// updates it in place and its `ui::*` attributes survive the swap.
-				let location = context.locate(network_path)?;
+				let location = network.as_location();
 				construct_removals_below(context.resolver.node_id(location, *node_id), batch, batch_removed_nodes, ops)?;
 				construct_structural_additions(location, *node_id, node, batch, context, ops, declarations)?;
 			}
 
-			EditorDelta::Graph(RuntimeDelta::RemoveNode { network_path, node_id }) => {
-				construct_removals(context.resolver.node_id(context.locate(network_path)?, *node_id), batch, batch_removed_nodes, ops)?;
+			EditorDelta::Graph(RuntimeDelta::RemoveNode { network, node_id }) => {
+				construct_removals(context.resolver.node_id(network.as_location(), *node_id), batch, batch_removed_nodes, ops)?;
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetVisibility { network_path, node_id, visible }) => {
+			EditorDelta::Graph(RuntimeDelta::SetVisibility { network, node_id, visible }) => {
 				ops.push(RegistryDelta::ChangeNodeAttribute {
-					id: context.resolver.node_id(context.locate(network_path)?, *node_id),
+					id: context.resolver.node_id(network.as_location(), *node_id),
 					delta: AttributeDelta {
 						key: node_attr::VISIBLE.to_string(),
 						value: (!visible).then_some(Value::Bool(false)),
@@ -205,50 +205,45 @@ impl EditorDelta {
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetInput {
-				network_path,
-				node_id,
-				input_index,
-				input,
-			}) => {
-				let new_input = context.resolver.convert_input_at(input, context.locate(network_path)?)?;
-				construct_referenced_resource(Some(context.resolver.node_id(context.locate(network_path)?, *node_id)), &new_input, context, batch, ops)?;
+			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, input }) => {
+				let new_input = context.resolver.convert_input_at(input, network.as_location())?;
+				construct_referenced_resource(Some(context.resolver.node_id(network.as_location(), *node_id)), &new_input, context, batch, ops)?;
 
 				ops.push(RegistryDelta::ChangeNodeInput {
-					id: context.resolver.node_id(context.locate(network_path)?, *node_id),
+					id: context.resolver.node_id(network.as_location(), *node_id),
 					index: (*input_index).try_into().map_err(|_| ConversionError::IndexOverflow(*input_index))?,
 					new_input,
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetExport { network_path, export_index, input }) => {
-				let location = context.locate(network_path)?;
+			EditorDelta::Graph(RuntimeDelta::SetExport { network, export_index, input }) => {
+				let location = network.as_location();
 				let export = input.as_ref().map(|input| context.resolver.convert_input_at(input, location)).transpose()?;
 				if let Some(export) = export.as_ref() {
 					construct_referenced_resource(None, export, context, batch, ops)?;
 				}
 
 				ops.push(RegistryDelta::SetNetworkExport {
-					id: context.resolver.network_id(context.locate(network_path)?),
+					id: context.resolver.network_id(network.as_location()),
 					index: (*export_index).try_into().map_err(|_| ConversionError::IndexOverflow(*export_index))?,
 					export,
 				});
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network_path, node_id, call_argument }) => {
+			EditorDelta::Graph(RuntimeDelta::SetCallArgument { network, node_id, call_argument }) => {
 				ops.push(RegistryDelta::ChangeNodeAttribute {
-					id: context.resolver.node_id(context.locate(network_path)?, *node_id),
+					id: context.resolver.node_id(network.as_location(), *node_id),
 					delta: document_graph_storage::from_runtime::encode_call_argument(call_argument)?,
 				});
 			}
 
-			EditorDelta::NodeMetadataSnapshot { network_path, node_id, metadata } => {
-				construct_metadata_snapshot(context.locate(network_path)?, *node_id, metadata, batch, &context.resolver, ops)?;
+			EditorDelta::NodeMetadataSnapshot { network, node_id, metadata } => {
+				construct_metadata_snapshot(network.as_location(), *node_id, metadata, batch, &context.resolver, ops)?;
 			}
 
-			EditorDelta::Graph(RuntimeDelta::SetInputs { network_path, node_id, inputs }) => {
+			EditorDelta::Graph(RuntimeDelta::SetInputs { network, node_id, inputs }) => {
 				// The slots' `ui::*` attributes arrive with the paired input metadata delta
-				let location = context.locate(network_path)?;
+				let location = network.as_location();
 				let inputs = inputs
 					.iter()
 					.map(|input| {
@@ -261,25 +256,21 @@ impl EditorDelta {
 					.collect::<Result<Vec<_>, ConversionError>>()?;
 
 				for slot in &inputs {
-					construct_referenced_resource(Some(context.resolver.node_id(context.locate(network_path)?, *node_id)), &slot.input, context, batch, ops)?;
+					construct_referenced_resource(Some(context.resolver.node_id(network.as_location(), *node_id)), &slot.input, context, batch, ops)?;
 				}
 
 				ops.push(RegistryDelta::SetNodeInputs {
-					id: context.resolver.node_id(context.locate(network_path)?, *node_id),
+					id: context.resolver.node_id(network.as_location(), *node_id),
 					inputs,
 				});
 			}
 
-			EditorDelta::NodeMetadata { network_path, node_id, change } => {
-				ops.extend(node_metadata_ops(context.resolver.node_id(context.locate(network_path)?, *node_id), change)?);
+			EditorDelta::NodeMetadata { network, node_id, change } => {
+				ops.extend(node_metadata_ops(context.resolver.node_id(network.as_location(), *node_id), change)?);
 			}
 
-			EditorDelta::NodeInputMetadata {
-				network_path,
-				node_id,
-				input_metadata,
-			} => {
-				let location = context.locate(network_path)?;
+			EditorDelta::NodeInputMetadata { network, node_id, input_metadata } => {
+				let location = network.as_location();
 				let global_id = context.resolver.node_id(location, *node_id);
 				let source = InputMetadataSource(input_metadata);
 				let working_node = batch.node(global_id);
@@ -299,14 +290,14 @@ impl EditorDelta {
 				}
 			}
 
-			EditorDelta::NetworkMetadata { network_path, change } => {
+			EditorDelta::NetworkMetadata { network, change } => {
 				let delta = match change {
 					NetworkMetadataChange::Reference(reference) => AttributeDelta {
 						key: node_attr::ui::REFERENCE.to_string(),
 						value: reference.clone().map(Value::Str),
 					},
 					NetworkMetadataChange::PinnedOrder(order) => {
-						let location = context.locate(network_path)?;
+						let location = network.as_location();
 						let stored: Vec<_> = order.iter().map(|node_id| context.resolver.node_id(location, *node_id)).collect();
 						AttributeDelta {
 							key: network_attr::PINNED_ORDER.to_string(),
@@ -319,7 +310,7 @@ impl EditorDelta {
 				};
 
 				ops.push(RegistryDelta::ChangeNetworkAttribute {
-					id: context.resolver.network_id(context.locate(network_path)?),
+					id: context.resolver.network_id(network.as_location()),
 					delta,
 				});
 			}

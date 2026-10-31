@@ -191,7 +191,7 @@ impl DocumentHistory {
 	) -> Result<Declarations, StagingError> {
 		let peer = storage.session().peer();
 		let metadata_view = StorageMetadataView::new(interface);
-		let constructed = construct_batch(deltas, interface.document_network(), storage.registry(), registry, &metadata_view, peer)?;
+		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer)?;
 
 		storage
 			.stage_constructed_ops(constructed.ops, &constructed.declarations.bytes, byte_store)
