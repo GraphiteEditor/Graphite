@@ -14,6 +14,7 @@ accepted = [
 	"OpenSSL", # Keep this list in sync with those in `/deny.toml`
 	"Unicode-3.0", # Keep this list in sync with those in `/deny.toml`
 	"Unicode-DFS-2016", # Keep this list in sync with those in `/deny.toml`
+	"Unlicense", # Keep this list in sync with those in `/deny.toml`
 	"Zlib", # Keep this list in sync with those in `/deny.toml`
 	"NCSA", # Keep this list in sync with those in `/deny.toml`
 	"bzip2-1.0.6", # Keep this list in sync with those in `/deny.toml`
