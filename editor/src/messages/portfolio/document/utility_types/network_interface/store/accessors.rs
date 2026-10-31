@@ -50,23 +50,12 @@ impl NodeNetworkInterface {
 		migrate(self.network_metadata.get_mut(), self.network.network());
 	}
 
-	/// Updates the definitions table after a transaction.
-	/// It lifts the inline networks the transaction added and drops the entries no node reaches.
-	///
-	/// Only the lifting is recorded. The removals that left an entry unreachable were recorded already.
+	/// Drops the definitions table entries no node reaches any more after a transaction, recording each removal.
 	pub(crate) fn settle_definitions(&mut self) {
-		let lifted = self.document_network_mut().lift_nested_networks();
-		if !lifted.is_empty() {
-			self.network_metadata.get_mut().lift_nested_metadata(&lifted);
-			for location in self.deltas.iter_mut().filter_map(EditorDelta::network_mut) {
-				location.follow_lifts(&lifted);
-			}
-			self.deltas.push(EditorDelta::DefinitionsChanged);
-		}
-
-		if self.document_network_mut().retain_reachable_definitions() {
-			let network = self.network.network();
-			self.network_metadata.get_mut().retain_definitions_of(network);
+		let dropped = self.document_network_mut().retain_reachable_definitions();
+		for id in dropped {
+			self.network_metadata.get_mut().persistent_metadata.definitions.remove(&id);
+			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }));
 		}
 	}
 

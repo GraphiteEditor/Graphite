@@ -132,16 +132,6 @@ impl NodeDeltas<'_> {
 		});
 	}
 
-	/// Records a snapshot for a node inside the network this one owns, for metadata that arrived with a
-	/// new nested network rather than describing this node.
-	fn snapshot_owned(&mut self, implementation: &DocumentNodeImplementation, node_id: NodeId, metadata: Box<DocumentNodePersistentMetadata>) {
-		self.deltas.push(EditorDelta::NodeMetadataSnapshot {
-			network: self.network.implemented_by(self.node_id, implementation),
-			node_id,
-			metadata,
-		});
-	}
-
 	fn network(&self) -> OwnedNetworkLocation {
 		self.network.to_owned_location()
 	}
@@ -439,27 +429,28 @@ impl NodeMut<'_> {
 		self.emit_input_metadata();
 	}
 
-	/// Swaps in a new implementation together with the nested network metadata that belongs to it.
+	/// Swaps in a new implementation, which never carries an inline network since the store moves one into the definitions table first.
 	///
-	/// Replaces the node and everything nested under it, since the nested network goes with the
-	/// implementation.
-	pub(crate) fn replace_implementation(&mut self, implementation: DocumentNodeImplementation, network_metadata: Option<NodeNetworkMetadata>) {
-		let previous = self.interface();
-		let input_metadata = previous.input_metadata.clone();
-		let output_names = previous.output_names.clone();
-		let output_descriptions = previous.output_descriptions.clone();
+	/// A table entry keeps the interface it already has. Any other implementation takes over the node's previous interface.
+	pub(crate) fn replace_implementation(&mut self, implementation: DocumentNodeImplementation) {
+		let carried = (!matches!(implementation, DocumentNodeImplementation::Definition(_))).then(|| {
+			let previous = self.interface();
+			(previous.input_metadata.clone(), previous.output_names.clone(), previous.output_descriptions.clone())
+		});
 
 		self.node.implementation = implementation;
-		self.metadata.network_metadata = network_metadata;
+		self.metadata.network_metadata = None;
 		self.definition_metadata = None;
 		self.metadata.input_metadata.clear();
 		self.metadata.output_names.clear();
 		self.metadata.output_descriptions.clear();
 
-		let interface = self.interface();
-		*interface.input_metadata = input_metadata;
-		*interface.output_names = output_names.clone();
-		*interface.output_descriptions = output_descriptions.clone();
+		if let Some((input_metadata, output_names, output_descriptions)) = carried {
+			let interface = self.interface();
+			*interface.input_metadata = input_metadata;
+			*interface.output_names = output_names;
+			*interface.output_descriptions = output_descriptions;
+		}
 
 		let delta = RuntimeDelta::ReplaceNode {
 			network: self.deltas.network(),
@@ -467,26 +458,6 @@ impl NodeMut<'_> {
 			node: Box::new(self.node.clone()),
 		};
 		self.deltas.graph(delta);
-
-		// The carried-over interface lands on the new network, which the replacement just rebuilt without it
-		if self.interface_on_network() {
-			self.emit_input_metadata();
-			self.record_output_names(output_names);
-			self.record_output_descriptions(output_descriptions);
-		}
-
-		// Only what the new implementation brought with it. A swap leaves the node's own metadata alone,
-		// and restating it would assert values this peer did not write, clobbering a concurrent rename.
-		let owned: Vec<_> = self
-			.metadata
-			.network_metadata
-			.iter()
-			.flat_map(|network_metadata| &network_metadata.persistent_metadata.node_metadata)
-			.map(|(child_id, child)| (*child_id, Box::new(child.persistent_metadata.clone())))
-			.collect();
-		for (child_id, metadata) in owned {
-			self.deltas.snapshot_owned(&self.node.implementation, child_id, metadata);
-		}
 	}
 
 	/// Replaces the node's whole persistent metadata, including that of everything nested under it,

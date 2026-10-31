@@ -1,4 +1,4 @@
-use crate::document::{DocumentNode, NodeId, NodeInput, OwnedNetworkLocation};
+use crate::document::{DocumentNode, NetworkId, NodeId, NodeInput, NodeNetwork, OwnedNetworkLocation};
 use core_types::Type;
 
 /// One mutation's worth of structural graph change, carrying its post-change data as plain runtime
@@ -17,6 +17,15 @@ use core_types::Type;
 /// A path through instances would be resolved later and could reach a different network by then.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeDelta {
+	/// A new entry of the definitions table. Its nodes name the networks they implement by ID, so each entry they name is added first.
+	AddNetwork {
+		id: NetworkId,
+		network: Box<NodeNetwork>,
+	},
+	/// Drops the definitions table entry `id`, which no node reaches any more.
+	RemoveNetwork {
+		id: NetworkId,
+	},
 	/// The node's nested network, if it implements one, rides inside the [`DocumentNode`].
 	AddNode {
 		network: OwnedNetworkLocation,
@@ -63,20 +72,4 @@ pub enum RuntimeDelta {
 		node_id: NodeId,
 		call_argument: Type,
 	},
-}
-
-impl RuntimeDelta {
-	/// The location of the network the delta changed.
-	pub fn network_mut(&mut self) -> &mut OwnedNetworkLocation {
-		match self {
-			Self::AddNode { network, .. }
-			| Self::ReplaceNode { network, .. }
-			| Self::RemoveNode { network, .. }
-			| Self::SetInput { network, .. }
-			| Self::SetInputs { network, .. }
-			| Self::SetExport { network, .. }
-			| Self::SetVisibility { network, .. }
-			| Self::SetCallArgument { network, .. } => network,
-		}
-	}
 }

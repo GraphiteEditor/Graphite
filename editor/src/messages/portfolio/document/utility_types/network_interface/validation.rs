@@ -176,6 +176,10 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 			None => (&persistent.input_metadata, &persistent.output_names),
 		};
 
+		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+			violations.push(format!("Node {node_id} in network {path:?} implements an inline network, which belongs in the definitions table"));
+		}
+
 		let stores_interface = !persistent.input_metadata.is_empty() || !persistent.output_names.is_empty() || !persistent.output_descriptions.is_empty();
 		if implementation_metadata.is_some() && stores_interface {
 			violations.push(format!("Node {node_id} in network {path:?} stores interface metadata that belongs to the network implementing it"));

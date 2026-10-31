@@ -28,6 +28,19 @@ impl NodeNetworkInterface {
 				self.remove_node_entry_at(network.as_location(), *node_id);
 			}
 
+			// The metadata of the entry and its nodes arrives separately, so each node lands with default metadata that its snapshot then fills in
+			EditorDelta::Graph(RuntimeDelta::AddNetwork { id, network }) => {
+				let mut metadata = NodeNetworkMetadata::default();
+				for node_id in network.nodes.keys() {
+					metadata.persistent_metadata.node_metadata.insert(*node_id, DocumentNodeMetadata::default());
+				}
+				self.insert_definition(*id, (**network).clone(), metadata);
+			}
+
+			EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }) => {
+				self.remove_definition(*id);
+			}
+
 			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, input }) => {
 				self.set_input_slot_at(&InputConnector::node_at_index(*node_id, *input_index), network.as_location(), input.clone());
 			}
@@ -108,8 +121,6 @@ impl NodeNetworkInterface {
 					NetworkMetadataChange::ExportDescriptions(export_descriptions) => network.set_export_descriptions(export_descriptions.clone()),
 				};
 			}
-
-			EditorDelta::DefinitionsChanged => log::warn!("Replayed a definitions table change, which apply cannot mirror yet, so this peer's definitions table may be stale"),
 		}
 	}
 }

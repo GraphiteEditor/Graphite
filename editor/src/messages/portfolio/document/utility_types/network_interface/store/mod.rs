@@ -1,4 +1,5 @@
 use super::*;
+use graph_craft::document::OwnedNetworkLocation;
 use graph_craft::runtime_delta::RuntimeDelta;
 
 mod accessors;
@@ -337,7 +338,8 @@ impl NodeNetworkInterface {
 			return None;
 		}
 
-		let (document_node, persistent_metadata) = template.into_parts();
+		let (mut document_node, mut persistent_metadata) = template.into_parts();
+		self.lift_into_table(&mut document_node.implementation, &mut persistent_metadata.network_metadata);
 		let node = Box::new(document_node.clone());
 		let metadata = Box::new(persistent_metadata.clone());
 
@@ -399,6 +401,103 @@ impl NodeNetworkInterface {
 		}
 
 		node.zip(metadata).map(|(node, metadata)| NodeTemplate::from_parts(node, metadata.persistent_metadata))
+	}
+
+	/// Swaps in a new implementation for the node, first moving an inline network it brings into the definitions table with the node's interface.
+	pub(crate) fn replace_node_implementation(&mut self, locator: NodeLocator, mut implementation: DocumentNodeImplementation, mut network_metadata: Option<NodeNetworkMetadata>) {
+		let Some(location) = self.locate(locator.network_path) else {
+			log::error!("Could not locate network {:?} in replace_node_implementation", locator.network_path);
+			return;
+		};
+
+		if matches!(implementation, DocumentNodeImplementation::Network(_)) {
+			let Some(mut node) = self.node_mut_at(location, locator.node_id) else {
+				log::error!("Could not get node {} in replace_node_implementation", locator.node_id);
+				return;
+			};
+			let previous = node.interface();
+			let interface = &mut network_metadata.get_or_insert_default().persistent_metadata;
+			interface.import_metadata = previous.input_metadata.clone();
+			interface.export_names = previous.output_names.clone();
+			interface.export_descriptions = previous.output_descriptions.clone();
+
+			self.lift_into_table(&mut implementation, &mut network_metadata);
+		}
+
+		let Some(mut node) = self.node_mut_at(location, locator.node_id) else {
+			log::error!("Could not get node {} in replace_node_implementation", locator.node_id);
+			return;
+		};
+		node.replace_implementation(implementation);
+	}
+
+	/// Moves an inline network `implementation` brings, and every inline network nested in it, into the definitions table under fresh IDs.
+	/// Each entry is recorded before the entries and nodes that name it.
+	fn lift_into_table(&mut self, implementation: &mut DocumentNodeImplementation, network_metadata: &mut Option<NodeNetworkMetadata>) {
+		if !matches!(implementation, DocumentNodeImplementation::Network(_)) {
+			return;
+		}
+		let DocumentNodeImplementation::Network(mut network) = std::mem::replace(implementation, DocumentNodeImplementation::Extract) else {
+			return;
+		};
+		let mut metadata = network_metadata.take().unwrap_or_default();
+
+		for (node_id, node) in &mut network.nodes {
+			let node_metadata = metadata.persistent_metadata.node_metadata.entry(*node_id).or_default();
+			self.lift_into_table(&mut node.implementation, &mut node_metadata.persistent_metadata.network_metadata);
+		}
+
+		let id = NetworkId::new();
+		self.insert_definition(id, network, metadata);
+		*implementation = DocumentNodeImplementation::Definition(id);
+	}
+
+	/// Adds the definitions table entry `id` with its metadata, recording the network and then the metadata of it and its nodes.
+	pub(crate) fn insert_definition(&mut self, id: NetworkId, network: NodeNetwork, metadata: NodeNetworkMetadata) {
+		let location = OwnedNetworkLocation::definition(id);
+		self.deltas.push(EditorDelta::Graph(RuntimeDelta::AddNetwork {
+			id,
+			network: Box::new(network.clone()),
+		}));
+
+		let mut node_ids: Vec<NodeId> = metadata.persistent_metadata.node_metadata.keys().copied().collect();
+		node_ids.sort();
+		for node_id in node_ids {
+			let node_metadata = Box::new(metadata.persistent_metadata.node_metadata[&node_id].persistent_metadata.clone());
+			self.deltas.push(EditorDelta::NodeMetadataSnapshot {
+				network: location.clone(),
+				node_id,
+				metadata: node_metadata,
+			});
+		}
+
+		let persistent_metadata = &metadata.persistent_metadata;
+		let changes = persistent_metadata
+			.reference
+			.clone()
+			.map(|reference| NetworkMetadataChange::Reference(Some(reference)))
+			.into_iter()
+			.chain([
+				NetworkMetadataChange::PinnedOrder(persistent_metadata.pinned_node_order.clone()),
+				NetworkMetadataChange::ImportMetadata(persistent_metadata.import_metadata.clone()),
+				NetworkMetadataChange::ExportNames(persistent_metadata.export_names.clone()),
+				NetworkMetadataChange::ExportDescriptions(persistent_metadata.export_descriptions.clone()),
+			]);
+		for change in changes {
+			self.deltas.push(EditorDelta::NetworkMetadata { network: location.clone(), change });
+		}
+
+		self.network.get_mut().network_mut().definitions.insert(id, network);
+		self.network_metadata.get_mut().persistent_metadata.definitions.insert(id, metadata);
+	}
+
+	/// Drops the definitions table entry `id` from both trees.
+	pub(crate) fn remove_definition(&mut self, id: NetworkId) {
+		let removed = self.network.get_mut().network_mut().definitions.remove(&id).is_some();
+		self.network_metadata.get_mut().persistent_metadata.definitions.remove(&id);
+		if removed {
+			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }));
+		}
 	}
 
 	/// Whether both trees hold the network, checked before a write so a missing one cannot leave the two

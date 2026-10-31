@@ -133,10 +133,9 @@ impl DocumentHistory {
 	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
 	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
 	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
-		let needs_whole_document_stage = self.needs_whole_document_stage || deltas.iter().any(|delta| matches!(delta, EditorDelta::DefinitionsChanged));
 		let Some(storage) = self.storage.as_mut() else { return };
 
-		let staged = match needs_whole_document_stage {
+		let staged = match self.needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
 			// An autosave with nothing edited since the last commit still persists the view state below.
 			false if deltas.is_empty() => Ok(Declarations::new()),
