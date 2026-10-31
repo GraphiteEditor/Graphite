@@ -23,5 +23,6 @@ raster-types = { workspace = true }
 vector-types = { workspace = true }
 
 # Workspace dependencies
+fastnoise-lite = { workspace = true }
 glam = { workspace = true }
 thiserror = { workspace = true }

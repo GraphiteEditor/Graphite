@@ -4689,6 +4689,7 @@ name = "raster-kernels"
 version = "0.0.0"
 dependencies = [
  "core-types",
+ "fastnoise-lite",
  "glam",
  "graphene-resource",
  "graphic-types",
@@ -4705,7 +4706,6 @@ dependencies = [
  "color",
  "core-types",
  "dyn-any",
- "fastnoise-lite",
  "futures",
  "glam",
  "graphene-core",
@@ -4716,8 +4716,6 @@ dependencies = [
  "ndarray",
  "no-std-types",
  "node-macro",
- "rand",
- "rand_chacha",
  "raster-kernels",
  "raster-types",
  "serde",

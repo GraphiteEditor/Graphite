@@ -7,11 +7,10 @@ use core_types::list::Item;
 use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
-use fastnoise_lite;
-use glam::{DAffine2, DVec2, UVec2, Vec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graphene_resource::Resource;
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
+use graphic_types::generator::{GeneratorPattern, NoiseSettings};
+use raster_kernels::generators::render_pattern;
 use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
@@ -298,100 +297,23 @@ fn noise_pattern(
 	let width = (size.x * footprint_scale.x) as u32;
 	let height = (size.y * footprint_scale.y) as u32;
 
-	// All
-	let mut image = Image::try_new(width, height, Color::from_luminance(0.5))?;
-	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
-	noise.set_frequency(Some(1. / (scale as f32).max(f32::EPSILON)));
-
-	// Domain Warp
-	let domain_warp_type = match domain_warp_type {
-		DomainWarpType::None => None,
-		DomainWarpType::OpenSimplex2 => Some(fastnoise_lite::DomainWarpType::OpenSimplex2),
-		DomainWarpType::OpenSimplex2Reduced => Some(fastnoise_lite::DomainWarpType::OpenSimplex2Reduced),
-		DomainWarpType::BasicGrid => Some(fastnoise_lite::DomainWarpType::BasicGrid),
-	};
-	let domain_warp_active = domain_warp_type.is_some();
-	noise.set_domain_warp_type(domain_warp_type);
-	noise.set_domain_warp_amp(Some(domain_warp_amplitude as f32));
-
-	// Fractal
-	let noise_type = match noise_type {
-		NoiseType::Perlin => fastnoise_lite::NoiseType::Perlin,
-		NoiseType::OpenSimplex2 => fastnoise_lite::NoiseType::OpenSimplex2,
-		NoiseType::OpenSimplex2S => fastnoise_lite::NoiseType::OpenSimplex2S,
-		NoiseType::Cellular => fastnoise_lite::NoiseType::Cellular,
-		NoiseType::ValueCubic => fastnoise_lite::NoiseType::ValueCubic,
-		NoiseType::Value => fastnoise_lite::NoiseType::Value,
-		NoiseType::WhiteNoise => {
-			// TODO: Generate in layer space, not viewport space
-
-			let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
-
-			for y in 0..height {
-				for x in 0..width {
-					let pixel = image.get_pixel_mut(x, y).unwrap();
-					let luminance = rng.random_range(0.0..1.) as f32;
-					*pixel = Color::from_luminance(luminance);
-				}
-			}
-
-			return Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
-		}
-	};
-	noise.set_noise_type(Some(noise_type));
-	let fractal_type = match fractal_type {
-		FractalType::None => fastnoise_lite::FractalType::None,
-		FractalType::FBm => fastnoise_lite::FractalType::FBm,
-		FractalType::Ridged => fastnoise_lite::FractalType::Ridged,
-		FractalType::PingPong => fastnoise_lite::FractalType::PingPong,
-		FractalType::DomainWarpProgressive => fastnoise_lite::FractalType::DomainWarpProgressive,
-		FractalType::DomainWarpIndependent => fastnoise_lite::FractalType::DomainWarpIndependent,
-	};
-	noise.set_fractal_type(Some(fractal_type));
-	noise.set_fractal_octaves(Some(fractal_octaves as i32));
-	noise.set_fractal_lacunarity(Some(fractal_lacunarity as f32));
-	noise.set_fractal_gain(Some(fractal_gain as f32));
-	noise.set_fractal_weighted_strength(Some(fractal_weighted_strength as f32));
-	noise.set_fractal_ping_pong_strength(Some(fractal_ping_pong_strength as f32));
-
-	// Cellular
-	let cellular_distance_function = match cellular_distance_function {
-		CellularDistanceFunction::Euclidean => fastnoise_lite::CellularDistanceFunction::Euclidean,
-		CellularDistanceFunction::EuclideanSq => fastnoise_lite::CellularDistanceFunction::EuclideanSq,
-		CellularDistanceFunction::Manhattan => fastnoise_lite::CellularDistanceFunction::Manhattan,
-		CellularDistanceFunction::Hybrid => fastnoise_lite::CellularDistanceFunction::Hybrid,
-	};
-	let cellular_return_type = match cellular_return_type {
-		CellularReturnType::CellValue => fastnoise_lite::CellularReturnType::CellValue,
-		CellularReturnType::Nearest => fastnoise_lite::CellularReturnType::Distance,
-		CellularReturnType::NextNearest => fastnoise_lite::CellularReturnType::Distance2,
-		CellularReturnType::Average => fastnoise_lite::CellularReturnType::Distance2Add,
-		CellularReturnType::Difference => fastnoise_lite::CellularReturnType::Distance2Sub,
-		CellularReturnType::Product => fastnoise_lite::CellularReturnType::Distance2Mul,
-		CellularReturnType::Division => fastnoise_lite::CellularReturnType::Distance2Div,
-	};
-	noise.set_cellular_distance_function(Some(cellular_distance_function));
-	noise.set_cellular_return_type(Some(cellular_return_type));
-	noise.set_cellular_jitter(Some(cellular_jitter as f32));
-
-	let coordinate_offset = offset.as_vec2();
-	let scale = size.as_vec2() / Vec2::new(width as f32, height as f32);
-	// Calculate the noise for every pixel
-	for y in 0..height {
-		for x in 0..width {
-			let pixel = image.get_pixel_mut(x, y).unwrap();
-			let pos = Vec2::new(x as f32, y as f32);
-			let vec = pos * scale + coordinate_offset;
-
-			let (mut x, mut y) = (vec.x, vec.y);
-			if domain_warp_active && domain_warp_amplitude > 0. {
-				(x, y) = noise.domain_warp_2d(x, y);
-			}
-
-			let luminance = (noise.get_noise_2d(x, y) + 1.) * 0.5;
-			*pixel = Color::from_luminance(luminance);
-		}
-	}
+	let noise = GeneratorPattern::Noise(NoiseSettings {
+		seed,
+		scale,
+		noise_type,
+		domain_warp_type,
+		domain_warp_amplitude,
+		fractal_type,
+		fractal_octaves,
+		fractal_lacunarity,
+		fractal_gain,
+		fractal_weighted_strength,
+		fractal_ping_pong_strength,
+		cellular_distance_function,
+		cellular_return_type,
+		cellular_jitter,
+	});
+	let image = render_pattern(&noise, [offset, offset + size], width, height)?;
 
 	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
 }
@@ -415,38 +337,7 @@ fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Result<Item<Raster<CPU>>, Im
 	let scale = footprint.scale();
 	let width = (size.x * scale.x) as u32;
 	let height = (size.y * scale.y) as u32;
-
-	let mut image = Image::try_new(width, height, Color::TRANSPARENT)?;
-	let max_iter = 255;
-
-	let scale = 3. * size.as_vec2() / Vec2::new(width as f32, height as f32);
-	let coordinate_offset = offset.as_vec2() * 3. - Vec2::new(2., 1.5);
-	for y in 0..height {
-		for x in 0..width {
-			let pos = Vec2::new(x as f32, y as f32);
-			let c = pos * scale + coordinate_offset;
-
-			let iter = mandelbrot_impl(c, max_iter);
-			*image.get_mut(x as usize, y as usize) = map_color(iter, max_iter);
-		}
-	}
+	let image = render_pattern(&GeneratorPattern::Mandelbrot, [offset, offset + size], width, height)?;
 
 	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)))
-}
-
-#[inline(always)]
-fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
-	let mut z = Vec2::new(0., 0.);
-	for i in 0..max_iter {
-		z = Vec2::new(z.x * z.x - z.y * z.y, 2. * z.x * z.y) + c;
-		if z.length_squared() > 4. {
-			return i;
-		}
-	}
-	max_iter
-}
-
-fn map_color(iter: usize, max_iter: usize) -> Color {
-	let v = iter as f32 / max_iter as f32;
-	Color::from_rgbaf32_unchecked(v, v, v, 1.)
 }

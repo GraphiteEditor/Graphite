@@ -45,9 +45,6 @@ bytemuck = { workspace = true }
 glam = { workspace = true }
 image = { workspace = true }
 ndarray = { workspace = true }
-rand = { workspace = true }
-rand_chacha = { workspace = true }
-fastnoise-lite = { workspace = true }
 serde = { workspace = true, optional = true }
 color = { workspace = true }
 thiserror = { workspace = true }
