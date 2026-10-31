@@ -628,6 +628,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.node_graph_handler.leave_network(&mut self.network_interface, &self.breadcrumb_network_path, responses);
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
@@ -689,6 +690,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
+				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
@@ -2581,6 +2583,8 @@ impl DocumentMessageHandler {
 		if !serialized_content.contains("\"grid_visible\":") {
 			document_message_handler.snapping_state.grid_visible = document_message_handler.snapping_state.grid_snapping;
 		}
+
+		document_message_handler.network_interface.move_interface_metadata_into_networks();
 
 		Ok(document_message_handler)
 	}

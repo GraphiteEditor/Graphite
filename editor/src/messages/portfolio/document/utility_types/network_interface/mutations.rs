@@ -80,69 +80,67 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		let mut encapsulating_path = network_path.to_vec();
-		// Set the parent node (if it exists) to be a non layer if it is no longer eligible to be a layer
-		if let Some(parent_id) = encapsulating_path.pop()
-			&& !self.is_eligible_to_be_layer(&parent_id, &encapsulating_path)
-			&& self.is_layer(&parent_id, &encapsulating_path)
-		{
-			self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
-		};
-
 		// Update the export ports and outward wires for the current network
 		self.invalidate_import_export(network_path);
 		self.unload_outward_wires(network_path);
 
-		// Update the outward wires and bounding box for all nodes in the encapsulating network
-		if let Some(encapsulating_transient) = self.encapsulating_network_transient_mut(network_path) {
-			encapsulating_transient.outward_wires.unload();
-			encapsulating_transient.all_nodes_bounding_box.unload();
-			encapsulating_transient.import_export_clearance.unload();
-		}
+		let mut affects_document_structure = false;
+		for (encapsulating_path, parent_id) in self.encapsulating_nodes(network_path) {
+			// Set the parent node to be a non layer if it is no longer eligible to be a layer
+			if !self.is_eligible_to_be_layer(&parent_id, &encapsulating_path) && self.is_layer(&parent_id, &encapsulating_path) {
+				self.set_to_node_or_layer(&parent_id, &encapsulating_path, false);
+			}
 
-		// Update the click targets for the encapsulating node, if it exists. There is no encapsulating node if the network is the document network
-		let mut path = network_path.to_vec();
-		if let Some(encapsulating_node) = path.pop() {
-			self.unload_node_click_targets(&encapsulating_node, &path);
-		}
+			// Update the outward wires and bounding box for all nodes in the encapsulating network
+			if let Some(encapsulating_transient) = self.network_transient_mut(&encapsulating_path) {
+				encapsulating_transient.outward_wires.unload();
+				encapsulating_transient.all_nodes_bounding_box.unload();
+				encapsulating_transient.import_export_clearance.unload();
+			}
+			self.unload_node_click_targets(&parent_id, &encapsulating_path);
 
-		// If the export is inserted as the first input or second input, and the parent network is the document_network, then it may have affected the document metadata structure
-		if network_path.len() == 1 && inserted_index <= 1 {
+			// An export inserted as the first or second output of a node in the document network may have affected the document metadata structure
+			affects_document_structure |= encapsulating_path.is_empty() && inserted_index <= 1;
+		}
+		if affects_document_structure {
 			self.load_structure();
 		}
 	}
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The input_name is used by the encapsulating node.
 	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, input_description: &str, network_path: &[NodeId]) {
-		let mut encapsulating_network_path = network_path.to_vec();
-		let Some(node_id) = encapsulating_network_path.pop() else {
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		let Some((first_path, first_node_id)) = encapsulating_nodes.first() else {
 			log::error!("Cannot add import for document network");
 			return;
 		};
 
-		let locator = NodeLocator::new(node_id, &encapsulating_network_path);
 		let inserted_index = if insert_index == -1 {
-			self.number_of_inputs(&node_id, &encapsulating_network_path)
+			self.number_of_inputs(first_node_id, first_path)
 		} else {
 			insert_index as usize
 		};
-		if !self.insert_input_slot(locator, inserted_index, NodeInput::value(default_value, exposed), (input_name, input_description).into()) {
+		if !self.insert_import_slot(network_path, inserted_index, NodeInput::value(default_value, exposed), (input_name, input_description).into()) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		// Set the node to be a non layer if it is no longer eligible to be a layer
-		if !self.is_eligible_to_be_layer(&node_id, &encapsulating_network_path) && self.is_layer(&node_id, &encapsulating_network_path) {
-			self.set_to_node_or_layer(&node_id, &encapsulating_network_path, false);
-		}
+		let mut affects_document_structure = false;
+		for (encapsulating_network_path, node_id) in &encapsulating_nodes {
+			// Set the node to be a non layer if it is no longer eligible to be a layer
+			if !self.is_eligible_to_be_layer(node_id, encapsulating_network_path) && self.is_layer(node_id, encapsulating_network_path) {
+				self.set_to_node_or_layer(node_id, encapsulating_network_path, false);
+			}
 
-		// Update the metadata for the encapsulating node
-		self.unload_outward_wires(&encapsulating_network_path);
-		self.unload_node_click_targets(&node_id, &encapsulating_network_path);
-		self.unload_all_nodes_bounding_box(&encapsulating_network_path);
-		if encapsulating_network_path.is_empty() && inserted_index <= 1 {
+			// Update the metadata for the encapsulating node
+			self.unload_outward_wires(encapsulating_network_path);
+			self.unload_node_click_targets(node_id, encapsulating_network_path);
+			self.unload_all_nodes_bounding_box(encapsulating_network_path);
+			affects_document_structure |= encapsulating_network_path.is_empty() && inserted_index <= 1;
+		}
+		if affects_document_structure {
 			self.load_structure();
 		}
 
@@ -193,33 +191,35 @@ impl NodeNetworkInterface {
 
 	// First disconnects the export, then removes it
 	pub fn remove_export(&mut self, export_index: usize, network_path: &[NodeId]) {
-		let mut encapsulating_network_path = network_path.to_vec();
-		let Some(parent_id) = encapsulating_network_path.pop() else {
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		if encapsulating_nodes.is_empty() {
 			log::error!("Cannot remove export for document network");
 			return;
-		};
+		}
 
-		// Disconnect the removed export, and handle connections to the node which had its output removed
+		// Disconnect the removed export, and handle connections to each node which had its output removed
 		self.disconnect_input(&InputConnector::Export(export_index), network_path);
-		let number_of_outputs = self.number_of_outputs(&parent_id, &encapsulating_network_path);
-		for shifted_export in export_index..number_of_outputs {
-			let Some(encapsulating_outward_wires) = self.outward_wires(&encapsulating_network_path) else {
-				log::error!("Could not get outward wires in remove_export");
-				return;
-			};
-			let Some(downstream_connections_for_shifted_export) = encapsulating_outward_wires.get(&OutputConnector::node(parent_id, shifted_export)).cloned() else {
-				log::error!("Could not get downstream connections for shifted export in remove_export");
-				return;
-			};
-			for downstream_connection in downstream_connections_for_shifted_export {
-				self.disconnect_input(&downstream_connection, &encapsulating_network_path);
-				if shifted_export != export_index {
-					self.create_wire(&OutputConnector::node(parent_id, shifted_export - 1), &downstream_connection, &encapsulating_network_path);
+		for (encapsulating_network_path, parent_id) in &encapsulating_nodes {
+			let number_of_outputs = self.number_of_outputs(parent_id, encapsulating_network_path);
+			for shifted_export in export_index..number_of_outputs {
+				let Some(encapsulating_outward_wires) = self.outward_wires(encapsulating_network_path) else {
+					log::error!("Could not get outward wires in remove_export");
+					return;
+				};
+				let Some(downstream_connections_for_shifted_export) = encapsulating_outward_wires.get(&OutputConnector::node(*parent_id, shifted_export)).cloned() else {
+					log::error!("Could not get downstream connections for shifted export in remove_export");
+					return;
+				};
+				for downstream_connection in downstream_connections_for_shifted_export {
+					self.disconnect_input(&downstream_connection, encapsulating_network_path);
+					if shifted_export != export_index {
+						self.create_wire(&OutputConnector::node(*parent_id, shifted_export - 1), &downstream_connection, encapsulating_network_path);
+					}
 				}
 			}
+			self.remove_orphaned_dots(encapsulating_network_path);
 		}
 		self.remove_orphaned_dots(network_path);
-		self.remove_orphaned_dots(&encapsulating_network_path);
 
 		if self.remove_export_slot(network_path, export_index).is_none() {
 			return;
@@ -228,17 +228,20 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
+		for (encapsulating_network_path, parent_id) in &encapsulating_nodes {
+			self.finish_signature_edit(*parent_id, encapsulating_network_path, network_path);
+		}
 	}
 
 	// First disconnects the import, then removes it
 	pub fn remove_import(&mut self, import_index: usize, network_path: &[NodeId]) {
-		let Some((parent_id, encapsulating_network_path)) = network_path.split_last() else {
-			log::error!("Cannot remove export for document network");
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		let Some((first_path, first_parent_id)) = encapsulating_nodes.first() else {
+			log::error!("Cannot remove import for document network");
 			return;
 		};
 
-		let number_of_inputs = self.number_of_inputs(parent_id, encapsulating_network_path);
+		let number_of_inputs = self.number_of_inputs(first_parent_id, first_path);
 		let Some(outward_wires) = self.outward_wires(network_path) else {
 			log::error!("Could not get outward wires in remove_import");
 			return;
@@ -262,30 +265,32 @@ impl NodeNetworkInterface {
 		for (output_connector, input_wire) in new_import_mapping {
 			self.create_wire(&output_connector, &input_wire, network_path);
 		}
-		// The subgraph node's input for the import goes too, along with the wire feeding it
-		self.disconnect_input(&InputConnector::node_at_index(*parent_id, import_index), encapsulating_network_path);
+		// Each subgraph node's input for the import goes too, along with the wire feeding it
+		for (encapsulating_network_path, parent_id) in &encapsulating_nodes {
+			self.disconnect_input(&InputConnector::node_at_index(*parent_id, import_index), encapsulating_network_path);
+			self.remove_orphaned_dots(encapsulating_network_path);
+		}
 		self.remove_orphaned_dots(network_path);
-		self.remove_orphaned_dots(encapsulating_network_path);
 
-		let parent_id = *parent_id;
-		let encapsulating_network_path = encapsulating_network_path.to_vec();
-		if self.remove_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), import_index).is_none() {
+		if self.remove_import_slot(network_path, import_index).is_none() {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		self.finish_signature_edit(parent_id, &encapsulating_network_path, network_path);
+		for (encapsulating_network_path, parent_id) in &encapsulating_nodes {
+			self.finish_signature_edit(*parent_id, encapsulating_network_path, network_path);
+		}
 	}
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
 	pub fn reorder_export(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
-		let mut encapsulating_network_path = network_path.to_vec();
-		let Some(parent_id) = encapsulating_network_path.pop() else {
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		if encapsulating_nodes.is_empty() {
 			log::error!("Could not reorder export for document network");
 			return;
-		};
+		}
 
 		if end_index > start_index {
 			end_index -= 1;
@@ -297,12 +302,14 @@ impl NodeNetworkInterface {
 
 		self.transaction_modified();
 
-		// An export is an output of the encapsulating node, so its wires live in the encapsulating network
-		self.unload_outward_wires(&encapsulating_network_path);
-		self.unload_stack_dependents(&encapsulating_network_path);
+		// An export is an output of each encapsulating node, so its wires live in the encapsulating networks
+		for (encapsulating_network_path, parent_id) in &encapsulating_nodes {
+			self.unload_outward_wires(encapsulating_network_path);
+			self.unload_stack_dependents(encapsulating_network_path);
 
-		let last_output_index = self.number_of_outputs(&parent_id, &encapsulating_network_path) - 1;
-		self.reindex_downstream_wires(&encapsulating_network_path, |index| OutputConnector::node(parent_id, index), last_output_index, start_index, end_index);
+			let last_output_index = self.number_of_outputs(parent_id, encapsulating_network_path) - 1;
+			self.reindex_downstream_wires(encapsulating_network_path, |index| OutputConnector::node(*parent_id, index), last_output_index, start_index, end_index);
+		}
 
 		self.unload_outward_wires(network_path);
 		self.invalidate_import_export(network_path);
@@ -311,25 +318,27 @@ impl NodeNetworkInterface {
 
 	/// The end index is before the import is removed, so moving to the end is the length of the current imports
 	pub fn reorder_import(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
-		let mut encapsulating_network_path = network_path.to_vec();
-		let Some(parent_id) = encapsulating_network_path.pop() else {
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		if encapsulating_nodes.is_empty() {
 			log::error!("Could not reorder import for document network");
 			return;
-		};
+		}
 
 		if end_index > start_index {
 			end_index -= 1;
 		}
-		if end_index == start_index || !self.move_input_slot(NodeLocator::new(parent_id, &encapsulating_network_path), start_index, end_index) {
+		if end_index == start_index || !self.move_import_slot(network_path, start_index, end_index) {
 			return;
 		}
 		self.clear_encapsulating_reference(network_path);
 
 		self.transaction_modified();
 
-		// An import is an input of the encapsulating node, so moving it moves that node's ports
-		self.unload_outward_wires(&encapsulating_network_path);
-		self.unload_stack_dependents(&encapsulating_network_path);
+		// An import is an input of each encapsulating node, so moving it moves those nodes' ports
+		for (encapsulating_network_path, _) in &encapsulating_nodes {
+			self.unload_outward_wires(encapsulating_network_path);
+			self.unload_stack_dependents(encapsulating_network_path);
+		}
 
 		// The wires an import feeds live in the network the import belongs to
 		let last_import_index = self.number_of_imports(network_path) - 1;
@@ -485,8 +494,10 @@ impl NodeNetworkInterface {
 		// An emptied description keeps its slot, so only a node saved before it had output descriptions stores none at all
 		let has_output_descriptions = |output_descriptions: &[String]| output_descriptions.iter().any(|description| !description.is_empty());
 		let stores_output_descriptions = self
-			.node_metadata(node_id, network_path)
-			.is_some_and(|metadata| !metadata.persistent_metadata.output_descriptions.is_empty());
+			.view(network_path)
+			.ok()
+			.and_then(|view| view.output_descriptions(node_id).ok())
+			.is_some_and(|output_descriptions| !output_descriptions.is_empty());
 		let output_descriptions = definition_template
 			.filter(|template| has_output_descriptions(&template.output_descriptions) && !stores_output_descriptions)
 			.filter(|template| template.output_names.len() == self.number_of_outputs(node_id, network_path))
@@ -504,11 +515,12 @@ impl NodeNetworkInterface {
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
 	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
-			log::error!("Could not get node {node_id} in set_reference");
+		let nested_path = [network_path, &[*node_id]].concat();
+		let Some(mut network) = self.network_mut(&nested_path) else {
+			log::error!("Could not get the network of node {node_id} in set_reference");
 			return;
 		};
-		node.set_reference(reference_name);
+		network.set_reference(reference_name);
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts

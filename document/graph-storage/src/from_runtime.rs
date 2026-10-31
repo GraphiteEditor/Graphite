@@ -593,6 +593,7 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 	if let Some(reference) = metadata.reference(network_path) {
 		attributes.set(node::ui::REFERENCE, Value::Str(reference.to_string()), timestamp);
 	}
+	write_network_interface_attributes(attributes, metadata, network_path, timestamp)?;
 
 	let to_storage_id = |runtime_id: RuntimeNodeId| ids.resolve(&child_path(parent_path, network_id, runtime_id), runtime_id);
 
@@ -605,6 +606,36 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 		attributes
 			.set_serialized(network::PINNED_ORDER, &stored, timestamp)
 			.map_err(map_serialization_error(network::PINNED_ORDER))?;
+	}
+
+	Ok(())
+}
+
+fn write_network_interface_attributes<M: NodeMetadataSource + ?Sized>(
+	attributes: &mut crate::Attributes,
+	metadata: &M,
+	network_path: &[RuntimeNodeId],
+	timestamp: TimeStamp,
+) -> Result<(), ConversionError> {
+	let import_metadata = metadata.import_metadata(network_path);
+	if !import_metadata.is_empty() {
+		attributes
+			.set_serialized(network::IMPORT_METADATA, &import_metadata, timestamp)
+			.map_err(map_serialization_error(network::IMPORT_METADATA))?;
+	}
+
+	let export_names = metadata.export_names(network_path);
+	if !export_names.is_empty() {
+		attributes
+			.set_serialized(network::EXPORT_NAMES, &export_names, timestamp)
+			.map_err(map_serialization_error(network::EXPORT_NAMES))?;
+	}
+
+	let export_descriptions = metadata.export_descriptions(network_path);
+	if export_descriptions.iter().any(|description| !description.is_empty()) {
+		attributes
+			.set_serialized(network::EXPORT_DESCRIPTIONS, &export_descriptions, timestamp)
+			.map_err(map_serialization_error(network::EXPORT_DESCRIPTIONS))?;
 	}
 
 	Ok(())

@@ -91,15 +91,42 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		Ok(&self.node(node_id)?.implementation)
 	}
 
-	pub fn reference(&self, node_id: &NodeId) -> Result<Option<DefinitionIdentifier>, NetworkError> {
+	pub fn implementation_metadata(&self, node_id: &NodeId) -> Result<Option<&'a NodeNetworkMetadata>, NetworkError> {
 		let network_metadata = match self.implementation(node_id)? {
 			DocumentNodeImplementation::Network(_) => self.node_metadata(node_id)?.persistent_metadata.network_metadata.as_ref(),
 			DocumentNodeImplementation::Definition(id) => self.interface.network_metadata.persistent_metadata.definitions.get(id),
-			DocumentNodeImplementation::ProtoNode(protonode_id) => return Ok(Some(DefinitionIdentifier::ProtoNode(protonode_id.clone()))),
-			DocumentNodeImplementation::Extract => return Ok(None),
+			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => return Ok(None),
 		};
-		let network_metadata = network_metadata.ok_or(NetworkError::NestedMetadataNotFound { node_id: *node_id })?;
+		network_metadata.map(Some).ok_or(NetworkError::NestedMetadataNotFound { node_id: *node_id })
+	}
+
+	pub fn reference(&self, node_id: &NodeId) -> Result<Option<DefinitionIdentifier>, NetworkError> {
+		if let DocumentNodeImplementation::ProtoNode(protonode_id) = self.implementation(node_id)? {
+			return Ok(Some(DefinitionIdentifier::ProtoNode(protonode_id.clone())));
+		}
+		let Some(network_metadata) = self.implementation_metadata(node_id)? else { return Ok(None) };
 		Ok(network_metadata.persistent_metadata.reference.clone().map(DefinitionIdentifier::Network))
+	}
+
+	pub fn input_metadata(&self, node_id: &NodeId) -> Result<&'a [InputMetadata], NetworkError> {
+		Ok(match self.implementation_metadata(node_id)? {
+			Some(network_metadata) => &network_metadata.persistent_metadata.import_metadata,
+			None => &self.node_metadata(node_id)?.persistent_metadata.input_metadata,
+		})
+	}
+
+	pub fn output_names(&self, node_id: &NodeId) -> Result<&'a [String], NetworkError> {
+		Ok(match self.implementation_metadata(node_id)? {
+			Some(network_metadata) => &network_metadata.persistent_metadata.export_names,
+			None => &self.node_metadata(node_id)?.persistent_metadata.output_names,
+		})
+	}
+
+	pub fn output_descriptions(&self, node_id: &NodeId) -> Result<&'a [String], NetworkError> {
+		Ok(match self.implementation_metadata(node_id)? {
+			Some(network_metadata) => &network_metadata.persistent_metadata.export_descriptions,
+			None => &self.node_metadata(node_id)?.persistent_metadata.output_descriptions,
+		})
 	}
 
 	pub fn is_layer(&self, node_id: &NodeId) -> Result<bool, NetworkError> {
@@ -312,8 +339,7 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn persistent_input_metadata(&self, node_id: &NodeId, index: usize) -> Result<&'a InputPersistentMetadata, NetworkError> {
-		let metadata = self.node_metadata(node_id)?;
-		let input_metadata = metadata.persistent_metadata.input_metadata.get(index).ok_or(NetworkError::InputNotFound {
+		let input_metadata = self.input_metadata(node_id)?.get(index).ok_or(NetworkError::InputNotFound {
 			connector: InputConnector::node_at_index(*node_id, index),
 		})?;
 		Ok(&input_metadata.persistent_metadata)

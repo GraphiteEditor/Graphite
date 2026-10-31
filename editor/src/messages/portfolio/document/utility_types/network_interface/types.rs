@@ -552,6 +552,84 @@ impl NodeNetworkMetadata {
 		}
 		Some(network_metadata)
 	}
+
+	pub fn move_interface_metadata_into_networks(&mut self, document_network: &NodeNetwork) {
+		let mut instance_interfaces = Vec::new();
+		move_interface_metadata(document_network, self, &mut instance_interfaces);
+		for (id, definition_metadata) in &mut self.persistent_metadata.definitions {
+			if let Some(definition) = document_network.definitions.get(id) {
+				move_interface_metadata(definition, definition_metadata, &mut instance_interfaces);
+			}
+		}
+
+		for (id, interface) in instance_interfaces {
+			if let Some(definition_metadata) = self.persistent_metadata.definitions.get_mut(&id) {
+				fill_empty_interface(&mut definition_metadata.persistent_metadata, interface);
+			}
+		}
+	}
+
+	pub fn node_metadata_with_definition_mut(
+		&mut self,
+		location: NetworkLocation,
+		node_id: &NodeId,
+		instantiated: Option<NetworkId>,
+	) -> Option<(&mut DocumentNodeMetadata, Option<&mut NodeNetworkPersistentMetadata>)> {
+		let NodeNetworkPersistentMetadata { node_metadata, definitions, .. } = &mut self.persistent_metadata;
+		let (mut nodes, definition) = match (location.definition, instantiated) {
+			(None, None) => (node_metadata, None),
+			(None, Some(instantiated)) => (node_metadata, Some(definitions.get_mut(&instantiated)?)),
+			(Some(containing), None) => (&mut definitions.get_mut(&containing)?.persistent_metadata.node_metadata, None),
+			(Some(containing), Some(instantiated)) if containing != instantiated => {
+				let [containing, instantiated] = definitions.get_disjoint_mut([&containing, &instantiated]);
+				(&mut containing?.persistent_metadata.node_metadata, Some(instantiated?))
+			}
+			(Some(_), Some(_)) => return None,
+		};
+
+		for segment in location.inline_path {
+			nodes = &mut nodes.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?.persistent_metadata.node_metadata;
+		}
+		Some((nodes.get_mut(node_id)?, definition.map(|definition| &mut definition.persistent_metadata)))
+	}
+}
+
+type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
+
+fn move_interface_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, instance_interfaces: &mut Vec<(NetworkId, InterfaceMetadata)>) {
+	for (node_id, node) in &network.nodes {
+		let Some(node_metadata) = metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
+			continue;
+		};
+		let DocumentNodePersistentMetadata {
+			input_metadata,
+			output_names,
+			output_descriptions,
+			network_metadata,
+			..
+		} = &mut node_metadata.persistent_metadata;
+		let mut take_interface = || (std::mem::take(input_metadata), std::mem::take(output_names), std::mem::take(output_descriptions));
+
+		match &node.implementation {
+			DocumentNodeImplementation::Network(nested) => {
+				let Some(nested_metadata) = network_metadata else { continue };
+				fill_empty_interface(&mut nested_metadata.persistent_metadata, take_interface());
+				move_interface_metadata(nested, nested_metadata, instance_interfaces);
+			}
+			DocumentNodeImplementation::Definition(id) => instance_interfaces.push((*id, take_interface())),
+			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => {}
+		}
+	}
+}
+
+fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
+	if network_metadata.import_metadata.is_empty() {
+		network_metadata.import_metadata = import_metadata;
+	}
+	if network_metadata.export_names.is_empty() {
+		network_metadata.export_names = export_names;
+		network_metadata.export_descriptions = export_descriptions;
+	}
 }
 
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -581,6 +659,12 @@ pub struct NodeNetworkPersistentMetadata {
 	pub selection_redo_history: VecDeque<SelectedNodes>,
 	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
 	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub import_metadata: Vec<InputMetadata>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub export_names: Vec<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub export_descriptions: Vec<String>,
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.

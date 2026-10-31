@@ -43,7 +43,8 @@ impl NodeNetworkInterface {
 	/// Builds an interface around a freshly-assembled pair of trees, for a document arriving from
 	/// storage or from an older format rather than being edited into existence. Nothing is recorded: the
 	/// trees are the document, not a set of changes to it.
-	pub(super) fn from_trees(network: NodeNetwork, network_metadata: NodeNetworkMetadata) -> Self {
+	pub(super) fn from_trees(network: NodeNetwork, mut network_metadata: NodeNetworkMetadata) -> Self {
+		network_metadata.move_interface_metadata_into_networks(&network);
 		Self {
 			network: Guarded::new(MemoNetwork::new(network)),
 			network_metadata: Guarded::new(network_metadata),
@@ -51,45 +52,71 @@ impl NodeNetworkInterface {
 		}
 	}
 
-	/// Inserts an input and its metadata at `index`, clamped to the end. Returns whether the node was found.
-	pub(crate) fn insert_input_slot(&mut self, locator: NodeLocator, index: usize, input: NodeInput, metadata: InputMetadata) -> bool {
-		let Some(mut node) = self.node_mut(locator) else {
-			log::error!("Could not get node {} in insert_input_slot", locator.node_id);
+	/// Inserts an import at `index` into the network at `network_path`: its metadata once, and `input` on every node the network implements.
+	pub(crate) fn insert_import_slot(&mut self, network_path: &[NodeId], index: usize, input: NodeInput, metadata: InputMetadata) -> bool {
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		if encapsulating_nodes.is_empty() {
+			log::error!("Cannot insert an import into the document network");
+			return false;
+		}
+		let Some(mut network) = self.network_mut(network_path) else {
+			log::error!("Could not get network {network_path:?} in insert_import_slot");
 			return false;
 		};
+		network.insert_import_metadata(index, metadata);
 
-		let index = index.min(node.node.inputs.len());
-		node.node.inputs.insert(index, input);
-		node.metadata.input_metadata.insert(index.min(node.metadata.input_metadata.len()), metadata);
-		node.emit_inputs();
+		for (path, node_id) in &encapsulating_nodes {
+			let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, path)) else {
+				log::error!("Could not get node {node_id} in insert_import_slot");
+				continue;
+			};
+			node.insert_input(index, input.clone());
+		}
 		true
 	}
 
-	/// Removes the input at `index` together with its metadata, returning both.
-	pub(crate) fn remove_input_slot(&mut self, locator: NodeLocator, index: usize) -> Option<(NodeInput, InputMetadata)> {
-		let Some(mut node) = self.node_mut(locator) else {
-			log::error!("Could not get node {} in remove_input_slot", locator.node_id);
-			return None;
-		};
-
-		if index >= node.node.inputs.len() {
-			log::error!("Input index {index} out of bounds in remove_input_slot for node {}", locator.node_id);
-			return None;
+	/// Removes the import at `index` from the network at `network_path` and from every node the network implements, returning its metadata.
+	pub(crate) fn remove_import_slot(&mut self, network_path: &[NodeId], index: usize) -> Option<InputMetadata> {
+		for (path, node_id) in self.encapsulating_nodes(network_path) {
+			let Some(mut node) = self.node_mut(NodeLocator::new(node_id, &path)) else {
+				log::error!("Could not get node {node_id} in remove_import_slot");
+				continue;
+			};
+			if node.remove_input(index).is_none() {
+				log::error!("Input index {index} out of bounds in remove_import_slot for node {node_id}");
+			}
 		}
 
-		let input = node.node.inputs.remove(index);
-		let metadata = (index < node.metadata.input_metadata.len()).then(|| node.metadata.input_metadata.remove(index));
-		node.emit_inputs();
-		Some((input, metadata.unwrap_or_default()))
+		let Some(mut network) = self.network_mut(network_path) else {
+			log::error!("Could not get network {network_path:?} in remove_import_slot");
+			return None;
+		};
+		network.remove_import_metadata(index)
 	}
 
-	/// Moves the input at `from` to `to`, carrying its metadata with it.
-	///
-	/// Records the removal and the insertion separately, so the list is briefly one slot short. Both
-	/// land in the same batch, where the second supersedes the first.
-	pub(crate) fn move_input_slot(&mut self, locator: NodeLocator, from: usize, to: usize) -> bool {
-		let Some((input, metadata)) = self.remove_input_slot(locator, from) else { return false };
-		self.insert_input_slot(locator, to, input, metadata)
+	/// Moves the import at `from` to `to`, carrying its metadata and each node's input with it.
+	pub(crate) fn move_import_slot(&mut self, network_path: &[NodeId], from: usize, to: usize) -> bool {
+		let encapsulating_nodes = self.encapsulating_nodes(network_path);
+		if encapsulating_nodes.is_empty() {
+			return false;
+		}
+
+		for (path, node_id) in &encapsulating_nodes {
+			let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, path)) else {
+				log::error!("Could not get node {node_id} in move_import_slot");
+				continue;
+			};
+			let Some(input) = node.remove_input(from) else {
+				log::error!("Could not remove input {from} of node {node_id} in move_import_slot");
+				return false;
+			};
+			node.insert_input(to, input);
+		}
+
+		let Some(mut network) = self.network_mut(network_path) else { return false };
+		let Some(metadata) = network.remove_import_metadata(from) else { return false };
+		network.insert_import_metadata(to, metadata);
+		true
 	}
 
 	/// Inserts an export at `index`, clamped to the end, along with the name and description the encapsulating
@@ -104,12 +131,11 @@ impl NodeNetworkInterface {
 		network.exports.insert(index, export);
 
 		let mut descriptions_changed = false;
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			let persistent_metadata = &mut encapsulating_node_metadata.persistent_metadata;
-			persistent_metadata.output_names.insert(index.min(persistent_metadata.output_names.len()), output_name);
+		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(network_path) {
+			persistent_metadata.export_names.insert(index.min(persistent_metadata.export_names.len()), output_name);
 
 			// A missing description is empty, so only a non-empty one past the end needs the gap filled
-			let output_descriptions = &mut persistent_metadata.output_descriptions;
+			let output_descriptions = &mut persistent_metadata.export_descriptions;
 			descriptions_changed = !output_description.is_empty() || (index <= output_descriptions.len() && has_description(output_descriptions));
 			if index <= output_descriptions.len() {
 				output_descriptions.insert(index, output_description);
@@ -138,14 +164,13 @@ impl NodeNetworkInterface {
 		let vacated = network.exports.len();
 
 		let mut descriptions_changed = false;
-		if let Some(encapsulating_node_metadata) = self.encapsulating_node_metadata_mut(network_path) {
-			let persistent_metadata = &mut encapsulating_node_metadata.persistent_metadata;
-			if index < persistent_metadata.output_names.len() {
-				persistent_metadata.output_names.remove(index);
+		if let Some(persistent_metadata) = self.subnetwork_metadata_mut(network_path) {
+			if index < persistent_metadata.export_names.len() {
+				persistent_metadata.export_names.remove(index);
 			}
-			descriptions_changed = index < persistent_metadata.output_descriptions.len() && has_description(&persistent_metadata.output_descriptions);
-			if index < persistent_metadata.output_descriptions.len() {
-				persistent_metadata.output_descriptions.remove(index);
+			descriptions_changed = index < persistent_metadata.export_descriptions.len() && has_description(&persistent_metadata.export_descriptions);
+			if index < persistent_metadata.export_descriptions.len() {
+				persistent_metadata.export_descriptions.remove(index);
 			}
 		}
 		self.emit_exports_from(network_path, index, Some(vacated), descriptions_changed);
@@ -176,14 +201,15 @@ impl NodeNetworkInterface {
 			}));
 		}
 
-		let Some((&node_id, parent_path)) = network_path.split_last() else { return };
-		let Some(metadata) = self.encapsulating_node_metadata(network_path) else { return };
-		let output_names = NodeMetadataChange::OutputNames(metadata.persistent_metadata.output_names.clone());
-		let output_descriptions = descriptions_changed.then(|| NodeMetadataChange::OutputDescriptions(metadata.persistent_metadata.output_descriptions.clone()));
-		for change in std::iter::once(output_names).chain(output_descriptions) {
-			self.deltas.push(EditorDelta::NodeMetadata {
-				network_path: parent_path.to_vec(),
-				node_id,
+		if network_path.is_empty() {
+			return;
+		}
+		let Some(metadata) = self.nested_metadata(network_path) else { return };
+		let export_names = NetworkMetadataChange::ExportNames(metadata.persistent_metadata.export_names.clone());
+		let export_descriptions = descriptions_changed.then(|| NetworkMetadataChange::ExportDescriptions(metadata.persistent_metadata.export_descriptions.clone()));
+		for change in std::iter::once(export_names).chain(export_descriptions) {
+			self.deltas.push(EditorDelta::NetworkMetadata {
+				network_path: network_path.to_vec(),
 				change,
 			});
 		}
@@ -192,12 +218,13 @@ impl NodeNetworkInterface {
 	/// Moves the export at `from` to `to`, carrying the encapsulating node's name and description for it.
 	pub(crate) fn move_export_slot(&mut self, network_path: &[NodeId], from: usize, to: usize) -> bool {
 		let (name, description) = self
-			.encapsulating_node_metadata(network_path)
+			.nested_metadata(network_path)
+			.filter(|_| !network_path.is_empty())
 			.map(|metadata| {
 				let persistent_metadata = &metadata.persistent_metadata;
 				(
-					persistent_metadata.output_names.get(from).cloned().unwrap_or_default(),
-					persistent_metadata.output_descriptions.get(from).cloned().unwrap_or_default(),
+					persistent_metadata.export_names.get(from).cloned().unwrap_or_default(),
+					persistent_metadata.export_descriptions.get(from).cloned().unwrap_or_default(),
 				)
 			})
 			.unwrap_or_default();

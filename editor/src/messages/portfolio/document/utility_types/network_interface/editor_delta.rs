@@ -1,4 +1,4 @@
-use super::storage_metadata::position_from_runtime;
+use super::storage_metadata::{input_metadata_entry_from_runtime, position_from_runtime};
 use super::{DocumentNodeMetadata, DocumentNodePersistentMetadata, LayerPosition, NodePosition, NodeTypePersistentMetadata};
 use super::{InputMetadata, InputPersistentMetadata};
 use document_graph_storage::attr::network as network_attr;
@@ -80,6 +80,9 @@ pub enum NetworkMetadataChange {
 	Reference(Option<String>),
 	/// The whole order, since the encoding is one array-valued attribute rather than a slot each.
 	PinnedOrder(Vec<NodeId>),
+	ImportMetadata(Vec<InputMetadata>),
+	ExportNames(Vec<String>),
+	ExportDescriptions(Vec<String>),
 }
 
 pub struct ConstructedOps {
@@ -279,6 +282,9 @@ impl EditorDelta {
 							value: (!stored.is_empty()).then(|| serialize_attribute(network_attr::PINNED_ORDER, &stored)).transpose()?,
 						}
 					}
+					NetworkMetadataChange::ImportMetadata(import_metadata) => import_metadata_delta(import_metadata)?,
+					NetworkMetadataChange::ExportNames(export_names) => export_names_delta(export_names)?,
+					NetworkMetadataChange::ExportDescriptions(export_descriptions) => export_descriptions_delta(export_descriptions)?,
 				};
 
 				ops.push(RegistryDelta::ChangeNetworkAttribute {
@@ -294,6 +300,29 @@ impl EditorDelta {
 
 fn serialize_attribute<T: serde::Serialize>(key: &str, value: &T) -> Result<Value, ConversionError> {
 	document_graph_storage::to_value(value).map_err(|error| ConversionError::SerializationError(format!("{key}: {error:?}")))
+}
+
+fn import_metadata_delta(import_metadata: &[InputMetadata]) -> Result<AttributeDelta, ConversionError> {
+	let entries: Vec<_> = import_metadata.iter().map(input_metadata_entry_from_runtime).collect();
+	Ok(AttributeDelta {
+		key: network_attr::IMPORT_METADATA.to_string(),
+		value: (!entries.is_empty()).then(|| serialize_attribute(network_attr::IMPORT_METADATA, &entries)).transpose()?,
+	})
+}
+
+fn export_names_delta(export_names: &[String]) -> Result<AttributeDelta, ConversionError> {
+	Ok(AttributeDelta {
+		key: network_attr::EXPORT_NAMES.to_string(),
+		value: (!export_names.is_empty()).then(|| serialize_attribute(network_attr::EXPORT_NAMES, &export_names)).transpose()?,
+	})
+}
+
+fn export_descriptions_delta(export_descriptions: &[String]) -> Result<AttributeDelta, ConversionError> {
+	let any_description = export_descriptions.iter().any(|description| !description.is_empty());
+	Ok(AttributeDelta {
+		key: network_attr::EXPORT_DESCRIPTIONS.to_string(),
+		value: any_description.then(|| serialize_attribute(network_attr::EXPORT_DESCRIPTIONS, &export_descriptions)).transpose()?,
+	})
 }
 
 /// The attribute writes one metadata field makes, as the whole-document encoder would write them.
@@ -525,6 +554,15 @@ fn construct_metadata_snapshot(
 						value: target,
 					},
 				});
+			}
+
+			let persistent_metadata = &network_metadata.persistent_metadata;
+			for delta in [
+				import_metadata_delta(&persistent_metadata.import_metadata)?,
+				export_names_delta(&persistent_metadata.export_names)?,
+				export_descriptions_delta(&persistent_metadata.export_descriptions)?,
+			] {
+				ops.push(RegistryDelta::ChangeNetworkAttribute { id: network_id, delta });
 			}
 
 			// Restated alongside the reference, since a rebuild clears the network's attributes and the

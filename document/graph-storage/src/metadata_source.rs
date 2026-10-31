@@ -4,7 +4,7 @@
 //! `network_path` is the chain of runtime local `NodeId`s from the root down to (but not including)
 //! the queried node, matching `NodeNetworkInterface::node_metadata(node_id, network_path)`.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use core_types::uuid::NodeId as RuntimeNodeId;
 
@@ -45,17 +45,20 @@ pub struct NetworkMetadataEntry {
 	pub reference: Option<String>,
 	/// The display order of the network's pinned nodes.
 	pub pinned_order: Vec<RuntimeNodeId>,
+	pub import_metadata: Vec<InputMetadataEntry>,
+	pub export_names: Vec<String>,
+	pub export_descriptions: Vec<String>,
 }
 
 /// Per-input editor metadata. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
 /// unset (`""` on the runtime side) is distinguishable from an explicit empty string.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadataEntry {
 	pub input_name: Option<String>,
 	pub input_description: Option<String>,
 	pub widget_override: Option<String>,
 	/// Reassembled from `ui::input_data::<sub_key>` attributes.
-	pub input_data: HashMap<String, Value>,
+	pub input_data: BTreeMap<String, Value>,
 }
 
 /// Editor-side metadata source. Methods default to "no data" so implementors only override what
@@ -112,6 +115,18 @@ pub trait NodeMetadataSource {
 
 	/// The display order of the network's pinned nodes.
 	fn pinned_order(&self, _network_path: &[RuntimeNodeId]) -> Vec<RuntimeNodeId> {
+		Vec::new()
+	}
+
+	fn import_metadata(&self, _network_path: &[RuntimeNodeId]) -> Vec<InputMetadataEntry> {
+		Vec::new()
+	}
+
+	fn export_names(&self, _network_path: &[RuntimeNodeId]) -> Vec<String> {
+		Vec::new()
+	}
+
+	fn export_descriptions(&self, _network_path: &[RuntimeNodeId]) -> Vec<String> {
 		Vec::new()
 	}
 }

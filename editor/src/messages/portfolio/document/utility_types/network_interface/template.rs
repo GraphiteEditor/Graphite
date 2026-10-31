@@ -121,9 +121,9 @@ impl NodeTemplate {
 		let DocumentNodePersistentMetadata {
 			storage_id: _,
 			display_name,
-			input_metadata,
-			output_names,
-			output_descriptions,
+			mut input_metadata,
+			mut output_names,
+			mut output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
@@ -133,6 +133,11 @@ impl NodeTemplate {
 		let implementation = match implementation {
 			DocumentNodeImplementation::Network(network) => {
 				let mut nested_persistent = network_metadata.map(|metadata| metadata.persistent_metadata).unwrap_or_default();
+				if !nested_persistent.import_metadata.is_empty() || !nested_persistent.export_names.is_empty() {
+					input_metadata = std::mem::take(&mut nested_persistent.import_metadata);
+					output_names = std::mem::take(&mut nested_persistent.export_names);
+					output_descriptions = std::mem::take(&mut nested_persistent.export_descriptions);
+				}
 
 				// Pair each nested node with its metadata by ID, recursively
 				let mut nodes = HashMap::with_capacity(network.nodes.len());
@@ -182,17 +187,29 @@ impl NodeTemplate {
 			skip_deduplication,
 			display_name,
 			mut input_metadata,
-			output_names,
-			output_descriptions,
+			mut output_names,
+			mut output_descriptions,
 			locked,
 			pinned,
 			node_type_metadata,
 		} = self;
 
-		let (implementation, network_metadata) = implementation.into_parts();
+		let (implementation, mut network_metadata) = implementation.into_parts();
 
 		// The stored metadata invariant requires exactly one input metadata entry per input
 		input_metadata.resize_with(inputs.len(), InputMetadata::default);
+
+		if let Some(network_metadata) = &mut network_metadata {
+			let persistent_metadata = &mut network_metadata.persistent_metadata;
+			persistent_metadata.import_metadata = std::mem::take(&mut input_metadata);
+			persistent_metadata.export_names = std::mem::take(&mut output_names);
+			persistent_metadata.export_descriptions = std::mem::take(&mut output_descriptions);
+		}
+		if matches!(implementation, DocumentNodeImplementation::Definition(_)) {
+			input_metadata.clear();
+			output_names.clear();
+			output_descriptions.clear();
+		}
 
 		let document_node = DocumentNode {
 			inputs,
@@ -281,6 +298,9 @@ impl NodeTemplateImplementation {
 						selection_undo_history: Default::default(),
 						selection_redo_history: Default::default(),
 						definitions: Default::default(),
+						import_metadata: Default::default(),
+						export_names: Default::default(),
+						export_descriptions: Default::default(),
 					},
 					transient_metadata: Default::default(),
 				};
