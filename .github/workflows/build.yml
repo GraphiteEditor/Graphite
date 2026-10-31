@@ -47,20 +47,24 @@ on:
 jobs:
   web:
     if: github.event_name == 'push' || inputs.web
-    runs-on: [self-hosted, target/wasm]
+    # Fork code always runs on GitHub's own runners, while the `LINUX_RUNNER` repo variable can point the rest at another provider
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || (inputs.checkout_repo && inputs.checkout_repo != github.repository)) && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: write
       deployments: write
       pull-requests: write
     env:
       CARGO_TERM_COLOR: always
-      RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
-      # sccache deletes the oldest files in its folder once past its size cap, so it gets a folder apart from Binaryen
-      SCCACHE_DIR: /var/lib/github-actions/.cache/sccache
-      # NOTICE: keep these tool versions in sync with the other jobs in this file, `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      # Only master pushes write to the compilation cache, so unmerged code can't plant entries that later master builds reuse
+      SCCACHE_GHA_RW_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') && 'READ_WRITE' || 'READ_ONLY' }}
+      # NOTICE: keep these tool versions in sync with the other jobs in this file, `check.yml` (sccache), `.devcontainer/devcontainer.json`, `.nix/dev.nix` and `.nix/pkgs/graphite.nix` (wasm-bindgen-cli), `tools/cargo-run/src/requirements.rs` (wasm-bindgen-cli, cargo-about), `tools/cargo-run/src/requirements/wasm_opt.rs` (Binaryen), and the `wasm-bindgen` crate in `Cargo.toml`
+      SCCACHE_VERSION: "v0.19.0"
       WASM_BINDGEN_CLI_VERSION: "0.2.127"
       BINARYEN_VERSION: "130"
+      CARGO_ABOUT_VERSION: "0.9.2"
     steps:
       - name: 📥 Clone repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -82,7 +86,12 @@ jobs:
           rustflags: ""
           target: wasm32-unknown-unknown
 
-      - name: 🚧 Install wasm-bindgen-cli and Binaryen wasm-opt
+      - name: 📦 Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: ${{ env.SCCACHE_VERSION }}
+
+      - name: 🚧 Install wasm-bindgen-cli, Binaryen wasm-opt, and cargo-about
         run: |
           # Extracts into a temporary folder first so a cancelled download can't leave a truncated binary that later runs mistake for a finished install
           install_release_archive() {
@@ -107,6 +116,12 @@ jobs:
           fi
           echo "$BINARYEN_DIR/bin" >> "$GITHUB_PATH"
 
+          CARGO_ABOUT_DIR="$HOME/.cache/cargo-about-$CARGO_ABOUT_VERSION"
+          if [ ! -x "$CARGO_ABOUT_DIR/cargo-about" ]; then
+            install_release_archive "https://github.com/EmbarkStudios/cargo-about/releases/download/$CARGO_ABOUT_VERSION/cargo-about-$CARGO_ABOUT_VERSION-x86_64-unknown-linux-musl.tar.gz" "$CARGO_ABOUT_DIR"
+          fi
+          echo "$CARGO_ABOUT_DIR" >> "$GITHUB_PATH"
+
       - name: 🔀 Choose production deployment environment and insert template
         id: production-env
         if: github.event_name == 'push'
@@ -127,7 +142,7 @@ jobs:
           NODE_ENV: production
           # Split the Wasm binary to fit Cloudflare Pages' file size limit (see `wasmSplitting` in `frontend/vite.config.ts`)
           SPLIT_WASM: "1"
-        run: mold -run cargo run build web${{ inputs.debug && ' debug' || '' }}
+        run: cargo run build web${{ inputs.debug && ' debug' || '' }}
 
       - name: 📤 Publish to Cloudflare Pages
         if: inputs.merge_queue == false
@@ -299,7 +314,7 @@ jobs:
           cd frontend
           npm run check
 
-  # Runs on a GitHub-hosted runner to keep the self-hosted one free for web builds
+  # A job of its own so its native compile doesn't delay the web build and deploy
   code-docs:
     if: github.event_name == 'push' && github.ref != 'refs/tags/latest-stable'
     runs-on: ubuntu-latest
@@ -325,7 +340,7 @@ jobs:
 
   windows:
     if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.windows
-    runs-on: windows-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || (inputs.checkout_repo && inputs.checkout_repo != github.repository)) && 'windows-latest' || vars.WINDOWS_RUNNER || 'windows-latest' }}
     permissions:
       contents: read
       id-token: write
@@ -535,7 +550,7 @@ jobs:
 
   mac:
     if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.mac
-    runs-on: macos-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || (inputs.checkout_repo && inputs.checkout_repo != github.repository)) && 'macos-latest' || vars.MACOS_RUNNER || 'macos-latest' }}
     permissions:
       contents: read
       pull-requests: write
@@ -741,7 +756,7 @@ jobs:
 
   linux:
     if: (github.event_name == 'push' && github.ref != 'refs/tags/latest-stable') || inputs.linux
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event.pull_request.head.repo.fork || (inputs.checkout_repo && inputs.checkout_repo != github.repository)) && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: write
