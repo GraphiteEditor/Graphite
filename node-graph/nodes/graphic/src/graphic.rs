@@ -1,7 +1,9 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
-use core_types::{ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
+use core_types::list::{AttributeTypeConflictError, AttributeValueDyn, Item, List, ListDyn, NodeIdPath, implicit_default};
+use core_types::{
+	ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl, descriptor,
+};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicList, is_lone_anonymous_leaf};
 use graphic_types::{Artboard, Vector};
@@ -560,6 +562,14 @@ fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath
 	Item::new_from_element(NodeIdPath(node_path.into_iter().take(len.saturating_sub(1)).collect()))
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum AttributeTypeError {
+	#[error("The \"{name}\" attribute holds {held} values, not {requested}")]
+	WrongType { name: String, held: String, requested: String },
+	#[error(transparent)]
+	Conflict(#[from] AttributeTypeConflictError),
+}
+
 /// Sets a named attribute on the input list, computing one value per item via the value-producing input. That input
 /// is evaluated once per item, with the item's index and the item itself (as a list containing only that item,
 /// passed as a vararg) provided via context, so the upstream pipeline can return a different value per item that may
@@ -615,14 +625,8 @@ fn read_attribute_vector(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<Vector> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Vector>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+) -> Result<List<Vector>, AttributeTypeError> {
+	read_list_attribute(&content, name.element())
 }
 
 /// Reads a named `Number` or `Integer` attribute from the input list, outputting each value as an element of a new `Number[]`.
@@ -633,15 +637,16 @@ fn read_attribute_number(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<f64> {
+) -> Result<List<f64>, AttributeTypeError> {
 	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let value = content.attribute::<f64>(&name, index).copied().or_else(|| content.attribute::<i64>(&name, index).map(|v| *v as f64));
-		let Some(value) = value else { continue };
-		result.push(Item::new_from_element(value));
+	if content.attribute_type(&name) == Some(descriptor!(i64)) {
+		return Ok((0..content.len())
+			.filter_map(|index| content.attribute::<i64>(&name, index))
+			.map(|value| Item::new_from_element(*value as f64))
+			.collect());
 	}
-	result
+
+	read_attribute(&content, &name)
 }
 
 /// Reads a named `Bool` attribute from the input list, outputting each value as an element of a new `Bool[]`.
@@ -652,14 +657,8 @@ fn read_attribute_bool(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<bool> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<bool>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<bool>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `String` attribute from the input list, outputting each value as an element of a new `String[]`.
@@ -670,14 +669,8 @@ fn read_attribute_string(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<String> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<String>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+) -> Result<List<String>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `Transform` attribute from the input list, outputting each value as an element of a new `Transform[]`.
@@ -688,14 +681,8 @@ fn read_attribute_transform(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<DAffine2> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<DAffine2>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<DAffine2>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `Color[]`.
@@ -706,14 +693,8 @@ fn read_attribute_color(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<Color> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Color>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<Color>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `BlendMode[]`.
@@ -724,14 +705,8 @@ fn read_attribute_blend_mode(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<BlendMode> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<BlendMode>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<BlendMode>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
@@ -742,14 +717,8 @@ fn read_attribute_gradient_form(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<GradientForm> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientForm>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<GradientForm>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
@@ -760,14 +729,8 @@ fn read_attribute_gradient_spread(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<GradientSpread> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpread>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<GradientSpread>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
@@ -778,14 +741,8 @@ fn read_attribute_gradient_space(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<GradientSpace> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientSpace>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<GradientSpace>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `GradientInterpolation` attribute from the input list, outputting each value as an element of a new `GradientInterpolation[]`.
@@ -796,14 +753,8 @@ fn read_attribute_gradient_interpolation(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<GradientInterpolation> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientInterpolation>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<GradientInterpolation>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
@@ -814,14 +765,8 @@ fn read_attribute_gradient_hue_direction(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<GradientHueDirection> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<GradientHueDirection>(&name, index) else { continue };
-		result.push(Item::new_from_element(*value));
-	}
-	result
+) -> Result<List<GradientHueDirection>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `Gradient` attribute from the input list, outputting each value as an element of a new `Gradient[]`.
@@ -832,14 +777,8 @@ fn read_attribute_gradient_stops(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<Gradient> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Gradient>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+) -> Result<List<Gradient>, AttributeTypeError> {
+	read_list_attribute(&content, name.element())
 }
 
 /// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
@@ -850,14 +789,8 @@ fn read_attribute_artboard(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<Artboard> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Artboard>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
-	}
-	result
+) -> Result<List<Artboard>, AttributeTypeError> {
+	read_attribute(&content, name.element())
 }
 
 /// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
@@ -868,14 +801,41 @@ fn read_attribute_raster(
 	/// The attribute name (key) to read.
 	#[constant]
 	name: Item<String>,
-) -> List<Raster<CPU>> {
-	let name = name.into_element();
-	let mut result = List::with_capacity(content.len());
-	for index in 0..content.len() {
-		let Some(value) = content.attribute::<Raster<CPU>>(&name, index) else { continue };
-		result.push(Item::new_from_element(value.clone()));
+) -> Result<List<Raster<CPU>>, AttributeTypeError> {
+	read_list_attribute(&content, name.element())
+}
+
+/// Reads the named attribute's value for every item, reading an attribute no item has as each item's implicit default.
+fn read_attribute<T: Clone + Default + 'static>(content: &ListDyn, name: &str) -> Result<List<T>, AttributeTypeError> {
+	let requested = descriptor!(T);
+	if let Some(held) = content.attribute_type(name)
+		&& held != requested
+	{
+		return Err(AttributeTypeError::WrongType {
+			name: name.to_string(),
+			held: held.to_string(),
+			requested: requested.to_string(),
+		});
 	}
-	result
+
+	Ok((0..content.len())
+		.map(|index| Item::new_from_element(content.attribute::<T>(name, index).cloned().unwrap_or_else(|| implicit_default(name))))
+		.collect())
+}
+
+/// Reads the named attribute like [`read_attribute`], joining the lists of an attribute holding one list per item, as Write Attribute stores a list.
+fn read_list_attribute<T: Clone + Default + 'static>(content: &ListDyn, name: &str) -> Result<List<T>, AttributeTypeError> {
+	if content.attribute_type(name) != Some(descriptor!(List<T>)) {
+		return read_attribute(content, name);
+	}
+
+	let mut result = List::new();
+	for list in (0..content.len()).filter_map(|index| content.attribute::<List<T>>(name, index)) {
+		if let Some(conflict) = result.extend(list.clone()) {
+			return Err(conflict.into());
+		}
+	}
+	Ok(result)
 }
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
@@ -919,11 +879,12 @@ fn extend<T: Send + Clone>(
 		List<Stroke>,
 	)]
 	new: List<T>,
-) -> List<T> {
+) -> Result<List<T>, (List<T>, AttributeTypeConflictError)> {
 	let mut base = base;
-	base.extend(new);
-
-	base
+	match base.extend(new) {
+		Some(conflict) => Err((base, conflict)),
+		None => Ok(base),
+	}
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -937,7 +898,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 	#[implementations(List<Artboard>, List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>)]
 	new: List<T>,
 	nested_node_path: Item<NodeIdPath>,
-) -> List<T> {
+) -> Result<List<T>, (List<T>, AttributeTypeConflictError)> {
 	// Drop this internal node's own trailing entry so the stamped path ends at the user-facing parent layer-style node (which encapsulates it)
 	let nested_node_path = nested_node_path.into_element().0;
 	let layer_path = {
@@ -946,12 +907,18 @@ fn legacy_layer_extend<T: Send + Clone>(
 	};
 
 	let mut base = base;
+	let mut conflict = None;
 	for mut row in new.into_iter() {
 		row.set_attribute(ATTR_EDITOR_LAYER_PATH, layer_path.clone());
-		base.push(row);
+		if let Some(row_conflict) = base.push(row) {
+			conflict.get_or_insert(row_conflict);
+		}
 	}
 
-	base
+	match conflict {
+		Some(conflict) => Err((base, conflict)),
+		None => Ok(base),
+	}
 }
 
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
@@ -985,11 +952,11 @@ fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("Graphic"), icon("NodeFlattenGraphic"))]
-fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
+fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> Result<List<Graphic>, (List<Graphic>, AttributeTypeConflictError)> {
 	let fully_flatten = fully_flatten.into_element();
 
 	// TODO: Avoid mutable reference, instead return a new List<Graphic>?
-	fn flatten_list(output_graphic_list: &mut List<Graphic>, current_graphic_list: List<Graphic>, fully_flatten: bool, recursion_depth: usize) {
+	fn flatten_list(output_graphic_list: &mut List<Graphic>, conflict: &mut Option<AttributeTypeConflictError>, current_graphic_list: List<Graphic>, fully_flatten: bool, recursion_depth: usize) {
 		for index in 0..current_graphic_list.len() {
 			let Some(current_element) = current_graphic_list.element(index) else { continue };
 			let current_element = current_element.clone();
@@ -1011,27 +978,34 @@ fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool
 						*graphic_transform = current_transform * *graphic_transform;
 					}
 
-					flatten_list(output_graphic_list, current_element, fully_flatten, recursion_depth + 1);
+					flatten_list(output_graphic_list, conflict, current_element, fully_flatten, recursion_depth + 1);
 				}
 				// Push any leaf element: a group beyond the recursion depth, or any non-group variant
 				_ => {
 					let attributes = current_graphic_list.clone_item_attributes(index);
-					output_graphic_list.push(Item::from_parts(current_element, attributes));
+					if let Some(item_conflict) = output_graphic_list.push(Item::from_parts(current_element, attributes)) {
+						conflict.get_or_insert(item_conflict);
+					}
 				}
 			}
 		}
 	}
 
 	let mut output = List::new();
-	flatten_list(&mut output, content, fully_flatten, 0);
+	let mut conflict = None;
+	flatten_list(&mut output, &mut conflict, content, fully_flatten, 0);
 
-	output
+	match conflict {
+		Some(conflict) => Err((output, conflict)),
+		None => Ok(output),
+	}
 }
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Graphic"), icon("NodeFlattenVector"))]
-pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
-	let mut output: List<Vector> = content.clone().into_flattened_list();
+pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> Result<List<Vector>, (List<Vector>, AttributeTypeConflictError)> {
+	let mut flattened = content.clone().try_into_flattened_list();
+	let (Ok(output) | Err((output, _))) = &mut flattened;
 
 	// TODO: Replace this snapshot hack with per-layer metadata driven by each layer's Monitor node.
 	// TODO: Flattening here erases the upstream `List<Graphic>` hierarchy that editor metadata collection walks
@@ -1057,13 +1031,15 @@ pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 		output.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, merged_layers);
 	}
 
-	output
+	flattened
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum FlattenRasterError {
 	#[error("GPU rasters such as brush strokes can't be flattened yet, so they were left out")]
 	GpuRasters,
+	#[error(transparent)]
+	AttributeTypeConflict(#[from] AttributeTypeConflictError),
 }
 
 /// Whether the content holds GPU rasters, which flattening to CPU rasters leaves out.
@@ -1081,30 +1057,34 @@ fn has_gpu_raster(graphic: &Graphic) -> bool {
 #[node_macro::node(category("Graphic"), icon("NodeFlattenRaster"))]
 fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> Result<List<Raster<CPU>>, (List<Raster<CPU>>, FlattenRasterError)> {
 	let has_gpu_rasters = content.iter_element_values().any(has_gpu_raster);
-	let rasters = content.into_flattened_list();
+	let flattened = content.try_into_flattened_list();
 
 	if has_gpu_rasters {
+		let rasters = flattened.unwrap_or_else(|(rasters, _)| rasters);
 		return Err((rasters, FlattenRasterError::GpuRasters));
 	}
-	Ok(rasters)
+	flattened.map_err(|(rasters, conflict)| (rasters, conflict.into()))
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("Graphic"), icon("NodeFlattenColor"))]
-fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
-	content.into_flattened_list()
+fn flatten_color(_: impl Ctx, content: List<Graphic>) -> Result<List<Color>, (List<Color>, AttributeTypeConflictError)> {
+	content.try_into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("Graphic"), icon("NodeFlattenGradient"))]
-fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
-	content.into_flattened_list()
+fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> Result<List<Gradient>, (List<Gradient>, AttributeTypeConflictError)> {
+	content.try_into_flattened_list()
 }
 
 /// Constructs a gradient from a `Color[]`, where each color becomes a gradient stop. A `position` attribute on the colors places their stops along the ramp and a `midpoint` attribute skews each transition, while colors carrying neither are distributed evenly across the 0 to 1 range.
 #[node_macro::node(category("Gradient"), icon("NodeColorsToGradient"), name("Colors to Gradient"))]
-fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Item<Gradient> {
-	Item::new_from_element(Gradient::from(colors.into_flattened_list::<Color>()))
+fn colors_to_gradient(_: impl Ctx, colors: List<Graphic>) -> Result<Item<Gradient>, (Item<Gradient>, AttributeTypeConflictError)> {
+	colors
+		.try_into_flattened_list::<Color>()
+		.map(|colors| Item::new_from_element(Gradient::from(colors)))
+		.map_err(|(colors, conflict)| (Item::new_from_element(Gradient::from(colors)), conflict))
 }
 
 /// Unwraps a gradient into a `Color[]` of its stops, keeping any `position` and `midpoint` attributes that place them along the ramp. Attributes belonging to the gradient as a whole (like spread and interpolation), rather than its individual color stops, are not preserved.
@@ -1116,6 +1096,7 @@ fn gradient_to_colors(_: impl Ctx, gradient: Item<Gradient>) -> List<Color> {
 #[cfg(test)]
 mod test {
 	use super::*;
+	use core_types::ATTR_OPACITY;
 
 	fn list_of<T>(elements: impl IntoIterator<Item = T>) -> List<T> {
 		elements.into_iter().map(Item::new_from_element).collect()
@@ -1204,6 +1185,72 @@ mod test {
 		assert_eq!(mirrored(String::new(), ReferencePoint::Center).unwrap().len(), 2);
 	}
 
+	fn with_values<U: Clone + Send + Sync + Default + std::fmt::Debug + PartialEq + CacheHash + 'static>(key: &str, values: Vec<U>) -> ListDyn {
+		let mut list = List::new_from_elements(vec![(); values.len()]);
+		list.set_attribute_values(key, values);
+		ListDyn::from(list)
+	}
+
+	#[test]
+	fn reading_a_missing_attribute_gives_each_item_its_implicit_default() {
+		let plain = ListDyn::from(List::new_from_elements(vec![(), ()]));
+
+		assert_eq!(elements(&read_attribute_number((), plain.clone(), Item::new_from_element(ATTR_OPACITY.to_string())).unwrap()), [1., 1.]);
+		assert_eq!(elements(&read_attribute_number((), plain.clone(), Item::new_from_element("misspelled".to_string())).unwrap()), [0., 0.]);
+		assert_eq!(
+			elements(&read_attribute_transform((), plain, Item::new_from_element(ATTR_TRANSFORM.to_string())).unwrap()),
+			[DAffine2::IDENTITY; 2]
+		);
+	}
+
+	#[test]
+	fn reading_an_attribute_as_another_type_fails() {
+		let numbers = with_values("tag", vec![1_f64, 2.]);
+		let error = read_attribute_bool((), numbers.clone(), Item::new_from_element("tag".to_string())).unwrap_err();
+		assert_eq!(error.to_string(), "The \"tag\" attribute holds Number values, not Bool");
+		assert_eq!(
+			elements(&read_attribute_number((), with_values("tag", vec![3_i64]), Item::new_from_element("tag".to_string())).unwrap()),
+			[3.]
+		);
+	}
+
+	#[test]
+	fn reading_a_list_attribute_joins_the_lists() {
+		let vectors = with_values("shapes", vec![list_of([Vector::default(), Vector::default()]), list_of([Vector::default()])]);
+		assert_eq!(read_attribute_vector((), vectors, Item::new_from_element("shapes".to_string())).unwrap().len(), 3);
+
+		let texts = with_values("words", vec![list_of(["a".to_string()])]);
+		let error = read_attribute_string((), texts, Item::new_from_element("words".to_string())).unwrap_err();
+		assert_eq!(error.to_string(), "The \"words\" attribute holds String[] values, not String");
+	}
+
+	#[test]
+	fn reading_list_attributes_with_differently_typed_attributes_fails() {
+		let mut first = list_of([Vector::default()]);
+		first.set_attribute("tag", 0, 5_f64);
+		let mut second = list_of([Vector::default()]);
+		second.set_attribute("tag", 0, "text".to_string());
+
+		let vectors = with_values("shapes", vec![first, second]);
+		let error = read_attribute_vector((), vectors, Item::new_from_element("shapes".to_string())).unwrap_err();
+		assert_eq!(error.to_string(), "The \"tag\" attribute holds different types of values in the lists being combined");
+	}
+
+	#[test]
+	fn extending_with_an_attribute_of_another_type_falls_back_with_its_name() {
+		let mut base = list_of([1., 2.]);
+		base.set_attribute("tag", 0, 5_f64);
+		let mut new = list_of([3.]);
+		new.set_attribute("tag", 0, "text".to_string());
+
+		let Err((extended, conflict)) = extend((), base, new) else {
+			panic!("expected the conflicting tag to be reported")
+		};
+		assert_eq!(elements(&extended), [1., 2., 3.]);
+		assert_eq!(extended.attribute::<f64>("tag", 2), Some(&0.));
+		assert_eq!(conflict.name, "tag");
+	}
+
 	#[test]
 	fn shift_wraps_items_around() {
 		let forward = shift((), list_of([1., 2., 3., 4.]), Item::new_from_element(1_i64), Item::new_from_element(true));
@@ -1285,7 +1332,7 @@ mod test {
 		let colors = gradient_to_colors((), Item::new_from_element(gradient.clone()));
 		assert_eq!(elements(&colors), [Color::RED, Color::GREEN, Color::BLUE], "every stop should come out as its color");
 
-		let restored = colors_to_gradient((), embed_colors(colors));
+		let restored = colors_to_gradient((), embed_colors(colors)).unwrap();
 		assert_eq!(
 			restored.element(),
 			&gradient,
@@ -1298,7 +1345,7 @@ mod test {
 		let gradient = Gradient::from(vec![Color::RED, Color::GREEN, Color::BLUE]);
 		assert!(!gradient.has_position_attribute(), "even spacing is stored as the attribute's absence");
 
-		let restored = colors_to_gradient((), embed_colors(gradient_to_colors((), Item::new_from_element(gradient.clone()))));
+		let restored = colors_to_gradient((), embed_colors(gradient_to_colors((), Item::new_from_element(gradient.clone())))).unwrap();
 		assert_eq!(restored.element(), &gradient, "a default ramp should round trip without gaining attributes it never had");
 	}
 }
