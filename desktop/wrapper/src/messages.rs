@@ -40,7 +40,7 @@ pub enum DesktopFrontendMessage {
 	WindowUpdateDirectInput {
 		enabled: bool,
 	},
-	UpdateOverlays(Box<wgpu_executor::VelloSceneBuilder>),
+	UpdateOverlays(Box<wgpu_executor::VelloSceneBuilder<'static>>),
 	PersistenceUpdatePreferences {
 		preferences: Preferences,
 	},

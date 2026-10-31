@@ -1,18 +1,17 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use crate::parallel_rows::fill_rows;
 use core_types::ATTR_TRANSFORM;
 use core_types::color::Color;
-use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
-use core_types::context::{Ctx, ExtractFootprint};
+use core_types::color::{Alpha, AlphaMut, LinearChannel, Luminance, RGBMut};
+use core_types::context::Ctx;
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
 use core_types::transform::Transform;
 use dyn_any::DynAny;
-use fastnoise_lite;
-use glam::{DAffine2, DVec2, UVec2, Vec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graphene_resource::Resource;
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
+use graphic_types::generator::{Generator, NoiseSettings};
+use raster_kernels::evaluate_raster_effects;
+use raster_types::parallel_rows::fill_rows;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 use raster_types::{Image, ImageError};
@@ -52,51 +51,68 @@ fn channels_to_image(
 ) -> Result<Item<Raster<CPU>>, SizeMismatchError> {
 	// An unconnected channel arrives as the default zero-sized raster, which counts as absent
 	let present = |channel: Item<Raster<CPU>>| (channel.element().width > 0 && channel.element().height > 0).then_some(channel);
-	let (red, green, blue, alpha) = (present(red), present(green), present(blue), present(alpha));
-
-	// Take this item's transform and blending attributes from the first present channel
-	let Some(attributes) = [&red, &green, &blue, &alpha].iter().find_map(|channel| channel.as_ref()).map(|channel| channel.attributes().clone()) else {
-		return Ok(Item::default());
-	};
+	let channels = [red, green, blue, alpha].map(present);
 
 	// All present channels must share the same dimensions
-	let channel_dimensions = [("Red", &red), ("Green", &green), ("Blue", &blue), ("Alpha", &alpha)]
-		.map(|(name, channel)| channel.as_ref().map(|channel| (name, UVec2::new(channel.element().width, channel.element().height))));
-	let Some(&(first, first_size)) = channel_dimensions.iter().flatten().next() else {
+	let dimensions = |channel: &Item<Raster<CPU>>| UVec2::new(channel.element().width, channel.element().height);
+	let mut present_channels = ["Red", "Green", "Blue", "Alpha"]
+		.into_iter()
+		.zip(&channels)
+		.filter_map(|(name, channel)| Some((name, channel.as_ref()?)));
+	let Some((first, first_channel)) = present_channels.next() else {
 		return Ok(Item::default());
 	};
-	if let Some(&(second, second_size)) = channel_dimensions.iter().flatten().find(|&&(_, size)| size != first_size) {
+	let (first_size, transform) = (dimensions(first_channel), first_channel.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM));
+	if let Some((second, second_channel)) = present_channels.find(|(_, channel)| dimensions(channel) != first_size) {
 		return Err(SizeMismatchError {
 			first,
 			first_size,
 			second,
-			second_size,
+			second_size: dimensions(second_channel),
 		});
 	}
 	let (width, height) = (first_size.x, first_size.y);
 
+	// A channel's effects grow it by the margin they cast past its edges, so every channel is placed within the widest margin
+	let channels = channels.map(|channel| channel.map(evaluate_raster_effects));
+	let margin = |channel: &Item<Raster<CPU>>| ((channel.element().width - width) / 2, (channel.element().height - height) / 2);
+	let (margin_x, margin_y) = channels
+		.iter()
+		.flatten()
+		.map(margin)
+		.fold((0, 0), |(x, y), (channel_x, channel_y)| (x.max(channel_x), y.max(channel_y)));
+
+	// Take this item's blending attributes from the first present channel, whose effects are carried out by now
+	let Some(mut attributes) = channels.iter().flatten().next().map(|channel| channel.attributes().clone()) else {
+		return Ok(Item::default());
+	};
+	let size = DVec2::new(width as f64, height as f64);
+	let unit_margin = DVec2::new(margin_x as f64, margin_y as f64) / size;
+	attributes.insert(
+		ATTR_TRANSFORM,
+		transform * DAffine2::from_translation(-unit_margin) * DAffine2::from_scale(DVec2::ONE + 2. * unit_margin),
+	);
+
+	// A channel's value at a pixel of the output, with nothing past its own edges, or `None` if the channel is absent
+	let value = |channel: &Option<Item<Raster<CPU>>>, x: u32, y: u32| {
+		channel.as_ref().map(|channel| {
+			let (channel_margin_x, channel_margin_y) = margin(channel);
+			let (x, y) = ((x + channel_margin_x).checked_sub(margin_x), (y + channel_margin_y).checked_sub(margin_y));
+			x.zip(y).and_then(|(x, y)| channel.element().get_pixel(x, y)).map_or(0., |pixel| pixel.l().cast_linear_channel())
+		})
+	};
+
 	// Set each output pixel's channels from the present inputs, defaulting absent color channels to 0 and absent alpha to 1
-	let mut image = Image::new(width, height, Color::TRANSPARENT);
+	let [red, green, blue, alpha] = &channels;
+	let mut image = Image::new(width + 2 * margin_x, height + 2 * margin_y, Color::TRANSPARENT);
 	for y in 0..image.height() {
 		for x in 0..image.width() {
 			let image_pixel = image.get_pixel_mut(x, y).unwrap();
 
-			match red.as_ref().and_then(|r| r.element().get_pixel(x, y)) {
-				Some(r) => image_pixel.set_red(r.l().cast_linear_channel()),
-				None => image_pixel.set_red(Channel::from_linear(0.)),
-			}
-			match green.as_ref().and_then(|g| g.element().get_pixel(x, y)) {
-				Some(g) => image_pixel.set_green(g.l().cast_linear_channel()),
-				None => image_pixel.set_green(Channel::from_linear(0.)),
-			}
-			match blue.as_ref().and_then(|b| b.element().get_pixel(x, y)) {
-				Some(b) => image_pixel.set_blue(b.l().cast_linear_channel()),
-				None => image_pixel.set_blue(Channel::from_linear(0.)),
-			}
-			match alpha.as_ref().and_then(|a| a.element().get_pixel(x, y)) {
-				Some(a) => image_pixel.set_alpha(a.l().cast_linear_channel()),
-				None => image_pixel.set_alpha(Channel::from_linear(1.)),
-			}
+			image_pixel.set_red(value(red, x, y).unwrap_or(0.));
+			image_pixel.set_green(value(green, x, y).unwrap_or(0.));
+			image_pixel.set_blue(value(blue, x, y).unwrap_or(0.));
+			image_pixel.set_alpha(value(alpha, x, y).unwrap_or(1.));
 		}
 	}
 
@@ -112,6 +128,9 @@ fn mask(
 	#[expose]
 	stencil: Item<Raster<CPU>>,
 ) -> Item<Raster<CPU>> {
+	let image = evaluate_raster_effects(image);
+	let stencil = evaluate_raster_effects(stencil);
+
 	// An absent stencil arrives as the default empty raster, leaving the image unmasked
 	if stencil.element().width == 0 || stencil.element().height == 0 {
 		return image;
@@ -151,6 +170,7 @@ fn mask(
 
 #[node_macro::node(category(""))]
 fn extend_image_to_bounds(_: impl Ctx, image: Item<Raster<CPU>>, bounds: Item<DAffine2>) -> Result<Item<Raster<CPU>>, (Item<Raster<CPU>>, ImageError)> {
+	let image = evaluate_raster_effects(image);
 	let bounds = *bounds.element();
 
 	let image_transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -233,9 +253,8 @@ fn image(
 #[node_macro::node(category("Raster"), icon("NodeNoisePattern"))]
 #[allow(clippy::too_many_arguments)]
 fn noise_pattern(
-	ctx: impl ExtractFootprint + Ctx,
+	_: impl Ctx,
 	_primary: (),
-	#[default(true)] clip: Item<bool>,
 	#[hard(0..)] seed: Item<i64>,
 	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_scale")]
 	#[default(10.)]
@@ -265,188 +284,66 @@ fn noise_pattern(
 	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
 	#[default(1.)]
 	cellular_jitter: Item<f64>,
-) -> Result<Item<Raster<CPU>>, ImageError> {
-	let (clip, seed, scale, domain_warp_amplitude) = (*clip.element(), *seed.element(), *scale.element(), *domain_warp_amplitude.element());
-	let (fractal_octaves, fractal_lacunarity, fractal_gain) = (*fractal_octaves.element(), *fractal_lacunarity.element(), *fractal_gain.element());
-	let (fractal_weighted_strength, fractal_ping_pong_strength, cellular_jitter) = (*fractal_weighted_strength.element(), *fractal_ping_pong_strength.element(), *cellular_jitter.element());
-	let (noise_type, domain_warp_type, fractal_type) = (noise_type.into_element(), domain_warp_type.into_element(), fractal_type.into_element());
-	let (cellular_distance_function, cellular_return_type) = (cellular_distance_function.into_element(), cellular_return_type.into_element());
-
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-
-	let mut size = viewport_bounds.size();
-	let mut offset = viewport_bounds.start;
-	if clip {
-		// TODO: Remove "clip" entirely (and its arbitrary 100x100 clipping square) once we have proper resolution-aware layer clipping
-		const CLIPPING_SQUARE_SIZE: f64 = 100.;
-		let image_bounds = Bbox::from_transform(DAffine2::from_scale(DVec2::splat(CLIPPING_SQUARE_SIZE))).to_axis_aligned_bbox();
-		let intersection = viewport_bounds.intersect(&image_bounds);
-
-		offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-		size = intersection.size();
-	}
-
-	// If the image would not be visible, return an empty image
-	if size.x <= 0. || size.y <= 0. {
-		return Ok(Item::default());
-	}
-
-	let transform = DAffine2::from_translation(offset) * DAffine2::from_scale(size);
-
-	let footprint_scale = footprint.scale();
-	let width = (size.x * footprint_scale.x) as u32;
-	let height = (size.y * footprint_scale.y) as u32;
-
-	// All
-	let mut image = Image::try_new(width, height, Color::from_luminance(0.5))?;
-	let mut noise = fastnoise_lite::FastNoiseLite::with_seed(seed as i32);
-	noise.set_frequency(Some(1. / (scale as f32).max(f32::EPSILON)));
-
-	// Domain Warp
-	let domain_warp_type = match domain_warp_type {
-		DomainWarpType::None => None,
-		DomainWarpType::OpenSimplex2 => Some(fastnoise_lite::DomainWarpType::OpenSimplex2),
-		DomainWarpType::OpenSimplex2Reduced => Some(fastnoise_lite::DomainWarpType::OpenSimplex2Reduced),
-		DomainWarpType::BasicGrid => Some(fastnoise_lite::DomainWarpType::BasicGrid),
+) -> Item<Generator> {
+	let settings = NoiseSettings {
+		seed: seed.into_element(),
+		scale: scale.into_element(),
+		noise_type: noise_type.into_element(),
+		domain_warp_type: domain_warp_type.into_element(),
+		domain_warp_amplitude: domain_warp_amplitude.into_element(),
+		fractal_type: fractal_type.into_element(),
+		fractal_octaves: fractal_octaves.into_element(),
+		fractal_lacunarity: fractal_lacunarity.into_element(),
+		fractal_gain: fractal_gain.into_element(),
+		fractal_weighted_strength: fractal_weighted_strength.into_element(),
+		fractal_ping_pong_strength: fractal_ping_pong_strength.into_element(),
+		cellular_distance_function: cellular_distance_function.into_element(),
+		cellular_return_type: cellular_return_type.into_element(),
+		cellular_jitter: cellular_jitter.into_element(),
 	};
-	let domain_warp_active = domain_warp_type.is_some();
-	noise.set_domain_warp_type(domain_warp_type);
-	noise.set_domain_warp_amp(Some(domain_warp_amplitude as f32));
 
-	// Fractal
-	let noise_type = match noise_type {
-		NoiseType::Perlin => fastnoise_lite::NoiseType::Perlin,
-		NoiseType::OpenSimplex2 => fastnoise_lite::NoiseType::OpenSimplex2,
-		NoiseType::OpenSimplex2S => fastnoise_lite::NoiseType::OpenSimplex2S,
-		NoiseType::Cellular => fastnoise_lite::NoiseType::Cellular,
-		NoiseType::ValueCubic => fastnoise_lite::NoiseType::ValueCubic,
-		NoiseType::Value => fastnoise_lite::NoiseType::Value,
-		NoiseType::WhiteNoise => {
-			// TODO: Generate in layer space, not viewport space
-
-			let mut rng = ChaCha8Rng::seed_from_u64(seed as u64);
-
-			for y in 0..height {
-				for x in 0..width {
-					let pixel = image.get_pixel_mut(x, y).unwrap();
-					let luminance = rng.random_range(0.0..1.) as f32;
-					*pixel = Color::from_luminance(luminance);
-				}
-			}
-
-			return Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform));
-		}
-	};
-	noise.set_noise_type(Some(noise_type));
-	let fractal_type = match fractal_type {
-		FractalType::None => fastnoise_lite::FractalType::None,
-		FractalType::FBm => fastnoise_lite::FractalType::FBm,
-		FractalType::Ridged => fastnoise_lite::FractalType::Ridged,
-		FractalType::PingPong => fastnoise_lite::FractalType::PingPong,
-		FractalType::DomainWarpProgressive => fastnoise_lite::FractalType::DomainWarpProgressive,
-		FractalType::DomainWarpIndependent => fastnoise_lite::FractalType::DomainWarpIndependent,
-	};
-	noise.set_fractal_type(Some(fractal_type));
-	noise.set_fractal_octaves(Some(fractal_octaves as i32));
-	noise.set_fractal_lacunarity(Some(fractal_lacunarity as f32));
-	noise.set_fractal_gain(Some(fractal_gain as f32));
-	noise.set_fractal_weighted_strength(Some(fractal_weighted_strength as f32));
-	noise.set_fractal_ping_pong_strength(Some(fractal_ping_pong_strength as f32));
-
-	// Cellular
-	let cellular_distance_function = match cellular_distance_function {
-		CellularDistanceFunction::Euclidean => fastnoise_lite::CellularDistanceFunction::Euclidean,
-		CellularDistanceFunction::EuclideanSq => fastnoise_lite::CellularDistanceFunction::EuclideanSq,
-		CellularDistanceFunction::Manhattan => fastnoise_lite::CellularDistanceFunction::Manhattan,
-		CellularDistanceFunction::Hybrid => fastnoise_lite::CellularDistanceFunction::Hybrid,
-	};
-	let cellular_return_type = match cellular_return_type {
-		CellularReturnType::CellValue => fastnoise_lite::CellularReturnType::CellValue,
-		CellularReturnType::Nearest => fastnoise_lite::CellularReturnType::Distance,
-		CellularReturnType::NextNearest => fastnoise_lite::CellularReturnType::Distance2,
-		CellularReturnType::Average => fastnoise_lite::CellularReturnType::Distance2Add,
-		CellularReturnType::Difference => fastnoise_lite::CellularReturnType::Distance2Sub,
-		CellularReturnType::Product => fastnoise_lite::CellularReturnType::Distance2Mul,
-		CellularReturnType::Division => fastnoise_lite::CellularReturnType::Distance2Div,
-	};
-	noise.set_cellular_distance_function(Some(cellular_distance_function));
-	noise.set_cellular_return_type(Some(cellular_return_type));
-	noise.set_cellular_jitter(Some(cellular_jitter as f32));
-
-	let coordinate_offset = offset.as_vec2();
-	let scale = size.as_vec2() / Vec2::new(width as f32, height as f32);
-	// Calculate the noise for every pixel
-	for y in 0..height {
-		for x in 0..width {
-			let pixel = image.get_pixel_mut(x, y).unwrap();
-			let pos = Vec2::new(x as f32, y as f32);
-			let vec = pos * scale + coordinate_offset;
-
-			let (mut x, mut y) = (vec.x, vec.y);
-			if domain_warp_active && domain_warp_amplitude > 0. {
-				(x, y) = noise.domain_warp_2d(x, y);
-			}
-
-			let luminance = (noise.get_noise_2d(x, y) + 1.) * 0.5;
-			*pixel = Color::from_luminance(luminance);
-		}
-	}
-
-	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, transform))
+	let mut generator = Item::new_from_element(Generator::Noise);
+	settings.stamp(&mut generator);
+	generator
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMandelbrot"))]
-fn mandelbrot(ctx: impl ExtractFootprint + Send) -> Result<Item<Raster<CPU>>, ImageError> {
-	let footprint = ctx.footprint();
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-
-	let image_bounds = Bbox::from_transform(DAffine2::IDENTITY).to_axis_aligned_bbox();
-	let intersection = viewport_bounds.intersect(&image_bounds);
-	let size = intersection.size();
-
-	let offset = (intersection.start - image_bounds.start).max(DVec2::ZERO);
-
-	// If the image would not be visible, return an empty image
-	if size.x <= 0. || size.y <= 0. {
-		return Ok(Item::default());
-	}
-
-	let scale = footprint.scale();
-	let width = (size.x * scale.x) as u32;
-	let height = (size.y * scale.y) as u32;
-
-	let mut image = Image::try_new(width, height, Color::TRANSPARENT)?;
-	let max_iter = 255;
-
-	let scale = 3. * size.as_vec2() / Vec2::new(width as f32, height as f32);
-	let coordinate_offset = offset.as_vec2() * 3. - Vec2::new(2., 1.5);
-	for y in 0..height {
-		for x in 0..width {
-			let pos = Vec2::new(x as f32, y as f32);
-			let c = pos * scale + coordinate_offset;
-
-			let iter = mandelbrot_impl(c, max_iter);
-			*image.get_mut(x as usize, y as usize) = map_color(iter, max_iter);
-		}
-	}
-
-	Ok(Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(offset) * DAffine2::from_scale(size)))
+fn mandelbrot(_: impl Ctx, _primary: ()) -> Item<Generator> {
+	Item::new_from_element(Generator::Mandelbrot)
 }
 
-#[inline(always)]
-fn mandelbrot_impl(c: Vec2, max_iter: usize) -> usize {
-	let mut z = Vec2::new(0., 0.);
-	for i in 0..max_iter {
-		z = Vec2::new(z.x * z.x - z.y * z.y, 2. * z.x * z.y) + c;
-		if z.length_squared() > 4. {
-			return i;
-		}
-	}
-	max_iter
-}
+#[cfg(test)]
+mod tests {
+	use super::*;
 
-fn map_color(iter: usize, max_iter: usize) -> Color {
-	let v = iter as f32 / max_iter as f32;
-	Color::from_rgbaf32_unchecked(v, v, v, 1.)
+	#[test]
+	fn channels_stay_aligned_when_effects_grow_only_one() {
+		use graphic_types::{Effect, EffectOperation, stamp_effect};
+
+		let gray = |value: f32| {
+			let image = Image::new(8, 8, Color::from_rgbaf32_unchecked(value, value, value, 1.));
+			Item::new_from_element(Raster::new_cpu(image)).with_attribute(ATTR_TRANSFORM, DAffine2::from_scale(DVec2::splat(8.)))
+		};
+
+		// Only the red channel is blurred, which grows it by the blur's margin
+		let mut red = gray(1.);
+		stamp_effect(
+			&mut red,
+			Effect::new(&EffectOperation::Blur {
+				radius: 1.,
+				box_blur: false,
+				gamma: false,
+			}),
+		);
+		let image = channels_to_image((), (), red, gray(0.5), gray(0.25), gray(1.)).unwrap();
+
+		// The other channels are placed within the same margin, and the whole image keeps its place in the document
+		let raster = image.element();
+		assert!(raster.width > 8 && raster.height > 8, "the image grows to hold the blur, rather than coming out empty");
+		let transform: DAffine2 = image.attribute_cloned_or_default(ATTR_TRANSFORM);
+		let to_pixels = DAffine2::from_scale(DVec2::new(raster.width as f64, raster.height as f64)) * transform.inverse();
+		let center = to_pixels.transform_point2(DVec2::splat(4.)).as_uvec2();
+		let pixel = raster.get_pixel(center.x, center.y).unwrap();
+		assert!((pixel.g() - 0.5).abs() < 1e-6 && (pixel.b() - 0.25).abs() < 1e-6, "the unblurred channels line up: {pixel:?}");
+	}
 }

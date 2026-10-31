@@ -36,7 +36,9 @@ usvg = { workspace = true }
 kurbo = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
+raster-kernels = { workspace = true }
 vello_gpu = { workspace = true }
+wgpu = { workspace = true }
 parley = { workspace = true }
 skrifa = { workspace = true }
 

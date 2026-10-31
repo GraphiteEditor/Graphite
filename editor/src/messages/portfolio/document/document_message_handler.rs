@@ -1877,6 +1877,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.collect();
 				self.network_interface.update_appearance_attributes(layer_appearance_attributes);
 			}
+			DocumentMessage::UpdateEffectsReach { effects_reach } => {
+				let layer_effects_reach = effects_reach
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id) && self.network_interface.is_layer(node_id, &[]))
+					.map(|(node_id, reach)| (LayerNodeIdentifier::new(node_id, &self.network_interface), reach))
+					.collect();
+				self.network_interface.update_effects_reach(layer_effects_reach);
+			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;

@@ -2,6 +2,7 @@ use color::{ColorSpace, Oklab};
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::{Item, List};
+use raster_kernels::evaluate_raster_effects;
 use raster_types::{CPU, Raster};
 use std::collections::BinaryHeap;
 use std::ops::{AddAssign, SubAssign};
@@ -25,6 +26,7 @@ fn image_color_palette(
 	count: Item<i64>,
 ) -> List<Color> {
 	let count = *count.element() as usize;
+	let image = evaluate_raster_effects(image);
 
 	// O(n) binning of the image's n pixels into an OkLab histogram, weighted by alpha so transparent pixels are ignored
 	let mut cumulative = vec![Moments::default(); TABLE_SIDE.pow(3)];
