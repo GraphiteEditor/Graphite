@@ -6,7 +6,7 @@
 use document_container::{AnyContainer, AsyncContainer};
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HistoryMetadata, HotOp, Rev, Subject, TimeStamp, Value, WallStamp};
+use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, RegistryDelta, Rev, Subject, TimeStamp, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -14,7 +14,7 @@ use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
-use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io};
 
 /// Written after every staged payload, so its presence means the whole rewrite is ready to move into place.
 const STAGING_COMMITTED: &str = "committed";
@@ -92,10 +92,7 @@ impl<L: Layout> Gdd<L> {
 		byte_store: &dyn ResourceStorage,
 	) -> Result<document_graph_storage::Declarations, Error> {
 		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
-
-		for hot_op in &hot_ops {
-			self.append_hot_frame(hot_op)?;
-		}
+		self.persist_staged(&hot_ops)?;
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
@@ -110,34 +107,38 @@ impl<L: Layout> Gdd<L> {
 	/// the whole document and diffing it against the working registry.
 	///
 	/// Otherwise identical to [`stage_runtime_snapshot`](Self::stage_runtime_snapshot): each op becomes a
-	/// hot frame, and the proto-node declaration bytes go to the byte store.
+	/// hot frame, is broadcast to any session, and the proto-node declaration bytes go to the byte store.
 	#[cfg(feature = "conversion")]
 	pub fn stage_constructed_ops(
 		&mut self,
 		ops: Vec<document_graph_storage::RegistryDelta>,
 		declaration_bytes: &document_graph_storage::from_runtime::DeclarationBytes,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<(), Error> {
-		let hot_ops = self.session.stage_computed_ops(ops)?;
-
-		for hot_op in &hot_ops {
-			self.append_hot_frame(hot_op)?;
-		}
+	) -> Result<Vec<HotOp>, Error> {
+		let hot_ops = self.stage_ops(ops)?;
 		for bytes in declaration_bytes.values() {
 			byte_store.store(bytes);
 		}
-		Ok(())
+		Ok(hot_ops)
 	}
 
-	/// Retire every pending hot op into durable history as a single interaction (marking the batch's last
-	/// delta as the interaction boundary), then re-snapshot the registry. One interaction is one undo unit,
-	/// so the caller invokes this at each undo-step boundary and before any undo/redo. A no-op when there
-	/// are no pending hot ops.
-	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
-		let Some(up_to) = self.session.hot_log().iter().map(|hot_op| hot_op.timestamp).max() else {
-			return Ok(Vec::new());
-		};
-		self.retire_inner(up_to, true)
+	/// Stage raw registry ops as hot ops, without the runtime diff.
+	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, Error> {
+		let hot_ops = self.session.stage_computed_ops(ops.into_iter().collect())?;
+		self.persist_staged(&hot_ops)?;
+		Ok(hot_ops)
+	}
+
+	/// Append the frames of freshly staged hot ops, then broadcast them.
+	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
+		for hot_op in hot_ops {
+			self.append_hot_frame(hot_op)?;
+		}
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_hot_ops(hot_ops)?;
+		}
+		Ok(())
 	}
 
 	/// Commit a runtime snapshot as one complete interaction: stage it, then immediately retire it into
@@ -169,24 +170,38 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Persist freshly-staged hot ops and immediately retire them into durable history. Appends each
-	/// hot frame (so a crash before retirement still recovers the work), then retires up to the last
-	/// staged timestamp, which drains exactly these ops and re-snapshots the registry. Returns the
-	/// retired `Rev`s. A no-op when nothing was staged.
+	/// Persist freshly-staged hot ops and retire exactly them into durable history as one unit. Frames are
+	/// appended first, so a crash before retirement still recovers the work. A peer that does not retire
+	/// broadcasts the ops instead, and they stay hot.
 	pub(crate) fn append_and_retire(&mut self, hot_ops: &[HotOp], interaction_end: bool) -> Result<Vec<Rev>, Error> {
-		let Some(last) = hot_ops.last() else { return Ok(Vec::new()) };
-
+		if hot_ops.is_empty() {
+			return Ok(Vec::new());
+		}
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
+		if !self.retires_locally() {
+			#[cfg(feature = "network")]
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_hot_ops(hot_ops)?;
+			}
+			return Ok(Vec::new());
+		}
 
-		self.retire_inner(last.timestamp, interaction_end)
+		let ids: Vec<_> = hot_ops.iter().map(HotOp::id).collect();
+		let revs = self.session.retire_hot_ops(&ids)?;
+		// Marked before the history frames are written, so the boundary is on disk with them.
+		if interaction_end && let Some(&last) = revs.last() {
+			self.session.mark_interaction_end(last);
+		}
+		self.finish_retirement(&revs, &ids)?;
+		Ok(revs)
 	}
 
 	/// Encode the history deltas identified by `revs` and append them to the history file. `revs` comes
 	/// from `Session::retire` in append order, which is a valid replay order, so a direct per-rev lookup
 	/// preserves replay order without scanning the whole history.
-	fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), Error> {
+	pub(crate) fn append_history_deltas(&mut self, revs: &[Rev]) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		for &rev in revs {
 			let Some(delta) = self.session.delta(rev) else {
@@ -201,7 +216,7 @@ impl<L: Layout> Gdd<L> {
 
 	/// Set a local annotation (e.g. a commit message) on an existing retired delta and re-persist it.
 	/// Unlike the per-interaction marker written inline at retire, this targets an already-written delta, so
-	/// the whole history file is rewritten in topological order. O(history) — fine for occasional user
+	/// the whole history file is rewritten in topological order. O(history), fine for occasional user
 	/// labeling, not for per-interaction marking (which uses the inline path). No-op if `rev` is unknown.
 	pub fn annotate_delta(&mut self, rev: Rev, key: &str, value: Value) -> Result<(), Error> {
 		if self.session.annotate_delta(rev, key, value) {
@@ -216,18 +231,19 @@ impl<L: Layout> Gdd<L> {
 		&self.metadata
 	}
 
-	/// State a fact at wall time `wall_ms`, taken on only once it is on disk. Returns whether it changed anything.
+	/// State a fact at wall time `wall_ms`, taken on only once it is on disk, and tell the room. Returns whether it changed anything.
 	pub fn record(&mut self, subject: Subject, key: &str, value: serde_json::Value, wall_ms: f64) -> Result<bool, Error> {
 		let stamp = WallStamp {
 			ms: wall_ms as u64,
 			peer: self.session.peer(),
 		};
 		let Some(fact) = self.metadata.statement(subject, key, value, stamp) else { return Ok(false) };
-		// The leading newline keeps the fact off a tail a crash left unterminated. Reading skips the blank lines this leaves.
-		let mut line = vec![b'\n'];
-		METADATA_CODEC.append(&mut line, &fact)?;
-		self.working.append_non_blocking(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &line)?;
+		self.append_facts(std::slice::from_ref(&fact))?;
 		self.metadata.absorb(fact);
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.send_metadata(&self.metadata)?;
+		}
 		Ok(true)
 	}
 
@@ -270,9 +286,17 @@ impl<L: Layout> Gdd<L> {
 		finish_staged_rewrite(&self.working, &self.layout).await
 	}
 
+	/// Append facts to the metadata file. The lines start on a fresh one, so a tail a crash or failed write left
+	/// unterminated is not joined to them. Reading skips the blank lines this leaves.
+	pub(crate) fn append_facts(&mut self, facts: &[MetadataFact]) -> Result<(), Error> {
+		let lines = [b"\n".as_slice(), &encode_facts(facts)?].concat();
+		self.working.append_non_blocking(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &lines)?;
+		Ok(())
+	}
+
 	/// Rewrite the entire history file from the in-memory session. `history()` yields deltas in
 	/// topological (append) order, which is a valid replay order, so no separate sort is needed.
-	fn rewrite_history(&mut self) -> Result<(), Error> {
+	pub(crate) fn rewrite_history(&mut self) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		for delta in self.session.history() {
 			self.manifest.codecs.history.append(&mut buffer, delta)?;
@@ -292,20 +316,20 @@ impl<L: Layout> Gdd<L> {
 			last_hot_sequence: self.session.last_hot_sequence(),
 			retired_marks: self.session.retired_marks().clone(),
 			clock_counter: self.session.clock_counter(),
-			shared: false,
+			shared: self.shared,
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		}
 	}
 
-	fn persist_session_state(&mut self) -> Result<(), Error> {
+	pub(crate) fn persist_session_state(&mut self) -> Result<(), Error> {
 		io::write_single(&self.working, self.layout.session_basename(), self.manifest.codecs.session, &self.session_state())?;
 		Ok(())
 	}
 
 	/// Re-snapshot the retired registry to `registry.bin`. `Session::load` trusts it to match the persisted `head`
 	/// and replays the hot log on top, so it must hold no hot op, and any cursor move must re-persist it.
-	fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
+	pub(crate) fn persist_registry_snapshot(&mut self) -> Result<(), Error> {
 		io::write_single(&self.working, self.layout.registry_basename(), self.manifest.codecs.registry, self.session.retired_registry())?;
 		Ok(())
 	}
@@ -334,45 +358,103 @@ impl<L: Layout> Gdd<L> {
 		self.persist_session_state()
 	}
 
-	fn append_hot_frame(&mut self, op: &HotOp) -> Result<(), Error> {
+	pub(crate) fn append_hot_frame(&mut self, op: &HotOp) -> Result<(), Error> {
 		let mut buffer = Vec::new();
 		self.manifest.codecs.hot_log.append(&mut buffer, op)?;
 		self.working.append_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &buffer)?;
 		Ok(())
 	}
 
-	/// Working-copy checkpoint: promote hot ops with timestamp `≤ up_to` into retired deltas,
-	/// append them to the history file, rewrite the hot log with remaining (unretired) ops, and
-	/// re-snapshot the registry. Synchronous.
-	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
-		self.retire_inner(up_to, false)
+	/// Close this peer's open interaction, if any, with a marker staged like any other hot op.
+	pub fn end_interaction(&mut self) -> Result<(), Error> {
+		let staged = self.session.end_interaction()?;
+		self.persist_staged(&staged)?;
+		Ok(())
 	}
 
-	/// `interaction_end`: mark the batch's last delta as an interaction boundary (one undo unit) before its
-	/// history frame is written, so the marker persists on reopen without a later frame rewrite.
-	fn retire_inner(&mut self, up_to: TimeStamp, interaction_end: bool) -> Result<Vec<Rev>, Error> {
-		let new_revs = self.session.retire(up_to)?;
+	/// Close this peer's open interaction and retire every closed one with no ops still on their way, whoever authored
+	/// it. A peer that does not retire only closes its own.
+	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
+		self.end_interaction()?;
+		let closed = self.contiguous_interactions();
+		self.retire_interactions(&closed)
+	}
 
-		// Mark before `append_history_deltas` so the on-disk frame carries the boundary.
-		if interaction_end && let Some(&last) = new_revs.last() {
-			self.session.mark_interaction_end(last);
+	/// Closed interactions safe to publish. One past a gap would go out before the ops it follows arrive.
+	pub(crate) fn contiguous_interactions(&self) -> Vec<document_graph_storage::ClosedInteraction> {
+		self.session.closed_interactions().into_iter().filter(|interaction| interaction.contiguous).collect()
+	}
+
+	/// Retire the given closed interactions in one history append and one broadcast. A no-op on a peer that does not retire.
+	pub(crate) fn retire_interactions(&mut self, interactions: &[document_graph_storage::ClosedInteraction]) -> Result<Vec<Rev>, Error> {
+		if !self.retires_locally() || interactions.is_empty() {
+			return Ok(Vec::new());
+		}
+		let mut revs = Vec::new();
+		let mut retired_hot_ops = Vec::new();
+		for interaction in interactions {
+			revs.extend(self.session.retire_interaction(interaction)?);
+			retired_hot_ops.extend(interaction.ops.iter().copied());
+		}
+		self.finish_retirement(&revs, &retired_hot_ops)?;
+		Ok(revs)
+	}
+
+	/// Checkpoint the working copy by retiring every hot op stamped at or before `up_to`, whatever its author or interaction state.
+	pub fn retire(&mut self, up_to: TimeStamp) -> Result<Vec<Rev>, Error> {
+		if !self.retires_locally() {
+			return Ok(Vec::new());
+		}
+		let retired_hot_ops = self.session.hot_ops_up_to(up_to);
+		let revs = self.session.retire(up_to)?;
+		self.finish_retirement(&revs, &retired_hot_ops)?;
+		Ok(revs)
+	}
+
+	/// Publish and persist freshly retired deltas, then broadcast them with the hot ops they retired.
+	fn finish_retirement(&mut self, new_revs: &[Rev], retired_hot_ops: &[document_graph_storage::HotOpId]) -> Result<(), Error> {
+		// Deltas peers hold are published, so undo past them moves the shared head instead of rewinding.
+		#[cfg(feature = "network")]
+		if self.network.is_some()
+			&& let Some(&last) = new_revs.last()
+		{
+			self.session.publish_up_to(last);
 		}
 
 		if !new_revs.is_empty() {
-			self.append_history_deltas(&new_revs)?;
+			self.append_history_deltas(new_revs)?;
 		}
-
-		// Rewrite hot log with whatever survived retirement.
-		let mut hot_buffer = Vec::new();
-		for hot_op in self.session.hot_log() {
-			self.manifest.codecs.hot_log.append(&mut hot_buffer, hot_op)?;
-		}
-		self.working
-			.write_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &hot_buffer)?;
-
+		self.rewrite_hot_log()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
 
-		Ok(new_revs)
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			let deltas: Vec<_> = new_revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+			replica.broadcast_retired(&deltas, retired_hot_ops)?;
+		}
+		#[cfg(not(feature = "network"))]
+		let _ = retired_hot_ops;
+
+		Ok(())
+	}
+
+	/// Guests leave retirement to the host and keep their hot ops until its retired deltas arrive.
+	fn retires_locally(&self) -> bool {
+		#[cfg(feature = "network")]
+		{
+			self.network.as_ref().is_none_or(|replica| replica.role() == peer_transport::Role::Host)
+		}
+		#[cfg(not(feature = "network"))]
+		true
+	}
+
+	pub(crate) fn rewrite_hot_log(&mut self) -> Result<(), Error> {
+		let mut buffer = Vec::new();
+		for hot_op in self.session.hot_log() {
+			self.manifest.codecs.hot_log.append(&mut buffer, hot_op)?;
+		}
+		self.working.write_non_blocking(&io::path_for(self.layout.hot_log_basename(), self.manifest.codecs.hot_log), &buffer)?;
+		Ok(())
 	}
 }

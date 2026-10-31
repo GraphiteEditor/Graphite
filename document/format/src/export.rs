@@ -11,7 +11,7 @@ use graphene_resource::{LoadResource, Resource, ResourceHash};
 use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
-use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io};
 
 /// Export wrapping. Payloads keep the working copy's recorded per-payload codecs (see
 /// [`crate::manifest::PayloadCodecs`]); export does not re-encode.
@@ -154,6 +154,7 @@ impl<L: Layout> Gdd<L> {
 			last_hot_sequence: self.session.last_hot_sequence(),
 			retired_marks: self.session.retired_marks().clone(),
 			clock_counter: self.session.clock_counter(),
+			// A copy does not join the room on its own.
 			shared: false,
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
@@ -161,11 +162,7 @@ impl<L: Layout> Gdd<L> {
 		sink.write_entry(&io::path_for(self.layout.session_basename(), codecs.session), &codecs.session.write_single(&session_state)?)?;
 		// The facts name revs, so a copy without the history carries none.
 		if options.include_history && !self.metadata.is_empty() {
-			let mut lines = Vec::new();
-			for fact in self.metadata.facts() {
-				METADATA_CODEC.append(&mut lines, fact)?;
-			}
-			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &lines)?;
+			sink.write_entry(&io::path_for(self.layout.metadata_basename(), METADATA_CODEC), &encode_facts(self.metadata.facts())?)?;
 		}
 
 		let working_copy_hashes: std::collections::HashSet<ResourceHash> = self.resource_hashes().await?.into_iter().collect();
