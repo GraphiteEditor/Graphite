@@ -113,6 +113,8 @@ impl NodeNetworkInterface {
 					NetworkMetadataChange::ExportDescriptions(export_descriptions) => network.set_export_descriptions(export_descriptions.clone()),
 				};
 			}
+
+			EditorDelta::DefinitionsChanged => log::warn!("Replayed a definitions table change, which apply cannot mirror yet, so this peer's definitions table may be stale"),
 		}
 	}
 }

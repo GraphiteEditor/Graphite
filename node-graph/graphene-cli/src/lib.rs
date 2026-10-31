@@ -8,7 +8,7 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::document::{NodeId, NodeNetwork};
+use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork, OwnedNetworkLocation};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
@@ -60,10 +60,29 @@ pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocume
 	let gdd = open_gdd(&archive).await?;
 	let declarations = gdd.declarations(&gdd).await;
 	let (network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations)?;
-	let references = networks.into_iter().filter_map(|network| Some((network.network_path, network.reference?)));
-	let names = nodes.into_iter().filter_map(|node| Some(([node.network_path, vec![node.local_id]].concat(), node.display_name?)));
-	let names = with_names.then(|| references.chain(names).filter(|(_, name)| !name.is_empty()).collect());
+	let names = with_names.then(|| {
+		let references: HashMap<_, _> = networks.into_iter().filter_map(|network| Some((network.network, network.reference?))).collect();
+		let display_names: HashMap<_, _> = nodes.into_iter().filter_map(|node| Some(((node.network, node.local_id), node.display_name?))).collect();
+		instance_names(&network, &references, &display_names)
+	});
 	Ok(OpenedDocument { gdd: Some(gdd), network, names })
+}
+
+/// The name of each node, keyed by the path the dump visits it at.
+/// This is its display name, or else the reference of the network it implements.
+fn instance_names(network: &NodeNetwork, references: &HashMap<OwnedNetworkLocation, String>, display_names: &HashMap<(OwnedNetworkLocation, NodeId), String>) -> HashMap<Vec<NodeId>, String> {
+	network
+		.recursive_nodes()
+		.filter_map(|(id, _, path)| {
+			let containing = network.locate(&path)?.to_owned_location();
+			let node_path = [path.as_slice(), &[*id]].concat();
+			let implemented = network.locate(&node_path).map(NetworkLocation::to_owned_location);
+
+			let display_name = display_names.get(&(containing, *id)).filter(|name| !name.is_empty());
+			let reference = implemented.and_then(|location| references.get(&location)).filter(|name| !name.is_empty());
+			Some((node_path, display_name.or(reference)?.clone()))
+		})
+		.collect()
 }
 
 /// A document compiled against a GPU context, ready to turn into a [`Renderer`].

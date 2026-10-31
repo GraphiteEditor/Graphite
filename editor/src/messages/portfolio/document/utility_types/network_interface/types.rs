@@ -569,6 +569,27 @@ impl NodeNetworkMetadata {
 		}
 	}
 
+	/// Moves the metadata of each network that [`NodeNetwork::lift_nested_networks`] lifted into the definitions table.
+	pub fn lift_nested_metadata(&mut self, lifted: &[LiftedNetwork]) {
+		for entry in lifted {
+			let containing = NetworkLocation {
+				definition: entry.containing,
+				inline_path: &[],
+			};
+			let network_metadata = self
+				.nested_metadata_mut(containing)
+				.and_then(|containing| containing.persistent_metadata.node_metadata.get_mut(&entry.node_id))
+				.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.take())
+				.unwrap_or_default();
+			self.persistent_metadata.definitions.insert(entry.id, network_metadata);
+		}
+	}
+
+	/// Drops the metadata of every table entry that `document_network` no longer has. Call it after pruning that table.
+	pub fn retain_definitions_of(&mut self, document_network: &NodeNetwork) {
+		self.persistent_metadata.definitions.retain(|id, _| document_network.definitions.contains_key(id));
+	}
+
 	pub fn node_metadata_with_definition_mut(
 		&mut self,
 		location: NetworkLocation,

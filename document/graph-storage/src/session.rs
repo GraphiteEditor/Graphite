@@ -87,11 +87,14 @@ impl Session {
 		Ok((hot_ops, conversion))
 	}
 
-	/// Resolve each runtime `network_path` to its stable [`NetworkId`] for this document's peer, so the
-	/// caller can key per-network, per-peer view state (`session.json`) by a stable id. Derived from the
-	/// network structure alone; resources/declarations are irrelevant to the ids.
+	/// The stable [`NetworkId`] of each runtime network location for this document's peer, to key per-network view state in `session.json`.
+	/// It depends only on the network structure, not on resources or declarations.
 	#[cfg(any(feature = "conversion", test))]
-	pub fn network_ids<M: NodeMetadataSource>(&self, network: &graph_craft::document::NodeNetwork, metadata: &M) -> Result<HashMap<Vec<core_types::uuid::NodeId>, NetworkId>, CommitError> {
+	pub fn network_ids<M: NodeMetadataSource>(
+		&self,
+		network: &graph_craft::document::NodeNetwork,
+		metadata: &M,
+	) -> Result<HashMap<graph_craft::document::OwnedNetworkLocation, NetworkId>, CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
 		Ok(conversion.network_ids)
 	}

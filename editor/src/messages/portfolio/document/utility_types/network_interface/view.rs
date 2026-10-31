@@ -456,11 +456,49 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 		pinned_nodes
 	}
 
-	/// Create a node template from an existing node.
+	/// Create a node template from an existing node, carrying a copy of every definition it reaches so the template stands alone.
 	pub fn create_node_template(&self, node_id: &NodeId) -> Result<NodeTemplate, NetworkError> {
-		let node = self.node(node_id)?;
-		let node_metadata = self.node_metadata(node_id)?;
+		let mut node = self.node(node_id)?.clone();
+		let mut node_metadata = self.node_metadata(node_id)?.persistent_metadata.clone();
+		self.interface.inline_node_definitions(&mut node, &mut node_metadata);
 
-		Ok(NodeTemplate::from_parts(node.clone(), node_metadata.persistent_metadata.clone()))
+		Ok(NodeTemplate::from_parts(node, node_metadata))
+	}
+}
+
+impl NodeNetworkInterface {
+	fn inline_node_definitions(&self, node: &mut DocumentNode, metadata: &mut DocumentNodePersistentMetadata) {
+		self.inline_node_definitions_within(node, metadata, &mut Vec::new());
+	}
+
+	fn inline_node_definitions_within(&self, node: &mut DocumentNode, metadata: &mut DocumentNodePersistentMetadata, enclosing: &mut Vec<NetworkId>) {
+		let inlined = match node.implementation {
+			DocumentNodeImplementation::Definition(id) => {
+				if enclosing.contains(&id) {
+					log::error!("Definition {id:?} reaches itself, so a template of it cannot carry a copy");
+					return;
+				}
+				let (Some(definition), Some(definition_metadata)) = (self.document_network().definitions.get(&id), self.network_metadata.persistent_metadata.definitions.get(&id)) else {
+					log::error!("Definition {id:?} is missing from the definitions table");
+					return;
+				};
+				node.implementation = DocumentNodeImplementation::Network(definition.clone());
+				metadata.network_metadata = Some(definition_metadata.clone());
+				enclosing.push(id);
+				Some(id)
+			}
+			_ => None,
+		};
+
+		if let (DocumentNodeImplementation::Network(network), Some(network_metadata)) = (&mut node.implementation, &mut metadata.network_metadata) {
+			for (child_id, child) in &mut network.nodes {
+				let child_metadata = network_metadata.persistent_metadata.node_metadata.entry(*child_id).or_default();
+				self.inline_node_definitions_within(child, &mut child_metadata.persistent_metadata, enclosing);
+			}
+		}
+
+		if inlined.is_some() {
+			enclosing.pop();
+		}
 	}
 }

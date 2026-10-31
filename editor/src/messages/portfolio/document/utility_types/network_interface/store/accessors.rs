@@ -51,6 +51,23 @@ impl NodeNetworkInterface {
 		migrate(self.network_metadata.get_mut(), self.network.network());
 	}
 
+	/// Updates the definitions table after a transaction.
+	/// It lifts the inline networks the transaction added and drops the entries no node reaches.
+	///
+	/// Only the lifting is recorded. The removals that left an entry unreachable were recorded already.
+	pub(crate) fn settle_definitions(&mut self) {
+		let lifted = self.document_network_mut().lift_nested_networks();
+		if !lifted.is_empty() {
+			self.network_metadata.get_mut().lift_nested_metadata(&lifted);
+			self.deltas.push(EditorDelta::DefinitionsChanged);
+		}
+
+		if self.document_network_mut().retain_reachable_definitions() {
+			let network = self.network.network();
+			self.network_metadata.get_mut().retain_definitions_of(network);
+		}
+	}
+
 	// ===== Recorded writes =====
 
 	/// The persistent metadata of a network, or `None` if the network is missing.
@@ -108,20 +125,27 @@ impl NodeNetworkInterface {
 
 		for network_path in network_paths {
 			let Some(network_metadata) = self.network_metadata_mut(&network_path) else { continue };
-			let persistent = &mut network_metadata.persistent_metadata;
+			visit(&network_path, NetworkViewStateMut::of(&mut network_metadata.persistent_metadata));
+		}
+	}
 
-			visit(
-				&network_path,
-				NetworkViewStateMut {
-					navigation: &mut persistent.navigation_metadata,
-					previewing: &mut persistent.previewing,
-					selection: SelectionHistoryMut {
-						undo: &mut persistent.selection_undo_history,
-						redo: &mut persistent.selection_redo_history,
-					},
-					nodes: &persistent.node_metadata,
-				},
-			);
+	/// The view state of the network at `location`, which every instance of the network shares.
+	pub(in super::super) fn located_view_state_mut(&mut self, location: NetworkLocation) -> Option<NetworkViewStateMut<'_>> {
+		let network_metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?;
+		Some(NetworkViewStateMut::of(&mut network_metadata.persistent_metadata))
+	}
+}
+
+impl<'a> NetworkViewStateMut<'a> {
+	fn of(persistent: &'a mut NodeNetworkPersistentMetadata) -> Self {
+		Self {
+			navigation: &mut persistent.navigation_metadata,
+			previewing: &mut persistent.previewing,
+			selection: SelectionHistoryMut {
+				undo: &mut persistent.selection_undo_history,
+				redo: &mut persistent.selection_redo_history,
+			},
+			nodes: &persistent.node_metadata,
 		}
 	}
 }

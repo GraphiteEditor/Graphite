@@ -330,14 +330,13 @@ impl<L: Layout> Gdd<L> {
 		&self.network_view_settings
 	}
 
-	/// Resolve each runtime `network_path` to its stable [`NetworkId`](document_graph_storage::NetworkId), so the
-	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
+	/// The stable [`NetworkId`](document_graph_storage::NetworkId) of each runtime network location, to key per-network view state. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
-	) -> Result<std::collections::HashMap<Vec<core_types::uuid::NodeId>, document_graph_storage::NetworkId>, CommitError> {
+	) -> Result<std::collections::HashMap<graph_craft::document::OwnedNetworkLocation, document_graph_storage::NetworkId>, CommitError> {
 		self.session.network_ids(network, metadata)
 	}
 

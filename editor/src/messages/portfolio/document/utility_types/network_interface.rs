@@ -50,7 +50,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, LiftedNetwork, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::Appearance;
 use graphene_std::math::quad::Quad;
 use graphene_std::registry::MULTI_OUTPUT_NODES;
@@ -133,6 +133,14 @@ impl NodeNetworkInterface {
 	/// Moves the interface metadata an older document stored on each instance node onto the network implementing it.
 	pub fn move_interface_metadata_into_networks(&mut self) {
 		self.migrate_metadata(NodeNetworkMetadata::move_interface_metadata_into_networks);
+	}
+
+	// TODO: Eventually remove this document upgrade code
+	/// Moves every inline network into the definitions table, for a document that predates the table.
+	pub fn lift_nested_networks(&mut self) {
+		let mut lifted = Vec::new();
+		self.migrate_graph(|network| lifted = network.lift_nested_networks());
+		self.migrate_metadata(|metadata, _| metadata.lift_nested_metadata(&lifted));
 	}
 
 	// TODO: Eventually remove this document upgrade code

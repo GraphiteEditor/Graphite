@@ -2407,6 +2407,7 @@ impl DocumentMessageHandler {
 	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
 	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		self.network_interface.settle_definitions();
 		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;

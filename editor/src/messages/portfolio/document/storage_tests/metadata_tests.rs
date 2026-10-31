@@ -8,7 +8,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use document_graph_storage::{NodeMetadataSource, PeerId, Registry, to_value};
 
-use super::test_support::{load_demo, load_demo_with_output_descriptions, node_paths, open_demo};
+use super::test_support::{load_demo, load_demo_with_output_descriptions, located_node, network_locations, node_locations, node_paths, open_demo};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeLocator;
@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::stor
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::portfolio::document_storage_io::load_legacy_document;
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_craft::document::NodeId;
+use graph_craft::document::{NodeId, OwnedNetworkLocation};
 use graphene_std::vector::style::RenderMode;
 
 /// Storage drops output descriptions that are all empty, which means the same as having none.
@@ -42,51 +42,48 @@ fn editor_metadata_round_trip_against_demo() {
 
 	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
 
-	// Index emitted entries by their (network_path, local_id) address.
-	let entries_by_address: HashMap<(Vec<NodeId>, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network_path.clone(), e.local_id), e)).collect();
+	// Index emitted entries by their (network, local_id) address.
+	let entries_by_address: HashMap<(OwnedNetworkLocation, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network.clone(), e.local_id), e)).collect();
 
 	let mut checked_any_position = false;
 	let mut checked_any_layer = false;
 	let mut checked_any_input_metadata = false;
 	let mut checked_any_output_description = false;
 
-	for (network_path, local_id) in node_paths(interface) {
-		let expected_position = source.position(&network_path, local_id);
-		let expected_is_layer = source.is_layer(&network_path, local_id);
-		let expected_display = source.display_name(&network_path, local_id).map(str::to_owned);
-		let expected_locked = source.locked(&network_path, local_id);
-		let expected_pinned = source.pinned(&network_path, local_id);
-		let expected_output_names = source.output_names(&network_path, local_id);
-		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(&network_path, local_id));
+	for (network, local_id) in node_locations(interface) {
+		let expected_position = source.position(network.as_location(), local_id);
+		let expected_is_layer = source.is_layer(network.as_location(), local_id);
+		let expected_display = source.display_name(network.as_location(), local_id).map(str::to_owned);
+		let expected_locked = source.locked(network.as_location(), local_id);
+		let expected_pinned = source.pinned(network.as_location(), local_id);
+		let expected_output_names = source.output_names(network.as_location(), local_id);
+		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(network.as_location(), local_id));
 
 		// Use the node's input count as the slot-by-slot iteration bound for the per-input metadata checks.
-		let input_count = interface.document_node(&local_id, &network_path).map(|node| node.inputs.len()).unwrap_or(0);
+		let input_count = located_node(interface, &network, local_id).map(|node| node.inputs.len()).unwrap_or(0);
 		let any_input_metadata_present = (0..input_count).any(|i| {
-			source.input_name(&network_path, local_id, i).is_some_and(|s| !s.is_empty())
-				|| source.input_description(&network_path, local_id, i).is_some_and(|s| !s.is_empty())
-				|| source.widget_override(&network_path, local_id, i).is_some()
-				|| !source.input_data(&network_path, local_id, i).is_empty()
+			source.input_name(network.as_location(), local_id, i).is_some_and(|s| !s.is_empty())
+				|| source.input_description(network.as_location(), local_id, i).is_some_and(|s| !s.is_empty())
+				|| source.widget_override(network.as_location(), local_id, i).is_some()
+				|| !source.input_data(network.as_location(), local_id, i).is_empty()
 		});
 
 		let entry = entries_by_address
-			.get(&(network_path.clone(), local_id))
-			.unwrap_or_else(|| panic!("missing entry for node {local_id:?} in network {network_path:?}"));
+			.get(&(network.clone(), local_id))
+			.unwrap_or_else(|| panic!("missing entry for node {local_id:?} in network {network:?}"));
 
-		assert_eq!(entry.position, expected_position, "position mismatch for node {local_id:?} in network {network_path:?}");
-		assert_eq!(entry.is_layer, expected_is_layer, "is_layer mismatch for node {local_id:?} in network {network_path:?}");
+		assert_eq!(entry.position, expected_position, "position mismatch for node {local_id:?} in network {network:?}");
+		assert_eq!(entry.is_layer, expected_is_layer, "is_layer mismatch for node {local_id:?} in network {network:?}");
 		// The trait round-trip drops empty display names (treats them as "unset") so the entry's
 		// `display_name` is `None` when the runtime carries `""`. Normalize before comparing.
 		let normalized_expected_display = expected_display.as_deref().filter(|s| !s.is_empty()).map(str::to_owned);
-		assert_eq!(
-			entry.display_name, normalized_expected_display,
-			"display_name mismatch for node {local_id:?} in network {network_path:?}"
-		);
-		assert_eq!(entry.locked, expected_locked, "locked mismatch for node {local_id:?} in network {network_path:?}");
-		assert_eq!(entry.pinned, expected_pinned, "pinned mismatch for node {local_id:?} in network {network_path:?}");
-		assert_eq!(entry.output_names, expected_output_names, "output_names mismatch for node {local_id:?} in network {network_path:?}");
+		assert_eq!(entry.display_name, normalized_expected_display, "display_name mismatch for node {local_id:?} in network {network:?}");
+		assert_eq!(entry.locked, expected_locked, "locked mismatch for node {local_id:?} in network {network:?}");
+		assert_eq!(entry.pinned, expected_pinned, "pinned mismatch for node {local_id:?} in network {network:?}");
+		assert_eq!(entry.output_names, expected_output_names, "output_names mismatch for node {local_id:?} in network {network:?}");
 		assert_eq!(
 			entry.output_descriptions, expected_output_descriptions,
-			"output_descriptions mismatch for node {local_id:?} in network {network_path:?}"
+			"output_descriptions mismatch for node {local_id:?} in network {network:?}"
 		);
 
 		// Per-input metadata: the entry's `input_metadata` has one slot per input, each matching the trait's
@@ -94,30 +91,30 @@ fn editor_metadata_round_trip_against_demo() {
 		assert_eq!(
 			entry.input_metadata.len(),
 			input_count,
-			"input_metadata length mismatch for node {local_id:?} in network {network_path:?}: entry has {}, node has {input_count}",
+			"input_metadata length mismatch for node {local_id:?} in network {network:?}: entry has {}, node has {input_count}",
 			entry.input_metadata.len(),
 		);
 		for (index, input_entry) in entry.input_metadata.iter().enumerate() {
-			let expected_name = source.input_name(&network_path, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
-			let expected_description = source.input_description(&network_path, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
-			let expected_widget = source.widget_override(&network_path, local_id, index).map(str::to_owned);
-			let expected_data: std::collections::BTreeMap<_, _> = source.input_data(&network_path, local_id, index).into_iter().collect();
+			let expected_name = source.input_name(network.as_location(), local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
+			let expected_description = source.input_description(network.as_location(), local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
+			let expected_widget = source.widget_override(network.as_location(), local_id, index).map(str::to_owned);
+			let expected_data: std::collections::BTreeMap<_, _> = source.input_data(network.as_location(), local_id, index).into_iter().collect();
 
 			assert_eq!(
 				input_entry.input_name, expected_name,
-				"input_name mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				"input_name mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
 				input_entry.input_description, expected_description,
-				"input_description mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				"input_description mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
 				input_entry.widget_override, expected_widget,
-				"widget_override mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				"widget_override mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
 				input_entry.input_data, expected_data,
-				"input_data mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				"input_data mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 		}
 
@@ -136,12 +133,13 @@ fn editor_metadata_round_trip_against_demo() {
 	}
 
 	for entry in &network_entries {
-		let network_path = &entry.network_path;
-		assert_eq!(entry.import_metadata, source.import_metadata(network_path), "import_metadata mismatch for network {network_path:?}");
-		assert_eq!(entry.export_names, source.export_names(network_path), "export_names mismatch for network {network_path:?}");
+		let network = &entry.network;
+		let location = network.as_location();
+		assert_eq!(entry.import_metadata, source.import_metadata(location), "import_metadata mismatch for network {network:?}");
+		assert_eq!(entry.export_names, source.export_names(location), "export_names mismatch for network {network:?}");
 
-		let expected_export_descriptions = normalize_output_descriptions(source.export_descriptions(network_path));
-		assert_eq!(entry.export_descriptions, expected_export_descriptions, "export_descriptions mismatch for network {network_path:?}");
+		let expected_export_descriptions = normalize_output_descriptions(source.export_descriptions(location));
+		assert_eq!(entry.export_descriptions, expected_export_descriptions, "export_descriptions mismatch for network {network:?}");
 		if !expected_export_descriptions.is_empty() {
 			checked_any_output_description = true;
 		}
@@ -178,103 +176,95 @@ fn editor_interface_rebuild_round_trip() {
 	// Every node the original carried must also resolve identically through the rebuilt view.
 	// Iterating over the *rebuilt* interface verifies that the rebuild covered every node, not
 	// just the ones the entries vec mentioned.
-	for (network_path, local_id) in node_paths(&rebuilt) {
+	for (network, local_id) in node_locations(&rebuilt) {
 		assert_eq!(
-			rebuilt_view.position(&network_path, local_id),
-			original_view.position(&network_path, local_id),
-			"position mismatch for node {local_id:?} in network {network_path:?}"
+			rebuilt_view.position(network.as_location(), local_id),
+			original_view.position(network.as_location(), local_id),
+			"position mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			rebuilt_view.is_layer(&network_path, local_id),
-			original_view.is_layer(&network_path, local_id),
-			"is_layer mismatch for node {local_id:?} in network {network_path:?}"
+			rebuilt_view.is_layer(network.as_location(), local_id),
+			original_view.is_layer(network.as_location(), local_id),
+			"is_layer mismatch for node {local_id:?} in network {network:?}"
 		);
 		// Original display names are returned by the source as-is (including `""`). After
 		// round-trip the rebuilt interface also stores `""` for nodes that had no name set,
 		// so this comparison is exact.
 		assert_eq!(
-			rebuilt_view.display_name(&network_path, local_id),
-			original_view.display_name(&network_path, local_id),
-			"display_name mismatch for node {local_id:?} in network {network_path:?}"
+			rebuilt_view.display_name(network.as_location(), local_id),
+			original_view.display_name(network.as_location(), local_id),
+			"display_name mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			rebuilt_view.locked(&network_path, local_id),
-			original_view.locked(&network_path, local_id),
-			"locked mismatch for node {local_id:?} in network {network_path:?}"
+			rebuilt_view.locked(network.as_location(), local_id),
+			original_view.locked(network.as_location(), local_id),
+			"locked mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			rebuilt_view.pinned(&network_path, local_id),
-			original_view.pinned(&network_path, local_id),
-			"pinned mismatch for node {local_id:?} in network {network_path:?}"
+			rebuilt_view.pinned(network.as_location(), local_id),
+			original_view.pinned(network.as_location(), local_id),
+			"pinned mismatch for node {local_id:?} in network {network:?}"
 		);
 
 		// Per-input metadata: walk both interfaces' input slots in lockstep.
-		let original_inputs = original.document_node(&local_id, &network_path).map(|n| n.inputs.len()).unwrap_or(0);
-		let rebuilt_inputs = rebuilt.document_node(&local_id, &network_path).map(|n| n.inputs.len()).unwrap_or(0);
+		let original_inputs = located_node(original, &network, local_id).map(|n| n.inputs.len()).unwrap_or(0);
+		let rebuilt_inputs = located_node(&rebuilt, &network, local_id).map(|n| n.inputs.len()).unwrap_or(0);
 		assert_eq!(
 			rebuilt_inputs, original_inputs,
-			"input count mismatch for node {local_id:?} in network {network_path:?}: rebuilt={rebuilt_inputs} original={original_inputs}"
+			"input count mismatch for node {local_id:?} in network {network:?}: rebuilt={rebuilt_inputs} original={original_inputs}"
 		);
 
 		for index in 0..rebuilt_inputs {
 			assert_eq!(
-				rebuilt_view.input_name(&network_path, local_id, index),
-				original_view.input_name(&network_path, local_id, index),
-				"input_name mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				rebuilt_view.input_name(network.as_location(), local_id, index),
+				original_view.input_name(network.as_location(), local_id, index),
+				"input_name mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
-				rebuilt_view.input_description(&network_path, local_id, index),
-				original_view.input_description(&network_path, local_id, index),
-				"input_description mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				rebuilt_view.input_description(network.as_location(), local_id, index),
+				original_view.input_description(network.as_location(), local_id, index),
+				"input_description mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
-				rebuilt_view.widget_override(&network_path, local_id, index),
-				original_view.widget_override(&network_path, local_id, index),
-				"widget_override mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				rebuilt_view.widget_override(network.as_location(), local_id, index),
+				original_view.widget_override(network.as_location(), local_id, index),
+				"widget_override mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
-				rebuilt_view.input_data(&network_path, local_id, index),
-				original_view.input_data(&network_path, local_id, index),
-				"input_data mismatch at slot {index} for node {local_id:?} in network {network_path:?}"
+				rebuilt_view.input_data(network.as_location(), local_id, index),
+				original_view.input_data(network.as_location(), local_id, index),
+				"input_data mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 		}
 
 		assert_eq!(
-			rebuilt_view.output_names(&network_path, local_id),
-			original_view.output_names(&network_path, local_id),
-			"output_names mismatch for node {local_id:?} in network {network_path:?}"
+			rebuilt_view.output_names(network.as_location(), local_id),
+			original_view.output_names(network.as_location(), local_id),
+			"output_names mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			normalize_output_descriptions(rebuilt_view.output_descriptions(&network_path, local_id)),
-			normalize_output_descriptions(original_view.output_descriptions(&network_path, local_id)),
-			"output_descriptions mismatch for node {local_id:?} in network {network_path:?}"
+			normalize_output_descriptions(rebuilt_view.output_descriptions(network.as_location(), local_id)),
+			normalize_output_descriptions(original_view.output_descriptions(network.as_location(), local_id)),
+			"output_descriptions mismatch for node {local_id:?} in network {network:?}"
 		);
 	}
 
 	// Symmetric: every node in the original must also exist in the rebuilt interface.
-	for (network_path, local_id) in node_paths(original) {
+	for (network, local_id) in node_locations(original) {
 		assert!(
-			rebuilt.nested_network(&network_path).and_then(|n| n.nodes.get(&local_id)).is_some(),
-			"original node {local_id:?} in network {network_path:?} missing after rebuild"
+			located_node(&rebuilt, &network, local_id).is_some(),
+			"original node {local_id:?} in network {network:?} missing after rebuild"
 		);
 	}
 
 	// Per-network metadata: every nested network path (including the root) must resolve to the same
 	// `reference` in the rebuilt interface. Node-graph nav + previewing are per-peer view state that
 	// lives in `session.json`, not the registry, so they're not round-tripped here.
-	let mut network_paths_to_check: Vec<Vec<NodeId>> = vec![Vec::new()];
-	for (network_path, local_id) in node_paths(original) {
-		let mut child = network_path.clone();
-		child.push(local_id);
-		if original.nested_network(&child).is_some() {
-			network_paths_to_check.push(child);
-		}
-	}
-
 	let mut checked_any_reference = false;
-	for path in &network_paths_to_check {
-		assert_eq!(rebuilt_view.reference(path), original_view.reference(path), "reference mismatch for network {path:?}");
-		if original_view.reference(path).is_some() {
+	for network in network_locations(original) {
+		let location = network.as_location();
+		assert_eq!(rebuilt_view.reference(location), original_view.reference(location), "reference mismatch for network {network:?}");
+		if original_view.reference(location).is_some() {
 			checked_any_reference = true;
 		}
 	}
@@ -439,4 +429,21 @@ fn document_settings_round_trip() {
 	);
 	assert_eq!(to_value(&restored.snapping_state).unwrap(), to_value(&document.snapping_state).unwrap(), "snapping_state");
 	assert_eq!(to_value(&restored.collapsed).unwrap(), to_value(&document.collapsed).unwrap(), "collapsed");
+}
+
+/// Opening a legacy document moves every nested network into the definitions table, metadata included.
+#[test]
+fn opening_a_legacy_document_lifts_every_nested_network() {
+	let document = open_demo("changing-seasons.graphite");
+	let network = document.network_interface.document_network();
+
+	assert!(!network.definitions.is_empty(), "the demo artwork should have nested networks: fixture is wrong");
+	let inline_remains = std::iter::once(network)
+		.chain(network.definitions.values())
+		.flat_map(|network| network.nodes.values())
+		.any(|node| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
+	assert!(!inline_remains, "an inline network survived the load");
+
+	let violations = document.network_interface.validate_invariants();
+	assert!(violations.is_empty(), "the lifted document is inconsistent:\n{}", violations.join("\n"));
 }

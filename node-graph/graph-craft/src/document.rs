@@ -559,6 +559,54 @@ pub struct NetworkLocation<'a> {
 	pub inline_path: &'a [NodeId],
 }
 
+impl NetworkLocation<'_> {
+	pub const ROOT: NetworkLocation<'static> = NetworkLocation { definition: None, inline_path: &[] };
+
+	pub fn to_owned_location(self) -> OwnedNetworkLocation {
+		OwnedNetworkLocation {
+			definition: self.definition,
+			inline_path: self.inline_path.to_vec(),
+		}
+	}
+
+	pub fn child(self, node_id: NodeId) -> OwnedNetworkLocation {
+		let mut location = self.to_owned_location();
+		location.inline_path.push(node_id);
+		location
+	}
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OwnedNetworkLocation {
+	pub definition: Option<NetworkId>,
+	pub inline_path: Vec<NodeId>,
+}
+
+impl OwnedNetworkLocation {
+	pub fn definition(id: NetworkId) -> Self {
+		Self {
+			definition: Some(id),
+			inline_path: Vec::new(),
+		}
+	}
+
+	pub fn as_location(&self) -> NetworkLocation<'_> {
+		NetworkLocation {
+			definition: self.definition,
+			inline_path: &self.inline_path,
+		}
+	}
+}
+
+/// One inline network that [`NodeNetwork::lift_nested_networks`] moved into the definitions table.
+/// The node `node_id` in table entry `containing` (`None` for the document network) now names it as `id`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiftedNetwork {
+	pub containing: Option<NetworkId>,
+	pub node_id: NodeId,
+	pub id: NetworkId,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DefinitionError {
 	Missing(NetworkId),
@@ -774,6 +822,79 @@ impl NodeNetwork {
 			}
 			_ => None,
 		}
+	}
+
+	/// Moves every inline network at every nesting level into the definitions table under a fresh ID.
+	/// Returns the moves so that each network is listed before the networks lifted out of it.
+	pub fn lift_nested_networks(&mut self) -> Vec<LiftedNetwork> {
+		let mut lifted = Vec::new();
+		let mut pending: Vec<Option<NetworkId>> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();
+
+		while let Some(containing) = pending.pop() {
+			let network = match containing {
+				None => &mut *self,
+				Some(id) => match self.definitions.get_mut(&id) {
+					Some(definition) => definition,
+					None => continue,
+				},
+			};
+
+			let mut node_ids: Vec<NodeId> = network
+				.nodes
+				.iter()
+				.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Network(_)))
+				.map(|(node_id, _)| *node_id)
+				.collect();
+			node_ids.sort();
+
+			let mut bodies = Vec::with_capacity(node_ids.len());
+			for node_id in node_ids {
+				let Some(node) = network.nodes.get_mut(&node_id) else { continue };
+				let id = NetworkId::new();
+				if let DocumentNodeImplementation::Network(body) = std::mem::replace(&mut node.implementation, DocumentNodeImplementation::Definition(id)) {
+					bodies.push((id, body));
+					lifted.push(LiftedNetwork { containing, node_id, id });
+				}
+			}
+
+			for (id, body) in bodies {
+				self.definitions.insert(id, body);
+				pending.push(Some(id));
+			}
+		}
+
+		lifted
+	}
+
+	/// The table entries the document network reaches through its nodes, directly or through other entries.
+	pub fn reachable_definitions(&self) -> FxHashSet<NetworkId> {
+		fn visit(network: &NodeNetwork, definitions: &FxHashMap<NetworkId, NodeNetwork>, reached: &mut FxHashSet<NetworkId>) {
+			for node in network.nodes.values() {
+				match &node.implementation {
+					DocumentNodeImplementation::Definition(id) => {
+						if reached.insert(*id)
+							&& let Some(definition) = definitions.get(id)
+						{
+							visit(definition, definitions, reached);
+						}
+					}
+					DocumentNodeImplementation::Network(nested) => visit(nested, definitions, reached),
+					_ => {}
+				}
+			}
+		}
+
+		let mut reached = FxHashSet::default();
+		visit(self, &self.definitions, &mut reached);
+		reached
+	}
+
+	/// Drops every table entry the document network does not reach, and returns whether it dropped any.
+	pub fn retain_reachable_definitions(&mut self) -> bool {
+		let reached = self.reachable_definitions();
+		let before = self.definitions.len();
+		self.definitions.retain(|id, _| reached.contains(id));
+		self.definitions.len() != before
 	}
 
 	pub fn inline_definitions(&mut self) -> Result<(), DefinitionError> {
@@ -2132,6 +2253,33 @@ mod test {
 			[],
 		);
 		assert_eq!(network, inlined);
+	}
+
+	#[test]
+	fn lifted_networks_inline_back_to_the_original() {
+		let nested = network_with([(NodeId(10), DocumentNodeImplementation::Network(add_network()))], []);
+		let original = network_with(
+			[
+				(NodeId(10), DocumentNodeImplementation::Network(nested)),
+				(NodeId(11), DocumentNodeImplementation::Network(add_network())),
+			],
+			[],
+		);
+
+		let mut network = original.clone();
+		let lifted = network.lift_nested_networks();
+
+		assert_eq!(lifted.len(), 3);
+		assert_eq!(network.definitions.len(), 3);
+		let all_nodes = std::iter::once(&network).chain(network.definitions.values()).flat_map(|network| network.nodes.values());
+		assert!(all_nodes.into_iter().all(|node| !matches!(node.implementation, DocumentNodeImplementation::Network(_))));
+
+		let outermost: Vec<_> = lifted.iter().filter(|lifted| lifted.containing.is_none()).map(|lifted| lifted.node_id).collect();
+		assert_eq!(outermost.len(), 2);
+		assert!(lifted.iter().position(|entry| entry.containing.is_some()) > lifted.iter().position(|entry| entry.containing.is_none()));
+
+		network.inline_definitions().unwrap();
+		assert_eq!(network, original);
 	}
 
 	#[test]

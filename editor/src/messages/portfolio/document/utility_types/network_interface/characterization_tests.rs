@@ -3491,7 +3491,7 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.toggle_preview(node, &[]);
 
-	let network_ids = HashMap::from([(Vec::new(), document_graph_storage::NetworkId(0))]);
+	let network_ids = HashMap::from([(graph_craft::document::OwnedNetworkLocation::default(), document_graph_storage::NetworkId(0))]);
 	let stored = collect_network_view_settings(network_interface, &network_ids);
 
 	// As if another peer had removed the previewed node
