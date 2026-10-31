@@ -984,4 +984,69 @@ mod tests {
 
 		assert!(compile(median_filter::IDENTIFIER).is_empty(), "a node that isn't footprint invariant shouldn't warn");
 	}
+
+	#[test]
+	fn generator_nodes_compile_on_their_own_and_dont_reach_gpu_only_inputs() {
+		use graph_craft::application_io::PlatformEditorApi;
+		use graph_craft::document::value::TaggedValue;
+		use graph_craft::graphene_compiler::Compiler;
+		use graph_craft::proto::TypingContext;
+		use graphene_std::raster_nodes::filter::median_filter;
+		use graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline;
+		use graphene_std::raster_nodes::std_nodes::{mandelbrot_generator, noise_pattern_generator};
+		use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+		use interpreted_executor::util::wrap_network_in_scope;
+		use std::sync::Arc;
+
+		struct NoSpawner;
+		impl Spawn for NoSpawner {
+			fn spawn(&self, _: Task) {}
+		}
+
+		// Each generator's settings at their type's default, after the empty primary input
+		let generator_node = |identifier: &ProtoNodeIdentifier| {
+			let setting_types: Vec<Type> = {
+				let registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+				let (_, io) = registry[identifier].iter().next().unwrap();
+				io.inputs.iter().skip(1).map(|input| input.nested_type().clone()).collect()
+			};
+			let settings = setting_types.into_iter().map(|setting| NodeInput::value(TaggedValue::TypeDefault(setting), false));
+			DocumentNode {
+				inputs: std::iter::once(NodeInput::value(TaggedValue::None, false)).chain(settings).collect(),
+				implementation: DocumentNodeImplementation::ProtoNode(identifier.clone()),
+				..Default::default()
+			}
+		};
+		let compile = |nodes: Vec<(NodeId, DocumentNode)>, export: NodeId| {
+			let network = NodeNetwork {
+				exports: vec![NodeInput::node(export, 0)],
+				nodes: nodes.into_iter().collect(),
+				..Default::default()
+			};
+			let runtime = AsyncRuntime::new(Arc::new(NoSpawner), Arc::new(std::time::Instant::now()));
+			let mut network = wrap_network_in_scope(network, Arc::new(PlatformEditorApi::default()), runtime.handle());
+			Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
+			Compiler {}.compile_single(network).unwrap()
+		};
+
+		for identifier in [mandelbrot_generator::IDENTIFIER, noise_pattern_generator::IDENTIFIER] {
+			let compiled = compile(vec![(NodeId(0), generator_node(&identifier))], NodeId(0));
+			let mut typing_context = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
+			typing_context.update(&compiled.network).expect("a generator should compile on its own");
+			assert!(compiled.warnings.is_empty(), "{identifier:?} shouldn't warn: {:?}", compiled.warnings);
+
+			let median = DocumentNode {
+				inputs: vec![
+					NodeInput::node(NodeId(0), 0),
+					NodeInput::value(TaggedValue::Number(10.), false),
+					NodeInput::scope(raster_kernel_pipeline::IDENTIFIER),
+				],
+				implementation: DocumentNodeImplementation::ProtoNode(median_filter::IDENTIFIER),
+				..Default::default()
+			};
+			let compiled = compile(vec![(NodeId(0), generator_node(&identifier)), (NodeId(1), median)], NodeId(1));
+			let mut typing_context = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
+			assert!(typing_context.update(&compiled.network).is_err(), "{identifier:?} shouldn't reach a GPU-only input");
+		}
+	}
 }
