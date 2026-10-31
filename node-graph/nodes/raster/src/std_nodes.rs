@@ -9,7 +9,7 @@ use core_types::transform::Transform;
 use core_types::{Interrupt, NodeError};
 use glam::{DAffine2, DVec2, UVec2};
 use graphene_resource::Resource;
-use graphic_types::generator::{GeneratorPattern, NoiseSettings};
+use graphic_types::generator::{Generator, GeneratorPattern, NoiseSettings};
 use raster_types::{CPU, GPU, Raster, Storage};
 use raster_types::{Image, ImageError};
 use wgpu_executor::WgpuPipelineCache;
@@ -307,6 +307,70 @@ fn noise_pattern(
 	let raster = render_generator(&noise, [offset, offset + size], UVec2::new(width, height), pipeline.element())?;
 
 	Ok(Item::new_from_element(raster.with_coverage(logical_transform.inverse() * transform)).with_attribute(ATTR_TRANSFORM, logical_transform))
+}
+
+/// Generates a procedural noise pattern which fills the plane, drawn at the resolution the render needs.
+#[node_macro::node(category("Raster"), icon("NodeNoisePattern"))]
+#[allow(clippy::too_many_arguments)]
+fn noise_pattern_generator(
+	_: impl Ctx,
+	_primary: (),
+	#[hard(0..)] seed: Item<i64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_scale")]
+	#[default(10.)]
+	scale: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_noise_type")] noise_type: Item<NoiseType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_type")] domain_warp_type: Item<DomainWarpType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_domain_warp_amplitude")]
+	#[default(100.)]
+	domain_warp_amplitude: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_type")] fractal_type: Item<FractalType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_octaves")]
+	#[default(3)]
+	#[hard(1..10)]
+	fractal_octaves: Item<i64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_lacunarity")]
+	#[default(2.)]
+	fractal_lacunarity: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_gain")]
+	#[default(0.5)]
+	fractal_gain: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_fractal_weighted_strength")] fractal_weighted_strength: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_ping_pong_strength")]
+	#[default(2.)]
+	fractal_ping_pong_strength: Item<f64>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_distance_function")] cellular_distance_function: Item<CellularDistanceFunction>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_return_type")] cellular_return_type: Item<CellularReturnType>,
+	#[widget(ParsedWidgetOverride::Custom = "noise_inspector_cellular_jitter")]
+	#[default(1.)]
+	cellular_jitter: Item<f64>,
+) -> Item<Generator> {
+	let settings = NoiseSettings {
+		seed: seed.into_element(),
+		scale: scale.into_element(),
+		noise_type: noise_type.into_element(),
+		domain_warp_type: domain_warp_type.into_element(),
+		domain_warp_amplitude: domain_warp_amplitude.into_element(),
+		fractal_type: fractal_type.into_element(),
+		fractal_octaves: fractal_octaves.into_element(),
+		fractal_lacunarity: fractal_lacunarity.into_element(),
+		fractal_gain: fractal_gain.into_element(),
+		fractal_weighted_strength: fractal_weighted_strength.into_element(),
+		fractal_ping_pong_strength: fractal_ping_pong_strength.into_element(),
+		cellular_distance_function: cellular_distance_function.into_element(),
+		cellular_return_type: cellular_return_type.into_element(),
+		cellular_jitter: cellular_jitter.into_element(),
+	};
+
+	let mut generator = Item::new_from_element(Generator::Noise);
+	settings.stamp(&mut generator);
+	generator
+}
+
+/// Generates the Mandelbrot set which fills the plane, drawn at the resolution the render needs.
+#[node_macro::node(category("Raster"), icon("NodeMandelbrot"))]
+fn mandelbrot_generator(_: impl Ctx, _primary: ()) -> Item<Generator> {
+	Item::new_from_element(Generator::Mandelbrot)
 }
 
 #[node_macro::node(category("Raster"), icon("NodeMandelbrot"))]

@@ -4,6 +4,7 @@
 
 use crate::Graphic;
 use crate::adjustment::Adjustment;
+use crate::parameters::{ParameterVisitor, ReadParameters, WriteParameters};
 use core_types::ATTR_TRANSFORM;
 use core_types::Color;
 use core_types::blending::BlendMode;
@@ -193,7 +194,7 @@ impl Effect {
 	/// Decodes the parameters into an [`EffectOperation`], falling back to the default for any absent attribute.
 	pub fn operation(&self) -> EffectOperation {
 		let mut operation = EffectOperation::placeholder(self.kind());
-		operation.visit_parameters(&mut ReadParameters(&self.0));
+		operation.visit_parameters(&mut ReadParameters(&|key| self.0.attributes().get_any(key)));
 
 		// A solid paint mixes the same into every pixel, so the renderers carry it out with the other adjustments
 		match operation {
@@ -543,35 +544,6 @@ impl EffectOperation {
 			}
 			Self::Adjustment(adjustment) => adjustment.visit_parameters(visitor),
 		}
-	}
-}
-
-/// What a value needs to ride an attribute.
-pub(crate) trait ParameterValue: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static {}
-impl<T: Clone + Send + Sync + Default + Debug + PartialEq + CacheHash + 'static> ParameterValue for T {}
-
-/// Handles each parameter of an operation, given the attribute key it rides and its implicit default.
-pub(crate) trait ParameterVisitor {
-	fn parameter<T: ParameterValue>(&mut self, key: &str, value: &mut T, default: T);
-}
-
-/// Stamps each parameter that differs from its default onto a row.
-struct WriteParameters<'a>(&'a mut Item<EffectKind>);
-
-impl ParameterVisitor for WriteParameters<'_> {
-	fn parameter<T: ParameterValue>(&mut self, key: &str, value: &mut T, default: T) {
-		if *value != default {
-			self.0.set_attribute(key, value.clone());
-		}
-	}
-}
-
-/// Reads each parameter from a row, or its default where the row lacks it.
-struct ReadParameters<'a>(&'a Item<EffectKind>);
-
-impl ParameterVisitor for ReadParameters<'_> {
-	fn parameter<T: ParameterValue>(&mut self, key: &str, value: &mut T, default: T) {
-		*value = self.0.attribute::<T>(key).cloned().unwrap_or(default);
 	}
 }
 

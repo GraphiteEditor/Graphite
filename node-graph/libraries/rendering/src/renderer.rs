@@ -24,6 +24,7 @@ use core_types::{
 use dyn_any::DynAny;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_resource::Resource;
+use graphic_types::generator::GeneratorPattern;
 use graphic_types::raster_types::{CPU, GPU, Raster, Storage, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm, wrapped_dial};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
@@ -32,7 +33,7 @@ use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, Stroke
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
-use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Graphic, Vector, fitted_paint};
+use graphic_types::{Adjustment, Appearance, Artboard, BevelStyle, Cover, Coverage, EffectOperation, Effects, FillAndStroke, Generator, Graphic, Vector, fitted_paint};
 use kurbo::{Affine, BezPath, Cap, Join, PathEl, Shape};
 use num_traits::Zero;
 use raster_kernels::adjustments::{adjust_color, adjusted_raster, leading_adjustments, preserves_alpha};
@@ -73,6 +74,13 @@ impl<'a, T> ItemRef<'a, T> {
 		match self {
 			ItemRef::ListItem(list, index) => list.attribute(key, index),
 			ItemRef::Item(item) => item.attribute(key),
+		}
+	}
+
+	pub(crate) fn attribute_any(self, key: &str) -> Option<&'a dyn std::any::Any> {
+		match self {
+			ItemRef::ListItem(list, index) => list.attribute_any(key, index),
+			ItemRef::Item(item) => item.attributes().get_any(key),
 		}
 	}
 
@@ -386,6 +394,7 @@ fn nested_effects_reach(graphic: &Graphic) -> f64 {
 		Graphic::RasterGPU(item) => item_reach(item),
 		Graphic::Color(item) => item_reach(item),
 		Graphic::Gradient(item) => item_reach(item),
+		Graphic::Generator(item) => item_reach(item),
 		Graphic::Text(item) => item_reach(item),
 		Graphic::GraphicList(list) => list_reach(list, nested_effects_reach),
 		Graphic::VectorList(list) => list_reach(list, |_| 0.),
@@ -393,6 +402,7 @@ fn nested_effects_reach(graphic: &Graphic) -> f64 {
 		Graphic::RasterGPUList(list) => list_reach(list, |_| 0.),
 		Graphic::ColorList(list) => list_reach(list, |_| 0.),
 		Graphic::GradientList(list) => list_reach(list, |_| 0.),
+		Graphic::GeneratorList(list) => list_reach(list, |_| 0.),
 		Graphic::TextList(list) => list_reach(list, |_| 0.),
 	}
 }
@@ -1873,6 +1883,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => render_raster_gpu_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Color(item) => render_color_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::Gradient(item) => render_gradient_item_svg(ItemRef::Item(item), render, render_params),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => render_text_item_svg(ItemRef::Item(item), render, render_params),
 			Graphic::GraphicList(list) => list.render_svg(render, render_params),
 			Graphic::VectorList(list) => list.render_svg(render, render_params),
@@ -1880,6 +1891,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.render_svg(render, render_params),
 			Graphic::ColorList(list) => list.render_svg(render, render_params),
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
+			Graphic::GeneratorList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
 			Graphic::StrokeList(_) => (),
 		}
@@ -1901,6 +1913,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::Generator(item) => render_generator_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
 			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::VectorList(list) => list.render_to_vello(scene, transform, render_params),
@@ -1908,6 +1921,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::ColorList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::GradientList(list) => list.render_to_vello(scene, transform, render_params),
+			Graphic::GeneratorList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::TextList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::StrokeList(_) => (),
 		}
@@ -1929,10 +1943,12 @@ impl Render for Graphic {
 			| Graphic::RasterCPU(_)
 			| Graphic::Color(_)
 			| Graphic::Gradient(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::ColorList(_)
 			| Graphic::GradientList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {}
 		}
@@ -1969,6 +1985,7 @@ impl Render for Graphic {
 				Graphic::RasterGPU(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Color(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Gradient(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
+				Graphic::Generator(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::Text(item) => first_item_inserts(metadata, item.attribute_cloned_or_default(ATTR_TRANSFORM)),
 				Graphic::RasterCPUList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
@@ -1995,6 +2012,14 @@ impl Render for Graphic {
 					}
 				}
 				Graphic::GradientList(list) => {
+					metadata.upstream_footprints.insert(element_id, footprint);
+
+					// TODO: Find a way to handle more than the first item
+					if !list.is_empty() {
+						metadata.local_transforms.insert(element_id, list.attribute_cloned_or_default(ATTR_TRANSFORM, 0));
+					}
+				}
+				Graphic::GeneratorList(list) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first item
@@ -2029,6 +2054,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => collect_raster_metadata(Some(ItemRef::Item(item)), metadata, footprint, element_id),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => collect_gradient_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, element_id),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => collect_text_items_metadata(std::iter::once(ItemRef::Item(item)), metadata, footprint, element_id),
 			Graphic::GraphicList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::VectorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
@@ -2036,6 +2062,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::ColorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::GradientList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
+			Graphic::GeneratorList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::TextList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 			Graphic::StrokeList(list) => list.collect_metadata(metadata, footprint, element_id, inherited_appearance),
 		}
@@ -2050,6 +2077,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => add_unit_square_click_target(item.attribute_cloned_or_default(ATTR_TRANSFORM), click_targets),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => add_gradient_item_click_targets(ItemRef::Item(item), click_targets),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => add_text_item_click_targets(ItemRef::Item(item), click_targets),
 			Graphic::GraphicList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
@@ -2057,6 +2085,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
+			Graphic::GeneratorList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 			Graphic::StrokeList(list) => list.add_upstream_click_targets(click_targets, inherited_appearance),
 		}
@@ -2071,6 +2100,7 @@ impl Render for Graphic {
 			Graphic::RasterGPU(item) => add_unit_square_click_target(item.attribute_cloned_or_default(ATTR_TRANSFORM), outlines),
 			Graphic::Color(_) => (),
 			Graphic::Gradient(item) => add_gradient_item_outline_targets(ItemRef::Item(item), outlines),
+			Graphic::Generator(_) => (),
 			Graphic::Text(item) => add_text_item_click_targets(ItemRef::Item(item), outlines),
 			Graphic::GraphicList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::VectorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
@@ -2078,6 +2108,7 @@ impl Render for Graphic {
 			Graphic::RasterGPUList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::ColorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::GradientList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
+			Graphic::GeneratorList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::TextList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 			Graphic::StrokeList(list) => list.add_upstream_outline_targets(outlines, inherited_appearance),
 		}
@@ -2787,10 +2818,12 @@ fn render_vector_item_to_vello(
 			| Graphic::Vector(_)
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
@@ -2877,10 +2910,12 @@ fn render_vector_item_to_vello(
 			| Graphic::Vector(_)
 			| Graphic::RasterCPU(_)
 			| Graphic::RasterGPU(_)
+			| Graphic::Generator(_)
 			| Graphic::Text(_)
 			| Graphic::VectorList(_)
 			| Graphic::RasterCPUList(_)
 			| Graphic::RasterGPUList(_)
+			| Graphic::GeneratorList(_)
 			| Graphic::GraphicList(_)
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
@@ -3476,6 +3511,56 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 
 /// The most pixels an image may have for its adjustments to be carried out on a texture of it, past which an effects group carries them out at the render's resolution.
 const MAX_ADJUSTED_TEXTURE_PIXELS: u64 = 4096 * 4096;
+
+/// Draws one item of generator content into the Vello scene, which renders its pattern for each render at the resolution it needs.
+fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+	let Some(&generator) = item.element() else { return };
+
+	// Outline mode shows only geometry, and a generator filling the plane has none
+	if let RenderMode::Outline = render_params.render_mode {
+		return;
+	}
+
+	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
+	let compositing = item.compositing(render_params);
+	let local_to_scene = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
+	let bounds = generator.bounding_box(local_to_scene, false);
+	if bounds == RenderBoundingBox::None {
+		return;
+	}
+
+	// Opacity and blend modes composite through a layer covering the whole render
+	let mut layer = false;
+	if compositing.opacity < 1. || blend_mode_attr != BlendMode::default() {
+		let blending = peniko::BlendMode::new(blend_mode_attr.to_peniko(), peniko::Compose::SrcOver);
+		scene.push_viewport_layer(blending, compositing.opacity);
+		layer = true;
+	}
+
+	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
+	compositing.draw_with_effects(
+		scene,
+		transform,
+		render_params,
+		|| bounds,
+		|scene| scene.draw_generator(&pattern, kurbo::Affine::new(local_to_scene.to_cols_array())),
+	);
+
+	if layer {
+		scene.pop_layer();
+	}
+}
+
+impl Render for List<Generator> {
+	// A generator's pattern is rendered by GPU kernels, which SVG output has no GPU to run, so it draws nothing as a GPU raster does
+	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
+
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_generator_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
+		}
+	}
+}
 
 /// The metadata a raster contributes under an `element_id`: a unit-square click target,
 /// plus the first item's transform and any merged-layers snapshot when a first item exists.
@@ -4768,7 +4853,7 @@ mod tests {
 
 	#[test]
 	fn solid_vector_paints_take_their_adjustments_into_their_colors() {
-		use crate::vello_scene_builder::{EffectsRenderer, VelloSceneBuilder};
+		use crate::vello_scene_builder::{EffectsRenderer, GeneratorTile, VelloSceneBuilder};
 		use graphic_types::{Effect, EffectOperation, stamp_effect};
 		use kurbo::Shape;
 
@@ -4810,6 +4895,10 @@ mod tests {
 
 			fn adjust_raster(&mut self, _: &Raster<CPU>, _: &[Adjustment]) -> Option<graphic_types::raster_types::Texture> {
 				None
+			}
+
+			fn prepare_generator_tile(&mut self, _: &GeneratorPattern, _: GeneratorTile) -> bool {
+				false
 			}
 		}
 		let mut effects_renderer = NoEffectsGroups;

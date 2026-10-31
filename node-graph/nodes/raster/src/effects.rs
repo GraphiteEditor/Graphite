@@ -4,7 +4,7 @@ use core_types::list::{ATTR_EFFECTS, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_
 use core_types::{ATTR_OPACITY_FILL, CacheHash, Color, Ctx, Interrupt, NodeError};
 use glam::DVec2;
 use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::{Adjustment, BevelDirection, BevelStyle, Effect, EffectOperation, Effects, GlowSource, Graphic, Vector, stamp_effect};
+use graphic_types::{Adjustment, BevelDirection, BevelStyle, Effect, EffectOperation, Effects, Generator, GlowSource, Graphic, Vector, stamp_effect};
 use raster_kernels::adjustments::{adjust_color, adjust_gradient, preserves_alpha};
 use std::hash::{DefaultHasher, Hasher};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -33,6 +33,7 @@ impl ApplyEffect for Graphic {}
 impl ApplyEffect for Vector {}
 impl ApplyEffect for Raster<CPU> {}
 impl ApplyEffect for String {}
+impl ApplyEffect for Generator {}
 
 /// A color has no pixels for an effect to read, so an adjustment is carried out on the color itself with its kernel's mapping.
 impl ApplyEffect for Color {
@@ -85,7 +86,7 @@ fn apply_effect<T: ApplyEffect>(content: Item<T>, operation: EffectOperation, pi
 fn blur<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to blur.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// How far the blur spreads each point of the content.
 	#[unit(" px")]
@@ -115,7 +116,7 @@ fn blur<T: ApplyEffect>(
 fn drop_shadow<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content casting the shadow.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shadow's color, with its opacity.
 	#[default("#00000080")]
@@ -154,7 +155,7 @@ fn drop_shadow<T: ApplyEffect>(
 fn inner_shadow<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content the shadow falls inside.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shadow's color, with its opacity.
 	#[default("#00000080")]
@@ -193,7 +194,7 @@ fn inner_shadow<T: ApplyEffect>(
 fn outer_glow<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to glow around.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The glow's color, with its opacity.
 	#[default("#ffffbebf")]
@@ -227,7 +228,7 @@ fn outer_glow<T: ApplyEffect>(
 fn inner_glow<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to glow within.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The glow's color, with its opacity.
 	#[default("#ffffbebf")]
@@ -264,7 +265,7 @@ fn inner_glow<T: ApplyEffect>(
 fn satin<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to shade.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The shading's color, with its opacity.
 	#[default("#00000080")]
@@ -302,7 +303,7 @@ fn satin<T: ApplyEffect>(
 fn outline<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to outline.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The outline's color, with its opacity.
 	#[default(Color::BLACK)]
@@ -335,7 +336,7 @@ fn outline<T: ApplyEffect>(
 fn bevel_and_emboss<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to raise.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// Where the slope lies: inside the edge, outside it, across it, or across it with the edge pressed in.
 	style: Item<BevelStyle>,
@@ -403,7 +404,7 @@ fn bevel_and_emboss<T: ApplyEffect>(
 fn paint_overlay<T: ApplyEffect>(
 	_: impl Ctx,
 	/// The content to paint over.
-	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String)]
+	#[implementations(Raster<CPU>, Graphic, Vector, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// The color, gradient, image, or other graphic to paint with. A gradient or image without its own placement stretches across the content.
 	#[default(Color::BLACK)]

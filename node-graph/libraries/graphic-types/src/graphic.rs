@@ -1,4 +1,5 @@
 use crate::appearance::{Appearance, Cover, Coverage};
+use crate::generator::Generator;
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
@@ -26,6 +27,7 @@ pub enum Graphic {
 	RasterGPU(Item<Raster<GPU>>),
 	Color(Item<Color>),
 	Gradient(Item<Gradient>),
+	Generator(Item<Generator>),
 	Text(Item<String>),
 	NoneList(List<none::None>),
 	GraphicList(List<Graphic>),
@@ -34,6 +36,7 @@ pub enum Graphic {
 	RasterGPUList(List<Raster<GPU>>),
 	ColorList(List<Color>),
 	GradientList(List<Gradient>),
+	GeneratorList(List<Generator>),
 	TextList(List<String>),
 	StrokeList(List<Stroke>),
 }
@@ -134,6 +137,23 @@ impl From<Item<Gradient>> for Graphic {
 impl From<List<Gradient>> for Graphic {
 	fn from(gradient: List<Gradient>) -> Self {
 		Graphic::GradientList(gradient)
+	}
+}
+
+// Generator
+impl From<Generator> for Graphic {
+	fn from(generator: Generator) -> Self {
+		Graphic::Generator(Item::new_from_element(generator))
+	}
+}
+impl From<Item<Generator>> for Graphic {
+	fn from(generator: Item<Generator>) -> Self {
+		Graphic::Generator(generator)
+	}
+}
+impl From<List<Generator>> for Graphic {
+	fn from(generator: List<Generator>) -> Self {
+		Graphic::GeneratorList(generator)
 	}
 }
 
@@ -312,12 +332,14 @@ pub fn bake_paint_transforms(attributes: &mut ItemAttributeValues, transform: DA
 			Graphic::RasterCPU(item) => bake_item_transform(item, transform),
 			Graphic::RasterGPU(item) => bake_item_transform(item, transform),
 			Graphic::Gradient(item) => bake_item_transform(item, transform),
+			Graphic::Generator(item) => bake_item_transform(item, transform),
 			Graphic::Text(item) => bake_item_transform(item, transform),
 			Graphic::GraphicList(list) => bake_list_transform(list, transform),
 			Graphic::VectorList(list) => bake_list_transform(list, transform),
 			Graphic::RasterCPUList(list) => bake_list_transform(list, transform),
 			Graphic::RasterGPUList(list) => bake_list_transform(list, transform),
 			Graphic::GradientList(list) => bake_list_transform(list, transform),
+			Graphic::GeneratorList(list) => bake_list_transform(list, transform),
 			Graphic::TextList(list) => bake_list_transform(list, transform),
 			Graphic::StrokeList(list) => bake_list_transform(list, transform),
 			// A color has no spatial extent, so there is no placement for a transform to move
@@ -390,6 +412,16 @@ impl TryFromGraphic for Gradient {
 	}
 }
 
+impl TryFromGraphic for Generator {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		match graphic {
+			Graphic::Generator(item) => Some(List::new_from_item(item)),
+			Graphic::GeneratorList(list) => Some(list),
+			_ => None,
+		}
+	}
+}
+
 impl TryFromGraphic for String {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		match graphic {
@@ -454,6 +486,12 @@ impl IntoGraphicList for List<Color> {
 impl IntoGraphicList for List<Gradient> {
 	fn into_graphic_list(self) -> List<Graphic> {
 		List::new_from_element(Graphic::GradientList(self))
+	}
+}
+
+impl IntoGraphicList for List<Generator> {
+	fn into_graphic_list(self) -> List<Graphic> {
+		List::new_from_element(Graphic::GeneratorList(self))
 	}
 }
 
@@ -570,6 +608,7 @@ impl Graphic {
 			Graphic::RasterGPU(item) => item_clipped(item),
 			Graphic::Color(item) => item_clipped(item),
 			Graphic::Gradient(item) => item_clipped(item),
+			Graphic::Generator(item) => item_clipped(item),
 			Graphic::Text(item) => item_clipped(item),
 			Graphic::NoneList(list) => all_clipped(list),
 			Graphic::VectorList(list) => all_clipped(list),
@@ -578,6 +617,7 @@ impl Graphic {
 			Graphic::RasterGPUList(list) => all_clipped(list),
 			Graphic::ColorList(list) => all_clipped(list),
 			Graphic::GradientList(list) => all_clipped(list),
+			Graphic::GeneratorList(list) => all_clipped(list),
 			Graphic::TextList(list) => all_clipped(list),
 			Graphic::StrokeList(list) => all_clipped(list),
 		}
@@ -616,6 +656,7 @@ impl Graphic {
 			}
 			Graphic::RasterCPU(_) | Graphic::RasterCPUList(_) => false,
 			Graphic::RasterGPU(_) | Graphic::RasterGPUList(_) => false,
+			Graphic::Generator(_) | Graphic::GeneratorList(_) => false,
 			Graphic::Color(item) => item_opacity_is_full(item) && item.element().is_opaque(),
 			Graphic::ColorList(list) => !list.is_empty() && every_item_has_full_opacity(list) && list.iter_element_values().all(|color| color.is_opaque()),
 			// A `Clear` spread cuts off to transparency past the ends, leaving the rest of the region unpainted
@@ -662,9 +703,11 @@ impl Graphic {
 			// Their content is never inspected, so zeroed opacity is the only invisibility these can report
 			Graphic::RasterCPU(item) => item_opacity_is_zero(item),
 			Graphic::RasterGPU(item) => item_opacity_is_zero(item),
+			Graphic::Generator(item) => item_opacity_is_zero(item),
 			Graphic::Text(item) => item_opacity_is_zero(item),
 			Graphic::RasterCPUList(list) => every_item_has_zero_opacity(list),
 			Graphic::RasterGPUList(list) => every_item_has_zero_opacity(list),
+			Graphic::GeneratorList(list) => every_item_has_zero_opacity(list),
 			Graphic::TextList(list) => every_item_has_zero_opacity(list),
 			Graphic::StrokeList(list) => every_item_has_zero_opacity(list),
 		}
@@ -680,11 +723,12 @@ impl Graphic {
 		match self {
 			// A leaf always holds exactly one element, so only the none-typed content is truly empty
 			Graphic::None(_) | Graphic::NoneList(_) => true,
-			Graphic::Graphic(_) | Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Text(_) => false,
+			Graphic::Graphic(_) | Graphic::Vector(_) | Graphic::RasterCPU(_) | Graphic::RasterGPU(_) | Graphic::Color(_) | Graphic::Gradient(_) | Graphic::Generator(_) | Graphic::Text(_) => false,
 			Graphic::GraphicList(list) => list.is_empty(),
 			Graphic::VectorList(list) => list.is_empty(),
 			Graphic::ColorList(list) => list.is_empty(),
 			Graphic::GradientList(list) => list.is_empty(),
+			Graphic::GeneratorList(list) => list.is_empty(),
 			Graphic::RasterCPUList(list) => list.is_empty(),
 			Graphic::RasterGPUList(list) => list.is_empty(),
 			Graphic::TextList(list) => list.is_empty(),
@@ -841,6 +885,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterGPU(item) => item.bounding_box(transform, include_stroke),
 			Graphic::Color(item) => item.bounding_box(transform, include_stroke),
 			Graphic::Gradient(item) => item.bounding_box(transform, include_stroke),
+			Graphic::Generator(item) => item.bounding_box(transform, include_stroke),
 			Graphic::Text(item) => item.bounding_box(transform, include_stroke),
 			Graphic::VectorList(list) => vector_list_bounding_box(list, transform, include_stroke),
 			Graphic::RasterCPUList(list) => list.bounding_box(transform, include_stroke),
@@ -848,6 +893,7 @@ impl BoundingBox for Graphic {
 			Graphic::GraphicList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::ColorList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::GradientList(list) => list.bounding_box(transform, include_stroke),
+			Graphic::GeneratorList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.bounding_box(transform, include_stroke),
 			Graphic::StrokeList(list) => list.bounding_box(transform, include_stroke),
 		}
@@ -862,6 +908,7 @@ impl BoundingBox for Graphic {
 			Graphic::RasterGPU(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Color(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Gradient(item) => item.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::Generator(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::Text(item) => item.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::VectorList(vector) => vector_list_bounding_box(vector, transform, include_stroke),
 			Graphic::RasterCPUList(raster) => raster.thumbnail_bounding_box(transform, include_stroke),
@@ -869,6 +916,7 @@ impl BoundingBox for Graphic {
 			Graphic::GraphicList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::ColorList(color) => color.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::GradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
+			Graphic::GeneratorList(generator) => generator.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::StrokeList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 		}

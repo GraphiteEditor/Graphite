@@ -8,6 +8,7 @@ use graphene_animation::AnimationCurve;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::any::DynAnyNode;
 use graphene_std::brush::Stroke;
+use graphene_std::generator::Generator;
 use graphene_std::gradient::Gradient;
 use graphene_std::list::{AttributeValueDyn, Bundle, Item, List, ListDyn, NodeIdPath};
 #[cfg(feature = "gpu")]
@@ -46,6 +47,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Gradient>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => List<Generator>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Artboard>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Graphic>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Vector>]),
@@ -56,6 +58,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<wgpu_executor::WgpuPipelineCache>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Color>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Gradient>]),
+		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<Generator>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<BoxCorners>]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => Item<TransferCurve>]),
@@ -104,6 +107,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Raster<CPU>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Color>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Gradient>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<Generator>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<String>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<NodeIdPath>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => List<f64>]),
@@ -124,6 +128,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Color>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Gradient>]),
+		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<Generator>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<DashPattern>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<BoxCorners>]),
 		async_node!(graphene_core::memo::MemoizeNode<_, _>, input: Context, fn_params: [Context => Item<TransferCurve>]),
@@ -370,6 +375,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Graphic,
 		Color,
 		Gradient,
+		Generator,
 		String,
 		f64,
 		DVec2,
@@ -422,6 +428,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		Raster<CPU>,
 		Color,
 		Gradient,
+		Generator,
 		f64,
 		i64,
 		bool,
@@ -462,6 +469,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		String,
 		Color,
 		Gradient,
+		Generator,
 		Artboard,
 	));
 	#[cfg(feature = "gpu")]
@@ -515,6 +523,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	// This is what lets a paint list zip element-wise against the content it paints.
 	node_types.extend(embed_adapter_row!(from_element: Color, element: Graphic));
 	node_types.extend(embed_adapter_row!(from_element: Gradient, element: Graphic));
+	node_types.extend(embed_adapter_row!(from_element: Generator, element: Graphic));
 	node_types.extend(embed_adapter_row!(from_element: String, element: Graphic));
 	node_types.extend(embed_adapter_row!(from_element: Vector, element: Graphic));
 	node_types.extend(embed_adapter_row!(from_element: Raster<CPU>, element: Graphic));
@@ -572,6 +581,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		attribute_value_node!(List<String>),
 		attribute_value_node!(List<Color>),
 		attribute_value_node!(List<Gradient>),
+		attribute_value_node!(List<Generator>),
 		attribute_value_node!(List<Vector>),
 		attribute_value_node!(List<Raster<CPU>>),
 		#[cfg(feature = "gpu")]
@@ -599,6 +609,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		transform_list_node!(element: Raster<GPU>),
 		transform_list_node!(element: Color),
 		transform_list_node!(element: Gradient),
+		transform_list_node!(element: Generator),
 	];
 	node_types.extend(transform_list_rows);
 	let mut map: HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>> = HashMap::new();

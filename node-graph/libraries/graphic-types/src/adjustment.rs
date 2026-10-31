@@ -1,7 +1,8 @@
 //! Color adjustments as plain data holding their nodes' settings in the nodes' own units, decoded from effect rows, carried out by the kernels of the `raster-kernels` crate.
 
 use crate::Graphic;
-use crate::effects::{EffectKind, ParameterVisitor};
+use crate::effects::EffectKind;
+use crate::parameters::ParameterVisitor;
 use core_types::Color;
 use core_types::blending::BlendMode;
 use core_types::color::SRGBA8;
