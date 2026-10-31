@@ -130,6 +130,12 @@ impl PartialEq for NodeNetworkInterface {
 
 impl NodeNetworkInterface {
 	// TODO: Eventually remove this document upgrade code
+	/// Moves the interface metadata an older document stored on each instance node onto the network implementing it.
+	pub fn move_interface_metadata_into_networks(&mut self) {
+		self.migrate_metadata(NodeNetworkMetadata::move_interface_metadata_into_networks);
+	}
+
+	// TODO: Eventually remove this document upgrade code
 	/// Normalizes the stored types of every node at every nesting level, for an older document whose stored types predate the current form.
 	pub fn normalize_stored_types(&mut self) {
 		self.migrate_graph(NodeNetwork::normalize_stored_types);

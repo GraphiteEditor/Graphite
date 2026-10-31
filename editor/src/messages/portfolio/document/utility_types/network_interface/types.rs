@@ -623,8 +623,10 @@ fn move_interface_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 }
 
 fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
-	if network_metadata.import_metadata.is_empty() && network_metadata.export_names.is_empty() {
+	if network_metadata.import_metadata.is_empty() {
 		network_metadata.import_metadata = import_metadata;
+	}
+	if network_metadata.export_names.is_empty() {
 		network_metadata.export_names = export_names;
 		network_metadata.export_descriptions = export_descriptions;
 	}

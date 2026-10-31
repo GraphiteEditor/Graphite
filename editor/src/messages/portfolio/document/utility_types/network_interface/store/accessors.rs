@@ -46,8 +46,9 @@ impl NodeNetworkInterface {
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	pub(crate) fn move_interface_metadata_into_networks(&mut self) {
-		self.network_metadata.get_mut().move_interface_metadata_into_networks(self.network.network());
+	/// Rewrites the whole metadata tree in place against the graph, for a document arriving in an older shape. Unrecorded, like [`Self::migrate_graph`].
+	pub(in super::super) fn migrate_metadata(&mut self, migrate: impl FnOnce(&mut NodeNetworkMetadata, &NodeNetwork)) {
+		migrate(self.network_metadata.get_mut(), self.network.network());
 	}
 
 	// ===== Recorded writes =====

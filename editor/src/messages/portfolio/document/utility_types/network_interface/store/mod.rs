@@ -102,8 +102,14 @@ impl NodeNetworkInterface {
 		}
 
 		for (path, node_id) in &encapsulating_nodes {
-			let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, path)) else { continue };
-			let Some(input) = node.remove_input(from) else { return false };
+			let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, path)) else {
+				log::error!("Could not get node {node_id} in move_import_slot");
+				continue;
+			};
+			let Some(input) = node.remove_input(from) else {
+				log::error!("Could not remove input {from} of node {node_id} in move_import_slot");
+				return false;
+			};
 			node.insert_input(to, input);
 		}
 

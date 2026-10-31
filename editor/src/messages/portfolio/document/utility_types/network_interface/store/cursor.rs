@@ -459,8 +459,8 @@ impl NodeMut<'_> {
 
 		let interface = self.interface();
 		*interface.input_metadata = input_metadata;
-		*interface.output_names = output_names;
-		*interface.output_descriptions = output_descriptions;
+		*interface.output_names = output_names.clone();
+		*interface.output_descriptions = output_descriptions.clone();
 
 		let delta = RuntimeDelta::ReplaceNode {
 			network_path: self.deltas.network_path(),
@@ -468,6 +468,13 @@ impl NodeMut<'_> {
 			node: Box::new(self.node.clone()),
 		};
 		self.deltas.graph(delta);
+
+		// The carried-over interface lands on the new network, which the replacement just rebuilt without it
+		if self.interface_on_network() {
+			self.emit_input_metadata();
+			self.record_output_names(output_names);
+			self.record_output_descriptions(output_descriptions);
+		}
 
 		// Only what the new implementation brought with it. A swap leaves the node's own metadata alone,
 		// and restating it would assert values this peer did not write, clobbering a concurrent rename.

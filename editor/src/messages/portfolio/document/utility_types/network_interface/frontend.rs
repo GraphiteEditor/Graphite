@@ -162,7 +162,7 @@ impl NodeNetworkInterface {
 			.unwrap_or_default()
 	}
 
-	/// The name a network's export is shown with: its encapsulating node's output name, or else its type, or else its number.
+	/// The name a network's export is shown with: the network's export name, or else its type, or else its number.
 	/// The document network has one export, the canvas.
 	pub fn displayed_export_name(&self, export_index: usize, network_path: &[NodeId]) -> String {
 		if network_path.is_empty() {
@@ -181,7 +181,7 @@ impl NodeNetworkInterface {
 		established_type_name(&self.input_type(&InputConnector::Export(export_index), network_path)).unwrap_or_else(|| format!("Export #{export_index}"))
 	}
 
-	/// The description of a network's export, which its encapsulating node stores for the output.
+	/// The description of a network's export, which the network stores alongside its export names.
 	pub fn export_description(&self, export_index: usize, network_path: &[NodeId]) -> String {
 		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
 			return String::new();
