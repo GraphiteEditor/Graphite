@@ -51,4 +51,7 @@ pub struct SessionState {
 	/// The Lamport counter, so a reopen never mints a spent stamp.
 	#[serde(default)]
 	pub clock_counter: u64,
+	/// Whether the document belongs in its room, so a reopen reconnects.
+	#[serde(default)]
+	pub shared: bool,
 }

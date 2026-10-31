@@ -1,4 +1,4 @@
-use crate::{Attributes, NetworkId, NodeId, PeerId, Registry, ResourceId, ResourceStore, SourceKey, TimeStamp};
+use crate::{Attributes, NetworkId, NodeId, PeerId, Registry, ResourceId, ResourceStore, SourceKey, TimeStamp, Tombstone};
 use std::collections::HashMap;
 
 impl Registry {
@@ -23,6 +23,17 @@ impl Registry {
 			removed_resources: HashMap::new(),
 			..self.clone()
 		}
+	}
+
+	/// Whether both registries removed the same entities at the same times. Registries equal in value but not in their
+	/// removal marks resolve later ops differently.
+	pub fn removal_marks_equal(&self, other: &Self) -> bool {
+		fn same<K: std::hash::Hash + Eq, T>(a: &HashMap<K, Tombstone<T>>, b: &HashMap<K, Tombstone<T>>) -> bool {
+			a.len() == b.len()
+				&& a.iter()
+					.all(|(id, mark)| b.get(id).is_some_and(|other| other.timestamp == mark.timestamp && other.placeholder == mark.placeholder))
+		}
+		same(&self.removed_nodes, &other.removed_nodes) && same(&self.removed_networks, &other.removed_networks) && same(&self.removed_resources, &other.removed_resources)
 	}
 
 	/// True if both registries agree on every value-bearing field, ignoring per-slot and

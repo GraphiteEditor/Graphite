@@ -292,6 +292,7 @@ impl<L: Layout> Gdd<L> {
 			last_hot_sequence: self.session.last_hot_sequence(),
 			retired_marks: self.session.retired_marks().clone(),
 			clock_counter: self.session.clock_counter(),
+			shared: false,
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
 		}

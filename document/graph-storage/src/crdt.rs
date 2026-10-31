@@ -1,4 +1,5 @@
 use crate::{Attributes, Delta, PeerId, Prior, RegistryDelta, Rev, TimeStamp, Value, attr, compute_rev};
+use graphene_resource::ResourceHash;
 
 impl Delta {
 	pub fn new(parent: Option<Rev>, author: PeerId, timestamp: TimeStamp, kind: RegistryDelta, reverse: Vec<Prior>) -> Self {
@@ -76,6 +77,17 @@ impl Delta {
 	/// the source via [`Session::verify_history`].
 	pub fn has_valid_id(&self) -> bool {
 		self.id == self.recomputed_id()
+	}
+}
+
+impl RegistryDelta {
+	pub fn resource_hash(&self) -> Option<ResourceHash> {
+		match self {
+			RegistryDelta::AddResource { entry, .. } => entry.hash,
+			RegistryDelta::RemoveResource { snapshot, .. } => snapshot.hash,
+			RegistryDelta::SetResourceHash { hash, .. } => *hash,
+			_ => None,
+		}
 	}
 }
 

@@ -91,10 +91,14 @@ fn opening_steps_the_format_version() {
 		let (working, layout) = gdd.into_storage();
 
 		let migrated = GddV1::open_in(working, layout).await.unwrap();
-		assert_eq!(migrated.manifest().format_version, 2);
+		assert_eq!(migrated.manifest().format_version, manifest::SUPPORTED_FORMAT_VERSION);
 
 		let (working, layout) = migrated.into_storage();
-		assert_eq!(GddV1::open_in(working, layout).await.unwrap().manifest().format_version, 2, "the bump persisted");
+		assert_eq!(
+			GddV1::open_in(working, layout).await.unwrap().manifest().format_version,
+			manifest::SUPPORTED_FORMAT_VERSION,
+			"the bump persisted"
+		);
 	});
 }
 
