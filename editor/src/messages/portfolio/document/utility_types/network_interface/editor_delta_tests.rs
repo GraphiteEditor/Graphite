@@ -1060,3 +1060,25 @@ async fn a_resource_an_entry_exports_follows_the_entry() {
 		editor.active_document_mut().network_interface.delete_nodes(vec![copy], true, &[]);
 	});
 }
+
+/// A resource written into an entry's export goes again when the same batch removes the entry.
+#[tokio::test]
+async fn a_resource_exported_and_removed_in_one_batch_leaves_nothing_behind() {
+	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let resource = ResourceId::new();
+	let registry = &mut editor.active_document_mut().resources.registry;
+	registry.push_source_back(&resource, DataSource::Embedded);
+	registry.resolve(&resource, ResourceHash::from(&b"exported bytes"[..]));
+
+	let (layer, _) = table_layer(&editor);
+	assert_stages_incrementally(&mut editor, "export a resource, then remove the entry", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.set_input(&InputConnector::Export(0), NodeInput::value(TaggedValue::Resource(resource), false), &[layer]);
+		interface.delete_nodes(vec![layer], true, &[]);
+	});
+}

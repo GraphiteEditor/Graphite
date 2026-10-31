@@ -211,12 +211,16 @@ impl EditorDelta {
 			EditorDelta::Graph(RuntimeDelta::SetExport { network, export_index, input }) => {
 				let location = network.as_location();
 				let export = input.as_ref().map(|input| context.resolver.convert_input_at(input, location)).transpose()?;
+				let network_id = context.resolver.network_id(location);
 				if let Some(export) = export.as_ref() {
 					construct_referenced_resource(None, export, context, batch, ops)?;
+					if let Some(resource) = value_resource_ref(export) {
+						batch.record_export_resource(network_id, resource);
+					}
 				}
 
 				ops.push(RegistryDelta::SetNetworkExport {
-					id: context.resolver.network_id(network.as_location()),
+					id: network_id,
 					index: (*export_index).try_into().map_err(|_| ConversionError::IndexOverflow(*export_index))?,
 					export,
 				});
@@ -738,6 +742,7 @@ fn construct_resource_removals(batch_removed_nodes: &[(document_graph_storage::N
 			declaration.into_iter().chain(node_value_resource_refs(node))
 		}))
 		.chain(batch.removed_networks.values().flat_map(network_resource_refs))
+		.chain(batch.removed_networks.keys().flat_map(|id| batch.export_resources.get(id).into_iter().flatten().copied()))
 		.collect();
 	candidates.sort();
 	candidates.dedup();
@@ -757,15 +762,17 @@ fn construct_resource_removals(batch_removed_nodes: &[(document_graph_storage::N
 		still_referenced.extend(batch.input_resources.get(&id).into_iter().flatten().copied());
 	}
 	// The batch's own networks count too: one added earlier in it can export a resource the removal would
-	// otherwise see as orphaned. One it removed no longer does.
+	// otherwise see as orphaned. One it removed no longer does, and one it re-added counts only as re-added.
 	let live_networks = batch
 		.working
 		.networks
 		.iter()
+		.filter(|(id, _)| !batch.added_networks.contains_key(id))
 		.chain(batch.added_networks.iter())
 		.filter(|(id, _)| !batch.removed_networks.contains_key(id));
-	for (_, network) in live_networks {
+	for (id, network) in live_networks {
 		still_referenced.extend(network_resource_refs(network));
+		still_referenced.extend(batch.export_resources.get(id).into_iter().flatten().copied());
 	}
 
 	for candidate in candidates {
@@ -801,6 +808,8 @@ struct BatchRegistry<'a> {
 	/// still holds its pre-batch inputs, so liveness would otherwise miss both the reference these writes
 	/// create and the orphan they leave when that node is later removed.
 	input_resources: HashMap<document_graph_storage::NodeId, HashSet<ResourceId>>,
+	/// Resources the batch's own export writes reference, keyed by the network written to, for the same reason as `input_resources`.
+	export_resources: HashMap<document_graph_storage::NetworkId, HashSet<ResourceId>>,
 }
 
 impl<'a> BatchRegistry<'a> {
@@ -818,12 +827,18 @@ impl<'a> BatchRegistry<'a> {
 			by_network,
 			removed: HashSet::new(),
 			input_resources: HashMap::new(),
+			export_resources: HashMap::new(),
 		}
 	}
 
 	/// Records that an input write on `owner` references `resource`.
 	fn record_input_resource(&mut self, owner: document_graph_storage::NodeId, resource: ResourceId) {
 		self.input_resources.entry(owner).or_default().insert(resource);
+	}
+
+	/// Records that an export write on `network` references `resource`.
+	fn record_export_resource(&mut self, network: document_graph_storage::NetworkId, resource: ResourceId) {
+		self.export_resources.entry(network).or_default().insert(resource);
 	}
 
 	/// Records a node an earlier delta in this batch added, so a later one can read it back.
