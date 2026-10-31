@@ -6556,6 +6556,7 @@ dependencies = [
 name = "vectorize-nodes"
 version = "0.0.0"
 dependencies = [
+ "bytemuck",
  "core-types",
  "dyn-any",
  "glam",

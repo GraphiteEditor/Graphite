@@ -20,8 +20,10 @@ impl std::fmt::Debug for TraceSlot {
 struct Trace {
 	/// A hash of the image and options traced.
 	inputs: u64,
-	/// `None` once the trace is done and `shown` is its result.
+	/// `None` once the trace is done and `shown` is its result, or once it failed.
 	tracing: Option<ollev::Tracing>,
+	/// Why the trace failed, kept so the same inputs are not traced again.
+	failed: Option<ollev::TraceError>,
 	shown: List<Graphic>,
 	/// The revision of the scene in `shown`.
 	revision: Option<u64>,
@@ -56,6 +58,7 @@ impl TraceSlot {
 				Ok(tracing) => Trace {
 					inputs,
 					tracing: Some(tracing),
+					failed: None,
 					shown: List::new(),
 					revision: None,
 					next: None,
@@ -68,11 +71,15 @@ impl TraceSlot {
 			let deadline = clock.now() + slice;
 			let step = tracing.step(|_| if clock.now() >= deadline { ControlFlow::Break(()) } else { ControlFlow::Continue(()) });
 			match step {
-				ollev::Step::Done(model) => {
+				Ok(ollev::Step::Done(model)) => {
 					trace.shown = convert(&model);
 					trace.tracing = None;
 				}
-				ollev::Step::Paused(progress) => {
+				Err(error) => {
+					trace.tracing = None;
+					trace.failed = Some(error);
+				}
+				Ok(ollev::Step::Paused(progress)) => {
 					if progress.showable()
 						&& Some(progress.revision()) != trace.revision
 						&& let Some(model) = progress.model()
@@ -85,7 +92,11 @@ impl TraceSlot {
 		}
 
 		let shown = trace.shown.clone();
-		let state = if trace.tracing.is_some() { Poll::Partial(shown) } else { Poll::Final(shown) };
+		let state = match trace.failed {
+			Some(error) => Poll::fallback(shown, error),
+			None if trace.tracing.is_some() => Poll::Partial(shown),
+			None => Poll::Final(shown),
+		};
 		*held = Some(trace);
 		state
 	}

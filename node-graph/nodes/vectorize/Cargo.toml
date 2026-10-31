@@ -25,6 +25,7 @@ node-macro = { workspace = true }
 ollev = { workspace = true }
 
 # Workspace dependencies
+bytemuck = { workspace = true }
 dyn-any = { workspace = true }
 glam = { workspace = true }
 kurbo = { workspace = true }

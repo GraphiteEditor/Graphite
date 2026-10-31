@@ -92,7 +92,7 @@ fn vectorize(
 	if cfg!(target_family = "wasm") && !*exceed_browser_limit.element() && max_megabytes.is_none_or(|megabytes| megabytes > BROWSER_MAX_MEGABYTES) {
 		trace.clear();
 		return Poll::error(format!(
-			"A memory limit above {BROWSER_MAX_MEGABYTES} MB can crash the editor in the browser. Lower the limit or turn on \"Exceed Browser Limit\"."
+			"A memory limit above {BROWSER_MAX_MEGABYTES} MB, or none, can crash the editor in the browser. Lower the limit or turn on \"Exceed Browser Limit\"."
 		));
 	}
 	let max_pixels = max_megabytes.map(|megabytes| (megabytes * 1e6 / BYTES_PER_PIXEL) as usize);
@@ -122,10 +122,9 @@ fn trace_slice(image: &Item<Raster<CPU>>, detail: f64, tolerance: f64, stages: o
 	[stages.translucency, stages.strokes, stages.primitives, stages.effects, stages.instancing, stages.path_gradients].hash(&mut hasher);
 
 	let start = || {
-		let pixels: Vec<f32> = raster.data.iter().flat_map(|color| [color.r(), color.g(), color.b(), color.a()]).collect();
 		let source = ollev::Image {
 			pixels: ollev::Pixels::RgbaF32 {
-				data: &pixels,
+				data: bytemuck::cast_slice(&raster.data),
 				linear: true,
 				premultiplied: false,
 			},
@@ -308,11 +307,11 @@ mod test {
 		assert!(!slot.tracing(), "the former image's trace is still held");
 	}
 
-	/// The first evaluation of a large enough image already shows a first look at it.
+	/// A first slice long enough to reach ollev's first showable checkpoint already shows a first look at the image.
 	#[test]
 	fn the_first_evaluation_shows_shapes() {
 		let slot = TraceSlot::default();
-		match trace_slice(&busy(256), 1., 1., ollev::Stages::ALL, None, &slot, SLICE, &Instant::now()) {
+		match trace_slice(&busy(256), 1., 1., ollev::Stages::ALL, None, &slot, Duration::from_millis(200), &Instant::now()) {
 			Poll::Partial(shown) => assert!(!shown.is_empty(), "the first partial result shows no shapes"),
 			state => panic!("the first slice ended in {state:?}"),
 		}
