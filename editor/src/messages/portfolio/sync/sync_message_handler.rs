@@ -115,7 +115,10 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				if let Some(token) = self.pending_joins.remove(&document_id) {
 					let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 					let incoming = room.incoming();
-					gdd.join(room, UserId(preferences.user_id));
+					if let Err(error) = gdd.connect(room, UserId(preferences.user_id)) {
+						log::error!("Joining the session failed: {error}");
+						return;
+					}
 					announce_name(gdd, &preferences.user_name);
 					self.attach(document_id, incoming, driver, responses);
 					refresh_session_views(responses);

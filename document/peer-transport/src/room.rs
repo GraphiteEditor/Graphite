@@ -8,8 +8,8 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 const CHANNEL: usize = 0;
-/// Largest SCTP message every browser accepts.
-const CHUNK_BYTES: usize = 16 * 1024;
+/// With its flag byte, a frame is the largest SCTP message every browser accepts.
+const CHUNK_BYTES: usize = 16 * 1024 - 1;
 const FRAME_FINAL: u8 = 1;
 const FRAME_MORE: u8 = 0;
 

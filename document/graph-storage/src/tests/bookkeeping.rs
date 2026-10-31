@@ -138,7 +138,7 @@ fn a_retracted_interaction_leaves_no_trace_and_keeps_what_others_wrote() {
 	let late = crate::HotOp {
 		op: add_network(9),
 		timestamp: crate::TimeStamp { counter: 2, peer: PeerId(1) },
-		sequence: own[1].sequence,
+		sequence: own[2].sequence,
 		attributes: Default::default(),
 	};
 	host.replay_hot_op(late.clone()).expect("dropped, not an error");
@@ -209,7 +209,34 @@ fn an_interaction_retires_to_one_delta_per_field() {
 		id: NodeId(id),
 		node: crate::Node::new(NetworkId(3), crate::Implementation::ProtoNode(ResourceId::from(7)), 2),
 	};
-	let ops = vec![node(1), node(2), node(4), attribute(1), value(1), attribute(2), wire(2), value(2), wire(4), attribute(3), value(3)];
+	let slot_write = RegistryDelta::ChangeNodeInput {
+		id: NodeId(5),
+		index: 0,
+		new_input: crate::NodeInput::Value {
+			value: Value::from(serde_json::json!(1)),
+			exposed: false,
+		},
+	};
+	let whole_list = RegistryDelta::SetNodeInputs {
+		id: NodeId(5),
+		inputs: vec![crate::InputSlot::unset(crate::TimeStamp::ORIGIN)],
+	};
+	let ops = vec![
+		node(1),
+		node(2),
+		node(4),
+		node(5),
+		attribute(1),
+		value(1),
+		attribute(2),
+		wire(2),
+		value(2),
+		wire(4),
+		attribute(3),
+		value(3),
+		slot_write,
+		whole_list,
+	];
 	let mut raw = host.clone();
 	raw.stage_ops(ops.clone()).expect("stage");
 	host.stage_ops(ops).expect("stage");
@@ -222,11 +249,11 @@ fn an_interaction_retires_to_one_delta_per_field() {
 	let raw_ids: Vec<crate::HotOpId> = raw.hot_log().iter().map(crate::HotOp::id).collect();
 	let uncoarsened = raw.retire_hot_ops(&raw_ids).expect("retire raw");
 
-	assert_eq!(uncoarsened.len(), 12, "RegisterPeer, three additions and eight writes");
+	assert_eq!(uncoarsened.len(), 15, "RegisterPeer, four additions and ten writes");
 	assert_eq!(
 		coarsened.len(),
-		8,
-		"RegisterPeer, three additions, the newest attribute, the newest value, and both wires: {coarsened:?}"
+		10,
+		"RegisterPeer, four additions, the newest attribute, the newest value, both wires, and the whole list: {coarsened:?}"
 	);
 	assert!(host.hot_log().is_empty());
 	assert!(host.retired_registry().value_equal(raw.retired_registry()), "the fold is unchanged");

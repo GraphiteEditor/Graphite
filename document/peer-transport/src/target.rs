@@ -106,12 +106,14 @@ impl SyncTarget for Session {
 	}
 
 	fn load(&mut self, registry: Registry, history: Vec<Delta>, head: Option<Rev>) -> Result<(), TargetError> {
-		// A spent sequence coming round again would make a new op of this peer's look retired, and the bytes of a
-		// step taken back keep their GC root.
+		// A spent sequence coming round again would make a new op of this peer's look retired, a spent stamp could name
+		// a new op like one taken back, and the bytes of a step taken back keep their GC root.
 		let spent = self.last_hot_sequence();
+		let clock = self.clock_counter();
 		let taken_back = self.taken_back_resources().clone();
 		*self = Session::load(self.peer(), self.user(), registry, history, head, Vec::new(), self.next_node_counter());
 		self.restore_hot_sequence(spent);
+		self.restore_clock_counter(clock);
 		self.restore_taken_back_resources(taken_back);
 		Ok(())
 	}

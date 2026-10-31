@@ -470,13 +470,18 @@ impl<L: Layout> Gdd<L> {
 		}
 	}
 
-	/// Close this peer's open interaction and retire every closed one, whoever authored it. A peer that does not retire
-	/// only closes its own.
+	/// Close this peer's open interaction and retire every closed one with no ops still on their way, whoever authored
+	/// it. A peer that does not retire only closes its own.
 	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
 		self.end_interaction()?;
 		self.own_last_staged_ms = None;
-		let closed = self.session.closed_interactions();
+		let closed = self.contiguous_interactions();
 		self.retire_interactions(&closed)
+	}
+
+	/// Closed interactions safe to publish: one past a gap would go out before the ops it follows arrive.
+	pub(crate) fn contiguous_interactions(&self) -> Vec<document_graph_storage::ClosedInteraction> {
+		self.session.closed_interactions().into_iter().filter(|interaction| interaction.contiguous).collect()
 	}
 
 	/// Retire the given closed interactions in one history append and one broadcast. A no-op on a peer that does not retire.

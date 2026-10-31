@@ -16,6 +16,9 @@ struct Shared {
 
 impl Shared {
 	fn disconnect(&mut self, id: TransportPeerId) {
+		if !self.connected.contains(&id) {
+			return;
+		}
 		self.connected.retain(|&other| other != id);
 		self.in_flight.retain(|&(from, to), _| from != id && to != id);
 		for &other in &self.connected.clone() {
@@ -122,8 +125,11 @@ impl MockEndpoint {
 
 impl Transport for MockEndpoint {
 	fn send(&mut self, to: TransportPeerId, packet: &SyncPacket) -> Result<(), PacketError> {
-		if self.known_peers.contains(&to) {
-			self.shared.lock().unwrap().in_flight.entry((self.id, to)).or_default().push_back(packet.clone());
+		packet.encode()?;
+		let mut shared = self.shared.lock().unwrap();
+		// A link that dropped since the last poll loses the packet, as a real socket does.
+		if self.known_peers.contains(&to) && shared.connected.contains(&self.id) && shared.connected.contains(&to) {
+			shared.in_flight.entry((self.id, to)).or_default().push_back(packet.clone());
 		}
 		Ok(())
 	}

@@ -92,7 +92,8 @@ impl<L: Layout> Gdd<L> {
 		ResourceProxy(self.working.clone(), self.layout.clone())
 	}
 
-	/// Point resource lookups at an external store, for an embedder keeping one cache for every open document.
+	/// Hold resource bytes from peers in an external store, for an embedder keeping one cache for every open document.
+	/// [`read_resource`](Self::read_resource) and [`LoadResource`] still read the working copy; the embedder reads that store itself.
 	pub fn set_byte_store(&mut self, byte_store: Arc<dyn ResourceStorage>) {
 		self.byte_store = Some(byte_store);
 	}

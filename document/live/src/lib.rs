@@ -31,18 +31,18 @@ impl LiveDocument {
 	/// future for as long as the session lives.
 	pub async fn host(signaling_server: &str, token: SessionToken, peer: PeerId, user: UserId, spawn: impl FnOnce(MessageLoopFuture)) -> Result<Self, LiveError> {
 		let gdd = Self::empty_document(peer).await?;
-		Ok(Self::host_document(gdd, signaling_server, token, user, spawn))
+		Self::host_document(gdd, signaling_server, token, user, spawn)
 	}
 
-	pub fn host_document(mut gdd: GddV1, signaling_server: &str, token: SessionToken, user: UserId, spawn: impl FnOnce(MessageLoopFuture)) -> Self {
-		gdd.share(Self::connect(signaling_server, token, spawn), user);
-		Self { gdd, token }
+	pub fn host_document(mut gdd: GddV1, signaling_server: &str, token: SessionToken, user: UserId, spawn: impl FnOnce(MessageLoopFuture)) -> Result<Self, LiveError> {
+		gdd.share(Self::connect(signaling_server, token, spawn), user)?;
+		Ok(Self { gdd, token })
 	}
 
 	/// Join the session under `token`; the document fills in once the host's sync arrives.
 	pub async fn join(signaling_server: &str, token: SessionToken, peer: PeerId, user: UserId, spawn: impl FnOnce(MessageLoopFuture)) -> Result<Self, LiveError> {
 		let mut gdd = Self::empty_document(peer).await?;
-		gdd.join(Self::connect(signaling_server, token, spawn), user);
+		gdd.connect(Self::connect(signaling_server, token, spawn), user)?;
 		Ok(Self { gdd, token })
 	}
 

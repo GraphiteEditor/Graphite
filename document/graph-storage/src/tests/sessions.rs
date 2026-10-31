@@ -771,6 +771,7 @@ fn peers_keep_the_invariants_and_converge_under_random_undo_redo_sync_and_reopen
 			}
 		}
 		let context = format!("seed {seed}, trace {log:?}");
+		assert!(peers[0].hot_log().is_empty(), "{context}: peer 0 still holds hot ops");
 		for i in 1..PEERS {
 			assert_eq!(peers[0].head_rev(), peers[i].head_rev(), "{context}: heads of 0 and {i} differ after syncing to quiescence");
 			assert_eq!(peers[0].retired_registry(), peers[i].retired_registry(), "{context}: retired registries of 0 and {i} diverged");

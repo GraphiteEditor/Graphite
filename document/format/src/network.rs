@@ -51,8 +51,11 @@ impl<L: Layout> Gdd<L> {
 		Ok(deltas)
 	}
 
-	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) {
+	/// Host this document's room, and remember it is shared so a reopen reconnects.
+	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) -> Result<(), Error> {
 		self.network = Some(Replica::host(transport, self.session.peer(), user));
+		self.shared = true;
+		self.persist_session_state()
 	}
 
 	/// Connect to this document's room as host or guest, and remember it is shared so a reopen reconnects.
@@ -72,10 +75,6 @@ impl<L: Layout> Gdd<L> {
 		self.network.as_mut().and_then(Replica::decide_role)
 	}
 
-	pub fn join(&mut self, transport: impl Transport + 'static, user: UserId) {
-		self.network = Some(Replica::connect(transport, self.session.peer(), user));
-	}
-
 	/// Leave the room for good, so a reopen does not reconnect. See [`disconnect`](Self::disconnect).
 	pub fn leave(&mut self) {
 		self.shared = false;
@@ -86,9 +85,9 @@ impl<L: Layout> Gdd<L> {
 	}
 
 	/// Drop the connection but keep the document shared, so a reopen reconnects. A host first retires every closed
-	/// interaction.
+	/// interaction with no ops still on their way.
 	pub fn disconnect(&mut self) {
-		let closed = self.session.closed_interactions();
+		let closed = self.contiguous_interactions();
 		if let Err(error) = self.retire_interactions(&closed) {
 			log::error!("Retiring before leaving failed: {error}");
 		}
@@ -144,6 +143,16 @@ impl<L: Layout> Gdd<L> {
 			replica.send_resource(to, hash, bytes)?;
 		}
 		Ok(())
+	}
+}
+
+impl<L: Layout> Gdd<L> {
+	/// Append deltas already merged in memory, leaving the file for `flush` to rewrite if that fails.
+	fn append_history_or_rewrite(&mut self, revs: &[Rev]) {
+		if let Err(error) = self.append_history_deltas(revs) {
+			log::error!("Appending to the history failed: {error}");
+			self.pending_persist.history = true;
+		}
 	}
 }
 
@@ -209,7 +218,11 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 				deferred.push(hot_op);
 				continue;
 			}
-			self.append_hot_frame(&hot_op)?;
+			// The op applied, so a frame that failed to write is left for `flush` to rewrite.
+			if let Err(error) = self.append_hot_frame(&hot_op) {
+				log::error!("Appending a hot op failed: {error}");
+				self.pending_persist.hot_log = true;
+			}
 		}
 
 		Ok(deferred)
@@ -235,7 +248,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 			.iter()
 			.all(|&rev| incoming.contains(&rev) || self.session.delta(rev).is_some_and(|delta| matches!(delta.kind, RegistryDelta::Merge { .. })));
 		if appended {
-			self.append_history_deltas(&tail)?;
+			self.append_history_or_rewrite(&tail);
 		} else {
 			self.pending_persist.history = true;
 		}
@@ -258,7 +271,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		let absorbed_ids: HashSet<Rev> = absorbed.iter().map(|delta| delta.id).collect();
 		let tail: Vec<Rev> = self.session.history().skip(length_before).map(|delta| delta.id).collect();
 		if tail.iter().all(|rev| absorbed_ids.contains(rev)) {
-			self.append_history_deltas(&tail)?;
+			self.append_history_or_rewrite(&tail);
 		} else {
 			self.pending_persist.history = true;
 		}
@@ -272,13 +285,15 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Result<(), TargetError> {
+		let before = self.session.retired_marks().clone();
 		let touched = self.session.absorb_retired_marks(remote);
 		if !touched.is_empty() {
 			self.remote_changes.touched.extend(touched);
 			self.pending_persist.hot_log = true;
-			// Also writes the session state, which carries the marks.
-			self.pending_persist.snapshot = true;
 		}
+		// Also writes the session state, which carries the marks. They count even when they match no op here, so a late
+		// copy stays dropped after a reopen.
+		self.pending_persist.snapshot |= *self.session.retired_marks() != before;
 		Ok(())
 	}
 
@@ -287,11 +302,14 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 	}
 
 	fn absorb_metadata(&mut self, remote: &HistoryMetadata) -> Result<bool, TargetError> {
-		let landed = self.metadata.merge(remote);
+		// Kept only once written, or a failed write would make the facts look known when they come round again.
+		let mut merged = self.metadata.clone();
+		let landed = merged.merge(remote);
 		if landed.is_empty() {
 			return Ok(false);
 		}
 		self.append_facts(&landed)?;
+		self.metadata = merged;
 		Ok(true)
 	}
 

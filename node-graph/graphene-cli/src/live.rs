@@ -20,7 +20,7 @@ pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dy
 		Some(path) => {
 			let gdd = open_archive(path).await?;
 			let token = SessionToken::for_document(gdd.manifest().document_id);
-			LiveDocument::host_document(gdd, signaling, token, user, spawn_driver)
+			LiveDocument::host_document(gdd, signaling, token, user, spawn_driver)?
 		}
 		// An empty document takes the peer id as its document id
 		None => LiveDocument::host(signaling, SessionToken::for_document(peer.0), peer, user, spawn_driver).await?,

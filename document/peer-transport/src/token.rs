@@ -46,10 +46,8 @@ impl FromStr for SessionToken {
 	/// Parses the bare token or a share link carrying it as the `session` query parameter.
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
 		let s = s.trim();
-		let s = match s.split_once("session=") {
-			Some((_, rest)) => rest.split(['&', '#', ' ']).next().unwrap_or(""),
-			None => s,
-		};
+		let query = s.split(['#', ' ']).next().and_then(|url| url.split_once('?')).map(|(_, query)| query);
+		let s = query.and_then(|query| query.split('&').find_map(|parameter| parameter.strip_prefix("session="))).unwrap_or(s);
 		let encoded = s.strip_prefix(PREFIX).ok_or(InvalidSessionToken)?;
 		let bytes = URL_SAFE_NO_PAD.decode(encoded).map_err(|_| InvalidSessionToken)?;
 		let bytes = bytes.try_into().map_err(|_| InvalidSessionToken)?;
@@ -73,6 +71,9 @@ mod tests {
 		let link = format!(" https://editor.graphite.rs/?session={token}#top ");
 		assert_eq!(link.parse::<SessionToken>().unwrap(), token);
 		assert_eq!(format!("http://localhost:8080/?debug=1&session={token}").parse::<SessionToken>().unwrap(), token);
+		let other = SessionToken([9; 16]);
+		assert_eq!(format!("https://editor.graphite.rs/?next=session={other}&session={token}").parse::<SessionToken>().unwrap(), token);
+		assert!(format!("https://editor.graphite.rs/?not_session={token}").parse::<SessionToken>().is_err());
 	}
 
 	#[test]

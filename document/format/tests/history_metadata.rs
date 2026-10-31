@@ -105,8 +105,8 @@ fn names_reach_the_room_with_the_sync_and_as_they_change() {
 		let host_endpoint = network.endpoint();
 		let guest_endpoint = network.endpoint();
 		let (host_id, guest_id) = (host_endpoint.id(), guest_endpoint.id());
-		host.share(host_endpoint, UserId(10));
-		guest.join(guest_endpoint, UserId(20));
+		host.share(host_endpoint, UserId(10)).expect("share");
+		guest.connect(guest_endpoint, UserId(20)).expect("connect");
 		network.connect(host_id);
 		network.connect(guest_id);
 		settle(&mut network, &mut [&mut host, &mut guest]);

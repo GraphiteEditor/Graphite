@@ -692,10 +692,9 @@ impl Replica {
 			SyncPacket::Sync(sync) => {
 				log::debug!("Join handshake: sync received with {} deltas, full registry {}", sync.deltas.len(), sync.registry.is_some());
 				self.sync_requested_from = None;
-				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
+				if self.is_synced() {
 					return Ok(());
-				};
-				self.synced_from = self.peers.get(&from).map(|remote| remote.peer);
+				}
 				// Only a copy without retired history is replaced, or a host over an empty document would wipe it; its
 				// unretired ops, possibly the only copy of what never reached the host, are replayed on top.
 				let registry = sync.registry.filter(|_| target.known_revs().is_empty());
@@ -713,6 +712,11 @@ impl Replica {
 				if target.absorb_metadata(&sync.metadata)? {
 					events.push(Event::MetadataChanged);
 				}
+				// Only now: a state that failed to apply must not pass for the host's.
+				let SyncState::AwaitingSync { pending } = std::mem::replace(&mut self.sync, SyncState::Synced) else {
+					return Ok(());
+				};
+				self.synced_from = self.peers.get(&from).map(|remote| remote.peer);
 				let own = target.metadata();
 				if !own.is_empty() {
 					self.transport.broadcast_except(None, &SyncPacket::Metadata(own))?;

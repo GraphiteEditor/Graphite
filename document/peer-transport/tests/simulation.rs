@@ -102,12 +102,13 @@ impl SyncTarget for SimTarget {
 
 	fn merge_remote(&mut self, deltas: Vec<Delta>, retires: &[HotOpId], head: Option<Rev>) -> Result<(), TargetError> {
 		let before = self.session.history().count();
-		let result = SyncTarget::merge_remote(&mut self.session, deltas.clone(), retires, head);
+		let delta_count = deltas.len();
+		let result = SyncTarget::merge_remote(&mut self.session, deltas, retires, head);
 		log::debug!(
 			"seed {}: peer {:?} merged {} deltas (head {head:?}, {} retires): history {before} -> {}, head {:?}, {result:?}",
 			self.seed,
 			self.session.peer(),
-			deltas.len(),
+			delta_count,
 			retires.len(),
 			self.session.history().count(),
 			self.session.head_rev()
@@ -369,11 +370,13 @@ impl Peer {
 	fn poll(&mut self) -> Vec<Event> {
 		let flushes_before = self.target.flushes;
 		let state = |peer: &Self| (peer.replica.role(), peer.replica.is_synced(), peer.session().history().count(), describe_hot_log(peer.session()));
-		let before = state(self);
+		let before = log::log_enabled!(log::Level::Debug).then(|| state(self));
 		let events = self.replica.poll(&mut self.target);
-		let after = state(self);
-		if before != after {
-			log::debug!("peer {:?}: (role, synced, history, hot) {before:?} -> {after:?}", self.peer);
+		if let Some(before) = before {
+			let after = state(self);
+			if before != after {
+				log::debug!("peer {:?}: (role, synced, history, hot) {before:?} -> {after:?}", self.peer);
+			}
 		}
 		assert_eq!(self.target.flushes, flushes_before + 1, "poll must flush the target exactly once");
 		events
@@ -884,7 +887,7 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 
 #[test]
 fn peers_converge_under_random_interleavings() {
-	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(1000);
+	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(5000);
 
 	// Runs every seed and lists the failures, to tell one bug from several.
 	let keep_going = std::env::var_os("SIM_KEEP_GOING").is_some();
