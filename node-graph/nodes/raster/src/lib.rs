@@ -5,7 +5,6 @@ pub mod dehaze;
 pub mod effects;
 pub mod filter;
 pub mod image_color_palette;
-pub mod parallel_rows;
 pub mod raster_kernel;
 pub mod std_nodes;
 
