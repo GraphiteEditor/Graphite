@@ -186,6 +186,62 @@ jobs:
           --package document-graph-storage
           --package document-format
           --package graphene-cli
+          --package regression
+
+  # Render the documents of the regression corpus and compare them with their reference images
+  regression-corpus:
+    needs: skip-check
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      # Only master pushes write to the compilation cache, so unmerged code can't plant entries that later master builds reuse
+      SCCACHE_GHA_RW_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') && 'READ_WRITE' || 'READ_ONLY' }}
+      # NOTICE: keep in sync with the test job above and the web job in `build.yml`
+      SCCACHE_VERSION: "v0.19.0"
+      RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: 📥 Clone regression corpus
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: tagtraumen/graphite-corpus
+          path: target/regression-corpus
+          lfs: true
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 📦 Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: ${{ env.SCCACHE_VERSION }}
+
+      # GitHub's runners have no GPU, so rendering falls back to Mesa's software Vulkan driver
+      - name: 🎮 Install a software Vulkan driver
+        run: sudo apt-get update && sudo apt-get install --yes mesa-vulkan-drivers
+
+      - name: 🖼️ Check the corpus renders against its references
+        run: cargo run --package regression -- --corpus target/regression-corpus check --output target/regression
+
+      - name: 📤 Upload the renders and diffs of mismatches
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: regression-mismatches
+          path: target/regression
+          if-no-files-found: ignore
 
   # Stored types, node version lineages, and node APIs against the base commit. Only needs the snapshot tool, so it runs on a GitHub runner
   migrations:
