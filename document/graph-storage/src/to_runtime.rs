@@ -231,6 +231,11 @@ impl RuntimeProjection<'_> {
 	}
 }
 
+/// Rejects a registry whose root reaches a network cycle.
+pub(crate) fn reject_network_cycles(registry: &Registry, declarations: &Declarations) -> Result<(), ConversionError> {
+	detect_network_cycle(&ConversionContext::new(registry, declarations), ROOT_NETWORK)
+}
+
 /// Rejects any cycle in the graph of `Implementation::Network` references from a network to the networks its nodes implement.
 /// The runtime cannot inline a cycle. This is an iterative DFS, and a child already on the active path is a back edge.
 fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<(), ConversionError> {

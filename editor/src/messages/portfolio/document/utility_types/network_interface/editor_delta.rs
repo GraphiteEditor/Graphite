@@ -697,10 +697,11 @@ fn construct_removals_with(
 	removed_networks.sort();
 
 	// A network that a node outside the closure still implements stays, and the deltas cannot describe that
-	let still_implemented = batch.live_nodes().any(|(id, node)| match node.implementation() {
-		Implementation::Network(network_id) => removed_networks.binary_search(network_id).is_ok() && removed_nodes.binary_search(&id).is_err(),
-		Implementation::ProtoNode(_) => false,
-	});
+	let still_implemented = !removed_networks.is_empty()
+		&& batch.live_nodes().any(|(id, node)| match node.implementation() {
+			Implementation::Network(network_id) => removed_networks.binary_search(network_id).is_ok() && removed_nodes.binary_search(&id).is_err(),
+			Implementation::ProtoNode(_) => false,
+		});
 	if still_implemented {
 		return Err(StagingError::NeedsWholeDocument("the removal reaches a network other nodes implement".to_string()));
 	}

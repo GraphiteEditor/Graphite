@@ -255,6 +255,9 @@ impl Registry {
 			convert_network(definition, &NetworkOwner::Table(Some(storage_network_id(id))), location, &mut registry, &mut ctx)?;
 		}
 
+		// A cycle would be stored but could never be opened again
+		crate::to_runtime::reject_network_cycles(&registry, &ctx.declarations).map_err(|error| ConversionError::InvalidNetwork(error.to_string()))?;
+
 		// Only snapshot resources the network actually references. The runtime resource cache also keeps
 		// resources alive across undo (so legacy redo can restore them), so it can contain orphans whose
 		// node was removed by an undo. Snapshotting those would re-introduce an `AddResource` on the next

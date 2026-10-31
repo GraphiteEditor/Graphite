@@ -825,7 +825,7 @@ impl NodeNetwork {
 	}
 
 	/// Moves every inline network at every nesting level into the definitions table under a fresh ID.
-	/// Returns the moves with the outermost first.
+	/// Returns the moves so that each network is listed before the networks lifted out of it.
 	pub fn lift_nested_networks(&mut self) -> Vec<LiftedNetwork> {
 		let mut lifted = Vec::new();
 		let mut pending: Vec<Option<NetworkId>> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();

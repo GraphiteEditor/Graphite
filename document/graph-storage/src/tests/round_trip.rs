@@ -819,6 +819,34 @@ fn a_shared_table_entry_round_trips_as_one_network() {
 	assert_eq!(converted, network);
 }
 
+/// Table entries that implement each other in a cycle are rejected, since the stored document could not be opened.
+#[test]
+fn a_definition_cycle_is_rejected() {
+	use graph_craft::document::NetworkId as RuntimeNetworkId;
+
+	let (first, second) = (RuntimeNetworkId(10), RuntimeNetworkId(11));
+	let naming = |id| NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(0), 0)],
+		nodes: [(
+			NodeId(0),
+			DocumentNode {
+				implementation: DocumentNodeImplementation::Definition(id),
+				..Default::default()
+			},
+		)]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
+
+	let mut network = naming(first);
+	network.definitions.insert(first, naming(second));
+	network.definitions.insert(second, naming(first));
+
+	let result = Registry::convert_from_runtime(&network, &crate::NoMetadata, &Default::default(), PeerId(0));
+	assert!(matches!(result, Err(crate::from_runtime::ConversionError::InvalidNetwork(_))), "a cycle must not be stored");
+}
+
 /// A table entry no node reaches is not part of the document, so it is not stored.
 #[test]
 fn an_unreached_table_entry_is_not_stored() {
