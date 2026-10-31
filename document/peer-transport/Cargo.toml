@@ -26,5 +26,9 @@ uuid = "1"
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 rustls = { version = "0.23", default-features = false, features = ["ring"] }
 
+[dev-dependencies]
+serde_json = { workspace = true }
+env_logger = { workspace = true }
+
 [lints]
 workspace = true
