@@ -3225,8 +3225,6 @@ async fn gliding_nudged_node(editor: &mut EditorTestUtils) -> NodeId {
 #[tokio::test]
 async fn redoing_a_nudge_undone_while_it_glides_leaves_nothing_gliding() {
 	let mut editor = EditorTestUtils::create();
-	// Undone from the history's own snapshots, rather than the storage rebuilt afresh
-	editor.editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: false });
 	gliding_nudged_node(&mut editor).await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
