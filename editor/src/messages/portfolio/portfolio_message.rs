@@ -55,9 +55,16 @@ pub enum PortfolioMessage {
 	LoadPersistedState {
 		state: PersistedState,
 	},
+	/// `document_ids` are the stored documents this tab now holds, and `held` the ones another tab has open.
 	StoredDocumentsListed {
 		document_ids: Option<Vec<DocumentId>>,
+		held: Vec<DocumentId>,
 	},
+	OpenDocumentCopy {
+		source: DocumentId,
+		document_name: String,
+	},
+	CollectResources,
 	StoredDocumentLoaded {
 		document_id: DocumentId,
 		#[serde(skip, default)]

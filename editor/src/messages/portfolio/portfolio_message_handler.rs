@@ -1,4 +1,5 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
+use super::document_locks;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
 use super::utility_types::PanelType;
 use crate::application::{Environment, generate_uuid};
@@ -14,7 +15,7 @@ use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document_storage_io::{
-	DocumentStoreHandle, attach_container, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, remove_stored_document,
+	DocumentStoreHandle, attach_container, copy_stored_document, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, remove_stored_document,
 };
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
@@ -65,6 +66,8 @@ pub struct PortfolioMessageHandler {
 	pending_opens: usize,
 	restore_select: Option<DocumentId>,
 	store_unavailable: bool,
+	/// The persisted session's documents, kept aside until the store listing tells which of them this tab can open.
+	restoring_documents: Vec<DocumentInfo>,
 }
 
 #[message_handler_data]
@@ -146,6 +149,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
 
+				responses.add(async {
+					document_locks::hold_tab().await;
+					Message::NoOp
+				});
 				responses.add(PersistentStateMessage::ReadState);
 
 				// Initialize the frontend with environment information
@@ -353,8 +360,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(PersistentStateMessage::WriteState);
 			}
 			PortfolioMessage::GarbageCollectResources => {
-				// The resources of documents that are not loaded yet are unknown, so GC waits for every load and for a successful store listing.
-				if !self.persistent_state.loaded() || self.pending_opens > 0 || !self.loading_documents.is_empty() || self.store_unavailable {
+				if !self.can_collect_resources() {
+					return;
+				}
+
+				// Resources are shared across tabs and across documents this tab has not opened, so GC needs this to be the only tab and every stored document to be open in it
+				let store = self.document_store.clone();
+				let open = self.document_ids.iter().copied().collect::<HashSet<_>>();
+				responses.add(async move {
+					let all_open = store.list().await.is_ok_and(|keys| keys.into_iter().all(|key| open.contains(&DocumentId(key.0))));
+					if all_open && !document_locks::other_tabs_open().await {
+						PortfolioMessage::CollectResources.into()
+					} else {
+						Message::NoOp
+					}
+				});
+			}
+			PortfolioMessage::CollectResources => {
+				if !self.can_collect_resources() {
 					return;
 				}
 
@@ -402,24 +425,41 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					workspace_layout: _,
 				} = state;
 
-				for info in documents {
-					if !self.document_ids.contains(&info.id) {
-						self.document_ids.push_back(info.id);
-						self.loading_documents.insert(info.id, info);
-					}
-				}
+				self.restoring_documents = documents;
 				self.restore_select = current_document;
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(list_stored_documents(self.document_store.clone()));
 			}
-			PortfolioMessage::StoredDocumentsListed { document_ids } => {
+			PortfolioMessage::StoredDocumentsListed { document_ids, held } => {
 				let Some(stored) = document_ids else {
 					self.store_unavailable = true;
 					Self::storage_error("The stored documents could not be listed, so they cannot be opened.".to_string(), responses);
 					return;
 				};
 				let stored: HashSet<_> = stored.into_iter().collect();
+
+				let restoring = std::mem::take(&mut self.restoring_documents);
+				let elsewhere = held
+					.iter()
+					.map(|&document_id| {
+						let name = restoring
+							.iter()
+							.find(|info| info.id == document_id)
+							.map(|info| info.name.clone())
+							.filter(|name| !name.trim().is_empty());
+						(document_id, name.unwrap_or_else(|| DEFAULT_DOCUMENT_NAME.to_string()))
+					})
+					.collect::<Vec<_>>();
+				for info in restoring {
+					if !self.document_ids.contains(&info.id) && !held.contains(&info.id) {
+						self.document_ids.push_back(info.id);
+						self.loading_documents.insert(info.id, info);
+					}
+				}
+				if !elsewhere.is_empty() {
+					simple_dialogs::DocumentsOpenElsewhereDialog { documents: elsewhere }.send_dialog_to_frontend(responses);
+				}
 
 				// Session entries without stored content are dropped; stored documents the session does not know are appended.
 				self.document_ids.retain(|id| stored.contains(id) || self.documents.contains_key(id));
@@ -563,6 +603,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_name,
 					document_path,
 					content,
+					resource_storage.resources_mut(),
+					reset_node_definitions_on_open,
+				));
+			}
+			PortfolioMessage::OpenDocumentCopy { source, document_name } => {
+				let document_id = DocumentId(generate_uuid());
+
+				// Suppress resource GC until the open completes
+				self.pending_opens += 1;
+
+				responses.add(copy_stored_document(
+					self.document_store.clone(),
+					source,
+					document_id,
+					document_name,
 					resource_storage.resources_mut(),
 					reset_node_definitions_on_open,
 				));
@@ -1115,6 +1170,7 @@ impl PortfolioMessageHandler {
 			pending_opens: Default::default(),
 			restore_select: Default::default(),
 			store_unavailable: Default::default(),
+			restoring_documents: Default::default(),
 		}
 	}
 
@@ -1245,6 +1301,11 @@ impl PortfolioMessageHandler {
 		document.retire_storage_interaction();
 	}
 
+	/// The resources of documents that are not loaded yet are unknown, so GC waits for every load and for a successful store listing.
+	fn can_collect_resources(&self) -> bool {
+		self.persistent_state.loaded() && self.pending_opens == 0 && self.loading_documents.is_empty() && !self.store_unavailable
+	}
+
 	fn save_if_needed(&self, document_id: DocumentId, responses: &mut VecDeque<Message>) {
 		if let Some(document) = self.documents.get(&document_id)
 			&& document.container.is_some()
@@ -1337,4 +1398,66 @@ fn opened_document_name(name: Option<String>, path: Option<&Path>) -> String {
 	name.filter(|name| !name.trim().is_empty())
 		.or_else(|| path.and_then(Path::file_stem).map(|stem| stem.to_string_lossy().into_owned()))
 		.unwrap_or_default()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::messages::portfolio::document_storage_io::document_key;
+	use crate::test_utils::EditorTestUtils;
+
+	#[tokio::test]
+	async fn a_held_document_stays_closed_and_opens_as_a_separate_copy() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let source = editor.portfolio_message_handler().active_document_id().unwrap();
+		let original_id = editor.active_document().storage().unwrap().manifest().document_id;
+		let nodes = editor.active_document().network_interface.document_network().nodes.len();
+		assert!(nodes > 0);
+		editor.handle_message(PortfolioMessage::AutoSaveDocument { document_id: source }).await;
+
+		let held = DocumentId(7);
+		let info = DocumentInfo {
+			id: held,
+			name: "Elsewhere".into(),
+			path: None,
+			is_saved: true,
+		};
+		editor.portfolio_message_handler_mut().restoring_documents.push(info);
+		editor
+			.handle_message(PortfolioMessage::StoredDocumentsListed {
+				document_ids: Some(vec![source]),
+				held: vec![held],
+			})
+			.await;
+		let portfolio = editor.portfolio_message_handler();
+		assert!(!portfolio.document_ids.contains(&held) && !portfolio.loading_documents.contains_key(&held));
+
+		editor.handle_message(PortfolioMessage::OpenDocumentCopy { source, document_name: "Copy".into() }).await;
+		assert_ne!(editor.portfolio_message_handler().active_document_id().unwrap(), source);
+		assert_ne!(editor.active_document().storage().unwrap().manifest().document_id, original_id);
+		assert_eq!(editor.active_document().name, "Copy");
+		assert_eq!(editor.active_document().network_interface.document_network().nodes.len(), nodes);
+	}
+
+	#[tokio::test]
+	async fn resources_stay_uncollected_while_a_stored_document_is_not_open() {
+		use graph_craft::application_io::resource::ResourceStorage;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(PersistentStateMessage::LoadState { state: PersistedState::default() }).await;
+		let resources = editor.editor.dispatcher.message_handlers.resource_storage_message_handler.resources_mut();
+		let unused = resources.store(b"unused");
+		let store = editor.portfolio_message_handler().document_store();
+
+		store.open(document_key(DocumentId(7))).await.unwrap();
+		editor.handle_message(PortfolioMessage::GarbageCollectResources).await;
+		assert!(resources.contains(&unused), "a document another tab may hold could use it");
+
+		store.remove(document_key(DocumentId(7))).await.unwrap();
+		editor.handle_message(PortfolioMessage::GarbageCollectResources).await;
+		assert!(!resources.contains(&unused));
+	}
 }
