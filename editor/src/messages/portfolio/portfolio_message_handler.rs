@@ -13,6 +13,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::portfolio::document_storage_io::{
 	DocumentStoreHandle, attach_container, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, open_storage, remove_stored_document,
 };
@@ -103,6 +104,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
+						palette_open: self.workspace.panel_layout.is_panel_visible(PanelType::Palette) && !self.workspace.panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs);
 					refresh_transaction_edited_nodes(document, true, responses);
@@ -208,6 +210,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						data_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Data) && !self.workspace.panel_layout.focus_document,
 						layers_panel_open: self.workspace.panel_layout.is_panel_visible(PanelType::Layers) && !self.workspace.panel_layout.focus_document,
 						inspector_open: self.workspace.panel_layout.is_panel_visible(PanelType::Inspector) && !self.workspace.panel_layout.focus_document,
+						palette_open: self.workspace.panel_layout.is_panel_visible(PanelType::Palette) && !self.workspace.panel_layout.focus_document,
 					};
 					document.process_message(message, responses, document_inputs);
 					refresh_transaction_edited_nodes(document, self.active_document_id == Some(document_id), responses);
@@ -1224,6 +1227,10 @@ impl PortfolioMessageHandler {
 		if self.active_document().is_some() {
 			responses.add(EventMessage::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
+		}
+
+		if self.workspace.panel_layout.is_panel_visible(PanelType::Palette) {
+			responses.add(PaletteMessage::Refresh)
 		}
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect

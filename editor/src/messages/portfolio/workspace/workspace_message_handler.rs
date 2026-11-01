@@ -1,4 +1,5 @@
 use crate::messages::layout::utility_types::layout_widget::LayoutTarget;
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::portfolio::persistent_state::PersistentStateMessage;
 use crate::messages::portfolio::utility_types::{PanelLayoutSubdivision, PanelType, WorkspacePanelLayout};
 use crate::messages::prelude::*;
@@ -275,6 +276,14 @@ impl MessageHandler<WorkspaceMessage, WorkspaceMessageContext> for WorkspaceMess
 				let panel_type = PanelType::Data;
 				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
 			}
+			WorkspaceMessage::TogglePalettePanelOpen => {
+				if self.panel_layout.focus_document {
+					return;
+				}
+
+				let panel_type = PanelType::Palette;
+				self.toggle_dockable_panel(panel_type, has_active_document, has_no_documents, responses);
+			}
 			WorkspaceMessage::UpdatePanelsLayout => {
 				let panel_layout = match self.panel_layout.focus_document {
 					true => self.panel_layout.document_only_layout(),
@@ -391,6 +400,8 @@ impl WorkspaceMessageHandler {
 			PanelType::Layers => &[LayoutTarget::LayersPanelControlLeftBar, LayoutTarget::LayersPanelBottomLeftBar, LayoutTarget::LayersPanelBottomRightBar],
 			PanelType::Data => &[LayoutTarget::DataPanel, LayoutTarget::DataPanelContext, LayoutTarget::DataPanelPath],
 			PanelType::Document | PanelType::Welcome => return,
+			// TODO: Fix the destroy process properly
+			PanelType::Palette => return,
 		};
 
 		for &layout_target in targets {
@@ -415,6 +426,9 @@ impl WorkspaceMessageHandler {
 			}
 			PanelType::Data => {
 				// The Data panel's content is populated automatically as a side effect of the graph run completing, so there's nothing to do here
+			}
+			PanelType::Palette => {
+				responses.add(PaletteMessage::Refresh);
 			}
 			PanelType::Document | PanelType::Welcome => {
 				// Re-send the welcome screen buttons layout to repopulate after a remount

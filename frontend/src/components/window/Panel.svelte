@@ -6,6 +6,7 @@
 	import Document from "/src/components/panels/Document.svelte";
 	import Inspector from "/src/components/panels/Inspector.svelte";
 	import Layers from "/src/components/panels/Layers.svelte";
+	import Palette from "/src/components/panels/Palette.svelte";
 	import Welcome from "/src/components/panels/Welcome.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -19,6 +20,7 @@
 		Layers,
 		Inspector,
 		Data,
+		Palette,
 	};
 	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
