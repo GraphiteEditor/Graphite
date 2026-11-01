@@ -988,6 +988,23 @@ async fn deleting_one_instance_of_a_shared_network_stages_incrementally() {
 	assert!(editor.active_document().network_interface.document_network().definitions.contains_key(&definition));
 }
 
+/// Swapping a network for a proto node moves the interface onto the node, which the stored slots then hold.
+#[tokio::test]
+async fn swapping_a_network_for_a_proto_node_stages_its_interface() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, _) = table_layer(&editor);
+	assert_stages_incrementally(&mut editor, "swap a network for a proto node", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		let Some(mut cursor) = interface.node_mut(super::NodeLocator::new(layer, &[])) else {
+			panic!("the layer should resolve")
+		};
+		cursor.replace_implementation(graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
+	});
+}
+
 /// Deleting the last instance of a network drops its table entry along with it.
 #[tokio::test]
 async fn deleting_the_last_instance_drops_the_entry_incrementally() {
