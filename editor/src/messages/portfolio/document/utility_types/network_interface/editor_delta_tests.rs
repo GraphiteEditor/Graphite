@@ -1131,3 +1131,49 @@ async fn making_an_instance_unique_forks_its_network() {
 	assert_ne!(interface.document_network().definitions[&forked], original, "the edit should change the copy's network");
 	assert_eq!(interface.document_network().definitions[&definition], original, "the original's network should be untouched");
 }
+
+/// Carried subgraphs that name one another in a cycle are refused, since inserting them would never finish.
+#[tokio::test]
+async fn a_cyclic_paste_is_refused() {
+	use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NodeNetwork};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let (first, second) = (NetworkId::new(), NetworkId::new());
+	let naming = |id| super::CopiedDefinition {
+		id: if id == first { second } else { first },
+		network: NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::Definition(id),
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		},
+		metadata: Default::default(),
+	};
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	assert!(interface.carry_definitions(vec![naming(first), naming(second)]).is_none());
+}
+
+/// Making an instance unique marks the open transaction as modified, so the transaction commits rather than cancels.
+#[tokio::test]
+async fn making_an_instance_unique_modifies_the_transaction() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, _) = table_layer(&editor);
+	let copy = insert_shared_copy(&mut editor, layer);
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.start_transaction();
+	assert!(interface.make_unique(&copy, &[]));
+	assert_eq!(interface.transaction_status(), super::TransactionStatus::Modified);
+}

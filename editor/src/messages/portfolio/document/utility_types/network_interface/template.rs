@@ -355,16 +355,6 @@ pub fn collect_template_resources(template: &NodeTemplate, out: &mut HashSet<Res
 	}
 }
 
-/// Collects every resource the inputs and exports of `network` reference.
-pub fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
-	let inputs = network.exports.iter().chain(network.nodes.values().flat_map(|node| &node.inputs));
-	for input in inputs {
-		visit_input_resource(input, &mut |id| {
-			out.insert(id);
-		});
-	}
-}
-
 /// The legacy two-tree shape of [`NodeTemplate`], kept as its serde representation so serialized clipboard data round-trips across versions.
 #[derive(serde::Serialize, serde::Deserialize)]
 struct NodeTemplateParts {

@@ -514,7 +514,21 @@ impl NodeNetworkInterface {
 	///
 	/// An entry the document already holds with the same content is reused. One it holds with different content goes in under a fresh ID.
 	/// Nothing is added yet: each entry goes in once a node names it, so it lands in the same transaction as that node.
-	pub(crate) fn carry_definitions(&mut self, definitions: Vec<CopiedDefinition>) -> HashMap<NetworkId, NetworkId> {
+	///
+	/// Returns `None` for a list that names an entry before listing it, which no copy produces and which a cycle always does.
+	pub(crate) fn carry_definitions(&mut self, definitions: Vec<CopiedDefinition>) -> Option<HashMap<NetworkId, NetworkId>> {
+		let mut listed = HashSet::new();
+		for definition in &definitions {
+			let names_unlisted = definition.network.nodes.values().any(|node| match node.implementation {
+				DocumentNodeImplementation::Definition(named) => !listed.contains(&named) && !self.document_network().definitions.contains_key(&named),
+				_ => false,
+			});
+			if names_unlisted {
+				return None;
+			}
+			listed.insert(definition.id);
+		}
+
 		let mut renamed = HashMap::new();
 		let mut carried = HashMap::new();
 		for CopiedDefinition { id, mut network, metadata } in definitions {
@@ -539,7 +553,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.carried_definitions = carried;
-		renamed
+		Some(renamed)
 	}
 
 	/// Gives the node its own copy of the table entry it names, leaving the entries nested in it shared.

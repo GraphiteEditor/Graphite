@@ -396,7 +396,11 @@ impl NodeNetworkInterface {
 
 	/// Gives the node its own copy of the network it shares with other nodes, returning whether it had one to copy.
 	pub fn make_unique(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
-		self.fork_definition(NodeLocator::new(*node_id, network_path))
+		let forked = self.fork_definition(NodeLocator::new(*node_id, network_path));
+		if forked {
+			self.transaction_modified();
+		}
+		forked
 	}
 
 	/// Replaces the implementation and corresponding metadata.

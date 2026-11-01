@@ -206,7 +206,9 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					network_interface::collect_template_resources(template, &mut resource_ids);
 				}
 				for definition in &definitions {
-					network_interface::collect_network_resources(&definition.network, &mut resource_ids);
+					network_interface::visit_network_resources(&definition.network, &mut |id| {
+						resource_ids.insert(id);
+					});
 				}
 				items.extend(definitions.into_iter().map(|definition| ClipboardItem::Definition(Box::new(definition))));
 
@@ -299,7 +301,10 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				if !definitions.is_empty()
 					&& let Some(document) = portfolio.active_document_mut()
 				{
-					let renamed = document.network_interface.carry_definitions(definitions);
+					let Some(renamed) = document.network_interface.carry_definitions(definitions) else {
+						log::error!("Discarding the paste: its subgraphs name one another in a cycle or name one it does not carry");
+						return;
+					};
 					if !renamed.is_empty() {
 						let templates = layers
 							.iter_mut()
