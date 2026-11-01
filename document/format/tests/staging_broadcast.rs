@@ -9,7 +9,7 @@ use peer_transport::mock::MockNetwork;
 use peer_transport::{Event, SyncTarget};
 
 fn document(peer: u64) -> GddV1 {
-	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
+	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), UserId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
 }
 
 fn settle(network: &mut MockNetwork, peers: &mut [&mut GddV1]) {
@@ -109,4 +109,15 @@ fn an_interaction_past_a_gap_waits_to_retire() {
 	assert!(host.apply_remote_hot_ops(earlier.to_vec()).expect("apply").is_empty());
 	assert!(!host.retire_pending_interaction().expect("retire").is_empty());
 	assert!(host.session().hot_log().is_empty());
+}
+
+/// The room knows this device by its peer, so the user cannot change mid-session.
+#[test]
+fn the_user_cannot_change_while_connected() {
+	let mut host = document(1);
+	let mut network = MockNetwork::new(1);
+	host.share(network.endpoint(), UserId(1)).expect("share");
+	assert!(matches!(host.set_user(UserId(2), PeerId(2)), Err(document_format::Error::UserChangeWhileConnected)));
+	assert_eq!(host.session().peer(), PeerId(1));
+	assert_eq!(host.session().user(), UserId(1));
 }
