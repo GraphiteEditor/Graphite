@@ -13,6 +13,7 @@ pub mod registry;
 pub mod resources;
 mod schema;
 pub mod session;
+mod sorted;
 mod touched;
 pub mod value;
 
@@ -30,6 +31,7 @@ pub use history_metadata::{HistoryMetadata, MetadataFact, Subject, WallStamp, re
 pub use ids::*;
 pub use schema::*;
 pub use session::*;
+pub use sorted::Sorted;
 pub use touched::Touched;
 pub use value::{ValueError, from_value, to_value};
 

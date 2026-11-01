@@ -19,7 +19,7 @@ use document_container::{AnyContainer, AsyncContainer, ByteHolder};
 use document_graph_storage::Rev;
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Session, UserId};
+use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Session, Sorted, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
 use graphene_resource::{ResourceHash, ResourceStorage};
@@ -243,7 +243,7 @@ impl<L: Layout> Gdd<L> {
 			registry,
 			history,
 			hot_log,
-			session: session_state,
+			session: mut session_state,
 		} = payloads;
 		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
 			true => HistoryMetadata::fold(io::iter_lenient(&working, layout.metadata_basename(), METADATA_CODEC).await?),
@@ -262,22 +262,22 @@ impl<L: Layout> Gdd<L> {
 		let peer = session_state.peer_id;
 		let user = session_state.user_id;
 		let mut session = match (registry, history) {
-			(Some(registry), Some(history)) => Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter),
+			(Some(registry), Some(history)) => Session::load(
+				peer,
+				user,
+				registry,
+				history,
+				session_state.head_rev,
+				std::mem::take(&mut session_state.redo_stack),
+				session_state.next_node_counter,
+			),
 			// Registry-only export: synthesize a history that reproduces this state
 			(Some(registry), None) => Session::bootstrap_from_registry(peer, user, registry)?,
 			(None, history) => Session::replay_from_history(peer, user, history.unwrap_or_default(), session_state.next_node_counter)?,
 		};
 
-		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
-		if let Some(rev) = session_state.last_broadcast_rev {
-			session.publish_up_to(rev);
-		}
-
-		session.restore_hot_sequence(session_state.last_hot_sequence);
-		session.restore_clock_counter(session_state.clock_counter);
-		session.restore_next_node_counter(session_state.next_node_counter);
 		// Before the hot log replays, so a retired op in it is dropped rather than staged again.
-		session.absorb_retired_marks(&session_state.retired_marks);
+		restore_cursor(&mut session, &session_state);
 		for hot_op in hot_log {
 			session.replay_hot_op(hot_op)?;
 		}
@@ -316,13 +316,24 @@ impl<L: Layout> Gdd<L> {
 			user_id: UserId(peer.0),
 			..Default::default()
 		};
-		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
+		io::write_single(&working, layout.session_basename(), codecs.session, &Sorted(&session_state))?;
 
 		let session = Session::with_peer(peer);
-		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
+		io::write_single(&working, layout.registry_basename(), codecs.registry, &Sorted(session.registry()))?;
 
 		Ok(Self::assemble(session, working, layout, manifest, HistoryMetadata::default()))
 	}
+}
+
+/// Carry the persisted cursor onto a freshly loaded session, whichever way it was loaded.
+pub(crate) fn restore_cursor(session: &mut Session, state: &SessionState) {
+	if let Some(rev) = state.last_broadcast_rev {
+		session.publish_up_to(rev);
+	}
+	session.restore_hot_sequence(state.last_hot_sequence);
+	session.restore_clock_counter(state.clock_counter);
+	session.restore_next_node_counter(state.next_node_counter);
+	session.absorb_retired_marks(&state.retired_marks);
 }
 
 fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {

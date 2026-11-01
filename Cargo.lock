@@ -2763,6 +2763,7 @@ dependencies = [
  "core-types",
  "dyn-any",
  "serde",
+ "serde_json",
  "url",
 ]
 
