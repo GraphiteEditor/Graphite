@@ -15,7 +15,7 @@ use std::cmp::{max, min};
 use wgpu_executor::WgpuPipelineCache;
 use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 
-#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), memoize, footprint_invariant, placeholder = pending_dehaze)]
+#[node_macro::node(category("Raster: Filter"), icon("NodeDehaze"), memoize, footprint_invariant, placeholder = pending_dehaze, version(2))]
 async fn dehaze<T: DehazeRaster + Clone>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>)] image_frame: Item<T>,

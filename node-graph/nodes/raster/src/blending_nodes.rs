@@ -32,7 +32,7 @@ fn mix_colors(
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
-#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
+#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"), version(2))]
 fn color_overlay<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(

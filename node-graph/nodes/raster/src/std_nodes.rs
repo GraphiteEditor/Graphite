@@ -46,7 +46,7 @@ pub struct SizeMismatchError {
 	pub second_size: UVec2,
 }
 
-#[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"), memoize)]
+#[node_macro::node(category("Raster"), icon("NodeChannelsToImage"), name("Channels to Image"), memoize, version(2))]
 fn channels_to_image<T: PlacedRaster>(
 	_: impl Ctx,
 	_primary: (),
@@ -121,7 +121,7 @@ fn channels_to_image_cpu(red: Item<Raster<CPU>>, green: Item<Raster<CPU>>, blue:
 	Ok(Item::from_parts(Raster::new_cpu(image), attributes))
 }
 
-#[node_macro::node(category("Raster"), icon("NodeMask"), memoize)]
+#[node_macro::node(category("Raster"), icon("NodeMask"), memoize, version(2))]
 fn mask<T: PlacedRaster>(
 	_: impl Ctx,
 	/// The image to be masked.
@@ -174,7 +174,7 @@ fn mask_cpu(image: Item<Raster<CPU>>, stencil: Item<Raster<CPU>>) -> Item<Raster
 	row
 }
 
-#[node_macro::node(category(""))]
+#[node_macro::node(category(""), version(2))]
 fn extend_image_to_bounds<T: PlacedRaster>(
 	_: impl Ctx,
 	#[implementations(Raster<CPU>, Raster<GPU>)] image: Item<T>,
