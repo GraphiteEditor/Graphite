@@ -103,6 +103,9 @@ pub struct NodeNetworkInterface {
 	/// Only these are judged, so a Passthrough left without a wire by anything other than an edit (like one a migration made from a removed node) is left in place.
 	#[serde(skip)]
 	dots_that_lost_a_wire: HashMap<Vec<NodeId>, HashSet<(NodeId, DotSide)>>,
+	/// The table entries the last paste carried, under the IDs they take here, added once a node names one.
+	#[serde(skip)]
+	carried_definitions: HashMap<NetworkId, CopiedDefinition>,
 }
 
 impl Clone for NodeNetworkInterface {
@@ -118,6 +121,7 @@ impl Clone for NodeNetworkInterface {
 			transaction_edited_nodes_scanned: 0,
 			transaction_edited_nodes_changed: false,
 			dots_that_lost_a_wire: HashMap::new(),
+			carried_definitions: HashMap::new(),
 		}
 	}
 }

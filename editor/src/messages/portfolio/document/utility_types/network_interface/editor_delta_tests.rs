@@ -892,17 +892,30 @@ async fn an_edit_inside_a_table_entry_constructs_the_diff() {
 	assert_same_stored_effect(&working, constructed, diffed, "edit inside a table entry");
 }
 
-/// A template of a node that names a table entry carries a copy of the entry, so it also works where the entry does not exist.
+/// A template of a node that names a table entry names it too, so a copy shares the entry.
 #[tokio::test]
-async fn a_template_of_a_table_node_stands_alone() {
+async fn a_template_of_a_table_node_names_its_entry() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	editor.draw_rect(0., 0., 100., 100.).await;
 
-	let (layer, _) = table_layer(&editor);
+	let (layer, definition) = table_layer(&editor);
 	let template = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
 	let (node, _) = template.into_parts();
-	assert!(matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
+	assert_eq!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(definition));
+}
+
+/// A template of `node_id` that carries its table entry inline, as one from before networks moved into the table does.
+fn inline_copy(interface: &super::NodeNetworkInterface, node_id: NodeId) -> super::NodeTemplate {
+	let mut node = interface.document_network().nodes[&node_id].clone();
+	let mut metadata = interface.network_metadata.persistent_metadata.node_metadata[&node_id].persistent_metadata.clone();
+	let graph_craft::document::DocumentNodeImplementation::Definition(id) = node.implementation else {
+		panic!("the node should name a table entry")
+	};
+
+	node.implementation = graph_craft::document::DocumentNodeImplementation::Network(interface.document_network().definitions[&id].clone());
+	metadata.network_metadata = Some(interface.network_metadata.persistent_metadata.definitions[&id].clone());
+	super::NodeTemplate::from_parts(node, metadata)
 }
 
 /// A write inside an instance stays with the network it was made in, even when the instance changes implementation later in the same batch.
@@ -918,7 +931,7 @@ async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
 	interface.discard_deltas();
 
 	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
-	let mut inline_copy = interface.create_node_template(&layer, &[]).expect("template");
+	let mut inline_copy = inline_copy(interface, layer);
 	interface.replace_implementation(&layer, &[], &mut inline_copy);
 
 	let deltas = interface.take_deltas();
@@ -962,7 +975,7 @@ async fn inserting_a_nested_network_stages_incrementally() {
 	editor.draw_rect(0., 0., 100., 100.).await;
 
 	let (layer, _) = table_layer(&editor);
-	let inline_copy = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
+	let inline_copy = inline_copy(&editor.active_document().network_interface, layer);
 	let emitted = assert_stages_incrementally(&mut editor, "insert a nested network", |editor| {
 		let interface = &mut editor.active_document_mut().network_interface;
 		interface.insert_node_entry(super::NodeLocator::new(NodeId::new(), &[]), inline_copy);
@@ -1008,7 +1021,7 @@ async fn replaying_an_insertion_that_lifts_reproduces_the_interface() {
 	assert_replay_reproduces(|editor| {
 		let group = only_group(editor);
 		let interface = &mut editor.active_document_mut().network_interface;
-		let inline_copy = interface.create_node_template(&group, &[]).expect("template");
+		let inline_copy = inline_copy(interface, group);
 		interface.insert_node_entry(super::NodeLocator::new(NodeId(0x11F7), &[]), inline_copy);
 	})
 	.await;
@@ -1040,7 +1053,7 @@ async fn a_resource_an_entry_exports_follows_the_entry() {
 	registry.resolve(&resource, ResourceHash::from(&b"exported bytes"[..]));
 
 	let (layer, _) = table_layer(&editor);
-	let template = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
+	let template = inline_copy(&editor.active_document().network_interface, layer);
 	let (mut node, metadata) = template.into_parts();
 	let graph_craft::document::DocumentNodeImplementation::Network(network) = &mut node.implementation else {
 		panic!("the template should carry the layer's network inline")

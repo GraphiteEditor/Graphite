@@ -504,6 +504,14 @@ impl<'de> serde::Deserialize<'de> for Previewing {
 	}
 }
 
+/// A definitions table entry carried by a copy, so a paste into a document that lacks it can add it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CopiedDefinition {
+	pub id: NetworkId,
+	pub network: NodeNetwork,
+	pub metadata: NodeNetworkMetadata,
+}
+
 /// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeNetworkMetadata {

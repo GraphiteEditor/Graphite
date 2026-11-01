@@ -234,6 +234,28 @@ impl NodeTemplate {
 		(document_node, persistent_node_metadata)
 	}
 
+	/// Every definitions table entry the template names, including through the nested templates it carries.
+	pub fn named_definitions(&self, named: &mut Vec<NetworkId>) {
+		match &self.implementation {
+			NodeTemplateImplementation::Definition(id) => named.push(*id),
+			NodeTemplateImplementation::Network(network_template) => network_template.nodes.values().for_each(|nested_template| nested_template.named_definitions(named)),
+			NodeTemplateImplementation::ProtoNode(_) | NodeTemplateImplementation::Extract => {}
+		}
+	}
+
+	/// Points every table entry the template names at its new ID in `renamed`, including through the nested templates it carries.
+	pub fn rename_definitions(&mut self, renamed: &HashMap<NetworkId, NetworkId>) {
+		match &mut self.implementation {
+			NodeTemplateImplementation::Definition(id) => {
+				if let Some(new_id) = renamed.get(id) {
+					*id = *new_id;
+				}
+			}
+			NodeTemplateImplementation::Network(network_template) => network_template.nodes.values_mut().for_each(|nested_template| nested_template.rename_definitions(renamed)),
+			NodeTemplateImplementation::ProtoNode(_) | NodeTemplateImplementation::Extract => {}
+		}
+	}
+
 	/// Resizes `input_metadata` to match `inputs` at every nesting level, filling gaps with defaults.
 	pub fn normalize_input_metadata(&mut self) {
 		self.input_metadata.resize_with(self.inputs.len(), InputMetadata::default);
@@ -330,6 +352,16 @@ pub fn collect_template_resources(template: &NodeTemplate, out: &mut HashSet<Res
 		for nested_template in network_template.nodes.values() {
 			collect_template_resources(nested_template, out);
 		}
+	}
+}
+
+/// Collects every resource the inputs and exports of `network` reference.
+pub fn collect_network_resources(network: &NodeNetwork, out: &mut HashSet<ResourceId>) {
+	let inputs = network.exports.iter().chain(network.nodes.values().flat_map(|node| &node.inputs));
+	for input in inputs {
+		visit_input_resource(input, &mut |id| {
+			out.insert(id);
+		});
 	}
 }
 

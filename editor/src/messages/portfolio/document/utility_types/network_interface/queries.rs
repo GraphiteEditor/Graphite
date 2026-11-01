@@ -468,6 +468,53 @@ impl NodeNetworkInterface {
 		new_nodes.into_iter().map(move |(new, node_id, node)| (new, self.map_ids(node, &node_id, new_ids, network_path)))
 	}
 
+	/// The table entries `templates` name, directly or through other entries, each listed after the entries it names.
+	pub fn copied_definitions<'a>(&self, templates: impl IntoIterator<Item = &'a NodeTemplate>) -> Vec<CopiedDefinition> {
+		let mut named = Vec::new();
+		for template in templates {
+			template.named_definitions(&mut named);
+		}
+
+		let mut ordered = Vec::new();
+		let mut visited = HashSet::new();
+		for id in named {
+			self.order_definitions_named_by(id, &mut visited, &mut ordered);
+		}
+
+		ordered
+			.into_iter()
+			.filter_map(|id| {
+				Some(CopiedDefinition {
+					id,
+					network: self.document_network().definitions.get(&id)?.clone(),
+					metadata: self.network_metadata.persistent_metadata.definitions.get(&id)?.clone(),
+				})
+			})
+			.collect()
+	}
+
+	/// Appends `id` to `ordered` after every entry it names, skipping entries already visited.
+	fn order_definitions_named_by(&self, id: NetworkId, visited: &mut HashSet<NetworkId>, ordered: &mut Vec<NetworkId>) {
+		if !visited.insert(id) {
+			return;
+		}
+		let Some(network) = self.document_network().definitions.get(&id) else { return };
+
+		let mut named: Vec<NetworkId> = network
+			.nodes
+			.values()
+			.filter_map(|node| match node.implementation {
+				DocumentNodeImplementation::Definition(named) => Some(named),
+				_ => None,
+			})
+			.collect();
+		named.sort();
+		for named in named {
+			self.order_definitions_named_by(named, visited, ordered);
+		}
+		ordered.push(id);
+	}
+
 	/// Create a node template from an existing node.
 	pub fn create_node_template(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeTemplate> {
 		self.query(network_path, "create_node_template", |view| view.create_node_template(node_id))
