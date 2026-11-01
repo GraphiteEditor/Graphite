@@ -829,4 +829,137 @@ mod tests {
 			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
 		}
 	}
+
+	/// The network of `nodes` with its export on the last one, compiled and type checked, with its typed nodes.
+	fn compile_rasters(nodes: Vec<DocumentNode>) -> Result<(graph_craft::proto::ProtoNetwork, graph_craft::proto::TypingContext), Vec<graph_craft::proto::GraphError>> {
+		use graph_craft::application_io::PlatformEditorApi;
+		use graph_craft::graphene_compiler::Compiler;
+		use graph_craft::proto::TypingContext;
+		use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+		use interpreted_executor::util::wrap_network_in_scope;
+		use std::sync::Arc;
+
+		struct NoSpawner;
+		impl Spawn for NoSpawner {
+			fn spawn(&self, _: Task) {}
+		}
+
+		let network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(nodes.len() as u64 - 1), 0)],
+			nodes: nodes.into_iter().enumerate().map(|(index, node)| (NodeId(index as u64), node)).collect(),
+			..Default::default()
+		};
+		let runtime = AsyncRuntime::new(Arc::new(NoSpawner), Arc::new(std::time::Instant::now()));
+		let mut network = wrap_network_in_scope(network, Arc::new(PlatformEditorApi::default()), runtime.handle());
+		Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
+		let network = Compiler {}.compile_single(network).unwrap().network;
+
+		let mut typing_context = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
+		typing_context.update(&network).map_err(|errors| errors.to_vec())?;
+		Ok((network, typing_context))
+	}
+
+	fn raster_node(identifier: ProtoNodeIdentifier, inputs: Vec<NodeInput>) -> DocumentNode {
+		DocumentNode {
+			inputs,
+			implementation: DocumentNodeImplementation::ProtoNode(identifier),
+			..Default::default()
+		}
+	}
+
+	/// What the node with this identifier outputs in the compiled network.
+	fn output_of(compiled: &(graph_craft::proto::ProtoNetwork, graph_craft::proto::TypingContext), identifier: &ProtoNodeIdentifier) -> Type {
+		let (network, typing_context) = compiled;
+		let (id, _) = network.nodes.iter().find(|(_, node)| node.identifier == *identifier).expect("the node should be in the network");
+		typing_context.type_of(*id).expect("the node should be typed").return_value.nested_type().clone()
+	}
+
+	#[test]
+	fn a_map_over_cpu_rasters_stays_on_the_cpu() {
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::graphene_core::read_raster;
+		use graphene_std::graphic_nodes::graphic::map;
+		use graphene_std::raster_nodes::adjustments::invert;
+		use graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline;
+		use graphene_std::raster_types::{CPU, Raster};
+
+		let source = || raster_node(ops::passthrough::IDENTIFIER, vec![NodeInput::value(TaggedValue::TypeDefault(list!(Raster<CPU>)), false)]);
+		let read = || raster_node(read_raster::IDENTIFIER, vec![NodeInput::value(TaggedValue::None, false)]);
+
+		// The loop body reads each raster and returns it
+		let map_node = |mapped: usize| raster_node(map::IDENTIFIER, vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(mapped as u64), 0)]);
+		let compiled = compile_rasters(vec![source(), read(), map_node(1)]).expect("a map over CPU rasters should type check");
+		assert_eq!(output_of(&compiled, &map::IDENTIFIER), list!(Raster<CPU>));
+
+		// The loop body adjusts each raster
+		let invert_node = raster_node(invert::IDENTIFIER, vec![NodeInput::node(NodeId(1), 0), NodeInput::scope(raster_kernel_pipeline::IDENTIFIER)]);
+		let compiled = compile_rasters(vec![source(), read(), invert_node, map_node(2)]).expect("a map adjusting CPU rasters should type check");
+		assert_eq!(output_of(&compiled, &invert::IDENTIFIER), item!(Raster<CPU>));
+		assert_eq!(output_of(&compiled, &map::IDENTIFIER), list!(Raster<CPU>));
+	}
+
+	#[test]
+	fn eager_opts_what_comes_after_it_into_the_gpu() {
+		use graph_craft::document::value::TaggedValue;
+		use graphene_std::raster_nodes::adjustments::invert;
+		use graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline;
+		use graphene_std::raster_nodes::std_nodes::eager;
+		use graphene_std::raster_types::{CPU, GPU, Raster};
+
+		let source = raster_node(ops::passthrough::IDENTIFIER, vec![NodeInput::value(TaggedValue::TypeDefault(item!(Raster<CPU>)), false)]);
+		let scope = || NodeInput::scope(raster_kernel_pipeline::IDENTIFIER);
+
+		let compiled = compile_rasters(vec![source.clone(), raster_node(invert::IDENTIFIER, vec![NodeInput::node(NodeId(0), 0), scope()])]).expect("Invert should take a CPU raster");
+		assert_eq!(output_of(&compiled, &invert::IDENTIFIER), item!(Raster<CPU>));
+
+		let uploaded = raster_node(eager::IDENTIFIER, vec![NodeInput::node(NodeId(0), 0), scope()]);
+		let compiled = compile_rasters(vec![source, uploaded, raster_node(invert::IDENTIFIER, vec![NodeInput::node(NodeId(1), 0), scope()])]).expect("Invert should take Eager's GPU raster");
+		assert_eq!(output_of(&compiled, &invert::IDENTIFIER), item!(Raster<GPU>));
+	}
+
+	#[test]
+	fn a_footprint_dependent_raster_warns_at_a_footprint_invariant_node() {
+		use graph_craft::application_io::PlatformEditorApi;
+		use graph_craft::document::value::TaggedValue;
+		use graph_craft::graphene_compiler::Compiler;
+		use graph_craft::proto::GraphErrorType;
+		use graphene_std::raster_nodes::dehaze::dehaze;
+		use graphene_std::raster_nodes::filter::median_filter;
+		use graphene_std::raster_nodes::raster_kernel::raster_kernel_pipeline;
+		use graphene_std::raster_nodes::std_nodes::mandelbrot;
+		use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+		use interpreted_executor::util::wrap_network_in_scope;
+		use std::sync::Arc;
+
+		struct NoSpawner;
+		impl Spawn for NoSpawner {
+			fn spawn(&self, _: Task) {}
+		}
+
+		let compile = |consumer: ProtoNodeIdentifier| {
+			let consumer = raster_node(
+				consumer,
+				vec![
+					NodeInput::node(NodeId(0), 0),
+					NodeInput::value(TaggedValue::Number(10.), false),
+					NodeInput::scope(raster_kernel_pipeline::IDENTIFIER),
+				],
+			);
+			let network = NodeNetwork {
+				exports: vec![NodeInput::node(NodeId(1), 0)],
+				nodes: [(NodeId(0), raster_node(mandelbrot::IDENTIFIER, Vec::new())), (NodeId(1), consumer)].into_iter().collect(),
+				..Default::default()
+			};
+			let runtime = AsyncRuntime::new(Arc::new(NoSpawner), Arc::new(std::time::Instant::now()));
+			let mut network = wrap_network_in_scope(network, Arc::new(PlatformEditorApi::default()), runtime.handle());
+			Preprocessor::new().preprocess(&mut network, &|_| None).unwrap();
+			Compiler {}.compile_single(network).unwrap().warnings
+		};
+
+		let warnings = compile(dehaze::IDENTIFIER);
+		assert_eq!(warnings.len(), 1, "Dehaze should warn about reading the footprint through its input: {warnings:?}");
+		assert!(warnings[0].error == GraphErrorType::FootprintDependentInput);
+
+		assert!(compile(median_filter::IDENTIFIER).is_empty(), "a node that isn't footprint invariant shouldn't warn");
+	}
 }

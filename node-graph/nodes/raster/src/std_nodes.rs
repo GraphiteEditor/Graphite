@@ -677,3 +677,65 @@ fn map_color(iter: usize, max_iter: usize) -> Color {
 	let v = iter as f32 / max_iter as f32;
 	Color::from_rgbaf32_unchecked(v, v, v, 1.)
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use core_types::ops::ConvertAsync;
+	use wgpu_executor::WgpuExecutor;
+	use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelRuntime;
+
+	fn gpu_pipeline(executor: &WgpuExecutor) -> Item<WgpuPipelineCache> {
+		let pipeline = WgpuPipelineCache::default();
+		executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+		Item::new_from_element(pipeline)
+	}
+
+	#[test]
+	fn eager_reports_that_it_needs_a_gpu() {
+		let image = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE)));
+
+		assert!(eager((), image, Item::new_from_element(WgpuPipelineCache::default())).is_err());
+	}
+
+	#[test]
+	fn eager_uploads_the_pixels_and_keeps_the_attributes() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+
+			let transform = DAffine2::from_scale(DVec2::splat(3.));
+			let image = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE))).with_attribute(ATTR_TRANSFORM, transform);
+			let uploaded = eager((), image, gpu_pipeline(&executor)).unwrap();
+
+			assert_eq!(uploaded.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), transform);
+			assert_eq!(uploaded.element().size(), UVec2::splat(4));
+			let downloaded: Raster<CPU> = uploaded.into_element().convert(Footprint::DEFAULT, executor).await;
+			assert!(downloaded.data.iter().all(|pixel| (pixel.r() - 1.).abs() < 0.001 && (pixel.a() - 1.).abs() < 0.001));
+		});
+	}
+
+	#[test]
+	fn eager_keeps_an_empty_raster_empty() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+
+			let uploaded = eager((), Item::new_from_element(Raster::new_cpu(Image::default())), gpu_pipeline(&executor)).unwrap();
+
+			assert_eq!(uploaded.element().size(), UVec2::ZERO);
+		});
+	}
+
+	#[test]
+	fn mandelbrot_renders_a_cpu_raster_without_a_gpu() {
+		let footprint = Footprint {
+			transform: DAffine2::from_scale(DVec2::splat(8.)),
+			resolution: UVec2::splat(8),
+			..Default::default()
+		};
+		let context = core_types::context::OwnedContextImpl::default().with_footprint(footprint).into_context();
+
+		let raster: Item<Raster<CPU>> = mandelbrot(context).unwrap();
+
+		assert_eq!((raster.element().width, raster.element().height), (8, 8));
+	}
+}

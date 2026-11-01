@@ -108,6 +108,33 @@ impl EditorTestUtils {
 		Ok(instrumented)
 	}
 
+	/// Compiles and runs the graph without the monitors of [`Instrumented`], which can't wrap the runtime handle that asynchronous nodes take.
+	pub async fn eval_graph_uninstrumented(&mut self) -> Result<(), String> {
+		let portfolio = &mut self.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+
+		if let Err(e) = executor.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, Default::default()) {
+			return Err(format!("submit_node_graph_evaluation failed\n\n{e}"));
+		}
+		self.finish_evaluation().await
+	}
+
+	/// Waits for the submitted evaluation and processes its results, failing if the graph didn't render.
+	async fn finish_evaluation(&mut self) -> Result<(), String> {
+		self.runtime.run().await;
+
+		let frontend_messages = self.dispatch(Message::Wake);
+		if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+			return Err("Graph should render".to_string());
+		}
+		for message in frontend_messages {
+			message.check_node_graph_error();
+		}
+		Ok(())
+	}
+
 	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
 	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, TestGraphError> {
 		const MAX_ITERATIONS: usize = 16;

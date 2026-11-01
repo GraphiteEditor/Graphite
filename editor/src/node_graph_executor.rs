@@ -1236,3 +1236,71 @@ mod test {
 		}
 	}
 }
+
+#[cfg(test)]
+mod raster_path_tests {
+	use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+	use crate::test_utils::test_prelude::*;
+	use graph_craft::ProtoNodeIdentifier;
+	use graph_craft::document::{DocumentNodeImplementation, NodeId};
+	use graphene_std::list::Item;
+	use graphene_std::raster_nodes::adjustments::invert;
+	use graphene_std::raster_nodes::dehaze::dehaze;
+	use graphene_std::raster_nodes::filter::median_filter;
+	use graphene_std::raster_nodes::std_nodes::eager;
+	use graphene_std::raster_types::{CPU, Raster};
+
+	/// A document whose image feeds `nodes` in turn, ending in the export.
+	async fn image_through(editor: &mut EditorTestUtils, color: Color, nodes: &[ProtoNodeIdentifier]) {
+		editor.new_document().await;
+		editor.create_raster_image(Image::new(4, 4, color), None).await;
+		let image = editor
+			.active_document()
+			.network_interface
+			.document_network()
+			.nodes
+			.iter()
+			.find(|(_, node)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if *identifier == graphene_std::raster_nodes::std_nodes::image::IDENTIFIER))
+			.map(|(id, _)| *id)
+			.expect("the pasted image should be an Image node");
+
+		let mut previous = OutputConnector::node(image, 0);
+		for (index, identifier) in nodes.iter().enumerate() {
+			let id: NodeId = editor.create_node_by_name_at(DefinitionIdentifier::ProtoNode(identifier.clone()), (index as i32 + 1) * 10, 0).await;
+			let input = InputConnector::node_at_index(id, 0);
+			editor.active_document_mut().network_interface.create_wire(&previous, &input, &[]);
+			previous = OutputConnector::node(id, 0);
+		}
+		editor.active_document_mut().network_interface.create_wire(&previous, &InputConnector::Export(0), &[]);
+	}
+
+	#[tokio::test]
+	async fn an_image_reaches_a_filter_as_a_cpu_raster() {
+		let mut editor = EditorTestUtils::create();
+		image_through(&mut editor, Color::WHITE, &[median_filter::IDENTIFIER]).await;
+
+		let instrumented = editor.eval_graph_until_finished().await.expect("the image should render through Median");
+		let _: Item<Raster<CPU>> = instrumented
+			.grab_all_input::<median_filter::ImageFrameInput, Item<Raster<CPU>>>(&editor.runtime)
+			.next()
+			.expect("the image should arrive at Median as a CPU raster");
+	}
+
+	#[tokio::test]
+	async fn an_image_feeding_dehaze_renders() {
+		let mut editor = EditorTestUtils::create();
+		image_through(&mut editor, Color::from_rgbaf32_unchecked(0.5, 0.6, 0.7, 1.), &[dehaze::IDENTIFIER]).await;
+
+		// A compile error or a failed render fails this
+		editor.eval_graph_uninstrumented().await.expect("the image should render through Dehaze");
+	}
+
+	#[tokio::test]
+	async fn an_image_uploaded_by_eager_renders_through_a_kernel() {
+		let mut editor = EditorTestUtils::create();
+		image_through(&mut editor, Color::WHITE, &[eager::IDENTIFIER, invert::IDENTIFIER]).await;
+
+		// A compile error or a failed render fails this
+		editor.eval_graph_uninstrumented().await.expect("the image should render through Eager and Invert");
+	}
+}
