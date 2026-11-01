@@ -1851,14 +1851,18 @@ mod test {
 	}
 
 	#[test]
-	fn flatten_node_without_exports() {
-		let mut network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
+	fn flatten_nested_network_with_missing_dependant_index() {
+		let inner = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(10), 0)],
 			nodes: [(
-				NodeId(1),
+				NodeId(10),
 				DocumentNode {
 					inputs: vec![],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork::default()),
+					original_location: OriginalLocation {
+						dependants: vec![],
+						..Default::default()
+					},
 					..Default::default()
 				},
 			)]
@@ -1866,8 +1870,31 @@ mod test {
 			.collect(),
 			..Default::default()
 		};
-		network.populate_dependants();
-		network.flatten(NodeId(1));
+
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [(
+				NodeId(1),
+				DocumentNode {
+					inputs: vec![],
+					implementation: DocumentNodeImplementation::Network(inner),
+					original_location: OriginalLocation {
+						dependants: vec![],
+						..Default::default()
+					},
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		network.flatten_with_fns(NodeId(1), |_, inner_id| inner_id, NodeId::new);
+
+		assert_eq!(network.exports, vec![NodeInput::node(NodeId(10), 0)]);
+		assert!(network.nodes.contains_key(&NodeId(10)));
+		assert!(!network.nodes.contains_key(&NodeId(1)));
 	}
 
 	#[test]
