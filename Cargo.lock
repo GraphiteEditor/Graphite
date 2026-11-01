@@ -1300,6 +1300,7 @@ dependencies = [
  "tinyvec",
  "tsify",
  "wasm-bindgen",
+ "web-time",
 ]
 
 [[package]]

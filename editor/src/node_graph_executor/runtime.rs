@@ -1,7 +1,7 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
-use crate::task::{Scheduling, Spawn, Spawner, Task};
+use crate::task::{Spawn, Spawner, Task};
 use glam::{DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -18,15 +18,15 @@ use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
-use graphene_std::runtime::{AsyncRuntime, Clock};
+use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
 use graphene_std::{Context, ContextFeatures, ContextOverrides, NodeError, OwnedContextImpl, Poll};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
-use std::time::Duration;
 use thumbnails::Thumbnails;
 
 mod thumbnails;
@@ -42,15 +42,14 @@ pub struct NodeRuntime {
 	receiver: Receiver<GraphRuntimeRequest>,
 	sender: Sender<NodeGraphUpdate>,
 	editor_wake: Wake,
-	/// A re-evaluation waiting for the next frame, or for the end of an export.
-	rerun: bool,
+	dirty: Arc<AtomicBool>,
+	pending_requests: VecDeque<GraphRuntimeRequest>,
 	pending: Option<ExecutionRequest>,
 	pending_export: Option<ExecutionRequest>,
+	pending_update: Option<GraphUpdate>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
-	scheduling: Scheduling,
-	frame_start: Duration,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
@@ -128,14 +127,14 @@ impl NodeRuntime {
 			receiver,
 			sender,
 			editor_wake,
-			rerun: false,
+			dirty: Default::default(),
 			pending: None,
 			pending_export: None,
+			pending_requests: VecDeque::new(),
+			pending_update: None,
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
-			scheduling: Scheduling::default(),
-			frame_start: Duration::ZERO,
 
 			editor_api: PlatformEditorApi {
 				#[cfg(not(test))]
@@ -163,6 +162,69 @@ impl NodeRuntime {
 		}
 	}
 
+	pub fn update(&mut self) {
+		let is_export = |request: &GraphRuntimeRequest| matches!(request, GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_export);
+		if self.pending_export.is_some() || self.pending_requests.iter().any(is_export) {
+			return;
+		}
+
+		let mut graph = self.pending_update.take();
+		for request in self.receiver.try_iter() {
+			match request {
+				GraphRuntimeRequest::GraphUpdate(update) => graph = Some(update),
+				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
+					Some(update) => update.node_to_inspect = node_to_inspect,
+					None => self.inspect_state = InspectState::new(node_to_inspect),
+				},
+				request => {
+					let export = is_export(&request);
+					self.pending_requests.push_back(request);
+					if export {
+						break;
+					}
+				}
+			}
+		}
+
+		let Some(GraphUpdate {
+			mut network,
+			resources,
+			node_to_inspect,
+			previewed,
+			layers,
+		}) = graph
+		else {
+			return;
+		};
+
+		apply_previews(&mut network, &previewed);
+
+		match &mut self.inspect_state {
+			Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
+			_ => self.inspect_state = InspectState::new(node_to_inspect),
+		}
+
+		self.resources = resources;
+
+		self.node_graph_errors.clear();
+		self.node_graph_warnings.clear();
+		let result = self.update_network(network.clone());
+		if result.is_ok() {
+			self.thumbnails.update_sources(&layers, &network, &self.executor);
+			self.old_graph = Some(network);
+		}
+		let node_graph_errors = self.node_graph_errors.clone();
+		let node_graph_warnings = self.node_graph_warnings.clone();
+
+		self.sender
+			.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
+				result,
+				node_graph_errors,
+				node_graph_warnings,
+			}))
+			.expect("Failed to send response");
+	}
+
 	pub async fn run(&mut self) -> Option<Texture> {
 		let texture = self.handle_requests().await;
 		(self.editor_wake)();
@@ -170,15 +232,19 @@ impl NodeRuntime {
 	}
 
 	async fn handle_requests(&mut self) -> Option<Texture> {
-		let mut graph = None;
 		let mut eyedropper = None;
 		let mut execution = None;
 		let mut thumbnails_in_view = None;
 		let mut inspect_again = false;
 
-		for request in self.pending_export.is_none().then_some(&self.receiver).into_iter().flat_map(Receiver::try_iter) {
+		while self.pending_export.is_none()
+			&& let Some(request) = self
+				.pending_requests
+				.pop_front()
+				.or_else(|| if self.pending_update.is_none() { self.receiver.try_recv().ok() } else { None })
+		{
 			match request {
-				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
+				GraphRuntimeRequest::GraphUpdate(update) => self.pending_update = Some(update),
 				GraphRuntimeRequest::ExecutionRequest(ref execution_request) => {
 					if execution_request.render_config.for_eyedropper {
 						eyedropper = Some(request);
@@ -195,11 +261,7 @@ impl NodeRuntime {
 					}
 				}
 				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => thumbnails_in_view = Some((layers, document_id)),
-				// A graph update applied after this loop would otherwise inspect what was selected before
-				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
-					Some(GraphRuntimeRequest::GraphUpdate(update)) => update.node_to_inspect = node_to_inspect,
-					_ => self.inspect_state = InspectState::new(node_to_inspect),
-				},
+				GraphRuntimeRequest::Inspect(node_to_inspect) => self.inspect_state = InspectState::new(node_to_inspect),
 				GraphRuntimeRequest::InspectContextOverrides(overrides) => {
 					if let Some(inspect_state) = &mut self.inspect_state {
 						inspect_state.overrides = overrides;
@@ -212,7 +274,7 @@ impl NodeRuntime {
 		// Without an execution to render them along with, the thumbnails that came into view are rendered on their own
 		if let Some((layers, document_id)) = thumbnails_in_view {
 			self.thumbnails.set_in_view(layers);
-			if execution.is_none() && graph.is_none() {
+			if execution.is_none() {
 				let mut responses = VecDeque::new();
 				self.thumbnails.render_stale(&self.executor, &self.editor_api, &mut responses).await;
 				if !responses.is_empty() {
@@ -221,13 +283,8 @@ impl NodeRuntime {
 			}
 		}
 
-		let rerun = std::mem::take(&mut self.rerun) | self.async_runtime().take_bumped();
-		if rerun && execution.is_none() {
-			if self.frame_has_budget() {
-				execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
-			} else {
-				self.rerun = true;
-			}
+		if self.dirty.swap(false, Ordering::Acquire) && execution.is_none() {
+			execution = self.pending_export.or(self.pending).map(GraphRuntimeRequest::ExecutionRequest);
 		}
 
 		// Eydropper should use the same time and pointer to not invalidate the cache
@@ -238,45 +295,11 @@ impl NodeRuntime {
 			eyedropper.render_config.pointer = execution.render_config.pointer;
 		}
 
-		let requests = [graph, eyedropper, execution].into_iter().flatten();
+		let requests = [eyedropper, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
-				GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
-				GraphRuntimeRequest::GraphUpdate(GraphUpdate {
-					mut network,
-					resources,
-					node_to_inspect,
-					previewed,
-					layers,
-				}) => {
-					apply_previews(&mut network, &previewed);
-
-					match &mut self.inspect_state {
-						Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
-						_ => self.inspect_state = InspectState::new(node_to_inspect),
-					}
-
-					self.resources = resources;
-
-					self.node_graph_errors.clear();
-					self.node_graph_warnings.clear();
-					let result = self.update_network(network.clone());
-					if result.is_ok() {
-						self.thumbnails.update_sources(&layers, &network, &self.executor);
-						self.old_graph = Some(network);
-					}
-					let node_graph_errors = self.node_graph_errors.clone();
-					let node_graph_warnings = self.node_graph_warnings.clone();
-
-					self.sender
-						.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
-							result,
-							node_graph_errors,
-							node_graph_warnings,
-						}))
-						.expect("Failed to send response");
-				}
+				GraphRuntimeRequest::GraphUpdate(_) | GraphRuntimeRequest::ThumbnailsInView { .. } | GraphRuntimeRequest::Inspect(_) | GraphRuntimeRequest::InspectContextOverrides(_) => {}
 				GraphRuntimeRequest::ExecutionRequest(request @ ExecutionRequest { execution_id, mut render_config, .. }) => {
 					if !render_config.for_export && !render_config.for_eyedropper {
 						self.thumbnails.set_scale(render_config.scale);
@@ -322,7 +345,7 @@ impl NodeRuntime {
 							self.pending_export = Some(request);
 							return None;
 						}
-						(true, _) => self.rerun = true,
+						(true, _) => self.dirty.store(true, Ordering::Release),
 						_ => {}
 					}
 
@@ -577,54 +600,33 @@ impl NodeRuntime {
 		.into();
 	}
 
-	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake, clock: Arc<dyn Clock>) {
-		self.async_runtime = Some(AsyncRuntime::new(Arc::new(NodeTaskExecutor { spawner, wake }), clock));
-		self.begin_frame();
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
+		let spawn = NodeTaskExecutor {
+			spawner,
+			dirty: self.dirty.clone(),
+			wake,
+		};
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
 	}
 
-	pub fn set_scheduling(&mut self, scheduling: Scheduling) {
-		self.scheduling = scheduling;
-	}
-
-	/// Called by the host once the previous output was presented.
-	pub fn begin_frame(&mut self) {
-		self.frame_start = self.async_runtime().clock().now();
-	}
-
-	/// How long a deferred re-evaluation waits for the next frame.
-	pub fn until_next_frame(&self) -> Option<Duration> {
-		let budget = self.frame_budget()?;
-		let elapsed = self.frame_elapsed().as_nanos() % budget.as_nanos();
-		self.rerun.then(|| budget - Duration::from_nanos(elapsed as u64))
-	}
-
-	fn frame_elapsed(&self) -> Duration {
-		self.async_runtime().clock().now().saturating_sub(self.frame_start)
-	}
-
-	fn frame_budget(&self) -> Option<Duration> {
-		self.scheduling.frame_budget.filter(|budget| !budget.is_zero())
-	}
-
-	fn frame_has_budget(&self) -> bool {
-		self.frame_budget().is_none_or(|budget| self.frame_elapsed() < budget)
-	}
-
-	pub(crate) fn async_runtime(&self) -> &AsyncRuntime {
+	fn async_runtime(&self) -> &AsyncRuntime {
 		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
 	}
 }
 
 struct NodeTaskExecutor {
 	spawner: Spawner,
+	dirty: Arc<AtomicBool>,
 	wake: Wake,
 }
 
 impl Spawn for NodeTaskExecutor {
 	fn spawn(&self, task: Task) {
+		let dirty = self.dirty.clone();
 		let wake = self.wake.clone();
 		self.spawner.spawn(Box::pin(async move {
 			task.await;
+			dirty.store(true, Ordering::Release);
 			wake();
 		}));
 	}
@@ -733,10 +735,89 @@ impl InspectState {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::test_utils::{EditorTestUtils, FakeClock};
+	use crate::test_utils::EditorTestUtils;
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
 	use graphene_std::runtime::Runtime;
+
+	const SOURCE: SourceId = SourceId(1);
+
+	async fn editor() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.runtime.async_runtime().retain_sources(&[SOURCE]);
+		editor
+	}
+
+	/// Sends a network update and a request to evaluate it, as the editor does for a change to the graph.
+	fn send_update(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+	}
+
+	/// Whether the runtime evaluated the graph since this was last called.
+	fn evaluated(editor: &mut EditorTestUtils) -> bool {
+		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
+	}
+
+	#[tokio::test]
+	async fn run_leaves_a_network_update_and_the_requests_behind_it_for_update() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+
+		editor.runtime.run().await;
+		assert!(!evaluated(&mut editor), "the request behind the network update was evaluated");
+		assert!(editor.runtime.pending_update.is_some());
+
+		editor.runtime.update();
+		assert!(editor.runtime.pending_update.is_none());
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+	}
+
+	#[tokio::test]
+	async fn a_graph_settles_while_network_updates_keep_arriving() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+
+		for _ in 0..3 {
+			send_update(&mut editor);
+			editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
+			editor.runtime.run().await;
+			assert!(evaluated(&mut editor), "the finished task didn't evaluate the graph again");
+			assert!(editor.runtime.pending_update.is_some(), "run applied the network update");
+		}
+
+		editor.runtime.update();
+		assert!(editor.runtime.pending_update.is_none());
+		assert!(editor.runtime.receiver.try_recv().is_err(), "update left a network update in the receiver");
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+	}
+
+	#[tokio::test]
+	async fn several_network_updates_evaluate_once() {
+		let mut editor = editor().await;
+		for _ in 0..3 {
+			send_update(&mut editor);
+		}
+
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+
+		editor.runtime.run().await;
+		assert!(!evaluated(&mut editor), "the requests of the older network updates evaluated again");
+	}
 
 	#[test]
 	fn a_preview_replaces_the_export_of_the_graph_being_compiled() {
@@ -760,65 +841,5 @@ mod tests {
 		);
 
 		assert_eq!(network.exports.first().and_then(|export| export.as_node()), Some(previewed_node));
-	}
-
-	const SOURCE: SourceId = SourceId(1);
-
-	async fn editor(clock: &Arc<FakeClock>) -> EditorTestUtils {
-		let mut editor = EditorTestUtils::create_with(Scheduling::default(), clock.clone());
-		editor.new_document().await;
-		editor.draw_rect(0., 0., 100., 100.).await;
-		editor.runtime.async_runtime().retain_sources(&[SOURCE]);
-		editor.runtime.begin_frame();
-		editor
-	}
-
-	fn finish_task(editor: &EditorTestUtils) {
-		editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
-	}
-
-	async fn evaluates(editor: &mut EditorTestUtils) -> bool {
-		editor.runtime.run().await;
-		let messages = editor.editor.handle_message(Message::Wake);
-		messages.iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
-	}
-
-	#[tokio::test]
-	async fn reevaluations_past_the_frame_budget_wait_for_the_next_frame() {
-		let clock = Arc::new(FakeClock::default());
-		let mut editor = editor(&clock).await;
-
-		finish_task(&editor);
-		finish_task(&editor);
-		assert!(evaluates(&mut editor).await);
-		assert!(!evaluates(&mut editor).await, "two finished tasks re-evaluated twice");
-
-		clock.advance(Duration::from_millis(20));
-		finish_task(&editor);
-		assert!(!evaluates(&mut editor).await);
-		assert_eq!(editor.runtime.until_next_frame(), Some(Duration::from_millis(12)));
-
-		editor.runtime.begin_frame();
-		assert!(evaluates(&mut editor).await);
-		assert_eq!(editor.runtime.until_next_frame(), None);
-	}
-
-	#[tokio::test]
-	async fn explicit_requests_ignore_the_frame_budget() {
-		let clock = Arc::new(FakeClock::default());
-		let mut editor = editor(&clock).await;
-
-		clock.advance(Duration::from_millis(100));
-		finish_task(&editor);
-		let portfolio = &mut editor.editor.dispatcher.message_handlers.portfolio_message_handler;
-		let document_id = portfolio.active_document_id.unwrap();
-		let document = portfolio.documents.get_mut(&document_id).unwrap();
-		portfolio
-			.executor
-			.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO)
-			.unwrap();
-
-		assert!(evaluates(&mut editor).await);
-		assert!(!evaluates(&mut editor).await, "the finished task re-evaluated after the explicit request");
 	}
 }

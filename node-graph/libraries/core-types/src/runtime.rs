@@ -1,16 +1,14 @@
 use crate::poll::Poll;
 use crate::uuid::NodeId;
 use dyn_any::WasmNotSend;
-pub use futures::future::AbortHandle;
-use futures::future::Abortable;
+use futures::future::{AbortHandle, Abortable};
 use std::collections::HashMap;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::task::{Context, Waker};
-use std::time::Duration;
+pub use web_time::Instant;
 
 #[cfg(not(target_family = "wasm"))]
 pub type Task = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
@@ -19,36 +17,6 @@ pub type Task = Pin<Box<dyn Future<Output = ()> + 'static>>;
 
 pub trait Spawn {
 	fn spawn(&self, task: Task);
-}
-
-/// Monotonic time since an arbitrary origin.
-pub trait Clock: Send + Sync {
-	fn now(&self) -> Duration;
-}
-
-#[cfg(not(target_family = "wasm"))]
-impl Clock for std::time::Instant {
-	fn now(&self) -> Duration {
-		self.elapsed()
-	}
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct Scheduling {
-	/// How far into a frame a re-evaluation caused by finished tasks may start. `None` never defers it.
-	pub frame_budget: Option<Duration>,
-}
-
-impl Scheduling {
-	pub const UNLIMITED: Self = Self { frame_budget: None };
-}
-
-impl Default for Scheduling {
-	fn default() -> Self {
-		Self {
-			frame_budget: Some(Duration::from_millis(16)),
-		}
-	}
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, graphene_hash::CacheHash, dyn_any::DynAny)]
@@ -66,22 +34,15 @@ impl SourceId {
 pub type Generations = Arc<[(SourceId, u64)]>;
 
 pub trait Runtime {
-	/// Bumps the generation of `source` once `task` finishes, unless it was aborted or the source was removed first.
-	fn spawn(&self, source: SourceId, task: Task) -> AbortHandle;
+	fn spawn(&self, source: SourceId, task: Task);
 }
 
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RuntimeHandle(Arc<RuntimeInner>);
 
-impl RuntimeHandle {
-	pub fn clock(&self) -> &dyn Clock {
-		&*self.0.clock
-	}
-}
-
 impl Runtime for RuntimeHandle {
-	fn spawn(&self, source: SourceId, task: Task) -> AbortHandle {
-		self.0.spawn(source, task)
+	fn spawn(&self, source: SourceId, task: Task) {
+		self.0.spawn(source, task);
 	}
 }
 
@@ -104,41 +65,26 @@ impl graphene_hash::CacheHash for RuntimeHandle {
 pub struct AsyncRuntime(Arc<RuntimeInner>);
 
 impl AsyncRuntime {
-	pub fn new(spawner: Arc<dyn Spawn + Send + Sync>, clock: Arc<dyn Clock>) -> Self {
+	pub fn new(spawner: Arc<dyn Spawn + Send + Sync>) -> Self {
 		Self(Arc::new(RuntimeInner {
-			sources: Mutex::default(),
-			next_task: AtomicU64::new(0),
-			bumped: AtomicBool::new(false),
+			generations: Mutex::default(),
 			spawner,
-			clock,
 		}))
 	}
 
-	/// Aborts the unfinished tasks of removed sources.
 	pub fn retain_sources(&self, live: &[SourceId]) {
-		let mut sources = self.0.lock();
-		for (_, state) in sources.extract_if(|source, _| !live.contains(source)) {
-			state.tasks.values().for_each(AbortHandle::abort);
-		}
+		let mut generations = self.0.generations.lock().unwrap_or_else(PoisonError::into_inner);
+		generations.retain(|source, _| live.contains(source));
 		for source in live {
-			sources.entry(*source).or_default();
+			generations.entry(*source).or_insert(0);
 		}
 	}
 
 	pub fn snapshot(&self) -> Generations {
-		let sources = self.0.lock();
-		let mut snapshot: Vec<_> = sources.iter().map(|(source, state)| (*source, state.generation)).collect();
+		let generations = self.0.generations.lock().unwrap_or_else(PoisonError::into_inner);
+		let mut snapshot: Vec<_> = generations.iter().map(|(source, generation)| (*source, *generation)).collect();
 		snapshot.sort_unstable();
 		snapshot.into()
-	}
-
-	/// Whether any generation was bumped since the last call.
-	pub fn take_bumped(&self) -> bool {
-		self.0.bumped.swap(false, Ordering::AcqRel)
-	}
-
-	pub fn clock(&self) -> &dyn Clock {
-		&*self.0.clock
 	}
 
 	#[must_use]
@@ -148,50 +94,25 @@ impl AsyncRuntime {
 }
 
 impl Runtime for AsyncRuntime {
-	fn spawn(&self, source: SourceId, task: Task) -> AbortHandle {
-		self.0.spawn(source, task)
+	fn spawn(&self, source: SourceId, task: Task) {
+		self.0.spawn(source, task);
 	}
-}
-
-/// A live source's generation and its unfinished tasks.
-#[derive(Default)]
-struct SourceState {
-	generation: u64,
-	tasks: HashMap<u64, AbortHandle>,
 }
 
 struct RuntimeInner {
-	sources: Mutex<HashMap<SourceId, SourceState>>,
-	next_task: AtomicU64,
-	bumped: AtomicBool,
+	generations: Mutex<HashMap<SourceId, u64>>,
 	spawner: Arc<dyn Spawn + Send + Sync>,
-	clock: Arc<dyn Clock>,
 }
 
 impl RuntimeInner {
-	fn lock(&self) -> MutexGuard<'_, HashMap<SourceId, SourceState>> {
-		self.sources.lock().unwrap_or_else(PoisonError::into_inner)
-	}
-
-	fn spawn(self: &Arc<Self>, source: SourceId, task: Task) -> AbortHandle {
-		let (handle, registration) = AbortHandle::new_pair();
-		let id = self.next_task.fetch_add(1, Ordering::Relaxed);
-		if let Some(state) = self.lock().get_mut(&source) {
-			state.tasks.insert(id, handle.clone());
-		}
-
+	fn spawn(self: &Arc<Self>, source: SourceId, task: Task) {
 		let inner = Arc::clone(self);
 		self.spawner.spawn(Box::pin(async move {
-			let finished = Abortable::new(task, registration).await.is_ok();
-			if let Some(state) = inner.lock().get_mut(&source)
-				&& state.tasks.remove(&id).is_some()
-				&& finished
-			{
-				state.generation += 1;
-				inner.bumped.store(true, Ordering::Release);
+			task.await;
+			if let Some(generation) = inner.generations.lock().unwrap_or_else(PoisonError::into_inner).get_mut(&source) {
+				*generation += 1;
 			}
 		}));
-		handle
 	}
 }
 
@@ -247,12 +168,14 @@ impl<T: Clone + WasmNotSend + 'static> Slots<T> {
 			return state;
 		}
 
+		let (handle, registration) = AbortHandle::new_pair();
 		let slots = Arc::downgrade(&self.0);
-		let handle = runtime.spawn(
+		runtime.spawn(
 			source,
 			Box::pin(async move {
-				let state = future.await;
-				if let Some(slots) = slots.upgrade() {
+				if let Ok(state) = Abortable::new(future, registration).await
+					&& let Some(slots) = slots.upgrade()
+				{
 					slots.lock().unwrap_or_else(PoisonError::into_inner).insert(key, Slot::Ready(state));
 				}
 			}),
@@ -271,14 +194,7 @@ impl<T: Clone + WasmNotSend + 'static> Slots<T> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-
-	struct NoClock;
-
-	impl Clock for NoClock {
-		fn now(&self) -> Duration {
-			Duration::ZERO
-		}
-	}
+	use std::sync::atomic::{AtomicBool, Ordering};
 
 	fn poll_once(task: &mut Task) -> bool {
 		task.as_mut().poll(&mut Context::from_waker(Waker::noop())).is_ready()
@@ -331,7 +247,7 @@ mod tests {
 	#[test]
 	fn a_completion_bumps_its_generation() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(spawner.clone());
 		runtime.retain_sources(&[SOURCE]);
 
 		runtime.handle().spawn(SOURCE, Box::pin(YieldOnce(false)));
@@ -344,7 +260,7 @@ mod tests {
 	#[test]
 	fn retaining_sources_keeps_live_generations() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(spawner.clone());
 		runtime.retain_sources(&[SOURCE]);
 		runtime.spawn(SOURCE, Box::pin(YieldOnce(false)));
 		spawner.drain();
@@ -359,7 +275,7 @@ mod tests {
 	#[test]
 	fn an_inline_completion_and_a_dropped_source_bump_nothing() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(spawner.clone());
 		runtime.retain_sources(&[SOURCE]);
 
 		let slots = Slots::default();
@@ -376,7 +292,7 @@ mod tests {
 	#[test]
 	fn a_slot_serves_the_placeholder_until_the_response_lands() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(spawner.clone());
 		runtime.retain_sources(&[SOURCE]);
 		let slots = Slots::default();
 		let fetch = || async {
@@ -393,7 +309,7 @@ mod tests {
 
 	#[test]
 	fn a_blocking_spawner_lands_the_slot_in_the_same_resolve() {
-		let runtime = AsyncRuntime::new(Arc::new(BlockingSpawner), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(Arc::new(BlockingSpawner));
 		runtime.retain_sources(&[SOURCE]);
 		let slots = Slots::default();
 		let fetch = || async {
@@ -408,7 +324,7 @@ mod tests {
 	#[test]
 	fn a_clone_keeps_the_task_running() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(spawner.clone());
 		let slots = Slots::default();
 		let fetch = || async {
 			YieldOnce(false).await;
@@ -425,7 +341,7 @@ mod tests {
 	#[test]
 	fn dropping_the_last_clone_aborts_the_task() {
 		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
+		let runtime = AsyncRuntime::new(spawner.clone());
 		let slots = Slots::default();
 		let finished = Arc::new(AtomicBool::new(false));
 		let fetch = || {
@@ -441,33 +357,5 @@ mod tests {
 		drop(slots);
 		assert_eq!(spawner.drain(), 1);
 		assert!(!finished.load(Ordering::Relaxed));
-	}
-
-	#[test]
-	fn finished_tasks_bump_once() {
-		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
-		runtime.retain_sources(&[SOURCE]);
-		runtime.spawn(SOURCE, Box::pin(YieldOnce(false)));
-		runtime.spawn(SOURCE, Box::pin(YieldOnce(false)));
-
-		assert_eq!(spawner.drain(), 2);
-		assert!(runtime.take_bumped());
-		assert!(!runtime.take_bumped());
-	}
-
-	#[test]
-	fn aborted_tasks_bump_nothing() {
-		let spawner = Arc::new(CollectSpawner::default());
-		let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(NoClock));
-		runtime.retain_sources(&[SOURCE, SourceId(9)]);
-		runtime.spawn(SOURCE, Box::pin(std::future::pending())).abort();
-		let removed = runtime.spawn(SourceId(9), Box::pin(std::future::pending()));
-		runtime.retain_sources(&[SOURCE]);
-
-		assert!(removed.is_aborted());
-		assert_eq!(spawner.drain(), 2);
-		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 0)]);
-		assert!(!runtime.take_bumped());
 	}
 }
