@@ -1,10 +1,13 @@
+use crate::raster_kernel::{ReadPixels, raster_kernel_pipeline};
 use color::{ColorSpace, Oklab};
+use core_types::NodeError;
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::{Item, List};
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, GPU, Image, Raster};
 use std::collections::BinaryHeap;
 use std::ops::{AddAssign, SubAssign};
+use wgpu_executor::WgpuPipelineCache;
 
 /// Histogram resolution along each OkLab axis.
 const CELLS_PER_AXIS: usize = 32;
@@ -14,21 +17,31 @@ const TABLE_SIDE: usize = CELLS_PER_AXIS + 1;
 const OKLAB_GAMUT_RANGES: [(f32, f32); 3] = [(0., 1.), (-0.24, 0.28), (-0.32, 0.2)];
 
 /// Finds the colors that best represent the distinct color ranges in an image, ignoring transparent areas.
-#[node_macro::node(category("Color"), icon("NodeImageColorPalette"), memoize, footprint_invariant)]
-fn image_color_palette(
+#[node_macro::node(category("Color"), icon("NodeImageColorPalette"), memoize, footprint_invariant, placeholder = pending_palette, version(2))]
+async fn image_color_palette<T: ReadPixels + Send + 'static>(
 	_: impl Ctx,
 	/// The image to find colors in.
-	image: Item<Raster<CPU>>,
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	image: Item<T>,
 	/// How many colors to find. Raising it adds a color at the end and may adjust one existing color, leaving the rest as they were.
 	#[default(4)]
 	#[hard(1..)]
 	count: Item<i64>,
-) -> List<Color> {
-	let count = *count.element() as usize;
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<List<Color>, NodeError> {
+	let image = image.into_element().read_pixels(pipeline.element()).await?;
+	Ok(palette_colors(image.data(), *count.element() as usize))
+}
 
+fn pending_palette<T>(_image: &Item<T>, _count: &Item<i64>, _pipeline: &Item<WgpuPipelineCache>) -> List<Color> {
+	List::new()
+}
+
+/// The colors that best represent the distinct color ranges in `image`, ignoring transparent areas.
+fn palette_colors(image: &Image<Color>, count: usize) -> List<Color> {
 	// O(n) binning of the image's n pixels into an OkLab histogram, weighted by alpha so transparent pixels are ignored
 	let mut cumulative = vec![Moments::default(); TABLE_SIDE.pow(3)];
-	for pixel in image.element().data.iter() {
+	for pixel in image.data.iter() {
 		let weight = (pixel.a().clamp(0., 1.) * f32::from(u16::MAX)).round() as i64;
 		if weight == 0 {
 			continue;
@@ -235,7 +248,7 @@ mod test {
 			data,
 		});
 
-		let palette = image_color_palette((), Item::new_from_element(image), Item::new_from_element(count));
+		let palette = palette_colors(image.data(), count as usize);
 		palette.iter_element_values().copied().collect()
 	}
 
@@ -324,5 +337,14 @@ mod test {
 		// Halfway in OkLab between black and white is lightness 0.5, which cubes to 1/8 linear light
 		let colors = palette(&[(Color::BLACK, 50), (Color::WHITE, 50)], 1);
 		assert_colors_near(&colors, &[Color::from_rgbf32_unchecked(0.125, 0.125, 0.125)]);
+	}
+
+	#[test]
+	fn the_palette_reads_a_cpu_raster_without_a_gpu() {
+		let image = Raster::new_cpu(Image::new(4, 4, Color::WHITE));
+
+		let pixels = futures::executor::block_on(image.read_pixels(&WgpuPipelineCache::default())).unwrap();
+
+		assert_eq!(palette_colors(&pixels, 1).len(), 1);
 	}
 }

@@ -62,6 +62,7 @@ fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 		List<Vector>,
 		List<Graphic>,
 		List<Raster<CPU>>,
+		List<Raster<GPU>>,
 		List<Color>,
 		List<Gradient>,
 		List<Artboard>,

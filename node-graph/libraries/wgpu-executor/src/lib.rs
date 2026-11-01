@@ -1,6 +1,7 @@
 mod buffer;
 mod context;
 mod pipeline;
+pub mod shader_runtime;
 mod texture_cache;
 pub mod texture_conversion;
 mod vello_render;
@@ -25,6 +26,7 @@ pub use raster_types::Texture;
 pub use rendering::vello_scene_builder::VelloSceneBuilder;
 pub use wgpu::Backends as WgpuBackends;
 pub use wgpu::Features as WgpuFeatures;
+pub use wgpu::TextureFormat as WgpuTextureFormat;
 pub use wgpu_sync::CurrentSurfaceTexture as WgpuCurrentSurfaceTexture;
 pub use wgpu_sync::Instance as WgpuInstance;
 pub use wgpu_sync::Queue as WgpuQueue;
@@ -35,6 +37,11 @@ const TEXTURE_CACHE_SIZE: u64 = 1024 * 1024 * 1024; // 1GB
 #[cfg(target_family = "wasm")]
 const TEXTURE_CACHE_SIZE: u64 = 512 * 1024 * 1024; // 512MB
 
+/// The preferred format of raster textures, holding linear-light straight-alpha values.
+pub const RASTER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba32Float;
+/// The raster texture format on adapters that can't render to [`RASTER_FORMAT`], or when `GRAPHITE_RASTER_FORMAT=f16` forces it.
+pub const FALLBACK_RASTER_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
+
 #[derive(dyn_any::DynAny, Clone)]
 pub struct WgpuExecutor {
 	inner: Arc<WgpuExecutorInner>,
@@ -44,12 +51,18 @@ impl WgpuExecutor {
 	pub fn context(&self) -> &WgpuContext {
 		&self.inner.context
 	}
+
+	/// The format of every raster texture this executor creates, either [`RASTER_FORMAT`] or [`FALLBACK_RASTER_FORMAT`].
+	pub fn raster_format(&self) -> wgpu::TextureFormat {
+		self.inner.raster_format
+	}
 }
 
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutorInner {
 	context: WgpuContext,
 	texture_cache: std::sync::Mutex<TextureCache>,
+	raster_format: wgpu::TextureFormat,
 	vello_renderer: VelloRenderer,
 	/// The canvas the node graph renders documents on.
 	document_canvas: Mutex<VelloCanvas>,
@@ -177,6 +190,7 @@ impl WgpuExecutor {
 	}
 
 	pub fn with_context(context: WgpuContext) -> Option<Self> {
+		let raster_format = choose_raster_format(&context.adapter);
 		let vello_renderer = VelloRenderer::new(&context.device);
 
 		let texture_cache = TextureCache::new(TEXTURE_CACHE_SIZE);
@@ -185,6 +199,7 @@ impl WgpuExecutor {
 			inner: Arc::new(WgpuExecutorInner {
 				context,
 				texture_cache: texture_cache.into(),
+				raster_format,
 				vello_renderer,
 				document_canvas: Mutex::default(),
 			}),
@@ -195,3 +210,16 @@ impl WgpuExecutor {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("No GPU is available")]
 pub struct NoGpuError;
+
+fn choose_raster_format(adapter: &wgpu::Adapter) -> wgpu::TextureFormat {
+	if std::env::var("GRAPHITE_RASTER_FORMAT").is_ok_and(|format| format == "f16") {
+		return FALLBACK_RASTER_FORMAT;
+	}
+
+	if adapter.get_texture_format_features(RASTER_FORMAT).allowed_usages.contains(wgpu::TextureUsages::RENDER_ATTACHMENT) {
+		RASTER_FORMAT
+	} else {
+		log::warn!("The GPU can't render to {RASTER_FORMAT:?}, so rasters fall back to {FALLBACK_RASTER_FORMAT:?}");
+		FALLBACK_RASTER_FORMAT
+	}
+}

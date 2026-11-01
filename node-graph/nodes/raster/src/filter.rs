@@ -1,11 +1,18 @@
 use crate::parallel_rows::fill_rows;
+use crate::raster_kernel::{FILTERABLE_FORMAT, RasterKernel, ToGpuParams, Wgsl, raster_kernel_pipeline, run_raster_kernel, run_raster_kernel_with_format};
+use crate::{gpu_param_enum, gpu_params};
 use bytemuck::{Pod, Zeroable};
 use core_types::color::{Alpha, Color, Pixel, RGB};
 use core_types::context::Ctx;
 use core_types::list::Item;
+use core_types::{Interrupt, NodeError};
+use glam::DAffine2;
+use num_enum::IntoPrimitive;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
-use raster_types::{CPU, Raster};
+use raster_types::{CPU, GPU, Raster, Storage};
+use wgpu_executor::WgpuPipelineCache;
+use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelInput;
 
 /// Working-buffer pixel for the blur algorithms' `gamma` mode: premultiplied sRGB-gamma `f32` channels.
 /// Only used internally so the working buffer's color space is reflected in the type instead of stuffed into `Color` (which is linear-light by invariant).
@@ -84,11 +91,12 @@ fn unpremultiply_gamma_to_linear(buffer: Image<PremultipliedGammaPixel>) -> Imag
 }
 
 /// Blurs the image with a Gaussian or box blur kernel filter.
-#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"))]
-fn blur(
+#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"), version(2))]
+fn blur<T: BlurRaster>(
 	_: impl Ctx,
 	/// The image to be blurred.
-	image_frame: Item<Raster<CPU>>,
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	image_frame: Item<T>,
 	/// The radius of the blur kernel.
 	#[unit(" px")]
 	#[range]
@@ -99,9 +107,13 @@ fn blur(
 	box_blur: Item<bool>,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: Item<bool>,
-) -> Item<Raster<CPU>> {
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
 	let (radius, box_blur, gamma) = (*radius.element(), *box_blur.element(), *gamma.element());
+	Ok(T::blur(image_frame, radius, box_blur, gamma, pipeline.element())?)
+}
 
+fn blur_cpu(image_frame: Item<Raster<CPU>>, radius: f64, box_blur: bool, gamma: bool) -> Item<Raster<CPU>> {
 	let (image, attributes) = image_frame.into_parts();
 
 	// TODO: Scale the radius through the footprint so it acts as the document-space length its Pixels unit promises, with a
@@ -119,18 +131,20 @@ fn blur(
 }
 
 /// Applies a median filter to reduce noise while preserving edges.
-#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"), memoize)]
-fn median_filter(
+#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"), memoize, version(2))]
+fn median_filter<T: MedianFilterRaster>(
 	_: impl Ctx,
 	/// The image to be filtered.
-	image_frame: Item<Raster<CPU>>,
+	#[implementations(Raster<CPU>, Raster<GPU>)]
+	image_frame: Item<T>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
 	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..50)]
 	radius: Item<f64>,
-) -> Item<Raster<CPU>> {
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
 	let radius = *radius.element();
 
 	let (image, attributes) = image_frame.into_parts();
@@ -141,10 +155,53 @@ fn median_filter(
 		// Minimum filter radius
 		image
 	} else {
-		Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32))
+		T::median_filter(image, radius as u32, pipeline.element())?
 	};
 
-	Item::from_parts(filtered_image, attributes)
+	Ok(Item::from_parts(filtered_image, attributes))
+}
+
+/// A raster the Median Filter node processes, on the CPU or the GPU.
+pub trait MedianFilterRaster: Sized {
+	fn median_filter(image: Self, radius: u32, pipeline: &WgpuPipelineCache) -> Result<Self, NodeError>;
+}
+
+impl MedianFilterRaster for Raster<CPU> {
+	fn median_filter(image: Self, radius: u32, _: &WgpuPipelineCache) -> Result<Self, NodeError> {
+		Ok(Raster::new_cpu(median_filter_algorithm(image.into_data(), radius)))
+	}
+}
+
+impl MedianFilterRaster for Raster<GPU> {
+	fn median_filter(image: Self, radius: u32, pipeline: &WgpuPipelineCache) -> Result<Self, NodeError> {
+		if image.is_empty() {
+			return Ok(image);
+		}
+
+		let size = image.size();
+		let kernel = MedianWindow {
+			radius: radius.min(size.max_element()),
+		};
+		let input = RasterKernelInput {
+			raster: &image,
+			output_to_texel: DAffine2::IDENTITY,
+		};
+		run_raster_kernel(&kernel, vec![input], size, pipeline)
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct MedianWindow {
+		radius: u32,
+	}
+}
+
+impl RasterKernel for MedianWindow {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(include_str!("wgsl/median_filter.wgsl"))
+	}
 }
 
 // 1D gaussian kernel
@@ -296,6 +353,183 @@ where
 	y_axis
 }
 
+/// A raster the Blur node processes, on the CPU or the GPU.
+pub trait BlurRaster: Sized {
+	fn blur(image: Item<Self>, radius: f64, box_blur: bool, gamma: bool, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError>;
+}
+
+impl BlurRaster for Raster<CPU> {
+	fn blur(image: Item<Self>, radius: f64, box_blur: bool, gamma: bool, _: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		Ok(blur_cpu(image, radius, box_blur, gamma))
+	}
+}
+
+/// The farthest texel from the center a blur pass weighs, beyond which the image is first halved until the kernel fits.
+const MAX_BLUR_REACH: i32 = 64;
+
+/// The radius of a blur over texels `scale` image pixels wide, and the farthest texel from the center it weighs, as the CPU kernels size them at a `scale` of 1.
+///
+/// A box covers its whole texels and a fraction of the texel at each end, which keeps the window as wide as the CPU's whole pixel window once halved,
+/// and a Gaussian leaves out the blur that halving and doubling the image add.
+fn blur_extent(radius: f64, box_blur: bool, scale: u32) -> (f32, i32) {
+	let scale = scale as f64;
+	if box_blur {
+		let radius = ((radius as i32) as f64 + 0.5) / scale - 0.5;
+		(radius as f32, radius.ceil() as i32)
+	} else {
+		let radius = (radius * radius - (scale * scale - 1.) / 3.).max(0.).sqrt() / scale;
+		(radius as f32, (3. * radius).ceil() as i32)
+	}
+}
+
+fn blur_input(raster: &Raster<GPU>) -> Vec<RasterKernelInput<'_>> {
+	vec![RasterKernelInput {
+		raster,
+		output_to_texel: DAffine2::IDENTITY,
+	}]
+}
+
+impl BlurRaster for Raster<GPU> {
+	/// Each pass sums premultiplied colors into a [`FILTERABLE_FORMAT`] intermediate, and a kernel reaching past [`MAX_BLUR_REACH`] runs on the image halved
+	/// until it fits, weighing each halved texel by how much of the image it covers, then is scaled back up bilinearly, approximating the CPU's blur.
+	fn blur(image: Item<Self>, radius: f64, box_blur: bool, gamma: bool, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
+		if radius < 0.1 || image.element().is_empty() {
+			return Ok(image);
+		}
+		let (raster, attributes) = image.into_parts();
+		let space = if gamma { BlurSpace::Gamma } else { BlurSpace::Linear };
+		let size = raster.size();
+		let full_size = size.as_ivec2().to_array();
+
+		let mut levels = 0;
+		while blur_extent(radius, box_blur, 1 << levels).1 > MAX_BLUR_REACH {
+			levels += 1;
+		}
+		let level_size = |level: u32| size.map(|side| side.div_ceil(1 << level));
+
+		let mut source = raster;
+		for level in 1..=levels {
+			let kernel = BlurHalve {
+				space: if level == 1 { space } else { BlurSpace::Premultiplied },
+				scale: 1 << (level - 1),
+				full_size,
+			};
+			source = run_raster_kernel_with_format(&kernel, blur_input(&source), level_size(level), FILTERABLE_FORMAT, pipeline)?;
+		}
+
+		let (radius, reach) = blur_extent(radius, box_blur, 1 << levels);
+		let pass = BlurPass {
+			radius,
+			reach,
+			box_blur,
+			space: if levels == 0 { space } else { BlurSpace::Premultiplied },
+			scale: 1 << levels,
+			full_size,
+		};
+		let horizontal = run_raster_kernel_with_format(&BlurHorizontal(pass.clone()), blur_input(&source), level_size(levels), FILTERABLE_FORMAT, pipeline)?;
+		if levels == 0 {
+			let blurred = run_raster_kernel(&BlurVertical(pass), blur_input(&horizontal), size, pipeline)?;
+			return Ok(Item::from_parts(blurred, attributes));
+		}
+		let vertical = run_raster_kernel_with_format(&BlurVertical(pass), blur_input(&horizontal), level_size(levels), FILTERABLE_FORMAT, pipeline)?;
+
+		let upsample = BlurUpsample { scale: (1 << levels) as f32, space };
+		let blurred = run_raster_kernel(&upsample, blur_input(&vertical), size, pipeline)?;
+		Ok(Item::from_parts(blurred, attributes))
+	}
+}
+
+/// The colors a blur pass reads from its input or writes to its output, around the premultiplied colors it sums.
+#[derive(Clone, Copy, IntoPrimitive)]
+#[repr(u32)]
+enum BlurSpace {
+	Premultiplied,
+	Linear,
+	Gamma,
+}
+
+gpu_param_enum!(u32: BlurSpace);
+
+gpu_params! {
+	/// Averages each 2x2 block of texels `scale` image pixels wide, weighed by how much of the `full_size` image each covers.
+	#[derive(Clone)]
+	struct BlurHalve {
+		space: BlurSpace,
+		scale: i32,
+		full_size: [i32; 2],
+	}
+}
+
+impl RasterKernel for BlurHalve {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(concat!(include_str!("wgsl/blur.wgsl"), include_str!("wgsl/blur_halve.wgsl")))
+	}
+}
+
+gpu_params! {
+	/// One axis of a blur over texels `scale` image pixels wide, each weighed by how much of the `full_size` image it covers.
+	#[derive(Clone)]
+	struct BlurPass {
+		radius: f32,
+		reach: i32,
+		box_blur: bool,
+		space: BlurSpace,
+		scale: i32,
+		full_size: [i32; 2],
+	}
+}
+
+struct BlurHorizontal(BlurPass);
+
+impl ToGpuParams for BlurHorizontal {
+	type Params = BlurPass;
+	fn to_params(&self) -> BlurPass {
+		self.0.clone()
+	}
+}
+
+impl RasterKernel for BlurHorizontal {
+	const INPUTS: usize = 1;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(concat!(include_str!("wgsl/blur.wgsl"), include_str!("wgsl/blur_horizontal.wgsl")))
+	}
+}
+
+/// Reads its input in pairs of texels sampled bilinearly between them, so the input must be in [`FILTERABLE_FORMAT`].
+struct BlurVertical(BlurPass);
+
+impl ToGpuParams for BlurVertical {
+	type Params = BlurPass;
+	fn to_params(&self) -> BlurPass {
+		self.0.clone()
+	}
+}
+
+impl RasterKernel for BlurVertical {
+	const INPUTS: usize = 1;
+	const FILTERED: bool = true;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(concat!(include_str!("wgsl/blur.wgsl"), include_str!("wgsl/blur_vertical.wgsl")))
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct BlurUpsample {
+		scale: f32,
+		space: BlurSpace,
+	}
+}
+
+impl RasterKernel for BlurUpsample {
+	const INPUTS: usize = 1;
+	const FILTERED: bool = true;
+	fn wgsl() -> Wgsl {
+		Wgsl::function(concat!(include_str!("wgsl/blur.wgsl"), include_str!("wgsl/blur_upsample.wgsl")))
+	}
+}
+
 fn median_filter_algorithm(original_buffer: Image<Color>, radius: u32) -> Image<Color> {
 	let (width, height) = original_buffer.dimensions();
 	let mut output = Image::new(width, height, Color::TRANSPARENT);
@@ -352,4 +586,20 @@ fn median_quickselect(values: &mut [f32]) -> f32 {
 	// nth_unstable is like quickselect: average O(n)
 	// Use total_cmp for safe NaN handling instead of partial_cmp().unwrap()
 	*values.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use raster_types::Image;
+
+	#[test]
+	fn blur_runs_on_a_cpu_raster_without_a_gpu() {
+		let image = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE)));
+		let pipeline = Item::new_from_element(WgpuPipelineCache::default());
+
+		let blurred: Item<Raster<CPU>> = blur((), image, Item::new_from_element(2.), Item::new_from_element(false), Item::new_from_element(false), pipeline).unwrap();
+
+		assert_eq!((blurred.element().width, blurred.element().height), (4, 4));
+	}
 }

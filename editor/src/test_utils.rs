@@ -14,13 +14,13 @@ use crate::task::{Scheduling, Spawn, Task};
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
 use document_container::store::MemoryStore;
 use glam::{DVec2, UVec2};
-use graph_craft::application_io::PlatformApplicationIo;
 use graph_craft::application_io::resource::HashMapResourceStorage;
+use graph_craft::application_io::{ApplicationIo, PlatformApplicationIo};
 use graphene_std::raster::color::Color;
 use graphene_std::runtime::Clock;
 use graphene_std::uuid::NodeId;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 
 /// A set of utility functions to make the writing of editor test more declarative
@@ -48,12 +48,7 @@ impl EditorTestUtils {
 					.with_resource_storage(Arc::new(HashMapResourceStorage::new()))
 					.with_document_store(Arc::new(MemoryStore::default())),
 			)
-			.with_runtime(
-				RuntimeBuilder::new(clock)
-					.with_wake(|| {})
-					.with_application_io(PlatformApplicationIo::default())
-					.with_scheduling(scheduling),
-			)
+			.with_runtime(RuntimeBuilder::new(clock).with_wake(|| {}).with_application_io(gpu_application_io()).with_scheduling(scheduling))
 			.with_spawner(BlockingSpawner)
 			.with_random_seed(0)
 			.build();
@@ -111,6 +106,33 @@ impl EditorTestUtils {
 		}
 
 		Ok(instrumented)
+	}
+
+	/// Compiles and runs the graph without the monitors of [`Instrumented`], which can't wrap the runtime handle that asynchronous nodes take.
+	pub async fn eval_graph_uninstrumented(&mut self) -> Result<(), String> {
+		let portfolio = &mut self.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+
+		if let Err(e) = executor.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, Default::default()) {
+			return Err(format!("submit_node_graph_evaluation failed\n\n{e}"));
+		}
+		self.finish_evaluation().await
+	}
+
+	/// Waits for the submitted evaluation and processes its results, failing if the graph didn't render.
+	async fn finish_evaluation(&mut self) -> Result<(), String> {
+		self.runtime.run().await;
+
+		let frontend_messages = self.dispatch(Message::Wake);
+		if frontend_messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error }) {
+			return Err("Graph should render".to_string());
+		}
+		for message in frontend_messages {
+			message.check_node_graph_error();
+		}
+		Ok(())
 	}
 
 	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
@@ -491,6 +513,16 @@ fn init_test_logger() {
 			log::set_max_level(max_level);
 		}
 	});
+}
+
+/// Creates application IO with the GPU executor shared by every test in the process, since creating a device and its pipelines for each test is slow.
+/// Panics if no adapter is found, since tests render on the GPU like the app does.
+fn gpu_application_io() -> PlatformApplicationIo {
+	static GPU_EXECUTOR: LazyLock<Option<<PlatformApplicationIo as ApplicationIo>::Executor>> = LazyLock::new(|| futures::executor::block_on(PlatformApplicationIo::new()).gpu_executor().cloned());
+	let executor = GPU_EXECUTOR.clone().expect(
+		"Editor tests need a GPU adapter. Without a hardware GPU, install Mesa's lavapipe software Vulkan driver and point `VK_ADD_DRIVER_FILES` at its `lvp_icd.<arch>.json` (the Nix dev shell does this).",
+	);
+	PlatformApplicationIo::new_with_executor(executor)
 }
 
 /// Runs `operation`, returning its result along with the errors it logged.
