@@ -1593,6 +1593,20 @@ fn points_to_vector(
 	Item::new_from_element(vector).with_paths(List::<Path>::new())
 }
 
+/// Lists the positions of the anchor points in the vector content, as placed by its transform. Wiring this into the **Translation** of a **Transform** node places a copy of its content at each point.
+#[node_macro::node(category("Vector: Point"), icon("NodeVectorToPoints"), name("Vector to Points"), path(core_types::vector))]
+fn vector_to_points(
+	_: impl Ctx,
+	/// The vector content with anchor points to list the positions of.
+	content: Item<Vector>,
+) -> List<DVec2> {
+	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let paths = shared_paths_from_item_attributes(&content);
+	let positions = content.element().anchor_positions(&paths).into_iter().map(|position| transform.transform_point2(position)).collect();
+
+	List::new_from_elements(positions)
+}
+
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
 #[node_macro::node(category("Vector: Path"), icon("NodePointsToPolyline"), name("Points to Polyline"), path(core_types::vector))]
 fn points_to_polyline<V: MapVectorItems + Send>(_: impl Ctx, #[implementations(Graphic, Vector)] points: Item<V>, #[default(true)] closed: Item<bool>) -> Item<V> {
@@ -4343,6 +4357,17 @@ mod test {
 				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
 			);
 		}
+	}
+
+	#[test]
+	fn vector_to_points() {
+		let square = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0., DVec2::new(5., 7.));
+
+		let points = super::vector_to_points((), create_vector_item(square, transform));
+
+		let positions: Vec<DVec2> = points.iter_element_values().copied().collect();
+		assert_eq!(positions, [DVec2::new(-15., -13.), DVec2::new(25., -13.), DVec2::new(25., 27.), DVec2::new(-15., 27.)]);
 	}
 
 	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {
