@@ -195,6 +195,55 @@ fn image_to_channels(_: impl Ctx, image: Item<Raster<CPU>>) -> ImageChannels {
 	ImageChannels { red, green, blue, alpha }
 }
 
+/// The red, green, blue, and alpha channels of an image, split into separate node outputs.
+#[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destructure)]
+pub struct ImageChannelsGpu {
+	/// The red channel of the image, as a grayscale image.
+	pub red: Item<Raster<GPU>>,
+	/// The green channel of the image, as a grayscale image.
+	pub green: Item<Raster<GPU>>,
+	/// The blue channel of the image, as a grayscale image.
+	pub blue: Item<Raster<GPU>>,
+	/// The alpha channel of the image, as a grayscale image.
+	pub alpha: Item<Raster<GPU>>,
+}
+
+/// Separates an image into its red, green, blue, and alpha channels on the GPU, each provided as a grayscale image.
+#[node_macro::node(category("Raster"), icon("NodeImageToChannels"), name("Image to Channels GPU"))]
+fn image_to_channels_gpu(_: impl Ctx, image: Item<Raster<GPU>>, #[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>) -> Result<ImageChannelsGpu, Interrupt> {
+	let [red, green, blue, alpha] = [0, 1, 2, 3].map(|channel| image.clone().adjust(&ExtractChannel { channel }, pipeline.element()));
+
+	Ok(ImageChannelsGpu {
+		red: red?,
+		green: green?,
+		blue: blue?,
+		alpha: alpha?,
+	})
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct ExtractChannel {
+		channel: u32,
+	}
+}
+
+impl MapColor for ExtractChannel {
+	fn map_cpu(&self, color: Color) -> Color {
+		let value = [color.r(), color.g(), color.b(), color.a()][self.channel as usize];
+		Color::from_rgbaf32_unchecked(value, value, value, 1.)
+	}
+
+	fn wgsl() -> Wgsl {
+		Wgsl::body(
+			r#"
+			let value = color[channel];
+			return vec4<f32>(value, value, value, 1.);
+			"#,
+		)
+	}
+}
+
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeMakeOpaque"), version(2))]
 fn make_opaque<T: Adjust>(
 	_: impl Ctx,
