@@ -40,7 +40,7 @@ use graphene_std::vector::style::{
 	build_transform_with_y_preservation,
 };
 use graphene_std::vector::{QRCodeErrorCorrectionLevel, VectorModification};
-use graphene_std::{Artboard, Graphic, Vector};
+use graphene_std::{Artboard, BevelDirection, BevelStyle, GlowSource, Graphic, Vector};
 use graphene_std::{NodeParameter, ParameterRef};
 use math_parser::parser::{MessagePart, ParseError};
 use std::path::PathBuf;
@@ -388,6 +388,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<DAffine2>(x) => transform_widget(default_info, &mut extra_widgets),
 				Some(x) if id_is::<Color>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
 				Some(x) if id_is::<Gradient>(x) => color_widget(default_info, ColorInput::default().allow_none(false)),
+				Some(x) if id_is::<Graphic>(x) => color_widget(default_info, ColorInput::default()),
 				// ============
 				// STRUCT TYPES
 				// ============
@@ -438,6 +439,9 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<CentroidType>(x) => enum_choice::<CentroidType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<DesaturateMethod>(x) => enum_choice::<DesaturateMethod>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GlowSource>(x) => enum_choice::<GlowSource>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<BevelStyle>(x) => enum_choice::<BevelStyle>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<BevelDirection>(x) => enum_choice::<BevelDirection>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<QRCodeErrorCorrectionLevel>(x) => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<ScaleType>(x) => enum_choice::<ScaleType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<InterpolationDistribution>(x) => enum_choice::<InterpolationDistribution>().for_socket(default_info).inspector_row(),
@@ -2995,6 +2999,79 @@ pub(crate) fn string_capitalization_inspector(node_id: NodeId, context: &mut Nod
 	}
 
 	vec![capitalization, LayoutGroup::row(joiner_widgets), LayoutGroup::row(joiner_preset_buttons)]
+}
+
+pub(crate) fn gradient_curvature_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
+	use graphene_std::math_nodes::gradient_curvature::*;
+	use graphene_std::renderer::dial_gradient::{LINEAR_DIALS, RADIAL_DIALS};
+
+	// The curvatures set in the panel, or `None` when either is fed from the graph, so it can't take a preset
+	let curvatures = match get_document_node(node_id, context) {
+		Ok(document_node) => {
+			let curvature = |index: usize| match document_node.inputs.get(index).and_then(|input| input.as_non_exposed_value()) {
+				Some(&TaggedValue::Number(value)) => Some(value),
+				_ => None,
+			};
+			curvature(StartCurvatureInput::INDEX).zip(curvature(EndCurvatureInput::INDEX)).map(|(start, end)| [start, end])
+		}
+		Err(err) => {
+			log::error!("Could not get document node in gradient_curvature_inspector: {err}");
+			return Vec::new();
+		}
+	};
+
+	// Each form's button sets both curvatures to the form's own, and stands out while they're exactly those
+	let mut form = vec![
+		TextLabel::new("Form")
+			.tooltip_label("Form")
+			.tooltip_description("Sets both curvatures to those of a standard gradient form.")
+			.widget_instance(),
+	];
+	add_blank_assist(&mut form);
+	form.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+	for (label, [start, end], tooltip) in [
+		("Linear", LINEAR_DIALS, "Sets both curvatures to 0, making straight contours."),
+		("Radial", RADIAL_DIALS, "Sets the start curvature to 1 and the end curvature to 0.5, making circles around the start."),
+	] {
+		form.push(
+			TextButton::new(label)
+				.tooltip_description(tooltip)
+				.emphasized(curvatures == Some([start, end]))
+				.disabled(curvatures.is_none())
+				.on_update(move |_: &TextButton| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: StartCurvatureInput::INDEX,
+							value: TaggedValue::Number(start).into(),
+						}
+						.into(),
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: EndCurvatureInput::INDEX,
+							value: TaggedValue::Number(end).into(),
+						}
+						.into(),
+					]),
+				})
+				.on_commit(commit_value)
+				.widget_instance(),
+		);
+	}
+
+	// The same sliders the curvatures would get without this panel
+	let options = ParameterOptions {
+		soft_min: Some(-1.),
+		soft_max: Some(1.),
+		slider: true,
+		..Default::default()
+	};
+	let mut curvature = |index: usize| inspector_row_from_type(node_id, index, &concrete!(f64), options, context).unwrap_or_else(|rows| rows);
+
+	let mut layout = vec![LayoutGroup::row(form)];
+	layout.extend(curvature(StartCurvatureInput::INDEX));
+	layout.extend(curvature(EndCurvatureInput::INDEX));
+	layout
 }
 
 pub(crate) fn rectangle_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {

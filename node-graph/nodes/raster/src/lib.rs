@@ -1,9 +1,7 @@
-pub mod adjust;
 pub mod adjustments;
 pub mod blending_nodes;
-pub mod color_lookup_table;
+pub use raster_kernels::color_lookup_table;
 pub mod dehaze;
 pub mod filter;
 pub mod image_color_palette;
-pub mod parallel_rows;
 pub mod std_nodes;

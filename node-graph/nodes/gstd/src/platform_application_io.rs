@@ -173,7 +173,7 @@ fn string_to_bytes(_: impl Ctx, string: Item<String>) -> Item<Resource> {
 /// Converts extracted raw RGBA pixel data from an input image. Each pixel becomes 4 sequential bytes. Useful for transmission over HTTP or writing to files.
 #[node_macro::node(category("Data: I/O"), icon("NodeImageToBytes"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Item<Raster<CPU>>) -> Item<Resource> {
-	let bytes: Vec<u8> = image
+	let bytes: Vec<u8> = raster_kernels::evaluate_raster_effects(image)
 		.element()
 		.data
 		.iter()

@@ -51,6 +51,8 @@ pub struct DocumentMetadata {
 	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Item<Vector>>>,
 	/// Per-layer `ATTR_APPEARANCE` attribute, exposed so message handlers can read paint information that lives on the list.
 	pub layer_appearance_attributes: HashMap<LayerNodeIdentifier, Arc<Appearance>>,
+	/// How far each layer's effects paint past its content, in document pixels, for the layers with effects.
+	pub layer_effects_reach: HashMap<LayerNodeIdentifier, f64>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 	/// The transform from document space to viewport space that the latest render was made with, which is the one `upstream_footprints` include.
@@ -347,9 +349,9 @@ impl DocumentMetadata {
 	}
 
 	/// Get the bounding box of the specified layer in document space, expanded to include the actual rendered
-	/// stroke geometry when the layer is a vector with a stroke style. Only the first item of a layer's vector data
-	/// is recorded, so the others count through the click-target-based bounds, without their strokes.
-	pub fn bounding_box_document_with_stroke(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
+	/// stroke geometry when the layer is a vector with a stroke style, and how far its effects paint past it. Only the first item of a
+	/// layer's vector data is recorded, so the others count through the click-target-based bounds, without their strokes.
+	pub fn bounding_box_document_with_stroke_and_effects(&self, layer: LayerNodeIdentifier) -> Option<[DVec2; 2]> {
 		let stroked = self.layer_vector_data.get(&layer).and_then(|item| {
 			let stroke = self
 				.layer_appearance_attributes
@@ -359,8 +361,10 @@ impl DocumentMetadata {
 			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
 			item.element().stroke_inclusive_bounding_box_with_transform(paths, self.transform_to_document(layer), stroke.as_ref())
 		});
+		let [min, max] = [stroked, self.bounding_box_document(layer)].into_iter().flatten().reduce(Quad::combine_bounds)?;
 
-		[stroked, self.bounding_box_document(layer)].into_iter().flatten().reduce(Quad::combine_bounds)
+		let reach = self.layer_effects_reach.get(&layer).copied().unwrap_or_default();
+		Some([min - reach, max + reach])
 	}
 
 	/// Get the bounding box of the click target of the specified layer in viewport space
@@ -732,7 +736,7 @@ mod tests {
 		let later_item = ClickTarget::new_with_path(line(100., 110.), 0.);
 		metadata.click_targets.insert(layer, vec![Arc::new(later_item)]);
 
-		let [min, max] = metadata.bounding_box_document_with_stroke(layer).unwrap();
+		let [min, max] = metadata.bounding_box_document_with_stroke_and_effects(layer).unwrap();
 		assert_eq!((min.x, max.x), (0., 110.));
 	}
 

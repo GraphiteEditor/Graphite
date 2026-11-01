@@ -92,6 +92,7 @@ core-types = { path = "node-graph/libraries/core-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
 vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
+raster-kernels = { path = "node-graph/libraries/raster-kernels" }
 brush-types = { path = "node-graph/libraries/brush-types" }
 rendering = { path = "node-graph/libraries/rendering" }
 brush-nodes = { path = "node-graph/nodes/brush" }
@@ -297,6 +298,6 @@ debug = true
 [patch.crates-io]
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
 # TODO: Remove these once the fork's fixes are upstreamed and released
-vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
-vello_common = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
-vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "f20a8dde35de04c44d05e88b33864f27ad7d6f70" }
+vello_gpu = { git = "https://github.com/Keavon/vello.git", rev = "41dfe98e61b6322db38301025cc7eff51d6e9844" }
+vello_common = { git = "https://github.com/Keavon/vello.git", rev = "41dfe98e61b6322db38301025cc7eff51d6e9844" }
+vello_gpu_shaders = { git = "https://github.com/Keavon/vello.git", rev = "41dfe98e61b6322db38301025cc7eff51d6e9844" }

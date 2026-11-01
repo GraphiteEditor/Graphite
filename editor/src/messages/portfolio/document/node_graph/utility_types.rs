@@ -34,6 +34,8 @@ impl FrontendGraphDataType {
 			"Gradient" => Self::Gradient,
 			"String" => Self::Typography,
 			"f64" | "i64" | "bool" | "DVec2" | "DAffine2" => Self::Number,
+			// A generator draws pixels like an image, at whatever resolution is needed
+			"Generator" => Self::Raster,
 			raster if raster.starts_with("Raster") => Self::Raster,
 			_ => Self::General,
 		}

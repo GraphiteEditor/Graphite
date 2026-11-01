@@ -13,7 +13,7 @@ pub use graphene_application_io as application_io;
 pub use graphene_core;
 pub use graphene_core::debug;
 pub use graphic_nodes;
-pub use graphic_types::{Appearance, Artboard, Cover, CoverPlacement, Coverage, Graphic, Vector, stamp_coverage};
+pub use graphic_types::{Appearance, Artboard, BevelDirection, BevelStyle, Cover, CoverPlacement, Coverage, Effect, EffectKind, EffectOperation, Effects, GlowSource, Graphic, Vector, stamp_coverage};
 pub use math_nodes;
 pub use path_bool_nodes;
 pub use raster_nodes;
@@ -59,6 +59,10 @@ pub mod artboard {
 
 pub mod gradient {
 	pub use vector_types::{Gradient, GradientStop};
+}
+
+pub mod generator {
+	pub use graphic_types::generator::*;
 }
 
 pub mod transform {
