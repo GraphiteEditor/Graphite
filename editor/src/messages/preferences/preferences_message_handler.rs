@@ -29,6 +29,7 @@ pub struct PreferencesMessageHandler {
 	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
 	pub user_id: u64,
 	pub user_name: String,
+	pub show_remote_cursors: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
 }
@@ -61,6 +62,7 @@ impl Default for PreferencesMessageHandler {
 			show_storage_preferences: false,
 			user_id: crate::application::generate_uuid(),
 			user_name: String::new(),
+			show_remote_cursors: true,
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
@@ -152,6 +154,11 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			PreferencesMessage::UserName { name } => {
 				self.user_name = name.trim().to_string();
 				responses.add(SyncMessage::RefreshPanel);
+			}
+			PreferencesMessage::ShowRemoteCursors { enabled } => {
+				self.show_remote_cursors = enabled;
+				responses.add(SyncMessage::RefreshPanel);
+				responses.add(OverlaysMessage::Draw);
 			}
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {
