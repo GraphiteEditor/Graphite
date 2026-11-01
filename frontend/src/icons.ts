@@ -376,6 +376,7 @@ import NodeTriangulate from "/../branding/assets/16x16-nodes/node-triangulate.sv
 import NodeUnweld from "/../branding/assets/16x16-nodes/node-unweld.svg";
 import NodeVec2ToNumbers from "/../branding/assets/16x16-nodes/node-vec2-to-numbers.svg";
 import NodeVec2Value from "/../branding/assets/16x16-nodes/node-vec2-value.svg";
+import NodeVectorToPoints from "/../branding/assets/16x16-nodes/node-vector-to-points.svg";
 import NodeVibrance from "/../branding/assets/16x16-nodes/node-vibrance.svg";
 import NodeVoronoiCells from "/../branding/assets/16x16-nodes/node-voronoi-cells.svg";
 import NodeWeld from "/../branding/assets/16x16-nodes/node-weld.svg";
@@ -654,6 +655,7 @@ export const ICON_16X16_NODES = {
 	NodeUnweld: { svg: NodeUnweld, size: 16 },
 	NodeVec2ToNumbers: { svg: NodeVec2ToNumbers, size: 16 },
 	NodeVec2Value: { svg: NodeVec2Value, size: 16 },
+	NodeVectorToPoints: { svg: NodeVectorToPoints, size: 16 },
 	NodeVibrance: { svg: NodeVibrance, size: 16 },
 	NodeVoronoiCells: { svg: NodeVoronoiCells, size: 16 },
 	NodeWeld: { svg: NodeWeld, size: 16 },
