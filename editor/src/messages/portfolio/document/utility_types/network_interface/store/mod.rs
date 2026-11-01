@@ -506,6 +506,11 @@ impl NodeNetworkInterface {
 		self.network.network().located_network(location).is_some() && self.network_metadata.nested_metadata(location).is_some()
 	}
 
+	/// Whether writes since the last drain are waiting to be staged.
+	pub(crate) fn has_deltas(&self) -> bool {
+		!self.deltas.is_empty()
+	}
+
 	/// Takes what the writes since the last drain changed, in write order, leaving the buffer empty
 	/// after reading it for the nodes an open transaction has written to.
 	pub(crate) fn take_deltas(&mut self) -> Vec<EditorDelta> {

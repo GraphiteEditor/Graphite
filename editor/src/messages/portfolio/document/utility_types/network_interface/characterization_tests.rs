@@ -3236,6 +3236,31 @@ async fn redoing_a_nudge_undone_while_it_glides_leaves_nothing_gliding() {
 }
 
 #[tokio::test]
+async fn undoing_a_nudge_keeps_the_node_it_moved() {
+	let mut editor = EditorTestUtils::create();
+	let node = gliding_nudged_node(&mut editor).await;
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(editor.active_document().network_interface.position(&node, &[]), Some(IVec2::ZERO));
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert!(editor.active_document().network_interface.document_network().nodes.is_empty());
+}
+
+#[tokio::test]
+async fn undoing_right_after_creating_a_node_removes_only_that_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let kept = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	editor.create_node_by_name_at(rectangle_definition(), 5, 0).await;
+
+	editor.handle_message(DocumentMessage::Undo).await;
+
+	let nodes = &editor.active_document().network_interface.document_network().nodes;
+	assert_eq!(nodes.keys().copied().collect::<Vec<_>>(), vec![kept]);
+}
+
+#[tokio::test]
 async fn entering_a_node_while_its_network_glides_settles_it() {
 	let mut editor = EditorTestUtils::create();
 	gliding_nudged_node(&mut editor).await;
