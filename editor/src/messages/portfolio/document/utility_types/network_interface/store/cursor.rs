@@ -445,19 +445,18 @@ impl NodeMut<'_> {
 		self.metadata.output_names.clear();
 		self.metadata.output_descriptions.clear();
 
-		if let Some((input_metadata, output_names, output_descriptions)) = carried {
-			let interface = self.interface();
-			*interface.input_metadata = input_metadata;
-			*interface.output_names = output_names;
-			*interface.output_descriptions = output_descriptions;
-		}
-
 		let delta = RuntimeDelta::ReplaceNode {
 			network: self.deltas.network(),
 			node_id: self.deltas.node_id(),
 			node: Box::new(self.node.clone()),
 		};
 		self.deltas.graph(delta);
+
+		if let Some((input_metadata, output_names, output_descriptions)) = carried {
+			self.set_input_metadata(input_metadata);
+			self.set_output_names(output_names);
+			self.set_output_descriptions(output_descriptions);
+		}
 	}
 
 	/// Replaces the node's whole persistent metadata, including that of everything nested under it,
