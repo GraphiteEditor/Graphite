@@ -4,7 +4,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{Error, GddV1, GddV1Layout, manifest};
-use document_graph_storage::{EncodedDeclaration, Implementation, NoMetadata, PeerId};
+use document_graph_storage::{EncodedDeclaration, Implementation, NoMetadata, PeerId, UserId};
 use futures::executor::block_on;
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork};
@@ -28,7 +28,7 @@ fn network_of(nodes: &[(u64, &'static str)]) -> NodeNetwork {
 }
 
 fn create() -> GddV1 {
-	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), 1, "editor".into(), "std".into()).unwrap()
+	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), UserId(7), 1, "editor".into(), "std".into()).unwrap()
 }
 
 fn implementations(gdd: &GddV1) -> Vec<Implementation> {

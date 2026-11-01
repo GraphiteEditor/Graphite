@@ -17,7 +17,7 @@ use crate::messages::resource_storage::ResourcesHandle;
 use document_container::store::{DocumentKey, DocumentStore, MemoryStore};
 use document_container::{AnyContainer, AsyncContainer};
 use document_format::{Error as DocumentFormatError, GddV1, GddV1Layout, Layout, ReadError};
-use document_graph_storage::{Declarations, PeerId};
+use document_graph_storage::{Declarations, PeerId, UserId};
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceStorage};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -267,7 +267,9 @@ async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id
 				container.remove(&path).await?;
 			}
 		}
-		GddV1::create_in(container, GddV1Layout, PeerId(generate_uuid()), document_id.0, version.clone(), version)
+		// The peer stands for its own user until the storage is attached to the user at this device
+		let peer = PeerId(generate_uuid());
+		GddV1::create_in(container, GddV1Layout, peer, UserId(peer.0), document_id.0, version.clone(), version)
 	}
 	.await;
 	match created {
@@ -420,7 +422,7 @@ mod tests {
 	#[tokio::test]
 	async fn a_failed_migration_keeps_the_stored_document() {
 		let container = AnyContainer::Memory(MemoryBackend::new());
-		let mut gdd = GddV1::create_in(container.clone(), GddV1Layout, PeerId(1), 1, "editor".into(), "std".into()).unwrap();
+		let mut gdd = GddV1::create_in(container.clone(), GddV1Layout, PeerId(1), UserId(1), 1, "editor".into(), "std".into()).unwrap();
 
 		// No format step starts from version 0, so the migration fails
 		gdd.update_manifest(|manifest| manifest.format_version = 0).unwrap();

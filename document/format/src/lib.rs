@@ -175,10 +175,10 @@ impl<L: Layout + Default> Gdd<L> {
 
 	/// Create a fresh, empty working copy at `path` bound to `peer`. Writes a default manifest
 	/// and session state; the caller fills in editor metadata via [`Gdd::update_manifest`].
-	pub fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create(path: &Path, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::create(path)?);
 		let layout = L::default();
-		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version)
+		Self::create_in(working, layout, peer, user, document_uuid, editor_version, stdlib_version)
 	}
 }
 
@@ -307,18 +307,18 @@ impl<L: Layout> Gdd<L> {
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
-	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
 		let session_state = SessionState {
 			peer_id: peer,
-			user_id: UserId(peer.0),
+			user_id: user,
 			..Default::default()
 		};
 		io::write_single(&working, layout.session_basename(), codecs.session, &Sorted(&session_state))?;
 
-		let session = Session::with_peer(peer);
+		let session = Session::with_identity(peer, user);
 		io::write_single(&working, layout.registry_basename(), codecs.registry, &Sorted(session.registry()))?;
 
 		Ok(Self::assemble(session, working, layout, manifest, HistoryMetadata::default()))
