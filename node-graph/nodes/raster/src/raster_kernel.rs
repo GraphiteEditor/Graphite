@@ -5,7 +5,7 @@ use core_types::ops::ConvertAsync;
 use core_types::transform::Footprint;
 use core_types::{Ctx, NodeError};
 use glam::{DAffine2, DMat2, DVec2, UVec2};
-use raster_types::{CPU, GPU, Raster, Storage};
+use raster_types::{CPU, GPU, ImageError, Raster, Storage};
 use std::any::{TypeId, type_name};
 use vector_types::Gradient;
 pub use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelLookup;
@@ -406,9 +406,16 @@ fn run<K: ToGpuParams + 'static>(
 		output_size,
 		output_format,
 	};
-	pipeline
-		.try_run::<RasterKernelRuntime>(&args)
-		.ok_or_else(|| NodeError::new("A GPU is required to process a GPU raster"))
+	let executor = pipeline.executor().ok_or_else(|| NodeError::new("A GPU is required to process a GPU raster"))?;
+	let limit = executor.context().device.limits().max_texture_dimension_2d;
+	if output_size.max_element() > limit {
+		return Err(ImageError::TooLarge {
+			width: output_size.x,
+			height: output_size.y,
+		}
+		.into());
+	}
+	Ok(pipeline.run::<RasterKernelRuntime>(&args)?)
 }
 
 fn raster_format(pipeline: &WgpuPipelineCache) -> WgpuTextureFormat {
