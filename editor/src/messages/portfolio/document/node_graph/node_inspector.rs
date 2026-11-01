@@ -33,7 +33,7 @@ use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
-	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType,
+	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
 };
 use graphene_std::vector::style::{
 	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
@@ -136,6 +136,10 @@ pub(crate) fn input_chain(node_id: NodeId, input_index: usize, network_interface
 	for chain_node_id in network_interface.upstream_flow_back_from_nodes(vec![source], network_path, FlowType::HorizontalFlow) {
 		if network_interface.is_layer(&chain_node_id, network_path) {
 			return Some((chain, Some(chain_node_id)));
+		}
+		// A redirect dot only bends a wire, so it gets no section, but the chain carries on through it
+		if network_interface.is_redirect_dot(&chain_node_id, network_path) {
+			continue;
 		}
 		chain.push(chain_node_id);
 	}
@@ -420,13 +424,15 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GridTopology>(x) => enum_choice::<GridTopology>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<ArcType>(x) => enum_choice::<ArcType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<RowsOrColumns>(x) => enum_choice::<RowsOrColumns>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<TextAlign>(x) => enum_choice::<TextAlign>().for_socket(default_info).inspector_row(),
-				Some(x) if id_is::<MergeByDistanceAlgorithm>(x) => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<WeldMethod>(x) => enum_choice::<WeldMethod>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<UnweldMethod>(x) => enum_choice::<UnweldMethod>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<ExtrudeJoiningAlgorithm>(x) => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<PointSpacingType>(x) => enum_choice::<PointSpacingType>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<BooleanOperation>(x) => enum_choice::<BooleanOperation>().for_socket(default_info).inspector_row(),
@@ -448,7 +454,6 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 		},
 		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return inspector_row_from_type(node_id, index, out, options, context),
-		Type::Future(out) => return inspector_row_from_type(node_id, index, out, options, context),
 	};
 
 	extra_widgets.push(widgets);
@@ -1176,9 +1181,22 @@ pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_
 	let label_count = start_widgets(&parameter_widgets_info).len();
 	let exposed = parameter_widgets_info.is_exposed();
 
-	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
+	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button) else {
 		return LayoutGroup::row(Vec::new());
 	};
+
+	if enabled == Some(false) {
+		for widget in &mut row.widgets {
+			let Widget::ColorInput(color_input) = &mut *widget.widget else { continue };
+
+			let set_color = color_input.on_update.callback.clone();
+			let enable = update_value_at_index(|_: &ColorInput| TaggedValue::Bool(true), node_id, bool_input_index);
+			color_input.on_update = WidgetCallback::new(move |input: &ColorInput| Message::Batched {
+				messages: Box::new([set_color(input), enable(input)]),
+			});
+		}
+	}
+
 	if !exposed {
 		row.widgets.splice(label_count..label_count, optional_parameter_assist(enabled, node_id, bool_input_index));
 	}
@@ -2615,10 +2633,6 @@ pub(crate) fn selective_color_inspector(node_id: NodeId, context: &mut NodeInspe
 pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput, true, context)).inspector_row();
-
-	let mut widgets = vec![grid_type];
-
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -2626,33 +2640,44 @@ pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 			return Vec::new();
 		}
 	};
-	let Some(grid_type_input) = document_node.input(GridTypeInput) else {
+	let Some(lattice_input) = document_node.input(LatticeInput) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
-		match grid_type {
-			GridType::Rectangular => {
-				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
-				widgets.push(spacing);
-			}
-			GridType::Isometric => {
-				let spacing = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
-					NumberInput::default().label("H").min(0.).unit(" px"),
-				));
-				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
-				widgets.extend([spacing, angles]);
-			}
-		}
-	}
+	let grid_type = match lattice_input.as_non_exposed_value() {
+		Some(&TaggedValue::GridType(grid_type)) => Some(grid_type),
+		_ => None,
+	};
 
+	// Staggered only changes some topologies
+	let staggered_applies = match document_node.input(TopologyInput).and_then(|input| input.as_non_exposed_value()) {
+		Some(&TaggedValue::GridTopology(topology)) => topology.supports_staggered(),
+		_ => true,
+	};
+
+	let lattice = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, LatticeInput, true, context)).inspector_row();
+	let topology = enum_choice::<GridTopology>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, TopologyInput, true, context))
+		.inspector_row();
+	let staggered = bool_widget(ParameterWidgetsInfo::new(node_id, StaggeredInput, true, context), CheckboxInput::default().disabled(!staggered_applies));
 	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput, true, context), NumberInput::default().min(1.));
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput, true, context), NumberInput::default().min(1.));
 
-	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput, true, context), CheckboxInput::default());
+	let mut widgets = vec![lattice, topology, LayoutGroup::row(staggered), LayoutGroup::row(columns), LayoutGroup::row(rows)];
 
-	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows), LayoutGroup::row(connect_cells)]);
+	if let Some(grid_type) = grid_type {
+		if grid_type.is_isometric() {
+			let spacing = LayoutGroup::row(number_widget(
+				ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
+				NumberInput::default().label("H").min(0.).unit(" px"),
+			));
+			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
+			widgets.extend([spacing, angles]);
+		} else {
+			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
+			widgets.push(spacing);
+		}
+	}
 
 	widgets
 }
@@ -3087,15 +3112,6 @@ pub(crate) fn rectangle_inspector(node_id: NodeId, context: &mut NodeInspectorCo
 	]
 }
 
-pub(crate) fn node_no_inspector_content(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
-	let text = if context.network_interface.is_layer(&node_id, context.selection_network_path) {
-		"Layer has no parameters"
-	} else {
-		"Node has no parameters"
-	};
-	string_inspector(text)
-}
-
 pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
@@ -3184,10 +3200,6 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 		}
 	}
 
-	if layout.is_empty() {
-		layout = node_no_inspector_content(node_id, context);
-	}
-
 	let display_name = context
 		.network_interface
 		.node_metadata(&node_id, context.selection_network_path)
@@ -3238,16 +3250,12 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 		}
 
 		// That layer is only referred to, as in the Data panel, rather than shown with its own parameters and chain
-		if let Some(layer) = stack_layer {
-			let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
-				NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
-			});
-			let name = context.network_interface.display_name(&layer, network_path);
-			let visible = context.network_interface.is_visible(&layer, network_path);
-
-			let mut reference_section = LayoutGroup::section(name, None, "", visible, false, true, layer.0, Layout(vec![LayoutGroup::row(vec![button])]));
+		let feeds_content = input_index == LAYER_SECONDARY_INPUT_INDEX && context.network_interface.is_layer(&node_id, network_path);
+		let tooltip_label = if feeds_content { "Select Child Layer" } else { "Select Layer" };
+		if let Some(layer) = stack_layer
+			&& let Some(mut reference_section) = layer_references_section(&[layer], tooltip_label, context)
+		{
 			if let LayoutGroup::NodeSection(section) = &mut reference_section {
-				section.node_reference = true;
 				section.output_wire = Some(output_section_wire(layer, context));
 			}
 
@@ -3262,8 +3270,35 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 	section
 }
 
+/// A section only referring to layers, as the Data panel does, with a row of buttons that each select one rather than showing its parameters and chain.
+/// Their tooltip label names how the layers relate to the section they're shown beside.
+pub(crate) fn layer_references_section(layers: &[NodeId], tooltip_label: &str, context: &NodeInspectorContext) -> Option<LayoutGroup> {
+	let network_path = context.selection_network_path;
+	let &first_layer = layers.first()?;
+
+	let mut buttons = Vec::with_capacity(layers.len() * 2);
+	for &layer in layers {
+		if !buttons.is_empty() {
+			buttons.push(Separator::new(SeparatorStyle::Related).widget_instance());
+		}
+		let button = node_reference_button(layer, context.network_interface, network_path, network_path, move || {
+			NodeGraphMessage::SelectedNodesSet { nodes: vec![layer] }.into()
+		});
+		buttons.push(button.tooltip_label(tooltip_label).widget_instance());
+	}
+
+	let name = context.network_interface.display_name(&first_layer, network_path);
+	let visible = context.network_interface.is_visible(&first_layer, network_path);
+
+	let mut section = LayoutGroup::section(name, None, "", visible, false, true, first_layer.0, Layout(vec![LayoutGroup::row(buttons)]));
+	if let LayoutGroup::NodeSection(node_section) = &mut section {
+		node_section.node_reference = true;
+	}
+	Some(section)
+}
+
 /// The wire drawn up from a node's section in a chain to the section above, which its output feeds.
-fn output_section_wire(node_id: NodeId, context: &NodeInspectorContext) -> SectionWire {
+pub(crate) fn output_section_wire(node_id: NodeId, context: &NodeInspectorContext) -> SectionWire {
 	let output_type = context.network_interface.output_type(&OutputConnector::node(node_id, 0), context.selection_network_path);
 
 	SectionWire {
@@ -3867,8 +3902,8 @@ mod tests {
 	#[test]
 	fn wire_element_reads_every_spelling_down_to_the_element() {
 		// A stored value's ranked type, a registry row's fn type, and a mapped row's list all carry the same element
-		let row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(item!(f64)))));
-		let mapped_row = Type::Fn(Box::new(concrete!(())), Box::new(Type::Future(Box::new(list!(f64)))));
+		let row = Type::Fn(Box::new(concrete!(())), Box::new(item!(f64)));
+		let mapped_row = Type::Fn(Box::new(concrete!(())), Box::new(list!(f64)));
 		for ty in [TaggedValue::Number(0.).ty(), item!(f64), list!(f64), row, mapped_row] {
 			assert_eq!(wire_element(&ty), concrete!(f64), "{ty:?} should read down to its element");
 		}

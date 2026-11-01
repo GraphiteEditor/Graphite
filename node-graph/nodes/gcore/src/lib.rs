@@ -5,6 +5,7 @@ pub mod debug;
 pub mod extract_xy;
 pub mod memo;
 pub mod ops;
+pub mod poll;
 
 // Re-export all nodes
 pub use animation::*;
@@ -14,3 +15,4 @@ pub use debug::*;
 pub use extract_xy::*;
 pub use memo::*;
 pub use ops::*;
+pub use poll::*;

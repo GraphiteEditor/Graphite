@@ -3,12 +3,13 @@
 	import { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import { targetIsTextField } from "/src/utility-functions/input";
 	import type { GradientInterpolation, GradientSample, SliderInputUpdate, SliderMarker } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ update: SliderInputUpdate; dragging: boolean }>();
+	const dispatch = createEventDispatcher<{ update: SliderInputUpdate; dragging: boolean; startHistoryTransaction: undefined }>();
 
 	// Document-unique `id` for this instance's SVG gradient, referenced by its `url(#...)`
 	const gradientId = `slider-input-gradient-${String(Math.random()).substring(2)}`;
@@ -60,6 +61,10 @@
 	// Where selecting is allowed, these follow the selection, which Rust renumbers across structural changes.
 	let dragIndex: number | undefined = undefined;
 	let dragIsMidpoint = false;
+	// Whether a drag's pointer and key listeners are attached
+	let listening = false;
+	// Whether the current drag (or single change outside one) has started its undo step, so it undoes as one step
+	let historyStepStarted = false;
 	$: if (allowSelect) {
 		dragIndex = activeMarkerIndex;
 		dragIsMidpoint = activeMarkerIsMidpoint;
@@ -92,8 +97,17 @@
 		return WHOLE_PATHS;
 	}
 
-	function emit(intent: SliderInputUpdate) {
+	function emit(intent: SliderInputUpdate, continuesStep?: boolean) {
+		// Making a marker active is only a selection, so it doesn't start an undo step
+		if (!("ActiveMarker" in intent) && !historyStepStarted) {
+			historyStepStarted = true;
+			dispatch("startHistoryTransaction");
+		}
+
 		dispatch("update", intent);
+
+		// Outside a drag, a change ends its undo step unless more of its run follows
+		if (!listening && !continuesStep) historyStepStarted = false;
 	}
 
 	function setActive(index: number | undefined, isMidpoint: boolean) {
@@ -313,7 +327,9 @@
 
 	function resetRun(first: number, last: number) {
 		if (disabled || dragMoved) return;
-		for (let index = first; index <= last; index += 1) emit({ ResetMarker: { index } });
+
+		// The whole run resets as one undo step
+		for (let index = first; index <= last; index += 1) emit({ ResetMarker: { index } }, index < last);
 	}
 
 	function trackPointerDown(e: PointerEvent) {
@@ -334,8 +350,6 @@
 		let insertIndex = markers.findIndex((m) => m.position > position);
 		if (insertIndex === -1) insertIndex = markers.length;
 
-		emit({ InsertMarker: { position } });
-
 		activeMarkerIndexRestore = activeMarkerIndex;
 		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 		dragRestorePosition = position;
@@ -350,6 +364,9 @@
 		activeMarkerIndex = insertIndex;
 		activeMarkerIsMidpoint = false;
 		addEvents();
+
+		// Inserted once the drag is underway, so the insertion and the drag after it undo as one step
+		emit({ InsertMarker: { position } });
 	}
 
 	// The lane the handles hang in picks up the nearest marker like the strip does, except where the click landed on a marker itself
@@ -361,6 +378,7 @@
 	function deleteShortcut(e: KeyboardEvent) {
 		if (disabled) return;
 		if (e.key !== "Delete" && e.key !== "Backspace") return;
+		if (targetIsTextField(e.target || undefined)) return;
 		if (activeMarkerIndex === undefined) return;
 
 		stopDrag();
@@ -515,7 +533,10 @@
 		const dragged = dragIndex;
 		const anchor = duplicateActive ? findDuplicateAnchorIndex() : undefined;
 
-		if (dragInsertedMarker) {
+		// A drag that changed nothing yet has nothing to put back, and putting it back anyway would leave an empty undo step
+		if (!historyStepStarted) {
+			// Nothing to restore
+		} else if (dragInsertedMarker) {
 			// The dragged marker was created by this drag, so delete it.
 			emit({ DeleteMarker: { index: dragged } });
 		} else if (anchor !== undefined) {
@@ -599,6 +620,7 @@
 	}
 
 	function addEvents() {
+		listening = true;
 		document.addEventListener("pointermove", onPointerMove);
 		document.addEventListener("pointerup", onPointerUp);
 		document.addEventListener("mousedown", onMouseDown);
@@ -607,6 +629,8 @@
 	}
 
 	function removeEvents() {
+		listening = false;
+		historyStepStarted = false;
 		document.removeEventListener("pointermove", onPointerMove);
 		document.removeEventListener("pointerup", onPointerUp);
 		document.removeEventListener("mousedown", onMouseDown);

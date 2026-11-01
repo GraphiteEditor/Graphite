@@ -10,7 +10,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Flo
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{
 	self, NodeGraphLayer, get_chain_source_gradient_settings, get_fill_node_id_with_direct_fill_input, get_gradient_stops, get_upstream_gradient_value_node_id, gradient_chain_target_input,
-	replaceable_paint_chain, reverse_direction_tooltip_description,
+	paint_target_layer, replaceable_paint_chain, reverse_direction_tooltip_description,
 };
 use crate::messages::tool::common_functionality::snap_session::{Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use glam::DMat2;
@@ -40,6 +40,7 @@ pub enum GradientToolMessage {
 	Abort,
 	Overlays { context: OverlayContext },
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -159,6 +160,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				}
 				self.data.color_picker_editing_color_stop = None;
 			}
+			ToolMessage::Gradient(GradientToolMessage::SwitchedToAnotherTool) => {
+				// Returning to the tool starts fresh from the working colors
+				self.data.default_gradient_stops = None;
+			}
 			ToolMessage::Gradient(GradientToolMessage::WorkingColorChanged) => {
 				let primary = context.global_tool_data.primary_color;
 				let secondary = context.global_tool_data.secondary_color;
@@ -259,20 +264,12 @@ impl LayoutHolder for GradientTool {
 		let gradient_form = RadioInput::new(gradient_form_entries).selected_index(Some(self.options.gradient_form as u32)).widget_instance();
 
 		// Display priority: the selected layer's stops, then any user-customized tool default, then the working colors
-		let stops_value = self.data.current_gradient_stops.clone().or_else(|| self.data.default_gradient_stops.clone()).unwrap_or_else(|| {
-			Gradient::new([
-				GradientStop {
-					position: 0.,
-					midpoint: 0.5,
-					color: self.data.primary_color,
-				},
-				GradientStop {
-					position: 1.,
-					midpoint: 0.5,
-					color: self.data.secondary_color,
-				},
-			])
-		});
+		let stops_value = self
+			.data
+			.current_gradient_stops
+			.clone()
+			.or_else(|| self.data.default_gradient_stops.clone())
+			.unwrap_or_else(|| working_color_gradient(self.data.primary_color, self.data.secondary_color));
 		let stops_widget = ColorInput::new(FillChoice::Gradient(GradientRamp::from(&stops_value).with_settings(self.options.settings)))
 			.allow_none(false)
 			.narrow(true)
@@ -341,6 +338,23 @@ impl Default for GradientToolFsmState {
 			selected: GradientSelectedTarget::None,
 		}
 	}
+}
+
+/// The gradient a new one starts as unless its stops were customized, running primary → secondary so the default
+/// working colors (primary = black, secondary = white) produce the expected black-to-white gradient.
+fn working_color_gradient(primary: Color, secondary: Color) -> Gradient {
+	Gradient::new([
+		GradientStop {
+			position: 0.,
+			midpoint: 0.5,
+			color: primary,
+		},
+		GradientStop {
+			position: 1.,
+			midpoint: 0.5,
+			color: secondary,
+		},
+	])
 }
 
 /// Computes the transform from gradient space to viewport space.
@@ -619,14 +633,18 @@ impl SelectedGradient {
 		lock_angle: bool,
 		gradient_form: GradientForm,
 		drag_start: DVec2,
+		press_unsnapped: DVec2,
 		snap_session: &mut SnapSession,
 		view: SnapView,
 		gradient_angle: &mut f64,
 	) {
-		if mouse.distance(drag_start) < DRAG_THRESHOLD {
-			self.gradient = self.initial_gradient.clone();
-			self.appearance.transform = self.initial_gradient_transform;
-			self.render_gradient(responses);
+		if mouse.distance(press_unsnapped) <= DRAG_THRESHOLD {
+			// A new gradient's initial line is only a placeholder, so nothing is written until the drag passes the threshold
+			if self.dragging != GradientDragTarget::New {
+				self.gradient = self.initial_gradient.clone();
+				self.appearance.transform = self.initial_gradient_transform;
+				self.render_gradient(responses);
+			}
 			return;
 		}
 
@@ -734,7 +752,7 @@ impl SelectedGradient {
 				let new_color = self.gradient.color(stop).unwrap_or(Color::BLACK);
 
 				self.gradient.sort(gradient_cyclic);
-				if let Some(new_index) = self.gradient.iter().position(|s| s.position == new_position && s.color == new_color) {
+				if let Some(new_index) = (0..self.gradient.len()).position(|index| self.gradient.position(index, gradient_cyclic) == new_position && self.gradient.color(index) == Some(new_color)) {
 					self.dragging = GradientDragTarget::Stop(new_index);
 				}
 			}
@@ -782,7 +800,7 @@ impl SelectedGradient {
 					gradient: self.gradient.clone(),
 					gradient_form: self.appearance.gradient_form,
 					gradient_settings: self.appearance.settings,
-					transform: self.appearance.transform,
+					transform: Some(self.appearance.transform),
 				});
 			}
 		}
@@ -863,6 +881,7 @@ impl ToolTransition for GradientTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),
+			switched_to_another_tool: Some(GradientToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(GradientToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(GradientToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| GradientToolMessage::Overlays { context }.into()),
@@ -888,7 +907,7 @@ struct GradientToolData {
 	current_gradient_stops: Option<Gradient>,
 	/// User-customized default gradient stop colors: used when nothing that has a gradient is selected.
 	/// `None` means to follow the working colors.
-	/// Cleared on tool deactivation so each fresh activation starts from the working colors again.
+	/// Cleared on switching to another tool so each fresh activation starts from the working colors again.
 	default_gradient_stops: Option<Gradient>,
 	/// Cached viewport-space orientation (true = predominantly rightward) of the selected gradient line.
 	/// Used to refresh the control bar's "Reverse Direction" icon only when the line's apparent direction flips.
@@ -928,7 +947,7 @@ impl Fsm for GradientToolFsmState {
 				let selected = tool_data.selected_gradient.as_ref();
 				let mouse = input.mouse.position;
 
-				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 					let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
@@ -1181,9 +1200,10 @@ impl Fsm for GradientToolFsmState {
 					return ready_default;
 				}
 
-				// If we're in the middle of a drag, abort it first and revert to the initial gradient
+				// If we're in the middle of a drag, abort it first and revert to the gradient as it began
 				if matches!(state, GradientToolFsmState::Drawing { .. }) {
 					selected_gradient.gradient = selected_gradient.initial_gradient.clone();
+					selected_gradient.appearance.transform = selected_gradient.initial_gradient_transform;
 					selected_gradient.render_gradient(responses);
 					responses.add(DocumentMessage::AbortTransaction);
 				}
@@ -1267,7 +1287,7 @@ impl Fsm for GradientToolFsmState {
 				ready_default
 			}
 			(_, GradientToolMessage::InsertStop) => {
-				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 					let Some((mut gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
@@ -1322,9 +1342,12 @@ impl Fsm for GradientToolFsmState {
 				tool_data.auto_pan_shift = DVec2::ZERO;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
+				// The press selects whatever it lands on, so one landing on nothing leaves no stop selected
+				tool_data.selected_gradient = None;
+
 				let mut drag_hint: Option<GradientDragHintState> = None;
 				let mut transaction_started = false;
-				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+				for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 					let Some((gradient, appearance, source)) = resolve_gradient(layer, &document.network_interface) else {
 						continue;
 					};
@@ -1461,13 +1484,14 @@ impl Fsm for GradientToolFsmState {
 					GradientToolFsmState::Drawing { drag_hint: hint }
 				} else {
 					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-					// List-based gradients and blank layers render no geometry, so a click on empty canvas yields no layer.
-					// Fall back to a selected gradient list layer, or one blank enough to take a fresh whole-expanse gradient.
-					let selected_layer = document.click_based_on_position(document_mouse).or_else(|| {
+					// A press on empty canvas falls back to a selected layer with a gradient, letting its line start or end outside the shape,
+					// or to one blank enough for a whole-expanse gradient, since blank layers and list gradients have nothing to press
+					let clicked_layer = document.click_based_on_position(document_mouse).map(|layer| paint_target_layer(layer, &document.network_interface));
+					let selected_layer = clicked_layer.or_else(|| {
 						document
 							.network_interface
 							.selected_nodes()
-							.selected_visible_layers(&document.network_interface)
+							.selected_visible_and_unlocked_layers(&document.network_interface)
 							.find(|&layer| get_gradient_stops(layer, &document.network_interface).is_some() || replaceable_paint_chain(layer, &document.network_interface).is_some())
 					});
 
@@ -1489,21 +1513,12 @@ impl Fsm for GradientToolFsmState {
 						let (gradient, appearance, source) = match resolve_gradient(layer, &document.network_interface) {
 							// Use the already existing gradient if it exists
 							Some(gradient) => gradient,
-							// Generate a new gradient running primary → secondary so the default working colors
-							// (primary = black, secondary = white) produce the expected black-to-white gradient
+							// Generate a new gradient from the stops shown in the control bar
 							None => (
-								Gradient::new([
-									GradientStop {
-										position: 0.,
-										midpoint: 0.5,
-										color: global_tool_data.primary_color,
-									},
-									GradientStop {
-										position: 1.,
-										midpoint: 0.5,
-										color: global_tool_data.secondary_color,
-									},
-								]),
+								tool_data
+									.default_gradient_stops
+									.clone()
+									.unwrap_or_else(|| working_color_gradient(global_tool_data.primary_color, global_tool_data.secondary_color)),
 								GradientAppearance {
 									transform: DAffine2::IDENTITY,
 									gradient_form: tool_options.gradient_form,
@@ -1559,6 +1574,7 @@ impl Fsm for GradientToolFsmState {
 					// Convert drag_start from document space to effective viewport space
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let drag_start_viewport = document_to_viewport.transform_point2(tool_data.drag_start) + tool_data.auto_pan_shift;
+					let press_unsnapped_viewport = document_to_viewport.transform_point2(tool_data.drag_start_unsnapped) + tool_data.auto_pan_shift;
 					tool_data.auto_pan_shift = DVec2::ZERO;
 
 					selected_gradient.update_gradient(
@@ -1568,6 +1584,7 @@ impl Fsm for GradientToolFsmState {
 						input.keyboard.get(lock_angle as usize),
 						selected_gradient.appearance.gradient_form,
 						drag_start_viewport,
+						press_unsnapped_viewport,
 						snap_session,
 						SnapView::new(document, *document_id, input),
 						&mut tool_data.gradient_angle,
@@ -1604,7 +1621,13 @@ impl Fsm for GradientToolFsmState {
 				state
 			}
 			(GradientToolFsmState::Drawing { .. }, GradientToolMessage::PointerUp) => {
-				responses.add(DocumentMessage::EndTransaction);
+				// A new gradient released where it was pressed is a click, so anything its drag wrote along the way is taken back
+				if tool_data.selected_gradient.as_ref().is_some_and(|selected| selected.dragging == GradientDragTarget::New) {
+					let press = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_unsnapped);
+					input.mouse.finish_transaction(press, responses);
+				} else {
+					responses.add(DocumentMessage::EndTransaction);
+				}
 
 				// Clear the selection if we were dragging an endpoint of the gradient which isn't a stop
 				if tool_data.selected_gradient.as_ref().is_some_and(|selected| match selected.dragging {
@@ -1655,12 +1678,13 @@ impl Fsm for GradientToolFsmState {
 			}
 			(_, GradientToolMessage::Abort) => {
 				dismiss_color_stop_color_picker(tool_data, responses);
-				// Clear the tool-default gradient override so re-activating the tool starts fresh from the working colors
-				tool_data.default_gradient_stops = None;
 
 				// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
 				snap_session.sleep_all();
 				responses.add(OverlaysMessage::Draw);
+
+				// It also deselects the stop, so Delete goes back to deleting the selected layers
+				tool_data.selected_gradient = None;
 
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
@@ -1792,7 +1816,7 @@ fn snap_press(snap_session: &mut SnapSession, view: SnapView) -> (DVec2, Option<
 	let document_to_viewport = document.metadata().document_to_viewport;
 	let mouse = input.mouse.position;
 
-	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 			continue;
 		};
@@ -1823,7 +1847,7 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 	let stop_tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 	let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
 
-	for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
+	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		let Some((gradient, appearance, _source)) = resolve_gradient(layer, &document.network_interface) else {
 			continue;
 		};
@@ -1843,10 +1867,10 @@ fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> Gradi
 		}
 
 		// Check stops
-		for stop in gradient.iter() {
-			let pos = start.lerp(end, stop.position);
-			if pos.distance_squared(mouse) < stop_tolerance {
-				return if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
+		for index in 0..gradient.len() {
+			let position = gradient.position(index, appearance.settings.cyclic);
+			if start.lerp(end, position).distance_squared(mouse) < stop_tolerance {
+				return if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 					GradientHoverTarget::Endpoint
 				} else {
 					GradientHoverTarget::Stop
@@ -1923,7 +1947,7 @@ fn apply_gradient_update(
 					gradient,
 					gradient_form: appearance.gradient_form,
 					gradient_settings: appearance.settings,
-					transform: appearance.transform,
+					transform: Some(appearance.transform),
 				});
 			}
 		}
@@ -1989,7 +2013,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 				gradient: new_gradient.clone(),
 				gradient_form: appearance.gradient_form,
 				gradient_settings: settings,
-				transform: appearance.transform,
+				transform: Some(appearance.transform),
 			});
 			updated_any_layer = true;
 		}
@@ -2001,7 +2025,7 @@ fn apply_stops_update(data: &mut GradientToolData, context: &mut ToolActionMessa
 	}
 
 	// When no selected layer had a gradient to update, the user is editing the tool's default gradient instead.
-	// Save those stops so the widget keeps showing them until the tool is deactivated.
+	// Save those stops so the widget keeps showing them until switching to another tool.
 	if !updated_any_layer {
 		data.default_gradient_stops = Some(new_gradient);
 	}
@@ -2081,7 +2105,7 @@ enum GradientDragHintState {
 
 #[cfg(test)]
 mod test_gradient {
-	use super::{gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
+	use super::{GradientHoverTarget, detect_hover_target, gradient_to_viewport_transform, midpoint_diamonds, midpoint_ratio_at};
 	use crate::consts::{GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN};
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -2582,6 +2606,37 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn a_locked_layers_gradient_handles_cannot_be_dragged() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+		let (initial_gradient, initial_transform) = get_gradient_from_fill(&mut editor).await;
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(NodeGraphMessage::SetLocked {
+				node_id: layer.to_node(),
+				network_path: Vec::new(),
+				locked: true,
+			})
+			.await;
+
+		// Dragging where the end handle is shown on an unlocked layer
+		editor.drag_tool(ToolType::Gradient, 90., 50., 50., 90., ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
+		assert!(
+			transform
+				.transform_point2(gradient.end())
+				.abs_diff_eq(initial_transform.transform_point2(initial_gradient.end()), 1e-10),
+			"the locked layer's gradient end should stay put"
+		);
+	}
+
+	#[tokio::test]
 	async fn dragging_stop_reorders_gradient() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -2718,6 +2773,106 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn a_click_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.drag_tool(ToolType::Gradient, 30., 40., 30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that barely moves shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_new_gradient_drag_released_back_where_it_was_pressed_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		editor.select_tool(ToolType::Gradient).await;
+		editor.move_mouse(30., 40., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(30., 40., ModifierKeys::empty()).await;
+		editor.move_mouse(60., 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.move_mouse(30.5, 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(30.5, 40., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a drag that comes back to where it was pressed shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_click_beside_a_snap_target_slipping_under_the_drag_threshold_draws_no_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// The press lands a few pixels inside the left edge, which it snaps onto
+		editor.drag_tool(ToolType::Gradient, 3., 50., 3.5, 50., ModifierKeys::empty()).await;
+
+		assert!(
+			get_gradients_from_fill(&mut editor).await.is_empty(),
+			"a click that snaps and barely moves shouldn't replace the fill with a gradient"
+		);
+	}
+
+	#[tokio::test]
+	async fn delete_mid_drag_of_an_end_restores_its_line() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// A middle stop, so deleting an end leaves a gradient
+		editor.move_mouse(60., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(60., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(60., 0., ModifierKeys::empty()).await;
+
+		// Drag the end down, then press Delete before releasing
+		editor.move_mouse(100., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(100., 0., ModifierKeys::empty()).await;
+		editor.move_mouse(100., 50., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+		editor.left_mouseup(100., 50., ModifierKeys::empty()).await;
+
+		let (gradient, transform) = get_gradient_from_fill(&mut editor).await;
+		assert_eq!(gradient.stops.len(), 2, "the end stop should be deleted");
+		let (start, end) = (transform.transform_point2(gradient.start()), transform.transform_point2(gradient.end()));
+		assert!(start.abs_diff_eq(DVec2::new(0., 0.), 1e-6), "the start should stay put, got {start:?}");
+		assert!(end.abs_diff_eq(DVec2::new(60., 0.), 1e-6), "the line should end at the middle stop on the undragged line, got {end:?}");
+	}
+
+	#[tokio::test]
+	async fn esc_deselects_the_stop_so_delete_removes_the_layer() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, -5., -3., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 0., 0., 100., 0., ModifierKeys::empty()).await;
+
+		// Clicking the line adds a stop and selects it
+		editor.move_mouse(60., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(60., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(60., 0., ModifierKeys::empty()).await;
+		assert_eq!(get_gradient_from_fill(&mut editor).await.0.stops.len(), 3);
+
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.press(Key::Delete, ModifierKeys::empty()).await;
+
+		assert_eq!(editor.active_document().metadata().all_layers().count(), 0, "with the stop deselected, Delete should remove the layer");
+	}
+
+	#[tokio::test]
 	async fn delete_removes_layer_when_no_stop_selected() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -2756,6 +2911,85 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
+	async fn customized_stops_start_the_next_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		// With nothing selected, editing the control bar's stops sets up the next gradient
+		let custom = Gradient::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::RED,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: Color::BLUE,
+			},
+		]);
+		editor.select_tool(ToolType::Gradient).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&custom, GradientSpread::Pad),
+			})
+			.await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		let colors: Vec<_> = gradient.stops.iter().map(|stop| SRGBA8::from(stop.color)).collect();
+		assert_eq!(colors, vec![SRGBA8::from(Color::RED), SRGBA8::from(Color::BLUE)], "the new gradient should use the customized stops");
+	}
+
+	#[tokio::test]
+	async fn customized_stops_survive_esc_until_switching_tools() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+
+		let custom = Gradient::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::RED,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: Color::BLUE,
+			},
+		]);
+		editor.select_tool(ToolType::Gradient).await;
+		editor
+			.handle_message(GradientToolMessage::UpdateRamp {
+				ramp: ramp_with_spread(&custom, GradientSpread::Pad),
+			})
+			.await;
+
+		// Esc while idle keeps the customized stops
+		editor.handle_message(GradientToolMessage::Abort).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		let colors: Vec<_> = gradient.stops.iter().map(|stop| SRGBA8::from(stop.color)).collect();
+		assert_eq!(colors, vec![SRGBA8::from(Color::RED), SRGBA8::from(Color::BLUE)], "Esc should keep the customized stops");
+
+		// Switching to another tool and back returns to the working colors
+		editor.handle_message(DocumentMessage::Undo).await;
+		editor.select_tool(ToolType::Select).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		let colors: Vec<_> = gradient.stops.iter().map(|stop| SRGBA8::from(stop.color)).collect();
+		assert_eq!(
+			colors,
+			vec![SRGBA8::from(Color::BLACK), SRGBA8::from(Color::WHITE)],
+			"switching tools should discard the customized stops"
+		);
+	}
+
+	#[tokio::test]
 	async fn change_gradient_spread() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
@@ -2785,6 +3019,37 @@ mod test_gradient {
 
 		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
 		assert_eq!(gradient.gradient_spread, GradientSpread::Reflect);
+	}
+
+	#[tokio::test]
+	async fn hover_finds_evenly_spaced_stops_on_a_cyclic_gradient() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+
+		// Two stops spaced evenly around a cycle sit at 0 and 0.5, positions the picker leaves implicit
+		let stops = Gradient::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+			GradientStop {
+				position: 0.5,
+				midpoint: 0.5,
+				color: Color::WHITE,
+			},
+		]);
+		let ramp = GradientRamp::<SRGBA8>::from(&GradientRamp {
+			gradient_cyclic: true,
+			..GradientRamp::from(&stops)
+		});
+		editor.handle_message(GradientToolMessage::UpdateRamp { ramp }).await;
+
+		let (gradient, _) = get_gradient_from_fill(&mut editor).await;
+		assert!(!gradient.stops.has_position_attribute(), "the evenly spaced positions should be implicit");
+		assert_eq!(detect_hover_target(DVec2::new(50., 50.), editor.active_document()), GradientHoverTarget::Stop);
 	}
 
 	#[tokio::test]
@@ -3294,6 +3559,63 @@ mod test_gradient {
 		);
 		let stops = get_gradient_stops(layer, &document.network_interface).expect("the new chain should resolve stops");
 		assert_eq!(stops.len(), 2);
+	}
+
+	#[tokio::test]
+	async fn drag_on_a_layer_drawing_shared_geometry_paints_its_fill() {
+		use graph_craft::document::NodeId;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rectangle = editor.active_document().metadata().all_layers().next().unwrap();
+
+		// A new layer above the rectangle, whose content is wired from the end of the rectangle's chain so both draw it
+		let sharing_id = NodeId::new();
+		editor
+			.handle_message(GraphOperationMessage::NewCustomLayer {
+				id: sharing_id,
+				nodes: Vec::new(),
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+		let sharing = LayerNodeIdentifier::new_unchecked(sharing_id);
+		let shared_id = editor
+			.active_document()
+			.network_interface
+			.upstream_output_connector(&InputConnector::layer_secondary_input(rectangle.to_node()), &[])
+			.and_then(|output| output.node_id())
+			.expect("the rectangle should have a chain");
+		editor
+			.active_document_mut()
+			.network_interface
+			.create_wire(&OutputConnector::primary_output(shared_id), &InputConnector::layer_secondary_input(sharing_id), &[]);
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![sharing_id] }).await;
+
+		editor.drag_tool(ToolType::Gradient, 10., 50., 90., 50., ModifierKeys::empty()).await;
+
+		let network_interface = &editor.active_document().network_interface;
+		assert!(
+			get_upstream_gradient_value_node_id(sharing, network_interface).is_none(),
+			"a layer drawing shared geometry isn't blank, so it mustn't get a whole-expanse gradient"
+		);
+		assert_eq!(
+			network_interface
+				.upstream_output_connector(&InputConnector::layer_secondary_input(sharing_id), &[])
+				.and_then(|output| output.node_id()),
+			Some(shared_id),
+			"the layer should still draw the shared rectangle"
+		);
+
+		let fill_node_id = get_fill_node_id_with_direct_fill_input(rectangle, network_interface).expect("the rectangle should have a Fill node");
+		let paint = network_interface
+			.document_network()
+			.nodes
+			.get(&fill_node_id)
+			.and_then(|node| node.input(fill::PaintInput))
+			.and_then(|input| input.as_value());
+		assert!(matches!(paint, Some(TaggedValue::GradientRamp(_))), "the shared rectangle's Fill should take the gradient");
 	}
 
 	#[tokio::test]

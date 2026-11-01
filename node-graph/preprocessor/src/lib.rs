@@ -13,14 +13,32 @@ use graphene_std::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
+// Derives the ids for generated nodes from their contents / context to be deterministic arcoss graph compilations.
+// The identifier is needed such that different nodes with the same hash bytes get different node ids.
+fn producer_node_id(ident: &ProtoNodeIdentifier, key: impl Hash) -> NodeId {
+	let mut hasher = DefaultHasher::new();
+	"preprocessor producer".hash(&mut hasher);
+	ident.hash(&mut hasher);
+	key.hash(&mut hasher);
+	NodeId(hasher.finish())
+}
+
+#[derive(Debug, Clone)]
+struct Substitution {
+	node: DocumentNode,
+	wrapped_node_id: NodeId,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct Preprocessor {
-	substitutions: HashMap<ProtoNodeIdentifier, DocumentNode>,
+	substitutions: HashMap<ProtoNodeIdentifier, Substitution>,
 	inject_scopes: HashMap<ProtoNodeIdentifier, (DocumentNode, Type)>,
+	compile_metadata: HashMap<ProtoNodeIdentifier, NodeCompileMetadata>,
 }
 
 impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+		network.inline_definitions().map_err(PreprocessorError::Definition)?;
 		self.insert_inject_scopes(network);
 		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
 		self.expand_network(network);
@@ -46,13 +64,13 @@ impl Preprocessor {
 		let mut hash_to_node_id: HashMap<ResourceHash, NodeId> = HashMap::new();
 		let mut new_nodes: Vec<(NodeId, DocumentNode)> = Vec::new();
 
-		for node in network.nodes.values_mut() {
+		for (&consumer_id, node) in &mut network.nodes {
 			if let DocumentNodeImplementation::Network(nested) = &mut node.implementation {
 				self.replace_inputs_with_producer_nodes(nested, resolve_resource)?;
 				continue;
 			}
 
-			for input in node.inputs.iter_mut() {
+			for (input_index, input) in node.inputs.iter_mut().enumerate() {
 				let NodeInput::Value { tagged_value, .. } = input else { continue };
 
 				let node_id = match &**tagged_value {
@@ -63,10 +81,10 @@ impl Preprocessor {
 						};
 
 						*hash_to_node_id.entry(hash).or_insert_with(|| {
-							let id = NodeId::new();
+							let id = producer_node_id(&platform_application_io::editor_api::IDENTIFIER, resource_id);
 							let resource_node = DocumentNode {
 								inputs: vec![
-									NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
+									NodeInput::scope(platform_application_io::application_io::IDENTIFIER),
 									NodeInput::value(TaggedValue::ResourceHash(hash), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
@@ -77,14 +95,10 @@ impl Preprocessor {
 						})
 					}
 					TaggedValue::AnimationCurve(curve) => {
-						let id = NodeId::new();
+						let id = producer_node_id(&graphene_core::animation::evaluate_curve::IDENTIFIER, (consumer_id, input_index));
 						let curve_node = DocumentNode {
 							inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::AnimationCurve(curve.clone()), false)],
 							implementation: DocumentNodeImplementation::ProtoNode(graphene_core::animation::evaluate_curve::IDENTIFIER),
-							context_features: ContextDependencies {
-								extract: ContextFeatures::ANIMATION_TIME,
-								inject: ContextFeatures::empty(),
-							},
 							..Default::default()
 						};
 						new_nodes.push((id, curve_node));
@@ -109,7 +123,9 @@ impl Preprocessor {
 			match &mut node.implementation {
 				DocumentNodeImplementation::Network(node_network) => self.expand_network(node_network),
 				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-					if let Some(new_node) = self.substitutions.get(proto_node_identifier) {
+					let compile_metadata = node.compile_metadata.take().or_else(|| self.compile_metadata.get(proto_node_identifier).copied());
+
+					if let Some(Substitution { node: new_node, wrapped_node_id }) = self.substitutions.get(proto_node_identifier) {
 						// Reconcile the document node's inputs with what the current node definition expects,
 						// since the saved document may have fewer or more inputs than the current version
 						while node.inputs.len() < new_node.inputs.len() {
@@ -118,15 +134,25 @@ impl Preprocessor {
 						node.inputs.truncate(new_node.inputs.len());
 
 						node.implementation = new_node.implementation.clone();
+
+						// Move the compile metadata to the wrapped node because networks are not allowed to have compile metadata
+						if let DocumentNodeImplementation::Network(network) = &mut node.implementation
+							&& let Some(wrapped_node) = network.nodes.get_mut(wrapped_node_id)
+						{
+							wrapped_node.compile_metadata = compile_metadata;
+						}
+					} else {
+						node.compile_metadata = compile_metadata;
 					}
 				}
-				DocumentNodeImplementation::Extract => (),
+				DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => (),
 			}
 		}
 	}
 
 	pub fn new() -> Self {
 		let mut substitutions = HashMap::new();
+		let mut compile_metadata = HashMap::new();
 		let mut inject_scopes = HashMap::new();
 		// We pre initialize the node registry here to avoid a deadlock
 		let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
@@ -136,11 +162,26 @@ impl Preprocessor {
 
 			let NodeMetadata {
 				fields,
-				memoize,
-				inject_scope,
+				flags: NodeFlags {
+					memoize,
+					footprint_invariant,
+					forwards_input,
+					inject_scope,
+					asynchronous,
+				},
 				output_fields,
+				context_features,
 				..
 			} = metadata;
+			let constant_inputs = fields.iter().enumerate().filter(|(_, field)| field.constant).fold(0, |mask, (index, _)| mask | 1 << index);
+			let node_compile_metadata = NodeCompileMetadata {
+				footprint_invariant: *footprint_invariant,
+				forwards_input: *forwards_input,
+				constant_inputs,
+				..NodeCompileMetadata::from(context_features.as_slice())
+			};
+			compile_metadata.insert(id.clone(), node_compile_metadata);
+
 			let Some(implementations) = node_registry.get(&id) else { continue };
 			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 			let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -160,6 +201,10 @@ impl Preprocessor {
 			let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
 			let passthrough_node = ops::passthrough::IDENTIFIER;
+			let forwarding = Some(NodeCompileMetadata {
+				forwards_input: true,
+				..Default::default()
+			});
 
 			let mut generated_nodes = 0;
 			let mut nodes: HashMap<_, _, _> = node_io_types
@@ -167,34 +212,17 @@ impl Preprocessor {
 				.take(input_count)
 				.enumerate()
 				.map(|(i, inputs)| {
-					// A field registering the Item/List wire pair gets a input adapter instead of a typed conversion
-					if inputs.len() != 1
-						&& let Some(list_input) = collapse_item_list_pair(inputs)
-					{
-						let element_name = match list_input.nested_type() {
-							Type::List(element) => element.identifier_name(),
-							nested => nested.identifier_name(),
-						};
-						let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
-
-						let document_node = if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
-							generated_nodes += 1;
-							let mut original_location = OriginalLocation::default();
-							original_location.auto_convert_index = Some(i);
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(X), i)],
-								implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
-								visible: true,
-								original_location,
-								..Default::default()
-							}
-						} else {
-							DocumentNode {
-								inputs: vec![NodeInput::import(generic!(X), i)],
-								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
-								visible: false,
-								..Default::default()
-							}
+					if let Some(input_adapter_identifier) = input_adapter_identifier(inputs, into_node_registry) {
+						generated_nodes += 1;
+						let mut original_location = OriginalLocation::default();
+						original_location.auto_convert_index = Some(i);
+						let document_node = DocumentNode {
+							inputs: vec![NodeInput::import(generic!(X), i)],
+							implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
+							visible: true,
+							compile_metadata: forwarding,
+							original_location,
+							..Default::default()
 						};
 						return (NodeId(i as u64), document_node);
 					}
@@ -207,37 +235,13 @@ impl Preprocessor {
 						NodeId(i as u64),
 						match single_wire_type {
 							Some(input) => {
-								let input_ty = input.nested_type();
-
-								// A single-registered ranked field gets the input adapter, so ranked wires pass through and convertible elements cast
-								let element_name = match input_ty {
-									Type::Item(element) => Some(element.identifier_name()),
-									Type::List(element) => Some(element.identifier_name()),
-									_ => (input_ty.identifier_name() == "ListDyn").then(|| "ListDyn".to_string()),
-								};
-								if let Some(element_name) = element_name {
-									let input_adapter_identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
-									if into_node_registry.keys().any(|ident| ident.as_str() == input_adapter_identifier.as_str()) {
-										generated_nodes += 1;
-										let mut original_location = OriginalLocation::default();
-										original_location.auto_convert_index = Some(i);
-										let document_node = DocumentNode {
-											inputs: vec![NodeInput::import(generic!(X), i)],
-											implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
-											visible: true,
-											original_location,
-											..Default::default()
-										};
-										return (NodeId(i as u64), document_node);
-									}
-								}
-
 								let mut original_location = OriginalLocation::default();
 								original_location.auto_convert_index = Some(i);
 								DocumentNode {
 									inputs: vec![NodeInput::import(input.clone(), i)],
 									implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 									visible: true,
+									compile_metadata: forwarding,
 									original_location,
 									..Default::default()
 								}
@@ -246,6 +250,7 @@ impl Preprocessor {
 								inputs: vec![NodeInput::import(generic!(X), i)],
 								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 								visible: false,
+								compile_metadata: forwarding,
 								..Default::default()
 							},
 						},
@@ -269,7 +274,7 @@ impl Preprocessor {
 				id.as_str()
 			);
 
-			if generated_nodes == 0 && !memoize && !inject_scope && output_fields.is_none() {
+			if generated_nodes == 0 && !memoize && !inject_scope && output_fields.is_none() && !asynchronous {
 				continue;
 			}
 
@@ -279,25 +284,26 @@ impl Preprocessor {
 				implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 				visible: true,
 				skip_deduplication: false,
-				context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 				..Default::default()
 			};
 
-			nodes.insert(NodeId(input_count as u64), document_node);
+			let wrapped_node_id = NodeId(input_count as u64);
+			nodes.insert(wrapped_node_id, document_node);
 
 			// If memoize is requested, append a Memoize node after the main node and redirect the export through it
 			let export_node_id = if memoize {
 				let memoize_node_id = NodeId(input_count as u64 + 1);
 				let memoize_node = DocumentNode {
-					inputs: vec![NodeInput::node(NodeId(input_count as u64), 0)],
+					inputs: vec![NodeInput::node(wrapped_node_id, 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
 					visible: true,
+					compile_metadata: forwarding,
 					..Default::default()
 				};
 				nodes.insert(memoize_node_id, memoize_node);
 				memoize_node_id
 			} else {
-				NodeId(input_count as u64)
+				wrapped_node_id
 			};
 
 			// A multi-output node exports each field through its generated extractor node, after the hidden primary output if it has one
@@ -329,6 +335,7 @@ impl Preprocessor {
 					exports,
 					nodes,
 					scope_injections: Default::default(),
+					definitions: Default::default(),
 					generated: true,
 				}),
 				visible: true,
@@ -336,7 +343,7 @@ impl Preprocessor {
 				..Default::default()
 			};
 
-			substitutions.insert(id.clone(), node);
+			substitutions.insert(id.clone(), Substitution { node, wrapped_node_id });
 
 			// If `inject_scope` is requested, prepare the proto node template and type info needed
 			if *inject_scope
@@ -348,14 +355,17 @@ impl Preprocessor {
 					call_argument: node_io.call_argument.clone(),
 					implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 					visible: true,
-					context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 					..Default::default()
 				};
 				inject_scopes.insert(id.clone(), (template, node_io.return_value.clone()));
 			}
 		}
 
-		Self { substitutions, inject_scopes }
+		Self {
+			substitutions,
+			compile_metadata,
+			inject_scopes,
+		}
 	}
 }
 
@@ -370,7 +380,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 				return NodeInput::value(TaggedValue::None, true);
 			};
 			let ty = ty.clone().normalize_rank();
-			let exposed = if index == 0 { ty != fn_type_fut!(Context, ()) } else { field.exposed };
+			let exposed = if index == 0 { ty != fn_type!(Context, ()) } else { field.exposed };
 
 			match &field.value_source {
 				RegistryValueSource::None => {}
@@ -383,6 +393,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 					}
 				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(*data),
+				RegistryValueSource::SourceId => return NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::SourceId),
 			};
 
 			// A ranked `Item<T>` type prefers a bare `T` value (promoted at resolution), since bare values drive the Inspector widgets
@@ -404,6 +415,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 #[derive(Debug)]
 pub enum PreprocessorError {
 	ResourceNotFound(ResourceId),
+	Definition(DefinitionError),
 }
 
 #[cfg(test)]
@@ -502,12 +514,12 @@ mod destructure_tests {
 	}
 
 	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
-		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed");
-		let executor = futures::executor::block_on(DynamicExecutor::new(proto_network)).expect("The executor should type check and build");
+		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed").network;
+		let executor = DynamicExecutor::new(proto_network).expect("The executor should type check and build");
 
 		let context: core_types::Context = None;
-		let result = futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), context)).expect("Execution should succeed");
-		assert_eq!(result, expected);
+		let result = executor.tree().eval_tagged_value(executor.output(), &context).expect("Execution should succeed");
+		assert_eq!(result, core_types::Poll::Final(expected));
 	}
 
 	#[test]
@@ -664,8 +676,26 @@ impl std::fmt::Display for PreprocessorError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
+			PreprocessorError::Definition(error) => write!(f, "{error}"),
 		}
 	}
+}
+
+/// The `input_adapter` placed ahead of a node input registered with `input_types`, so ranked wires pass through and convertible elements are cast.
+/// Only an input registered with one ranked type, or with the `Item` and `List` forms of one element, gets one (if the registry has it for that element).
+pub fn input_adapter_identifier<Implementations>(input_types: &HashSet<Type>, node_registry: &HashMap<ProtoNodeIdentifier, Implementations>) -> Option<ProtoNodeIdentifier> {
+	let input_type = match input_types.len() {
+		1 => input_types.iter().next()?,
+		_ => collapse_item_list_pair(input_types)?,
+	};
+	let element_name = match input_type.nested_type() {
+		Type::Item(element) | Type::List(element) => element.identifier_name(),
+		nested if nested.identifier_name() == "ListDyn" => "ListDyn".to_string(),
+		_ => return None,
+	};
+
+	let identifier = ProtoNodeIdentifier::with_owned_string(format!("input_adapter<{element_name}>"));
+	node_registry.contains_key(&identifier).then_some(identifier)
 }
 
 /// Collapses an element-wise node's dual wire registration for one field, `{Item<X>, List<X>}`, to its `List<X>` document wire form.
@@ -726,5 +756,77 @@ mod tests {
 			TaggedValue::Color(Color::BLACK),
 			"The paint input's `Color::BLACK` default should parse against its `Item<Graphic>` wire type"
 		);
+	}
+
+	#[test]
+	fn substitution_moves_compile_metadata_onto_the_wrapped_node() {
+		let identifier = graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER;
+		let compile_metadata = NodeCompileMetadata {
+			extract: ContextFeatures::FOOTPRINT,
+			inject: ContextFeatures::INDEX,
+			..Default::default()
+		};
+		let mut network = NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::ProtoNode(identifier.clone()),
+					compile_metadata: Some(compile_metadata),
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		Preprocessor::new().expand_network(&mut network);
+
+		let node = &network.nodes[&NodeId(0)];
+		assert_eq!(node.compile_metadata, None, "The network node replacing the substituted node should not keep its compile metadata");
+		let DocumentNodeImplementation::Network(substitution) = &node.implementation else {
+			panic!("Boolean Operation is memoized, so it should be substituted with a network");
+		};
+
+		let wrapped_node = substitution
+			.nodes
+			.values()
+			.find(|inner| inner.implementation == DocumentNodeImplementation::ProtoNode(identifier.clone()))
+			.expect("The substitution network should contain the wrapped proto node");
+		assert_eq!(wrapped_node.compile_metadata, Some(compile_metadata), "The wrapped proto node should carry the override");
+
+		let NodeInput::Node { node_id: export_id, .. } = substitution.exports[0] else {
+			panic!("The substitution network should export a node");
+		};
+		let export = &substitution.nodes[&export_id];
+		assert_eq!(export.implementation, DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER));
+		let export_compile_metadata = export.compile_metadata.unwrap_or_default();
+		assert!(export_compile_metadata.forwards_input, "The generated memoize node should forward its input");
+		assert_eq!(
+			export_compile_metadata.extract,
+			ContextFeatures::empty(),
+			"The memoize node should not take over the wrapped node's context features"
+		);
+	}
+
+	#[test]
+	fn node_attributes_reach_the_compile_metadata() {
+		use graphene_std::graphic::{read_attribute_number, write_attribute};
+
+		let preprocessor = Preprocessor::new();
+		let compile_metadata = |identifier: &ProtoNodeIdentifier| preprocessor.compile_metadata.get(identifier).copied().unwrap_or_default();
+
+		for (identifier, name_index) in [
+			(write_attribute::IDENTIFIER, <write_attribute::NameInput as NodeParameter>::INDEX),
+			(read_attribute_number::IDENTIFIER, <read_attribute_number::NameInput as NodeParameter>::INDEX),
+		] {
+			let info = compile_metadata(&identifier);
+			assert!(info.requires_constant_input(name_index), "{identifier:?} should require a constant name");
+			assert_eq!(info.constant_inputs.count_ones(), 1, "{identifier:?} should only require its name to be constant");
+		}
+
+		for identifier in [graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::monitor::IDENTIFIER, ops::passthrough::IDENTIFIER] {
+			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
+		}
 	}
 }

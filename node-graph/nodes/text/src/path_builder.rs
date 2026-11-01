@@ -1,3 +1,4 @@
+use super::text_context::TextToVectorError;
 use core_types::list::{Item, List};
 use core_types::{ATTR_EDITOR_CLICK_TARGET, ATTR_EDITOR_TEXT_FRAME, ATTR_TRANSFORM};
 use glam::{DAffine2, DVec2};
@@ -8,13 +9,17 @@ use skrifa::outline::{DrawSettings, OutlinePen};
 use skrifa::raw::FontRef as ReadFontsRef;
 use skrifa::{MetadataProvider, OutlineGlyph};
 use vector_types::kurbo::{Affine, BezPath, Point, Rect, Shape};
-use vector_types::vector::{Vector, VectorExt};
+use vector_types::vector::{Path, Vector};
 
 pub struct PathBuilder {
 	origin: DVec2,
 	/// Contours of the glyph currently being drawn, accumulated as a single path.
 	glyph_bezpath: BezPath,
 	pub vector_list: List<Vector>,
+	/// Whether each glyph becomes its own list item rather than merging into one vector.
+	per_glyph_items: bool,
+	/// Every glyph's outline in merged mode, woven into item 0 together in `finalize()`.
+	merged_glyphs: Vec<BezPath>,
 	/// Per-glyph AABBs collected in single-item mode, published as `ATTR_EDITOR_CLICK_TARGET` in `finalize()`.
 	merged_click_target_bboxes: Vec<[DVec2; 2]>,
 	/// Per-glyph baselines, parallel to `merged_click_target_bboxes`. Groups glyphs by line for the widening pass.
@@ -34,6 +39,8 @@ impl PathBuilder {
 		Self {
 			glyph_bezpath: BezPath::new(),
 			vector_list: if per_glyph_items { List::new() } else { List::new_from_element(Vector::default()) },
+			per_glyph_items,
+			merged_glyphs: Vec::new(),
 			merged_click_target_bboxes: Vec::new(),
 			merged_click_target_baselines: Vec::new(),
 			per_glyph_bboxes: Vec::new(),
@@ -58,10 +65,10 @@ impl PathBuilder {
 		style_skew: Option<DAffine2>,
 		skew: DAffine2,
 		per_glyph_items: bool,
-	) -> bool {
+	) -> Result<bool, TextToVectorError> {
 		let location_ref = LocationRef::new(normalized_coords);
 		let settings = DrawSettings::unhinted(Size::new(size), location_ref);
-		glyph.draw(settings, self).unwrap();
+		glyph.draw(settings, self).map_err(TextToVectorError::UndrawableGlyph)?;
 		let has_geometry = !self.glyph_bezpath.is_empty();
 
 		// Apply transforms in correct order: style-based skew first, then user-requested skew
@@ -78,7 +85,7 @@ impl PathBuilder {
 			// back to the layer-local frame origin, regardless of which glyph survived
 			let frame_in_item_local = DAffine2::from_scale_angle_translation(self.text_frame_size, 0., -glyph_offset);
 
-			let item = Item::new_from_element(Vector::from_bezpath(core::mem::take(&mut self.glyph_bezpath)))
+			let item = Vector::item_from_bezpath(&core::mem::take(&mut self.glyph_bezpath))
 				.with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(glyph_offset))
 				.with_attribute(ATTR_EDITOR_TEXT_FRAME, frame_in_item_local);
 			self.vector_list.push(item);
@@ -86,8 +93,7 @@ impl PathBuilder {
 			// Defer click target creation to `finalize()` where adjacent AABBs get widened
 			self.per_glyph_bboxes.push(glyph_bbox);
 		} else {
-			// Unwrapping here is ok because `self.vector_list` is initialized with a single `List<Vector>` item
-			self.vector_list.element_mut(0).unwrap().append_bezpath(core::mem::take(&mut self.glyph_bezpath));
+			self.merged_glyphs.push(core::mem::take(&mut self.glyph_bezpath));
 
 			if let Some(bbox) = glyph_bbox {
 				self.merged_click_target_bboxes.push(bbox);
@@ -95,10 +101,10 @@ impl PathBuilder {
 			}
 		}
 
-		has_geometry
+		Ok(has_geometry)
 	}
 
-	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) {
+	pub fn render_glyph_run(&mut self, glyph_run: &GlyphRun<'_, ()>, letter_tilt: f64, per_glyph_items: bool, x_offset: f32, space_extra: f32) -> Result<(), TextToVectorError> {
 		let mut run_x = glyph_run.offset() + x_offset;
 		let run_y = glyph_run.baseline();
 
@@ -143,20 +149,32 @@ impl PathBuilder {
 			run_x += glyph.advance;
 
 			let glyph_id = GlyphId::from(glyph.id);
-			if let Some(glyph_outline) = outlines.get(glyph_id) {
-				if !per_glyph_items {
-					self.origin = glyph_offset;
-				}
-				let drew_geometry = self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_items);
+			let glyph_outline = outlines.get(glyph_id).ok_or(TextToVectorError::MissingOutline)?;
+			if !per_glyph_items {
+				self.origin = glyph_offset;
+			}
+			let drew_geometry = self.draw_glyph(&glyph_outline, font_size, &normalized_coords, glyph_offset, style_skew, skew, per_glyph_items)?;
 
-				if !drew_geometry && space_extra != 0. && glyph.advance > 0. {
-					run_x += space_extra;
-				}
+			if !drew_geometry && space_extra != 0. && glyph.advance > 0. {
+				run_x += space_extra;
 			}
 		}
+
+		Ok(())
 	}
 
 	pub fn finalize(mut self) -> List<Vector> {
+		// Merged mode gathered every glyph's outline, which item 0 takes on here in one pass
+		if !self.per_glyph_items
+			&& let Some(element) = self.vector_list.element_mut(0)
+		{
+			let (mut vector, mut paths) = (Vector::default(), List::<Path>::new());
+			vector.append_bezpaths(&mut paths, &self.merged_glyphs);
+
+			*element = vector;
+			self.vector_list.set_attribute(core_types::list::ATTR_PATHS, 0, paths);
+		}
+
 		// Empty list = all glyphs clipped by height. Create a placeholder with the same item-0
 		// transform a populated list would have so `local_transforms` stays stable mid-drag.
 		// TODO: Remove this hack and move the attribute up to the parent return value when <https://github.com/GraphiteEditor/Graphite/issues/3779> is done.
@@ -190,11 +208,11 @@ impl PathBuilder {
 			for (entry, widened) in entries.iter().zip(layer_bboxes.iter()) {
 				let glyph_local = [widened[0] - entry.1, widened[1] - entry.1];
 				let rect = rectangle_bezpath(glyph_local[0], glyph_local[1]);
-				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, Vector::from_bezpath(rect));
+				self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, entry.0, rect);
 			}
 		}
 
-		// Glyph separation off: widen the accumulated AABBs and bundle as one override `Vector`
+		// Glyph separation off: widen the accumulated AABBs and bundle as one override `BezPath`
 		if !self.merged_click_target_bboxes.is_empty() {
 			let mut bboxes = self.merged_click_target_bboxes;
 			widen_horizontal_gaps(&mut bboxes, &self.merged_click_target_baselines);
@@ -203,7 +221,7 @@ impl PathBuilder {
 			for [min, max] in &bboxes {
 				widened_bezpath.extend(rectangle_bezpath(*min, *max));
 			}
-			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, Vector::from_bezpath(widened_bezpath));
+			self.vector_list.set_attribute(ATTR_EDITOR_CLICK_TARGET, 0, widened_bezpath);
 		}
 
 		// Fill in text frame for items that don't have one yet (single-item mode, where item 0 = identity)

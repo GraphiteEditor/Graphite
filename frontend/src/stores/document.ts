@@ -1,9 +1,9 @@
-import { tick } from "svelte";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { Layout, RenderStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
 
@@ -15,15 +15,17 @@ type DocumentStoreState = {
 	nodeGraphControlBarLayout: Layout;
 	graphViewOverlayOpen: boolean;
 	fadeArtwork: number;
+	renderStatus: RenderStatus;
 };
 const initialState: DocumentStoreState = {
-	toolOptionsLayout: [],
-	documentBarLayout: [],
-	toolShelfLayout: [],
-	workingColorsLayout: [],
-	nodeGraphControlBarLayout: [],
+	toolOptionsLayout: createLayout(),
+	documentBarLayout: createLayout(),
+	toolShelfLayout: createLayout(),
+	workingColorsLayout: createLayout(),
+	nodeGraphControlBarLayout: createLayout(),
 	graphViewOverlayOpen: false,
 	fadeArtwork: 100,
+	renderStatus: "Rendering",
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
@@ -45,54 +47,40 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
-		await tick();
-
-		update((state) => {
-			patchLayout(state.toolOptionsLayout, data);
-			return state;
-		});
+	subscriptions.subscribeLayoutUpdate("ToolOptions", (data) => {
+		patchLayout(get(store).toolOptionsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
-		await tick();
-
-		update((state) => {
-			patchLayout(state.documentBarLayout, data);
-			return state;
-		});
+	subscriptions.subscribeLayoutUpdate("DocumentBar", (data) => {
+		patchLayout(get(store).documentBarLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
-		await tick();
-
+	// Notifies subscribers too, since the Document panel counts the shelf's tools from the store
+	subscriptions.subscribeLayoutUpdate("ToolShelf", (data) => {
 		update((state) => {
 			patchLayout(state.toolShelfLayout, data);
 			return state;
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
-		await tick();
-
-		update((state) => {
-			patchLayout(state.workingColorsLayout, data);
-			return state;
-		});
+	subscriptions.subscribeLayoutUpdate("WorkingColors", (data) => {
+		patchLayout(get(store).workingColorsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", async (data) => {
-		await tick();
-
-		update((state) => {
-			patchLayout(state.nodeGraphControlBarLayout, data);
-			return state;
-		});
+	subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", (data) => {
+		patchLayout(get(store).nodeGraphControlBarLayout, data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
+			return state;
+		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateRenderStatus", (data) => {
+		update((state) => {
+			state.renderStatus = data.status;
 			return state;
 		});
 	});
@@ -106,6 +94,7 @@ export function destroyDocumentStore() {
 
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
+	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
 	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
 	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
 	subscriptions.unsubscribeLayoutUpdate("ToolShelf");

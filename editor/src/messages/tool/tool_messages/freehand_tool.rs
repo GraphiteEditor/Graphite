@@ -46,6 +46,7 @@ pub enum FreehandToolMessage {
 	Overlays { context: OverlayContext },
 	Abort,
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -154,11 +155,10 @@ impl LayoutHolder for FreehandTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
-		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
-		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::Abort)) && self.fsm_state == FreehandToolFsmState::Ready {
+		// Switching to another tool resets the fill/stroke colors so the next activation starts from the working colors (the swap state persists)
+		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::SwitchedToAnotherTool)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+			return;
 		}
 
 		if matches!(&message, ToolMessage::Freehand(FreehandToolMessage::SelectionChanged)) {
@@ -223,6 +223,7 @@ impl ToolTransition for FreehandTool {
 		EventToMessageMap {
 			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
+			switched_to_another_tool: Some(FreehandToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			graph_changed: Some(FreehandToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),
@@ -255,6 +256,7 @@ impl Fsm for FreehandToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
+			global_tool_data,
 			input,
 			viewport,
 			shape_editor,
@@ -315,8 +317,8 @@ impl Fsm for FreehandToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.fill.apply_fill(layer, responses);
-				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+				tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, responses);
 				tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 				tool_data.layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(input.mouse.position);
@@ -436,14 +438,15 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 mod test_freehand {
 	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys};
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_width};
+	use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_stroke_options, get_stroke_width};
 	use crate::messages::tool::common_functionality::stroke_options::StrokeOptionsUpdate;
 	use crate::messages::tool::tool_messages::freehand_tool::FreehandOptionsUpdate;
 	use crate::test_utils::test_prelude::*;
 	use glam::{DAffine2, DMat2, DVec2};
-	use graphene_std::vector::Vector;
+	use graphene_std::vector::VectorGeometry;
+	use graphene_std::vector::style::StrokeCap;
 
-	async fn get_vector_and_transform_list(editor: &mut EditorTestUtils) -> Vec<(Vector, DAffine2)> {
+	async fn get_vector_and_transform_list(editor: &mut EditorTestUtils) -> Vec<(VectorGeometry, DAffine2)> {
 		let document = editor.active_document();
 		let layers = document.metadata().all_layers();
 
@@ -460,18 +463,18 @@ mod test_freehand {
 			.collect()
 	}
 
-	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
+	fn verify_path_points(vector_and_transform_list: &[(VectorGeometry, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
 		assert_eq!(vector_and_transform_list.len(), 1, "There should be one item of Vector geometry");
 
 		let (vector, transform) = vector_and_transform_list
 			.iter()
-			.find(|(data, _)| !data.point_domain.ids().is_empty())
+			.find(|(data, _)| data.anchor_points().next().is_some())
 			.ok_or("Could not find path data")?;
 
-		let point_count = vector.point_domain.ids().len();
-		let segment_count = vector.segment_domain.ids().len();
+		let point_count = vector.anchor_points().count();
+		let segment_count = vector.segment_ids().len();
 
-		let actual_positions: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
+		let actual_positions: Vec<DVec2> = vector.anchor_positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
 			return Err(format!("Expected segments to be one less than points, got {segment_count} segments for {point_count} points"));
@@ -555,8 +558,8 @@ mod test_freehand {
 		assert!(!initial_vector_and_transform.is_empty(), "No vector geometry found after initial drawing");
 
 		let (initial_vector, _) = &initial_vector_and_transform[0];
-		let initial_point_count = initial_vector.point_domain.ids().len();
-		let initial_segment_count = initial_vector.segment_domain.ids().len();
+		let initial_point_count = initial_vector.anchor_points().count();
+		let initial_segment_count = initial_vector.segment_ids().len();
 
 		let existing_layer_id = {
 			let document = editor.active_document();
@@ -613,8 +616,8 @@ mod test_freehand {
 		assert_eq!(layer_count, 1, "Expected only one layer after drawing with Shift key");
 
 		let (final_vector, _) = &final_vector_and_transform[0];
-		let final_point_count = final_vector.point_domain.ids().len();
-		let final_segment_count = final_vector.segment_domain.ids().len();
+		let final_point_count = final_vector.anchor_points().count();
+		let final_segment_count = final_vector.segment_ids().len();
 
 		assert!(
 			final_point_count > initial_point_count,
@@ -704,7 +707,7 @@ mod test_freehand {
 
 	fn point_and_segment_counts(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> (usize, usize) {
 		let vector = editor.active_document().network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
-		(vector.point_domain.ids().len(), vector.segment_domain.ids().len())
+		(vector.anchor_points().count(), vector.segment_ids().len())
 	}
 
 	/// The viewport positions of the layer's anchors, split into the endpoints of its open paths and every other anchor.
@@ -714,7 +717,7 @@ mod test_freehand {
 		let transform = document.metadata().transform_to_viewport(layer);
 
 		let endpoints: Vec<_> = vector.anchor_endpoints().collect();
-		let viewport_position = |id| vector.point_domain.position_from_id(id).map(|position| transform.transform_point2(position));
+		let viewport_position = |id| vector.position_from_id(id).map(|position| transform.transform_point2(position));
 
 		let endpoint_positions = endpoints.iter().filter_map(|&id| viewport_position(id)).collect();
 		let other_positions = vector.anchor_points().filter(|id| !endpoints.contains(id)).filter_map(viewport_position).collect();
@@ -833,11 +836,7 @@ mod test_freehand {
 		let vector = document.network_interface.compute_modified_vector(layer).expect("Layer should have vector geometry");
 		let transform = document.metadata().transform_to_viewport(layer);
 		for &pointer_position in &continuation[1..] {
-			let under_pointer = vector
-				.point_domain
-				.positions()
-				.iter()
-				.any(|&position| transform.transform_point2(position).distance(pointer_position) < 1.);
+			let under_pointer = vector.anchor_positions().iter().any(|&position| transform.transform_point2(position).distance(pointer_position) < 1.);
 			assert!(under_pointer, "Expected a point under the pointer at {pointer_position:?}");
 		}
 	}
@@ -959,5 +958,66 @@ mod test_freehand {
 		let (point_count, segment_count) = point_and_segment_counts(&editor, layer);
 		assert_eq!(point_count, initial_point_count + continuation.len() - 1, "Each pointer move after the press should add a point");
 		assert_eq!(segment_count, point_count - 1, "The continued stroke should form a single open path");
+	}
+
+	async fn set_freehand_option(editor: &mut EditorTestUtils, options: FreehandOptionsUpdate) {
+		editor.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions { options })).await;
+	}
+
+	fn stroke_cap(editor: &EditorTestUtils, layer: LayerNodeIdentifier) -> Option<StrokeCap> {
+		get_stroke_options(layer, &editor.active_document().network_interface).map(|options| options.cap)
+	}
+
+	const SECOND_STROKE: [DVec2; 3] = [DVec2::new(100., 300.), DVec2::new(200., 350.), DVec2::new(300., 300.)];
+	const THIRD_STROKE: [DVec2; 3] = [DVec2::new(100., 500.), DVec2::new(200., 550.), DVec2::new(300., 500.)];
+
+	#[tokio::test]
+	async fn test_mixed_stroke_selection_gives_new_strokes_the_default_stroke() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// A stroked and an unstroked path, both selected, leave the Stroke checkbox mixed
+		draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		let unstroked = draw_freehand_stroke(&mut editor, &SECOND_STROKE).await;
+		set_freehand_option(&mut editor, FreehandOptionsUpdate::StrokeEnabled(false)).await;
+		assert!(
+			get_stroke_width(unstroked, &editor.active_document().network_interface).is_none(),
+			"Unticking Stroke should remove the selected path's stroke"
+		);
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+
+		let layer = draw_freehand_stroke(&mut editor, &THIRD_STROKE).await;
+		let stroke_width = get_stroke_width(layer, &editor.active_document().network_interface);
+		assert_eq!(
+			stroke_width,
+			Some(crate::consts::DEFAULT_STROKE_WIDTH),
+			"A path drawn while the selection's strokes are mixed should get the tool's default stroke"
+		);
+	}
+
+	#[tokio::test]
+	async fn test_deselecting_returns_stroke_options_to_their_defaults() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let first = draw_freehand_stroke(&mut editor, &INITIAL_STROKE).await;
+		set_freehand_option(&mut editor, FreehandOptionsUpdate::StrokeOption(StrokeOptionsUpdate::Cap(StrokeCap::Round))).await;
+		assert_eq!(stroke_cap(&editor, first), Some(StrokeCap::Round), "Setting the cap with a path selected should edit its stroke");
+
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		let second = draw_freehand_stroke(&mut editor, &SECOND_STROKE).await;
+		assert_eq!(stroke_cap(&editor, second), Some(StrokeCap::default()), "A path drawn after deselecting should get the default cap");
+
+		// A cap set with nothing selected becomes the default, which deselecting returns to
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		set_freehand_option(&mut editor, FreehandOptionsUpdate::StrokeOption(StrokeOptionsUpdate::Cap(StrokeCap::Square))).await;
+		editor.handle_message(DocumentMessage::SelectAllLayers).await;
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+		let third = draw_freehand_stroke(&mut editor, &THIRD_STROKE).await;
+		assert_eq!(
+			stroke_cap(&editor, third),
+			Some(StrokeCap::Square),
+			"A cap set with nothing selected should be the default for new paths"
+		);
 	}
 }

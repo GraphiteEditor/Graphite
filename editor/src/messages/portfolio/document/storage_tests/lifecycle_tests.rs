@@ -7,7 +7,7 @@ use crate::test_utils::EditorTestUtils;
 use document_container::{AnyContainer, AsyncContainer};
 
 fn dispatch(editor: &mut EditorTestUtils, message: impl Into<Message>) -> Vec<FrontendMessage> {
-	editor.editor.handle_message(message)
+	editor.dispatch(message)
 }
 
 fn portfolio(editor: &EditorTestUtils) -> &PortfolioMessageHandler {
@@ -67,6 +67,24 @@ async fn session_state_restores_order_names_and_selection() {
 	let restored = portfolio(&editor).persisted_state_snapshot();
 	assert_eq!(restored.documents.iter().map(|info| (info.id, info.name.clone())).collect::<Vec<_>>(), expected);
 	assert_eq!(portfolio(&editor).active_document_id, Some(selected));
+}
+
+#[tokio::test]
+async fn reloaded_frontend_gets_the_active_document_instead_of_the_session_state() {
+	let mut editor = EditorTestUtils::create();
+	dispatch(&mut editor, PersistentStateMessage::LoadState { state: PersistedState::default() });
+	new_document(&mut editor, "First");
+	let active = new_document(&mut editor, "Second");
+
+	let responses = dispatch(&mut editor, PortfolioMessage::Init);
+
+	let reads_session = responses.iter().any(|message| matches!(message, FrontendMessage::TriggerPersistenceReadState));
+	let resends_active = responses
+		.iter()
+		.any(|message| matches!(message, FrontendMessage::UpdateActiveDocument { document_id } if *document_id == active));
+	assert!(!reads_session);
+	assert!(resends_active);
+	assert_eq!(portfolio(&editor).active_document_id, Some(active));
 }
 
 #[tokio::test]

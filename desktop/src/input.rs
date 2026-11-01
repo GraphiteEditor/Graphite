@@ -339,55 +339,49 @@ impl ViewportInfo {
 
 #[derive(Default)]
 struct ClickTracker {
-	left: ClickChains,
-	right: ClickChains,
-	middle: ClickChains,
-	back: ClickChains,
-	forward: ClickChains,
+	latest_press: Option<Press>,
+}
+
+struct Press {
+	button: MouseButton,
+	time: Instant,
+	position: (i32, i32),
+	count: u32,
+	dragged: bool,
 }
 
 impl ClickTracker {
 	fn input(&mut self, position: PhysicalPosition<f64>, button: MouseButton, state: ElementState) -> u32 {
-		let position = (position.x as i32, position.y as i32);
-		let clicks = match button {
-			MouseButton::Left => &mut self.left,
-			MouseButton::Right => &mut self.right,
-			MouseButton::Middle => &mut self.middle,
-			MouseButton::Back => &mut self.back,
-			MouseButton::Forward => &mut self.forward,
-			_ => return 1,
-		};
-		let chain = match state {
-			ElementState::Pressed => &mut clicks.down,
-			ElementState::Released => &mut clicks.up,
-		};
-
 		let now = Instant::now();
-		let count = match chain {
-			Some(previous) => {
-				let within_time = now.saturating_duration_since(previous.time) <= MULTICLICK_TIMEOUT;
-				let dx = position.0.abs_diff(previous.position.0) as usize;
-				let dy = position.1.abs_diff(previous.position.1) as usize;
-				let within_distance = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
-				if within_time && within_distance { previous.count.saturating_add(1) } else { 1 }
+		let position = (position.x as i32, position.y as i32);
+		let within_travel = |from: (i32, i32)| from.0.abs_diff(position.0) as usize <= MULTICLICK_ALLOWED_TRAVEL && from.1.abs_diff(position.1) as usize <= MULTICLICK_ALLOWED_TRAVEL;
+
+		match state {
+			ElementState::Pressed => {
+				let count = match &self.latest_press {
+					Some(previous) if previous.button == button && !previous.dragged && now.saturating_duration_since(previous.time) <= MULTICLICK_TIMEOUT && within_travel(previous.position) => {
+						previous.count.saturating_add(1)
+					}
+					_ => 1,
+				};
+				self.latest_press = Some(Press {
+					button,
+					time: now,
+					position,
+					count,
+					dragged: false,
+				});
+				count
 			}
-			None => 1,
-		};
-		*chain = Some(Click { time: now, position, count });
-		count
+			ElementState::Released => {
+				let Some(press) = self.latest_press.as_mut().filter(|press| press.button == button) else {
+					return 1;
+				};
+				press.dragged |= !within_travel(press.position);
+				if press.dragged { 1 } else { press.count }
+			}
+		}
 	}
-}
-
-#[derive(Default)]
-struct ClickChains {
-	down: Option<Click>,
-	up: Option<Click>,
-}
-
-struct Click {
-	time: Instant,
-	position: (i32, i32),
-	count: u32,
 }
 
 #[derive(Default)]

@@ -13,7 +13,6 @@ use syn::{
 
 use crate::codegen::generate_node_code;
 use crate::crate_ident::CrateIdent;
-use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Clone, Debug)]
 pub(crate) struct Implementation {
@@ -41,26 +40,38 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) description: String,
 }
 
+/// Boolean node attributes. The registry-facing subset is emitted as `core_types::registry::NodeFlags`, which this proc-macro crate cannot depend on.
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct NodeFlags {
+	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork.
+	pub(crate) memoize: bool,
+	pub(crate) footprint_invariant: bool,
+	pub(crate) forwards_input: bool,
+	/// Whether this node provides a scope.
+	pub(crate) inject_scope: bool,
+	pub(crate) skip_impl: bool,
+	/// Whether the node refuses placeholder data.
+	pub(crate) no_partial: bool,
+	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct rather than an `Item` or `List`. Not parsed from source.
+	pub(crate) destructure_extractor: bool,
+}
+
 #[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
 	pub(crate) icon: Option<LitStr>,
 	pub(crate) path: Option<Path>,
-	pub(crate) skip_impl: bool,
 	pub(crate) inspector_string: Option<LitStr>,
 	/// whether to `#[cfg]` gate the node implementation, defaults to None
 	pub(crate) cfg: Option<TokenStream2>,
-	/// if this node should get a gpu implementation, defaults to None
-	pub(crate) shader_node: Option<ShaderNodeType>,
 	/// Custom serialization function path (e.g., "my_module::custom_serialize")
 	pub(crate) serialize: Option<Path>,
-	/// Whether the preprocessor should add a Memoize node after this node in the generated subnetwork
-	pub(crate) memoize: bool,
-	/// Whether this node provides a scope
-	pub(crate) inject_scope: bool,
-	/// Set on the `Destructure` derive's generated extractor nodes, which take the struct rather than an `Item` or `List`. Not parsed from source.
-	pub(crate) destructure_extractor: bool,
+	pub(crate) flags: NodeFlags,
+	/// Fn producing an placeholder value used while node evaluation is pending
+	pub(crate) placeholder: Option<Path>,
+	/// The declaration version, starting at 1 when absent. Bumping it requires a migration from the previous version.
+	pub(crate) version: Option<u32>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -69,6 +80,7 @@ pub enum ParsedValueSource {
 	None,
 	Default(TokenStream2),
 	Scope(Box<Expr>),
+	SourceId,
 }
 
 // #[widget(ParsedWidgetOverride::Hidden)]
@@ -124,21 +136,48 @@ pub struct ParsedField {
 	pub unit: Option<LitStr>,
 	pub multiline: bool,
 	pub progression: bool,
+	pub constant: bool,
 	pub is_data_field: bool,
 }
 
 impl ParsedField {
+	pub(crate) fn hidden(name: &str, ty: Type, value_source: ParsedValueSource) -> Self {
+		Self {
+			pat_ident: PatIdent {
+				attrs: Vec::new(),
+				by_ref: None,
+				mutability: None,
+				ident: Ident::new(name, proc_macro2::Span::call_site()),
+				subpat: None,
+			},
+			name: None,
+			description: String::new(),
+			widget_override: ParsedWidgetOverride::None,
+			ty: ParsedFieldType::classify(RegularParsedField {
+				ty,
+				exposed: false,
+				value_source,
+				number_soft_min: None,
+				number_soft_max: None,
+				number_hard_min: None,
+				number_hard_max: None,
+				number_mode_range: false,
+				implementations: Default::default(),
+			}),
+			number_display_decimal_places: None,
+			number_step: None,
+			unit: None,
+			multiline: false,
+			progression: false,
+			constant: false,
+			is_data_field: false,
+		}
+	}
+
 	/// Whether the field is environment rather than an argument: `#[data]` state or a `#[scope]`-injected wire.
 	/// Environment fields never classify the node, never supply the element-wise frame, and broadcast by clone.
 	pub(crate) fn is_environment(&self) -> bool {
-		self.is_data_field
-			|| matches!(
-				self.ty.regular(),
-				Some(RegularParsedField {
-					value_source: ParsedValueSource::Scope(_),
-					..
-				})
-			)
+		self.is_data_field || matches!(self.ty.value_source(), ParsedValueSource::Scope(_) | ParsedValueSource::SourceId)
 	}
 }
 
@@ -202,11 +241,10 @@ impl ParsedFieldType {
 		}
 	}
 
-	/// The element type `T` of a rank-0 `Item<T>` field, or `None` for any other shape.
-	pub fn item_element(&self) -> Option<&Type> {
+	pub fn value_source(&self) -> &ParsedValueSource {
 		match self {
-			ParsedFieldType::Item { element, .. } => Some(element),
-			_ => None,
+			ParsedFieldType::Regular(field) | ParsedFieldType::Item { field, .. } | ParsedFieldType::List { field, .. } => &field.value_source,
+			ParsedFieldType::Node(field) => &field.value_source,
 		}
 	}
 
@@ -333,17 +371,6 @@ pub struct RegularParsedField {
 	/// Whether the number input renders as a draggable slider (the `#[range]` attribute) rather than the default increment field.
 	pub number_mode_range: bool,
 	pub implementations: Punctuated<Type, Comma>,
-	pub gpu_image: bool,
-	/// Set for a shader node's `f64` or `i64` parameter: `ty` keeps the type it was declared with, which the graph and the
-	/// CPU fn use, while the shader build's fn variant and the GPU uniform take this `f32` or `i32` counterpart.
-	pub narrowed_body_ty: Option<Type>,
-}
-
-impl RegularParsedField {
-	/// The type the shader build's fn variant is handed: the 32-bit counterpart of a shader node's declared `f64` or `i64`, otherwise `ty` itself.
-	pub fn body_ty(&self) -> &Type {
-		self.narrowed_body_ty.as_ref().unwrap_or(&self.ty)
-	}
 }
 
 /// a param of `impl Node` with `#[implementation(in -> out)]`
@@ -352,8 +379,9 @@ pub struct NodeParsedField {
 	pub input_type: Type,
 	pub output_type: Type,
 	/// The peeled `Item` element of `output_type`, if the lazy input's `Output` is declared `Item<T>`.
-	pub output_element: Option<Type>,
+	pub output_element: Option<Box<Type>>,
 	pub implementations: Punctuated<Implementation, Comma>,
+	pub value_source: ParsedValueSource,
 }
 
 #[derive(Clone, Debug)]
@@ -410,13 +438,12 @@ impl Parse for NodeFnAttributes {
 		let mut display_name = None;
 		let mut icon = None;
 		let mut path = None;
-		let mut skip_impl = false;
 		let mut inspector_string = None;
 		let mut cfg = None;
-		let mut shader_node = None;
 		let mut serialize = None;
-		let mut memoize = false;
-		let mut inject_scope = false;
+		let mut flags = NodeFlags::default();
+		let mut placeholder = None;
+		let mut version = None;
 
 		let content = input;
 		// let content;
@@ -488,13 +515,7 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., skip_impl, ...)]
-				"skip_impl" => {
-					let path = meta.require_path_only()?;
-					if skip_impl {
-						return Err(Error::new_spanned(path, "Multiple 'skip_impl' attributes are not allowed"));
-					}
-					skip_impl = true;
-				}
+				"skip_impl" => set_flag(&mut flags.skip_impl, meta, "skip_impl")?,
 				// Override UI layout generator function name defined in `node_inspector.rs` that returns a custom Inspector layout for this node.
 				// This is used to create custom UI for the input parameters of the node in cases where the defaults generated from the type and attributes are insufficient.
 				//
@@ -514,24 +535,13 @@ impl Parse for NodeFnAttributes {
 				// Conditional compilation tokens to gate when this node is included in the build.
 				//
 				// Example usage:
-				// #[node_macro::node(..., cfg(feature = "std"), ...)]
+				// #[node_macro::node(..., cfg(feature = "gpu"), ...)]
 				"cfg" => {
 					if cfg.is_some() {
 						return Err(Error::new_spanned(path, "Multiple 'cfg' attributes are not allowed"));
 					}
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
-				}
-				// Reference to a specific shader definition struct that is used to run the logic of this node on the GPU.
-				//
-				// Example usage:
-				// #[node_macro::node(..., shader_node(PerPixelAdjust), ...)]
-				"shader_node" => {
-					if shader_node.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'shader_node' attributes are not allowed"));
-					}
-					let meta = meta.require_list()?;
-					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
 				}
 				// Function name for custom serialization of this node's data. This is only used by the Monitor node.
 				//
@@ -552,32 +562,65 @@ impl Parse for NodeFnAttributes {
 				//
 				// Example usage:
 				// #[node_macro::node(..., memoize, ...)]
-				"memoize" => {
-					let path = meta.require_path_only()?;
-					if memoize {
-						return Err(Error::new_spanned(path, "Multiple 'memoize' attributes are not allowed"));
-					}
-					memoize = true;
-				}
+				"memoize" => set_flag(&mut flags.memoize, meta, "memoize")?,
+				// Warns at compile time when an upstream node of this node reads the footprint.
+				//
+				// Example usage:
+				// #[node_macro::node(..., footprint_invariant, ...)]
+				"footprint_invariant" => set_flag(&mut flags.footprint_invariant, meta, "footprint_invariant")?,
+				// Marks the node's output as its first input's value, so a compile-time constant stays constant through it.
+				//
+				// Example usage:
+				// #[node_macro::node(..., forwards_input, ...)]
+				"forwards_input" => set_flag(&mut flags.forwards_input, meta, "forwards_input")?,
 				// Instructs the preprocessor to make this node available as a scope.
 				// Other nodes can then access it with `#[scope(node::IDENTIFIER)]`.
 				//
 				// Example usage:
 				// #[node_macro::node(..., inject_scope, ...)]
-				"inject_scope" => {
-					let path = meta.require_path_only()?;
-					if inject_scope {
-						return Err(Error::new_spanned(path, "Multiple 'inject_scope' attributes are not allowed"));
+				// The version of the node's declaration. Bump it whenever its inputs or behavior change in a way older documents
+				// would load wrongly, and add a migration from the previous version (`cargo run migration new <identifier>`).
+				//
+				// Example usage:
+				// #[node_macro::node(..., version(2), ...)]
+				"version" => {
+					let meta = meta.require_list()?;
+					if version.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'version' attributes are not allowed"));
 					}
-					inject_scope = true;
+					let literal: LitInt = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected an integer for 'version', e.g., version(2)"))?;
+					let parsed: u32 = literal.base10_parse()?;
+					if parsed == 0 {
+						return Err(Error::new_spanned(literal, "Versions start at 1"));
+					}
+					version = Some(parsed);
 				}
+				"inject_scope" => set_flag(&mut flags.inject_scope, meta, "inject_scope")?,
+				// The placeholder value used while a node's evaluation is pending.
+				//
+				// Example usage:
+				// #[node_macro::node(..., placeholder = get_placeholder, ...)]
+				"placeholder" => {
+					let meta = meta.require_name_value()?;
+					if placeholder.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'placeholder' attributes are not allowed"));
+					}
+					let parsed_path: Path =
+						syn::parse2(meta.value.to_token_stream()).map_err(|_| Error::new_spanned(meta, "Expected a fn path for 'placeholder', e.g., placeholder = get_placeholder"))?;
+					placeholder = Some(parsed_path);
+				}
+				// Maps `Partial` inputs to `Pending`, for nodes where placeholder data makes no sense.
+				//
+				// Example usage:
+				// #[node_macro::node(..., no_partial, ...)]
+				"no_partial" => set_flag(&mut flags.no_partial, meta, "no_partial")?,
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'shader_node', 'serialize', 'memoize', and 'inject_scope'.
+							Supported attributes are 'category', 'name', 'icon', 'path', 'skip_impl', 'inspector', 'cfg', 'serialize', 'memoize', 'footprint_invariant', 'forwards_input', 'inject_scope', 'placeholder', 'no_partial', and 'version'.
 							Example usage:
 							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
@@ -605,16 +648,23 @@ impl Parse for NodeFnAttributes {
 			display_name,
 			icon,
 			path,
-			skip_impl,
 			inspector_string,
 			cfg,
-			shader_node,
 			serialize,
-			memoize,
-			inject_scope,
-			destructure_extractor: false,
+			flags,
+			placeholder,
+			version,
 		})
 	}
+}
+
+fn set_flag(flag: &mut bool, meta: &Meta, name: &str) -> syn::Result<()> {
+	let path = meta.require_path_only()?;
+	if *flag {
+		return Err(Error::new_spanned(path, format!("Multiple '{name}' attributes are not allowed")));
+	}
+	*flag = true;
+	Ok(())
 }
 
 pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
@@ -628,12 +678,9 @@ pub(crate) fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Resu
 	let fn_generics = input_fn.sig.generics.params.into_iter().collect();
 	let is_async = input_fn.sig.asyncness.is_some();
 
-	let (input, mut fields) = parse_inputs(&input_fn.sig.inputs)?;
-	if matches!(attributes.shader_node, Some(ShaderNodeType::PerPixelAdjust(_))) {
-		narrow_shader_fields(&mut fields)?;
-	}
+	let (input, fields) = parse_inputs(&input_fn.sig.inputs)?;
 	let output_type = parse_output(&input_fn.sig.output)?;
-	let output_element = peel_item(&output_type);
+	let output_element = peel_item(&output_payload(&output_type));
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
 	let description = input_fn
@@ -826,6 +873,12 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 	let exposed = extract_attribute(attrs, "expose").is_some();
 
+	// The `#[constant]` marker makes the compiler reject inputs not fed by a value known at compile time
+	let constant = extract_attribute(attrs, "constant").is_some();
+
+	// Gives a synchronous node its `SourceId`, as async nodes get it, so it can bump its own generation
+	let source_id = extract_attribute(attrs, "source_id").is_some();
+
 	// Validate data field attributes
 	if is_data_field {
 		if default_value.is_some() {
@@ -843,6 +896,15 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				"Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters",
 			));
 		}
+		if constant {
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot be #[constant]. They are internal state, not node parameters",
+			));
+		}
+		if source_id {
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[source_id] attribute"));
+		}
 	}
 	if exposed && ident.to_string().starts_with('_') {
 		return Err(Error::new_spanned(
@@ -853,8 +915,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
+		(Some(_), _) | (_, Some(_)) if source_id => return Err(Error::new_spanned(&pat_ident, "`source_id` cannot have a `default` or `scope` attribute")),
 		(Some(default_value), _) => ParsedValueSource::Default(default_value),
 		(_, Some(scope)) => ParsedValueSource::Scope(Box::new(scope)),
+		_ if source_id => ParsedValueSource::SourceId,
 		_ => ParsedValueSource::None,
 	};
 
@@ -913,7 +977,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{ident}': {e}\nUSAGE EXAMPLE: #[step(2.)]")))
 		})
 		.transpose()?;
-	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -944,7 +1007,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
-		if !matches!(&value_source, ParsedValueSource::None) {
+		if !matches!(&value_source, ParsedValueSource::None | ParsedValueSource::Scope(_)) {
 			return Err(Error::new_spanned(&ty, "No default values for `impl Node` allowed"));
 		}
 		let implementations = extract_attribute(attrs, "implementations")
@@ -952,7 +1015,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			.transpose()?
 			.unwrap_or_default();
 
-		let output_element = peel_item(&output_type);
+		let output_element = peel_item(&output_type).map(Box::new);
 
 		Ok(ParsedField {
 			pat_ident,
@@ -961,6 +1024,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				output_type,
 				output_element,
 				implementations,
+				value_source,
 			}),
 			name,
 			description,
@@ -970,6 +1034,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			unit,
 			multiline,
 			progression,
+			constant,
 			is_data_field,
 		})
 	} else {
@@ -1012,8 +1077,6 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				ty,
 				value_source,
 				implementations,
-				gpu_image,
-				narrowed_body_ty: None,
 			}),
 			name,
 			description,
@@ -1023,6 +1086,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			unit,
 			multiline,
 			progression,
+			constant,
 			is_data_field,
 		})
 	}
@@ -1048,69 +1112,6 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 		}
 	}
 	(false, None, None)
-}
-
-/// A `PerPixelAdjust` shader node is declared with the catalog's `f64` and `i64` parameters, and its fn is emitted twice
-/// from the one body: as declared for the CPU, and with the `f32` and `i32` counterparts recorded here for the shader
-/// build, which cannot represent a 64-bit number. Declaring `f32` or `i32` directly is refused so the node's definition
-/// only ever speaks the graph's types.
-fn narrow_shader_fields(fields: &mut [ParsedField]) -> syn::Result<()> {
-	for field in fields.iter_mut() {
-		let Some(regular) = field.ty.regular() else { continue };
-		let declared = regular.ty.clone();
-
-		if peel_list(&declared).is_some() {
-			return Err(Error::new_spanned(
-				&declared,
-				"A per-pixel shader node cannot take a `List` parameter, since its values ride in a uniform buffer and the shader cannot allocate; declare an `Item` instead",
-			));
-		}
-
-		let element = peel_item(&declared).unwrap_or_else(|| declared.clone());
-		if is_primitive_type(&element, "f32") || is_primitive_type(&element, "i32") {
-			return Err(Error::new_spanned(
-				&declared,
-				"A shader node's parameters are declared as `f64` or `i64`, the graph's Number and Integer types; the macro narrows them to the `f32` or `i32` the shader computes with",
-			));
-		}
-
-		let counterpart: Type = if is_primitive_type(&element, "f64") {
-			parse_quote!(f32)
-		} else if is_primitive_type(&element, "i64") {
-			parse_quote!(i32)
-		} else {
-			continue;
-		};
-		let body_ty = if peel_item(&declared).is_some() {
-			replace_wrapper_element(&declared, counterpart)
-		} else {
-			counterpart
-		};
-
-		let mut regular = regular.clone();
-		regular.narrowed_body_ty = Some(body_ty);
-		field.ty = ParsedFieldType::classify(regular);
-	}
-
-	Ok(())
-}
-
-/// Swaps the element type inside a wrapper like `Item<T>`, keeping the wrapper's path as it was written.
-fn replace_wrapper_element(ty: &Type, element: Type) -> Type {
-	let mut ty = ty.clone();
-	if let Type::Path(type_path) = &mut ty
-		&& let Some(segment) = type_path.path.segments.last_mut()
-		&& let syn::PathArguments::AngleBracketed(arguments) = &mut segment.arguments
-		&& let Some(syn::GenericArgument::Type(inner)) = arguments.args.first_mut()
-	{
-		*inner = element;
-	}
-	ty
-}
-
-fn is_primitive_type(ty: &Type, name: &str) -> bool {
-	let Type::Path(type_path) = ty else { return false };
-	type_path.path.segments.last().is_some_and(|segment| segment.ident == name)
 }
 
 fn is_integer_type(ty: &Type) -> bool {
@@ -1143,7 +1144,7 @@ pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenS
 /// exempt from the ranked-input validation.
 pub(crate) fn new_destructure_extractor_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
 	let mut parsed_node = parse_node_fn(attr, item).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
-	parsed_node.attributes.destructure_extractor = true;
+	parsed_node.attributes.flags.destructure_extractor = true;
 	generate_parsed_node_fn(parsed_node)
 }
 
@@ -1165,7 +1166,7 @@ impl ParsedNodeFn {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
-			bounds.push(parse_quote!('n));
+			bounds.push(parse_quote!(Clone));
 			self.fn_generics.push(GenericParam::Type(TypeParam {
 				attrs: Default::default(),
 				ident: ident.clone(),
@@ -1182,6 +1183,51 @@ impl ParsedNodeFn {
 		if self.input.pat_ident.ident == "_" {
 			self.input.pat_ident.ident = Ident::new("__ctx", self.input.pat_ident.ident.span());
 		}
+	}
+}
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub(crate) enum NodeOutputTier {
+	/// `-> T`
+	Plain,
+	/// `-> Result<T, E>` where `E: Into<NodeError>`
+	Error,
+	/// `-> Result<T, (T, E)>` where `E: Into<NodeError>`
+	Fallback,
+	/// `-> Result<T, Interrupt>`
+	Interrupt,
+	/// `-> Poll<T>`
+	Poll,
+}
+
+pub(crate) fn output_tier(output_type: &Type) -> NodeOutputTier {
+	let Type::Path(type_path) = output_type else { return NodeOutputTier::Plain };
+	let Some(segment) = type_path.path.segments.last() else { return NodeOutputTier::Plain };
+	let syn::PathArguments::AngleBracketed(arguments) = &segment.arguments else {
+		return NodeOutputTier::Plain;
+	};
+	match (segment.ident.to_string().as_str(), arguments.args.len()) {
+		("Poll", 1) => NodeOutputTier::Poll,
+		("Result", 2) => match arguments.args.last() {
+			Some(syn::GenericArgument::Type(Type::Tuple(_))) => NodeOutputTier::Fallback,
+			Some(syn::GenericArgument::Type(Type::Path(error))) if error.path.segments.last().is_some_and(|segment| segment.ident == "Interrupt") => NodeOutputTier::Interrupt,
+			_ => NodeOutputTier::Error,
+		},
+		_ => NodeOutputTier::Plain,
+	}
+}
+
+pub(crate) fn output_payload(output_type: &Type) -> Type {
+	if output_tier(output_type) == NodeOutputTier::Plain {
+		return output_type.clone();
+	}
+	let Type::Path(type_path) = output_type else { unreachable!() };
+	let syn::PathArguments::AngleBracketed(arguments) = &type_path.path.segments.last().unwrap().arguments else {
+		unreachable!()
+	};
+	match arguments.args.first() {
+		Some(syn::GenericArgument::Type(payload)) => payload.clone(),
+		_ => output_type.clone(),
 	}
 }
 
@@ -1211,7 +1257,7 @@ mod tests {
 		assert_eq!(parsed.attributes.category, expected.attributes.category);
 		assert_eq!(parsed.attributes.display_name, expected.attributes.display_name);
 		assert_eq!(parsed.attributes.path, expected.attributes.path);
-		assert_eq!(parsed.attributes.skip_impl, expected.attributes.skip_impl);
+		assert_eq!(parsed.attributes.flags.skip_impl, expected.attributes.flags.skip_impl);
 		assert_eq!(parsed.fields.len(), expected.fields.len());
 		assert_eq!(parsed.description, expected.description);
 
@@ -1298,17 +1344,12 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
-				display_name: None,
-				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
-				skip_impl: true,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				flags: NodeFlags {
+					skip_impl: true,
+					..Default::default()
+				},
+				..Default::default()
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1339,14 +1380,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: false,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1374,17 +1414,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("General")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -1411,12 +1441,14 @@ mod tests {
 						output_type: parse_quote!(T),
 						output_element: None,
 						implementations: Punctuated::new(),
+						value_source: ParsedValueSource::None,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
 					multiline: false,
 					progression: false,
+					constant: false,
 					is_data_field: false,
 				},
 				ParsedField {
@@ -1434,14 +1466,13 @@ mod tests {
 						number_hard_max: None,
 						number_mode_range: false,
 						implementations: Punctuated::new(),
-						gpu_image: false,
-						narrowed_body_ty: None,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
 					multiline: false,
 					progression: false,
+					constant: false,
 					is_data_field: false,
 				},
 			],
@@ -1467,17 +1498,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Vector: Shape")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1508,14 +1529,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: false,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1539,17 +1559,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Raster: Adjustment")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1585,14 +1595,13 @@ mod tests {
 						p.push(parse_quote!(f64));
 						p
 					},
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1623,17 +1632,8 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
-				display_name: None,
-				icon: None,
 				path: Some(parse_quote!(core_types::TestNode)),
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1664,14 +1664,13 @@ mod tests {
 					number_hard_max: Some(parse_quote!(500)),
 					number_mode_range: true,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1697,6 +1696,24 @@ mod tests {
 	}
 
 	#[test]
+	fn test_version() {
+		let input = quote!(
+			fn add(a: f64, b: f64) -> f64 {
+				a + b
+			}
+		);
+
+		let unversioned = parse_node_fn(quote!(category("Math: Arithmetic")), input.clone()).unwrap();
+		assert_eq!(unversioned.attributes.version, None);
+
+		let versioned = parse_node_fn(quote!(category("Math: Arithmetic"), version(3)), input.clone()).unwrap();
+		assert_eq!(versioned.attributes.version, Some(3));
+
+		let error_message = parse_node_fn(quote!(category("Math: Arithmetic"), version(0)), input).unwrap_err().to_string();
+		assert!(error_message.contains("Versions start at 1"));
+	}
+
+	#[test]
 	fn test_async_node() {
 		let attr = quote!(category("IO"));
 		let input = quote!(
@@ -1710,17 +1727,7 @@ mod tests {
 			vis: Visibility::Inherited,
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("IO")),
-				display_name: None,
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1751,14 +1758,13 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: false,
 					implementations: Punctuated::new(),
-					gpu_image: false,
-					narrowed_body_ty: None,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
 				multiline: false,
 				progression: false,
+				constant: false,
 				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
@@ -1783,16 +1789,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Custom")),
 				display_name: Some(parse_quote!("CustomNode2")),
-				icon: None,
-				path: None,
-				skip_impl: false,
-				inspector_string: None,
-				cfg: None,
-				shader_node: None,
-				serialize: None,
-				memoize: false,
-				inject_scope: false,
-				destructure_extractor: false,
+				..Default::default()
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
@@ -1847,6 +1844,38 @@ mod tests {
 		let input = quote!(
 			fn invalid_node(_: (), #[default(())] node: impl Node<(), Output = i32>) -> i32 {
 				node.eval(())
+			}
+		);
+		parse_node_fn(attr, input).unwrap();
+	}
+
+	#[test]
+	fn test_scope_for_impl_node() {
+		let attr = quote!(category(""));
+		let input = quote!(
+			fn scoped_node(_: impl Ctx, content: Item<f64>, #[scope("pipeline")] pipeline: impl Node<Context<'static>, Output = Item<u32>>) -> Item<f64> {
+				content
+			}
+		);
+		let parsed = parse_node_fn(attr, input).unwrap();
+		let pipeline = &parsed.fields[1];
+		assert!(matches!(pipeline.ty.value_source(), ParsedValueSource::Scope(_)));
+		assert!(pipeline.is_environment());
+	}
+
+	#[test]
+	#[should_panic(expected = "Data fields (#[data]) cannot be #[constant]")]
+	fn test_constant_data_field() {
+		let attr = quote!(category("Invalid"));
+		let input = quote!(
+			fn invalid_node(
+				_: impl Ctx,
+				input: i32,
+				#[data]
+				#[constant]
+				cache: i32,
+			) -> i32 {
+				input
 			}
 		);
 		parse_node_fn(attr, input).unwrap();
@@ -1921,52 +1950,20 @@ mod tests {
 	}
 
 	#[test]
-	fn test_shader_node_parameters_narrow_for_the_body() {
-		let attr = quote!(category("Raster: Adjustment"), shader_node(PerPixelAdjust));
-		let input = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amount: Item<f64>, scale: f64, steps: Item<i64>) -> Item<T> {
-				image
-			}
-		);
-		let parsed = parse_node_fn(attr.clone(), input).unwrap();
-
-		let types = |index: usize| {
-			let regular = parsed.fields[index].ty.regular().unwrap();
-			let body = regular.narrowed_body_ty.as_ref().map(|ty| ty.to_token_stream().to_string());
-			(regular.ty.to_token_stream().to_string(), body)
-		};
-		assert_eq!(types(0), ("Item < T >".to_string(), None), "the image parameter is left alone");
-		assert_eq!(
-			types(1),
-			("Item < f64 >".to_string(), Some("Item < f32 >".to_string())),
-			"an Item<f64> stays on the wire and reaches the body as Item<f32>"
-		);
-		assert_eq!(types(2), ("f64".to_string(), Some("f32".to_string())), "a bare f64 reaches the body as f32");
-		assert_eq!(
-			types(3),
-			("Item < i64 >".to_string(), Some("Item < i32 >".to_string())),
-			"an Item<i64> stays on the wire and reaches the body as Item<i32>"
-		);
-
-		let declared_f32 = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amount: Item<f32>) -> Item<T> {
-				image
-			}
-		);
-		assert!(parse_node_fn(attr.clone(), declared_f32).is_err(), "a shader node must not declare f32 itself");
-
-		let declared_i32 = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, steps: Item<i32>) -> Item<T> {
-				image
-			}
-		);
-		assert!(parse_node_fn(attr.clone(), declared_i32).is_err(), "a shader node must not declare i32 itself");
-
-		let declared_list = quote!(
-			fn adjust<T: Adjust<Color>>(_: impl Ctx, #[gpu_image] image: Item<T>, amounts: List<f64>) -> Item<T> {
-				image
-			}
-		);
-		assert!(parse_node_fn(attr, declared_list).is_err(), "a uniform cannot carry a List");
+	fn a_kernel_is_classified_by_its_declared_return_type() {
+		let payload: Type = parse_quote!(Item<u32>);
+		for (ty, tier) in [
+			(parse_quote!(Item<u32>), NodeOutputTier::Plain),
+			(parse_quote!(Result<Item<u32>, NodeError>), NodeOutputTier::Error),
+			(parse_quote!(Result<Item<u32>, std::num::ParseIntError>), NodeOutputTier::Error),
+			(parse_quote!(Result<Item<u32>, Interrupt>), NodeOutputTier::Interrupt),
+			(parse_quote!(Result<Item<u32>, (Item<u32>, NodeError)>), NodeOutputTier::Fallback),
+			(parse_quote!(Result<Item<u32>, (Item<u32>, std::num::ParseIntError)>), NodeOutputTier::Fallback),
+			(parse_quote!(Poll<Item<u32>>), NodeOutputTier::Poll),
+		] {
+			let ty: Type = ty;
+			assert_eq!(output_tier(&ty), tier);
+			assert_eq!(output_payload(&ty), payload);
+		}
 	}
 }

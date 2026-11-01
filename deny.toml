@@ -78,6 +78,7 @@ allow = [
 	"OpenSSL", # Keep this list in sync with those in `/about.toml`
 	"Unicode-3.0", # Keep this list in sync with those in `/about.toml`
 	"Unicode-DFS-2016", # Keep this list in sync with those in `/about.toml`
+	"Unlicense", # Keep this list in sync with those in `/about.toml`
 	"Zlib", # Keep this list in sync with those in `/about.toml`
 	"NCSA", # Keep this list in sync with those in `/about.toml`
 	"bzip2-1.0.6", # Keep this list in sync with those in `/about.toml`
@@ -187,7 +188,7 @@ allow-git = []
 
 [sources.allow-org]
 # 1 or more github.com organizations to allow git sources for
-github = ["linebender", "Rust-GPU"]
+github = ["linebender"]
 # 1 or more gitlab.com organizations to allow git sources for
 #gitlab = [""]
 # 1 or more bitbucket.org organizations to allow git sources for

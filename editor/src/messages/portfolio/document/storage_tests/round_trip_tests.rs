@@ -10,7 +10,7 @@ use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NodeMetadataSource, PeerId, to_value};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 
-use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
+use super::test_support::{RoundTrip, node_locations, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -32,17 +32,18 @@ fn assert_documents_match(original: &NodeNetworkInterface, round_trip: &RoundTri
 		"compute graph drifted through the storage round-trip"
 	);
 
-	for (network_path, local_id) in node_paths(original) {
-		let at = format!("node {local_id:?} in network {network_path:?}");
-		assert_eq!(rebuilt_view.position(&network_path, local_id), original_view.position(&network_path, local_id), "position: {at}");
-		assert_eq!(rebuilt_view.is_layer(&network_path, local_id), original_view.is_layer(&network_path, local_id), "is_layer: {at}");
+	for (network, local_id) in node_locations(original) {
+		let at = format!("node {local_id:?} in network {network:?}");
+		let network_path = network.as_location();
+		assert_eq!(rebuilt_view.position(network_path, local_id), original_view.position(network_path, local_id), "position: {at}");
+		assert_eq!(rebuilt_view.is_layer(network_path, local_id), original_view.is_layer(network_path, local_id), "is_layer: {at}");
 		assert_eq!(
-			rebuilt_view.display_name(&network_path, local_id),
-			original_view.display_name(&network_path, local_id),
+			rebuilt_view.display_name(network_path, local_id),
+			original_view.display_name(network_path, local_id),
 			"display_name: {at}"
 		);
-		assert_eq!(rebuilt_view.locked(&network_path, local_id), original_view.locked(&network_path, local_id), "locked: {at}");
-		assert_eq!(rebuilt_view.pinned(&network_path, local_id), original_view.pinned(&network_path, local_id), "pinned: {at}");
+		assert_eq!(rebuilt_view.locked(network_path, local_id), original_view.locked(network_path, local_id), "locked: {at}");
+		assert_eq!(rebuilt_view.pinned(network_path, local_id), original_view.pinned(network_path, local_id), "pinned: {at}");
 	}
 }
 
@@ -93,6 +94,7 @@ async fn round_trip_grouped_into_nested_network() {
 			group_folder_type: GroupFolderType::Layer,
 		})
 		.await;
+	editor.active_document_mut().network_interface.settle_definitions();
 
 	let document = editor.active_document();
 	let round_trip = round_trip_through_gdd(document).await;
@@ -714,6 +716,57 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+}
+
+/// Manual edits ride a saved document as a folded `VectorModification`, so opening the artworks carrying the most
+/// of them is what proves the stored format still reads and applies. Their Path nodes sit on pen-drawn layers, so
+/// each layer's geometry, curves included, comes from its stored modification alone.
+#[tokio::test]
+async fn demo_artwork_vector_modifications_still_apply() {
+	use graph_craft::document::value::TaggedValue;
+
+	for name in ["red-dress", "isometric-fountain", "valley-of-spires"] {
+		let mut editor = EditorTestUtils::create();
+
+		let data = std::fs::read(format!("../demo-artwork/{name}.graphite")).expect("read demo artwork");
+		editor
+			.handle_message(IngestMessage::Ingest {
+				data,
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some(format!("{name}.graphite").into()),
+			})
+			.await;
+
+		let document = editor.active_document();
+		let network = &document.network_interface;
+		let path_definition = DefinitionIdentifier::Network("Path".into());
+		let mut path_layers = 0;
+		let mut any_curve = false;
+
+		for layer in document.metadata().all_layers() {
+			let Some(path_node) = NodeGraphLayer::new(layer, network).upstream_visible_node_id_from_name_in_layer(&path_definition) else {
+				continue;
+			};
+			path_layers += 1;
+
+			let stored = network.document_network().nodes.get(&path_node).and_then(|node| node.inputs.get(1)).and_then(|input| input.as_value());
+			let Some(TaggedValue::VectorModification(modification)) = stored else {
+				panic!("{name} layer {layer:?} has a Path node without a stored modification");
+			};
+			assert!(!modification.is_empty(), "{name} layer {layer:?} stored a modification that changes nothing");
+
+			let upstream = document.metadata().vector_modify.get(&path_node).expect("the graph run should capture what reaches the Path node");
+			assert!(upstream.anchor_points().next().is_none(), "{name} layer {layer:?} has geometry upstream of its Path node");
+
+			let geometry = network.compute_modified_vector(layer).expect("a layer with a Path node should have a vector");
+			assert!(geometry.anchor_points().next().is_some(), "{name} layer {layer:?} surfaced no anchors from its stored modification");
+			any_curve |= geometry.segment_iter().any(|(_, segment, ..)| !matches!(segment, kurbo::PathSeg::Line(_)));
+		}
+
+		assert!(path_layers > 0, "{name} has no layers edited through a Path node");
+		assert!(any_curve, "{name} drew no curves from its stored modifications");
+	}
 }
 
 /// The document's single Fill node, as `(network_path, node_id)`.

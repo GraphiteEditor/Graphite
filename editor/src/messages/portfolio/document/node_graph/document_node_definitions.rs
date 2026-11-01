@@ -154,7 +154,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 	let custom = vec![
 		DocumentNodeDefinition {
 			identifier: "Custom Node",
-			category: "General",
+			category: "Routing",
 			icon: Some("NodeCustomNode"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate::default()),
@@ -165,31 +165,31 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Merge",
-			category: "General",
+			category: "Graphic",
 			icon: Some("NodeMerge"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(5), 0)],
+					exports: vec![NodeInput::node(NodeId(4), 0)],
 					nodes: [
 						// Primary (bottom) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::as_graphic::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -2)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -2)),
 							..Default::default()
 						},
 						// Secondary (left) input type coercion
 						NodeTemplate {
 							inputs: vec![NodeInput::import(generic!(T), 1)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::into_group::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -1)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
 							..Default::default()
 						},
 						// Derive the parent layer's NodeId from the document path
 						NodeTemplate {
 							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 0)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 0)),
 							..Default::default()
 						},
 						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
@@ -201,20 +201,12 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::node(NodeId(2), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -1)),
-							..Default::default()
-						},
-						// The monitor node is used to display a thumbnail in the UI
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(3), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							skip_deduplication: true,
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -1)),
 							..Default::default()
 						},
 						NodeTemplate {
 							call_argument: generic!(T),
-							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(4), 0)],
+							inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(3), 0)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -2)),
 							..Default::default()
@@ -241,11 +233,11 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Artboard",
-			category: "General",
+			category: "Graphic",
 			icon: Some("NodeArtboard"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(4), 0)],
+					exports: vec![NodeInput::node(NodeId(3), 0)],
 					nodes: [
 						NodeTemplate {
 							call_argument: generic!(T),
@@ -257,14 +249,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::import(item!(TaggedValue), 4),
 								NodeInput::import(item!(TaggedValue), 5),
 							],
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, -3)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
 							..Default::default()
 						},
 						// Derive the parent layer's NodeId from the document path
 						NodeTemplate {
 							inputs: vec![NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath)],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::path_of_subgraph::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-21, 3)),
+							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, 3)),
 							..Default::default()
 						},
 						// Stamp each item of the content with the parent layer's NodeId via the `editor:layer_path` attribute,
@@ -276,22 +268,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								NodeInput::node(NodeId(1), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::write_attribute::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-14, -3)),
-							..Default::default()
-						},
-						// The monitor node is used to display a thumbnail in the UI.
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(2), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::monitor::IDENTIFIER),
-							call_argument: generic!(T),
-							skip_deduplication: true,
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(-7, -3)),
 							..Default::default()
 						},
 						NodeTemplate {
 							inputs: vec![
 								NodeInput::import(graphene_std::Type::Fn(Box::new(concrete!(Context)), Box::new(list!(Artboard))), 0),
-								NodeInput::node(NodeId(3), 0),
+								NodeInput::node(NodeId(2), 0),
 							],
 							implementation: NodeTemplateImplementation::ProtoNode(graphic::extend::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, -4)),
@@ -350,22 +333,22 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Blend",
-			category: "Vector",
+			category: "Vector: Deform",
 			icon: Some("NodeBlend"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
 					exports: vec![NodeInput::node(NodeId(16), 0)],
 					nodes: [
-						// 0: Separate Subpaths (split path into individual subpaths)
+						// 0: Separate Paths (split the vector into its individual paths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_subpaths::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::separate_paths::IDENTIFIER),
 							inputs: vec![NodeInput::import(generic!(T), 4)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 0)),
 							..Default::default()
 						},
-						// 1: List Length (number of subpaths)
+						// 1: Count (number of subpaths)
 						NodeTemplate {
-							implementation: NodeTemplateImplementation::ProtoNode(vector::list_length::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(vector::count::IDENTIFIER),
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(2, 2)),
 							..Default::default()
@@ -534,7 +517,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
-			category: "Vector",
+			category: "Vector: Path",
 			icon: Some("NodeOriginsToPolyline"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -615,7 +598,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Load Image",
-			category: "Web Request",
+			category: "Data: I/O",
 			icon: Some("NodeLoadImage"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -629,7 +612,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						},
 						NodeTemplate {
 							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::decode_image::IDENTIFIER),
+							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::bytes_to_image::IDENTIFIER),
 							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
 							..Default::default()
 						},
@@ -640,53 +623,25 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					.collect(),
 					..Default::default()
 				}),
-				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String("graphite:null".to_string()), false)],
+				inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::String(String::new()), false)],
 				input_metadata: vec![
 					("Empty", "Has no effect, since the image is loaded from the URL.").into(),
 					("URL", "The web address or local asset path of the image to load.").into(),
 				],
 				output_names: vec!["Image".to_string()],
-				output_descriptions: vec!["The loaded image, which is empty if it fails to load or decode.".to_string()],
+				output_descriptions: vec!["The loaded image.".to_string()],
 				..Default::default()
 			},
 			description: Cow::Borrowed("Loads an image from a given URL."),
 			inspector: None,
 		},
-		#[cfg(all(feature = "gpu", target_family = "wasm"))]
+		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
 			icon: Some("NodeRasterize"),
 			node_template: NodeTemplate {
-				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
-					exports: vec![NodeInput::node(NodeId(2), 0)],
-					nodes: [
-						NodeTemplate {
-							inputs: vec![],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::create_canvas::IDENTIFIER),
-							skip_deduplication: true,
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::node(NodeId(0), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(memo::memoize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
-							..Default::default()
-						},
-						NodeTemplate {
-							inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(item!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
-							implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
-							node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
-							..Default::default()
-						},
-					]
-					.into_iter()
-					.enumerate()
-					.map(|(id, node)| (NodeId(id as u64), node))
-					.collect(),
-					..Default::default()
-				}),
+				implementation: NodeTemplateImplementation::ProtoNode(platform_application_io::rasterize::IDENTIFIER),
 				inputs: vec![
 					NodeInput::type_default(list!(Vector), true),
 					NodeInput::value(
@@ -726,7 +681,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Regex Find",
-			category: "Text: Regex",
+			category: "String: Regex",
 			icon: Some("NodeRegexFind"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -803,7 +758,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Path",
-			category: "Vector",
+			category: "Vector: Geometry",
 			icon: Some("NodePath"),
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -885,7 +840,7 @@ fn static_node_inspector() -> NodeInspector {
 	map.insert("sample_polyline_inspector".to_string(), Box::new(node_inspector::sample_polyline_inspector));
 	map.insert(
 		"monitor_inspector".to_string(),
-		Box::new(|_node_id, _context| node_inspector::string_inspector("Used internally by the editor to obtain a layer thumbnail.")),
+		Box::new(|_node_id, _context| node_inspector::string_inspector("Used internally by the editor to read the data passing through it.")),
 	);
 	map
 }
@@ -1530,8 +1485,8 @@ impl InputTypeConstraint {
 		}
 	}
 
-	/// Check if a type reaches the constraint through an `input_adapter`, the per-connector node which the preprocessor places ahead of
-	/// every ranked connector to convert or embed a convertible element, such as a color literal feeding a `Graphic` paint wire.
+	/// Check if a type reaches the constraint through any `input_adapter`, which converts or embeds a convertible element (such as a color literal feeding a
+	/// `Graphic` paint wire) ahead of an input registered with one ranked type. Whether this input is one that gets an adapter isn't checked.
 	#[must_use]
 	fn satisfies_through_input_adapter(&self, ty: &Type) -> bool {
 		let provided = Self::type_name(ty);
@@ -1593,6 +1548,10 @@ impl InputTypeConstraint {
 				warn!("Input types for extract node {name} not supported");
 				Self::All
 			}
+			NodeTemplateImplementation::Definition(_) => {
+				warn!("Input types for definition node {name} not supported");
+				Self::All
+			}
 		}
 	}
 
@@ -1616,10 +1575,13 @@ impl InputTypeConstraint {
 	}
 }
 
+/// The node catalog's entries, ordered by category and then by name.
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
-	DOCUMENT_NODE_TYPES
+	let mut node_types: Vec<FrontendNodeType> = DOCUMENT_NODE_TYPES
 		.iter()
-		.filter(|(_, definition)| !registry::is_hidden_category(definition.category))
+		// A Passthrough is placed as a redirect dot on a wire, so it isn't offered as a node
+		.filter(|(identifier, definition)| !registry::is_hidden_category(definition.category) && **identifier != DefinitionIdentifier::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER))
+		.filter(|(_, definition)| cfg!(debug_assertions) || !registry::is_development_category(definition.category))
 		.map(|(identifier, definition)| {
 			let mut name = definition.node_template.display_name.clone();
 			if name.is_empty() {
@@ -1632,7 +1594,14 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				category: definition.category.to_string(),
 			}
 		})
-		.collect()
+		.collect();
+
+	node_types.sort_by(|a, b| {
+		registry::category_sort_key(&a.category)
+			.cmp(&registry::category_sort_key(&b.category))
+			.then_with(|| a.name.cmp(&b.name))
+	});
+	node_types
 }
 
 pub fn collect_node_descriptions() -> Vec<(String, String)> {
@@ -1733,6 +1702,26 @@ mod test {
 			.await;
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }).await;
 		editor.handle_message(InspectorMessage::Refresh).await;
+	}
+
+	// Every category the catalog lists has a place in its order, and every place in the order still holds nodes
+	#[test]
+	fn catalog_categories_match_the_category_order() {
+		use super::DOCUMENT_NODE_TYPES;
+		use graphene_std::registry::{CATEGORY_ORDER, is_development_category, is_hidden_category};
+		use std::collections::HashSet;
+
+		let categories: HashSet<&str> = DOCUMENT_NODE_TYPES
+			.values()
+			.map(|definition| definition.category)
+			.filter(|category| !is_hidden_category(category) && !is_development_category(category))
+			.collect();
+
+		let unordered: Vec<_> = categories.iter().filter(|category| !CATEGORY_ORDER.contains(category)).collect();
+		assert!(unordered.is_empty(), "categories missing from `CATEGORY_ORDER`: {unordered:?}");
+
+		let empty: Vec<_> = CATEGORY_ORDER.iter().filter(|category| !categories.contains(*category)).collect();
+		assert!(empty.is_empty(), "`CATEGORY_ORDER` lists categories with no nodes: {empty:?}");
 	}
 }
 

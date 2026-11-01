@@ -1,0 +1,57 @@
+//! Persistent cursor state for the local peer. Separate from the document manifest because the
+//! manifest describes document identity (what this document *is*), while [`SessionState`]
+//! describes where the local peer's cursor sits inside it.
+//!
+//! Lives in `session.json`. Rewritten on retirement.
+
+use super::{HotSequence, NetworkId, PeerId, RetiredMarks, Rev, UserId, Value};
+use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct SessionState {
+	/// This peer's identity for the document, stable per (device, document). Per-peer rather than
+	/// document identity, so it lives with the cursor here, not in the manifest. Used for CRDT
+	/// tiebreaking and minting peer-scoped IDs.
+	#[serde(default)]
+	pub peer_id: PeerId,
+	/// The person using this device, registered in the CRDT so undo and authorship follow them across peer ids.
+	#[serde(default)]
+	pub user_id: UserId,
+	/// Local-chain cursor. Points at the most recently applied retired delta, or `None` on an empty
+	/// document (no commits yet).
+	#[serde(default)]
+	pub head_rev: Option<Rev>,
+	/// Published frontier: the latest retired commit broadcast to a peer. Commits after it are silently
+	/// rewritable on undo; commits at or before it are published. `None` until the first broadcast.
+	#[serde(default)]
+	pub last_broadcast_rev: Option<Rev>,
+	/// Revs the user has undone past, so redo survives a reopen. (The legacy `VecDeque` redo history
+	/// is not persisted, so within the shadow phase this is strictly more capable than the live editor.)
+	#[serde(default)]
+	pub redo_stack: Vec<Rev>,
+	/// Shared-monotonic counter feeding `Document::next_node_id`. Persisted so reopens don't
+	/// collide on minted IDs.
+	#[serde(default)]
+	pub next_node_counter: u64,
+	/// The last hot op sequence this peer authored, so a reopen never reuses one.
+	#[serde(default)]
+	pub last_hot_sequence: HotSequence,
+	/// Per-peer view settings (PTZ, rulers, overlays, snapping, panel collapse). Local to the viewer,
+	/// so kept out of the CRDT/history. Editor owns the keys/values (opaque `ui::doc::*` blobs).
+	#[serde(default)]
+	pub view_settings: BTreeMap<String, Value>,
+	/// Per-network view settings (node-graph nav + previewing), keyed by the stable storage [`NetworkId`].
+	/// Per-peer like [`view_settings`](Self::view_settings); opaque `ui::nav::*` / `ui::previewing` blobs.
+	#[serde(default)]
+	pub network_view_settings: BTreeMap<NetworkId, BTreeMap<String, Value>>,
+	/// The retired hot op marks, so a late copy re-sent after a reopen is dropped rather than retired again.
+	#[serde(default)]
+	pub retired_marks: RetiredMarks,
+	/// The Lamport counter, so a reopen never mints a spent stamp.
+	#[serde(default)]
+	pub clock_counter: u64,
+	/// Whether the document belongs in its room, so a reopen reconnects.
+	#[serde(default)]
+	pub shared: bool,
+}

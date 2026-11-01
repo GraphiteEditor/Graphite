@@ -13,7 +13,7 @@
 	import type { DocumentStore } from "/src/stores/document";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
-	import { fillChoiceColor, createSRgba8 } from "/src/utility-functions/colors";
+	import { fillChoiceColor, createSRgba8, sRgba8FromCSS } from "/src/utility-functions/colors";
 	import { pasteFile } from "/src/utility-functions/files";
 	import { cleanupInputField } from "/src/utility-functions/input";
 	import { textInputCleanup } from "/src/utility-functions/keyboard-entry";
@@ -54,10 +54,15 @@
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
+	// The rendered SVG as sent, with its outer tags
+	let artworkSvgDocuments = "";
 
 	// Web-only "Initializing Renderer…" overlay shown until the first Vello-rendered artwork arrives
 	const isWeb = import.meta.env.MODE !== "native";
 	let firstArtworkReceived = hasFirstArtworkBeenReceived();
+
+	// The canvas color around artboards, parsed once from its CSS variable
+	let outsideArtboardsBackground: SRGBA8 | undefined = undefined;
 
 	// Rasterized SVG viewport data, or none if it's not up-to-date
 	let rasterizedCanvas: HTMLCanvasElement | undefined = undefined;
@@ -175,6 +180,7 @@
 			.trim()
 			.replace(/<svg[^>]*>/, "")
 			.slice(0, -"</svg>".length);
+		artworkSvgDocuments = svg.trim();
 		rasterizedCanvas = undefined;
 
 		await tick();
@@ -186,6 +192,7 @@
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			let canvas = window.imageCanvases[canvasName];
+			if (!canvas) return;
 
 			// Get logical dimensions from foreignObject parent (set by backend)
 			const foreignObject = placeholder.parentElement;
@@ -238,17 +245,21 @@
 		cursorLeft = mousePosition[0];
 		cursorTop = mousePosition[1];
 
-		let preview = image;
+		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
+
+		outsideArtboardsBackground ||= sRgba8FromCSS(outsideArtboardsColor);
+		const background = outsideArtboardsBackground;
+		let preview = image && (background ? withBackgroundColor(image, background) : image);
 		if (!preview) {
 			// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
 			const dpiFactor = window.devicePixelRatio;
 			const [width, height] = [canvasWidth, canvasHeight];
 
-			const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
 			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
+			// The documents are nested whole, as stripping several (the canvas background, then the artwork) leaves invalid XML
 			const svg = `
-				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
+				<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" width="${width}" height="${height}">${outsideArtboards}${artworkSvgDocuments}</svg>
 				`.trim();
 
 			if (!rasterizedCanvas) {
@@ -286,6 +297,19 @@
 		cursorEyedropperPreviewImageData = preview;
 
 		return sRgba8;
+	}
+
+	// Puts a color behind an image's transparency, like the canvas a Vello render leaves transparent around artboards
+	function withBackgroundColor(image: ImageData, background: SRGBA8): ImageData {
+		const blended = new Uint8ClampedArray(image.data.length);
+		for (let i = 0; i < image.data.length; i += 4) {
+			const alpha = image.data[i + 3] / 255;
+			blended[i] = image.data[i] * alpha + background.red * (1 - alpha);
+			blended[i + 1] = image.data[i + 1] * alpha + background.green * (1 - alpha);
+			blended[i + 2] = image.data[i + 2] * alpha + background.blue * (1 - alpha);
+			blended[i + 3] = 255;
+		}
+		return new ImageData(blended, image.width, image.height);
 	}
 
 	// Update scrollbars and rulers
@@ -500,23 +524,17 @@
 		});
 
 		// Update scrollbars and rulers
-		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
-			await tick();
-
+		subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", (data) => {
 			const { position, size, multiplier } = data;
 			updateDocumentScrollbars(position, size, multiplier);
 		});
-		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
-			await tick();
-
+		subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", (data) => {
 			const { origin, spacing, interval, visible, tilt, flip, selectionQuad } = data;
 			updateDocumentRulers(origin, spacing, interval, visible, tilt, flip, selectionQuad || undefined);
 		});
 
 		// Update mouse cursor icon
-		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
-			await tick();
-
+		subscriptions.subscribeFrontendMessage("UpdateMouseCursor", (data) => {
 			updateMouseCursor(data.cursor);
 		});
 
@@ -716,8 +734,29 @@
 							>
 							</canvas>
 						{/if}
-						{#if isWeb}
+						{#if isWeb && $document.renderStatus === "Rendering"}
 							<TextLabel class="shader-compiling-overlay" italic={true} classes={{ show: !firstArtworkReceived }}>Initializing Renderer…</TextLabel>
+						{/if}
+						{#if $document.renderStatus === "Error"}
+							<LayoutCol class="render-status-overlay">
+								<TextLabel>
+									<p>
+										<strong>The document cannot render in its current state.</strong><br />
+										Undo to go back, if available, or check for error details<br />
+										by clicking the <em>Node Graph</em> button up at the top right.
+									</p>
+								</TextLabel>
+							</LayoutCol>
+						{:else if $document.renderStatus === "Panic"}
+							<LayoutCol class="render-status-overlay panic">
+								<TextLabel>
+									<p>
+										<strong>The document crashed while being rendered in its current state.</strong><br />
+										The editor is now unstable! Undo your last action to restore the artwork,<br />
+										then save your document and restart the editor before continuing work.
+									</p>
+								</TextLabel>
+							</LayoutCol>
 						{/if}
 					</div>
 
@@ -958,6 +997,29 @@
 								to {
 									opacity: 1;
 								}
+							}
+						}
+
+						.render-status-overlay {
+							position: absolute;
+							inset: 0;
+							align-items: center;
+							justify-content: center;
+							background: var(--color-2-mildblack);
+							pointer-events: none;
+
+							.text-label {
+								padding: 14px 20px;
+								border-radius: 4px;
+								background: var(--color-warning-yellow);
+								color: var(--color-2-mildblack);
+								font-size: 18px;
+								line-height: 24px;
+								text-align: center;
+							}
+
+							&.panic .text-label {
+								background: var(--color-error-red);
 							}
 						}
 

@@ -14,8 +14,8 @@ const TABLE_SIDE: usize = CELLS_PER_AXIS + 1;
 const OKLAB_GAMUT_RANGES: [(f32, f32); 3] = [(0., 1.), (-0.24, 0.28), (-0.32, 0.2)];
 
 /// Finds the colors that best represent the distinct color ranges in an image, ignoring transparent areas.
-#[node_macro::node(category("Color"), icon("NodeImageColorPalette"))]
-async fn image_color_palette(
+#[node_macro::node(category("Color"), icon("NodeImageColorPalette"), memoize, footprint_invariant)]
+fn image_color_palette(
 	_: impl Ctx,
 	/// The image to find colors in.
 	image: Item<Raster<CPU>>,
@@ -233,10 +233,9 @@ mod test {
 			width: data.len() as u32,
 			height: 1,
 			data,
-			base64_string: None,
 		});
 
-		let palette = futures::executor::block_on(image_color_palette((), Item::new_from_element(image), Item::new_from_element(count)));
+		let palette = image_color_palette((), Item::new_from_element(image), Item::new_from_element(count));
 		palette.iter_element_values().copied().collect()
 	}
 

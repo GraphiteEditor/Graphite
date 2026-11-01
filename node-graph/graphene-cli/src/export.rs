@@ -1,9 +1,14 @@
-use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
+use crate::TokioSpawner;
+use graph_craft::document::value::{DAffine2, DVec2, RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
-use graphene_std::core_types::ops::Convert;
+use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::runtime::AsyncRuntime;
+use graphene_std::vector::{no_paths, paths_from_item_attributes};
+use graphene_std::{Cover, Coverage};
+use graphene_std::{NodeError, Poll};
 use image::ImageFormat;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
@@ -56,7 +61,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 }
 
 /// One rendered frame of the document, as SVG text or as 8-bit RGBA pixels with straight alpha.
-enum RenderedFrame {
+pub enum RenderedFrame {
 	Svg(String),
 	Raster { data: Vec<u8>, width: u32, height: u32 },
 }
@@ -70,10 +75,91 @@ pub struct ExportSettings {
 	pub size: (Option<u32>, Option<u32>),
 	/// Whether raster formats that can keep transparency do so, instead of compositing onto white
 	pub transparent: bool,
+	/// The document region to render, which [`ExportSettings::framed`] fits to the artwork when no size is given
+	pub framing: Option<Framing>,
+}
+
+/// A document-space region mapped onto the output pixels.
+#[derive(Debug, Clone, Copy)]
+pub struct Framing {
+	pub transform: DAffine2,
+	pub resolution: UVec2,
+}
+
+impl ExportSettings {
+	/// Frame the artwork as it is at time zero, unless a size was given.
+	/// Every frame of an animation shares this framing, so they all have one size.
+	pub async fn framed(mut self, executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Self, Box<dyn Error>> {
+		if self.size.0.is_some() && self.size.1.is_some() {
+			return Ok(self);
+		}
+
+		let [min, max] = artwork_bounds(executor, runtime, spawner).await?.ok_or("The document has no artwork to export")?;
+		let resolution = ((max - min) * self.scale).round().max(DVec2::ONE).as_uvec2();
+		self.framing = Some(Framing {
+			transform: DAffine2::from_translation(min).inverse(),
+			resolution,
+		});
+		Ok(self)
+	}
+}
+
+/// The document-space bounds of every layer including its stroke, artboards included, from the metadata of an SVG render.
+/// Content an artboard clips away still counts, since this has no layer tree to tell which artboard holds it.
+async fn artwork_bounds(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Option<[DVec2; 2]>, Box<dyn Error>> {
+	// An identity viewport, since the default one is degenerate and its transforms come out NaN
+	let render_config = RenderConfig {
+		viewport: Footprint {
+			transform: DAffine2::IDENTITY,
+			resolution: UVec2::ONE,
+			..Default::default()
+		},
+		scale: 1.,
+		export_format: ExportFormat::Svg,
+		for_export: true,
+		..Default::default()
+	};
+	let TaggedValue::RenderOutput(output) = execute_until_settled(executor, runtime, spawner, render_config).await? else {
+		return Err("The document did not render".into());
+	};
+
+	let metadata = &output.metadata;
+	let layer_bounds = metadata.click_targets.iter().filter_map(|(layer, click_targets)| {
+		let footprint = metadata.upstream_footprints.get(layer).map(|footprint| footprint.transform).unwrap_or_default();
+		let local_transform = metadata.local_transforms.get(layer).copied().unwrap_or_default();
+		let transform = footprint * local_transform;
+
+		// A stroke extends past the path a click target outlines, so a vector layer also measures its rendered geometry.
+		// Metadata only records the first item of a layer, so the other items count through their click targets, without their strokes.
+		let stroked = metadata.vector_data.get(layer).and_then(|item| {
+			let appearance = metadata.appearance_attributes.get(layer);
+			let stroke = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params);
+			let paths = paths_from_item_attributes(item.as_ref()).unwrap_or_else(|| no_paths());
+			item.element().stroke_inclusive_bounding_box_with_transform(paths, transform, stroke.as_ref())
+		});
+
+		click_targets
+			.iter()
+			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
+			.chain(stroked)
+			.reduce(combine_bounds)
+	});
+	Ok(layer_bounds.reduce(combine_bounds))
+}
+
+fn combine_bounds([a_min, a_max]: [DVec2; 2], [b_min, b_max]: [DVec2; 2]) -> [DVec2; 2] {
+	[a_min.min(b_min), a_max.max(b_max)]
 }
 
 /// Renders the document at the given animation time, as SVG text for an SVG export and as pixels for every other file type.
-async fn render_frame(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor::WgpuExecutor, settings: ExportSettings, animation_time: Duration) -> Result<RenderedFrame, Box<dyn Error>> {
+pub(crate) async fn render_frame(
+	executor: &DynamicExecutor,
+	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	settings: ExportSettings,
+	animation_time: Duration,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+) -> Result<RenderedFrame, Box<dyn Error>> {
 	let ExportSettings {
 		file_type,
 		scale,
@@ -94,19 +180,21 @@ async fn render_frame(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor:
 		..Default::default()
 	};
 
-	// Set viewport dimensions if specified
-	if let (Some(w), Some(h)) = (width, height) {
+	if let Some(framing) = settings.framing {
+		render_config.viewport.transform = framing.transform;
+		render_config.viewport.resolution = framing.resolution;
+	} else if let (Some(w), Some(h)) = (width, height) {
 		render_config.viewport.resolution = UVec2::new(w, h);
 	}
 
 	// Execute the graph and extract its output
-	match executor.execute(render_config.into_context()).await? {
+	match execute_until_settled(executor, runtime, spawner, render_config).await? {
 		TaggedValue::RenderOutput(output) => match output.data {
 			RenderOutputType::Svg { svg, .. } => Ok(RenderedFrame::Svg(svg)),
 			RenderOutputType::Texture(texture) => {
 				// Convert GPU texture to CPU buffer
 				let gpu_raster = Raster::<GPU>::new_gpu(texture);
-				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor).await;
+				let cpu_raster: Raster<CPU> = gpu_raster.convert(Footprint::BOUNDLESS, wgpu_executor.clone()).await;
 				let (data, width, height) = cpu_raster.to_flat_u8();
 				Ok(RenderedFrame::Raster { data, width, height })
 			}
@@ -174,8 +262,15 @@ fn encode_raster(file_type: FileType, data: Vec<u8>, width: u32, height: u32, tr
 	Ok(cursor.into_inner())
 }
 
-pub async fn export_document(executor: &DynamicExecutor, wgpu_executor: &wgpu_executor::WgpuExecutor, output_path: PathBuf, settings: ExportSettings) -> Result<(), Box<dyn Error>> {
-	let frame = render_frame(executor, wgpu_executor, settings, Duration::ZERO).await?;
+pub async fn export_document(
+	executor: &DynamicExecutor,
+	wgpu_executor: &wgpu_executor::WgpuExecutor,
+	output_path: PathBuf,
+	settings: ExportSettings,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
+) -> Result<(), Box<dyn Error>> {
+	let frame = render_frame(executor, wgpu_executor, settings, Duration::ZERO, runtime, spawner).await?;
 	write_frame(&output_path, settings, frame)?;
 
 	log::info!("Exported to: {}", output_path.display());
@@ -217,6 +312,8 @@ pub async fn export_gif(
 	output_path: PathBuf,
 	settings: ExportSettings,
 	animation: AnimationParams,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
 	use image::codecs::gif::{GifEncoder, Repeat};
 	use image::{Frame, RgbaImage};
@@ -238,7 +335,7 @@ pub async fn export_gif(
 
 		log::debug!("Rendering frame {}/{} at time {:?}", frame_idx + 1, animation.frames, animation_time);
 
-		let RenderedFrame::Raster { data, width, height } = render_frame(executor, wgpu_executor, settings, animation_time).await? else {
+		let RenderedFrame::Raster { data, width, height } = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await? else {
 			return Err("A GIF frame must render as pixels".into());
 		};
 
@@ -265,6 +362,8 @@ pub async fn export_image_sequence(
 	output_path: PathBuf,
 	settings: ExportSettings,
 	animation: AnimationParams,
+	runtime: &AsyncRuntime,
+	spawner: &TokioSpawner,
 ) -> Result<(), Box<dyn Error>> {
 	log::info!("Exporting image sequence: {} frames at {} fps", animation.frames, animation.fps);
 
@@ -280,7 +379,7 @@ pub async fn export_image_sequence(
 		// Print progress to stderr (overwrites previous line)
 		eprint!("\rRendering frame {}/{}...", frame_idx + 1, animation.frames);
 
-		let frame = render_frame(executor, wgpu_executor, settings, animation_time).await?;
+		let frame = render_frame(executor, wgpu_executor, settings, animation_time, runtime, spawner).await?;
 		let frame_path = directory.join(format!("{stem}_{frame_idx:0digits$}.{extension}"));
 		write_frame(&frame_path, settings, frame)?;
 	}
@@ -290,6 +389,32 @@ pub async fn export_image_sequence(
 
 	log::info!("Exported {} frames to: {}", animation.frames, directory.display());
 	Ok(())
+}
+
+async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
+	let mut frame = execute()?;
+	while spawner.join().await {
+		frame = execute()?;
+	}
+	match frame {
+		Poll::Fallback(boxed) => {
+			let (value, error) = *boxed;
+			log::warn!("Exported fallback value due to node error: {}", messages(&error));
+			Ok(value)
+		}
+		Poll::Error(error) => Err(format!("Node graph failed: {}", messages(&error)).into()),
+		frame => frame.value().ok_or_else(|| "Node graph produced no frame".into()),
+	}
+}
+
+fn messages(error: &NodeError) -> String {
+	let mut text = error.to_string();
+	for upstream in error.upstream() {
+		text.push('\n');
+		text.push_str(&messages(upstream));
+	}
+	text
 }
 
 #[cfg(test)]

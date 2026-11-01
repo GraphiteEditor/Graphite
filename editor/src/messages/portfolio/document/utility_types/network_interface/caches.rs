@@ -266,6 +266,20 @@ impl NodeNetworkInterface {
 		*network_metadata.transient_metadata.drag_offsets.borrow_mut().entry(*node_id).or_insert(0) += delta;
 	}
 
+	pub fn glide_offsets(&self, network_path: &[NodeId]) -> GlideOffsets {
+		self.network_metadata(network_path)
+			.map(|network_metadata| network_metadata.transient_metadata.glide_offsets.borrow().clone())
+			.unwrap_or_default()
+	}
+
+	pub fn set_glide_offsets(&self, glide_offsets: GlideOffsets, network_path: &[NodeId]) {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in set_glide_offsets");
+			return;
+		};
+		*network_metadata.transient_metadata.glide_offsets.borrow_mut() = glide_offsets;
+	}
+
 	/// Discards all drag offsets when the drag ends.
 	pub fn clear_drag_offsets(&self, network_path: &[NodeId]) {
 		let Some(network_metadata) = self.network_metadata(network_path) else {
@@ -382,7 +396,42 @@ impl NodeNetworkInterface {
 			return;
 		};
 		transient.all_nodes_bounding_box.unload();
+		transient.import_export_clearance.unload();
 		self.unload_import_export_ports(network_path);
+	}
+
+	pub(crate) fn import_export_clearance(&self, network_path: &[NodeId]) -> Option<ImportExportClearance> {
+		let Some(network_metadata) = self.network_metadata(network_path) else {
+			log::error!("Could not get nested network_metadata in import_export_clearance");
+			return None;
+		};
+
+		network_metadata
+			.transient_metadata
+			.import_export_clearance
+			.with_loaded_or(|| self.compute_import_export_clearance(network_path), |clearance| *clearance)
+	}
+
+	/// The horizontal extents of the nodes in the network, with the redirect dots measured by their centers apart from the rest.
+	fn compute_import_export_clearance(&self, network_path: &[NodeId]) -> Option<ImportExportClearance> {
+		let network_metadata = self.network_metadata(network_path)?;
+		let widen = |span: Option<[f64; 2]>, left: f64, right: f64| Some(span.map_or([left, right], |[min, max]| [min.min(left), max.max(right)]));
+
+		let mut clearance = ImportExportClearance::default();
+		for node_id in network_metadata.persistent_metadata.node_metadata.keys() {
+			let Some([top_left, bottom_right]) = self.node_bounding_box(node_id, network_path) else {
+				continue;
+			};
+
+			if self.is_redirect_dot(node_id, network_path) {
+				let center = (top_left.x + bottom_right.x) / 2.;
+				clearance.dot_centers = widen(clearance.dot_centers, center, center);
+			} else {
+				clearance.node_sides = widen(clearance.node_sides, top_left.x, bottom_right.x);
+			}
+		}
+
+		Some(clearance)
 	}
 
 	pub fn outward_wires(&mut self, network_path: &[NodeId]) -> Option<&HashMap<OutputConnector, Vec<InputConnector>>> {
@@ -616,24 +665,28 @@ impl NodeNetworkInterface {
 	}
 
 	fn load_wire(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) {
-		// While previewing, the export's wire leads to the temporarily previewed node
-		let dashed = *input == InputConnector::Export(0) && matches!(self.previewing(network_path), Previewing::Yes { .. });
-		let Some(wire) = self.wire_path_from_input(input, graph_wire_style, dashed, network_path) else {
+		let Some(wire_update) = self.wire_update_from_input(input, graph_wire_style, &GlideOffsets::default(), network_path) else {
 			log::error!("Could not load wire path from input");
 			return;
-		};
-		let (id, input_index) = match input {
-			InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
-			InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
-		};
-		let wire_update = WirePathUpdate {
-			id,
-			input_index,
-			wire_path_update: Some(wire),
 		};
 
 		let Some(network_metadata) = self.network_metadata(network_path) else { return };
 		network_metadata.transient_metadata.wires.borrow_mut().insert(*input, wire_update);
+	}
+
+	/// The wire into the input as the frontend draws it, with its ends following anything drawn gliding into place.
+	pub fn wire_update_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+		let wire = self.wire_path_from_input(input, graph_wire_style, false, glide_offsets, network_path)?;
+		let (id, input_index) = match input {
+			InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
+			InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
+		};
+
+		Some(WirePathUpdate {
+			id,
+			input_index,
+			wire_path_update: Some(wire),
+		})
 	}
 
 	pub fn all_input_connectors(&self, network_path: &[NodeId]) -> Vec<InputConnector> {
@@ -700,28 +753,26 @@ impl NodeNetworkInterface {
 		network_metadata.transient_metadata.wires.borrow_mut().remove(input);
 	}
 
-	/// When previewing, there may be a second path to the root node.
-	pub fn wire_to_root(&self, graph_wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<WirePathUpdate> {
+	/// The dashed wire from the previewed node to the export, drawn alongside the export's own wire.
+	pub fn wire_to_preview(&self, graph_wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePathUpdate> {
 		let input = InputConnector::Export(0);
-		let current_export = self.upstream_output_connector(&input, network_path)?;
 
-		let root_node = match self.previewing(network_path) {
-			Previewing::Yes { root_node_to_restore } => root_node_to_restore,
-			Previewing::No => None,
-		}?;
+		let Previewing::Yes { previewed } = self.previewing(network_path) else { return None };
 
-		if Some(root_node.node_id) == current_export.node_id() {
+		if self.upstream_output_connector(&input, network_path) == Some(previewed.to_connector()) {
 			return None;
 		}
 		let Some(input_position) = self.get_input_center(&input, network_path) else {
-			log::error!("Could not get input position for wire end in root node: {input:?}");
+			log::error!("Could not get input position for wire end in preview: {input:?}");
 			return None;
 		};
-		let upstream_output = OutputConnector::node(root_node.node_id, root_node.output_index);
+		let input_position = input_position + glide_offsets.input(&input);
+		let upstream_output = OutputConnector::node(previewed.node_id, previewed.output_index);
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
-			log::error!("Could not get output position for wire start in root node: {upstream_output:?}");
+			log::error!("Could not get output position for wire start in preview: {upstream_output:?}");
 			return None;
 		};
+		let output_position = output_position + glide_offsets.output(&upstream_output);
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
@@ -730,7 +781,6 @@ impl NodeNetworkInterface {
 
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
-		// Styled by the root node's own output, since the export it leads to is connected to the previewed node instead
 		let output_type = self.output_type(&upstream_output, network_path);
 		let data_type = output_type.displayed_type();
 		let is_list = output_type.is_list();
@@ -738,7 +788,7 @@ impl NodeNetworkInterface {
 			path_string,
 			data_type,
 			thick,
-			dashed: false,
+			dashed: true,
 			is_list,
 			center_path_string,
 		});
@@ -752,10 +802,16 @@ impl NodeNetworkInterface {
 
 	/// Returns the wire subpath, its thick center-line subpath, and whether the wire should be thick.
 	pub fn vector_wire_from_input(&self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
+		self.gliding_vector_wire_from_input(input, wire_style, &GlideOffsets::default(), network_path)
+	}
+
+	/// Like [`Self::vector_wire_from_input`], but with its ends following anything drawn gliding into place.
+	pub(crate) fn gliding_vector_wire_from_input(&self, input: &InputConnector, wire_style: GraphWireStyle, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<(BezPath, BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {input:?}");
 			return None;
 		};
+		let input_position = input_position + glide_offsets.input(input);
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
 		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
 			return Some((BezPath::new(), BezPath::new(), false));
@@ -764,6 +820,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get output port for wire start: {upstream_output:?}");
 			return None;
 		};
+		let output_position = output_position + glide_offsets.output(&upstream_output);
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
 		let thick = vertical_end && vertical_start;
@@ -772,8 +829,8 @@ impl NodeNetworkInterface {
 		Some((vector_wire, center_line, thick))
 	}
 
-	pub fn wire_path_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
-		let (vector_wire, center_line, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
+	pub fn wire_path_from_input(&self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, glide_offsets: &GlideOffsets, network_path: &[NodeId]) -> Option<WirePath> {
+		let (vector_wire, center_line, thick) = self.gliding_vector_wire_from_input(input, graph_wire_style, glide_offsets, network_path)?;
 		let path_string = vector_wire.to_svg();
 		let center_path_string = center_line.to_svg();
 		let (data_type, is_list) = self

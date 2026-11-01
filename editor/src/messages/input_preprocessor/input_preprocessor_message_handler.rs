@@ -1,4 +1,4 @@
-use crate::application::Editor;
+use crate::application::Environment;
 use crate::consts::DOUBLE_TAP_MILLISECONDS;
 use crate::messages::input_mapper::utility_types::keyboard::{Key, KeyStates, ModifierKeys};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
@@ -8,6 +8,7 @@ use std::time::Duration;
 
 #[derive(ExtractField)]
 pub struct InputPreprocessorMessageContext<'a> {
+	pub environment: Environment,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
@@ -17,6 +18,8 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: PointerState,
+	/// Whether the latest key press is the keyboard repeating a held key.
+	pub key_repeat: bool,
 	pointer_down_time: f64,
 	/// Double-tap detection state, timed as one gesture from the first tap's key-down.
 	double_tap_state: DoubleTapState,
@@ -35,12 +38,12 @@ enum DoubleTapState {
 #[message_handler_data]
 impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext<'a>> for InputPreprocessorMessageHandler {
 	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, context: InputPreprocessorMessageContext<'a>) {
-		let InputPreprocessorMessageContext { viewport } = context;
+		let InputPreprocessorMessageContext { environment, viewport } = context;
 
 		match message {
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
 				self.double_tap_state = DoubleTapState::Idle;
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
 				self.mouse.position = pointer_state.position;
@@ -57,8 +60,9 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				}
 			}
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 				self.keyboard.set(key as usize);
+				self.key_repeat = key_repeat;
 
 				if !key_repeat {
 					// A press that arrives with a mouse button or modifier held can neither open nor close a double tap,
@@ -80,7 +84,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				responses.add(InputMapperMessage::KeyDown(key));
 			}
 			InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 				self.keyboard.unset(key as usize);
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
@@ -101,7 +105,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
 				self.double_tap_state = DoubleTapState::Idle;
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
 				self.mouse.position = pointer_state.position;
@@ -109,7 +113,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.translate_mouse_event(pointer_state, true, responses);
 			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
 				self.mouse.position = pointer_state.position;
@@ -121,7 +125,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			}
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
 				self.double_tap_state = DoubleTapState::Idle;
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
 				self.mouse.position = pointer_state.position;
@@ -129,7 +133,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.translate_mouse_event(pointer_state, false, responses);
 			}
 			InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
 				self.mouse.position = pointer_state.position;
@@ -143,7 +147,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
 				self.double_tap_state = DoubleTapState::Idle;
-				self.update_states_of_modifier_keys(modifier_keys, responses);
+				self.update_states_of_modifier_keys(modifier_keys, environment, responses);
 
 				let pointer_state = editor_mouse_state.to_pointer_state(viewport);
 				self.mouse.position = pointer_state.position;
@@ -161,6 +165,11 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 }
 
 impl InputPreprocessorMessageHandler {
+	/// When the first of the pointer buttons now held was pressed, in milliseconds, timed by its pointer event or else, lacking a timestamp, the latest animation frame.
+	pub fn pointer_down_time(&self) -> f64 {
+		self.pointer_down_time
+	}
+
 	fn translate_mouse_event(&mut self, mut new_state: PointerState, allow_first_button_down: bool, responses: &mut VecDeque<Message>) {
 		let click_mappings = [
 			(MouseKeys::LEFT, Key::MouseLeft),
@@ -199,7 +208,7 @@ impl InputPreprocessorMessageHandler {
 		self.mouse = new_state;
 	}
 
-	fn update_states_of_modifier_keys(&mut self, pressed_modifier_keys: ModifierKeys, responses: &mut VecDeque<Message>) {
+	fn update_states_of_modifier_keys(&mut self, pressed_modifier_keys: ModifierKeys, environment: Environment, responses: &mut VecDeque<Message>) {
 		let is_key_pressed = |key_to_check: ModifierKeys| pressed_modifier_keys.contains(key_to_check);
 
 		// Update the state of the concrete modifier keys based on the source state
@@ -208,14 +217,14 @@ impl InputPreprocessorMessageHandler {
 		self.update_modifier_key(Key::Control, is_key_pressed(ModifierKeys::CONTROL), responses);
 
 		// Update the state of either the concrete Meta or the Command keys based on which one is applicable for this platform
-		let meta_or_command = match Editor::environment().is_mac() {
+		let meta_or_command = match environment.is_mac() {
 			true => Key::Command,
 			false => Key::Meta,
 		};
 		self.update_modifier_key(meta_or_command, is_key_pressed(ModifierKeys::META_OR_COMMAND), responses);
 
 		// Update the state of the virtual Accel key (the primary accelerator key) based on the source state of the Control or Command key, whichever is relevant on this platform
-		let accel_virtual_key_state = match Editor::environment().is_mac() {
+		let accel_virtual_key_state = match environment.is_mac() {
 			true => is_key_pressed(ModifierKeys::META_OR_COMMAND),
 			false => is_key_pressed(ModifierKeys::CONTROL),
 		};
@@ -238,6 +247,7 @@ impl InputPreprocessorMessageHandler {
 #[cfg(test)]
 mod test {
 	use super::DoubleTapState;
+	use crate::application::DEFAULT_ENVIRONMENT;
 	use crate::consts::DOUBLE_TAP_MILLISECONDS;
 	use crate::messages::input_mapper::utility_types::keyboard::{Key, ModifierKeys};
 	use crate::messages::input_mapper::utility_types::pointer::{EditorPointerState, MouseKeys};
@@ -257,6 +267,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
+			environment: DEFAULT_ENVIRONMENT,
 			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
@@ -276,6 +287,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
+			environment: DEFAULT_ENVIRONMENT,
 			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
@@ -295,6 +307,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
+			environment: DEFAULT_ENVIRONMENT,
 			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
@@ -316,6 +329,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
+			environment: DEFAULT_ENVIRONMENT,
 			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
@@ -336,6 +350,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
+			environment: DEFAULT_ENVIRONMENT,
 			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
@@ -381,6 +396,7 @@ mod test {
 			message,
 			responses,
 			InputPreprocessorMessageContext {
+				environment: DEFAULT_ENVIRONMENT,
 				viewport: &ViewportMessageHandler::default(),
 			},
 		);

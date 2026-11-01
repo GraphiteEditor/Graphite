@@ -5,6 +5,9 @@
 	import NodeCatalog from "/src/components/floating-menus/NodeCatalog.svelte";
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
+	import NodeGraphWire from "/src/components/views/NodeGraphWire.svelte";
+	import ThumbnailCanvas from "/src/components/views/ThumbnailCanvas.svelte";
+	import ThumbnailImage from "/src/components/views/ThumbnailImage.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextAreaInput from "/src/components/widgets/inputs/TextAreaInput.svelte";
@@ -26,7 +29,10 @@
 	const nodeGraphTransform = nodeGraph.transformStore;
 	const nodeGraphImportsExports = nodeGraph.importsExportsStore;
 	const visibleNodes = nodeGraph.visibleNodesStore;
+	const thumbnailImages = nodeGraph.thumbnailImagesStore;
 	const nodeGraphWires = nodeGraph.wiresStore;
+	const wireInsertionPreview = nodeGraph.wireInsertionPreviewStore;
+	const nodeGlideOffsets = nodeGraph.glideOffsetsStore;
 	const documentState = getContext<DocumentStore>("document");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
@@ -37,6 +43,22 @@
 	$: if (!$documentState.graphViewOverlayOpen) closeContextMenu();
 
 	let inputElement: HTMLInputElement;
+
+	// Whether a pointer button is held, in which case a drag may be underway and hover hints would only get in the way
+	let pointerHeld = false;
+
+	let graph: HTMLDivElement | undefined;
+
+	// The connector the wire being dragged comes from, which stays undimmed, and the one it has snapped onto, which looks hovered
+	let wireSourceConnector: Element | undefined;
+	let wireTargetConnector: Element | undefined;
+	let wireEndsMarked = "";
+	$: markWireEndConnectors($nodeGraph.wireInProgressDraggedFrom, $nodeGraph.wireInProgressSnappedTo);
+
+	// The connector a press at the pointer would grab, as the backend decides since it knows the click targets
+	let hoveredConnector: Element | undefined;
+	let hoveredConnectorMarked = "";
+	$: markHoveredConnector($nodeGraph.hoveredConnector);
 
 	// The import, export, or layer with its name being edited in place, and the name the field started with
 	type NameTarget = { kind: "Import" | "Export"; index: number } | { kind: "Layer"; nodeId: bigint };
@@ -58,13 +80,12 @@
 		editingName = undefined;
 		if (!target || editingNameText === target.initialText) return;
 
-		if (target.kind === "Layer") editor.setLayerName(target.nodeId, editingNameText);
+		if (target.kind === "Layer") editor.setLayerNameInGraph(target.nodeId, editingNameText);
 		else if (target.kind === "Import") editor.setImportName(target.index, editingNameText);
 		else editor.setExportName(target.index, editingNameText);
 	}
 
-	// The name fields stop propagation of the keys they handle so the global keyboard forwarder (`shouldRedirectKeyboardEventToBackend`) doesn't also dispatch them.
-	// Its Escape carve-out would otherwise close the graph view, and Enter could trigger unrelated bindings.
+	// The name fields stop propagation of the keys they handle so no window listener also acts on them
 	function onNameInputKeyDown(e: KeyboardEvent) {
 		if (e.key === "Enter") commitEditingName();
 		else if (e.key === "Escape") editingName = undefined;
@@ -123,16 +144,76 @@
 		if (commandKey && e.key === "Enter") closeDescriptionPopover();
 	}
 
+	// Finds the connectors at the wire's ends, which only change when the wire snaps onto or off of one
+	function markWireEndConnectors(draggedFrom: [number, number] | undefined, snappedTo: [number, number] | undefined) {
+		const ends = JSON.stringify([draggedFrom, snappedTo]);
+		if (ends === wireEndsMarked) return;
+		wireEndsMarked = ends;
+
+		wireSourceConnector?.classList.remove("wire-source");
+		wireTargetConnector?.classList.remove("wire-target");
+
+		wireSourceConnector = connectorAt(draggedFrom);
+		wireTargetConnector = connectorAt(snappedTo);
+
+		wireSourceConnector?.classList.add("wire-source");
+		wireTargetConnector?.classList.add("wire-target");
+	}
+
+	// The backend picks the hovered connector, so it lights up anywhere in its click target rather than just over its drawn arrow
+	function markHoveredConnector(center: [number, number] | undefined) {
+		const marked = JSON.stringify(center);
+		if (marked === hoveredConnectorMarked) return;
+		hoveredConnectorMarked = marked;
+
+		hoveredConnector?.classList.remove("hovered");
+		hoveredConnector = connectorAt(center);
+		hoveredConnector?.classList.add("hovered");
+	}
+
+	// The connector drawn at a point in node graph space, which can sit a few pixels from where its wires attach
+	function connectorAt(point: [number, number] | undefined): Element | undefined {
+		if (!graph || !point) return undefined;
+
+		const graphBounds = graph.getBoundingClientRect();
+		const { x, y, scale } = $nodeGraphTransform;
+		return Array.from(graph.querySelectorAll("[data-connector]")).find((connector) => {
+			const bounds = connector.getBoundingClientRect();
+			const centerX = (bounds.left + bounds.width / 2 - graphBounds.left - x) / scale;
+			const centerY = (bounds.top + bounds.height / 2 - graphBounds.top - y) / scale;
+			return Math.abs(centerX - point[0]) <= 4 && Math.abs(centerY - point[1]) <= 4;
+		});
+	}
+
+	function onWindowPointerDown() {
+		pointerHeld = true;
+	}
+
+	function onWindowPointerUp() {
+		pointerHeld = false;
+	}
+
 	onMount(() => {
 		// Backend dispatches this when the user double-clicks a layer's name area
 		subscriptions.subscribeFrontendMessage("TriggerEditLayerNameInGraph", (data) => {
 			const node = $nodeGraph.nodes.get(data.nodeId);
 			if (node) startEditingName({ kind: "Layer", nodeId: data.nodeId }, node.displayName);
 		});
+
+		// Capturing so the state follows the pointer even where another handler stops the event
+		window.addEventListener("pointerdown", onWindowPointerDown, true);
+		window.addEventListener("pointerup", onWindowPointerUp, true);
+		window.addEventListener("pointercancel", onWindowPointerUp, true);
+		window.addEventListener("blur", onWindowPointerUp);
 	});
 
 	onDestroy(() => {
 		subscriptions.unsubscribeFrontendMessage("TriggerEditLayerNameInGraph");
+
+		window.removeEventListener("pointerdown", onWindowPointerDown, true);
+		window.removeEventListener("pointerup", onWindowPointerUp, true);
+		window.removeEventListener("pointercancel", onWindowPointerUp, true);
+		window.removeEventListener("blur", onWindowPointerUp);
 	});
 
 	function calculateGridSpacing(scale: number): number {
@@ -198,6 +279,17 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
+	// Whether the wire feeding an input is the one a dragged node would be inserted onto if dropped now
+	function isInsertionPreview(preview: [bigint, number] | undefined, nodeId: bigint, inputIndex: number): boolean {
+		return preview !== undefined && preview[0] === nodeId && preview[1] === inputIndex;
+	}
+
+	// Whatever is gliding into the place it moved to is drawn short of that place, by this many grid cells along the axis.
+	// It shifts the position rather than transforming, since a transform would trap a layer's connectors beneath the wires drawn after it.
+	function glideCells(offset: [number, number] | undefined, axis: 0 | 1): number {
+		return (offset?.[axis] || 0) / GRID_SIZE;
+	}
+
 	function nodeNameTooltipLabel(node: FrontendNode): string {
 		return node.displayName === node.implementationName ? node.displayName : `${node.implementationName} (${node.displayName})`;
 	}
@@ -242,7 +334,7 @@
 	}
 </script>
 
-<div class="graph" data-node-graph>
+<div class="graph" class:pointer-held={pointerHeld} bind:this={graph} data-node-graph>
 	<div
 		class="grid-background"
 		style:--grid-spacing={`${gridSpacing}px`}
@@ -287,6 +379,17 @@
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 						flush={true}
 					/>
+					{#if $nodeGraph.contextMenuInformation.contextMenuData.data.isShared}
+						{@const nodeId = $nodeGraph.contextMenuInformation.contextMenuData.data.nodeId}
+						<TextButton
+							label="Make Unique"
+							action={() => {
+								editor.makeNodeUnique(nodeId);
+								closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
 					{#if $nodeGraph.contextMenuInformation.contextMenuData.data.hasSelectedLayers}
 						{@const allLocked = $nodeGraph.contextMenuInformation.contextMenuData.data.allSelectedLayersLocked}
 						{@const nodeId = $nodeGraph.contextMenuInformation.contextMenuData.data.nodeId}
@@ -357,16 +460,6 @@
 							flush={true}
 						/>
 					{/if}
-					{#if isImport}
-						<TextButton
-							label="Add Passthrough"
-							action={() => {
-								editor.addImportPassthrough(index);
-								closeContextMenu();
-							}}
-							flush={true}
-						/>
-					{/if}
 					<TextButton
 						label="Disconnect"
 						action={() => {
@@ -421,14 +514,19 @@
 		{/if}
 	</FloatingMenu>
 
-	{#if $nodeGraph.error}
+	{#if $nodeGraph.errors.length > 0}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
-			<span class="node-error faded" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
-				{$nodeGraph.error.error}
-			</span>
-			<span class="node-error hover" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
-				{$nodeGraph.error.error}
-			</span>
+			{#each $nodeGraph.errors as error}
+				{@const glideOffset = $nodeGlideOffsets.nodes.get(error.nodeId)}
+				{@const left = `${error.position[0] + (glideOffset?.[0] || 0)}px`}
+				{@const top = `${error.position[1] + (glideOffset?.[1] || 0)}px`}
+				<span class="node-error faded" style:left style:top transition:fade={FADE_TRANSITION}>
+					{error.error}
+				</span>
+				<span class="node-error hover" style:left style:top transition:fade={FADE_TRANSITION}>
+					{error.error}
+				</span>
+			{/each}
 		</div>
 	{/if}
 
@@ -459,21 +557,9 @@
 	<!-- Thick vertical layer connection wires -->
 	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<svg>
-			{#each $nodeGraphWires.values() as map}
-				{#each map.values() as { pathString, centerPathString, dataType, thick, dashed }}
-					{#if thick}
-						<g class:dashed>
-							<path
-								d={pathString}
-								style:--data-line-width="8px"
-								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-							/>
-							<!-- A thin inner line splits the layer-stack wire down the middle reaching past the ends into the cleaved connector slots -->
-							<path d={centerPathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
-						</g>
-					{/if}
+			{#each $nodeGraphWires.entries() as [nodeId, map]}
+				{#each map.entries() as [inputIndex, wire]}
+					<NodeGraphWire {wire} thick={true} undimmed={isInsertionPreview($wireInsertionPreview, nodeId, inputIndex)} />
 				{/each}
 			{/each}
 		</svg>
@@ -494,8 +580,8 @@
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 1) + importExportRowOffset(index)}
 					>
 						{#if frontendOutput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -508,8 +594,8 @@
 						class="edit-import-export import"
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
-						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 1) + importExportRowOffset(index)}
 					>
 						{#if editingName?.kind === "Import" && editingName.index === index}
 							<input
@@ -541,10 +627,12 @@
 						data-connector="output"
 						data-tooltip-label="Add Primary Import"
 						data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
-						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--data-color="var(--color-data-general)"
+						style:--data-color-dim="var(--color-data-general-dim)"
+						style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 1) + importExportRowOffset(index)}
 					>
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 					</svg>
 				{/if}
 			{/each}
@@ -561,8 +649,8 @@
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 1) + importExportRowOffset(index)}
 					>
 						{#if frontendInput.connected}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -574,8 +662,8 @@
 						class="edit-import-export export"
 						class:separator-bottom={index === 0 && $nodeGraphImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraphImportsExports.addImportExport}
-						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 1) + importExportRowOffset(index)}
 					>
 						{#if editingName?.kind === "Export" && editingName.index === index}
 							<input
@@ -610,10 +698,12 @@
 						data-connector="input"
 						data-tooltip-label="Add Primary Export"
 						data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
-						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset(index)}
+						style:--data-color="var(--color-data-general)"
+						style:--data-color-dim="var(--color-data-general-dim)"
+						style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+						style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 1) + importExportRowOffset(index)}
 					>
-						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 					</svg>
 				{/if}
 			{/each}
@@ -627,10 +717,15 @@
 					data-connector="output"
 					data-tooltip-label="Add Import"
 					data-tooltip-description="Drag a wire from here and connect it to an input, or drop one here from an input."
-					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24}
-					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.imports.length) + 1}
+					style:--data-color="var(--color-data-general)"
+					style:--data-color-dim="var(--color-data-general-dim)"
+					style:--offset-left={($nodeGraphImportsExports.importPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+					style:--offset-top={($nodeGraphImportsExports.importPosition[1] - 8) / 24 +
+						glideCells($nodeGlideOffsets.imports, 1) +
+						importExportRowOffset($nodeGraphImportsExports.imports.length) +
+						1}
 				>
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				</svg>
 				<svg
 					xmlns="http://www.w3.org/2000/svg"
@@ -639,10 +734,15 @@
 					data-connector="input"
 					data-tooltip-label="Add Export"
 					data-tooltip-description="Drag a wire from here and connect it to an output, or drop one here from an output."
-					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24}
-					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 + importExportRowOffset($nodeGraphImportsExports.exports.length) + 1}
+					style:--data-color="var(--color-data-general)"
+					style:--data-color-dim="var(--color-data-general-dim)"
+					style:--offset-left={($nodeGraphImportsExports.exportPosition[0] - 8) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+					style:--offset-top={($nodeGraphImportsExports.exportPosition[1] - 8) / 24 +
+						glideCells($nodeGlideOffsets.exports, 1) +
+						importExportRowOffset($nodeGraphImportsExports.exports.length) +
+						1}
 				>
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--color-data-general-dim)" />
+					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 				</svg>
 			{/if}
 
@@ -651,7 +751,11 @@
 					x: Number($nodeGraphImportsExports.importPosition[0]),
 					y: Number($nodeGraphImportsExports.importPosition[1]) + reorderLineTop(Number($nodeGraph.reorderImportIndex)),
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x - 58) / 24} style:--offset-top={position.y / 24}></div>
+				<div
+					class="reorder-bar"
+					style:--offset-left={(position.x - 58) / 24 + glideCells($nodeGlideOffsets.imports, 0)}
+					style:--offset-top={position.y / 24 + glideCells($nodeGlideOffsets.imports, 1)}
+				></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
@@ -659,7 +763,11 @@
 					x: Number($nodeGraphImportsExports.exportPosition[0]),
 					y: Number($nodeGraphImportsExports.exportPosition[1]) + reorderLineTop(Number($nodeGraph.reorderExportIndex)),
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x + 9) / 24} style:--offset-top={position.y / 24}></div>
+				<div
+					class="reorder-bar"
+					style:--offset-left={(position.x + 9) / 24 + glideCells($nodeGlideOffsets.exports, 0)}
+					style:--offset-top={position.y / 24 + glideCells($nodeGlideOffsets.exports, 1)}
+				></div>
 			{/if}
 		{/if}
 	</div>
@@ -667,191 +775,173 @@
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraphTransform.x}px, ${$nodeGraphTransform.y}px) scale(${$nodeGraphTransform.scale})`}>
 		<!-- Layers -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => node.isLayer && $visibleNodes.has(nodeId))
-			.map(([_, node]) => node) as node (node.id)}
-			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const stackDataInput = node.exposedInputs[0]}
-			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
-			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
-			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
-			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
-			<div
-				class="layer"
-				class:selected={$nodeGraph.selected.includes(node.id)}
-				class:in-selected-network={$nodeGraph.inSelectedNetwork}
-				class:previewed={node.previewed}
-				class:disabled={!node.visible}
-				class:locked={node.locked}
-				style:--offset-left={node.position?.[0] || 0}
-				style:--offset-top={node.position?.[1] || 0}
-				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				style:--layer-area-width={layerAreaWidth}
-				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip-label={nodeNameTooltipLabel(node)}
-				data-tooltip-description={(description || "").trim()}
-				data-node={node.id}
-			>
-				<div class="thumbnail">
-					{#if $nodeGraph.thumbnails.has(node.id)}
-						{@html $nodeGraph.thumbnails.get(node.id)}
-					{/if}
-					<!-- Layer stacking top output -->
-					{#if node.primaryOutput}
+		{#each Array.from($nodeGraph.nodes.values()).filter((node) => node.isLayer) as node (node.id)}
+			{#if $visibleNodes.has(node.id)}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const stackDataInput = node.exposedInputs[0]}
+				{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
+				{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
+				{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
+				{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
+				<div
+					class="layer"
+					class:selected={$nodeGraph.selected.includes(node.id)}
+					class:in-selected-network={$nodeGraph.inSelectedNetwork}
+					class:previewed={node.previewed}
+					class:disabled={!node.visible}
+					class:locked={node.locked}
+					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+					style:--layer-area-width={layerAreaWidth}
+					style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
+					data-tooltip-label={nodeNameTooltipLabel(node)}
+					data-tooltip-description={(description || "").trim()}
+					data-node={node.id}
+				>
+					<div class="thumbnail">
+						{#if $nodeGraph.thumbnailCanvases.has(node.id)}
+							<ThumbnailCanvas canvasId={$nodeGraph.thumbnailCanvases.get(node.id)?.nodeGraphCanvasId} />
+						{:else if $thumbnailImages.has(node.id)}
+							<ThumbnailImage image={$thumbnailImages.get(node.id)} />
+						{/if}
+						<!-- Layer stacking top output -->
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 12"
+								class="connector top"
+								data-connector="output"
+								data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
+								data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if node.primaryOutput.connected}
+									<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
+									{#if node.primaryOutputConnectedToLayer}
+										<path
+											class="stack-wire-end"
+											d="M0,4.5 C0,4.5 0,-3.5 0,-3.5 C0,-3.5 3,-3.5 3,-3.5 C3,-3.5 3,2.565 3,2.565 C2.834,2.632 2.673,2.717 2.52,2.819 C2.52,2.819 0,4.5 0,4.5 ZM5,2.566 C5,2.566 5,-3.5 5,-3.5 C5,-3.5 8,-3.5 8,-3.5 C8,-3.5 8,4.5 8,4.5 C8,4.5 5.479,2.819 5.479,2.819 C5.326,2.717 5.166,2.633 5,2.566 Z"
+											fill="var(--data-color-dim)"
+										/>
+									{/if}
+								{:else}
+									<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						{/if}
+						<!-- Layer stacking bottom input -->
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
-							class="connector top"
-							data-connector="output"
-							data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
-							data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							class="connector bottom"
+							data-connector="input"
+							data-tooltip-label={node.primaryInput ? connectorTooltipLabel(node.primaryInput) : ""}
+							data-tooltip-description={node.primaryInput ? inputTooltipDescription(node.primaryInput) : ""}
+							data-datatype={node.primaryInput?.dataType}
+							style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 						>
-							{#if node.primaryOutput.connected}
-								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if node.primaryOutputConnectedToLayer}
+							{#if node.primaryInput?.connected}
+								<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
+								{#if node.primaryInputConnectedToLayer}
 									<path
-										d="M0,4.5 C0,4.5 0,-3.5 0,-3.5 C0,-3.5 3,-3.5 3,-3.5 C3,-3.5 3,2.565 3,2.565 C2.834,2.632 2.673,2.717 2.52,2.819 C2.52,2.819 0,4.5 0,4.5 ZM5,2.566 C5,2.566 5,-3.5 5,-3.5 C5,-3.5 8,-3.5 8,-3.5 C8,-3.5 8,4.5 8,4.5 C8,4.5 5.479,2.819 5.479,2.819 C5.326,2.717 5.166,2.633 5,2.566 Z"
+										class="stack-wire-end"
+										d="M2.512,9.26 C2.673,9.157 2.834,9.072 3,9 C3,9 3,16 3,16 C3,16 0,16 0,16 C0,16 0,10.95 0,10.95 C0,10.95 2.512,9.26 2.512,9.26 ZM5,16 C5,16 5,9 5,9 C5.166,9.073 5.327,9.158 5.48,9.26 C5.48,9.26 8,10.95 8,10.95 C8,10.95 8,16 8,16 C8,16 5,16 5,16 Z"
 										fill="var(--data-color-dim)"
 									/>
 								{/if}
 							{:else}
-								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
-					<!-- Layer stacking bottom input -->
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 12"
-						class="connector bottom"
-						data-connector="input"
-						data-tooltip-label={node.primaryInput ? connectorTooltipLabel(node.primaryInput) : ""}
-						data-tooltip-description={node.primaryInput ? inputTooltipDescription(node.primaryInput) : ""}
-						data-datatype={node.primaryInput?.dataType}
-						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
-					>
-						{#if node.primaryInput?.connected}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if node.primaryInputConnectedToLayer}
-								<path
-									d="M2.512,9.26 C2.673,9.157 2.834,9.072 3,9 C3,9 3,16 3,16 C3,16 0,16 0,16 C0,16 0,10.95 0,10.95 C0,10.95 2.512,9.26 2.512,9.26 ZM5,16 C5,16 5,9 5,9 C5.166,9.073 5.327,9.158 5.48,9.26 C5.48,9.26 8,10.95 8,10.95 C8,10.95 8,16 8,16 C8,16 5,16 5,16 Z"
-									fill="var(--data-color-dim)"
-								/>
-							{/if}
-						{:else}
-							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-				</div>
-				<!-- Layer input connector (from left) -->
-				{#if node.exposedInputs.length > 0}
-					<div class="input connectors">
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector"
-							data-tooltip-label={connectorTooltipLabel(stackDataInput)}
-							data-tooltip-description={inputTooltipDescription(stackDataInput)}
-							data-connector="input"
-							data-datatype={stackDataInput.dataType}
-							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
-						>
-							{#if stackDataInput.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color-dim)" />
 							{/if}
 						</svg>
 					</div>
-				{/if}
-				<div class="details">
-					{#if editingName?.kind === "Layer" && editingName.nodeId === node.id}
-						<input
-							class="name-input"
-							type="text"
-							bind:this={inputElement}
-							bind:value={editingNameText}
-							on:pointerdown|stopPropagation
-							on:dblclick|stopPropagation
-							on:blur={commitEditingName}
-							on:keydown={onNameInputKeyDown}
-						/>
-					{:else}
-						<TextLabel>{node.displayName}</TextLabel>
+					<!-- Layer input connector (from left) -->
+					{#if node.exposedInputs.length > 0}
+						<div class="input connectors">
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector"
+								data-tooltip-label={connectorTooltipLabel(stackDataInput)}
+								data-tooltip-description={inputTooltipDescription(stackDataInput)}
+								data-connector="input"
+								data-datatype={stackDataInput.dataType}
+								style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if stackDataInput.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						</div>
 					{/if}
-				</div>
-				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
-				{#if node.locked}
+					<div class="details">
+						{#if editingName?.kind === "Layer" && editingName.nodeId === node.id}
+							<input
+								class="name-input"
+								type="text"
+								bind:this={inputElement}
+								bind:value={editingNameText}
+								on:pointerdown|stopPropagation
+								on:dblclick|stopPropagation
+								on:blur={commitEditingName}
+								on:keydown={onNameInputKeyDown}
+							/>
+						{:else}
+							<TextLabel>{node.displayName}</TextLabel>
+						{/if}
+					</div>
+					<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
+					{#if node.locked}
+						<IconButton
+							class="lock"
+							data-lock-button
+							size={24}
+							icon="PadlockLocked"
+							hoverIcon="PadlockUnlocked"
+							action={() => {
+								/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+							}}
+							tooltipLabel="Unlock"
+						/>
+					{/if}
 					<IconButton
-						class="lock"
-						data-lock-button
+						class="visibility"
+						data-visibility-button
 						size={24}
-						icon="PadlockLocked"
-						hoverIcon="PadlockUnlocked"
+						icon={node.visible ? "EyeVisible" : "EyeHidden"}
+						hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
 						action={() => {
 							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 						}}
-						tooltipLabel="Unlock"
+						tooltipLabel={node.visible ? "Hide" : "Show"}
 					/>
-				{/if}
-				<IconButton
-					class="visibility"
-					data-visibility-button
-					size={24}
-					icon={node.visible ? "EyeVisible" : "EyeHidden"}
-					hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-					tooltipLabel={node.visible ? "Hide" : "Show"}
-				/>
 
-				<svg class="border-mask" width="0" height="0">
-					<defs>
-						<clipPath id={clipPathId}>
-							<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
-							<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
-						</clipPath>
-					</defs>
-				</svg>
-			</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<!-- Keep this equation in sync with the equivalent one in the CSS rule for `.layer { width: ... }` below -->
+								<path clip-rule="evenodd" d={layerBorderMask(24 * layerAreaWidth - 12, layerChainWidth ? (0.5 + layerChainWidth) * 24 : 0, hasLeftInputWire)} />
+							</clipPath>
+						</defs>
+					</svg>
+				</div>
+			{/if}
 		{/each}
 
 		<!-- Node connection wires -->
 		<div class="wires">
 			<svg>
-				{#each $nodeGraphWires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed, isList }}
-						{#if !thick}
-							<g class:dashed>
-								{#if isList}
-									<!-- A rank-1 List wire reads as two parallel lines: a triple-width data line split down the middle by a 1x background-colored overlay -->
-									<path
-										d={pathString}
-										style:--data-line-width="4px"
-										style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-										style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-										style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-									/>
-									<path d={pathString} style:--data-line-width="2px" style:--data-color="#444444" style:--data-color-dim="#444444" style:--data-dasharray={`3,${dashed ? 2 : 0}`} />
-								{:else}
-									<path
-										d={pathString}
-										style:--data-line-width="2px"
-										style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-										style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-										style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-									/>
-								{/if}
-							</g>
-						{/if}
+				{#each $nodeGraphWires.entries() as [nodeId, map]}
+					{#each map.entries() as [inputIndex, wire]}
+						<NodeGraphWire {wire} thick={false} undimmed={isInsertionPreview($wireInsertionPreview, nodeId, inputIndex)} />
 					{/each}
 				{/each}
 				{#if $nodeGraph.wirePathInProgress}
@@ -867,75 +957,116 @@
 		</div>
 
 		<!-- Nodes -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => !node.isLayer && $visibleNodes.has(nodeId))
-			.map(([_, node]) => node) as node (node.id)}
-			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
-			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
-			{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
-			<div
-				class="node"
-				class:selected={$nodeGraph.selected.includes(node.id)}
-				class:previewed={node.previewed}
-				class:disabled={!node.visible}
-				style:--offset-left={node.position?.[0] || 0}
-				style:--offset-top={node.position?.[1] || 0}
-				style:--clip-path-id={`url(#${clipPathId})`}
-				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={nodeNameTooltipLabel(node)}
-				data-tooltip-description={(description || "").trim()}
-				data-node={node.id}
-			>
-				<!-- Primary row -->
-				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
-					<IconLabel {icon} />
-					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
-				</div>
-				<!-- Secondary rows -->
-				{#if exposedInputsOutputs.length > 0}
-					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
-						{#each exposedInputsOutputs as [input, output]}
-							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltipLabel={input !== undefined ? input.name : output.name} tooltipDescription={input !== undefined ? input.description : output.description}>
-									{input !== undefined ? input.name : output.name}
-								</TextLabel>
-							</div>
+		{#each Array.from($nodeGraph.nodes.values()).filter((node) => !node.isLayer && !node.isRedirectDot) as node (node.id)}
+			{#if $visibleNodes.has(node.id)}
+				{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
+				{@const clipPathId = String(Math.random()).substring(2)}
+				{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
+				{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
+				<div
+					class="node"
+					class:selected={$nodeGraph.selected.includes(node.id)}
+					class:previewed={node.previewed}
+					class:disabled={!node.visible}
+					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
+					style:--clip-path-id={`url(#${clipPathId})`}
+					style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+					data-tooltip-label={nodeNameTooltipLabel(node)}
+					data-tooltip-description={(description || "").trim()}
+					data-node={node.id}
+				>
+					<!-- Primary row -->
+					<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+						<IconLabel {icon} />
+						<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
+						<TextLabel>{node.displayName}</TextLabel>
+					</div>
+					<!-- Secondary rows -->
+					{#if exposedInputsOutputs.length > 0}
+						<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
+							{#each exposedInputsOutputs as [input, output]}
+								<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
+									<TextLabel tooltipLabel={input !== undefined ? input.name : output.name} tooltipDescription={input !== undefined ? input.description : output.description}>
+										{input !== undefined ? input.name : output.name}
+									</TextLabel>
+								</div>
+							{/each}
+						</div>
+					{/if}
+					<!-- Input connectors -->
+					<div class="input connectors">
+						{#if node.primaryInput?.dataType}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector primary-connector"
+								data-connector="input"
+								data-tooltip-label={connectorTooltipLabel(node.primaryInput)}
+								data-tooltip-description={inputTooltipDescription(node.primaryInput)}
+								data-datatype={node.primaryInput?.dataType}
+								style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if node.primaryInput.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						{/if}
+						{#each node.exposedInputs as secondary, index}
+							{#if index < node.exposedInputs.length}
+								<svg
+									xmlns="http://www.w3.org/2000/svg"
+									viewBox="0 0 8 8"
+									class="connector"
+									data-connector="input"
+									data-tooltip-label={connectorTooltipLabel(secondary)}
+									data-tooltip-description={inputTooltipDescription(secondary)}
+									data-datatype={secondary.dataType}
+									style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
+									style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
+								>
+									{#if secondary.connected}
+										<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+									{:else}
+										<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+									{/if}
+								</svg>
+							{/if}
 						{/each}
 					</div>
-				{/if}
-				<!-- Input connectors -->
-				<div class="input connectors">
-					{#if node.primaryInput?.dataType}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector primary-connector"
-							data-connector="input"
-							data-tooltip-label={connectorTooltipLabel(node.primaryInput)}
-							data-tooltip-description={inputTooltipDescription(node.primaryInput)}
-							data-datatype={node.primaryInput?.dataType}
-							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
-						>
-							{#if node.primaryInput.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/if}
-					{#each node.exposedInputs as secondary, index}
-						{#if index < node.exposedInputs.length}
+					<!-- Output connectors -->
+					<div class="output connectors">
+						{#if node.primaryOutput}
+							<svg
+								xmlns="http://www.w3.org/2000/svg"
+								viewBox="0 0 8 8"
+								class="connector primary-connector"
+								data-connector="output"
+								data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
+								data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
+								data-datatype={node.primaryOutput.dataType}
+								style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
+								style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
+							>
+								{#if node.primaryOutput.connected}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+								{:else}
+									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+								{/if}
+							</svg>
+						{/if}
+						{#each node.exposedOutputs as secondary}
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
 								class="connector"
-								data-connector="input"
+								data-connector="output"
 								data-tooltip-label={connectorTooltipLabel(secondary)}
-								data-tooltip-description={inputTooltipDescription(secondary)}
+								data-tooltip-description={outputTooltipDescription(secondary)}
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -946,61 +1077,50 @@
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
 								{/if}
 							</svg>
-						{/if}
-					{/each}
+						{/each}
+					</div>
+					<svg class="border-mask" width="0" height="0">
+						<defs>
+							<clipPath id={clipPathId}>
+								<path
+									clip-rule="evenodd"
+									d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
+								/>
+							</clipPath>
+						</defs>
+					</svg>
 				</div>
-				<!-- Output connectors -->
-				<div class="output connectors">
-					{#if node.primaryOutput}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector primary-connector"
-							data-connector="output"
-							data-tooltip-label={connectorTooltipLabel(node.primaryOutput)}
-							data-tooltip-description={outputTooltipDescription(node.primaryOutput)}
-							data-datatype={node.primaryOutput.dataType}
-							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
-						>
-							{#if node.primaryOutput.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
+			{/if}
+		{/each}
+
+		<!-- Redirect dots, which are Passthrough nodes bending the wires running through them -->
+		{#each Array.from($nodeGraph.nodes.values()).filter((node) => node.isRedirectDot) as node (node.id)}
+			{#if $visibleNodes.has(node.id)}
+				<div
+					class="redirect-dot"
+					class:selected={$nodeGraph.selected.includes(node.id)}
+					class:previewed={node.previewed}
+					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
+					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
+					style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
+					style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
+					data-tooltip-label={node.primaryOutput ? connectorTooltipLabel(node.primaryOutput) : node.displayName}
+					data-tooltip-description={node.primaryOutput ? outputTooltipDescription(node.primaryOutput) : ""}
+					data-node={node.id}
+				>
+					<!-- The hover zones mirror the click targets in the backend: the middle and (once wired) left gutter move the dot, and the right gutter pulls out a new wire -->
+					<div class="zone move"></div>
+					{#if !node.primaryInput?.connected}
+						<div class="zone wire-in"></div>
 					{/if}
-					{#each node.exposedOutputs as secondary}
-						<svg
-							xmlns="http://www.w3.org/2000/svg"
-							viewBox="0 0 8 8"
-							class="connector"
-							data-connector="output"
-							data-tooltip-label={connectorTooltipLabel(secondary)}
-							data-tooltip-description={outputTooltipDescription(secondary)}
-							data-datatype={secondary.dataType}
-							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
-						>
-							{#if secondary.connected}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-							{:else}
-								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-							{/if}
-						</svg>
-					{/each}
+					<div class="zone wire-out"></div>
+					<!-- Where both its wires attach, so it stands in for its connectors as the end of a wire being dragged -->
+					<div class="dot" class:unwired={!node.primaryInput?.connected && !node.primaryOutput?.connected} data-connector="dot"></div>
+					<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" class="wire-out-port">
+						<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+					</svg>
 				</div>
-				<svg class="border-mask" width="0" height="0">
-					<defs>
-						<clipPath id={clipPathId}>
-							<path
-								clip-rule="evenodd"
-								d={nodeBorderMask(120, node.primaryInput?.dataType !== undefined, node.exposedInputs.length, node.primaryOutput !== undefined, node.exposedOutputs.length)}
-							/>
-						</clipPath>
-					</defs>
-				</svg>
-			</div>
+			{/if}
 		{/each}
 	</div>
 </div>
@@ -1023,6 +1143,12 @@
 		display: flex;
 		flex-direction: row;
 		flex-grow: 1;
+
+		// The outline around a hovered connector or redirect dot, set where each one's data type color is
+		.connector,
+		.redirect-dot {
+			--hover-outline-color: var(--data-color-dim);
+		}
 
 		.grid-background {
 			position: absolute;
@@ -1214,10 +1340,12 @@
 					stroke: var(--data-color-dim);
 					stroke-width: var(--data-line-width);
 					stroke-dasharray: var(--data-dasharray);
+					transition: stroke 0.1s;
 				}
 
-				// The previewed node's temporary wire stands out in the bright data color
-				.dashed path {
+				// The previewed node's temporary wire stands out in the bright data color, as does the wire a dragged node would be dropped onto
+				.dashed path,
+				.undimmed path {
 					stroke: var(--data-color);
 				}
 			}
@@ -1427,7 +1555,7 @@
 				}
 
 				&::before,
-				svg:not(.connector) {
+				canvas {
 					pointer-events: none;
 					position: absolute;
 					margin: auto;
@@ -1525,6 +1653,154 @@
 			.input.connectors .connector {
 				left: 24px;
 			}
+		}
+
+		.redirect-dot {
+			position: absolute;
+			left: calc(var(--offset-left) * 24px - 15px);
+			top: calc((var(--offset-top) + 1) * 24px - 8px);
+			// Matches the dot's click target in the backend, which also covers the port gutters to either side
+			width: 30px;
+			height: 16px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+
+			.zone {
+				position: absolute;
+				z-index: 1;
+
+				// Left and middle, where pressing selects the dot and dragging moves it
+				&.move {
+					inset: 0;
+				}
+
+				// Right gutter, matching the output port's click target (a 10px circle centered 10px right of the dot)
+				&.wire-out {
+					left: 20px;
+					top: 3px;
+					width: 10px;
+					height: 10px;
+					border-radius: 50%;
+					z-index: 2;
+				}
+
+				// Left gutter of a dot with nothing feeding it, matching the input port's click target there, which pulls a wire out rather than moving the dot
+				&.wire-in {
+					left: 0;
+					top: 3px;
+					width: 10px;
+					height: 10px;
+					border-radius: 50%;
+					z-index: 2;
+				}
+			}
+
+			.dot {
+				box-sizing: border-box;
+				width: 10px;
+				height: 10px;
+				border-radius: 50%;
+				background: var(--data-color);
+				// Faded in on hover
+				outline: 2px solid transparent;
+				pointer-events: none;
+				transition:
+					transform 0.1s,
+					background-color 0.1s,
+					outline-color 0.1s;
+
+				&.unwired {
+					background: var(--data-color-dim);
+				}
+			}
+
+			// The same connector arrow nodes have on their outputs, offered where a new wire can be pulled out
+			.wire-out-port {
+				position: absolute;
+				left: 21px;
+				top: 4px;
+				width: 8px;
+				height: 8px;
+				overflow: visible;
+				pointer-events: none;
+				opacity: 0;
+				transition: opacity 0.1s;
+			}
+
+			&.selected .dot {
+				outline: 2px solid rgb(from var(--color-f-white) r g b / 0.5);
+			}
+
+			&.previewed .dot {
+				outline: 1px dashed var(--data-color);
+				outline-offset: 2px;
+			}
+		}
+
+		// Hover hints stay hidden while a pointer button is held, since a drag may be underway, except on the dot being pressed.
+		// Hovering to select or drag enlarges the dot and rings it.
+		&:not(.pointer-held) .redirect-dot .zone.move:hover ~ .dot,
+		.redirect-dot .zone.move:active ~ .dot {
+			transform: scale(1.3);
+			outline: 2px solid var(--hover-outline-color);
+		}
+
+		// Hovering the right gutter instead dims the dot and reveals the connector to pull a wire from
+		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .dot {
+			background-color: var(--data-color-dim);
+		}
+
+		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
+			opacity: 1;
+		}
+
+		// A wire dragged out of the dot keeps showing its connector as hovering the gutter did, and one snapped onto it rings it like a hover
+		.redirect-dot .dot.wire-source {
+			background-color: var(--data-color-dim);
+
+			~ .wire-out-port {
+				opacity: 1;
+			}
+		}
+
+		.redirect-dot .dot.wire-target {
+			transform: scale(1.3);
+			outline: 2px solid var(--hover-outline-color);
+		}
+
+		// Hovering a connector enlarges it and outlines its arrow, like the ring a hovered redirect dot gets
+		.connector,
+		.redirect-dot .wire-out-port {
+			overflow: visible;
+
+			// Enlarged about the arrow's own center, leaving the ends of a thick stack wire drawn within a layer's connector as they are
+			path {
+				transform-box: fill-box;
+				transform-origin: center;
+				transition:
+					fill 0.1s,
+					transform 0.1s;
+			}
+		}
+
+		&:not(.pointer-held) .connector.hovered,
+		.connector.wire-target,
+		&:not(.pointer-held) .redirect-dot .zone.wire-out:hover ~ .wire-out-port {
+			// Undimmed if disconnected, with the stroke painted beneath the fill, so only its outer half shows
+			path:not(.stack-wire-end) {
+				transform: scale(1.3);
+				fill: var(--data-color);
+				stroke: var(--hover-outline-color);
+				stroke-width: 4px;
+				stroke-linejoin: round;
+				paint-order: stroke;
+			}
+		}
+
+		// The connector a wire is dragged from stays undimmed, as it was while hovered
+		.connector.wire-source path:not(.stack-wire-end) {
+			fill: var(--data-color);
 		}
 
 		.node {

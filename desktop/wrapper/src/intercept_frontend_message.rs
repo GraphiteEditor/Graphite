@@ -8,7 +8,7 @@ use super::messages::{DesktopFrontendMessage, IngestAction, SaveFileDialogContex
 pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: FrontendMessage) -> Option<FrontendMessage> {
 	match message {
 		FrontendMessage::RenderOverlays { context } => {
-			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene()));
+			dispatcher.respond(DesktopFrontendMessage::UpdateOverlays(context.take_scene().into()));
 		}
 		FrontendMessage::TriggerBrowse { options, action } => {
 			let title = match action {
@@ -59,10 +59,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height });
 		}
-		FrontendMessage::UpdateUIScale { scale } => {
-			dispatcher.respond(DesktopFrontendMessage::UpdateUIScale { scale });
-			return Some(FrontendMessage::UpdateUIScale { scale });
-		}
 		FrontendMessage::TriggerPersistenceReadState => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceReadState);
 		}
@@ -72,8 +68,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerOpenLaunchDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::OpenLaunchDocuments);
 		}
-		FrontendMessage::TriggerSavePreferences { preferences } => {
-			dispatcher.respond(DesktopFrontendMessage::PersistenceWritePreferences { preferences });
+		FrontendMessage::TriggerUpdatePreferences { preferences } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceUpdatePreferences { preferences });
 		}
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);

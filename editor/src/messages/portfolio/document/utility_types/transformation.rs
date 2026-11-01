@@ -102,7 +102,7 @@ impl OriginalTransforms {
 
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
-					let anchors = anchor_ids.filter_map(|id| vector.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
+					let anchors = anchor_ids.filter_map(|id| vector.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
 					let anchors = anchors.collect();
 
 					let selected_handles = selected_points.iter().filter_map(|point| point.as_handle());
@@ -112,13 +112,13 @@ impl OriginalTransforms {
 
 					let handles = all_handles
 						.filter_map(|id| {
-							let anchor = id.to_manipulator_point().get_anchor(&vector)?;
-							let initial = id.to_manipulator_point().get_position(&vector)?;
-							let relative = vector.point_domain.position_from_id(anchor)?;
+							let anchor = vector.anchor_of(id.to_manipulator_point())?;
+							let initial = vector.position_of(id.to_manipulator_point())?;
+							let relative = vector.position_from_id(anchor)?;
 							let other_handle = vector
 								.other_colinear_handle(id)
 								.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
-							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector)?)));
+							let mirror = other_handle.and_then(|id| Some((id, vector.position_of(id.to_manipulator_point())?)));
 
 							Some((id, HandlePoint { initial, relative, anchor, mirror }))
 						})
@@ -365,7 +365,7 @@ impl TransformOperation {
 			let normalized_transform = state.local_to_viewport_transform();
 			transformation = normalized_transform * transformation * normalized_transform.inverse();
 
-			selected.update_transforms(transformation, Some(state.pivot_viewport(document)), Some(*self));
+			selected.update_transforms(transformation, Some(state.pivot_viewport(document)));
 			self.hints(selected.responses, state.is_transforming_in_local_space, state.is_snapping);
 		}
 	}
@@ -611,14 +611,7 @@ impl<'a> Selected<'a> {
 		});
 	}
 
-	fn transform_path(
-		document_metadata: &DocumentMetadata,
-		layer: LayerNodeIdentifier,
-		initial_points: &mut InitialPoints,
-		transformation: DAffine2,
-		responses: &mut VecDeque<Message>,
-		transform_operation: Option<TransformOperation>,
-	) {
+	fn transform_path(document_metadata: &DocumentMetadata, layer: LayerNodeIdentifier, initial_points: &mut InitialPoints, transformation: DAffine2, responses: &mut VecDeque<Message>) {
 		let viewspace = document_metadata.transform_to_viewport(layer);
 		let layerspace_rotation = viewspace.inverse() * transformation;
 
@@ -628,10 +621,6 @@ impl<'a> Selected<'a> {
 			anchor.current += delta;
 			let modification_type = VectorModificationType::ApplyPointDelta { point, delta };
 			responses.add(GraphOperationMessage::Vector { layer, modification_type });
-		}
-
-		if transform_operation.is_some_and(|transform_operation| matches!(transform_operation, TransformOperation::Scaling(_))) && (initial_points.anchors.len() == 2) {
-			return;
 		}
 
 		for (&id, handle) in initial_points.handles.iter() {
@@ -660,7 +649,7 @@ impl<'a> Selected<'a> {
 		}
 	}
 
-	pub fn apply_transformation(&mut self, transformation: DAffine2, transform_operation: Option<TransformOperation>) {
+	pub fn apply_transformation(&mut self, transformation: DAffine2) {
 		if self.selected.is_empty() {
 			return;
 		}
@@ -671,19 +660,19 @@ impl<'a> Selected<'a> {
 				OriginalTransforms::Layer(layer_transforms) => Self::transform_layer(self.network_interface.document_metadata(), layer, layer_transforms.get(&layer), transformation, self.responses),
 				OriginalTransforms::Path(path_transforms) => {
 					if let Some(initial_points) = path_transforms.get_mut(&layer) {
-						Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses, transform_operation)
+						Self::transform_path(self.network_interface.document_metadata(), layer, initial_points, transformation, self.responses)
 					}
 				}
 			}
 		}
 	}
 
-	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>, transform_operation: Option<TransformOperation>) {
+	pub fn update_transforms(&mut self, delta: DAffine2, pivot: Option<DVec2>) {
 		let pivot = DAffine2::from_translation(pivot.unwrap_or(*self.pivot));
 		let transformation = pivot * delta * pivot.inverse();
 		match self.tool_type {
 			ToolType::Pen => self.apply_transform_pen(transformation),
-			_ => self.apply_transformation(transformation, transform_operation),
+			_ => self.apply_transformation(transformation),
 		}
 	}
 

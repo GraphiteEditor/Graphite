@@ -12,8 +12,9 @@ use crate::messages::tool::utility_types::ToolType;
 use graph_craft::application_io::resource::{DataSource, ResourceHash};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::list::List;
 use graphene_std::vector::misc::{BezierHandles, HandleId, point_to_dvec2, segment_to_handles};
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
 use graphite_proc_macros::{ExtractField, message_handler_data};
 use kurbo::ParamCurve;
 use std::sync::Arc;
@@ -127,7 +128,11 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					}));
 				}
 
-				let copies = chain_nodes
+				// The dots on wires between the copied chain nodes go along with them, so pasting them loose keeps those wires
+				let chain_nodes_with_dots = active_document.network_interface.selection_with_bridging_dots(chain_nodes, &[]);
+				let other_nodes = other_nodes.into_iter().filter(|node_id| !chain_nodes_with_dots.contains(node_id)).collect::<Vec<_>>();
+
+				let copies = chain_nodes_with_dots
 					.iter()
 					.filter_map(|node_id| active_document.network_interface.copy_chain_node(node_id, &[]))
 					.collect::<Vec<_>>();
@@ -177,27 +182,35 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			ClipboardMessage::WriteItems { items } => {
+			ClipboardMessage::WriteItems { mut items } => {
 				let has_content = items.iter().any(|item| match item {
 					ClipboardItem::Layer(entry) => !entry.nodes.is_empty(),
 					ClipboardItem::Nodes(nodes) => !nodes.is_empty(),
 					ClipboardItem::ChainNodes(copies) => !copies.is_empty(),
 					ClipboardItem::Vector(vector) => !vector.is_empty(),
 					ClipboardItem::Resource(_) => true,
+					ClipboardItem::Definition(_) => false,
 				});
 				if !has_content {
 					return;
 				}
 
+				// The table entries the copied nodes name travel with them, so a paste into another document can add them
+				let definitions = portfolio
+					.active_document()
+					.map(|document| document.network_interface.copied_definitions(items.iter().flat_map(item_templates)))
+					.unwrap_or_default();
+
 				let mut resource_ids = HashSet::new();
-				for item in &items {
-					match item {
-						ClipboardItem::Layer(entry) => entry.nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
-						ClipboardItem::Nodes(nodes) => nodes.iter().for_each(|(_, template)| network_interface::collect_template_resources(template, &mut resource_ids)),
-						ClipboardItem::ChainNodes(copies) => copies.iter().for_each(|copy| network_interface::collect_template_resources(&copy.template, &mut resource_ids)),
-						ClipboardItem::Vector(_) | ClipboardItem::Resource(_) => {}
-					}
+				for template in items.iter().flat_map(item_templates) {
+					network_interface::collect_template_resources(template, &mut resource_ids);
 				}
+				for definition in &definitions {
+					network_interface::visit_network_resources(&definition.network, &mut |id| {
+						resource_ids.insert(id);
+					});
+				}
+				items.extend(definitions.into_iter().map(|definition| ClipboardItem::Definition(Box::new(definition))));
 
 				// Snapshot each resource's registry entry; embedded ones also need their bytes
 				let mut resources = Vec::new();
@@ -220,7 +233,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				}
 
 				if bytes_to_load.is_empty() {
-					let mut items = items;
 					items.extend(resources.into_iter().map(ClipboardItem::Resource));
 					if let Some(content) = serialize_clipboard(&items) {
 						responses.add(ClipboardMessage::Write { content });
@@ -235,7 +247,6 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 								resources[index].data = Some(ResourceData(resource.as_ref().to_vec()));
 							}
 						}
-						let mut items = items;
 						items.extend(resources.into_iter().map(ClipboardItem::Resource));
 						match serialize_clipboard(&items) {
 							Some(content) => ClipboardMessage::Write { content }.into(),
@@ -258,6 +269,7 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let mut chain_node_groups = Vec::new();
 				let mut vectors = Vec::new();
 				let mut resources = Vec::new();
+				let mut definitions = Vec::new();
 				for item in items {
 					// Pasted templates skip document migration, so stored types normalize here
 					match item {
@@ -281,6 +293,27 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						}
 						ClipboardItem::Vector(vector) => vectors.push(vector),
 						ClipboardItem::Resource(resource) => resources.push(resource),
+						ClipboardItem::Definition(definition) => definitions.push(*definition),
+					}
+				}
+
+				// The carried table entries go in as the nodes naming them do, renamed where this document holds a different entry under the same ID
+				if !definitions.is_empty()
+					&& let Some(document) = portfolio.active_document_mut()
+				{
+					let Some(renamed) = document.network_interface.carry_definitions(definitions) else {
+						log::error!("Discarding the paste: its subgraphs name one another in a cycle or name one it does not carry");
+						return;
+					};
+					if !renamed.is_empty() {
+						let templates = layers
+							.iter_mut()
+							.flat_map(|entry| entry.nodes.iter_mut().map(|(_, template)| template))
+							.chain(node_groups.iter_mut().flatten().map(|(_, template)| template))
+							.chain(chain_node_groups.iter_mut().flatten().map(|copy| &mut copy.template));
+						for template in templates {
+							template.rename_definitions(&renamed);
+						}
 					}
 				}
 
@@ -434,18 +467,27 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 						let stroke = graphene_std::vector::style::Stroke::new(DEFAULT_STROKE_WIDTH);
 						responses.add(GraphOperationMessage::StrokeSet { layer, color, stroke });
 
-						// Create new point ids and add those into the existing Vector path
+						// Materialize the copied snapshot so its points and segments can replay with fresh IDs
+						let (mut pasted_vector, mut pasted_paths) = (Vector::default(), List::new());
+						new_vector.apply(&mut pasted_vector, &mut pasted_paths);
+
+						// Create new point IDs and add those into the existing Vector path
 						let mut points_map = HashMap::new();
-						for (point, position) in new_vector.point_domain.iter() {
+						for index in pasted_vector.anchor_indices(&pasted_paths) {
+							let (Some(point), Some(position)) = (pasted_vector.point_id_at(index as u32), pasted_vector.position(index)) else {
+								continue;
+							};
+
 							let new_point_id = PointId::generate();
 							points_map.insert(point, new_point_id);
 							let modification_type = VectorModificationType::InsertPoint { id: new_point_id, position };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 
-						// Create new segment ids and add the segments into the existing Vector path
+						// Create new segment IDs and add the segments into the existing Vector path
 						let mut segments_map = HashMap::new();
-						for (segment_id, segment, start, end) in new_vector.segment_iter() {
+						let path_beginnings = pasted_vector.path_beginnings(&pasted_paths);
+						for (segment_id, segment, start, end) in pasted_vector.segment_iter(&pasted_paths) {
 							let (Some(&start_point), Some(&end_point)) = (points_map.get(&start), points_map.get(&end)) else {
 								warn!("Skipping pasted vector segment with an unknown endpoint");
 								continue;
@@ -465,10 +507,19 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 							let points = [start_point, end_point];
 							let modification_type = VectorModificationType::InsertSegment { id: new_segment_id, points, handles };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+							// Every pasted path stays a path of its own, even where it sets out from the end of another
+							if path_beginnings.contains(&segment_id) {
+								let modification_type = VectorModificationType::SetPathBreak {
+									segment: new_segment_id,
+									breaks: true,
+								};
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
 						}
 
 						// Set G1 continuity
-						for handles in new_vector.colinear_manipulators {
+						for handles in pasted_vector.colinear_pairs(&pasted_paths) {
 							let to_new_handle = |handle: HandleId| -> Option<HandleId> {
 								Some(HandleId {
 									ty: handle.ty,
@@ -512,11 +563,23 @@ fn serialize_clipboard(items: &[ClipboardItem]) -> Option<ClipboardContent> {
 	}
 }
 
+/// The node templates a clipboard item carries.
+fn item_templates(item: &ClipboardItem) -> Vec<&network_interface::NodeTemplate> {
+	match item {
+		ClipboardItem::Layer(entry) => entry.nodes.iter().map(|(_, template)| template).collect(),
+		ClipboardItem::Nodes(nodes) => nodes.iter().map(|(_, template)| template).collect(),
+		ClipboardItem::ChainNodes(copies) => copies.iter().map(|copy| &copy.template).collect(),
+		ClipboardItem::Vector(_) | ClipboardItem::Resource(_) | ClipboardItem::Definition(_) => Vec::new(),
+	}
+}
+
 #[cfg(test)]
 mod test {
 	use crate::messages::clipboard::utility_types::{ClipboardItem, ClipboardResource, ResourceData};
+	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 	use crate::test_utils::test_prelude::*;
 	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+	use graph_craft::document::NodeInput;
 
 	/// Create an editor with three layers
 	/// 1. A red rectangle
@@ -678,5 +741,105 @@ mod test {
 		let registry = &editor.active_document().resources.registry;
 		assert!(registry.contains(&id), "the carried resource should be registered after paste");
 		assert_eq!(registry.hash(&id), Some(hash), "the carried resource should resolve to the carried bytes' hash");
+	}
+
+	/// The table entry each layer in the active document's network names.
+	fn layer_entries(editor: &EditorTestUtils) -> Vec<graph_craft::document::NetworkId> {
+		let mut entries: Vec<_> = editor
+			.active_document()
+			.network_interface
+			.document_network()
+			.nodes
+			.values()
+			.filter_map(|node| match node.implementation {
+				graph_craft::document::DocumentNodeImplementation::Definition(id) => Some(id),
+				_ => None,
+			})
+			.collect();
+		entries.sort();
+		entries
+	}
+
+	fn assert_consistent(editor: &EditorTestUtils) {
+		let violations = editor.active_document().network_interface.validate_invariants();
+		assert!(violations.is_empty(), "{violations:#?}");
+	}
+
+	/// Pasting into the document a layer was copied from shares one network between the copy and the original.
+	#[tokio::test]
+	async fn a_pasted_copy_shares_its_network() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
+
+		let entries = layer_entries(&editor);
+		assert_eq!(entries.len(), 2);
+		assert_eq!(entries[0], entries[1], "the copy should name the original's entry");
+		assert_eq!(editor.active_document().network_interface.document_network().definitions.len(), 1);
+		assert_consistent(&editor);
+	}
+
+	/// Pasting into another document adds the copied network under its own ID, and pasting the same content again reuses it.
+	#[tokio::test]
+	async fn pasting_into_another_document_carries_the_network() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let copied = layer_entries(&editor);
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+
+		editor.new_document().await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
+		assert_eq!(layer_entries(&editor), copied);
+		assert_consistent(&editor);
+
+		paste_from_clipboard(&mut editor, &clipboard).await;
+		assert_eq!(layer_entries(&editor), [copied.clone(), copied].concat(), "identical content should be reused");
+		assert_eq!(editor.active_document().network_interface.document_network().definitions.len(), 1);
+		assert_consistent(&editor);
+	}
+
+	/// Pasting a network that differs from the one this document holds under the same ID adds it under a fresh ID instead.
+	#[tokio::test]
+	async fn pasting_a_diverged_network_gives_it_a_new_id() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		let clipboard = copy_layers_to_clipboard(&mut editor).await;
+
+		editor.new_document().await;
+		paste_from_clipboard(&mut editor, &clipboard).await;
+		let [entry] = layer_entries(&editor)[..] else { panic!("the paste should add one layer") };
+
+		// Diverge the pasted entry from the copied one
+		let interface = &mut editor.active_document_mut().network_interface;
+		let layer = interface
+			.document_network()
+			.nodes
+			.iter()
+			.find_map(|(id, node)| (node.implementation == graph_craft::document::DocumentNodeImplementation::Definition(entry)).then_some(*id))
+			.expect("the pasted layer");
+		let (inner, input_index) = interface.document_network().definitions[&entry]
+			.nodes
+			.iter()
+			.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
+			.expect("the entry should have a value input");
+		let before = interface.document_network().definitions[&entry].clone();
+		let NodeInput::Value { tagged_value, exposed } = &before.nodes[&inner].inputs[input_index] else {
+			unreachable!("the input was found as a value")
+		};
+		let flipped = NodeInput::value((**tagged_value).clone(), !exposed);
+		interface.set_input(&InputConnector::node_at_index(inner, input_index), flipped, &[layer]);
+		assert_ne!(interface.document_network().definitions[&entry], before, "the edit should change the pasted entry");
+
+		paste_from_clipboard(&mut editor, &clipboard).await;
+		let entries = layer_entries(&editor);
+		assert_eq!(entries.len(), 2);
+		assert!(entries.contains(&entry));
+		assert_ne!(entries[0], entries[1], "the diverged entry should not be overwritten or reused");
+		assert_consistent(&editor);
 	}
 }

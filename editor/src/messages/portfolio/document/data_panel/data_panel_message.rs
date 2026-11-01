@@ -7,7 +7,7 @@ use crate::node_graph_executor::InspectResult;
 pub enum DataPanelMessage {
 	UpdateLayout {
 		#[serde(skip)]
-		inspect_result: InspectResult,
+		inspect_result: Box<InspectResult>,
 	},
 	ClearLayout,
 	/// Re-render the existing layout against the latest network interface state. Use this when node metadata
@@ -20,9 +20,8 @@ pub enum DataPanelMessage {
 	TruncateElementPath {
 		len: usize,
 	},
-
-	ViewVectorTableTab {
-		tab: VectorTableTab,
+	SetContextOverrides {
+		overrides: graphene_std::ContextOverrides,
 	},
 }
 
@@ -32,12 +31,4 @@ pub enum DataPanelMessage {
 pub enum PathStep {
 	Element(usize),
 	Attribute { row: usize, key: String },
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
-pub enum VectorTableTab {
-	#[default]
-	Points,
-	Segments,
-	Handles,
 }

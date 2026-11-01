@@ -37,14 +37,11 @@ pub enum DesktopFrontendMessage {
 		width: f64,
 		height: f64,
 	},
-	UpdateUIScale {
-		scale: f64,
-	},
 	WindowUpdateDirectInput {
 		enabled: bool,
 	},
-	UpdateOverlays(vello::Scene),
-	PersistenceWritePreferences {
+	UpdateOverlays(Box<wgpu_executor::VelloSceneBuilder>),
+	PersistenceUpdatePreferences {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
@@ -79,7 +76,6 @@ pub enum DesktopWrapperMessage {
 	Input(InputMessage),
 	IngestFile { path: PathBuf, content: Vec<u8>, action: IngestAction },
 	SaveFileDialogResult { path: PathBuf, context: SaveFileDialogContext },
-	PollNodeGraphEvaluation,
 	UpdateMaximized { maximized: bool },
 	UpdateFullscreen { fullscreen: bool },
 	LoadPersistedState { state: PersistedState },

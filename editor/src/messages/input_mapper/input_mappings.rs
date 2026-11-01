@@ -1,4 +1,4 @@
-use crate::application::Editor;
+use crate::application::Environment;
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::keyboard::{Key, KeyStates};
@@ -13,20 +13,20 @@ use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpd
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use glam::DVec2;
 
-impl From<MappingVariant> for Mapping {
-	fn from(value: MappingVariant) -> Self {
-		match value {
-			MappingVariant::Default => input_mappings(false),
-			MappingVariant::ZoomWithScroll => input_mappings(true),
+impl Mapping {
+	pub fn new(variant: MappingVariant, environment: Environment) -> Self {
+		match variant {
+			MappingVariant::Default => input_mappings(false, environment),
+			MappingVariant::ZoomWithScroll => input_mappings(true, environment),
 		}
 	}
 }
 
-pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
+pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mapping {
 	use InputMapperMessage::*;
 	use Key::*;
 
-	let is_mac = Editor::environment().is_mac();
+	let is_mac = environment.is_mac();
 
 	// NOTICE:
 	// If a new mapping you added here isn't working (and perhaps another lower-precedence one is instead), make sure to advertise
@@ -89,10 +89,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=NodeGraphMessage::SendClickTargets),
 		entry!(KeyDown(KeyM); modifiers=[Accel], action_dispatch=NodeGraphMessage::MergeSelectedNodes),
 		entry!(KeyUp(KeyC); action_dispatch=NodeGraphMessage::EndSendClickTargets),
-		entry!(KeyDown(ArrowUp); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Up, rubber_band: false }),
-		entry!(KeyDown(ArrowRight); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Right, rubber_band: false }),
-		entry!(KeyDown(ArrowDown); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Down, rubber_band: false }),
-		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::ShiftSelectedNodes { direction: Direction::Left, rubber_band: false }),
+		entry!(KeyDown(ArrowUp); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Up }),
+		entry!(KeyDown(ArrowRight); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Right }),
+		entry!(KeyDown(ArrowDown); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Down }),
+		entry!(KeyDown(ArrowLeft); action_dispatch=NodeGraphMessage::NudgeSelectedNodes { direction: Direction::Left }),
 		//
 		// TransformLayerMessage
 		entry!(KeyDown(Enter); action_dispatch=TransformLayerMessage::ApplyTransformOperation { final_transform: true }),
@@ -226,7 +226,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PathToolMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PathToolMessage::Copy),
 		entry!(KeyDown(KeyD); modifiers=[Accel], action_dispatch=PathToolMessage::Duplicate),
-		entry!(KeyDownNoRepeat(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
+		// Takes precedence over the Select/Path toggle mid-drag (see its TODO)
+		entry!(KeyDown(Tab); action_dispatch=PathToolMessage::SwapSelectedHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PathToolMessage::MouseDown { extend_selection: Shift, lasso_select: Control, handle_drag_from_anchor: Alt, drag_restore_handle: Control, segment_editing_modifier: Control }),
 		entry!(KeyDown(MouseRight); action_dispatch=PathToolMessage::RightClick),
 		entry!(KeyDown(Escape); action_dispatch=PathToolMessage::Escape),
@@ -238,6 +239,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAll),
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllSelected),
 		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=PathToolMessage::DeselectAllSelected),
+		entry!(KeyDown(FakeKeyPlus); modifiers=[Shift], canonical, action_dispatch=PathToolMessage::GrowSelection),
+		entry!(KeyDown(Equal); modifiers=[Shift], action_dispatch=PathToolMessage::GrowSelection),
+		entry!(KeyDown(NumpadAdd); modifiers=[Shift], action_dispatch=PathToolMessage::GrowSelection),
+		entry!(KeyDown(Minus); modifiers=[Shift], action_dispatch=PathToolMessage::ShrinkSelection),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(MouseLeft); action_dispatch=PathToolMessage::DragStop { extend_selection: Shift, shrink_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { extend_selection: Shift, shrink_selection: Alt }),
@@ -269,8 +274,9 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=ToolMessage::Path(PathToolMessage::ClosePath)),
 		//
 		// PenToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC, KeyQ, KeyW], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
-		entry!(KeyDownNoRepeat(Tab); action_dispatch=PenToolMessage::SwapHandles),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift, KeyC, Space, KeyQ, KeyW], action_dispatch=PenToolMessage::PointerMove { snap_angle: Shift, break_handle: Alt, lock_angle: Control, colinear: KeyC, move_anchor_with_handles: Space }),
+		// Takes precedence over the Select/Path toggle mid-drag (see its TODO)
+		entry!(KeyDown(Tab); action_dispatch=PenToolMessage::SwapHandles),
 		entry!(KeyDown(MouseLeft); action_dispatch=PenToolMessage::DragStart { append_to_selected: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=PenToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=PenToolMessage::Abort),
@@ -333,7 +339,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: true }),
 		entry!(KeyDown(KeyC); modifiers=[Alt, Shift], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: false }),
-		// TODO: Change to KeyDownNoRepeat when https://github.com/GraphiteEditor/Graphite/issues/2266 is resolved
+		// TODO: Change to KeyDownNoRepeat when https://github.com/GraphiteEditor/Graphite/issues/2266 is resolved, along with the Path and Pen handle swaps.
+		// Until then, those share this `KeyDown(Tab)` list, where coming first lets them alone act on Tab while a drag makes them available.
 		entry!(KeyDown(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage

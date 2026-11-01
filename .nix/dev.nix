@@ -22,8 +22,8 @@ let
         pkgs.lld
         pkgs.nodejs
         pkgs.binaryen
-        pkgs.wasm-bindgen-cli_0_2_121
-        pkgs.cargo-about
+        pkgs.wasm-bindgen-cli_0_2_127
+        deps.cargoAbout
 
         pkgs.rustc
         pkgs.cargo
@@ -48,7 +48,6 @@ let
         pkgs.graphviz
       ];
     }
-    deps.rustGPU
     (lib.optionalAttrs desktop (
       {
         libs = [

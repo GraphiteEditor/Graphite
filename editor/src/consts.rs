@@ -11,6 +11,8 @@ pub const STACK_VERTICAL_GAP: i32 = 3;
 pub const LAYER_INDENT_OFFSET: i32 = 8;
 /// Horizontal grid width of a non-layer node in a chain.
 pub const NODE_CHAIN_WIDTH: i32 = 7;
+/// How quickly a dragged node glides into the grid cell it moves to, as the time it takes to cover all but 1/e (about 37%) of the remaining distance.
+pub const NODE_GLIDE_TIME_CONSTANT_MILLISECONDS: f64 = 30.;
 
 // VIEWPORT
 pub const VIEWPORT_ZOOM_WHEEL_RATE: f64 = (1. / 600.) * 3.;
@@ -112,6 +114,38 @@ pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
 pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
+// PATH DIRECTION OVERLAYS
+// Paths shorter than this on screen get no markers
+pub const PATH_MARKERS_MIN_LENGTH: f64 = 24.;
+// From an end anchor's center to the middle of the marker beside it
+pub const PATH_END_MARKER_DISTANCE: f64 = 7.;
+pub const PATH_END_MARKER_SIZE: f64 = 9.;
+// Between arrows, stretched or squeezed slightly so a whole number of them fit evenly along each path
+pub const PATH_DIRECTION_ARROW_SPACING: f64 = 15.625;
+pub const PATH_DIRECTION_CHEVRON_SIZE: f64 = 8.;
+// How far to the right of the path its harpoons' shafts sit, apart from the path itself
+pub const PATH_DIRECTION_HARPOON_OFFSET: f64 = 3.;
+// In viewport pixels, far finer than the arrows need to sit evenly
+pub const PATH_DIRECTION_ARC_LENGTH_ACCURACY: f64 = 0.1;
+pub const PATH_INDEX_LABEL_OFFSET: f64 = 14.;
+pub const POINT_INDEX_LABEL_OFFSET: f64 = 12.;
+// Between a path's start anchor's point index and its path index, side by side
+pub const INDEX_LABEL_GAP: f64 = 8.;
+pub const PATH_FLOW_JOIN_TICK_LENGTH: f64 = 18.;
+pub const PATH_FLOW_JOIN_TICK_THICKNESS: f64 = 2.;
+
+// CURVATURE COMB OVERLAY
+// A tooth's length in document pixels is the curvature times this scale, in square document pixels
+pub const CURVATURE_COMB_MIN_SCALE: f64 = 100.;
+pub const CURVATURE_COMB_MAX_SCALE: f64 = 10_000.;
+// Midway along its slider, at the geometric mean of the minimum and maximum
+pub const CURVATURE_COMB_DEFAULT_SCALE: f64 = 1000.;
+// In viewport pixels along each segment, until a segment reaches its maximum teeth
+pub const CURVATURE_COMB_TOOTH_SPACING: f64 = 6.;
+pub const CURVATURE_COMB_MAX_TEETH_PER_SEGMENT: f64 = 128.;
+// In viewport pixels, past which the teeth near a cusp would only streak across the screen
+pub const CURVATURE_COMB_MAX_TOOTH_LENGTH: f64 = 2000.;
+
 // GRADIENT TOOL
 pub const GRADIENT_MIDPOINT_DIAMOND_RADIUS: f64 = 4.;
 pub const GRADIENT_MIDPOINT_MIN: f64 = 0.01;
@@ -142,6 +176,11 @@ pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
 pub const GRID_ROW_COLUMN_GIZMO_OFFSET: f64 = 15.;
+pub const HEART_HANDLE_HOVER_RADIUS: f64 = 8.;
+/// How far the handles for the cleft's and tip's angles sit out along those tangents, in viewport pixels.
+pub const HEART_ANGLE_HANDLE_DISTANCE: f64 = 24.;
+/// How far a heart's Lobe Lean or Side Fullness handle is dragged to cross its whole range, in viewport pixels.
+pub const HEART_SLIDER_DRAG_DISTANCE: f64 = 200.;
 
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
@@ -159,6 +198,7 @@ pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
 pub const COLOR_OVERLAY_GREEN_25: &str = "#63ce6340";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_RED_25: &str = "#ef545440";
+pub const COLOR_OVERLAY_MAGENTA: &str = "#ba57bc";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
@@ -177,6 +217,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+/// How far, in viewport pixels, the second press of a double-click can land from the first, and how far the first can travel before its release.
+pub const DOUBLE_CLICK_ALLOWED_TRAVEL: f64 = 4.;
 /// Maximum duration of the whole double-tap gesture, measured from the first tap's key-down to the second tap's key-up.
 pub const DOUBLE_TAP_MILLISECONDS: u64 = 1000;
 

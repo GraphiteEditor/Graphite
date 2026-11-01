@@ -3,7 +3,7 @@ use convert_case::{Case, Casing};
 use graph_craft::concrete;
 use graph_craft::document::value;
 use graph_craft::proto::{NodeMetadata, RegistryValueSource};
-use graphene_std::{ContextDependencies, core_types};
+use graphene_std::{NodeCompileMetadata, core_types};
 use indoc::formatdoc;
 use std::collections::HashSet;
 use std::io::Write;
@@ -19,7 +19,7 @@ pub fn write_node_page(index: usize, id: &core_types::ProtoNodeIdentifier, metad
 
 	// Context features
 	let context_features = &metadata.context_features;
-	let context_dependencies: ContextDependencies = context_features.as_slice().into();
+	let context_dependencies: NodeCompileMetadata = context_features.as_slice().into();
 
 	// Input types
 	let mut valid_input_types = vec![Vec::new(); metadata.fields.len()];
@@ -85,7 +85,7 @@ fn write_interface_header(page: &mut std::fs::File) {
 	page.write_all(content.as_bytes()).expect("Failed to write to node page file");
 }
 
-fn write_context(page: &mut std::fs::File, context_dependencies: ContextDependencies) {
+fn write_context(page: &mut std::fs::File, context_dependencies: NodeCompileMetadata) {
 	let extract = context_dependencies.extract;
 	let inject = context_dependencies.inject;
 	if !extract.is_empty() || !inject.is_empty() {

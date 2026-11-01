@@ -1,0 +1,25 @@
+[package]
+name = "migration-core"
+description = "Authoring surface for Graphite document migrations"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[features]
+default = ["typed"]
+# Node-tier migrations over the typed registry. Format-tier-only crates like migration-formats
+# disable this to drop the graph-storage dependency.
+typed = ["dep:document-graph-storage", "dep:blake3"]
+
+[dependencies]
+document-graph-storage = { workspace = true, optional = true }
+migration-macros = { workspace = true }
+
+blake3 = { workspace = true, optional = true }
+ctor = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+postcard = { workspace = true }
+thiserror = { workspace = true }

@@ -12,15 +12,15 @@ use core_types::{ATTR_TRANSFORM, Ctx, ExtractFootprint};
 use graphic_types::Graphic;
 use pipeline::{BasicBrushPipeline, BasicBrushPipelineArgs};
 use raster_types::{GPU, Raster};
-use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
+use wgpu_executor::{WgpuExecutor, WgpuPipelineCache, WgpuPipelineError};
 
-#[node_macro::node(category("Raster: Brush"), icon("NodeBasicBrush"))]
-pub async fn basic_brush<'a: 'n>(
+#[node_macro::node(category("Raster"), icon("NodeBasicBrush"))]
+fn basic_brush(
 	ctx: impl Ctx + ExtractFootprint,
 	strokes: List<Graphic>,
 	#[widget(ParsedWidgetOverride::Hidden)] _cache: Item<BrushCache>,
 	#[scope(basic_brush_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
-) -> List<Raster<GPU>> {
+) -> Result<List<Raster<GPU>>, WgpuPipelineError> {
 	let (cache, pipeline) = (_cache.into_element(), pipeline.into_element());
 	let mut stack = vec![strokes.into_iter()];
 	let mut strokes = Vec::new();
@@ -57,17 +57,17 @@ pub async fn basic_brush<'a: 'n>(
 		strokes: &strokes,
 		cache: &cache,
 	};
-	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args).await else {
-		return List::new();
+	let Some((texture, transform)) = pipeline.run::<BasicBrushPipeline>(&args)? else {
+		return Ok(List::new());
 	};
 	let raster = Raster::<GPU>::new_gpu(texture);
-	List::new_from_item(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, transform))
+	Ok(List::new_from_item(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, transform)))
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn basic_brush_pipeline<'a: 'n>(
+fn basic_brush_pipeline(
 	_ctx: impl Ctx,
-	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<&'a WgpuExecutor>,
+	#[scope(ProtoNodeIdentifier::new("graphene_std::platform_application_io::WgpuExecutorNode"))] executor: Item<WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
 	executor.into_element().pipeline_init::<BasicBrushPipeline>(pipeline);

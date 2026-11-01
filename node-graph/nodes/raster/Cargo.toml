@@ -15,26 +15,8 @@ publish.workspace = true
 workspace = true
 
 [features]
-default = ["std"]
-serde = ["dep:serde", "core-types?/serde", "raster-types?/serde", "vector-types?/serde"]
-shader-nodes = ["std", "dep:raster-nodes-shaders", "dep:wgpu-executor"]
-std = [
-	"serde",
-	"dep:core-types",
-	"dep:graphene-core",
-	"dep:dyn-any",
-	"dep:graphene-resource",
-	"dep:graphene-hash",
-	"dep:raster-types",
-	"dep:vector-types",
-	"dep:image",
-	"dep:ndarray",
-	"dep:rand",
-	"dep:rand_chacha",
-	"dep:fastnoise-lite",
-	"dep:kurbo",
-	"dep:color",
-]
+default = ["serde"]
+serde = ["dep:serde", "core-types/serde", "raster-types/serde", "vector-types/serde"]
 wasm = [
 	"core-types/wasm",
 	"raster-types/wasm",
@@ -45,36 +27,27 @@ wasm = [
 
 [dependencies]
 # Local dependencies
-no-std-types = { workspace = true }
 node-macro = { workspace = true }
-
-# Local std dependencies
-dyn-any = { workspace = true, optional = true }
-core-types = { workspace = true, optional = true }
-graphene-core = { workspace = true, optional = true }
-graphene-resource = { workspace = true, optional = true }
-graphene-hash = { workspace = true, optional = true }
-raster-types = { workspace = true, optional = true }
-vector-types = { workspace = true, optional = true }
-wgpu-executor = { workspace = true, optional = true }
-raster-nodes-shaders = { path = "./shaders", optional = true }
+dyn-any = { workspace = true }
+core-types = { workspace = true }
+graphene-core = { workspace = true }
+graphene-resource = { workspace = true }
+graphene-hash = { workspace = true }
+raster-types = { workspace = true }
+vector-types = { workspace = true }
 
 # Workspace dependencies
 bytemuck = { workspace = true }
 glam = { workspace = true }
-spirv-std = { workspace = true }
-num-traits = { workspace = true }
 num_enum = { workspace = true }
-
-# Workspace std dependencies
-image = { workspace = true, optional = true }
-ndarray = { workspace = true, optional = true }
-rand = { workspace = true, optional = true }
-rand_chacha = { workspace = true, optional = true }
-fastnoise-lite = { workspace = true, optional = true }
+image = { workspace = true }
+ndarray = { workspace = true }
+rand = { workspace = true }
+rand_chacha = { workspace = true }
+fastnoise-lite = { workspace = true }
 serde = { workspace = true, optional = true }
-kurbo = { workspace = true, optional = true }
-color = { workspace = true, optional = true }
+color = { workspace = true }
+thiserror = { workspace = true }
 
 # Workspace Wasm dependencies
 tsify = { workspace = true, optional = true }

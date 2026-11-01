@@ -70,26 +70,97 @@ where
 	}
 }
 
-pub use cpu::CPU;
+pub use cpu::{CPU, WeakCPU};
 
 mod cpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
+	use std::sync::atomic::{AtomicU64, Ordering};
+	use std::sync::{Arc, OnceLock, Weak};
 
-	#[derive(Clone, Debug, Default, PartialEq, core_types::CacheHash, DynAny)]
-	pub struct CPU(Image<Color>);
+	/// Pixels in CPU memory, shared between clones and identified by an ID that changes whenever they are modified.
+	/// So cloning is a reference count increment, and hashing for caches reads the ID rather than every pixel.
+	#[derive(Clone, Debug, Default, DynAny)]
+	pub struct CPU(Arc<Buffer>);
+
+	#[derive(Debug, Default)]
+	struct Buffer {
+		/// Zero until the ID is first read after the pixels last changed, so a run of modifications takes only one new ID.
+		id: AtomicU64,
+		image: Image<Color>,
+		/// The pixels encoded as a PNG data URL, made the first time an SVG embeds them.
+		png_data_url: OnceLock<Arc<str>>,
+	}
+
+	// A copy is made only to be modified, so it starts without an ID
+	impl Clone for Buffer {
+		fn clone(&self) -> Self {
+			Self {
+				id: AtomicU64::new(0),
+				image: self.image.clone(),
+				png_data_url: OnceLock::new(),
+			}
+		}
+	}
+
+	impl CPU {
+		/// The ID of these pixels, shared by every clone until one of them is modified.
+		pub fn buffer_id(&self) -> u64 {
+			// Counts from one, since zero marks an ID not yet taken
+			static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+			let id = self.0.id.load(Ordering::Relaxed);
+			if id != 0 {
+				return id;
+			}
+
+			let new_id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
+			match self.0.id.compare_exchange(0, new_id, Ordering::Relaxed, Ordering::Relaxed) {
+				Ok(_) => new_id,
+				// Another thread took one first
+				Err(existing_id) => existing_id,
+			}
+		}
+	}
+
+	/// Refers to a CPU raster's pixels without keeping them in memory.
+	#[derive(Clone, Debug)]
+	pub struct WeakCPU {
+		buffer: Weak<Buffer>,
+		id: u64,
+	}
+
+	impl WeakCPU {
+		/// Whether a clone still holds these pixels without having modified them.
+		pub fn is_alive(&self) -> bool {
+			self.buffer.upgrade().is_some_and(|buffer| buffer.id.load(Ordering::Relaxed) == self.id)
+		}
+	}
+
+	impl PartialEq for CPU {
+		fn eq(&self, other: &Self) -> bool {
+			Arc::ptr_eq(&self.0, &other.0) || self.0.image == other.0.image
+		}
+	}
+
+	// Pixels can't change without taking a new ID, so the ID stands in for them
+	impl core_types::CacheHash for CPU {
+		fn cache_hash<H: ::core::hash::Hasher>(&self, state: &mut H) {
+			core_types::CacheHash::cache_hash(&self.buffer_id(), state);
+		}
+	}
 
 	impl Sealed for Raster<CPU> {}
 
 	impl Storage for Raster<CPU> {
 		fn is_empty(&self) -> bool {
-			self.0.height == 0 || self.0.width == 0
+			self.height == 0 || self.width == 0
 		}
 	}
 
 	impl Raster<CPU> {
 		pub fn new_cpu(image: Image<Color>) -> Self {
-			Self::new(CPU(image))
+			Self::new(CPU(Arc::new(Buffer { image, ..Default::default() })))
 		}
 
 		pub fn data(&self) -> &Image<Color> {
@@ -100,8 +171,34 @@ mod cpu {
 			self
 		}
 
+		/// A reference to these pixels that doesn't keep them in memory.
+		pub fn downgrade(&self) -> WeakCPU {
+			WeakCPU {
+				id: self.buffer_id(),
+				buffer: Arc::downgrade(&self.storage.0),
+			}
+		}
+
+		/// The pixels, copied only if another clone shares them.
 		pub fn into_data(self) -> Image<Color> {
-			self.storage.0
+			Arc::try_unwrap(self.storage.0).map_or_else(|shared| shared.image.clone(), |buffer| buffer.image)
+		}
+
+		/// The pixels encoded as a PNG `data:` URL, encoded once and shared by every clone.
+		pub fn png_data_url(&self) -> Arc<str> {
+			self.0
+				.png_data_url
+				.get_or_init(|| {
+					use base64::Engine;
+
+					let preamble = "data:image/png;base64,";
+					let png = self.to_png();
+					let mut url = String::with_capacity(preamble.len() + png.len().div_ceil(3) * 4);
+					url.push_str(preamble);
+					base64::engine::general_purpose::STANDARD.encode_string(png, &mut url);
+					url.into()
+				})
+				.clone()
 		}
 	}
 
@@ -109,13 +206,17 @@ mod cpu {
 		type Target = Image<Color>;
 
 		fn deref(&self) -> &Self::Target {
-			&self.0
+			&self.0.image
 		}
 	}
 
 	impl DerefMut for CPU {
+		/// Copies the pixels if another clone shares them, and drops their ID and PNG encoding since they may change.
 		fn deref_mut(&mut self) -> &mut Self::Target {
-			&mut self.0
+			let buffer = Arc::make_mut(&mut self.0);
+			*buffer.id.get_mut() = 0;
+			buffer.png_data_url = OnceLock::new();
+			&mut buffer.image
 		}
 	}
 
@@ -133,7 +234,45 @@ mod cpu {
 		where
 			S: serde::Serializer,
 		{
-			self.0.serialize(serializer)
+			self.data().serialize(serializer)
+		}
+	}
+
+	#[cfg(test)]
+	mod tests {
+		use super::*;
+
+		#[test]
+		fn clones_share_pixels_until_one_is_modified() {
+			let original = Raster::new_cpu(Image::new(2, 2, Color::BLACK));
+			let mut copy = original.clone();
+			assert_eq!(copy.buffer_id(), original.buffer_id());
+			assert!(Arc::ptr_eq(&copy.storage.0, &original.storage.0));
+
+			// Modifying the copy leaves the original's pixels and ID untouched
+			copy.data_mut().data[0] = Color::WHITE;
+			assert_ne!(copy.buffer_id(), original.buffer_id());
+			assert_eq!(original.data().data[0], Color::BLACK);
+			assert_eq!(copy.data().data[0], Color::WHITE);
+		}
+
+		#[test]
+		fn modifying_unshared_pixels_takes_a_new_id_in_place() {
+			let mut raster = Raster::new_cpu(Image::new(2, 2, Color::BLACK));
+			let (id, pixels) = (raster.buffer_id(), raster.data().data.as_ptr());
+
+			raster.data_mut().data[0] = Color::WHITE;
+			assert_ne!(raster.buffer_id(), id, "caches keyed by the old ID must not see the new pixels");
+			assert_eq!(raster.data().data.as_ptr(), pixels, "pixels nothing else shares are modified without a copy");
+		}
+
+		#[test]
+		fn equal_pixels_compare_equal_whatever_their_ids() {
+			let first = Raster::new_cpu(Image::new(2, 2, Color::BLACK));
+			let second = Raster::new_cpu(Image::new(2, 2, Color::BLACK));
+
+			assert_ne!(first.buffer_id(), second.buffer_id());
+			assert_eq!(first, second);
 		}
 	}
 }
@@ -295,19 +434,5 @@ where
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		self.bounding_box(transform, include_stroke)
-	}
-}
-
-// RenderComplexity trait implementations
-impl core_types::render_complexity::RenderComplexity for Raster<CPU> {
-	fn render_complexity(&self) -> usize {
-		(self.width * self.height / 500) as usize
-	}
-}
-
-impl core_types::render_complexity::RenderComplexity for Raster<GPU> {
-	fn render_complexity(&self) -> usize {
-		// GPU textures currently can't have a thumbnail
-		usize::MAX
 	}
 }

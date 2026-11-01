@@ -1,7 +1,6 @@
 use core_types::Color;
 use core_types::color::SRGBA8;
 use core_types::list::{ATTR_GRADIENT_CYCLIC, ATTR_GRADIENT_HUE_DIRECTION, ATTR_GRADIENT_INTERPOLATION, ATTR_GRADIENT_SPACE, ATTR_GRADIENT_SPREAD, ATTR_MIDPOINT, ATTR_POSITION, Item, List};
-use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 
@@ -317,12 +316,6 @@ impl From<List<Color>> for Gradient {
 impl From<Vec<Color>> for Gradient {
 	fn from(colors: Vec<Color>) -> Self {
 		Self(colors.into_iter().map(Item::new_from_element).collect())
-	}
-}
-
-impl RenderComplexity for Gradient {
-	fn render_complexity(&self) -> usize {
-		1
 	}
 }
 

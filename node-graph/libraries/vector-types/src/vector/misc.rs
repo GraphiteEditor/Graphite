@@ -1,5 +1,6 @@
 use super::PointId;
 use super::algorithms::consts::MAX_COINCIDENT_POINT_DISTANCE;
+use super::path::Path;
 use crate::vector::{SegmentId, Vector};
 use core_types::list::{Item, List};
 use dyn_any::DynAny;
@@ -104,11 +105,76 @@ impl From<String> for BoxCorners {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[widget(Radio)]
+#[widget(Dropdown)]
 pub enum GridType {
+	/// Points in straight rows and columns, forming rectangular cells.
 	#[default]
 	Rectangular = 0,
-	Isometric,
+	/// Odd columns sit half a row higher with the same number of points, so copies of the grid stack without a seam.
+	#[cfg_attr(feature = "serde", serde(alias = "Isometric"))]
+	#[label("Isometric (Tiling)")]
+	IsometricTiling,
+	/// Odd columns have one more point than even columns, so the top and bottom mirror each other.
+	#[label("Isometric (Symmetric +1)")]
+	IsometricSymmetricPlusOne,
+	/// Odd columns have one fewer point than even columns, so the top and bottom mirror each other.
+	#[label("Isometric (Symmetric −1)")]
+	IsometricSymmetricMinusOne,
+}
+
+impl GridType {
+	pub fn is_isometric(self) -> bool {
+		self != Self::Rectangular
+	}
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Dropdown)]
+pub enum GridTopology {
+	/// Each straight line through the grid is one path running through every point along it, so dashes and Trim Paths follow whole lines.
+	#[default]
+	Lines,
+	/// Each edge between two neighboring points is its own path, for styling or removing edges one at a time.
+	Edges,
+	/// Draws every edge exactly once in as few paths as possible, which suits pen plotters.
+	FewestPaths,
+	/// Draws every edge in one path, going back over the fewest edges needed to keep it unbroken.
+	SinglePath,
+	#[menu_separator]
+	/// One path along each row, with no edges between rows.
+	RowsOnly,
+	/// One path along each column, with no edges between columns.
+	ColumnsOnly,
+	/// Just the points, with no paths connecting them.
+	PointsOnly,
+	#[menu_separator]
+	/// One path snaking back and forth through every point, along the rows of rectangular grids and the columns of isometric grids.
+	Serpentine,
+	/// One path through every point that finishes each region of the grid before moving on to the next.
+	HilbertCurve,
+	/// One path winding inward through every point, lap by lap.
+	Spiral,
+	/// One closed path through every point, so animating along it loops with no visible start. Rectangular grids with an odd number of both columns and rows leave out one corner.
+	Loop,
+	#[menu_separator]
+	/// Closed paths nested inside one another, each outlining what remains inside the one before.
+	Rings,
+	/// Each cell is its own closed path with its own corners, so cells can be styled or moved apart one by one.
+	Cells,
+	/// Each triangle is its own closed path with its own corners, with rectangular cells split along a diagonal.
+	Triangles,
+}
+
+impl GridTopology {
+	/// Whether the grid's Staggered option changes this topology.
+	pub fn supports_staggered(self) -> bool {
+		matches!(
+			self,
+			Self::Lines | Self::Edges | Self::FewestPaths | Self::SinglePath | Self::RowsOnly | Self::PointsOnly | Self::Rings | Self::Cells
+		)
+	}
 }
 
 #[repr(C)]
@@ -131,10 +197,31 @@ pub enum ArcType {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
-pub enum MergeByDistanceAlgorithm {
+pub enum WeldMethod {
+	/// Any points within the distance of each other join.
 	#[default]
-	Spatial,
-	Topological,
+	#[cfg_attr(feature = "serde", serde(alias = "Spatial"))]
+	All,
+	/// Each segment shorter than the distance collapses, joining its two ends.
+	#[cfg_attr(feature = "serde", serde(alias = "Topological"))]
+	Connected,
+	/// Only the ends of open path flows join, leaving every other anchor where it is.
+	FlowEnds,
+}
+
+#[repr(C)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[widget(Radio)]
+pub enum UnweldMethod {
+	/// Every anchor is split, so each segment stands alone.
+	All,
+	/// Every point that more than one path flow uses is split, so each path flow becomes a path of its own.
+	#[default]
+	SharedPoints,
+	/// Only the shared points where a path flow ends are split, so path flows passing through a shared point stay joined.
+	FlowEnds,
 }
 
 #[repr(C)]
@@ -413,37 +500,39 @@ pub enum ManipulatorPointId {
 impl ManipulatorPointId {
 	/// Attempt to retrieve the manipulator position in layer space (no transformation applied).
 	#[must_use]
-	#[track_caller]
-	pub fn get_position(&self, vector: &Vector) -> Option<DVec2> {
+	pub fn get_position(&self, vector: &Vector, paths: &List<Path>) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
-			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).start()),
-			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|segment| segment_to_handles(&segment).end()),
+			ManipulatorPointId::Anchor(id) => vector.index_of_point_id(*id).and_then(|index| vector.position(index as usize)),
+			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(paths, *id).and_then(|segment| segment_to_handles(&segment).start()),
+			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(paths, *id).and_then(|segment| segment_to_handles(&segment).end()),
 		}
 	}
 
-	pub fn get_anchor_position(&self, vector: &Vector) -> Option<DVec2> {
+	pub fn get_anchor_position(&self, vector: &Vector, paths: &List<Path>) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
-			_ => self.get_position(vector),
+			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self
+				.get_anchor(vector, paths)
+				.and_then(|id| vector.index_of_point_id(id))
+				.and_then(|index| vector.position(index as usize)),
+			_ => self.get_position(vector, paths),
 		}
 	}
 
 	/// Attempt to get a pair of handles. For an anchor this is the first two handles connected. For a handle it is self and the first opposing handle.
 	#[must_use]
-	pub fn get_handle_pair(self, vector: &Vector) -> Option<[HandleId; 2]> {
+	pub fn get_handle_pair(self, vector: &Vector, paths: &List<Path>) -> Option<[HandleId; 2]> {
 		match self {
-			ManipulatorPointId::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
+			ManipulatorPointId::Anchor(point) => vector.all_connected(paths, point).take(2).collect::<Vec<_>>().try_into().ok(),
 			ManipulatorPointId::PrimaryHandle(segment) => {
-				let point = vector.segment_domain.segment_start_from_id(segment)?;
+				let point = vector.segment_start_from_id(paths, segment)?;
 				let current = HandleId::primary(segment);
-				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
+				let other = vector.all_connected(paths, point).find(|&value| value != current);
 				other.map(|other| [current, other])
 			}
 			ManipulatorPointId::EndHandle(segment) => {
-				let point = vector.segment_domain.segment_end_from_id(segment)?;
+				let point = vector.segment_end_from_id(paths, segment)?;
 				let current = HandleId::end(segment);
-				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
+				let other = vector.all_connected(paths, point).find(|&value| value != current);
 				other.map(|other| [current, other])
 			}
 		}
@@ -452,22 +541,22 @@ impl ManipulatorPointId {
 	/// Finds all the connected handles of a point.
 	/// For an anchor it is all the connected handles.
 	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
-	pub fn get_all_connected_handles(self, vector: &Vector) -> Option<Vec<HandleId>> {
+	pub fn get_all_connected_handles(self, vector: &Vector, paths: &List<Path>) -> Option<Vec<HandleId>> {
 		match self {
 			ManipulatorPointId::Anchor(point) => {
-				let connected = vector.all_connected(point).collect::<Vec<_>>();
+				let connected = vector.all_connected(paths, point).collect::<Vec<_>>();
 				Some(connected)
 			}
 			ManipulatorPointId::PrimaryHandle(segment) => {
-				let point = vector.segment_domain.segment_start_from_id(segment)?;
+				let point = vector.segment_start_from_id(paths, segment)?;
 				let current = HandleId::primary(segment);
-				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				let connected = vector.all_connected(paths, point).filter(|&value| value != current).collect::<Vec<_>>();
 				Some(connected)
 			}
 			ManipulatorPointId::EndHandle(segment) => {
-				let point = vector.segment_domain.segment_end_from_id(segment)?;
+				let point = vector.segment_end_from_id(paths, segment)?;
 				let current = HandleId::end(segment);
-				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
+				let connected = vector.all_connected(paths, point).filter(|&value| value != current).collect::<Vec<_>>();
 				Some(connected)
 			}
 		}
@@ -475,11 +564,11 @@ impl ManipulatorPointId {
 
 	/// Attempt to find the closest anchor. If self is already an anchor then it is just self. If it is a start or end handle, then the start or end point is chosen.
 	#[must_use]
-	pub fn get_anchor(self, vector: &Vector) -> Option<PointId> {
+	pub fn get_anchor(self, vector: &Vector, paths: &List<Path>) -> Option<PointId> {
 		match self {
 			ManipulatorPointId::Anchor(point) => Some(point),
-			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
-			ManipulatorPointId::EndHandle(segment) => vector.segment_end_from_id(segment),
+			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(paths, segment),
+			ManipulatorPointId::EndHandle(segment) => vector.segment_end_from_id(paths, segment),
 		}
 	}
 
@@ -561,12 +650,12 @@ impl HandleId {
 	}
 
 	/// Calculate the magnitude of the handle from the anchor.
-	pub fn length(self, vector: &Vector) -> f64 {
-		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector) else {
+	pub fn length(self, vector: &Vector, paths: &List<Path>) -> f64 {
+		let Some(anchor_position) = self.to_manipulator_point().get_anchor_position(vector, paths) else {
 			// TODO: This was previously an unwrap which was encountered, so this is a temporary way to avoid a crash
 			return 0.;
 		};
-		let handle_position = self.to_manipulator_point().get_position(vector);
+		let handle_position = self.to_manipulator_point().get_position(vector, paths);
 		handle_position.map(|pos| (pos - anchor_position).length()).unwrap_or(f64::MAX)
 	}
 
@@ -614,8 +703,10 @@ graphene_hash::impl_via_hash!(
 	CentroidType,
 	RowsOrColumns,
 	GridType,
+	GridTopology,
 	ArcType,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	SpiralType,

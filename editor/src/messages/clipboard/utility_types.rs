@@ -1,11 +1,11 @@
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainNodeCopy, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainNodeCopy, CopiedDefinition, NodeTemplate};
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use glam::DAffine2;
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
 use graph_craft::document::NodeId;
-use graphene_std::vector::Vector;
+use graphene_std::vector::VectorModification;
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ClipboardContentRaw {
@@ -20,7 +20,7 @@ pub enum ClipboardContent {
 	Image { data: Vec<u8>, width: u32, height: u32 },
 }
 
-pub type ClipboardVectorEntry = (LayerNodeIdentifier, Vector, DAffine2);
+pub type ClipboardVectorEntry = (LayerNodeIdentifier, VectorModification, DAffine2);
 
 /// An entry in the `graphite:` clipboard payload.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -31,6 +31,8 @@ pub enum ClipboardItem {
 	ChainNodes(Vec<ChainNodeCopy>),
 	Vector(Vec<ClipboardVectorEntry>),
 	Resource(ClipboardResource),
+	/// A definitions table entry the copied nodes name, listed after the entries it names.
+	Definition(Box<CopiedDefinition>),
 }
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]

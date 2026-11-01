@@ -13,6 +13,19 @@ thread_local! {
 	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
 }
 
+/// Why a styled string can't be converted to vector paths.
+#[derive(Debug, thiserror::Error)]
+pub enum TextToVectorError {
+	#[error("The font is not a readable font file")]
+	UnreadableFont,
+	#[error("The font has a glyph that can't be drawn: {0}")]
+	UndrawableGlyph(#[source] skrifa::outline::DrawError),
+	#[error("The font has no vector outlines for some glyphs")]
+	MissingOutline,
+	#[error("The `{0}` attribute has the wrong type to use for text")]
+	MistypedAttribute(&'static str),
+}
+
 /// Iterates the glyph runs of a laid-out text in reading order, computing each line's last-line alignment correction
 /// (`x_offset` and per-space `space_extra`) and skipping runs clipped by `max_height`. Shared by the vector shaper and the
 /// SVG/Vello text renderers so the alignment logic lives in one place.
@@ -131,10 +144,8 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, per_glyph_items: bool) -> List<Vector> {
-		let Some(layout) = self.layout_text(text, font, typesetting) else {
-			return List::new_from_element(Vector::default());
-		};
+	pub fn to_path(&mut self, text: &str, font: &Resource, typesetting: TypesettingConfig, per_glyph_items: bool) -> Result<List<Vector>, TextToVectorError> {
+		let layout = self.layout_text(text, font, typesetting).ok_or(TextToVectorError::UnreadableFont)?;
 
 		let text_frame_size = DVec2::new(
 			typesetting.max_width.unwrap_or_else(|| layout.full_width() as f64),
@@ -154,11 +165,15 @@ impl TextContext {
 
 		let mut path_builder = PathBuilder::new(per_glyph_items, layout.scale() as f64, text_frame_size, first_glyph_offset);
 
+		let mut drawn = Ok(());
 		for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-			path_builder.render_glyph_run(glyph_run, typesetting.letter_tilt, per_glyph_items, x_offset, space_extra);
+			if drawn.is_ok() {
+				drawn = path_builder.render_glyph_run(glyph_run, typesetting.letter_tilt, per_glyph_items, x_offset, space_extra);
+			}
 		});
+		drawn?;
 
-		path_builder.finalize()
+		Ok(path_builder.finalize())
 	}
 
 	/// Calculate the bounding box of text using the specified font and typesetting configuration

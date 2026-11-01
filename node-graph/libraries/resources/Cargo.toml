@@ -29,3 +29,6 @@ url = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

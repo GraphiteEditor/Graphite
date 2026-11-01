@@ -174,6 +174,11 @@ impl NodeNetworkInterface {
 
 	/// Sets the position of a node to a chain position
 	pub fn set_chain_position(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		// A redirect dot isn't chain-positioned, since that would absorb it into the layer's background area
+		if self.is_redirect_dot(node_id, network_path) {
+			return;
+		}
+
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node_metadata for node {node_id}");
 			return;
@@ -203,7 +208,7 @@ impl NodeNetworkInterface {
 				.skip(1)
 				.collect::<Vec<_>>()
 			{
-				if self.is_layer(&upstream_node, network_path) || self.hidden_primary_output(&upstream_node, network_path) {
+				if self.is_layer(&upstream_node, network_path) || self.hidden_primary_output(&upstream_node, network_path) || self.is_redirect_dot(&upstream_node, network_path) {
 					break;
 				}
 				let downstream_connection_count = self
@@ -282,6 +287,7 @@ impl NodeNetworkInterface {
 	pub fn force_set_upstream_to_chain(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
 		for upstream_id in &self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow).collect::<Vec<_>>() {
 			if !self.is_layer(upstream_id, network_path)
+				&& !self.is_redirect_dot(upstream_id, network_path)
 				&& self
 					.outward_wires(network_path)
 					.is_some_and(|outward_wires| outward_wires.get(&OutputConnector::primary_output(*upstream_id)).is_some_and(|outward_wires| outward_wires.len() == 1))
@@ -896,7 +902,7 @@ impl NodeNetworkInterface {
 		let layer_output = NodeInput::node(layer.to_node(), 0);
 
 		match post_node_input {
-			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 				// First child in the stack: wire layer output to the post_node input
 				self.set_input_for_import(&post_node, layer_output, network_path);
 			}
@@ -1025,7 +1031,7 @@ impl NodeNetworkInterface {
 		if !inserting_into_stack {
 			match post_node_input {
 				// Create a new stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP);
@@ -1051,7 +1057,7 @@ impl NodeNetworkInterface {
 		} else {
 			match post_node_input {
 				// Move to the bottom of the stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
@@ -1074,6 +1080,8 @@ impl NodeNetworkInterface {
 			self.take_over_outward_wires(layer.to_node(), network_path);
 		}
 		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
+
+		self.remove_orphaned_dots(network_path);
 	}
 
 	/// Shifts `upstream_node_id` and everything stacked below it down until a layer needing
@@ -1307,9 +1315,9 @@ impl NodeNetworkInterface {
 
 	/// Duplicates a node into its primary flow (wires into primary inputs, layers' chain inputs, and exports): a node feeding the flow gets its copy right after it,
 	/// taking over what it fed there, and a node only fed by the flow gets its copy appended to extend the chain. A layer's copy brings a copy of its content.
-	/// Returns the copy, or `None` for a node in no flow (a solo node, or a generator without a primary input), which is left to be duplicated loose.
+	/// Returns the copy, or `None` for a node in no flow (a solo node, a generator without a primary input, or a redirect dot), which is left to be duplicated loose.
 	pub fn duplicate_node_in_flow(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeId> {
-		if !self.has_primary_input(node_id, network_path) {
+		if !self.has_primary_input(node_id, network_path) || self.is_redirect_dot(node_id, network_path) {
 			return None;
 		}
 
@@ -1418,10 +1426,12 @@ impl NodeNetworkInterface {
 	}
 
 	/// All nodes in a layer's chain, ordered from the layer outward, stopping where the next layer begins (since flow turns from horizontal to vertical there).
+	/// Redirect dots are left out, since they only bend a wire and are neither shown beside the layer nor part of the order its chain nodes can be rearranged in.
 	pub fn layer_chain_nodes(&self, layer: NodeId, network_path: &[NodeId]) -> Vec<NodeId> {
 		self.upstream_flow_back_from_nodes(vec![layer], network_path, FlowType::HorizontalFlow)
 			.skip(1)
 			.take_while(|upstream_id| !self.is_layer(upstream_id, network_path))
+			.filter(|upstream_id| !self.is_redirect_dot(upstream_id, network_path))
 			.collect()
 	}
 
@@ -1535,12 +1545,14 @@ impl NodeNetworkInterface {
 
 	/// Rewires a layer's chain to run through `new_order` from the layer outward, with the last node fed by `tail_input`.
 	/// Returns whether that took, since a connection that would close a cycle is refused.
+	/// The chain's nodes are wired straight to one another, so redirect dots between them go with the wires they bent.
 	fn rewire_chain(&mut self, layer: NodeId, new_order: &[NodeId], tail_input: NodeInput, network_path: &[NodeId]) -> bool {
 		let intended_chain = Some((new_order.to_vec(), tail_input.clone()));
 
 		// With no nodes left in the chain, the layer is fed directly by what fed its upstream end
 		let (Some(&first), Some(&last)) = (new_order.first(), new_order.last()) else {
 			self.set_input(&InputConnector::layer_secondary_input(layer), tail_input, network_path);
+			self.remove_orphaned_dots(network_path);
 			return self.layer_chain(layer, network_path) == intended_chain;
 		};
 
@@ -1559,6 +1571,7 @@ impl NodeNetworkInterface {
 		// Re-establish chain positioning for the rewired nodes
 		self.force_set_upstream_to_chain(&first, network_path);
 
+		self.remove_orphaned_dots(network_path);
 		self.layer_chain(layer, network_path) == intended_chain
 	}
 }

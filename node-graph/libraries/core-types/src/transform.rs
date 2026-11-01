@@ -189,6 +189,10 @@ impl Footprint {
 	};
 
 	pub fn viewport_bounds_in_local_space(&self) -> AxisAlignedBbox {
+		if self.transform.matrix2.determinant() == 0. {
+			return AxisAlignedBbox::ZERO;
+		}
+
 		let inverse = self.transform.inverse();
 		let res = self.resolution.as_dvec2();
 		let c0 = inverse.transform_point2(DVec2::ZERO);

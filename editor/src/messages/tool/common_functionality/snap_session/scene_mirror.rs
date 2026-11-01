@@ -109,9 +109,10 @@ fn mirror_layer(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -
 
 	// What the layer draws
 	let affine = Affine::new(to_document.to_cols_array());
-	let drawn_curves: Vec<Curve> = metadata.layer_outline(layer).flat_map(|path| path.segments()).map(|segment| Curve::new(affine * segment)).collect();
-	let drawn_anchors: Vec<DVec2> = metadata
-		.layer_outline(layer)
+	let outline: Vec<BezPath> = metadata.layer_outline(layer).collect();
+	let drawn_curves: Vec<Curve> = outline.iter().flat_map(|path| path.segments()).map(|segment| Curve::new(affine * segment)).collect();
+	let drawn_anchors: Vec<DVec2> = outline
+		.iter()
 		.flat_map(anchor_positions)
 		.map(|position| to_document.transform_point2(position))
 		.filter(|position| position.is_finite())
@@ -130,7 +131,7 @@ fn mirror_layer(document: &DocumentMessageHandler, layer: LayerNodeIdentifier) -
 			let curves_drawn: HashSet<[[i64; 2]; 4]> = drawn_curves.iter().map(rounded_curve).collect();
 			let role = |drawn: bool| if drawn { GeometryRole::Source } else { GeometryRole::Undrawn };
 
-			anchors.extend(vector.point_domain.iter().map(|(id, position)| {
+			anchors.extend(vector.anchors().map(|(id, position)| {
 				let position = to_document.transform_point2(position);
 				SceneAnchor {
 					position,

@@ -47,7 +47,15 @@ pub enum Error {
 	/// The requested export options are incoherent (e.g. neither registry nor history included).
 	#[error("invalid export options: {0}")]
 	InvalidExportOptions(&'static str),
+	/// A migration of the document failed while it opened.
+	#[cfg(feature = "migrations")]
+	#[error("migration error: {0}")]
+	Migration(#[from] migration_runner::RunnerError),
 	/// An export marked a resource for embedding but its bytes were absent from the byte store.
 	#[error("embedded resource {0} missing from the byte store")]
 	MissingResource(ResourceHash),
+	/// A packet for the collaboration session failed to encode.
+	#[cfg(feature = "network")]
+	#[error("network error: {0}")]
+	Network(#[from] peer_transport::PacketError),
 }

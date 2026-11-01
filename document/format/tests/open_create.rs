@@ -95,6 +95,44 @@ fn manifest_returns_what_create_in_wrote() {
 }
 
 #[test]
+fn an_empty_registry_file_is_corrupt_rather_than_absent() {
+	use document_container::AsyncContainer;
+
+	futures::executor::block_on(async {
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+		let codec = gdd.manifest().codecs.registry;
+
+		let (working, layout) = gdd.into_storage();
+		working.write_non_blocking(&io::path_for(layout.registry_basename(), codec), &[]).unwrap();
+
+		assert!(GddV1::open_in(working, layout).await.is_err());
+	});
+}
+
+#[test]
+fn opening_a_registry_without_history_keeps_the_node_counter() {
+	use document_container::AsyncContainer;
+
+	futures::executor::block_on(async {
+		let gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
+		let codecs = gdd.manifest().codecs;
+
+		let (working, layout) = gdd.into_storage();
+		working.remove(&io::path_for(layout.history_basename(), codecs.history)).await.unwrap();
+		io::write_single(&working, layout.registry_basename(), codecs.registry, &document_graph_storage::Registry::default()).unwrap();
+		let session = document_graph_storage::SessionState {
+			peer_id: PeerId(1),
+			next_node_counter: 41,
+			..Default::default()
+		};
+		io::write_single(&working, layout.session_basename(), codecs.session, &session).unwrap();
+
+		let reopened = GddV1::open_in(working, layout).await.unwrap_or_else(|error| panic!("open_in failed: {error:?}"));
+		assert_eq!(reopened.session().next_node_counter(), 41);
+	});
+}
+
+#[test]
 fn update_manifest_changes_visible_after_reopen() {
 	futures::executor::block_on(async {
 		let mut gdd = GddV1::create_in(empty_container(), GddV1Layout, PeerId(1), 0xAB, "ed".into(), "std".into()).unwrap_or_else(|error| panic!("create_in failed: {error:?}"));
@@ -123,6 +161,7 @@ fn apply_hot_op_persists_to_hot_log_and_survives_reopen() {
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
 			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 
@@ -148,6 +187,7 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
 			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		let late = HotOp {
 			op: RegistryDelta::AddNetwork {
@@ -156,6 +196,7 @@ fn retire_moves_eligible_hot_ops_to_history_and_keeps_rest() {
 			},
 			timestamp: TimeStamp { counter: 10, peer: PeerId(5) },
 			sequence: HotSequence(2),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(early).unwrap();
 		gdd.apply_hot_op(late).unwrap();
@@ -194,6 +235,7 @@ fn last_broadcast_rev_persists_across_reopen() {
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
 			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(op).unwrap();
 		let retired = gdd.retire(TimeStamp { counter: 1, peer: PeerId(5) }).unwrap_or_else(|error| panic!("retire failed: {error:?}"));
@@ -632,6 +674,7 @@ fn persist_path_writes_at_manifest_declared_codec_paths() {
 			},
 			timestamp: TimeStamp { counter: 1, peer: PeerId(5) },
 			sequence: HotSequence(1),
+			attributes: Default::default(),
 		};
 		gdd.apply_hot_op(hot_op).unwrap_or_else(|error| panic!("apply_hot_op failed: {error:?}"));
 

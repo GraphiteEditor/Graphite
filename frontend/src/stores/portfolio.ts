@@ -1,11 +1,11 @@
-import { tick } from "svelte";
 import { SvelteMap } from "svelte/reactivity";
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { acceptStringFromFilters, downloadFile, upload } from "/src/utility-functions/files";
+import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { rasterizeSVGCanvas } from "/src/utility-functions/rasterization";
-import { patchLayout } from "/src/utility-functions/widgets";
+import { deepEqual, patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, DocumentInfo, LayerPanelEntry, LayerStructureEntry, Layout, WorkspacePanelLayout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type PortfolioStore = ReturnType<typeof createPortfolioStore>;
@@ -29,33 +29,30 @@ const initialState: PortfolioStoreState = {
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
+// The layers (by ID string) the Layers panel has rows rendered for, whose details are the only ones it keeps
+let layersWithDetails = new Set<string>();
+
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<PortfolioStoreState> = import.meta.hot?.data?.store || writable<PortfolioStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
 const { subscribe, update } = store;
 
-export const welcomeScreenButtonsLayout = makeLayoutStore("welcomeScreenButtonsLayout");
-export const inspectorLayout = makeLayoutStore("inspectorLayout");
-export const dataPanelLayout = makeLayoutStore("dataPanelLayout");
-export const layersPanelControlBarLeftLayout = makeLayoutStore("layersPanelControlBarLeftLayout");
-export const layersPanelBottomBarLeftLayout = makeLayoutStore("layersPanelBottomBarLeftLayout");
-export const layersPanelBottomBarRightLayout = makeLayoutStore("layersPanelBottomBarRightLayout");
+export const welcomeScreenButtonsLayout = persistedLayout("welcomeScreenButtonsLayout");
+export const inspectorLayout = persistedLayout("inspectorLayout");
+export const dataPanelLayout = persistedLayout("dataPanelLayout");
+export const dataPanelContextLayout = persistedLayout("dataPanelContextLayout");
+export const dataPanelPathLayout = persistedLayout("dataPanelPathLayout");
+export const layersPanelControlBarLeftLayout = persistedLayout("layersPanelControlBarLeftLayout");
+export const layersPanelBottomBarLeftLayout = persistedLayout("layersPanelBottomBarLeftLayout");
+export const layersPanelBottomBarRightLayout = persistedLayout("layersPanelBottomBarRightLayout");
 
-// Each panel layout has its own dedicated store so a layout update only re-renders that panel's consumers.
+// Each panel layout is its own reactive layout, patched in place so an update only re-renders the widgets it changes.
 // Putting them at module scope (not inside the component) lets them survive a Svelte remount during a
 // panel-tree restructure, since the backend's diff-based updates aren't re-sent on subscribe.
-function makeLayoutStore(name: string): Writable<Layout> {
-	const persisted = import.meta.hot?.data?.[name];
-	const layoutStore: Writable<Layout> = persisted || writable<Layout>([]);
-	if (import.meta.hot) import.meta.hot.data[name] = layoutStore;
-	return layoutStore;
-}
-
-function patchLayoutStore(layoutStore: Writable<Layout>, data: Parameters<typeof patchLayout>[1]) {
-	layoutStore.update((layout) => {
-		patchLayout(layout, data);
-		return layout;
-	});
+function persistedLayout(name: string): Layout {
+	const layout: Layout = import.meta.hot?.data?.[name] || createLayout();
+	if (import.meta.hot) import.meta.hot.data[name] = layout;
+	return layout;
 }
 
 export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor: EditorWrapper) {
@@ -129,38 +126,42 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		});
 	});
 
-	// Each panel layout uses its own store so updates only re-render that panel's consumers
-	subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", async (data) => {
-		await tick();
-		patchLayoutStore(welcomeScreenButtonsLayout, data);
+	subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
+		patchLayout(welcomeScreenButtonsLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("Inspector", async (data) => {
-		await tick();
-		patchLayoutStore(inspectorLayout, data);
+	subscriptions.subscribeLayoutUpdate("Inspector", (data) => {
+		patchLayout(inspectorLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("DataPanel", async (data) => {
-		await tick();
-		patchLayoutStore(dataPanelLayout, data);
+	subscriptions.subscribeLayoutUpdate("DataPanel", (data) => {
+		patchLayout(dataPanelLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", async (data) => {
-		await tick();
-		patchLayoutStore(layersPanelControlBarLeftLayout, data);
+	subscriptions.subscribeLayoutUpdate("DataPanelContext", (data) => {
+		patchLayout(dataPanelContextLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", async (data) => {
-		await tick();
-		patchLayoutStore(layersPanelBottomBarLeftLayout, data);
+	subscriptions.subscribeLayoutUpdate("DataPanelPath", (data) => {
+		patchLayout(dataPanelPathLayout, data);
 	});
 
-	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", async (data) => {
-		await tick();
-		patchLayoutStore(layersPanelBottomBarRightLayout, data);
+	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
+		patchLayout(layersPanelControlBarLeftLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomLeftBar", (data) => {
+		patchLayout(layersPanelBottomBarLeftLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("LayersPanelBottomRightBar", (data) => {
+		patchLayout(layersPanelBottomBarRightLayout, data);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
+		// The backend resends the structure whenever the graph changes, so an unchanged one is skipped instead of rebuilding the Layers panel
+		if (deepEqual(get(store).layerStructure, data.layerStructure)) return;
+
 		update((state) => {
 			state.layerStructure = data.layerStructure;
 			return state;
@@ -168,6 +169,9 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
+		// Details sent before their layer's row left view would otherwise be kept without the backend updating them
+		if (!layersWithDetails.has(String(data.data.id))) return;
+
 		update((state) => {
 			state.layerCache.set(String(data.data.id), data.data);
 			return state;
@@ -175,6 +179,17 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 	});
 
 	return { subscribe };
+}
+
+// Keeps only the given layers' details (by ID string), the only ones the backend keeps current, or none if those kept were for another document
+export function retainLayerDetails(layerIds: Set<string>, otherDocument: boolean) {
+	layersWithDetails = layerIds;
+	update((state) => {
+		Array.from(state.layerCache.keys()).forEach((id) => {
+			if (otherDocument || !layerIds.has(id)) state.layerCache.delete(id);
+		});
+		return state;
+	});
 }
 
 export function destroyPortfolioStore() {
@@ -192,6 +207,8 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	subscriptions.unsubscribeLayoutUpdate("Inspector");
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
+	subscriptions.unsubscribeLayoutUpdate("DataPanelContext");
+	subscriptions.unsubscribeLayoutUpdate("DataPanelPath");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");

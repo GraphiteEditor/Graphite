@@ -1,8 +1,8 @@
-use super::utility_types::Direction;
+use super::utility_types::{Direction, NodeEvaluationError};
 use crate::messages::input_mapper::utility_types::keyboard::Key;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector, RootNode};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
@@ -24,10 +24,6 @@ pub enum NodeGraphMessage {
 	AddImportAndConnect {
 		import_index: usize,
 		input_connector: InputConnector,
-	},
-	/// Inserts a Passthrough node beside the import that takes over the wires it fed, so nodes can be placed in front of all of them at once.
-	AddImportPassthrough {
-		import_index: usize,
 	},
 	AddExport,
 	AddPrimaryExport,
@@ -53,6 +49,11 @@ pub enum NodeGraphMessage {
 		output_connector: OutputConnector,
 		input_connector: InputConnector,
 	},
+	/// Wires an output into several inputs together, so the exports among them share one redirect dot if the output is an import.
+	CreateWires {
+		output_connector: OutputConnector,
+		input_connectors: Vec<InputConnector>,
+	},
 	ConnectUpstreamOutputToInput {
 		downstream_input: InputConnector,
 		input_connector: InputConnector,
@@ -65,16 +66,14 @@ pub enum NodeGraphMessage {
 	DeleteSelectedNodes {
 		delete_children: bool,
 	},
+	/// Removes each redirect dot that the preceding operation left without a wire.
+	RemoveOrphanedDots,
 	DisconnectInput {
 		input_connector: InputConnector,
 	},
 	/// Disconnects every wire an import feeds, or the wire feeding an export.
 	DisconnectImportExport {
 		index: ImportOrExport,
-	},
-	DisconnectRootNode,
-	SetRootNodeToRestore {
-		root_node_to_restore: RootNode,
 	},
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
@@ -101,6 +100,20 @@ pub enum NodeGraphMessage {
 		node_id: NodeId,
 		input_connector: InputConnector,
 		insert_node_input_index: usize,
+	},
+	/// Splits the wire feeding an input with a new redirect dot centered on a grid point.
+	InsertDotOnWire {
+		node_id: NodeId,
+		input_connector: InputConnector,
+		x: i32,
+		y: i32,
+	},
+	/// Runs the wires leaving an output through a new redirect dot centered on a grid point, so they fan out from the dot instead.
+	InsertDotOnOutput {
+		node_id: NodeId,
+		output_connector: OutputConnector,
+		x: i32,
+		y: i32,
 	},
 	MergeSelectedNodes,
 	MoveLayerToStack {
@@ -154,6 +167,10 @@ pub enum NodeGraphMessage {
 	},
 	/// Sent every frame while a dragged wire hovers a node, to expand it once the hover delay passes.
 	WireHoverTick,
+	/// Sends where everything gliding into place is drawn, along with the wires that follow it.
+	SendGlide,
+	/// Sent every frame while nodes glide into their grid cells, to bring them closer.
+	GlideTick,
 	ShakeNode,
 	UpdateNodeGraphWidth,
 	RemoveImport {
@@ -218,6 +235,10 @@ pub enum NodeGraphMessage {
 		network_path: Vec<NodeId>,
 		alias: String,
 	},
+	/// Gives the node its own copy of the network it shares with other nodes.
+	MakeUnique {
+		node_id: NodeId,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,
@@ -227,13 +248,21 @@ pub enum NodeGraphMessage {
 		x: i32,
 		y: i32,
 	},
+	/// Moves the selected nodes one grid cell with the arrow keys, as an undo step of its own.
+	NudgeSelectedNodes {
+		direction: Direction,
+	},
+	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodes {
 		direction: Direction,
 		rubber_band: bool,
+		glide: bool,
 	},
+	/// With `glide`, whatever the shift moves glides to where it lands, rather than jumping there.
 	ShiftSelectedNodesByAmount {
 		graph_delta: IVec2,
 		rubber_band: bool,
+		glide: bool,
 	},
 	TogglePreview {
 		node_id: NodeId,
@@ -292,14 +321,28 @@ pub enum NodeGraphMessage {
 		network_path: Vec<NodeId>,
 	},
 	UpdateBoxSelection,
+	/// Shows hovered the connector a press at the pointer would grab, or none.
+	UpdateHoveredConnector,
+	/// Highlights the wire a dragged node would be inserted onto if dropped where it is, or stops highlighting one.
+	UpdateWireInsertionPreview,
 	UpdateImportsExports,
+	/// Sends the Layers panel the details of every layer it has a row in view for.
 	UpdateLayerPanel,
+	/// Sends the Layers panel the details of the given layers.
+	SendLayerPanelDetails {
+		layers: Vec<NodeId>,
+	},
 	UpdateNewNodeGraph,
 	UpdateTypes {
 		#[serde(skip)]
 		resolved_types: ResolvedDocumentNodeTypesDelta,
 		#[serde(skip)]
 		node_graph_errors: GraphErrors,
+		#[serde(skip)]
+		node_graph_warnings: GraphErrors,
+	},
+	UpdateEvaluationErrors {
+		errors: Vec<NodeEvaluationError>,
 	},
 	UpdateActionButtons,
 	UpdateGraphBarRight,

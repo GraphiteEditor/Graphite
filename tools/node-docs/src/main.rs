@@ -23,9 +23,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 		nodes_by_category.entry(metadata.category.to_string()).or_default().push((id, metadata));
 	}
 
-	// Sort the categories
+	// Sort the categories into the node catalog's order, leaving out the developer tools that production builds don't list
 	let mut categories = nodes_by_category.keys().cloned().collect::<Vec<_>>();
-	categories.sort();
+	categories.sort_by(|a, b| graphene_std::registry::category_sort_key(a).cmp(&graphene_std::registry::category_sort_key(b)));
+	categories.retain(|category| !graphene_std::registry::is_development_category(category));
 	if OMIT_HIDDEN {
 		categories.retain(|category| !graphene_std::registry::is_hidden_category(category));
 	}

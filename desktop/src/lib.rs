@@ -22,6 +22,7 @@ mod persist;
 mod preferences;
 mod render;
 mod socket;
+mod spawner;
 mod window;
 
 pub(crate) mod consts;
@@ -76,8 +77,6 @@ pub fn start() -> ExitCode {
 	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
 	dirs::delete_old_cef_browser_directory();
 
-	let mut prefs = preferences::read();
-
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
 
@@ -89,15 +88,19 @@ pub fn start() -> ExitCode {
 
 	let _socket_handle = socket::start(app_event_scheduler.clone());
 
+	let mut prefs = preferences::DesktopPreferences::from(&preferences::read());
+
 	if cli.disable_ui_acceleration {
-		prefs.disable_ui_acceleration = true;
+		prefs.acceleration = Acceleration::Disabled;
+		preferences::modify(|prefs| {
+			prefs.disable_ui_acceleration = true;
+		});
 	}
-	if prefs.disable_ui_acceleration {
+	if prefs.acceleration == Acceleration::Disabled {
 		println!("UI acceleration is disabled");
 	}
 
-	let acceleration = if prefs.disable_ui_acceleration { Acceleration::Disabled } else { Acceleration::Auto };
-	let ui_context = match ui_context.start(UiConfig { acceleration }) {
+	let ui_context = match ui_context.start(UiConfig { acceleration: prefs.acceleration }) {
 		Ok(context) => context,
 		Err(error) => {
 			tracing::error!("Failed to start the UI runtime: {error}");
@@ -147,29 +150,18 @@ pub fn start() -> ExitCode {
 	// ui needs to be shutdown before restarting
 	ui.shutdown();
 
-	// If exiting due to a UI acceleration failure, update preferences to disable it for next launch
-	if matches!(exit_reason, app::ExitReason::UiAccelerationFailure) {
-		tracing::error!("Disabling UI acceleration");
-		preferences::modify(|prefs| {
-			prefs.disable_ui_acceleration = true;
-		});
-	}
-
 	// Explicitly drop the instance lock
 	drop(lock);
 
-	match exit_reason {
-		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
-			tracing::info!("Restarting application");
-			let mut command = std::process::Command::new(std::env::current_exe().unwrap());
-			#[cfg(target_family = "unix")]
-			let _ = std::os::unix::process::CommandExt::exec(&mut command);
-			#[cfg(target_family = "unix")]
-			tracing::error!("Failed to restart application");
-			#[cfg(not(target_family = "unix"))]
-			let _ = command.spawn();
-		}
-		_ => {}
+	if matches!(exit_reason, app::ExitReason::Restart) {
+		tracing::info!("Restarting application");
+		let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+		#[cfg(target_family = "unix")]
+		let _ = std::os::unix::process::CommandExt::exec(&mut command);
+		#[cfg(target_family = "unix")]
+		tracing::error!("Failed to restart application");
+		#[cfg(not(target_family = "unix"))]
+		let _ = command.spawn();
 	}
 
 	ExitCode::SUCCESS

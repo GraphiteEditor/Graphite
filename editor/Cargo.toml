@@ -15,14 +15,16 @@ workspace = true
 
 [features]
 default = ["gpu"]
-wasm = ["graphene-std/wasm", "interpreted-executor/wasm", "dep:wasm-bindgen"]
+wasm = ["graphene-std/wasm", "interpreted-executor/wasm", "dep:wasm-bindgen", "dep:wasm-bindgen-futures"]
 gpu = ["interpreted-executor/gpu", "dep:wgpu-executor"]
 
 [dependencies]
 # Local dependencies
 graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
-document-format = { workspace = true }
+document-format = { workspace = true, features = ["migrations"] }
+migration-formats = { workspace = true }
+migration-nodes = { workspace = true }
 document-graph-storage = { workspace = true, features = ["conversion"] }
 document-container = { workspace = true }
 graphene-hash = { workspace = true }
@@ -51,9 +53,8 @@ usvg = { workspace = true }
 simplecss = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
-vello = { workspace = true }
+vello_gpu = { workspace = true }
 base64 = { workspace = true }
-spin = { workspace = true }
 image = { workspace = true }
 color = { workspace = true }
 zip = { workspace = true }
@@ -65,12 +66,10 @@ wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
+wasm-bindgen-futures = { workspace = true, optional = true }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 tokio = { workspace = true }
-
-[target.'cfg(target_family = "wasm")'.dependencies]
-wasm-bindgen-futures = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies

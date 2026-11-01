@@ -3,20 +3,20 @@ use core_types::color::Linear;
 use core_types::list::Item;
 use core_types::transform::Footprint;
 use core_types::uuid::generate_uuid;
-use core_types::{Ctx, ExtractFootprint};
+use core_types::{Context, Ctx, ExtractFootprint, Interrupt, NodeError};
 use glam::{Affine2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
 use rendering::{RenderParams, SvgRender, SvgRenderOutput};
 use std::fmt::Write;
-use wgpu_executor::{AsyncWgpuPipeline, Buffer, WgpuExecutor, WgpuPipelineCache};
+use wgpu_executor::{Buffer, WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 
 #[node_macro::node(category(""))]
-async fn render_background<'a: 'n>(
+fn render_background(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+	#[scope(composite_background_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 	data: Item<RenderOutput>,
-) -> Item<RenderOutput> {
+) -> Result<Item<RenderOutput>, Interrupt> {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -24,8 +24,8 @@ async fn render_background<'a: 'n>(
 		.downcast_ref::<RenderParams>()
 		.expect("Downcasting render params yielded invalid type");
 
-	if !render_params.to_canvas() || render_params.viewport_zoom <= 0.0 {
-		return data;
+	if !render_params.to_canvas() || render_params.viewport_zoom.unwrap_or(1.) <= 0.0 {
+		return Ok(data);
 	}
 
 	let RenderOutput { data: foreground_data, metadata } = data.into_element();
@@ -36,14 +36,15 @@ async fn render_background<'a: 'n>(
 		RenderOutputType::Texture(foreground_texture) => {
 			let doc_to_screen = render_params.footprint.transform.as_affine2();
 			let blended = pipeline
+				.eval(Context::default())?
 				.into_element()
 				.run::<CompositeBackground>(&CompositeBackgroundArgs {
 					foreground: foreground_texture.as_ref(),
 					backgrounds: &metadata.backgrounds,
 					document_to_screen: doc_to_screen,
-					zoom: render_params.viewport_zoom.to_f32(),
+					zoom: render_params.viewport_zoom.unwrap_or(1.).to_f32(),
 				})
-				.await;
+				.map_err(NodeError::from)?;
 
 			RenderOutputType::Texture(blended)
 		}
@@ -55,10 +56,10 @@ async fn render_background<'a: 'n>(
 
 			let logical_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1.0 / render_params.scale)) * render_params.footprint.transform;
 
-			if render_params.viewport_zoom > 0. {
-				let draw_checkerboard = |render: &mut SvgRender, rect: vello::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
+			if render_params.viewport_zoom.unwrap_or_default() > 0. {
+				let draw_checkerboard = |render: &mut SvgRender, rect: vello_gpu::kurbo::Rect, pattern_origin: glam::DVec2, checker_id_prefix: &str| {
 					let checker_id = format!("{checker_id_prefix}-{}", generate_uuid());
-					let cell_size = 8. / render_params.viewport_zoom;
+					let cell_size = 8. / render_params.viewport_zoom.unwrap_or(1.);
 					let pattern_size = cell_size * 2.;
 
 					write!(
@@ -91,14 +92,14 @@ async fn render_background<'a: 'n>(
 						let max = bounds.end.ceil();
 
 						if min.is_finite() && max.is_finite() {
-							let rect = vello::kurbo::Rect::new(min.x, min.y, max.x, max.y);
+							let rect = vello_gpu::kurbo::Rect::new(min.x, min.y, max.x, max.y);
 							draw_checkerboard(&mut render, rect, glam::DVec2::ZERO, "checkered-viewport");
 						}
 					}
 				} else {
 					for background in &metadata.backgrounds {
 						let [a, b] = [background.location, background.location + background.dimensions];
-						let rect = vello::kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+						let rect = vello_gpu::kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 						draw_checkerboard(&mut render, rect, glam::DVec2::new(rect.x0, rect.y0), "checkered-artboard");
 					}
 				}
@@ -118,18 +119,16 @@ async fn render_background<'a: 'n>(
 		_ => unreachable!("Render background node received unsupported render output type"),
 	};
 
-	Item::new_from_element(RenderOutput { data, metadata })
+	Ok(Item::new_from_element(RenderOutput { data, metadata }))
 }
 
 #[node_macro::node(category(""), inject_scope)]
-async fn composite_background_pipeline<'a: 'n>(
+fn composite_background_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<&'a WgpuExecutor>>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: Item<WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
-	if let Some(executor) = executor.into_element() {
-		executor.pipeline_init::<CompositeBackground>(pipeline);
-	}
+	executor.into_element().pipeline_init::<CompositeBackground>(pipeline);
 	Item::new_from_element(pipeline.clone())
 }
 
@@ -149,7 +148,7 @@ pub struct CompositeBackgroundArgs<'a> {
 	zoom: f32,
 }
 
-impl AsyncWgpuPipeline for CompositeBackground {
+impl WgpuPipeline for CompositeBackground {
 	type Args<'a> = CompositeBackgroundArgs<'a>;
 	type Out = Texture;
 
@@ -332,7 +331,7 @@ impl AsyncWgpuPipeline for CompositeBackground {
 		}
 	}
 
-	async fn run<'a>(&'a self, executor: &'a WgpuExecutor, args: &'a Self::Args<'_>) -> Self::Out {
+	fn run(&self, executor: &WgpuExecutor, args: &Self::Args<'_>) -> Self::Out {
 		let &CompositeBackgroundArgs {
 			foreground,
 			backgrounds,

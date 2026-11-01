@@ -5,8 +5,8 @@ use super::storage_metadata::StorageMetadataView;
 use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{PeerId, Registry, RegistryDelta, Session};
-use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeInput, OwnedNetworkLocation};
 use graph_craft::runtime_delta::RuntimeDelta;
 use graphene_std::uuid::NodeId;
 
@@ -47,7 +47,7 @@ fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersi
 
 fn metadata_change(node_id: NodeId, change: NodeMetadataChange) -> EditorDelta {
 	EditorDelta::NodeMetadata {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		node_id,
 		change,
 	}
@@ -82,7 +82,7 @@ async fn set_input_value_constructs_the_exact_diff_op() {
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(node, 1), input.clone(), &[]);
 
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		node_id: node,
 		input_index: 1,
 		input,
@@ -104,7 +104,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let wire = NodeInput::node(b, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(a, 1), wire.clone(), &[]);
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		node_id: a,
 		input_index: 1,
 		input: wire,
@@ -117,7 +117,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let export = NodeInput::node(a, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::Export(0), export.clone(), &[]);
 	let delta = EditorDelta::Graph(RuntimeDelta::SetExport {
-		network_path: Vec::new(),
+		network: OwnedNetworkLocation::ROOT,
 		export_index: 0,
 		input: Some(export),
 	});
@@ -141,12 +141,12 @@ async fn adding_a_node_as_structure_plus_metadata_matches_the_diff() {
 
 	let deltas = [
 		EditorDelta::Graph(RuntimeDelta::AddNode {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			node_id,
 			node: Box::new(document_node),
 		}),
 		EditorDelta::NodeMetadataSnapshot {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			node_id,
 			metadata: Box::new(metadata),
 		},
@@ -180,13 +180,13 @@ async fn per_field_metadata_edits_match_the_diff() {
 		metadata_change(node, NodeMetadataChange::Pinned(metadata.pinned)),
 		metadata_change(node, NodeMetadataChange::NodeType(metadata.node_type_metadata.clone())),
 		EditorDelta::Graph(RuntimeDelta::SetVisibility {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			node_id: node,
 			visible: false,
 		}),
 		// Pinning a node also appends it to the network's display order, which is network state.
 		EditorDelta::NetworkMetadata {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			change: NetworkMetadataChange::PinnedOrder(vec![node]),
 		},
 	];
@@ -327,9 +327,9 @@ async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
 		.document_network()
 		.nodes
 		.iter()
-		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(_)))
 		.map(|(id, _)| *id)
-		.expect("the group should be a network node");
+		.expect("the group should name a table entry");
 
 	let working = convert(&editor);
 	editor.active_document_mut().network_interface.discard_deltas();
@@ -367,9 +367,9 @@ async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
 		.document_network()
 		.nodes
 		.iter()
-		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(_)))
 		.map(|(id, _)| *id)
-		.expect("the group should be a network node");
+		.expect("the group should name a table entry");
 
 	let working = convert(&editor);
 	editor.active_document_mut().network_interface.discard_deltas();
@@ -411,12 +411,34 @@ async fn assert_replay_reproduces(edit: impl FnOnce(&mut EditorTestUtils)) {
 		replayed.apply(delta);
 	}
 
+	let edited = &editor.active_document().network_interface;
 	assert_eq!(
-		replayed,
-		editor.active_document().network_interface,
-		"replaying {} recorded deltas did not reproduce the edited interface",
+		replayed.document_network(),
+		edited.document_network(),
+		"replaying {} recorded deltas did not reproduce the graph",
 		recorded.len()
 	);
+	assert_eq!(
+		without_selection_history(&replayed.network_metadata.persistent_metadata),
+		without_selection_history(&edited.network_metadata.persistent_metadata),
+		"replaying {} recorded deltas did not reproduce the metadata",
+		recorded.len()
+	);
+}
+
+/// The metadata without this peer's selection history, which deltas never carry.
+fn without_selection_history(metadata: &super::NodeNetworkPersistentMetadata) -> super::NodeNetworkPersistentMetadata {
+	let clear = |network: &mut super::NodeNetworkPersistentMetadata| {
+		network.selection_undo_history.clear();
+		network.selection_redo_history.clear();
+	};
+
+	let mut metadata = metadata.clone();
+	clear(&mut metadata);
+	for definition in metadata.definitions.values_mut() {
+		clear(&mut definition.persistent_metadata);
+	}
+	metadata
 }
 
 fn only_group(editor: &EditorTestUtils) -> NodeId {
@@ -426,9 +448,9 @@ fn only_group(editor: &EditorTestUtils) -> NodeId {
 		.document_network()
 		.nodes
 		.iter()
-		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(_)))
 		.map(|(id, _)| *id)
-		.expect("the group should be a network node")
+		.expect("the group should name a table entry")
 }
 
 #[tokio::test]
@@ -512,10 +534,14 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 		.document_network()
 		.nodes
 		.iter()
-		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)))
+		.find(|(_, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(_)))
 		.map(|(id, _)| *id)
-		.expect("the group should be a network node");
-	editor.active_document_mut().network_interface.delete_nodes(vec![group], true, &[]);
+		.expect("the group should name a table entry");
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.delete_nodes(vec![group], true, &[]);
+	interface.discard_deltas();
+	interface.settle_definitions();
+	let entry_removals = interface.take_deltas();
 
 	let network = editor.active_document().network_interface.document_network().clone();
 	let mut deltas: Vec<EditorDelta> = before
@@ -523,14 +549,14 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 		.filter(|id| !network.nodes.contains_key(id))
 		.map(|id| {
 			EditorDelta::Graph(RuntimeDelta::RemoveNode {
-				network_path: Vec::new(),
+				network: OwnedNetworkLocation::ROOT,
 				node_id: *id,
 			})
 		})
 		.collect();
 	for (index, export) in network.exports.iter().enumerate() {
 		deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-			network_path: Vec::new(),
+			network: OwnedNetworkLocation::ROOT,
 			export_index: index,
 			input: Some(export.clone()),
 		}));
@@ -538,13 +564,14 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 	for (node_id, node) in &network.nodes {
 		for (index, input) in node.inputs.iter().enumerate() {
 			deltas.push(EditorDelta::Graph(RuntimeDelta::SetInput {
-				network_path: Vec::new(),
+				network: OwnedNetworkLocation::ROOT,
 				node_id: *node_id,
 				input_index: index,
 				input: input.clone(),
 			}));
 		}
 	}
+	deltas.extend(entry_removals);
 
 	let constructed = construct(&editor, &deltas, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
@@ -569,9 +596,11 @@ async fn a_group_added_and_removed_in_one_batch_leaves_nothing_behind() {
 		})
 		.await;
 	let group = only_group(&editor);
-	editor.active_document_mut().network_interface.delete_nodes(vec![group], true, &[]);
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.delete_nodes(vec![group], true, &[]);
+	interface.settle_definitions();
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = interface.take_deltas();
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "group added then removed in one batch");
@@ -593,7 +622,7 @@ async fn swapping_an_implementation_leaves_the_node_in_place() {
 		let Some(mut cursor) = interface.node_mut(super::NodeLocator::new(node, &[])) else {
 			panic!("the node should resolve")
 		};
-		cursor.replace_implementation(graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER), None);
+		cursor.replace_implementation(graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
 		interface.take_deltas()
 	};
 
@@ -777,4 +806,391 @@ async fn exports_past_the_end_of_the_description_list_emit_no_description_write(
 		})
 		.count();
 	assert_eq!(description_writes, 0, "the description list didn't change, so it shouldn't be written: {emitted:#?}");
+}
+
+fn table_layer(editor: &EditorTestUtils) -> (NodeId, graph_craft::document::NetworkId) {
+	editor
+		.active_document()
+		.network_interface
+		.document_network()
+		.nodes
+		.iter()
+		.find_map(|(id, node)| match node.implementation {
+			graph_craft::document::DocumentNodeImplementation::Definition(definition) => Some((*id, definition)),
+			_ => None,
+		})
+		.expect("a committed layer should name a table entry")
+}
+
+/// A node inside the table entry `definition`, and the index of one of its value inputs.
+fn value_input_inside(editor: &EditorTestUtils, definition: graph_craft::document::NetworkId) -> (NodeId, usize) {
+	editor.active_document().network_interface.document_network().definitions[&definition]
+		.nodes
+		.iter()
+		.find_map(|(id, node)| node.inputs.iter().position(|input| matches!(input, NodeInput::Value { .. })).map(|index| (*id, index)))
+		.expect("the layer's network should have a node with a value input")
+}
+
+/// The network location `deltas` recorded for a write to an input of `node_id`.
+fn recorded_input_write(deltas: &[EditorDelta], node_id: NodeId) -> OwnedNetworkLocation {
+	deltas
+		.iter()
+		.find_map(|delta| match delta {
+			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id: written, .. }) if *written == node_id => Some(network.clone()),
+			_ => None,
+		})
+		.expect("the input write should be recorded")
+}
+
+/// An inserted network goes into the definitions table right away, and a commit drops the entries no node reaches any more.
+#[tokio::test]
+async fn inserted_networks_are_lifted_and_unreached_entries_dropped() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let network = editor.active_document().network_interface.document_network();
+	let inline_remains = std::iter::once(network)
+		.chain(network.definitions.values())
+		.flat_map(|network| network.nodes.values())
+		.any(|node| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Network(_)));
+	assert!(!inline_remains, "the insertion should have lifted every inline network");
+	assert!(network.definitions.contains_key(&definition));
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.delete_nodes(vec![layer], true, &[]);
+	interface.settle_definitions();
+
+	let network = editor.active_document().network_interface.document_network();
+	assert!(!network.definitions.contains_key(&definition), "the deleted layer's entry should be gone");
+	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
+}
+
+/// An edit inside a table entry stages incrementally, onto the same stored network a whole-document conversion produces.
+#[tokio::test]
+async fn an_edit_inside_a_table_entry_constructs_the_diff() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let (inner, input_index) = value_input_inside(&editor, definition);
+
+	let working = convert(&editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	editor
+		.active_document_mut()
+		.network_interface
+		.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
+
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+
+	let constructed = construct(&editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(&editor));
+	assert_same_stored_effect(&working, constructed, diffed, "edit inside a table entry");
+}
+
+/// A template of a node that names a table entry names it too, so a copy shares the entry.
+#[tokio::test]
+async fn a_template_of_a_table_node_names_its_entry() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let template = editor.active_document().network_interface.create_node_template(&layer, &[]).expect("template");
+	let (node, _) = template.into_parts();
+	assert_eq!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(definition));
+}
+
+/// A template of `node_id` that carries its table entry inline, as one from before networks moved into the table does.
+fn inline_copy(interface: &super::NodeNetworkInterface, node_id: NodeId) -> super::NodeTemplate {
+	let mut node = interface.document_network().nodes[&node_id].clone();
+	let mut metadata = interface.network_metadata.persistent_metadata.node_metadata[&node_id].persistent_metadata.clone();
+	let graph_craft::document::DocumentNodeImplementation::Definition(id) = node.implementation else {
+		panic!("the node should name a table entry")
+	};
+
+	node.implementation = graph_craft::document::DocumentNodeImplementation::Network(interface.document_network().definitions[&id].clone());
+	metadata.network_metadata = Some(interface.network_metadata.persistent_metadata.definitions[&id].clone());
+	super::NodeTemplate::from_parts(node, metadata)
+}
+
+/// A write inside an instance stays with the network it was made in, even when the instance changes implementation later in the same batch.
+#[tokio::test]
+async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let (inner, input_index) = value_input_inside(&editor, definition);
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.discard_deltas();
+
+	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
+	let mut inline_copy = inline_copy(interface, layer);
+	interface.replace_implementation(&layer, &[], &mut inline_copy);
+
+	let deltas = interface.take_deltas();
+	assert_eq!(recorded_input_write(&deltas, inner), OwnedNetworkLocation::definition(definition));
+}
+
+/// A copy of `layer` that names the same table entry, so the two share one network.
+fn insert_shared_copy(editor: &mut EditorTestUtils, layer: NodeId) -> NodeId {
+	let interface = &mut editor.active_document_mut().network_interface;
+	let node = interface.document_network().nodes[&layer].clone();
+	let metadata = interface.network_metadata.persistent_metadata.node_metadata[&layer].persistent_metadata.clone();
+
+	let copy = NodeId::new();
+	interface.insert_node_entry(super::NodeLocator::new(copy, &[]), super::NodeTemplate::from_parts(node, metadata));
+	interface.unload_outward_wires(&[]);
+	interface.settle_definitions();
+	copy
+}
+
+/// Stages what `edit` records against the document before it, and checks the result against a whole-document diff.
+fn assert_stages_incrementally(editor: &mut EditorTestUtils, at: &str, edit: impl FnOnce(&mut EditorTestUtils)) -> Vec<EditorDelta> {
+	let working = convert(editor);
+	editor.active_document_mut().network_interface.discard_deltas();
+
+	edit(editor);
+	editor.active_document_mut().network_interface.settle_definitions();
+	let emitted = editor.active_document_mut().network_interface.take_deltas();
+
+	let constructed = construct(editor, &emitted, &working);
+	let diffed = compute_deltas(&working, &convert(editor));
+	assert_same_stored_effect(&working, constructed, diffed, at);
+	let violations = editor.active_document().network_interface.validate_invariants();
+	assert!(violations.is_empty(), "{at}: {violations:#?}");
+	emitted
+}
+
+/// Inserting a node that brings a nested network stages the new table entry and the node naming it.
+#[tokio::test]
+async fn inserting_a_nested_network_stages_incrementally() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, _) = table_layer(&editor);
+	let inline_copy = inline_copy(&editor.active_document().network_interface, layer);
+	let emitted = assert_stages_incrementally(&mut editor, "insert a nested network", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node_entry(super::NodeLocator::new(NodeId::new(), &[]), inline_copy);
+		interface.unload_outward_wires(&[]);
+	});
+	assert!(emitted.iter().any(|delta| matches!(delta, EditorDelta::Graph(RuntimeDelta::AddNetwork { .. }))));
+}
+
+/// Deleting one of two instances of a shared network keeps the network for the other.
+#[tokio::test]
+async fn deleting_one_instance_of_a_shared_network_stages_incrementally() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let copy = insert_shared_copy(&mut editor, layer);
+	let emitted = assert_stages_incrementally(&mut editor, "delete one shared instance", |editor| {
+		editor.active_document_mut().network_interface.delete_nodes(vec![copy], true, &[]);
+	});
+
+	assert!(!emitted.iter().any(|delta| matches!(delta, EditorDelta::Graph(RuntimeDelta::RemoveNetwork { .. }))));
+	assert!(editor.active_document().network_interface.document_network().definitions.contains_key(&definition));
+}
+
+/// Swapping a network for a proto node moves the interface onto the node, which the stored slots then hold.
+#[tokio::test]
+async fn swapping_a_network_for_a_proto_node_stages_its_interface() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, _) = table_layer(&editor);
+	assert_stages_incrementally(&mut editor, "swap a network for a proto node", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		let Some(mut cursor) = interface.node_mut(super::NodeLocator::new(layer, &[])) else {
+			panic!("the layer should resolve")
+		};
+		cursor.replace_implementation(graph_craft::document::DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER));
+	});
+}
+
+/// Deleting the last instance of a network drops its table entry along with it.
+#[tokio::test]
+async fn deleting_the_last_instance_drops_the_entry_incrementally() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let emitted = assert_stages_incrementally(&mut editor, "delete the last instance", |editor| {
+		editor.active_document_mut().network_interface.delete_nodes(vec![layer], true, &[]);
+	});
+
+	assert!(emitted.iter().any(|delta| matches!(delta, EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }) if *id == definition)));
+}
+
+#[tokio::test]
+async fn replaying_an_insertion_that_lifts_reproduces_the_interface() {
+	assert_replay_reproduces(|editor| {
+		let group = only_group(editor);
+		let interface = &mut editor.active_document_mut().network_interface;
+		let inline_copy = inline_copy(interface, group);
+		interface.insert_node_entry(super::NodeLocator::new(NodeId(0x11F7), &[]), inline_copy);
+	})
+	.await;
+}
+
+#[tokio::test]
+async fn replaying_the_removal_of_a_table_entry_reproduces_the_interface() {
+	assert_replay_reproduces(|editor| {
+		let group = only_group(editor);
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.delete_nodes(vec![group], true, &[]);
+		interface.settle_definitions();
+	})
+	.await;
+}
+
+/// A table entry whose export holds a resource stages that resource with the entry, and drops it with the entry.
+#[tokio::test]
+async fn a_resource_an_entry_exports_follows_the_entry() {
+	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let resource = ResourceId::new();
+	let registry = &mut editor.active_document_mut().resources.registry;
+	registry.push_source_back(&resource, DataSource::Embedded);
+	registry.resolve(&resource, ResourceHash::from(&b"exported bytes"[..]));
+
+	let (layer, _) = table_layer(&editor);
+	let template = inline_copy(&editor.active_document().network_interface, layer);
+	let (mut node, metadata) = template.into_parts();
+	let graph_craft::document::DocumentNodeImplementation::Network(network) = &mut node.implementation else {
+		panic!("the template should carry the layer's network inline")
+	};
+	network.exports[0] = NodeInput::value(TaggedValue::Resource(resource), false);
+	let exporting = super::NodeTemplate::from_parts(node, metadata);
+
+	let copy = NodeId::new();
+	let added = assert_stages_incrementally(&mut editor, "add an entry exporting a resource", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node_entry(super::NodeLocator::new(copy, &[]), exporting);
+		interface.unload_outward_wires(&[]);
+	});
+	assert!(added.iter().any(|delta| matches!(delta, EditorDelta::Graph(RuntimeDelta::AddNetwork { .. }))));
+
+	assert_stages_incrementally(&mut editor, "remove the entry exporting a resource", |editor| {
+		editor.active_document_mut().network_interface.delete_nodes(vec![copy], true, &[]);
+	});
+}
+
+/// A resource written into an entry's export goes again when the same batch removes the entry.
+#[tokio::test]
+async fn a_resource_exported_and_removed_in_one_batch_leaves_nothing_behind() {
+	use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceId};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let resource = ResourceId::new();
+	let registry = &mut editor.active_document_mut().resources.registry;
+	registry.push_source_back(&resource, DataSource::Embedded);
+	registry.resolve(&resource, ResourceHash::from(&b"exported bytes"[..]));
+
+	let (layer, _) = table_layer(&editor);
+	assert_stages_incrementally(&mut editor, "export a resource, then remove the entry", |editor| {
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.set_input(&InputConnector::Export(0), NodeInput::value(TaggedValue::Resource(resource), false), &[layer]);
+		interface.delete_nodes(vec![layer], true, &[]);
+	});
+}
+
+/// Making one of two instances unique gives it its own copy of the network, so an edit inside it no longer reaches the other.
+#[tokio::test]
+async fn making_an_instance_unique_forks_its_network() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let copy = insert_shared_copy(&mut editor, layer);
+	assert!(editor.active_document().network_interface.is_shared(&copy, &[]));
+
+	assert_stages_incrementally(&mut editor, "make an instance unique", |editor| {
+		assert!(editor.active_document_mut().network_interface.make_unique(&copy, &[]));
+	});
+
+	let interface = &editor.active_document().network_interface;
+	let graph_craft::document::DocumentNodeImplementation::Definition(forked) = interface.document_network().nodes[&copy].implementation else {
+		panic!("the copy should still name a table entry")
+	};
+	assert_ne!(forked, definition);
+	assert!(!interface.is_shared(&copy, &[]) && !interface.is_shared(&layer, &[]));
+
+	let (inner, input_index) = value_input_inside(&editor, forked);
+	let original = editor.active_document().network_interface.document_network().definitions[&definition].clone();
+	let interface = &mut editor.active_document_mut().network_interface;
+	let NodeInput::Value { tagged_value, exposed } = &interface.document_network().definitions[&forked].nodes[&inner].inputs[input_index] else {
+		unreachable!("the input was found as a value")
+	};
+	let flipped = NodeInput::value((**tagged_value).clone(), !exposed);
+	interface.set_input(&InputConnector::node_at_index(inner, input_index), flipped, &[copy]);
+
+	assert_ne!(interface.document_network().definitions[&forked], original, "the edit should change the copy's network");
+	assert_eq!(interface.document_network().definitions[&definition], original, "the original's network should be untouched");
+}
+
+/// Carried subgraphs that name one another in a cycle are refused, since inserting them would never finish.
+#[tokio::test]
+async fn a_cyclic_paste_is_refused() {
+	use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId, NodeNetwork};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let (first, second) = (NetworkId::new(), NetworkId::new());
+	let naming = |id| super::CopiedDefinition {
+		id: if id == first { second } else { first },
+		network: NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					implementation: DocumentNodeImplementation::Definition(id),
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		},
+		metadata: Default::default(),
+	};
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	assert!(interface.carry_definitions(vec![naming(first), naming(second)]).is_none());
+}
+
+/// Making an instance unique marks the open transaction as modified, so the transaction commits rather than cancels.
+#[tokio::test]
+async fn making_an_instance_unique_modifies_the_transaction() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, _) = table_layer(&editor);
+	let copy = insert_shared_copy(&mut editor, layer);
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.start_transaction();
+	assert!(interface.make_unique(&copy, &[]));
+	assert_eq!(interface.transaction_status(), super::TransactionStatus::Modified);
 }

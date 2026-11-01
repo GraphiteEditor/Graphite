@@ -47,7 +47,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
-	EditorPreferences,
 	GarbageCollectResources,
 	ResolveResources,
 	ResolveDocumentResources {
@@ -149,6 +148,11 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	SubmitEyedropperPreviewRender,
+	PollNodeGraphEvaluation,
+	SubmitThumbnailsInView,
+	SubmitInspectContextOverrides {
+		overrides: graphene_std::ContextOverrides,
+	},
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,

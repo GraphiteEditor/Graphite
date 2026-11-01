@@ -502,6 +502,15 @@ mod editor_commands {
 		DocumentMessage::SetLayersPanelHoveredLayer { id: id.map(NodeId) }.into()
 	}
 
+	/// Tell the backend which layers have a row in view in the Layers panel, and which of those the panel lacks the details of.
+	fn set_layers_panel_view(layers: Vec<u64>, layers_missing_details: Vec<u64>) -> Message {
+		DocumentMessage::SetLayersPanelView {
+			layers: layers.into_iter().map(NodeId).collect(),
+			layers_missing_details: layers_missing_details.into_iter().map(NodeId).collect(),
+		}
+		.into()
+	}
+
 	/// Select exactly the given nodes.
 	fn select_nodes(ids: Vec<u64>) -> Message {
 		NodeGraphMessage::SelectedNodesSet {
@@ -587,7 +596,7 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Set the name for the layer
+	/// Set the name for the layer in the document network, as listed in the Layers panel
 	fn set_layer_name(id: u64, name: String) -> Message {
 		let layer = LayerNodeIdentifier::new_unchecked(NodeId(id));
 		NodeGraphMessage::SetDisplayName {
@@ -597,6 +606,11 @@ mod editor_commands {
 			skip_adding_history_step: false,
 		}
 		.into()
+	}
+
+	/// Set the name for a layer in the network shown by the node graph, which may be a subgraph
+	fn set_layer_name_in_graph(id: u64, name: String) -> Message {
+		DocumentMessage::SetLayerNameInGraph { node_id: NodeId(id), name }.into()
 	}
 
 	/// Translates document (in viewport coords)
@@ -688,13 +702,18 @@ mod editor_commands {
 		.into()
 	}
 
-	/// Toggle visibility of a layer or node given its node ID
+	/// Toggle visibility of a layer or node in the document network, as listed in the Layers panel
 	fn toggle_node_visibility_layer_panel(id: u64) -> Message {
 		NodeGraphMessage::ToggleVisibility {
 			node_id: NodeId(id),
 			network_path: Vec::new(),
 		}
 		.into()
+	}
+
+	/// Toggle visibility of a node shown in the Inspector, which may be in a subgraph
+	fn toggle_node_visibility_inspector(id: u64) -> Message {
+		DocumentMessage::ToggleNodeVisibility { node_id: NodeId(id) }.into()
 	}
 
 	/// Pin or unpin a node given its node ID
@@ -735,6 +754,11 @@ mod editor_commands {
 	/// Set the active panel to the most recently clicked panel
 	fn set_active_panel(panel: String) -> Message {
 		DocumentMessage::SetActivePanel { active_panel: panel.into() }.into()
+	}
+
+	/// Give a node its own copy of the network it shares with other nodes
+	fn make_node_unique(id: u64) -> Message {
+		DocumentMessage::MakeNodeUnique { node_id: NodeId(id) }.into()
 	}
 
 	/// Toggle display type for a layer
@@ -833,13 +857,6 @@ mod editor_commands {
 				DocumentMessage::AddTransaction.into(),
 				NodeGraphMessage::ExposeEncapsulatingInput { input_index: index, exposed }.into(),
 			]),
-		}
-	}
-
-	/// Insert a Passthrough node that takes over the wires an import feeds.
-	fn add_import_passthrough(index: usize) -> Message {
-		Message::Batched {
-			messages: Box::new([DocumentMessage::AddTransaction.into(), NodeGraphMessage::AddImportPassthrough { import_index: index }.into()]),
 		}
 	}
 

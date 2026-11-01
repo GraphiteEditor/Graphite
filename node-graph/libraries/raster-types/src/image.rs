@@ -5,6 +5,7 @@ use core_types::color::float_to_srgb_u8;
 use core_types::color::*;
 use dyn_any::StaticType;
 use glam::{DAffine2, DVec2};
+use std::borrow::Cow;
 use std::vec::Vec;
 
 mod base64_serde {
@@ -56,10 +57,6 @@ pub struct Image<P: Pixel> {
 	pub height: u32,
 	#[cfg_attr(feature = "serde", serde(serialize_with = "base64_serde::as_base64", deserialize_with = "base64_serde::from_base64"))]
 	pub data: Vec<P>,
-	/// Optional: Stores a base64 string representation of the image which can be used to speed up the conversion
-	/// to an svg string. This is used as a cache in order to not have to encode the data on every graph evaluation.
-	#[cfg_attr(feature = "serde", serde(skip))]
-	pub base64_string: Option<String>,
 	// TODO: Add an `origin` field to store where in the local space the image is anchored.
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
 }
@@ -130,14 +127,33 @@ impl<P: core_types::CacheHash + Pixel> core_types::CacheHash for Image<P> {
 	}
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum ImageError {
+	#[error("The {width}×{height} px image is too large")]
+	TooLarge { width: u32, height: u32 },
+	#[error("The file is not an image in a supported format, or it is damaged")]
+	Undecodable(#[source] ::image::ImageError),
+}
+
 impl<P: Pixel> Image<P> {
 	pub fn new(width: u32, height: u32, color: P) -> Self {
 		Self {
 			width,
 			height,
 			data: vec![color; (width * height) as usize],
-			base64_string: None,
 		}
+	}
+
+	/// An image filled with `color`, failing where the pixel count overflows the `u32` pixel indices or can't be allocated.
+	pub fn try_new(width: u32, height: u32, color: P) -> Result<Self, ImageError> {
+		let too_large = || ImageError::TooLarge { width, height };
+		let count = width.checked_mul(height).ok_or_else(too_large)? as usize;
+
+		let mut data = Vec::new();
+		data.try_reserve_exact(count).map_err(|_| too_large())?;
+		data.resize(count, color);
+
+		Ok(Self { width, height, data })
 	}
 }
 
@@ -145,17 +161,30 @@ impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 		let data = image_data.chunks_exact(4).map(|v| SRGBA8::new(v[0], v[1], v[2], v[3]).into()).collect();
-		Image {
-			width,
-			height,
-			data,
-			base64_string: None,
-		}
+		Image { width, height, data }
 	}
 
-	/// Decodes an image file of any supported format.
-	pub fn from_encoded(data: &[u8]) -> Option<Self> {
+	/// Decodes an image file of any supported format, or gives the reason it can't be.
+	pub fn from_encoded(data: &[u8]) -> Result<Self, ImageError> {
 		let image = decode(data)?;
+
+		// Most files hold eight-bit samples, which decode through a table of all 256 values rather than a power function for each
+		if matches!(image.color(), ::image::ColorType::L8 | ::image::ColorType::La8 | ::image::ColorType::Rgb8 | ::image::ColorType::Rgba8) {
+			let image = image.to_rgba8();
+			let data = image
+				.as_raw()
+				.as_chunks::<4>()
+				.0
+				.iter()
+				.map(|&[red, green, blue, alpha]| SRGBA8::new(red, green, blue, alpha).into())
+				.collect();
+
+			return Ok(Image {
+				width: image.width(),
+				height: image.height(),
+				data,
+			});
+		}
 
 		// Float samples hold linear light, as in HDR and EXR files, while integer samples are gamma encoded
 		let linear = matches!(image.color(), ::image::ColorType::Rgb32F | ::image::ColorType::Rgba32F);
@@ -178,17 +207,52 @@ impl Image<Color> {
 			})
 			.collect();
 
-		Some(Image {
+		Ok(Image {
 			width: image.width(),
 			height: image.height(),
 			data,
-			base64_string: None,
 		})
 	}
 
 	/// The pixel size of an image file, if it decodes in full as [`Image::from_encoded`] needs it to.
 	pub fn encoded_size(data: &[u8]) -> Option<(u32, u32)> {
-		decode(data).map(|image| (image.width(), image.height()))
+		decode(data).ok().map(|image| (image.width(), image.height()))
+	}
+
+	/// The image shrunk by half along each axis `times` times, averaging each block of pixels with their colors weighted by their alpha.
+	/// Blocks at the right and bottom edges average only the pixels they have. O(width × height), or O(1) borrowing the image as it is when `times` is zero.
+	pub fn halved(&self, times: u32) -> Cow<'_, Self> {
+		if times == 0 {
+			return Cow::Borrowed(self);
+		}
+
+		let factor = 1_u32 << times.min(31);
+		let (width, height) = (self.width.div_ceil(factor), self.height.div_ceil(factor));
+
+		let mut data = Vec::with_capacity((width * height) as usize);
+		for block_y in 0..height {
+			for block_x in 0..width {
+				let (mut red, mut green, mut blue, mut alpha, mut count) = (0., 0., 0., 0., 0.);
+
+				for y in (block_y * factor)..((block_y + 1) * factor).min(self.height) {
+					for x in (block_x * factor)..((block_x + 1) * factor).min(self.width) {
+						let pixel = self.data[(y * self.width + x) as usize];
+						red += pixel.r() * pixel.a();
+						green += pixel.g() * pixel.a();
+						blue += pixel.b() * pixel.a();
+						alpha += pixel.a();
+						count += 1.;
+					}
+				}
+
+				data.push(match alpha > 0. {
+					true => Color::from_rgbaf32_unchecked(red / alpha, green / alpha, blue / alpha, alpha / count),
+					false => Color::TRANSPARENT,
+				});
+			}
+		}
+
+		Cow::Owned(Image { width, height, data })
 	}
 
 	pub fn to_png(&self) -> Vec<u8> {
@@ -202,9 +266,17 @@ impl Image<Color> {
 }
 
 /// A TGA file has no signature to recognize it by, so a file of no recognized format is tried as one.
-fn decode(data: &[u8]) -> Option<::image::DynamicImage> {
+fn decode(data: &[u8]) -> Result<::image::DynamicImage, ImageError> {
 	let format = ::image::guess_format(data).unwrap_or(::image::ImageFormat::Tga);
-	::image::load_from_memory_with_format(data, format).ok()
+	::image::load_from_memory_with_format(data, format).map_err(|error| {
+		// The memory limit error carries no size, which the header gives
+		if let ::image::ImageError::Limits(_) = error
+			&& let Ok((width, height)) = ::image::ImageReader::with_format(std::io::Cursor::new(data), format).into_dimensions()
+		{
+			return ImageError::TooLarge { width, height };
+		}
+		ImageError::Undecodable(error)
+	})
 }
 
 use super::*;
@@ -313,7 +385,6 @@ mod test {
 			width: 2,
 			height: 2,
 			data: vec![Color::WHITE, Color::BLACK, Color::RED, Color::GREEN],
-			base64_string: None,
 		};
 
 		let serialized = serde_json::to_string(&image).unwrap();
@@ -346,12 +417,76 @@ mod test {
 			let mut encoded = Vec::new();
 			pixels.write_to(&mut std::io::Cursor::new(&mut encoded), format).unwrap();
 
-			let image = Image::from_encoded(&encoded).unwrap_or_else(|| panic!("{format:?} should decode"));
+			let image = Image::from_encoded(&encoded).unwrap_or_else(|error| panic!("{format:?} should decode: {error}"));
 			assert_eq!(Image::encoded_size(&encoded), Some((2, 1)), "{format:?}");
 			assert_eq!(image.to_flat_u8().0, pixels.as_raw().as_slice(), "{format:?}");
 		}
 
-		assert!(Image::from_encoded(b"not an image").is_none());
+		assert!(Image::from_encoded(b"not an image").is_err());
+	}
+
+	#[test]
+	fn a_file_that_does_not_decode_gives_its_reason() {
+		use super::*;
+
+		assert!(matches!(Image::from_encoded(b"not an image"), Err(ImageError::Undecodable(_))));
+
+		// A BMP header for a 32-bit image of 30000×30000 pixels, which is far beyond the decoder's memory limit
+		let mut file = b"BM".to_vec();
+		for field in [54_u32, 0, 54, 40, 30000, 30000] {
+			file.extend(field.to_le_bytes());
+		}
+		file.extend([1, 0, 32, 0]);
+		file.extend([0; 24]);
+		let error = Image::from_encoded(&file).unwrap_err();
+		assert!(matches!(error, ImageError::TooLarge { width: 30000, height: 30000 }), "{error:?}");
+	}
+
+	#[test]
+	fn an_image_too_large_for_its_pixel_indices_is_not_made() {
+		use super::*;
+
+		assert!(matches!(Image::try_new(65536, 65536, Color::BLACK), Err(ImageError::TooLarge { width: 65536, height: 65536 })));
+		assert_eq!(Image::try_new(3, 2, Color::BLACK).unwrap().data, vec![Color::BLACK; 6]);
+	}
+
+	#[test]
+	fn halving_averages_blocks_weighted_by_alpha() {
+		use super::*;
+
+		// An opaque red and a transparent green beside it average to red at half alpha, with no green showing through
+		let red = Color::from_rgbaf32_unchecked(1., 0., 0., 1.);
+		let clear_green = Color::from_rgbaf32_unchecked(0., 1., 0., 0.);
+		let image = Image {
+			width: 3,
+			height: 1,
+			data: vec![red, clear_green, red],
+		};
+
+		let halved = image.halved(1);
+		assert_eq!((halved.width, halved.height), (2, 1), "the odd column becomes a block of its own");
+		assert_eq!(halved.data[0], Color::from_rgbaf32_unchecked(1., 0., 0., 0.5));
+		assert_eq!(halved.data[1], red);
+		assert!(matches!(image.halved(0), Cow::Borrowed(borrowed) if *borrowed == image));
+	}
+
+	#[test]
+	fn eight_bit_decoding_matches_the_gamma_curve() {
+		use super::*;
+
+		// Every channel value, as a gray ramp whose alpha runs the other way
+		let pixels: Vec<u8> = (0..=255_u8).flat_map(|value| [value, value, value, 255 - value]).collect();
+		let mut encoded = Vec::new();
+		::image::RgbaImage::from_raw(256, 1, pixels)
+			.unwrap()
+			.write_to(&mut std::io::Cursor::new(&mut encoded), ::image::ImageFormat::Png)
+			.unwrap();
+
+		let image = Image::from_encoded(&encoded).unwrap();
+		for (value, color) in image.data.iter().enumerate() {
+			let expected = Color::from_gamma_srgb_channels(value as f32 / 255., value as f32 / 255., value as f32 / 255., (255 - value) as f32 / 255.);
+			assert!((color.r() - expected.r()).abs() < 1e-6 && (color.a() - expected.a()).abs() < 1e-6, "value {value}");
+		}
 	}
 
 	#[test]
@@ -371,7 +506,7 @@ mod test {
 		file.extend([0, 255, 0, 0]);
 
 		assert!(::image::load_from_memory_with_format(&file, ::image::ImageFormat::Tga).is_ok());
-		assert!(Image::from_encoded(&file).is_none());
+		assert!(Image::from_encoded(&file).is_err());
 	}
 
 	#[test]

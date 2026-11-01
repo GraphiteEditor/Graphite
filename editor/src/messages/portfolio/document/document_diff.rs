@@ -266,8 +266,8 @@ fn diff_document_node(out: &mut String, expected: &graph_craft::document::Docume
 	if expected.skip_deduplication != actual.skip_deduplication {
 		let _ = writeln!(out, "      skip_deduplication: expected={} actual={}", expected.skip_deduplication, actual.skip_deduplication);
 	}
-	if expected.context_features != actual.context_features {
-		let _ = writeln!(out, "      context_features: expected={:?} actual={:?}", expected.context_features, actual.context_features);
+	if expected.compile_metadata != actual.compile_metadata {
+		let _ = writeln!(out, "      compile_metadata: expected={:?} actual={:?}", expected.compile_metadata, actual.compile_metadata);
 	}
 	if expected.original_location != actual.original_location {
 		let _ = writeln!(out, "      original_location differs (recomputed at load, not stored):");

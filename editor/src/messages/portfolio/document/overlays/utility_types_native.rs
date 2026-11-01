@@ -1,7 +1,8 @@
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
-	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, CURVATURE_COMB_DEFAULT_SCALE,
+	DOWEL_PIN_RADIUS, GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET,
+	SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::hex_to_rgba_u8;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -9,22 +10,23 @@ use crate::messages::portfolio::fonts::FALLBACK_FONT_RESOURCE;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
+use crate::messages::viewport::ToPhysical;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
 use graphene_std::ATTR_TRANSFORM;
 use graphene_std::list::List;
 use graphene_std::math::quad::Quad;
+use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
-use graphene_std::vector::{PointId, SegmentId, Vector};
+use graphene_std::vector::{PointId, SegmentId, Vector, VectorGeometry, no_paths, paths_from_list_row_attributes};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard};
-use vello::Scene;
-use vello::peniko;
+use vello_gpu::peniko;
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;
@@ -60,6 +62,11 @@ pub enum OverlaysType {
 	Path,
 	Anchors,
 	Handles,
+	PointIndex,
+	PathEnds,
+	PathIndex,
+	PathDirection,
+	CurvatureComb,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -81,6 +88,13 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub point_index: bool,
+	pub path_ends: bool,
+	pub path_index: bool,
+	pub path_direction: bool,
+	pub curvature_comb: bool,
+	/// How far the curvature comb's teeth reach, as the curvature times this scale in square document pixels.
+	pub curvature_comb_scale: f64,
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
@@ -101,6 +115,12 @@ impl Default for OverlaysVisibilitySettings {
 			path: true,
 			anchors: true,
 			handles: true,
+			point_index: false,
+			path_ends: true,
+			path_index: false,
+			path_direction: false,
+			curvature_comb: false,
+			curvature_comb_scale: CURVATURE_COMB_DEFAULT_SCALE,
 		}
 	}
 }
@@ -162,6 +182,26 @@ impl OverlaysVisibilitySettings {
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
 	}
+
+	pub fn point_index(&self) -> bool {
+		self.all && self.anchors && self.point_index
+	}
+
+	pub fn path_ends(&self) -> bool {
+		self.all && self.anchors && self.path_ends
+	}
+
+	pub fn path_index(&self) -> bool {
+		self.all && self.anchors && self.path_index
+	}
+
+	pub fn path_direction(&self) -> bool {
+		self.all && self.anchors && self.path_direction
+	}
+
+	pub fn curvature_comb(&self) -> bool {
+		self.all && self.anchors && self.curvature_comb
+	}
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -187,7 +227,7 @@ impl Clone for OverlayContext {
 	}
 }
 
-// Manual implementations since Scene doesn't implement PartialEq or Debug
+// Manual implementations since VelloSceneBuilder doesn't implement PartialEq or Debug
 impl PartialEq for OverlayContext {
 	fn eq(&self, other: &Self) -> bool {
 		self.viewport == other.viewport && self.visibility_settings == other.visibility_settings
@@ -197,14 +237,14 @@ impl PartialEq for OverlayContext {
 impl std::fmt::Debug for OverlayContext {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OverlayContext")
-			.field("scene", &"Scene { ... }")
+			.field("scene", &"VelloSceneBuilder { ... }")
 			.field("viewport", &self.viewport)
 			.field("visibility_settings", &self.visibility_settings)
 			.finish()
 	}
 }
 
-// Default implementation for Scene
+// Default implementation for VelloSceneBuilder
 impl Default for OverlayContext {
 	fn default() -> Self {
 		Self {
@@ -230,9 +270,10 @@ impl OverlayContext {
 		}
 	}
 
-	pub fn take_scene(self) -> Scene {
+	pub fn take_scene(self) -> VelloSceneBuilder {
 		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		std::mem::take(&mut internal.scene)
+		let empty_scene = overlay_scene(&internal.viewport);
+		std::mem::replace(&mut internal.scene, empty_scene)
 	}
 
 	fn internal(&'_ self) -> MutexGuard<'_, OverlayContextInternal> {
@@ -379,7 +420,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
 		self.internal().outline_vector(vector, transform);
 	}
 
@@ -400,6 +441,11 @@ impl OverlayContext {
 	/// Used by the Select tool to outline a path or a free point when selected or hovered.
 	pub fn outline(&mut self, target_types: impl Iterator<Item = impl Borrow<ClickTargetType>>, transform: DAffine2, color: Option<&str>) {
 		self.internal().outline(target_types, transform, color);
+	}
+
+	/// Strokes the path with a 1px line, leaving any open subpaths open.
+	pub fn stroke_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		self.internal().stroke_path(bezpath, transform, color);
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
@@ -440,9 +486,18 @@ pub enum DrawHandles {
 }
 
 pub(super) struct OverlayContextInternal {
-	scene: Scene,
+	scene: VelloSceneBuilder,
 	viewport: ViewportMessageHandler,
 	visibility_settings: OverlaysVisibilitySettings,
+}
+
+/// An empty scene covering the viewport's physical pixels, matching the resolution the viewport renders at.
+fn overlay_scene(viewport: &ViewportMessageHandler) -> VelloSceneBuilder {
+	// The smallest texture size limit WebGL2 guarantees, which only matters for the overlays' tiny pattern images
+	const MAX_TEXTURE_SIZE: u32 = 2048;
+
+	let size = viewport.size().to_physical().into_dvec2().round().max(DVec2::ONE).min(DVec2::splat(u16::MAX as f64));
+	VelloSceneBuilder::new(size.x as u16, size.y as u16, Affine::IDENTITY, MAX_TEXTURE_SIZE)
 }
 
 impl Default for OverlayContextInternal {
@@ -454,7 +509,7 @@ impl Default for OverlayContextInternal {
 impl OverlayContextInternal {
 	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
-			scene: Scene::new(),
+			scene: overlay_scene(&viewport),
 			viewport,
 			visibility_settings,
 		}
@@ -583,7 +638,7 @@ impl OverlayContextInternal {
 		let inner_circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
 		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
-		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &inner_circle);
 		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
 	}
 
@@ -720,19 +775,41 @@ impl OverlayContextInternal {
 	#[allow(clippy::too_many_arguments)]
 	fn dashed_ellipse(
 		&mut self,
-		_center: DVec2,
-		_radius_x: f64,
-		_radius_y: f64,
-		_rotation: Option<f64>,
-		_start_angle: Option<f64>,
-		_end_angle: Option<f64>,
-		_counterclockwise: Option<bool>,
-		_color_fill: Option<&str>,
-		_color_stroke: Option<&str>,
-		_dash_width: Option<f64>,
-		_dash_gap_width: Option<f64>,
-		_dash_offset: Option<f64>,
+		center: DVec2,
+		radius_x: f64,
+		radius_y: f64,
+		rotation: Option<f64>,
+		start_angle: Option<f64>,
+		end_angle: Option<f64>,
+		counterclockwise: Option<bool>,
+		color_fill: Option<&str>,
+		color_stroke: Option<&str>,
+		dash_width: Option<f64>,
+		dash_gap_width: Option<f64>,
+		dash_offset: Option<f64>,
 	) {
+		let transform = self.get_transform();
+		let center = self.snap_to_physical_pixel(center);
+
+		let start_angle = start_angle.unwrap_or_default();
+		let end_angle = end_angle.unwrap_or(TAU);
+		let sweep_angle = match counterclockwise.unwrap_or_default() {
+			false if end_angle - start_angle >= TAU => TAU,
+			false => (end_angle - start_angle).rem_euclid(TAU),
+			true if start_angle - end_angle >= TAU => -TAU,
+			true => -(start_angle - end_angle).rem_euclid(TAU),
+		};
+		let arc = kurbo::Arc::new((center.x, center.y), (radius_x, radius_y), start_angle, sweep_angle, rotation.unwrap_or_default());
+
+		if let Some(color_fill) = color_fill {
+			self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &arc);
+		}
+
+		let mut stroke = kurbo::Stroke::new(1.);
+		if let Some(dash_width) = dash_width {
+			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap_width.unwrap_or(1.)]);
+		}
+		self.scene.stroke(&stroke, transform, Self::parse_color(color_stroke.unwrap_or(COLOR_OVERLAY_BLUE)), None, &arc);
 	}
 
 	fn draw_arc(&mut self, center: DVec2, radius: f64, start_from: f64, end_at: f64) {
@@ -930,7 +1007,7 @@ impl OverlayContextInternal {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
 		let vello_transform = self.get_transform();
 		let mut path = BezPath::new();
 
@@ -1011,7 +1088,7 @@ impl OverlayContextInternal {
 		for target_type in target_types {
 			match target_type.borrow() {
 				ClickTargetType::FreePoint(point) => {
-					self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+					self.manipulator_anchor(transform.transform_point2(point.position), false, color);
 				}
 				ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 			}
@@ -1023,6 +1100,12 @@ impl OverlayContextInternal {
 
 			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 		}
+	}
+
+	fn stroke_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		let path = self.push_path(bezpath, transform);
+
+		self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
@@ -1096,7 +1179,7 @@ impl OverlayContextInternal {
 		// Lay out the text once, taking its dimensions and vector paths from the same thread-local context pass
 		let (text_size, text_list) = TextContext::with_thread_local(|text_context| {
 			let text_size = text_context.bounding_box(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
-			let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false);
+			let text_list = text_context.to_path(text, &FALLBACK_FONT_RESOURCE, typesetting, false).unwrap_or_default();
 			(text_size, text_list)
 		});
 		let text_width = text_size.x;
@@ -1148,7 +1231,8 @@ impl OverlayContextInternal {
 			let transform: DAffine2 = text_list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 
 			let Some(element) = text_list.element(index) else { continue };
-			for (_, bezier, start_id, end_id) in element.segment_iter() {
+			let paths = paths_from_list_row_attributes(text_list, index).unwrap_or_else(|| no_paths());
+			for (_, bezier, start_id, end_id) in element.segment_iter(paths) {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 

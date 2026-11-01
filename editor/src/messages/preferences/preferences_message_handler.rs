@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
-use graph_craft::application_io::EditorPreferences;
 
 #[derive(ExtractField)]
 pub struct PreferencesMessageContext<'a> {
@@ -21,7 +20,6 @@ pub struct PreferencesMessageHandler {
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
-	pub max_render_region_size: u32,
 	pub disable_ui_acceleration: bool,
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
@@ -32,29 +30,14 @@ pub struct PreferencesMessageHandler {
 
 impl PreferencesMessageHandler {
 	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
-		let mut requiring_restart = Vec::new();
-		if self.disable_ui_acceleration != other.disable_ui_acceleration {
-			requiring_restart.push("Disable UI Acceleration");
-		}
-		#[cfg(target_os = "macos")]
-		if self.vsync != other.vsync {
-			requiring_restart.push("Enable V-Sync");
-		}
-		requiring_restart.into_iter().map(String::from).collect()
+		let requiring_restart: Vec<String> = Vec::new();
+		let _ = other;
+
+		requiring_restart
 	}
 
 	pub fn get_selection_mode(&self) -> SelectionMode {
 		self.selection_mode
-	}
-
-	pub fn editor_preferences(&self) -> EditorPreferences {
-		EditorPreferences {
-			max_render_region_size: self.max_render_region_size,
-		}
-	}
-
-	pub fn supports_wgpu(&self) -> bool {
-		graph_craft::application_io::wgpu_available().unwrap_or_default()
 	}
 }
 
@@ -67,8 +50,7 @@ impl Default for PreferencesMessageHandler {
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
-			max_render_region_size: EditorPreferences::default().max_render_region_size,
-			disable_ui_acceleration: cfg!(target_os = "linux"), // TODO: Set this back to false once we have ui acceleration working more reliably on linux
+			disable_ui_acceleration: true, // TODO: Set this back to false once we have ui acceleration working more reliably
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
 			show_storage_preferences: false,
@@ -88,7 +70,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			PreferencesMessage::Load { preferences } => {
 				*self = preferences;
 
-				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
@@ -132,11 +113,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
-			PreferencesMessage::MaxRenderRegionSize { size } => {
-				self.max_render_region_size = size;
-				responses.add(PortfolioMessage::EditorPreferences);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
 			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
 				self.disable_ui_acceleration = disable_ui_acceleration;
 			}
@@ -157,7 +133,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 		}
 
-		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
+		responses.add(FrontendMessage::TriggerUpdatePreferences { preferences: self.clone() });
 	}
 
 	advertise_actions!(PreferencesMessageDiscriminant;

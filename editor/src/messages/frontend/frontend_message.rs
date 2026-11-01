@@ -1,5 +1,5 @@
 use super::IconName;
-use super::utility_types::{MouseCursorIcon, PersistedState};
+use super::utility_types::{MouseCursorIcon, PersistedState, RenderStatus};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::frontend::utility_types::{DocumentInfo, EyedropperPreviewImage, FileDialogOptions, FileFilter, FileType, RasterizedImage};
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
@@ -126,7 +126,7 @@ pub enum FrontendMessage {
 	},
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerSavePreferences {
+	TriggerUpdatePreferences {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
 	},
@@ -235,6 +235,20 @@ pub enum FrontendMessage {
 		#[serde(rename = "exportIndex")]
 		index: Option<usize>,
 	},
+	/// The wire a dragged node would be inserted onto if dropped now, keyed by the node and index of the input it feeds (the max node ID for an export).
+	UpdateWireInsertionPreview {
+		wire: Option<(NodeId, usize)>,
+	},
+	/// How far each node, and the imports and exports, gliding into the place it moved to is drawn from that place, in node graph space.
+	UpdateGlideOffsets {
+		nodes: Vec<(NodeId, (f64, f64))>,
+		imports: (f64, f64),
+		exports: (f64, f64),
+	},
+	/// The connector a press at the pointer would grab, by its center in node graph space.
+	UpdateHoveredConnector {
+		center: Option<(f64, f64)>,
+	},
 	UpdateLayerWidths {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
@@ -246,8 +260,14 @@ pub enum FrontendMessage {
 	UpdateDocumentArtwork {
 		svg: String,
 	},
+	UpdateRenderStatus {
+		status: RenderStatus,
+	},
+	/// Gives the frontend the canvas images it lacks, and names every canvas the latest render uses so it can drop the rest.
 	UpdateImageData {
 		image_data: Vec<RasterizedImage>,
+		#[serde(rename = "canvasIdsInUse")]
+		canvas_ids_in_use: Vec<u64>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
@@ -291,8 +311,8 @@ pub enum FrontendMessage {
 	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
 	},
-	UpdateNodeGraphErrorDiagnostic {
-		error: Option<NodeGraphErrorDiagnostic>,
+	UpdateNodeGraphErrorDiagnostics {
+		errors: Vec<NodeGraphErrorDiagnostic>,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
@@ -312,6 +332,22 @@ pub enum FrontendMessage {
 		id: NodeId,
 		value: String,
 	},
+	ClearNodeThumbnails {
+		ids: Vec<NodeId>,
+	},
+	UpdateNodeThumbnailPixels {
+		id: NodeId,
+		width: u32,
+		height: u32,
+		pixels: serde_bytes::ByteBuf,
+	},
+	UpdateNodeThumbnailCanvases {
+		id: NodeId,
+		#[serde(rename = "layersPanelCanvasId")]
+		layers_panel_canvas_id: u64,
+		#[serde(rename = "nodeGraphCanvasId")]
+		node_graph_canvas_id: u64,
+	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<DocumentInfo>,
@@ -319,6 +355,12 @@ pub enum FrontendMessage {
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
+		/// Where the wire meets the connector it's dragged from, in node graph space.
+		#[serde(rename = "draggedFrom")]
+		dragged_from: Option<(f64, f64)>,
+		/// Where the wire's loose end meets a connector it has snapped onto, in node graph space.
+		#[serde(rename = "snappedTo")]
+		snapped_to: Option<(f64, f64)>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,
