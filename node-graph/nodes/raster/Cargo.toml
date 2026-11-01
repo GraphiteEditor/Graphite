@@ -27,7 +27,6 @@ wasm = [
 
 [dependencies]
 # Local dependencies
-no-std-types = { workspace = true }
 node-macro = { workspace = true }
 dyn-any = { workspace = true }
 core-types = { workspace = true }

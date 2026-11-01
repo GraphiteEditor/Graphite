@@ -89,7 +89,6 @@ graphene-application-io = { path = "node-graph/libraries/application-io" }
 graphene-resource = { path = "node-graph/libraries/resources" }
 graphene-animation = { path = "node-graph/libraries/animation" }
 core-types = { path = "node-graph/libraries/core-types" }
-no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
 vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
@@ -210,7 +209,7 @@ color = "0.3"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
 glam = { version = "0.33", default-features = false, features = [
-	"nostd-libm",
+	"std",
 	"scalar-math",
 	"bytemuck",
 	"debug-glam-assert",
@@ -236,7 +235,7 @@ pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
 num-derive = "0.4"
-num-traits = { version = "0.2", default-features = false, features = ["libm"] }
+num-traits = "0.2"
 tsify = { version = "0.5", default-features = false, features = ["js"] }
 syn = { version = "2.0", default-features = false, features = [
 	"full",
@@ -282,7 +281,6 @@ zip = { version = "8", default-features = false }
 opt-level = 1
 
 [profile.dev.package]
-no-std-types = { opt-level = 1 }
 core-types= { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }

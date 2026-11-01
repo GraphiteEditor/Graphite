@@ -1,4 +1,4 @@
-use no_std_types::color::Color;
+use core_types::color::Color;
 use raster_types::{CPU, Raster};
 use vector_types::Gradient;
 

@@ -1279,13 +1279,15 @@ dependencies = [
  "futures",
  "glam",
  "graphene-hash",
+ "half",
  "image",
  "kurbo",
  "log",
  "lyon_geom",
- "no-std-types",
  "node-macro",
+ "num-derive",
  "num-traits",
+ "num_enum",
  "parley",
  "petgraph",
  "polycool",
@@ -2540,7 +2542,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37bfe73dc8ec21f54d181e5a60554327ec3f1c600c455a75ccbfc65d2106a6c4"
 dependencies = [
  "bytemuck",
- "libm",
  "serde_core",
 ]
 
@@ -4636,25 +4637,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "no-std-types"
-version = "0.0.0"
-dependencies = [
- "bytemuck",
- "core-types",
- "dyn-any",
- "glam",
- "graphene-hash",
- "half",
- "log",
- "num-derive",
- "num-traits",
- "num_enum",
- "serde",
- "tsify",
- "wasm-bindgen",
-]
-
-[[package]]
 name = "node-docs"
 version = "0.0.0"
 dependencies = [
@@ -4673,7 +4655,6 @@ dependencies = [
  "convert_case 0.12.0",
  "core-types",
  "indoc",
- "no-std-types",
  "proc-macro-crate",
  "proc-macro-error2",
  "proc-macro2",
@@ -5824,7 +5805,6 @@ dependencies = [
  "graphene-resource",
  "image",
  "ndarray",
- "no-std-types",
  "node-macro",
  "num_enum",
  "rand",
