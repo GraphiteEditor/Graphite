@@ -118,19 +118,20 @@ async fn legacy_only_container_gets_storage() {
 }
 
 #[tokio::test]
-async fn legacy_mode_reads_legacy_only_and_leaves_storage_files_alone() {
+async fn legacy_save_format_still_keeps_a_working_copy() {
 	let mut editor = EditorTestUtils::create();
 	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
 	let id = new_document(&mut editor, "Legacy");
 	let container = container(&editor, id).await;
-	assert!(!container.exists("manifest.json").await);
-	container.write("manifest.json", b"broken").await.unwrap();
+	assert!(editor.active_document().storage().is_some(), "every document gets a working copy, whatever the save format");
+	assert!(container.exists("manifest.json").await);
 
-	restart(&mut editor, PersistedState::default());
-
-	assert!(portfolio(&editor).documents.contains_key(&id));
-	assert!(editor.active_document().storage().is_none());
-	assert_eq!(container.read("manifest.json").await.unwrap().as_slice(), b"broken");
+	let saved = dispatch(&mut editor, DocumentMessage::SaveDocumentAs);
+	let name = saved.iter().find_map(|message| match message {
+		FrontendMessage::TriggerSaveDocument { name, .. } => Some(name.clone()),
+		_ => None,
+	});
+	assert_eq!(name.as_deref(), Some("Legacy.graphite"));
 }
 
 #[tokio::test]
@@ -200,20 +201,17 @@ async fn closing_removes_the_stored_document() {
 }
 
 #[tokio::test]
-async fn storage_preference_attaches_and_drops_sessions() {
+async fn storage_preference_keeps_the_working_copy() {
 	let mut editor = EditorTestUtils::create();
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
 	let id = new_document(&mut editor, "Toggle");
 	let container = container(&editor, id).await;
-	assert!(editor.active_document().storage().is_none());
+	assert!(editor.active_document().storage().is_some());
 	assert!(container.exists("legacy.graphite").await);
 
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: true });
-	assert!(editor.active_document().storage().is_some());
-	assert!(container.exists("manifest.json").await);
-
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
-	assert!(editor.active_document().storage().is_none());
+	for enabled in [false, true] {
+		dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled });
+		assert!(editor.active_document().storage().is_some(), "the preference only picks the save format");
+	}
 }
 
 #[tokio::test]

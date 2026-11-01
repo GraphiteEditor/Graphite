@@ -69,9 +69,9 @@ pub(super) async fn list_stored_documents(store: DocumentStoreHandle) -> Message
 	PortfolioMessage::StoredDocumentsListed { document_ids }.into()
 }
 
-pub(super) async fn load_stored_document(store: DocumentStoreHandle, document_id: DocumentId, resources: ResourcesHandle, reset_nodes: bool, legacy_only: bool) -> Message {
+pub(super) async fn load_stored_document(store: DocumentStoreHandle, document_id: DocumentId, resources: ResourcesHandle, reset_nodes: bool) -> Message {
 	let (document, gdd) = match store.open(document_key(document_id)).await {
-		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes, legacy_only).await,
+		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes).await,
 		Err(error) => {
 			log::error!("Opening the stored document {document_id:?} failed: {error}");
 			(None, None)
@@ -88,7 +88,7 @@ pub(super) async fn load_stored_document(store: DocumentStoreHandle, document_id
 }
 
 /// Opens the container for a document created in this session.
-pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: DocumentId, resources: ResourcesHandle, legacy_only: bool) -> Message {
+pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: DocumentId, resources: ResourcesHandle) -> Message {
 	let container = match store.open(document_key(document_id)).await {
 		Ok(container) => container,
 		Err(error) => {
@@ -102,23 +102,6 @@ pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: Do
 			.into();
 		}
 	};
-	let gdd = if !legacy_only {
-		open_storage_or_fallback_to_legacy(container.clone(), document_id).await
-	} else {
-		None
-	};
-	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
-	PortfolioMessage::StorageAttached {
-		document_id,
-		container: Some(container),
-		gdd: gdd.map(Box::new),
-		declarations,
-	}
-	.into()
-}
-
-/// Opens the storage of a document that already has its container.
-pub(super) async fn open_storage(container: AnyContainer, document_id: DocumentId, resources: ResourcesHandle) -> Message {
 	let gdd = open_storage_or_fallback_to_legacy(container.clone(), document_id).await;
 	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::StorageAttached {
@@ -146,7 +129,6 @@ pub(super) async fn open_document_file(
 	content: Vec<u8>,
 	resources: ResourcesHandle,
 	reset_nodes: bool,
-	legacy_only: bool,
 ) -> Message {
 	let materialized = async {
 		let mut container = store.open(document_key(document_id)).await.map_err(|error| error.to_string())?;
@@ -155,7 +137,7 @@ pub(super) async fn open_document_file(
 	}
 	.await;
 	let (document, gdd) = match materialized {
-		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes, legacy_only).await,
+		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes).await,
 		Err(error) => {
 			log::error!("Opening the document archive for {document_id:?} failed: {error}");
 			(None, None)
@@ -174,7 +156,7 @@ pub(super) async fn open_document_file(
 }
 
 /// Builds the document from its legacy file, or from its storage when that file is missing or unreadable.
-async fn load_from_container(container: AnyContainer, document_id: DocumentId, resources: &ResourcesHandle, reset_nodes: bool, legacy_only: bool) -> (Option<DocumentMessageHandler>, Option<GddV1>) {
+async fn load_from_container(container: AnyContainer, document_id: DocumentId, resources: &ResourcesHandle, reset_nodes: bool) -> (Option<DocumentMessageHandler>, Option<GddV1>) {
 	let legacy = match container.read(legacy_path()).await {
 		Ok(bytes) => String::from_utf8(bytes.as_slice().to_vec())
 			.map_err(|error| error.to_string())
@@ -185,7 +167,7 @@ async fn load_from_container(container: AnyContainer, document_id: DocumentId, r
 		Ok(mut document) => {
 			document.set_auto_save_state(true);
 			document.container = Some(container.clone());
-			let gdd = if !legacy_only { open_storage_or_fallback_to_legacy(container, document_id).await } else { None };
+			let gdd = open_storage_or_fallback_to_legacy(container, document_id).await;
 			(Some(document), gdd)
 		}
 		Err(legacy_error) => {
@@ -201,9 +183,6 @@ async fn load_from_container(container: AnyContainer, document_id: DocumentId, r
 				return (None, None);
 			};
 			document.container = Some(container);
-			if legacy_only {
-				document.clear_storage();
-			}
 			(Some(document), None)
 		}
 	}

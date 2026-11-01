@@ -2394,11 +2394,6 @@ impl DocumentMessageHandler {
 		self.history.set_storage(storage, declarations);
 	}
 
-	/// Detach the `Gdd` working copy.
-	pub fn clear_storage(&mut self) {
-		self.history.clear_storage();
-	}
-
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
 	pub(crate) fn retire_storage_interaction(&mut self) {
 		self.history.retire_storage_interaction();
