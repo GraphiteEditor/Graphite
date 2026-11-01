@@ -1,5 +1,6 @@
-use super::{InputConnector, catalog};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
+use super::template::NodeTemplateImplementation;
+use super::{InputConnector, OutputConnector, catalog};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{network_node_identifiers, resolve_network_node_type};
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::{DocumentNodeImplementation, NetworkId, NodeInput};
 use graphene_std::uuid::NodeId;
@@ -36,6 +37,53 @@ async fn catalog_nodes_share_the_shipped_entry() {
 		catalog::entry(shared).expect("shipped").network
 	);
 	assert!(editor.active_document().network_interface.validate_invariants().is_empty());
+}
+
+#[tokio::test]
+async fn every_catalog_template_inserts_as_its_shipped_entry() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let unrecognized: Vec<_> = network_node_identifiers()
+		.filter(|identifier| {
+			let node_id = NodeId::new();
+			let template = resolve_network_node_type(identifier).expect("listed identifiers resolve").default_node_template();
+			if !matches!(template.implementation, NodeTemplateImplementation::Network(_)) {
+				return false;
+			}
+			let interface = &mut editor.active_document_mut().network_interface;
+			interface.insert_node(node_id, template, &[]);
+			!matches!(interface.document_network().nodes[&node_id].implementation, DocumentNodeImplementation::Definition(id) if catalog::is_protected(id))
+		})
+		.collect();
+	assert!(unrecognized.is_empty(), "these should insert as their catalog entries: {unrecognized:?}");
+}
+
+#[tokio::test]
+async fn editing_the_signature_of_one_catalog_node_leaves_its_siblings_wired() {
+	let (mut editor, blends) = editor_with_blends(3).await;
+	let interface = &mut editor.active_document_mut().network_interface;
+	let sibling_input = InputConnector::node_at_index(blends[1], 1);
+	interface.create_wire(&OutputConnector::node(blends[2], 0), &sibling_input, &[]);
+	let sibling_input_count = interface.document_network().nodes[&blends[1]].inputs.len();
+
+	interface.remove_import(1, &[blends[0]]);
+
+	let interface = &editor.active_document().network_interface;
+	assert!(matches!(interface.input_from_connector(&sibling_input, &[]), Some(NodeInput::Node { .. })));
+	assert_eq!(interface.document_network().nodes[&blends[1]].inputs.len(), sibling_input_count);
+	assert_eq!(interface.document_network().nodes[&blends[0]].inputs.len(), sibling_input_count - 1);
+}
+
+#[tokio::test]
+async fn navigating_inside_a_catalog_node_does_not_fork_it() {
+	let (mut editor, blends) = editor_with_blends(1).await;
+	let shipped = entry_of(&editor, blends[0]);
+
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.set_transform(glam::DAffine2::from_translation((3., 5.).into()), &[blends[0]]);
+	interface.set_node_graph_width(400., &[blends[0]]);
+	assert_eq!(entry_of(&editor, blends[0]), shipped);
 }
 
 #[tokio::test]

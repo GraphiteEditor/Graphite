@@ -506,14 +506,27 @@ impl<'de> serde::Deserialize<'de> for Previewing {
 
 /// Whether two networks' metadata match, ignoring view state.
 pub(crate) fn same_content(first: &NodeNetworkPersistentMetadata, second: &NodeNetworkPersistentMetadata) -> bool {
-	let content = |metadata: &NodeNetworkPersistentMetadata| NodeNetworkPersistentMetadata {
-		previewing: Previewing::No,
-		navigation_metadata: NavigationMetadata::default(),
-		selection_undo_history: VecDeque::new(),
-		selection_redo_history: VecDeque::new(),
-		..metadata.clone()
+	let content = |metadata: &NodeNetworkPersistentMetadata| {
+		let mut content = metadata.clone();
+		clear_view_state(&mut content);
+		content
 	};
 	content(first) == content(second)
+}
+
+fn clear_view_state(metadata: &mut NodeNetworkPersistentMetadata) {
+	metadata.previewing = Previewing::No;
+	metadata.navigation_metadata = NavigationMetadata::default();
+	metadata.selection_undo_history.clear();
+	metadata.selection_redo_history.clear();
+
+	let nested_networks = metadata
+		.node_metadata
+		.values_mut()
+		.filter_map(|node_metadata| node_metadata.persistent_metadata.network_metadata.as_mut());
+	for nested in nested_networks.chain(metadata.definitions.values_mut()) {
+		clear_view_state(&mut nested.persistent_metadata);
+	}
 }
 
 /// A definitions table entry carried by a copy, so a paste into a document that lacks it can add it.
