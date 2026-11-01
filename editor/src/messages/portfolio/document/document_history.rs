@@ -179,7 +179,9 @@ impl DocumentHistory {
 		}
 		match note {
 			UndoNote::Retracted(ops) => self.restage_ops(ops),
-			UndoNote::Dropped(rev) => self.redo_retired_step(rev),
+			UndoNote::Dropped(rev) => {
+				self.redo_retired_step(rev);
+			}
 			UndoNote::Cursor => {}
 		}
 		true
@@ -228,11 +230,33 @@ impl DocumentHistory {
 	}
 
 	/// Puts a step dropped out of a session's line back on top.
-	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) {
-		let Some(storage) = self.storage.as_mut() else { return };
-		if let Err(error) = storage.redo_retired_step(rev) {
-			log::error!("Redoing the dropped step failed: {error}");
-		}
+	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) -> bool {
+		self.change_line(|storage| storage.redo_retired_step(rev), "Redoing the dropped step failed")
+	}
+
+	/// Drops a retired interaction out of the line. See [`document_format::Gdd::drop_step`].
+	pub fn drop_step(&mut self, rev: document_graph_storage::Rev) -> bool {
+		self.change_line(|storage| storage.drop_step(rev), "Removing the step failed")
+	}
+
+	/// Moves the shared head to an ancestor. See [`document_format::Gdd::move_head`].
+	pub fn move_head_to(&mut self, rev: document_graph_storage::Rev) -> bool {
+		self.change_line(|storage| storage.move_head(rev), "Moving the head failed")
+	}
+
+	/// Returns whether the line could be changed, which needs a host to ask when this peer does not retire.
+	fn change_line(&mut self, change: impl FnOnce(&mut document_format::GddV1) -> Result<(), document_format::Error>, failure: &str) -> bool {
+		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
+			return false;
+		};
+		change(storage).inspect_err(|error| log::error!("{failure}: {error}")).is_ok()
+	}
+
+	/// Forgets the legacy snapshots, which describe states off the line once the head moved elsewhere.
+	pub fn clear_legacy(&mut self) {
+		self.legacy_undo_stack.clear();
+		self.legacy_redo_stack.clear();
+		self.undo_notes.clear();
 	}
 
 	/// Close this peer's open interaction and retire every closed one into durable Gdd history. No-op while unmounted.

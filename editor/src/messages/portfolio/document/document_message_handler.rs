@@ -473,6 +473,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
 			}
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::HistoryMoveHead { rev } => self.apply_history_action(
+				document_id,
+				|history| history.move_head_to(rev),
+				&resource_storage.resources_mut(),
+				preferences.validate_storage_round_trip,
+				responses,
+			),
+			DocumentMessage::HistoryRemoveStep { rev } => self.apply_history_action(
+				document_id,
+				|history| history.drop_step(rev),
+				&resource_storage.resources_mut(),
+				preferences.validate_storage_round_trip,
+				responses,
+			),
+			DocumentMessage::HistoryRestoreStep { rev } => self.apply_history_action(
+				document_id,
+				|history| history.redo_retired_step(rev),
+				&resource_storage.resources_mut(),
+				preferences.validate_storage_round_trip,
+				responses,
+			),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -3008,6 +3029,33 @@ impl DocumentMessageHandler {
 			false
 		};
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
+	}
+
+	/// Performs an action from the History panel in storage and has the interface follow it. The legacy snapshots are
+	/// dropped since they describe states off the head's line.
+	fn apply_history_action(
+		&mut self,
+		document_id: DocumentId,
+		action: impl FnOnce(&mut DocumentHistory) -> bool,
+		byte_store: &dyn ResourceStorage,
+		validate: bool,
+		responses: &mut VecDeque<Message>,
+	) {
+		if self.network_interface.transaction_status() != TransactionStatus::Finished {
+			return;
+		}
+		responses.add(EventMessage::ToolAbort);
+		self.stage_edits_outside_transaction(byte_store, validate);
+		self.history.retire_storage_interaction();
+		let stored_name = self.stored_name().map(str::to_string);
+		if !action(&mut self.history) {
+			return;
+		}
+		self.history.clear_legacy();
+		self.follow_storage_changes(stored_name, responses);
+		responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+		responses.add(OverlaysMessage::Draw);
+		responses.add(EventMessage::SelectionChanged);
 	}
 
 	/// Reconciles the interface with what storage just changed under it, as for remote changes. The tab takes the stored
