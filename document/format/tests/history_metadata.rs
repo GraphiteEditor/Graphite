@@ -7,7 +7,7 @@ const NOW_MS: f64 = 1_700_000_000_000.;
 const ADA: Subject = Subject::User(UserId(10));
 
 fn document(peer: u64) -> GddV1 {
-	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
+	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), UserId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
 }
 
 /// Let the room settle through greetings, the sync handshake and whatever was broadcast.

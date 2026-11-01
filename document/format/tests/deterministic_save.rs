@@ -4,7 +4,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{ExportFormat, ExportOptions, GddV1, GddV1Layout};
-use document_graph_storage::{Implementation, Network, NetworkId, Node, NodeId, PeerId, Priority, RegistryDelta, ResourceId, SourceKey, TimeStamp, to_value};
+use document_graph_storage::{Implementation, Network, NetworkId, Node, NodeId, PeerId, Priority, RegistryDelta, ResourceId, SourceKey, TimeStamp, UserId, to_value};
 use graph_craft::application_io::resource::{HashMapResourceStorage, ResourceStorage};
 use graphene_resource::DataSource;
 use std::collections::BTreeMap;
@@ -16,7 +16,7 @@ const LATEST: TimeStamp = TimeStamp {
 };
 
 fn document(peer: u64) -> GddV1 {
-	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
+	GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(peer), UserId(peer), 1, "editor".into(), "stdlib".into()).expect("create")
 }
 
 /// Networks and nodes, some of each removed again, plus link-only resources whose bytes sit in the byte store.

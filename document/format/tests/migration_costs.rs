@@ -4,7 +4,7 @@
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use document_graph_storage::{EncodedDeclaration, Implementation, NoMetadata, PeerId, Registry};
+use document_graph_storage::{EncodedDeclaration, Implementation, NoMetadata, PeerId, Registry, UserId};
 use futures::executor::block_on;
 use graph_craft::application_io::resource::HashMapResourceStorage;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork};
@@ -91,7 +91,7 @@ fn stored(nodes: &[(u64, &'static str)]) -> AnyContainer {
 
 /// A document whose declaration bytes went to `store`, as the editor sends them to its global cache.
 fn stored_with_bytes_in(nodes: &[(u64, &'static str)], store: &HashMapResourceStorage) -> AnyContainer {
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), 1, "editor".into(), "std".into()).unwrap();
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), UserId(7), 1, "editor".into(), "std".into()).unwrap();
 	gdd.commit_from_runtime(&network_of(nodes), &NoMetadata, &ResourceRegistry::new(), store).unwrap();
 	gdd.into_storage().0
 }
@@ -143,7 +143,7 @@ fn declarations_come_from_the_container_when_the_cache_lacks_them() {
 		let nodes = [(1, "test_nodes::CopyNode"), (2, "test_nodes::OtherNode")];
 
 		// An archive carries its declarations in the container, which a device's cache hasn't seen yet
-		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), 1, "editor".into(), "std".into()).unwrap();
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(7), UserId(7), 1, "editor".into(), "std".into()).unwrap();
 		gdd.commit_from_runtime(&network_of(&nodes), &NoMetadata, &ResourceRegistry::new(), &HashMapResourceStorage::new())
 			.unwrap();
 		for (_, identifier) in nodes {
