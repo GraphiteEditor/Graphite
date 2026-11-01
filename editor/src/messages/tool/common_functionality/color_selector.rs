@@ -620,6 +620,7 @@ pub fn swap_fill_and_stroke(drawing: &mut DrawingToolState, document: &DocumentM
 
 	if has_paintable_selection(document) {
 		responses.add(DocumentMessage::AddTransaction);
+		graph_modification_utils::swap_fill_and_stroke_for_selected_layers(drawing.effective_line_weight(), document, responses);
 	}
 
 	// The new fill takes the old stroke's value as-is; the new stroke takes the old fill (with any gradient collapsed to `None`,
@@ -627,25 +628,23 @@ pub fn swap_fill_and_stroke(drawing: &mut DrawingToolState, document: &DocumentM
 	let new_fill = drawing.stroke.fill_choice.clone();
 	let new_stroke = drawing.fill.fill_choice.as_ref().map(|c| c.as_solid().map_or(FillChoice::None, FillChoice::Solid));
 	let (new_fill_tracks, new_stroke_tracks) = (drawing.stroke.tracks_working_color, drawing.fill.tracks_working_color);
+	let (new_fill_enabled, new_stroke_enabled) = (drawing.stroke.enabled, drawing.fill.enabled);
 
-	drawing.fill.fill_choice = new_fill.clone();
-	drawing.stroke.fill_choice = new_stroke.clone();
+	drawing.fill.fill_choice = new_fill;
+	drawing.stroke.fill_choice = new_stroke;
 	drawing.fill.tracks_working_color = new_fill_tracks;
 	drawing.stroke.tracks_working_color = new_stroke_tracks;
+	drawing.fill.enabled = new_fill_enabled;
+	drawing.stroke.enabled = new_stroke_enabled;
+}
 
-	if has_paintable_selection(document) {
-		// Apply to layers only when we have a concrete value (`None` means mixed, no single value to broadcast).
-		if drawing.fill.is_active()
-			&& let Some(choice) = new_fill
-		{
-			graph_modification_utils::set_fill_for_selected_layers(choice, document, responses);
-		}
-		if drawing.stroke.is_active()
-			&& let Some(choice) = new_stroke
-		{
-			graph_modification_utils::set_stroke_color_for_selected_layers(choice.as_solid(), drawing.effective_line_weight(), document, responses);
-		}
+/// Swaps fill and stroke on the active selection directly without an active drawing tool.
+pub fn swap_fill_and_stroke_on_selected_layers(default_weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	if !has_paintable_selection(document) {
+		return;
 	}
+	responses.add(DocumentMessage::AddTransaction);
+	graph_modification_utils::swap_fill_and_stroke_for_selected_layers(default_weight, document, responses);
 }
 
 /// Updates the cache and returns `true` if the current selection differs from the last-synced one. Cache stays sorted to keep comparisons cheap.
