@@ -74,14 +74,7 @@ impl History {
 	/// (idempotent re-apply) overwrites the existing entry in place rather than appending, so the
 	/// order and index are unchanged.
 	pub fn push(&mut self, delta: Delta) {
-		match &delta.kind {
-			RegistryDelta::AddResource { entry, .. } => self.resource_hashes.extend(entry.hash),
-			RegistryDelta::RemoveResource { snapshot, .. } => self.resource_hashes.extend(snapshot.hash),
-			RegistryDelta::SetResourceHash { hash: Some(hash), .. } => {
-				self.resource_hashes.insert(*hash);
-			}
-			_ => {}
-		}
+		self.resource_hashes.extend(delta.kind.resource_hash());
 		if let Some(&position) = self.index.get(&delta.id) {
 			self.deltas[position] = delta;
 			return;
@@ -212,6 +205,13 @@ impl History {
 		}
 	}
 
+	/// Record when a retired delta entered history (outside its `Rev`). Returns whether the delta was found.
+	pub(crate) fn set_retired_at(&mut self, rev: Rev, wall_ms: u64) -> bool {
+		let Some(&position) = self.index.get(&rev) else { return false };
+		self.deltas[position].retired_at_ms = wall_ms;
+		true
+	}
+
 	/// Set a local annotation attribute (e.g. a commit message) on a retired delta in place. Excluded
 	/// from the delta's `Rev`, so identity and the index are unchanged. Returns whether the delta was found.
 	pub fn annotate(&mut self, rev: Rev, key: &str, value: Value, timestamp: TimeStamp) -> bool {
@@ -249,4 +249,32 @@ impl History {
 		}
 		Ok(())
 	}
+}
+
+/// Recompute every delta's content-addressed `Rev` after delta payloads were rewritten, walking in
+/// topological order and remapping parent links (including `Merge` extra parents) along the way.
+/// Returns the old → new mapping for remapping cursors (`head`, redo stack, broadcast tip).
+pub fn rehash_deltas(deltas: &mut [Delta]) -> HashMap<Rev, Rev> {
+	let mut mapping: HashMap<Rev, Rev> = HashMap::new();
+
+	for delta in deltas.iter_mut() {
+		let remapped = |rev: Rev| mapping.get(&rev).copied().unwrap_or(rev);
+
+		if let RegistryDelta::Merge { extra_parents } = &mut delta.kind {
+			// A merge's `parent` is its lowest, and remapping can change which that is
+			let mut parents: Vec<Rev> = delta.parent.into_iter().chain(extra_parents.iter().copied()).map(remapped).collect();
+			parents.sort_unstable();
+			parents.dedup();
+			delta.parent = parents.first().copied();
+			*extra_parents = parents.split_first().map(|(_, rest)| rest.to_vec()).unwrap_or_default();
+		} else {
+			delta.parent = delta.parent.map(remapped);
+		}
+
+		let new_id = delta.recomputed_id();
+		mapping.insert(delta.id, new_id);
+		delta.id = new_id;
+	}
+
+	mapping
 }

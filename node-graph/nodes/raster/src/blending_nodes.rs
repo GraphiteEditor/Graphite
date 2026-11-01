@@ -1,20 +1,15 @@
 use crate::adjust::Adjust;
-#[cfg(feature = "std")]
+use core_types::Ctx;
+use core_types::blending::BlendMode;
+use core_types::color::Color;
 use core_types::list::Item;
-use no_std_types::Ctx;
-use no_std_types::blending::BlendMode;
-use no_std_types::color::Color;
-#[cfg(not(feature = "std"))]
-use no_std_types::list::ShaderItem as Item;
-#[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
-#[cfg(feature = "std")]
 use vector_types::Gradient;
 
-pub use no_std_types::blending::{apply_blend_mode, blend_colors};
+pub use core_types::blending::{apply_blend_mode, blend_colors};
 
 /// Mixes the over color onto the under color by a blend mode and opacity, as if they were stacked layers.
-#[node_macro::node(category("Color"), icon("NodeMixColors"), cfg(feature = "std"))]
+#[node_macro::node(category("Color"), icon("NodeMixColors"), version(2))]
 fn mix_colors(
 	_: impl Ctx,
 	under: Item<Color>,
@@ -35,7 +30,7 @@ fn mix_colors(
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
-#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
 fn color_overlay<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
@@ -43,7 +38,6 @@ fn color_overlay<T: Adjust<Color>>(
 		Color,
 		Gradient,
 	)]
-	#[gpu_image]
 	image: Item<T>,
 	#[default(Color::BLACK)] color: Item<Color>,
 	blend_mode: Item<BlendMode>,
@@ -67,7 +61,7 @@ fn color_overlay<T: Adjust<Color>>(
 	image
 }
 
-#[cfg(all(feature = "std", test))]
+#[cfg(test)]
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;

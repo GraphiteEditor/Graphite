@@ -1042,6 +1042,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							node_id,
 							has_selected_layers,
 							all_selected_layers_locked,
+							is_shared: network_interface.is_shared(&node_id, selection_network_path),
 						}
 					} else {
 						ContextMenuData::CreateNode { compatible_type: None }
@@ -2203,6 +2204,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.shift_absolute_node_position(&node_id, IVec2::new(x, y), selection_network_path);
 
 				responses.add(NodeGraphMessage::SendWires);
+			}
+			NodeGraphMessage::MakeUnique { node_id } => {
+				if !network_interface.make_unique(&node_id, selection_network_path) {
+					return;
+				}
+
+				self.context_menu = None;
+				responses.add(FrontendMessage::UpdateContextMenuInformation {
+					context_menu_information: self.context_menu.clone(),
+				});
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				if is_layer && !network_interface.is_eligible_to_be_layer(&node_id, selection_network_path) {

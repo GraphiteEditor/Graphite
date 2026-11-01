@@ -756,6 +756,11 @@ mod editor_commands {
 		DocumentMessage::SetActivePanel { active_panel: panel.into() }.into()
 	}
 
+	/// Give a node its own copy of the network it shares with other nodes
+	fn make_node_unique(id: u64) -> Message {
+		DocumentMessage::MakeNodeUnique { node_id: NodeId(id) }.into()
+	}
+
 	/// Toggle display type for a layer
 	fn set_to_node_or_layer(id: u64, is_layer: bool) -> Message {
 		DocumentMessage::SetToNodeOrLayer { node_id: NodeId(id), is_layer }.into()

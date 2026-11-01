@@ -1,10 +1,10 @@
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use core_types::memo::MemoHash;
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput as GraphCraftNodeInput, NodeNetwork};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NodeInput as GraphCraftNodeInput, NodeNetwork, OwnedNetworkLocation};
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -47,18 +47,25 @@ impl Registry {
 
 	/// Like `to_runtime_with_metadata` but also returns per-network entries (navigation, previewing).
 	/// Used by the editor's full-rebuild path.
+	///
+	/// Every network the root reaches becomes an entry in the root's definitions table under its storage ID.
+	/// The nodes that implement it name it by that ID.
 	pub fn to_runtime_with_full_metadata(&self, declarations: &Declarations) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>, Vec<NetworkMetadataEntry>), ConversionError> {
-		let mut node_metadata = Some(Vec::new());
-		let mut network_metadata = Some(Vec::new());
+		let mut node_metadata = Vec::new();
+		let mut network_metadata = Vec::new();
 
 		let context = ConversionContext::new(self, declarations);
 
-		// Reject cycles up front so the recursive conversion below can assume the network reference
-		// graph is acyclic and never blow the stack on a self-referential `Implementation::Network`.
+		// Reject cycles first because the runtime cannot inline a definition that contains itself
 		detect_network_cycle(&context, ROOT_NETWORK)?;
 
-		let network = convert_network(&context, ROOT_NETWORK, &[], &mut node_metadata, &mut network_metadata)?;
-		Ok((network, node_metadata.expect("seeded above"), network_metadata.expect("seeded above")))
+		let mut network = convert_network(&context, ROOT_NETWORK, &mut node_metadata, &mut network_metadata)?;
+		for network_id in context.reachable_definitions() {
+			let definition = convert_network(&context, network_id, &mut node_metadata, &mut network_metadata)?;
+			network.definitions.insert(runtime_network_id(network_id), definition);
+		}
+
+		Ok((network, node_metadata, network_metadata))
 	}
 
 	/// Rebuild the runtime [`ResourceRegistry`](graphene_resource::ResourceRegistry) from the stored
@@ -104,6 +111,37 @@ impl<'a> ConversionContext<'a> {
 			nodes_by_network,
 		}
 	}
+
+	/// The networks other than the root that the root reaches through node implementations.
+	fn reachable_definitions(&self) -> FxHashSet<NetworkId> {
+		let mut reached = FxHashSet::default();
+		let mut pending = vec![ROOT_NETWORK];
+
+		while let Some(network_id) = pending.pop() {
+			for &(_, node) in self.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
+				if let Implementation::Network(child) = node.implementation
+					&& child != ROOT_NETWORK
+					&& reached.insert(child)
+				{
+					pending.push(child);
+				}
+			}
+		}
+
+		reached
+	}
+}
+
+fn runtime_network_id(id: NetworkId) -> RuntimeNetworkId {
+	RuntimeNetworkId(id.0)
+}
+
+/// Where the network stored as `id` sits in the runtime. This is the root or an entry in the root's table.
+fn runtime_location(id: NetworkId) -> OwnedNetworkLocation {
+	match id {
+		ROOT_NETWORK => OwnedNetworkLocation::default(),
+		id => OwnedNetworkLocation::definition(runtime_network_id(id)),
+	}
 }
 
 /// The id the node had in the runtime it was converted from, kept as an attribute so a conversion back
@@ -112,21 +150,18 @@ fn runtime_node_id(global_id: NodeId, node: &Node) -> RuntimeNodeId {
 	RuntimeNodeId(node.attributes.get_typed(node::ORIGINAL_NODE_ID).unwrap_or(global_id.0))
 }
 
-/// A node in runtime form with the metadata entries for it and everything nested under it, paths absolute.
+/// A node in runtime form with its metadata entry.
 pub struct ProjectedNode {
-	/// The runtime path of the network the node sits in.
-	pub network_path: Vec<RuntimeNodeId>,
+	/// The runtime location of the network the node sits in.
+	pub network: OwnedNetworkLocation,
 	pub local_id: RuntimeNodeId,
 	pub node: DocumentNode,
-	/// The node's own entry first, then one per nested node.
-	pub node_entries: Vec<NodeMetadataEntry>,
-	/// One per network the node's implementation nests, outermost first.
-	pub network_entries: Vec<NetworkMetadataEntry>,
+	pub metadata: NodeMetadataEntry,
 }
 
 /// A network's own runtime form without its nodes, as [`RuntimeProjection::network_entry`] produces it.
 pub struct ProjectedNetwork {
-	pub network_path: Vec<RuntimeNodeId>,
+	pub network: OwnedNetworkLocation,
 	pub exports: Vec<GraphCraftNodeInput>,
 	pub scope_injections: FxHashMap<String, (RuntimeNodeId, Type)>,
 	pub metadata: NetworkMetadataEntry,
@@ -136,76 +171,48 @@ pub struct ProjectedNetwork {
 /// rebuilding it.
 pub struct RuntimeProjection<'a> {
 	context: ConversionContext<'a>,
-	/// The node whose implementation each nested network is, or `None` where several nodes implement it.
-	owners: FxHashMap<NetworkId, Option<NodeId>>,
+	reachable: FxHashSet<NetworkId>,
 }
 
 impl Registry {
 	pub fn runtime_projection<'a>(&'a self, declarations: &'a Declarations) -> RuntimeProjection<'a> {
-		let mut owners = FxHashMap::default();
-		for (&id, node) in &self.node_instances {
-			if let Implementation::Network(network) = node.implementation
-				&& network != ROOT_NETWORK
-			{
-				owners.entry(network).and_modify(|owner| *owner = None).or_insert(Some(id));
-			}
-		}
+		let context = ConversionContext::new(self, declarations);
 		RuntimeProjection {
-			context: ConversionContext::new(self, declarations),
-			owners,
+			reachable: context.reachable_definitions(),
+			context,
 		}
 	}
 }
 
 impl RuntimeProjection<'_> {
-	/// The node implementing `network`, or `None` for the root, for a network no node implements, and for one several
-	/// nodes implement, which the runtime holds a copy of under each and no single path addresses.
-	pub fn owner(&self, network: NetworkId) -> Option<NodeId> {
-		self.owners.get(&network).copied().flatten()
+	/// The runtime location of `network`, or `None` if the root does not reach it.
+	pub fn network_location(&self, network: NetworkId) -> Option<OwnedNetworkLocation> {
+		(network == ROOT_NETWORK || self.reachable.contains(&network)).then(|| runtime_location(network))
 	}
 
-	/// The runtime path of `network`: the nodes implementing it and its ancestors, outermost first.
-	/// `None` for a network the root does not reach, which the runtime does not hold.
-	pub fn network_path(&self, network: NetworkId) -> Option<Vec<RuntimeNodeId>> {
-		let mut chain: Vec<(NodeId, &Node)> = Vec::new();
-		let mut current = network;
-		while current != ROOT_NETWORK {
-			let owner = self.owner(current)?;
-			// Owners can form a cycle through concurrent implementation swaps, which the runtime rejects.
-			if chain.iter().any(|&(id, _)| id == owner) {
-				return None;
-			}
-			let node = self.context.registry.node_instances.get(&owner)?;
-			chain.push((owner, node));
-			current = node.network;
-		}
-		Some(chain.into_iter().rev().map(|(id, node)| runtime_node_id(id, node)).collect())
-	}
-
-	/// Where the node sits in the runtime: the path of its network, and its id within that network.
-	pub fn node_address(&self, id: NodeId) -> Option<(Vec<RuntimeNodeId>, RuntimeNodeId)> {
+	/// The location of the node's network in the runtime, and the node's ID in that network.
+	pub fn node_address(&self, id: NodeId) -> Option<(OwnedNetworkLocation, RuntimeNodeId)> {
 		let node = self.context.registry.node_instances.get(&id)?;
-		Some((self.network_path(node.network)?, runtime_node_id(id, node)))
+		Some((self.network_location(node.network)?, runtime_node_id(id, node)))
 	}
 
-	/// The node and everything nested under it, converted as a whole-document conversion would.
+	/// The node converted as a whole-document conversion would.
 	pub fn node(&self, id: NodeId) -> Result<ProjectedNode, ConversionError> {
 		let node = self.context.registry.node_instances.get(&id).ok_or(ConversionError::NodeNotFound(id))?;
-		let network_path = self.network_path(node.network).ok_or(ConversionError::NetworkNotFound(node.network))?;
+		let network = self.network_location(node.network).ok_or(ConversionError::NetworkNotFound(node.network))?;
 		let local_id = runtime_node_id(id, node);
 
+		// Reject a missing or cyclic network, like the whole-document conversion does
 		if let Implementation::Network(nested) = node.implementation {
+			self.context.registry.network_or_removed(nested).ok_or(ConversionError::NetworkNotFound(nested))?;
 			detect_network_cycle(&self.context, nested)?;
 		}
 
-		let mut node_entries = Some(vec![extract_ui_metadata(node, id, &network_path, local_id)]);
-		let mut network_entries = Some(Vec::new());
 		Ok(ProjectedNode {
-			node: convert_node(&self.context, node, &network_path, local_id, &mut node_entries, &mut network_entries)?,
-			network_path,
+			node: convert_node(&self.context, node)?,
+			metadata: extract_ui_metadata(node, id, network.clone(), local_id),
+			network,
 			local_id,
-			node_entries: node_entries.expect("seeded above"),
-			network_entries: network_entries.expect("seeded above"),
 		})
 	}
 
@@ -213,31 +220,24 @@ impl RuntimeProjection<'_> {
 	pub fn network_entry(&self, id: NetworkId) -> Result<ProjectedNetwork, ConversionError> {
 		let registry = self.context.registry;
 		let network = registry.network_or_removed(id).ok_or(ConversionError::NetworkNotFound(id))?;
-		let network_path = self.network_path(id).ok_or(ConversionError::NetworkNotFound(id))?;
+		let location = self.network_location(id).ok_or(ConversionError::NetworkNotFound(id))?;
 
 		Ok(ProjectedNetwork {
-			metadata: extract_network_metadata(registry, &network.attributes, &network_path, id),
+			metadata: extract_network_metadata(registry, &network.attributes, location.clone(), id),
 			scope_injections: read_scope_injections(registry, id, &network.attributes)?,
 			exports: convert_exports(registry, id, network)?,
-			network_path,
+			network: location,
 		})
 	}
 }
 
-/// Converts a single network. Recurses through `Implementation::Network` owning nodes.
-///
-/// **ID remapping:** Registry uses globally hashed IDs; runtime networks need local IDs. We pull
-/// the original local ID from `attr::ORIGINAL_NODE_ID` on each node and on each `NodeInput::Node`
-/// reference. References only point within the same network, so per-network lookup suffices.
-///
-/// **Exports:** the storage-side `Vec<ExportSlot>` is sparse (`None` slots are valid). Compacted
-/// here into the runtime's dense `Vec<NodeInput>` — slot stability is a storage-side concern.
-///
-/// `metadata_path` is the owning-node chain naming *this* network (empty for the root).
-/// Walk the network reference graph (edges are `Implementation::Network` references between a
-/// network and the networks its nodes embed) and reject any cycle, so the recursive `convert_network`
-/// can't recurse forever and overflow the stack. Iterative DFS with an explicit stack and a gray set
-/// for the active path; a child already on the active path is a back edge, i.e. a cycle.
+/// Rejects a registry whose root reaches a network cycle.
+pub(crate) fn reject_network_cycles(registry: &Registry, declarations: &Declarations) -> Result<(), ConversionError> {
+	detect_network_cycle(&ConversionContext::new(registry, declarations), ROOT_NETWORK)
+}
+
+/// Rejects any cycle in the graph of `Implementation::Network` references from a network to the networks its nodes implement.
+/// The runtime cannot inline a cycle. This is an iterative DFS, and a child already on the active path is a back edge.
 fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<(), ConversionError> {
 	// Networks reachable from `root` that referenced networks, used by an embedded node, are pushed in
 	// reverse so the natural processing order matches a recursive walk. `Enter`/`Leave` frames let us
@@ -279,36 +279,37 @@ fn detect_network_cycle(context: &ConversionContext, root: NetworkId) -> Result<
 	Ok(())
 }
 
+/// Converts a single network, naming the networks its nodes implement by their table entries.
+///
+/// The registry uses globally hashed IDs, and runtime networks need local IDs.
+/// Each node and each `NodeInput::Node` reference gets its local ID back from `attr::ORIGINAL_NODE_ID`.
+/// References only point within the same network, so a lookup per network is enough.
+///
+/// Storage keeps exports in a sparse `Vec<ExportSlot>` where `None` slots are valid.
+/// They are compacted here into the runtime's dense `Vec<NodeInput>`, since slot stability only matters in storage.
 fn convert_network(
 	context: &ConversionContext,
 	network_id: NetworkId,
-	metadata_path: &[RuntimeNodeId],
-	node_collector: &mut Option<Vec<NodeMetadataEntry>>,
-	network_collector: &mut Option<Vec<NetworkMetadataEntry>>,
+	node_metadata: &mut Vec<NodeMetadataEntry>,
+	network_metadata: &mut Vec<NetworkMetadataEntry>,
 ) -> Result<NodeNetwork, ConversionError> {
 	let network = context.registry.network_or_removed(network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
+	let location = runtime_location(network_id);
 
-	if let Some(collector) = network_collector.as_mut() {
-		collector.push(extract_network_metadata(context.registry, &network.attributes, metadata_path, network_id));
-	}
+	network_metadata.push(extract_network_metadata(context.registry, &network.attributes, location.clone(), network_id));
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
 		let runtime_id = runtime_node_id(global_id, node);
-		let local_id = runtime_id.0;
 
-		if let Some(collector) = node_collector.as_mut() {
-			collector.push(extract_ui_metadata(node, global_id, metadata_path, runtime_id));
-		}
-
-		let doc_node = convert_node(context, node, metadata_path, runtime_id, node_collector, network_collector)?;
+		node_metadata.push(extract_ui_metadata(node, global_id, location.clone(), runtime_id));
 
 		// Two storage nodes resolving to the same runtime ID would silently collapse into one on
 		// insert, dropping a node from the reconstructed graph.
-		if nodes.insert(runtime_id, doc_node).is_some() {
+		if nodes.insert(runtime_id, convert_node(context, node)?).is_some() {
 			return Err(ConversionError::DuplicateRuntimeNodeId {
 				network: network_id,
-				runtime_id: local_id,
+				runtime_id: runtime_id.0,
 			});
 		}
 	}
@@ -365,7 +366,7 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 /// Emitted for every node, since `storage_id` is worth restoring even where no `ui::*` attribute is.
 /// `input_metadata` is always sized to match `node.inputs.len()` for a strict slot-by-slot rebuild;
 /// empty slots use `InputMetadataEntry::default()`.
-fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[RuntimeNodeId], local_id: RuntimeNodeId) -> NodeMetadataEntry {
+fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: OwnedNetworkLocation, local_id: RuntimeNodeId) -> NodeMetadataEntry {
 	let position: Option<Position> = node.attributes.get_typed(node::ui::POSITION);
 	let is_layer = node.attributes.get_or(node::ui::IS_LAYER, false);
 	let display_name: Option<String> = node.attributes.get_typed(node::ui::DISPLAY_NAME);
@@ -377,7 +378,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 	let input_metadata: Vec<InputMetadataEntry> = node.inputs.iter().map(|slot| &slot.attributes).map(extract_input_metadata).collect();
 
 	NodeMetadataEntry {
-		network_path: network_path.to_vec(),
+		network,
 		local_id,
 		storage_id,
 		position,
@@ -394,7 +395,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network_path: &[R
 /// Node references stored here are storage IDs, resolved back to runtime-local IDs the way
 /// `read_scope_injections` does. A reference to a node that is no longer in this network is dropped
 /// rather than failing the conversion: a pinned node can have been deleted.
-fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network_path: &[RuntimeNodeId], network_id: NetworkId) -> NetworkMetadataEntry {
+fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network: OwnedNetworkLocation, network_id: NetworkId) -> NetworkMetadataEntry {
 	let to_runtime_id = |storage_id: NodeId| {
 		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
 		Some(runtime_node_id(storage_id, node))
@@ -408,16 +409,19 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 		.collect();
 
 	NetworkMetadataEntry {
-		network_path: network_path.to_vec(),
+		network,
 		network_id,
 		reference: attributes.get_typed(node::ui::REFERENCE),
 		pinned_order,
+		import_metadata: attributes.get_or_default(network::IMPORT_METADATA),
+		export_names: attributes.get_or_default(network::EXPORT_NAMES),
+		export_descriptions: attributes.get_or_default(network::EXPORT_DESCRIPTIONS),
 	}
 }
 
 /// Reassembles `input_data` by scanning every attribute under `ui::input_data::` and stripping the prefix.
 fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry {
-	let input_data: HashMap<String, Value> = attributes
+	let input_data: BTreeMap<String, Value> = attributes
 		.live()
 		.filter_map(|(key, value)| key.strip_prefix(node::input::ui::DATA_PREFIX).map(|sub_key| (sub_key.to_owned(), value.value.clone())))
 		.collect();
@@ -430,14 +434,7 @@ fn extract_input_metadata(attributes: &crate::Attributes) -> InputMetadataEntry 
 	}
 }
 
-fn convert_node(
-	context: &ConversionContext,
-	node: &crate::Node,
-	metadata_path: &[RuntimeNodeId],
-	runtime_node_id: RuntimeNodeId,
-	node_collector: &mut Option<Vec<NodeMetadataEntry>>,
-	network_collector: &mut Option<Vec<NetworkMetadataEntry>>,
-) -> Result<DocumentNode, ConversionError> {
+fn convert_node(context: &ConversionContext, node: &crate::Node) -> Result<DocumentNode, ConversionError> {
 	let inputs = node
 		.inputs
 		.iter()
@@ -448,7 +445,7 @@ fn convert_node(
 	Ok(DocumentNode {
 		inputs,
 		call_argument: node.attributes.get_or(node::CALL_ARGUMENT, concrete!(core_types::Context)),
-		implementation: convert_implementation(context, &node.implementation, metadata_path, runtime_node_id, node_collector, network_collector)?,
+		implementation: convert_implementation(context, &node.implementation)?,
 		visible: node.attributes.get_or(node::VISIBLE, true),
 		skip_deduplication: node.attributes.get_or(node::SKIP_DEDUPLICATION, false),
 		// Regenerated during compilation; not stored.
@@ -500,24 +497,12 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 	})
 }
 
-fn convert_implementation(
-	context: &ConversionContext,
-	implementation: &Implementation,
-	parent_metadata_path: &[RuntimeNodeId],
-	owning_runtime_id: RuntimeNodeId,
-	node_collector: &mut Option<Vec<NodeMetadataEntry>>,
-	network_collector: &mut Option<Vec<NetworkMetadataEntry>>,
-) -> Result<DocumentNodeImplementation, ConversionError> {
+fn convert_implementation(context: &ConversionContext, implementation: &Implementation) -> Result<DocumentNodeImplementation, ConversionError> {
 	Ok(match implementation {
 		Implementation::ProtoNode(id) => {
 			let proto = context.declarations.get(id).ok_or(ConversionError::DeclarationNotFound(*id))?;
 			DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::with_owned_string(proto.identifier.clone()))
 		}
-		Implementation::Network(net_id) => {
-			let mut child_path = Vec::with_capacity(parent_metadata_path.len() + 1);
-			child_path.extend_from_slice(parent_metadata_path);
-			child_path.push(owning_runtime_id);
-			DocumentNodeImplementation::Network(convert_network(context, *net_id, &child_path, node_collector, network_collector)?)
-		}
+		Implementation::Network(network_id) => DocumentNodeImplementation::Definition(runtime_network_id(*network_id)),
 	})
 }

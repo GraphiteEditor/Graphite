@@ -753,6 +753,39 @@ fn all_referenced_resource_hashes_survives_undo() {
 	assert!(session.all_referenced_resource_hashes().contains(&changed), "the undone hash change keeps its bytes for redo");
 }
 
+/// A hot hash a later hot op overwrote is in no registry, but retiring puts it in history.
+#[test]
+fn all_referenced_resource_hashes_keeps_an_overwritten_hot_hash() {
+	use crate::ResourceId;
+
+	let mut session = Session::with_peer(PeerId(1));
+	let (first, second) = (ResourceHash::from(&b"first"[..]), ResourceHash::from(&b"second"[..]));
+	let id = ResourceId::new();
+	session.stage_embedded_resource(id, first).expect("stage resource");
+	let hot_ops = session.stage_ops([crate::RegistryDelta::SetResourceHash { id, hash: Some(second) }]).expect("stage hash change");
+	assert!(session.all_referenced_resource_hashes().contains(&first), "the overwritten hash is still named while hot");
+
+	session.retire(hot_ops.last().expect("staged").timestamp).expect("retire");
+	assert!(session.all_referenced_resource_hashes().contains(&first), "and from history once retired");
+}
+
+/// A take-back can lose to a host retiring the same ops, so what a taken-back step named stays a root once nothing
+/// else names it.
+#[test]
+fn resource_gc_roots_keep_what_a_taken_back_step_named() {
+	use crate::ResourceId;
+
+	let mut session = Session::with_peer(PeerId(1));
+	let hash = ResourceHash::from(&b"bytes"[..]);
+	session.stage_embedded_resource(ResourceId::new(), hash).expect("stage resource");
+	session.end_interaction().expect("end interaction");
+	session.retract_interaction().expect("retract").expect("a hot step to take back");
+	assert!(!session.all_referenced_resource_hashes().contains(&hash), "nothing names the hash once taken back");
+
+	session.stage_embedded_resource(ResourceId::new(), ResourceHash::from(&b"other"[..])).expect("a fresh edit");
+	assert!(session.resource_gc_roots().contains(&hash));
+}
+
 /// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
 /// new edit; a no-op commit (here `embed_resource_sources` over an empty id set) leaving it cleared
 /// would silently disable redo after an undo.
@@ -1421,4 +1454,24 @@ fn an_input_naming_a_node_not_yet_added_renders_dangling() {
 	assert!(document.working_registry.removed_nodes.get(&unseen).is_some_and(|mark| mark.placeholder));
 
 	document.working_registry.to_runtime_with_metadata(&crate::Declarations::new()).expect("converts with a dangling input");
+}
+
+/// Remapped tips can swap order, and a merge's `parent` has to stay the lowest.
+#[test]
+fn rehash_keeps_a_merges_parents_sorted() {
+	for seed in 0..32 {
+		let tip = |value: i32| Delta::new(None, PeerId(1), TimeStamp::default(), RegistryDelta::Other(Value::Int(value.into())), Default::default());
+		let (first, second) = (tip(seed), tip(seed + 1000));
+		let merge = Delta::merge([first.id, second.id], PeerId(1), TimeStamp::default());
+
+		let mut deltas = [first, second, merge];
+		deltas[0].kind = RegistryDelta::Other(Value::Int((seed + 2000).into()));
+		deltas[1].kind = RegistryDelta::Other(Value::Int((seed + 3000).into()));
+		crate::rehash_deltas(&mut deltas);
+
+		let [_, _, merge] = &deltas;
+		let RegistryDelta::Merge { extra_parents } = &merge.kind else { panic!("the merge stays a merge") };
+		assert!(merge.parent.is_some_and(|parent| parent < extra_parents[0]));
+		assert!(merge.has_valid_id());
+	}
 }

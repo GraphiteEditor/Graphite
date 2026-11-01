@@ -1429,13 +1429,17 @@ fn smooth_anchors<V: MapVectorItems + Send>(
 						}
 					}
 
-					// If spread is 0, remove handles for this point, making it a sharp corner
+					// If spread is 0, remove handles for this point, making it a sharp corner, unless the existing handles are preserved
 					if spread == 0. {
-						new_manipulators_list.push(ManipulatorGroup {
-							anchor: current.anchor,
-							in_handle: None,
-							out_handle: None,
-							id: current.id,
+						new_manipulators_list.push(if preserve_existing {
+							*current
+						} else {
+							ManipulatorGroup {
+								anchor: current.anchor,
+								in_handle: None,
+								out_handle: None,
+								id: current.id,
+							}
 						});
 						continue;
 					}
@@ -4605,6 +4609,23 @@ mod test {
 			smooth_anchors_by_contour(&output),
 			[vec![false, true, true, false], vec![true, true, true], vec![false, false, true, true]]
 		);
+	}
+
+	// Spreading by nothing is a no-op when the source's handles are preserved, so its curves keep their type and shape
+	#[test]
+	fn smooth_anchors_spread_of_zero_keeps_the_source_curves() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.curve_to((50., 0.), (100., 0.), (100., 0.));
+		bezpath.curve_to((100., 0.), (75., 100.), (50., 100.));
+		bezpath.curve_to((25., 100.), (0., 0.), (0., 0.));
+		bezpath.close_path();
+
+		let source = vector_item_from_bezpath(bezpath);
+		let output = super::smooth_anchors((), source.clone(), item(0.), item(true));
+
+		let segments = |item: &Item<Vector>| item.element().segment_iter(item_paths(item)).map(|(_, segment, ..)| segment).collect::<Vec<_>>();
+		assert_eq!(segments(&output), segments(&source));
 	}
 
 	// A loop of one segment has no neighbor to share a tangent with, so it passes through unchanged

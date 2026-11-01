@@ -10,35 +10,42 @@
 // gated off wasm to avoid unused-import warnings.
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
+#[cfg(feature = "migrations")]
+use document_graph_storage::Rev;
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HistoryMetadata, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Session, Sorted, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
-use graphene_resource::ResourceHash;
+use graphene_resource::{ResourceHash, ResourceStorage};
 
 pub mod codec;
 pub mod error;
 pub mod export;
 pub mod io;
 pub mod layout;
+mod load;
 pub mod manifest;
+#[cfg(feature = "migrations")]
+mod migrate;
+#[cfg(feature = "network")]
+pub mod network;
 pub mod persist;
 pub mod resource;
-pub mod session_state;
 
 pub use codec::{Codec, CodecError};
+pub use document_graph_storage::SessionState;
 pub use error::Error;
 pub use export::{ExportFormat, ExportOptions};
 pub use io::ReadError;
 pub use layout::{GddV1Layout, Layout};
 pub use manifest::{Manifest, PayloadCodecs};
 pub use resource::ResourceProxy;
-pub use session_state::SessionState;
 
 /// The default [`Layout`], so callers write `GddV1` for the common `Gdd<GddV1Layout>` handle.
 pub type GddV1 = Gdd<GddV1Layout>;
@@ -54,6 +61,15 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
 /// One fact per line, so recording one only appends.
 pub const METADATA_CODEC: Codec = Codec::JsonLines;
+
+/// The facts as lines of the metadata file.
+pub(crate) fn encode_facts<'a>(facts: impl IntoIterator<Item = &'a MetadataFact>) -> Result<Vec<u8>, Error> {
+	let mut buffer = Vec::new();
+	for fact in facts {
+		METADATA_CODEC.append(&mut buffer, fact)?;
+	}
+	Ok(buffer)
+}
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
@@ -67,8 +83,7 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 /// read.
 /// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
-/// `Session` is cloned (a snapshot copy); the container is shared.
-#[derive(Clone)]
+/// `Session` is cloned as a snapshot copy. A clone is not connected to the room.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: AnyContainer,
@@ -85,6 +100,64 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
+	pub(crate) migrated: bool,
+	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
+	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	#[cfg(feature = "network")]
+	pub(crate) network: Option<peer_transport::Replica>,
+	#[cfg(feature = "network")]
+	pub(crate) pending_persist: PendingPersist,
+	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
+	#[cfg(feature = "network")]
+	pub(crate) remote_changes: network::RemoteChanges,
+	/// Whether the document belongs in its room, persisted so a reopen reconnects.
+	pub(crate) shared: bool,
+}
+
+/// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per file.
+#[cfg(feature = "network")]
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PendingPersist {
+	pub(crate) history: bool,
+	pub(crate) hot_log: bool,
+	pub(crate) snapshot: bool,
+}
+
+impl<L: Layout + Clone> Clone for Gdd<L> {
+	fn clone(&self) -> Self {
+		Self {
+			view_settings: self.view_settings.clone(),
+			network_view_settings: self.network_view_settings.clone(),
+			byte_store: self.byte_store.clone(),
+			migrated: self.migrated,
+			shared: self.shared,
+			..Self::assemble(self.session.clone(), self.working.clone(), self.layout.clone(), self.manifest.clone(), self.metadata.clone())
+		}
+	}
+}
+
+impl<L: Layout> Gdd<L> {
+	/// A handle with no view settings, not shared, and no live state.
+	fn assemble(session: Session, working: AnyContainer, layout: L, manifest: Manifest, metadata: HistoryMetadata) -> Self {
+		Self {
+			session,
+			working,
+			layout,
+			manifest,
+			metadata,
+			view_settings: Default::default(),
+			network_view_settings: Default::default(),
+			byte_store: None,
+			migrated: false,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
+			shared: false,
+		}
+	}
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -128,6 +201,8 @@ impl<L: Layout> Gdd<L> {
 	/// [`Error::MissingManifest`] if the container holds no manifest, [`Error::WrongFormat`] / [`Error::UnsupportedVersion`]
 	/// if it fails validation, plus the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
 	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, Error> {
+		persist::finish_staged_rewrite(&working, &layout).await?;
+
 		let manifest: Manifest = match io::read_single(&working, layout.manifest_basename(), MANIFEST_CODEC).await {
 			Ok(manifest) => manifest,
 			Err(io::ReadError::NotFound { .. }) => return Err(Error::MissingManifest),
@@ -136,54 +211,98 @@ impl<L: Layout> Gdd<L> {
 		validate_manifest(&manifest)?;
 		let codecs = manifest.codecs;
 
-		let session_state: SessionState = match io::exists(&working, layout.session_basename(), codecs.session).await {
-			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
-			false => SessionState::default(),
-		};
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the stored records"))]
+		let mut records = load::StoredRecords::read(&working, &layout, codecs).await?;
+		#[cfg(feature = "migrations")]
+		let format_outcome = migrate::migrate_format(&mut records, codecs, manifest.format_version)?;
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the decoded payloads"))]
+		let mut payloads = records.decode(codecs)?;
+		#[cfg(feature = "migrations")]
+		let mut rehashed = std::collections::HashMap::new();
+		#[cfg(feature = "migrations")]
+		match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => {
+				// Records changed, so their content-addressed revs did too
+				let revs = migration_runner::rehash_deltas(payloads.history.as_deref_mut().unwrap_or_default());
+				rehashed = revs.clone();
+				let remap = |rev: Rev| revs.get(&rev).copied().unwrap_or(rev);
+				let state = &mut payloads.session;
+				state.head_rev = state.head_rev.map(remap);
+				state.last_broadcast_rev = state.last_broadcast_rev.map(remap);
+				state.redo_stack.iter_mut().for_each(|rev| *rev = remap(*rev));
+			}
+			Some(migration_runner::HistoryOutcome::Truncated) => {
+				let state = &mut payloads.session;
+				state.head_rev = None;
+				state.last_broadcast_rev = None;
+				state.redo_stack.clear();
+			}
+			Some(migration_runner::HistoryOutcome::Untouched) | None => {}
+		}
+		let load::DecodedPayloads {
+			registry,
+			history,
+			hot_log,
+			session: mut session_state,
+		} = payloads;
 		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
 			true => HistoryMetadata::fold(io::iter_lenient(&working, layout.metadata_basename(), METADATA_CODEC).await?),
 			false => HistoryMetadata::default(),
 		};
+		#[cfg(feature = "migrations")]
+		let metadata = match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => migrate::remap_metadata(&metadata, |rev| Some(rehashed.get(&rev).copied().unwrap_or(rev))),
+			Some(migration_runner::HistoryOutcome::Truncated) => migrate::remap_metadata(&metadata, |_| None),
+			_ => metadata,
+		};
 
-		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
-		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
+		// The history a registry-only document gets here has to be stored before the first edit, which would otherwise append to nothing
+		let bootstrapped = registry.is_some() && history.is_none();
 
 		let peer = session_state.peer_id;
 		let user = session_state.user_id;
-		let mut session = match (has_registry, has_history) {
-			(true, true) => {
-				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
-			}
-			(true, false) => {
-				// Registry-only export: synthesize a history that reproduces this state.
-				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(peer, user, registry)?
-			}
-			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+		let mut session = match (registry, history) {
+			(Some(registry), Some(history)) => Session::load(
+				peer,
+				user,
+				registry,
+				history,
+				session_state.head_rev,
+				std::mem::take(&mut session_state.redo_stack),
+				session_state.next_node_counter,
+			),
+			// Registry-only export: synthesize a history that reproduces this state
+			(Some(registry), None) => Session::bootstrap_from_registry(peer, user, registry)?,
+			(None, history) => Session::replay_from_history(peer, user, history.unwrap_or_default(), session_state.next_node_counter)?,
 		};
 
-		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
-		if let Some(rev) = session_state.last_broadcast_rev {
-			session.publish_up_to(rev);
+		// Before the hot log replays, so a retired op in it is dropped rather than staged again.
+		restore_cursor(&mut session, &session_state);
+		for hot_op in hot_log {
+			session.replay_hot_op(hot_op)?;
 		}
 
-		session.restore_hot_sequence(session_state.last_hot_sequence);
-		session.restore_clock_counter(session_state.clock_counter);
-		// Before the hot log replays, so a retired op in it is dropped rather than staged again.
-		session.absorb_retired_marks(&session_state.retired_marks);
-		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
-
-		Ok(Self {
-			session,
-			working,
-			layout,
-			manifest,
+		let mut gdd = Self {
 			view_settings: session_state.view_settings,
-			metadata,
 			network_view_settings: session_state.network_view_settings,
-		})
+			shared: session_state.shared,
+			..Self::assemble(session, working, layout, manifest, metadata)
+		};
+
+		#[cfg(feature = "migrations")]
+		{
+			let migrated_nodes = gdd.migrate_nodes().await?;
+			gdd.migrated = format_outcome.is_some() || migrated_nodes;
+			if gdd.migrated {
+				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);
+			}
+		}
+
+		if bootstrapped || gdd.migrated {
+			gdd.persist_all().await?;
+		}
+
+		Ok(gdd)
 	}
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
@@ -197,21 +316,24 @@ impl<L: Layout> Gdd<L> {
 			user_id: UserId(peer.0),
 			..Default::default()
 		};
-		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
+		io::write_single(&working, layout.session_basename(), codecs.session, &Sorted(&session_state))?;
 
 		let session = Session::with_peer(peer);
-		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
+		io::write_single(&working, layout.registry_basename(), codecs.registry, &Sorted(session.registry()))?;
 
-		Ok(Self {
-			session,
-			working,
-			layout,
-			manifest,
-			view_settings: std::collections::BTreeMap::new(),
-			metadata: HistoryMetadata::default(),
-			network_view_settings: std::collections::BTreeMap::new(),
-		})
+		Ok(Self::assemble(session, working, layout, manifest, HistoryMetadata::default()))
 	}
+}
+
+/// Carry the persisted cursor onto a freshly loaded session, whichever way it was loaded.
+pub(crate) fn restore_cursor(session: &mut Session, state: &SessionState) {
+	if let Some(rev) = state.last_broadcast_rev {
+		session.publish_up_to(rev);
+	}
+	session.restore_hot_sequence(state.last_hot_sequence);
+	session.restore_clock_counter(state.clock_counter);
+	session.restore_next_node_counter(state.next_node_counter);
+	session.absorb_retired_marks(&state.retired_marks);
 }
 
 fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {
@@ -226,23 +348,6 @@ fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {
 			found: manifest.format_version,
 			max_supported: manifest::SUPPORTED_FORMAT_VERSION,
 		});
-	}
-	Ok(())
-}
-
-async fn load_history<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec) -> Result<Vec<Delta>, Error> {
-	if !io::exists(working, layout.history_basename(), codec).await {
-		return Ok(Vec::new());
-	}
-	Ok(io::iter::<Delta>(working, layout.history_basename(), codec).await?)
-}
-
-async fn replay_hot_log<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec, session: &mut Session) -> Result<(), Error> {
-	if !io::exists(working, layout.hot_log_basename(), codec).await {
-		return Ok(());
-	}
-	for hot_op in io::iter::<HotOp>(working, layout.hot_log_basename(), codec).await? {
-		session.replay_hot_op(hot_op)?;
 	}
 	Ok(())
 }
@@ -270,6 +375,11 @@ impl<L: Layout> Gdd<L> {
 		&self.manifest
 	}
 
+	/// Whether opening ran a format step or node migration, and so rewrote the working copy.
+	pub fn migrated(&self) -> bool {
+		self.migrated
+	}
+
 	pub fn layout(&self) -> &L {
 		&self.layout
 	}
@@ -286,14 +396,13 @@ impl<L: Layout> Gdd<L> {
 		&self.network_view_settings
 	}
 
-	/// Resolve each runtime `network_path` to its stable [`NetworkId`](document_graph_storage::NetworkId), so the
-	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
+	/// The stable [`NetworkId`](document_graph_storage::NetworkId) of each runtime network location, to key per-network view state. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
-	) -> Result<std::collections::HashMap<Vec<core_types::uuid::NodeId>, document_graph_storage::NetworkId>, CommitError> {
+	) -> Result<std::collections::HashMap<graph_craft::document::OwnedNetworkLocation, document_graph_storage::NetworkId>, CommitError> {
 		self.session.network_ids(network, metadata)
 	}
 

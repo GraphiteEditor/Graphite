@@ -1,12 +1,12 @@
 //! Lets `from_runtime` read editor-side per-node metadata without depending on the editor crate.
 //! The editor implements this on `NodeNetworkInterface`; tests pass [`NoMetadata`].
 //!
-//! `network_path` is the chain of runtime local `NodeId`s from the root down to (but not including)
-//! the queried node, matching `NodeNetworkInterface::node_metadata(node_id, network_path)`.
+//! `network` is the location of the network holding the queried node, or of the queried network itself.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use core_types::uuid::NodeId as RuntimeNodeId;
+use graph_craft::document::{NetworkLocation, OwnedNetworkLocation};
 
 use crate::Value;
 
@@ -14,7 +14,7 @@ use crate::Value;
 /// node, since every node carries an identity to restore even when it carries no `ui::*` attribute.
 #[derive(Clone, Debug, PartialEq)]
 pub struct NodeMetadataEntry {
-	pub network_path: Vec<RuntimeNodeId>,
+	pub network: OwnedNetworkLocation,
 	pub local_id: RuntimeNodeId,
 	/// The node's storage identity. Restoring it pins the node to this identity, so a later conversion
 	/// keeps it instead of re-deriving one from the node's location.
@@ -35,9 +35,7 @@ pub struct NodeMetadataEntry {
 /// properties of a network, not of any node.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct NetworkMetadataEntry {
-	/// Owning-node chain from the root to (and including) the node containing this network.
-	/// Empty = root network.
-	pub network_path: Vec<RuntimeNodeId>,
+	pub network: OwnedNetworkLocation,
 	/// Stable storage id of this network. Lets the editor associate per-network, per-peer view state
 	/// (the node-graph nav, in `session.json`) with a network across reparenting.
 	pub network_id: crate::NetworkId,
@@ -45,73 +43,88 @@ pub struct NetworkMetadataEntry {
 	pub reference: Option<String>,
 	/// The display order of the network's pinned nodes.
 	pub pinned_order: Vec<RuntimeNodeId>,
+	pub import_metadata: Vec<InputMetadataEntry>,
+	pub export_names: Vec<String>,
+	pub export_descriptions: Vec<String>,
 }
 
 /// Per-input editor metadata. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
 /// unset (`""` on the runtime side) is distinguishable from an explicit empty string.
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputMetadataEntry {
 	pub input_name: Option<String>,
 	pub input_description: Option<String>,
 	pub widget_override: Option<String>,
 	/// Reassembled from `ui::input_data::<sub_key>` attributes.
-	pub input_data: HashMap<String, Value>,
+	pub input_data: BTreeMap<String, Value>,
 }
 
 /// Editor-side metadata source. Methods default to "no data" so implementors only override what
 /// they carry. Returns are type-erased as [`Value`] where the underlying types live editor-side (PTZ, etc.).
 pub trait NodeMetadataSource {
-	fn position(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<Position> {
+	fn position(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> Option<Position> {
 		None
 	}
-	fn is_layer(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> bool {
+	fn is_layer(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> bool {
 		false
 	}
-	fn display_name(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<&str> {
+	fn display_name(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> Option<&str> {
 		None
 	}
-	fn locked(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> bool {
+	fn locked(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> bool {
 		false
 	}
-	fn pinned(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> bool {
+	fn pinned(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> bool {
 		false
 	}
 	/// Empty vec = no overrides. Stored as a single `ui::output_names` attribute (whole-vec LWW).
-	fn output_names(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Vec<String> {
+	fn output_names(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> Vec<String> {
 		Vec::new()
 	}
 	/// Indexed like `output_names`, where a missing or empty entry is no description. Stored as one `ui::output_descriptions` attribute.
-	fn output_descriptions(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Vec<String> {
+	fn output_descriptions(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> Vec<String> {
 		Vec::new()
 	}
 
-	fn input_name(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
+	fn input_name(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
 		None
 	}
-	fn input_description(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
+	fn input_description(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
 		None
 	}
-	fn widget_override(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
+	fn widget_override(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId, _input_index: usize) -> Option<&str> {
 		None
 	}
 	/// Returns owned to stay object-safe. Each entry is stored as `ui::input_data::<key>` for per-key LWW.
-	fn input_data(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, Value> {
+	fn input_data(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId, _input_index: usize) -> HashMap<String, Value> {
 		HashMap::new()
 	}
 
 	/// The storage identity this node is pinned to, if it has one. A node the source does not name
 	/// falls back to a hash of its location.
-	fn storage_node_id(&self, _network_path: &[RuntimeNodeId], _local_id: RuntimeNodeId) -> Option<crate::NodeId> {
+	fn storage_node_id(&self, _network: NetworkLocation<'_>, _local_id: RuntimeNodeId) -> Option<crate::NodeId> {
 		None
 	}
 
 	/// The definition the network was instantiated from, if it still names one.
-	fn reference(&self, _network_path: &[RuntimeNodeId]) -> Option<&str> {
+	fn reference(&self, _network: NetworkLocation<'_>) -> Option<&str> {
 		None
 	}
 
 	/// The display order of the network's pinned nodes.
-	fn pinned_order(&self, _network_path: &[RuntimeNodeId]) -> Vec<RuntimeNodeId> {
+	fn pinned_order(&self, _network: NetworkLocation<'_>) -> Vec<RuntimeNodeId> {
+		Vec::new()
+	}
+
+	fn import_metadata(&self, _network: NetworkLocation<'_>) -> Vec<InputMetadataEntry> {
+		Vec::new()
+	}
+
+	fn export_names(&self, _network: NetworkLocation<'_>) -> Vec<String> {
+		Vec::new()
+	}
+
+	fn export_descriptions(&self, _network: NetworkLocation<'_>) -> Vec<String> {
 		Vec::new()
 	}
 }

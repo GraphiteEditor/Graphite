@@ -145,11 +145,7 @@ impl DocumentNode {
 
 		let mut construction_args = ConstructionArgs::Nodes(vec![]);
 
-		// If we have one input of the type inline, set it as the construction args
-		if let &[NodeInput::Inline(ref inline)] = self.inputs.as_slice() {
-			construction_args = ConstructionArgs::Inline(inline.clone());
-		}
-		// If we have one input of the type inline, set it as the construction args
+		// If we have one input of the type value, set it as the construction args
 		if let &[NodeInput::Value { ref tagged_value, .. }] = self.inputs.as_slice() {
 			construction_args = ConstructionArgs::Value(tagged_value.clone());
 		}
@@ -195,22 +191,6 @@ pub enum NodeInput {
 
 	/// Input that is replaced at graph compilation with introspective metadata about this node's location.
 	Reflection(DocumentNodeMetadata),
-
-	/// A Rust source code string. Allows us to insert literal Rust code. Only used for GPU compilation.
-	/// We can use this whenever we spin up Rustc. Sort of like inline assembly, but because our language is Rust, it acts as inline Rust.
-	Inline(InlineRust),
-}
-
-#[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
-pub struct InlineRust {
-	pub expr: String,
-	pub ty: Type,
-}
-
-impl InlineRust {
-	pub fn new(expr: String, ty: Type) -> Self {
-		Self { expr, ty }
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Hash, core_types::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
@@ -263,7 +243,6 @@ impl NodeInput {
 			NodeInput::Node { .. } => true,
 			NodeInput::Value { exposed, .. } => *exposed,
 			NodeInput::Import { .. } => true,
-			NodeInput::Inline(_) => false,
 			NodeInput::Scope(_) => false,
 			NodeInput::Reflection(_) => false,
 		}
@@ -275,7 +254,6 @@ impl NodeInput {
 			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
 			// Stored import types are normalized to their structural form once at document migration
 			NodeInput::Import { import_type, .. } => import_type.clone(),
-			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
 			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
 			NodeInput::Reflection(_) => concrete!(Metadata),
 		}
@@ -335,13 +313,11 @@ pub enum DocumentNodeImplementation {
 	///
 	/// This is explained in more detail here: <https://www.youtube.com/watch?v=72KJa3jQClo>
 	///
-	/// Currently we use it for GPU execution, where a node has to get "extracted" to its source code representation and stored as a value that can be given to the GpuCompiler node at runtime
-	/// (to become a compute shader). Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
+	/// Future use could involve the addition of an InjectNode to convert the source code form back into an executable node, enabling metaprogramming in the node graph.
 	/// We would use an assortment of nodes that operate on Graphene source code (just data, no different from any other data flowing through the graph) to make graph transformations.
 	///
 	/// We use this for dealing with macros in a syntactic way of modifying the node graph from within the graph itself. Just like we often deal with lambdas to represent a whole group of
-	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, because we need to pass the GPU SPIR-V compiler the source code for a lambda,
-	/// not the executable logic of a lambda.
+	/// operations/code/logic, this allows us to basically deal with a lambda at a meta/source-code level, rather than its executable logic.
 	///
 	/// This is analogous to how Rust macros operate at the level of source code, not executable code. When we speak of source code, that represents Graphene's source code in the form of a
 	/// DocumentNode network, not the text form of Rust's source code. (Analogous to the token stream/AST of a Rust macro.)
@@ -583,6 +559,71 @@ pub struct NetworkLocation<'a> {
 	pub inline_path: &'a [NodeId],
 }
 
+impl NetworkLocation<'_> {
+	pub const ROOT: NetworkLocation<'static> = NetworkLocation { definition: None, inline_path: &[] };
+
+	pub fn to_owned_location(self) -> OwnedNetworkLocation {
+		OwnedNetworkLocation {
+			definition: self.definition,
+			inline_path: self.inline_path.to_vec(),
+		}
+	}
+
+	pub fn child(self, node_id: NodeId) -> OwnedNetworkLocation {
+		let mut location = self.to_owned_location();
+		location.inline_path.push(node_id);
+		location
+	}
+
+	/// The location of the network that the node `node_id` in this network implements with `implementation`.
+	pub fn implemented_by(self, node_id: NodeId, implementation: &DocumentNodeImplementation) -> OwnedNetworkLocation {
+		match implementation {
+			DocumentNodeImplementation::Definition(id) => OwnedNetworkLocation::definition(*id),
+			_ => self.child(node_id),
+		}
+	}
+
+	pub fn is_root(self) -> bool {
+		self == Self::ROOT
+	}
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct OwnedNetworkLocation {
+	pub definition: Option<NetworkId>,
+	pub inline_path: Vec<NodeId>,
+}
+
+impl OwnedNetworkLocation {
+	pub const ROOT: OwnedNetworkLocation = OwnedNetworkLocation {
+		definition: None,
+		inline_path: Vec::new(),
+	};
+
+	pub fn definition(id: NetworkId) -> Self {
+		Self {
+			definition: Some(id),
+			inline_path: Vec::new(),
+		}
+	}
+
+	pub fn as_location(&self) -> NetworkLocation<'_> {
+		NetworkLocation {
+			definition: self.definition,
+			inline_path: &self.inline_path,
+		}
+	}
+}
+
+/// One inline network that [`NodeNetwork::lift_nested_networks`] moved into the definitions table.
+/// The node `node_id` in table entry `containing` (`None` for the document network) now names it as `id`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct LiftedNetwork {
+	pub containing: Option<NetworkId>,
+	pub node_id: NodeId,
+	pub id: NetworkId,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DefinitionError {
 	Missing(NetworkId),
@@ -798,6 +839,82 @@ impl NodeNetwork {
 			}
 			_ => None,
 		}
+	}
+
+	/// Moves every inline network at every nesting level into the definitions table under a fresh ID.
+	/// Returns the moves so that each network is listed before the networks lifted out of it.
+	pub fn lift_nested_networks(&mut self) -> Vec<LiftedNetwork> {
+		let mut lifted = Vec::new();
+		let mut pending: Vec<Option<NetworkId>> = std::iter::once(None).chain(self.definitions.keys().copied().map(Some)).collect();
+
+		while let Some(containing) = pending.pop() {
+			let network = match containing {
+				None => &mut *self,
+				Some(id) => match self.definitions.get_mut(&id) {
+					Some(definition) => definition,
+					None => continue,
+				},
+			};
+
+			let mut node_ids: Vec<NodeId> = network
+				.nodes
+				.iter()
+				.filter(|(_, node)| matches!(node.implementation, DocumentNodeImplementation::Network(_)))
+				.map(|(node_id, _)| *node_id)
+				.collect();
+			node_ids.sort();
+
+			let mut bodies = Vec::with_capacity(node_ids.len());
+			for node_id in node_ids {
+				let Some(node) = network.nodes.get_mut(&node_id) else { continue };
+				let id = NetworkId::new();
+				if let DocumentNodeImplementation::Network(body) = std::mem::replace(&mut node.implementation, DocumentNodeImplementation::Definition(id)) {
+					bodies.push((id, body));
+					lifted.push(LiftedNetwork { containing, node_id, id });
+				}
+			}
+
+			for (id, body) in bodies {
+				self.definitions.insert(id, body);
+				pending.push(Some(id));
+			}
+		}
+
+		lifted
+	}
+
+	/// The table entries the document network reaches through its nodes, directly or through other entries.
+	pub fn reachable_definitions(&self) -> FxHashSet<NetworkId> {
+		fn visit(network: &NodeNetwork, definitions: &FxHashMap<NetworkId, NodeNetwork>, reached: &mut FxHashSet<NetworkId>) {
+			for node in network.nodes.values() {
+				match &node.implementation {
+					DocumentNodeImplementation::Definition(id) => {
+						if reached.insert(*id)
+							&& let Some(definition) = definitions.get(id)
+						{
+							visit(definition, definitions, reached);
+						}
+					}
+					DocumentNodeImplementation::Network(nested) => visit(nested, definitions, reached),
+					_ => {}
+				}
+			}
+		}
+
+		let mut reached = FxHashSet::default();
+		visit(self, &self.definitions, &mut reached);
+		reached
+	}
+
+	/// Drops every table entry the document network does not reach, and returns their IDs in sorted order.
+	pub fn retain_reachable_definitions(&mut self) -> Vec<NetworkId> {
+		let reached = self.reachable_definitions();
+		let mut dropped: Vec<NetworkId> = self.definitions.keys().filter(|id| !reached.contains(id)).copied().collect();
+		dropped.sort();
+		for id in &dropped {
+			self.definitions.remove(id);
+		}
+		dropped
 	}
 
 	pub fn inline_definitions(&mut self) -> Result<(), DefinitionError> {
@@ -1202,7 +1319,6 @@ impl NodeNetwork {
 							*import_index = parent_input_index;
 						}
 						NodeInput::Value { .. } => unreachable!("Value inputs should have been replaced with value nodes"),
-						NodeInput::Inline(_) => (),
 						NodeInput::Scope(_) => unreachable!("Scope inputs should have been resolved by resolve_scope_inputs_recursive before flattening"),
 						NodeInput::Reflection(_) => unreachable!("Reflection inputs should have been replaced with value nodes"),
 					}
@@ -2157,6 +2273,33 @@ mod test {
 			[],
 		);
 		assert_eq!(network, inlined);
+	}
+
+	#[test]
+	fn lifted_networks_inline_back_to_the_original() {
+		let nested = network_with([(NodeId(10), DocumentNodeImplementation::Network(add_network()))], []);
+		let original = network_with(
+			[
+				(NodeId(10), DocumentNodeImplementation::Network(nested)),
+				(NodeId(11), DocumentNodeImplementation::Network(add_network())),
+			],
+			[],
+		);
+
+		let mut network = original.clone();
+		let lifted = network.lift_nested_networks();
+
+		assert_eq!(lifted.len(), 3);
+		assert_eq!(network.definitions.len(), 3);
+		let all_nodes = std::iter::once(&network).chain(network.definitions.values()).flat_map(|network| network.nodes.values());
+		assert!(all_nodes.into_iter().all(|node| !matches!(node.implementation, DocumentNodeImplementation::Network(_))));
+
+		let outermost: Vec<_> = lifted.iter().filter(|lifted| lifted.containing.is_none()).map(|lifted| lifted.node_id).collect();
+		assert_eq!(outermost.len(), 2);
+		assert!(lifted.iter().position(|entry| entry.containing.is_some()) > lifted.iter().position(|entry| entry.containing.is_none()));
+
+		network.inline_definitions().unwrap();
+		assert_eq!(network, original);
 	}
 
 	#[test]

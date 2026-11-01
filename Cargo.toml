@@ -11,6 +11,13 @@ members = [
 	"document/format",
 	"document/graph-storage",
 	"document/container",
+	"document/migrations/core",
+	"document/migrations/macros",
+	"document/migrations/runner",
+	"document/migrations/formats",
+	"document/migrations/snapshot",
+	"document/migrations/nodes",
+	"document/peer-transport",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -22,8 +29,6 @@ members = [
 	"node-graph/libraries/graphene-hash",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
-	"node-graph/nodes/raster/shaders",
-	"node-graph/nodes/raster/shaders/entrypoint",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/nodes/gstd",
@@ -37,6 +42,7 @@ members = [
 	"tools/third-party-licenses",
 	"tools/editor-message-tree",
 	"tools/node-docs",
+	"tools/regression",
 	"tools/web-editor-driver",
 ]
 default-members = [
@@ -83,7 +89,6 @@ graphene-application-io = { path = "node-graph/libraries/application-io" }
 graphene-resource = { path = "node-graph/libraries/resources" }
 graphene-animation = { path = "node-graph/libraries/animation" }
 core-types = { path = "node-graph/libraries/core-types" }
-no-std-types = { path = "node-graph/libraries/no-std-types" }
 raster-types = { path = "node-graph/libraries/raster-types" }
 vector-types = { path = "node-graph/libraries/vector-types" }
 graphic-types = { path = "node-graph/libraries/graphic-types" }
@@ -97,12 +102,19 @@ text-nodes = { path = "node-graph/nodes/text" }
 transform-nodes = { path = "node-graph/nodes/transform" }
 vector-nodes = { path = "node-graph/nodes/vector" }
 repeat-nodes = { path = "node-graph/nodes/repeat" }
+vectorize-nodes = { path = "node-graph/nodes/vectorize" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
 document-format = { path = "document/format" }
 document-graph-storage = { path = "document/graph-storage", default-features = false }
 document-container = { path = "document/container" }
+migration-core = { path = "document/migrations/core", default-features = false }
+migration-macros = { path = "document/migrations/macros" }
+migration-runner = { path = "document/migrations/runner" }
+migration-formats = { path = "document/migrations/formats" }
+migration-nodes = { path = "document/migrations/nodes" }
+peer-transport = { path = "document/peer-transport" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
@@ -122,6 +134,7 @@ bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 postcard = { version = "1.1", default-features = false, features = ["use-std"] }
+rmp-serde = "1.3"
 serde_bytes = "0.11"
 serde-wasm-bindgen = "0.6"
 reqwest = { version = "0.13", features = ["blocking", "json"] }
@@ -155,7 +168,6 @@ wgpu = { version = "30.0", default-features = false, features = [
 	"webgl",
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
-	"spirv",
 	"strict_asserts",
 ] }
 once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
@@ -197,7 +209,7 @@ color = "0.3"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
 glam = { version = "0.33", default-features = false, features = [
-	"nostd-libm",
+	"std",
 	"scalar-math",
 	"bytemuck",
 	"debug-glam-assert",
@@ -223,7 +235,7 @@ pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
 num-derive = "0.4"
-num-traits = { version = "0.2", default-features = false, features = ["libm"] }
+num-traits = "0.2"
 tsify = { version = "0.5", default-features = false, features = ["js"] }
 syn = { version = "2.0", default-features = false, features = [
 	"full",
@@ -245,7 +257,7 @@ tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.7", features = ["html_reports"] }
 gungraun = { version = "0.18" }
 ndarray = "0.16"
-strum = { version = "0.27", features = ["derive"] }
+ollev = "0.1.1"
 dirs = "6.0"
 cef = "156"
 cef-dll-sys = "156"
@@ -256,11 +268,6 @@ rfd = "0.17"
 open = "5.3"
 spin = "0.10"
 clap = "4.5"
-
-# Ensure these are kept in sync with .nix/deps/rust-gpu.nix
-spirv-std = { version = "0.10.0", features = ["bytemuck"] }
-cargo-gpu-install = { version = "0.10.0", default-features = false }
-
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"
@@ -268,14 +275,12 @@ linesweeper = "0.4"
 smallvec = "1.13.2"
 zip = { version = "8", default-features = false }
 
-[workspace.lints.rust]
-unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
+[workspace.lints]
 
 [profile.dev]
 opt-level = 1
 
 [profile.dev.package]
-no-std-types = { opt-level = 1 }
 core-types= { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }

@@ -7,17 +7,19 @@ use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::PeerId;
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_craft::document::{DocumentNodeImplementation, NodeId};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, OwnedNetworkLocation};
 
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeLocator, NodeNetworkInterface};
 
-/// Load a demo `.graphite` straight into a `DocumentMessageHandler` for inspection.
+/// Load a demo `.graphite` straight into a `DocumentMessageHandler` for inspection, with its nested networks lifted into the definitions table.
 pub fn load_demo(file_name: &str) -> DocumentMessageHandler {
 	let path = format!("../demo-artwork/{file_name}");
 	let content = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("Failed to read {path}: {e}"));
-	DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"))
+	let mut document = DocumentMessageHandler::deserialize_document(&content).unwrap_or_else(|e| panic!("Failed to deserialize {path}: {e:?}"));
+	document.network_interface.lift_nested_networks();
+	document
 }
 
 /// Open a demo `.graphite` the way the editor does, with its migrations and load-time fix-ups.
@@ -55,7 +57,7 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 		for (&local_id, node) in &network.nodes {
 			out.push((path.clone(), local_id));
 
-			if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+			if matches!(node.implementation, DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) {
 				let mut child = path.clone();
 				child.push(local_id);
 				walk(interface, child, out);
@@ -66,6 +68,47 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 	let mut out = Vec::new();
 	walk(interface, Vec::new(), &mut out);
 	out
+}
+
+/// Every network the document holds, once each.
+/// This is the document network, its definitions, and the inline networks nested in them.
+pub fn network_locations(interface: &NodeNetworkInterface) -> Vec<OwnedNetworkLocation> {
+	fn walk(network: &NodeNetwork, location: OwnedNetworkLocation, out: &mut Vec<OwnedNetworkLocation>) {
+		for (&local_id, node) in &network.nodes {
+			if let DocumentNodeImplementation::Network(nested) = &node.implementation {
+				walk(nested, location.as_location().child(local_id), out);
+			}
+		}
+		out.push(location);
+	}
+
+	let document_network = interface.document_network();
+	let mut out = Vec::new();
+	walk(document_network, OwnedNetworkLocation::default(), &mut out);
+	for (&id, definition) in &document_network.definitions {
+		walk(definition, OwnedNetworkLocation::definition(id), &mut out);
+	}
+	out
+}
+
+/// Every node the document holds, once each.
+/// Each node is addressed by the location of its network.
+pub fn node_locations(interface: &NodeNetworkInterface) -> Vec<(OwnedNetworkLocation, NodeId)> {
+	network_locations(interface)
+		.into_iter()
+		.flat_map(|location| {
+			let node_ids: Vec<NodeId> = located_network(interface, &location).map(|network| network.nodes.keys().copied().collect()).unwrap_or_default();
+			node_ids.into_iter().map(move |node_id| (location.clone(), node_id))
+		})
+		.collect()
+}
+
+pub fn located_network<'a>(interface: &'a NodeNetworkInterface, location: &OwnedNetworkLocation) -> Option<&'a NodeNetwork> {
+	interface.document_network().located_network(location.as_location())
+}
+
+pub fn located_node<'a>(interface: &'a NodeNetworkInterface, location: &OwnedNetworkLocation, node_id: NodeId) -> Option<&'a DocumentNode> {
+	located_network(interface, location)?.nodes.get(&node_id)
 }
 
 /// Result of round-tripping a document through a `Gdd`: the runtime interface rebuilt from the reopened

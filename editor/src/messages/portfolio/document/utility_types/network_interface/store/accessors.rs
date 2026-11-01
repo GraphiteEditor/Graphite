@@ -16,23 +16,23 @@ impl NodeNetworkInterface {
 		self.network.get_mut().network_mut()
 	}
 
-	/// The graph of the network at `network_path`, written only by the store's primitives.
-	pub(super) fn network_graph_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
-		self.document_network_mut().nested_network_mut(network_path)
+	/// The graph of the network at `location`, written only by the store's primitives.
+	pub(super) fn network_graph_mut(&mut self, location: NetworkLocation) -> Option<&mut NodeNetwork> {
+		self.document_network_mut().located_network_mut(location)
+	}
+
+	/// The persistent metadata of the network at `location`, or `None` for the document network, which no node implements.
+	pub(super) fn subnetwork_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut NodeNetworkPersistentMetadata> {
+		if location.is_root() {
+			return None;
+		}
+		Some(&mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata)
 	}
 
 	/// The metadata tree at `network_path`.
 	fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
 		let location = self.locate(network_path)?;
 		self.network_metadata.get_mut().nested_metadata_mut(location)
-	}
-
-	/// The metadata of the node that encapsulates the network at `network_path`, or `None` for the
-	/// document network, which no node encapsulates.
-	pub(super) fn encapsulating_node_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut DocumentNodeMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		let encapsulating_node_id = encapsulating_path.pop()?;
-		self.network_metadata_mut(&encapsulating_path)?.persistent_metadata.node_metadata.get_mut(&encapsulating_node_id)
 	}
 
 	// TODO: Eventually remove this document upgrade code, along with the migrations that call it
@@ -44,28 +44,51 @@ impl NodeNetworkInterface {
 		migrate(self.document_network_mut());
 	}
 
+	// TODO: Eventually remove this document upgrade code
+	/// Rewrites the whole metadata tree in place against the graph, for a document arriving in an older shape. Unrecorded, like [`Self::migrate_graph`].
+	pub(in super::super) fn migrate_metadata(&mut self, migrate: impl FnOnce(&mut NodeNetworkMetadata, &NodeNetwork)) {
+		migrate(self.network_metadata.get_mut(), self.network.network());
+	}
+
+	/// Drops the definitions table entries no node reaches any more after a transaction, recording each removal.
+	pub(crate) fn settle_definitions(&mut self) {
+		let dropped = self.document_network_mut().retain_reachable_definitions();
+		for id in dropped {
+			self.network_metadata.get_mut().persistent_metadata.definitions.remove(&id);
+			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNetwork { id }));
+		}
+	}
+
 	// ===== Recorded writes =====
 
 	/// The persistent metadata of a network, or `None` if the network is missing.
 	pub(crate) fn network_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
 		let location = self.locate(network_path)?;
+		self.network_mut_at(location)
+	}
+
+	/// The persistent metadata of the network at `location`.
+	pub(crate) fn network_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>) -> Option<NetworkMut<'a>> {
 		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata;
-		Some(NetworkMut::new(metadata, &mut self.deltas, network_path))
+		Some(NetworkMut::new(metadata, &mut self.deltas, location))
 	}
 
 	/// Both halves of a node, or `None` if either is missing.
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
 		let location = self.locate(locator.network_path)?;
-		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&locator.node_id)?;
-		let metadata = self
-			.network_metadata
-			.get_mut()
-			.nested_metadata_mut(location)?
-			.persistent_metadata
-			.node_metadata
-			.get_mut(&locator.node_id)?;
+		self.node_mut_at(location, locator.node_id)
+	}
 
-		Some(NodeMut::new(node, &mut metadata.persistent_metadata, &mut self.deltas, locator))
+	/// Both halves of the node `node_id` in the network at `location`, or `None` if either is missing.
+	pub(crate) fn node_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>, node_id: NodeId) -> Option<NodeMut<'a>> {
+		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&node_id)?;
+		let instantiated = match node.implementation {
+			DocumentNodeImplementation::Definition(id) => Some(id),
+			_ => None,
+		};
+		let (metadata, definition_metadata) = self.network_metadata.get_mut().node_metadata_with_definition_mut(location, &node_id, instantiated)?;
+
+		Some(NodeMut::new(node, &mut metadata.persistent_metadata, definition_metadata, &mut self.deltas, location, node_id))
 	}
 
 	// ===== Unrecorded state, reachable from the whole network interface =====
@@ -79,13 +102,6 @@ impl NodeNetworkInterface {
 	pub(in super::super) fn node_transient_mut(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&mut DocumentNodeTransientMetadata> {
 		let network_metadata = self.network_metadata_mut(network_path)?;
 		Some(&mut network_metadata.persistent_metadata.node_metadata.get_mut(node_id)?.transient_metadata)
-	}
-
-	/// The transient caches of the network that the network at `network_path` sits inside.
-	pub(in super::super) fn encapsulating_network_transient_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkTransientMetadata> {
-		let mut encapsulating_path = network_path.to_vec();
-		encapsulating_path.pop()?;
-		self.network_transient_mut(&encapsulating_path)
 	}
 
 	/// The selection undo and redo stacks. Per-peer state that is not recorded and does not reach storage.
@@ -105,31 +121,32 @@ impl NodeNetworkInterface {
 	/// Visits every network at every nesting level with its view state, for restoring what the peer was
 	/// looking at onto an interface rebuilt from storage.
 	pub(in super::super) fn for_each_network_view_state_mut(&mut self, mut visit: impl FnMut(&[NodeId], NetworkViewStateMut)) {
-		let mut stack = vec![Vec::new()];
-		while let Some(network_path) = stack.pop() {
+		let mut network_paths = Vec::new();
+		self.for_each_network(&mut |network_path, _| network_paths.push(network_path.to_vec()));
+
+		for network_path in network_paths {
 			let Some(network_metadata) = self.network_metadata_mut(&network_path) else { continue };
-			let persistent = &mut network_metadata.persistent_metadata;
+			visit(&network_path, NetworkViewStateMut::of(&mut network_metadata.persistent_metadata));
+		}
+	}
 
-			stack.extend(
-				persistent
-					.node_metadata
-					.iter()
-					.filter(|(_, node_metadata)| node_metadata.persistent_metadata.network_metadata.is_some())
-					.map(|(node_id, _)| [network_path.as_slice(), &[*node_id]].concat()),
-			);
+	/// The view state of the network at `location`, which every instance of the network shares.
+	pub(in super::super) fn located_view_state_mut(&mut self, location: NetworkLocation) -> Option<NetworkViewStateMut<'_>> {
+		let network_metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?;
+		Some(NetworkViewStateMut::of(&mut network_metadata.persistent_metadata))
+	}
+}
 
-			visit(
-				&network_path,
-				NetworkViewStateMut {
-					navigation: &mut persistent.navigation_metadata,
-					previewing: &mut persistent.previewing,
-					selection: SelectionHistoryMut {
-						undo: &mut persistent.selection_undo_history,
-						redo: &mut persistent.selection_redo_history,
-					},
-					nodes: &persistent.node_metadata,
-				},
-			);
+impl<'a> NetworkViewStateMut<'a> {
+	fn of(persistent: &'a mut NodeNetworkPersistentMetadata) -> Self {
+		Self {
+			navigation: &mut persistent.navigation_metadata,
+			previewing: &mut persistent.previewing,
+			selection: SelectionHistoryMut {
+				undo: &mut persistent.selection_undo_history,
+				redo: &mut persistent.selection_redo_history,
+			},
+			nodes: &persistent.node_metadata,
 		}
 	}
 }

@@ -10,7 +10,7 @@ use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NodeMetadataSource, PeerId, to_value};
 use graph_craft::application_io::resource::HashMapResourceStorage;
 
-use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
+use super::test_support::{RoundTrip, node_locations, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -32,17 +32,18 @@ fn assert_documents_match(original: &NodeNetworkInterface, round_trip: &RoundTri
 		"compute graph drifted through the storage round-trip"
 	);
 
-	for (network_path, local_id) in node_paths(original) {
-		let at = format!("node {local_id:?} in network {network_path:?}");
-		assert_eq!(rebuilt_view.position(&network_path, local_id), original_view.position(&network_path, local_id), "position: {at}");
-		assert_eq!(rebuilt_view.is_layer(&network_path, local_id), original_view.is_layer(&network_path, local_id), "is_layer: {at}");
+	for (network, local_id) in node_locations(original) {
+		let at = format!("node {local_id:?} in network {network:?}");
+		let network_path = network.as_location();
+		assert_eq!(rebuilt_view.position(network_path, local_id), original_view.position(network_path, local_id), "position: {at}");
+		assert_eq!(rebuilt_view.is_layer(network_path, local_id), original_view.is_layer(network_path, local_id), "is_layer: {at}");
 		assert_eq!(
-			rebuilt_view.display_name(&network_path, local_id),
-			original_view.display_name(&network_path, local_id),
+			rebuilt_view.display_name(network_path, local_id),
+			original_view.display_name(network_path, local_id),
 			"display_name: {at}"
 		);
-		assert_eq!(rebuilt_view.locked(&network_path, local_id), original_view.locked(&network_path, local_id), "locked: {at}");
-		assert_eq!(rebuilt_view.pinned(&network_path, local_id), original_view.pinned(&network_path, local_id), "pinned: {at}");
+		assert_eq!(rebuilt_view.locked(network_path, local_id), original_view.locked(network_path, local_id), "locked: {at}");
+		assert_eq!(rebuilt_view.pinned(network_path, local_id), original_view.pinned(network_path, local_id), "pinned: {at}");
 	}
 }
 
@@ -93,6 +94,7 @@ async fn round_trip_grouped_into_nested_network() {
 			group_folder_type: GroupFolderType::Layer,
 		})
 		.await;
+	editor.active_document_mut().network_interface.settle_definitions();
 
 	let document = editor.active_document();
 	let round_trip = round_trip_through_gdd(document).await;

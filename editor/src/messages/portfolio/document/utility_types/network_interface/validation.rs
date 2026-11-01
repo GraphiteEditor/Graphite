@@ -166,21 +166,37 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 		let Some(metadata) = node_metadata.get(node_id) else { continue };
 		let persistent = &metadata.persistent_metadata;
 
+		let implementation_metadata = match &node.implementation {
+			DocumentNodeImplementation::Network(_) => persistent.network_metadata.as_ref(),
+			DocumentNodeImplementation::Definition(id) => document_metadata.persistent_metadata.definitions.get(id),
+			_ => None,
+		};
+		let (input_metadata, output_names) = match implementation_metadata {
+			Some(network_metadata) => (&network_metadata.persistent_metadata.import_metadata, &network_metadata.persistent_metadata.export_names),
+			None => (&persistent.input_metadata, &persistent.output_names),
+		};
+
+		if matches!(node.implementation, DocumentNodeImplementation::Network(_)) {
+			violations.push(format!("Node {node_id} in network {path:?} implements an inline network, which belongs in the definitions table"));
+		}
+
+		let stores_interface = !persistent.input_metadata.is_empty() || !persistent.output_names.is_empty() || !persistent.output_descriptions.is_empty();
+		if implementation_metadata.is_some() && stores_interface {
+			violations.push(format!("Node {node_id} in network {path:?} stores interface metadata that belongs to the network implementing it"));
+		}
+
 		// Input metadata is a parallel array to the node's inputs and the lengths must stay in sync
-		if persistent.input_metadata.len() != node.inputs.len() {
+		if input_metadata.len() != node.inputs.len() {
 			violations.push(format!(
 				"Node {node_id} in network {path:?} has {} inputs but {} input metadata entries",
 				node.inputs.len(),
-				persistent.input_metadata.len()
+				input_metadata.len()
 			));
 		}
 
 		let validate_output_names = |export_count: usize, violations: &mut Vec<String>| {
-			if persistent.output_names.len() != export_count {
-				violations.push(format!(
-					"Node {node_id} in network {path:?} has {export_count} exports but {} output names",
-					persistent.output_names.len()
-				));
+			if output_names.len() != export_count {
+				violations.push(format!("Node {node_id} in network {path:?} has {export_count} exports but {} output names", output_names.len()));
 			}
 		};
 

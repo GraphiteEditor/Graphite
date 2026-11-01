@@ -72,18 +72,24 @@ impl NodeNetworkInterface {
 		});
 	}
 
-	fn for_each_network(&self, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
-		fn walk(network_path: &mut Vec<NodeId>, network_metadata: &NodeNetworkMetadata, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
-			visit(network_path, network_metadata);
-			for (node_id, node_metadata) in &network_metadata.persistent_metadata.node_metadata {
-				let Some(nested) = &node_metadata.persistent_metadata.network_metadata else { continue };
-				network_path.push(*node_id);
-				walk(network_path, nested, visit);
-				network_path.pop();
+	pub(super) fn for_each_network(&self, visit: &mut impl FnMut(&[NodeId], &NodeNetworkMetadata)) {
+		let mut stack = vec![(Vec::new(), Vec::new())];
+		while let Some((network_path, enclosing_definitions)) = stack.pop() {
+			let (Some(network), Some(network_metadata)) = (self.document_network().nested_network(&network_path), self.nested_metadata(&network_path)) else {
+				continue;
+			};
+			visit(&network_path, network_metadata);
+
+			for (node_id, node) in &network.nodes {
+				let mut enclosing_definitions = enclosing_definitions.clone();
+				match node.implementation {
+					DocumentNodeImplementation::Network(_) => {}
+					DocumentNodeImplementation::Definition(id) if !enclosing_definitions.contains(&id) => enclosing_definitions.push(id),
+					_ => continue,
+				}
+				stack.push(([network_path.as_slice(), &[*node_id]].concat(), enclosing_definitions));
 			}
 		}
-
-		walk(&mut Vec::new(), &self.network_metadata, visit);
 	}
 
 	/// Gets the nested network based on network_path
@@ -184,6 +190,32 @@ impl NodeNetworkInterface {
 	/// Get the node metadata for the node which encapsulates the currently viewed network. Will always be None in the document network.
 	pub fn encapsulating_node_metadata(&self, network_path: &[NodeId]) -> Option<&DocumentNodeMetadata> {
 		self.query_encapsulating(network_path, "encapsulating_node_metadata", |view| view.encapsulating_node_metadata())
+	}
+
+	pub fn encapsulating_nodes(&self, network_path: &[NodeId]) -> Vec<(Vec<NodeId>, NodeId)> {
+		let Some((&node_id, parent_path)) = network_path.split_last() else { return Vec::new() };
+		let Some(NetworkLocation {
+			definition: Some(instantiated),
+			inline_path: [],
+		}) = self.locate(network_path)
+		else {
+			return vec![(parent_path.to_vec(), node_id)];
+		};
+
+		let mut seen = HashSet::new();
+		let mut instances = Vec::new();
+		self.for_each_network(&mut |path, _| {
+			let (Some(network), Some(location)) = (self.document_network().nested_network(path), self.locate(path)) else {
+				return;
+			};
+			for (id, node) in &network.nodes {
+				let is_instance = node.implementation == DocumentNodeImplementation::Definition(instantiated);
+				if is_instance && seen.insert((location.definition, location.inline_path.to_vec(), *id)) {
+					instances.push((path.to_vec(), *id));
+				}
+			}
+		});
+		instances
 	}
 
 	/// Returns the first downstream layer(inclusive) from a node. If the node is a layer, it will return itself.
@@ -434,6 +466,69 @@ impl NodeNetworkInterface {
 			}
 		}
 		new_nodes.into_iter().map(move |(new, node_id, node)| (new, self.map_ids(node, &node_id, new_ids, network_path)))
+	}
+
+	/// The table entries `templates` name, directly or through other entries, each listed after the entries it names.
+	pub fn copied_definitions<'a>(&self, templates: impl IntoIterator<Item = &'a NodeTemplate>) -> Vec<CopiedDefinition> {
+		let mut named = Vec::new();
+		for template in templates {
+			template.named_definitions(&mut named);
+		}
+
+		let mut ordered = Vec::new();
+		let mut visited = HashSet::new();
+		for id in named {
+			self.order_definitions_named_by(id, &mut visited, &mut ordered);
+		}
+
+		ordered
+			.into_iter()
+			.filter_map(|id| {
+				Some(CopiedDefinition {
+					id,
+					network: self.document_network().definitions.get(&id)?.clone(),
+					metadata: self.network_metadata.persistent_metadata.definitions.get(&id)?.clone(),
+				})
+			})
+			.collect()
+	}
+
+	/// Appends `id` to `ordered` after every entry it names, skipping entries already visited.
+	fn order_definitions_named_by(&self, id: NetworkId, visited: &mut HashSet<NetworkId>, ordered: &mut Vec<NetworkId>) {
+		if !visited.insert(id) {
+			return;
+		}
+		let Some(network) = self.document_network().definitions.get(&id) else { return };
+
+		let mut named: Vec<NetworkId> = network
+			.nodes
+			.values()
+			.filter_map(|node| match node.implementation {
+				DocumentNodeImplementation::Definition(named) => Some(named),
+				_ => None,
+			})
+			.collect();
+		named.sort();
+		for named in named {
+			self.order_definitions_named_by(named, visited, ordered);
+		}
+		ordered.push(id);
+	}
+
+	/// Whether the node names a table entry that another node names too.
+	pub fn is_shared(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let Some(location) = self.locate(network_path) else { return false };
+		let network = self.document_network();
+		let Some(DocumentNodeImplementation::Definition(id)) = network.located_network(location).and_then(|located| located.nodes.get(node_id)).map(|node| &node.implementation) else {
+			return false;
+		};
+
+		let naming = std::iter::once(network)
+			.chain(network.definitions.values())
+			.flat_map(|network| network.nodes.values())
+			.filter(|node| node.implementation == DocumentNodeImplementation::Definition(*id))
+			.count();
+		naming > 1
 	}
 
 	/// Create a node template from an existing node.
@@ -734,8 +829,10 @@ impl NodeNetworkInterface {
 	/// The description stored for a node's output, or else for a proto node, the doc comment on its field in the struct a multi-output node returns.
 	pub fn output_description(&self, node_id: &NodeId, output_index: usize, network_path: &[NodeId]) -> String {
 		let stored_description = self
-			.node_metadata(node_id, network_path)
-			.and_then(|node_metadata| node_metadata.persistent_metadata.output_descriptions.get(output_index))
+			.view(network_path)
+			.ok()
+			.and_then(|view| view.output_descriptions(node_id).ok())
+			.and_then(|output_descriptions| output_descriptions.get(output_index))
 			.filter(|description| !description.is_empty());
 		if let Some(stored_description) = stored_description {
 			return stored_description.clone();
@@ -867,23 +964,11 @@ impl NodeNetworkInterface {
 	/// All artboard layers that participate in the scene, excluding disconnected Artboard nodes.
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
 		// O(n * (nodes + wires)) since connected_to_output performs a graph walk per artboard candidate
-		self.document_network_metadata()
-			.persistent_metadata
-			.node_metadata
-			.iter()
-			.filter_map(|(node_id, node_metadata)| {
-				if node_metadata.persistent_metadata.network_metadata.as_ref().is_some_and(|network_metadata| {
-					network_metadata
-						.persistent_metadata
-						.reference
-						.as_ref()
-						.is_some_and(|reference| reference == "Artboard" && self.connected_to_output(node_id, &[]) && self.is_layer(node_id, &[]))
-				}) {
-					Some(LayerNodeIdentifier::new(*node_id, self))
-				} else {
-					None
-				}
-			})
+		self.document_network()
+			.nodes
+			.keys()
+			.filter(|node_id| self.is_artboard(node_id, &[]) && self.connected_to_output(node_id, &[]) && self.is_layer(node_id, &[]))
+			.map(|node_id| LayerNodeIdentifier::new(*node_id, self))
 			.collect()
 	}
 

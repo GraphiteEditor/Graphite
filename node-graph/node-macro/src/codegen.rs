@@ -1,5 +1,4 @@
 use crate::parsing::*;
-use crate::shader_nodes::STD_FEATURE_GATE;
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
@@ -174,15 +173,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			value => value.regular().expect("a non-node field is a value field").ty.clone(),
 		})
 		.collect();
-	let shader_field_types: Vec<_> = regular_fields
-		.iter()
-		.zip(field_types.iter())
-		.map(|(field, field_type)| match field.ty.regular() {
-			Some(regular) => regular.body_ty().clone(),
-			None => field_type.clone(),
-		})
-		.collect();
-	let has_shader_variant = regular_fields.iter().any(|field| field.ty.regular().is_some_and(|regular| regular.narrowed_body_ty.is_some()));
 
 	// Only regular fields have UI metadata (data fields are internal state)
 	let widget_override: Vec<_> = regular_fields
@@ -423,7 +413,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					..
 				}) => {
 					let output_type = if list_content && Some(index) == primary_regular_index {
-						let element_ty = output_element.clone().unwrap_or_else(|| output_type.clone());
+						let element_ty = output_element.as_deref().unwrap_or(output_type).clone();
 						WireWrapper::List.apply(core_types, &element_ty)
 					} else {
 						output_type.clone()
@@ -870,6 +860,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		..
 	} = attributes.flags;
 	let asynchronous = parsed.is_async;
+	let version = attributes.version.unwrap_or(1);
 	// A node returning a `Destructure` struct records its fields as output connectors
 	let output_fields = match may_return_destructure_struct(parsed) {
 		true => {
@@ -882,9 +873,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(None),
 	};
 
-	let cfg = crate::shader_nodes::modify_cfg(attributes);
+	let cfg = match &attributes.cfg {
+		Some(cfg) => quote!(#[cfg(#cfg)]),
+		None => quote!(),
+	};
 	let node_input_accessor = generate_node_input_references(parsed, &field_idents, core_types, &identifier, &cfg);
-	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	let mapped_node_impl = match (&mapped_struct_where_clause, &mapped_eval_impl) {
 		(Some(mapped_where_clause), Some(mapped_eval)) => quote! {
@@ -992,32 +985,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	}
 
-	let node_fn = |field_types: &[Type]| {
-		quote! {
-			#(#description_doc_attrs)*
-			#[inline]
-			#[allow(clippy::too_many_arguments, clippy::type_complexity)]
-			#vis #async_keyword fn #fn_name <#(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
-		}
-	};
-	// A shader node's fn is emitted twice from the one body: as declared, in f64, for the CPU, and with the f32 parameter
-	// counterparts for the shader build, which cannot represent a 64-bit float. The body casts to f32 only where it meets a Color channel.
-	let node_fn = if has_shader_variant {
-		let cpu_fn = node_fn(&field_types);
-		let shader_fn = node_fn(&shader_field_types);
-		quote! {
-			#[cfg(feature = #STD_FEATURE_GATE)]
-			#cpu_fn
-
-			#[cfg(not(feature = #STD_FEATURE_GATE))]
-			#shader_fn
-		}
-	} else {
-		node_fn(&field_types)
-	};
-
 	Ok(quote! {
-		#node_fn
+		#(#description_doc_attrs)*
+		#[inline]
+		#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+		#vis #async_keyword fn #fn_name <#(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#cfg
 		#[automatically_derived]
@@ -1101,6 +1073,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						inject_scope: #inject_scope,
 						asynchronous: #asynchronous,
 					},
+					version: #version,
 					output_fields: #output_fields,
 					fields: vec![
 						#(
@@ -1131,10 +1104,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
 			}
 		}
-
-		#shader_entry_point
-
-		#gpu_node
 	})
 }
 
@@ -1239,7 +1208,7 @@ fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	let (_, field) = parsed.primary_input_field()?;
 
 	match &field.ty {
-		ParsedFieldType::Node(NodeParsedField { output_element, .. }) => output_element.clone(),
+		ParsedFieldType::Node(NodeParsedField { output_element, .. }) => output_element.as_deref().cloned(),
 		ParsedFieldType::Item { element, .. } => Some(element.clone()),
 		_ => None,
 	}
@@ -1476,7 +1445,6 @@ fn generate_register_node_impl(
 }
 
 use crate::crate_ident::CrateIdent;
-use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, Lifetime, Type};
 

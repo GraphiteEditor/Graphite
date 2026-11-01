@@ -16,6 +16,8 @@ pub struct NodeMetadata {
 	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
 	pub flags: NodeFlags,
+	/// The declaration version from `#[node(version(N))]`, starting at 1.
+	pub version: u32,
 	pub output_fields: Option<DestructureMetadata>,
 }
 

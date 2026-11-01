@@ -1,4 +1,4 @@
-use crate::document::{DocumentNode, NodeId, NodeInput};
+use crate::document::{DocumentNode, NetworkId, NodeId, NodeInput, NodeNetwork, OwnedNetworkLocation};
 use core_types::Type;
 
 /// One mutation's worth of structural graph change, carrying its post-change data as plain runtime
@@ -12,26 +12,38 @@ use core_types::Type;
 /// A node's inputs are addressed by index, which is stable only while its arity is. Changing arity is
 /// therefore a [`SetInputs`](Self::SetInputs), which restates the whole list, rather than a
 /// [`SetInput`](Self::SetInput) naming one index.
+///
+/// Each delta names the network it changed by the location that network had when the write happened.
+/// A path through instances would be resolved later and could reach a different network by then.
 #[derive(Debug, Clone, PartialEq)]
 pub enum RuntimeDelta {
+	/// A new entry of the definitions table. Its nodes name the networks they implement by ID, so each entry they name is added first.
+	AddNetwork {
+		id: NetworkId,
+		network: Box<NodeNetwork>,
+	},
+	/// Drops the definitions table entry `id`, which no node reaches any more.
+	RemoveNetwork {
+		id: NetworkId,
+	},
 	/// The node's nested network, if it implements one, rides inside the [`DocumentNode`].
 	AddNode {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		node: Box<DocumentNode>,
 	},
 	ReplaceNode {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		node: Box<DocumentNode>,
 	},
 	/// Address-only: removal snapshots come from the storage layer's working registry.
 	RemoveNode {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 	},
 	SetInput {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		input_index: usize,
 		input: NodeInput,
@@ -39,24 +51,24 @@ pub enum RuntimeDelta {
 	/// A node's whole input list, which is how a change to the number or order of its slots is
 	/// expressed, since [`SetInput`](Self::SetInput) addresses one index and cannot move the others.
 	SetInputs {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		inputs: Vec<NodeInput>,
 	},
 	/// `None` removes the slot, matching the storage op this converts to.
 	SetExport {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		export_index: usize,
 		input: Option<NodeInput>,
 	},
 	SetVisibility {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		visible: bool,
 	},
 	/// The [`Type`] of argument the node can be evaluated with.
 	SetCallArgument {
-		network_path: Vec<NodeId>,
+		network: OwnedNetworkLocation,
 		node_id: NodeId,
 		call_argument: Type,
 	},

@@ -3,10 +3,14 @@ name: "Check"
 on:
   pull_request: {}
   merge_group: {}
+  # Checking each master commit also fills the compilation cache, which only master pushes may write to
+  push:
+    branches:
+      - master
 
-# Cancel a PR's in-progress checks once a newer commit is pushed to it (merge queue refs are unique per entry, so those never cancel each other)
+# Cancel a PR's in-progress checks once a newer commit is pushed to it (other runs are keyed by their commit, so those never cancel each other)
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 env:
@@ -111,7 +115,8 @@ jobs:
     needs: skip-check
     # Always called with the skip decision passed in, since a skipped caller job reports only as `build` and leaves the required `build / web` check missing.
     # Like the jobs below, the checks still run if `skip-check` itself fails, since a skipped job counts as passing for required checks.
-    if: ${{ !cancelled() }}
+    # Master pushes are left out because `build.yml` builds and deploys those itself.
+    if: ${{ !cancelled() && github.event_name != 'push' }}
     uses: ./.github/workflows/build.yml
     # The called workflow's jobs can only narrow these, so this grants the union of what they request
     permissions:
@@ -125,18 +130,22 @@ jobs:
       web: ${{ needs.skip-check.outputs.skip != 'true' }}
       merge_queue: ${{ github.event_name == 'merge_group' }}
 
-  # Run the Rust tests on the self-hosted native runner
+  # Run the Rust tests
   test:
     needs: skip-check
     if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
-    runs-on: [self-hosted, target/native]
+    # Fork PRs always run on GitHub's own runners, while the `LINUX_RUNNER` repo variable can point the rest at another provider
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
     permissions:
       contents: read
     env:
-      RUSTC_WRAPPER: /usr/bin/sccache
       CARGO_INCREMENTAL: 0
-      # sccache deletes the oldest files in its folder once past its size cap, so it gets a folder apart from rust-gpu's codegen backend
-      SCCACHE_DIR: /var/lib/github-actions/.cache/sccache
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      # Only master pushes write to the compilation cache, so unmerged code can't plant entries that later master builds reuse
+      SCCACHE_GHA_RW_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') && 'READ_WRITE' || 'READ_ONLY' }}
+      # NOTICE: keep in sync with the web job in `build.yml`
+      SCCACHE_VERSION: "v0.19.0"
     steps:
       - name: 📥 Clone repository
         uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -149,6 +158,11 @@ jobs:
           cache: false
           rustflags: ""
 
+      - name: 📦 Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: ${{ env.SCCACHE_VERSION }}
+
       - name: 🦀 Fetch Rust dependencies
         run: cargo fetch --locked
 
@@ -156,7 +170,106 @@ jobs:
         env:
           # `--cfg=web_sys_unstable_apis` mirrors the `[build]` section of `.cargo/config.toml`
           RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
-        run: mold -run cargo test --all-features
+        run: cargo test --all-features
+
+      # The plain `cargo test` above only covers the workspace's default members, which leave these out
+      - name: 🧪 Run document migration tests
+        env:
+          RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+        run: >-
+          cargo test --all-features
+          --package migration-core
+          --package migration-runner
+          --package migration-formats
+          --package migration-nodes
+          --package migration-snapshot
+          --package document-graph-storage
+          --package document-format
+          --package graphene-cli
+          --package regression
+
+  # Render the documents of the regression corpus and compare them with their reference images
+  regression-corpus:
+    needs: skip-check
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' }}
+    runs-on: ${{ github.event.pull_request.head.repo.fork && 'ubuntu-latest' || vars.LINUX_RUNNER || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+    env:
+      CARGO_INCREMENTAL: 0
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: "true"
+      # Only master pushes write to the compilation cache, so unmerged code can't plant entries that later master builds reuse
+      SCCACHE_GHA_RW_MODE: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/master') && 'READ_WRITE' || 'READ_ONLY' }}
+      # NOTICE: keep in sync with the test job above and the web job in `build.yml`
+      SCCACHE_VERSION: "v0.19.0"
+      RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: 📥 Clone regression corpus
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          repository: tagtraumen/graphite-corpus
+          path: target/regression-corpus
+          lfs: true
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 📦 Install sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+        with:
+          version: ${{ env.SCCACHE_VERSION }}
+
+      # GitHub's runners have no GPU, so rendering falls back to Mesa's software Vulkan driver
+      - name: 🎮 Install a software Vulkan driver
+        run: sudo apt-get update && sudo apt-get install --yes mesa-vulkan-drivers
+
+      - name: 🖼️ Check the corpus renders against its references
+        run: cargo run --package regression -- --corpus target/regression-corpus check --output target/regression
+
+      - name: 📤 Upload the renders and diffs of mismatches
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: regression-mismatches
+          path: target/regression
+          if-no-files-found: ignore
+
+  # Stored types, node version lineages, and node APIs against the base commit. Only needs the snapshot tool, so it runs on a GitHub runner
+  migrations:
+    needs: skip-check
+    # Master pushes are left out because they have no base commit, and the PR and merge queue runs already compared against it
+    if: ${{ !cancelled() && needs.skip-check.outputs.skip != 'true' && github.event_name != 'push' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+    steps:
+      - name: 📥 Clone repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+
+      - name: 🦀 Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@166cdcfd11aee3cb47222f9ddb555ce30ddb9659 # v1.17.0
+        with:
+          toolchain: stable
+          override: true
+          cache: false
+          rustflags: ""
+
+      - name: 📥 Fetch the base commit
+        run: git fetch --depth=1 origin "$BASE_SHA"
+
+      - name: 🔬 Check migrations against the base commit
+        run: cargo run --locked --package migration-snapshot -- check --baseline "$BASE_SHA"
 
   # Rust format check on GitHub runner
   rust-fmt:

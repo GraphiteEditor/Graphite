@@ -5,7 +5,7 @@ use document_graph_storage::{Declarations, Registry, Value};
 use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
-use super::utility_types::network_interface::editor_delta::{EditorDelta, construct_batch};
+use super::utility_types::network_interface::editor_delta::{EditorDelta, StagingError, construct_batch};
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
 
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
@@ -133,10 +133,9 @@ impl DocumentHistory {
 	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
 	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
 	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
-		let needs_whole_document_stage = self.needs_whole_document_stage;
 		let Some(storage) = self.storage.as_mut() else { return };
 
-		let staged = match needs_whole_document_stage {
+		let staged = match self.needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
 			// An autosave with nothing edited since the last commit still persists the view state below.
 			false if deltas.is_empty() => Ok(Declarations::new()),
@@ -144,7 +143,10 @@ impl DocumentHistory {
 			// permanently behind. Converting the whole document restages the same edit from whatever the working
 			// copy holds, including a batch that failed partway through.
 			false => Self::stage_recorded(storage, deltas, interface, registry, byte_store).or_else(|error| {
-				log::error!("Staging recorded deltas failed, falling back to a whole document snapshot: {error}");
+				match error {
+					StagingError::NeedsWholeDocument(_) => log::debug!("{error}"),
+					_ => log::error!("Staging recorded deltas failed, falling back to a whole document snapshot: {error}"),
+				}
 				Self::stage_whole_document(storage, interface, registry, byte_store)
 			}),
 		};
@@ -185,14 +187,14 @@ impl DocumentHistory {
 		interface: &NodeNetworkInterface,
 		registry: &ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
-	) -> Result<Declarations, String> {
+	) -> Result<Declarations, StagingError> {
 		let peer = storage.session().peer();
 		let metadata_view = StorageMetadataView::new(interface);
-		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer).map_err(|error| error.to_string())?;
+		let constructed = construct_batch(deltas, storage.registry(), registry, &metadata_view, peer)?;
 
 		storage
 			.stage_constructed_ops(constructed.ops, &constructed.declarations.bytes, byte_store)
-			.map_err(|error| error.to_string())?;
+			.map_err(|error| StagingError::Storage(error.to_string()))?;
 		Ok(constructed.declarations.decoded)
 	}
 

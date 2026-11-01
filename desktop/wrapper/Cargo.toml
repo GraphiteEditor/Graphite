@@ -15,13 +15,12 @@ publish.workspace = true
 workspace = true
 
 [features]
-gpu = ["graphite-editor/gpu", "graphene-std/shader-nodes"]
+gpu = ["graphite-editor/gpu"]
 
 [dependencies]
 # Local dependencies
 graphite-editor = { workspace = true }
 graphite-wasm-wrapper = { path = "../../frontend/wrapper", default-features = false, features = ["editor"] }
-graphene-std = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
 

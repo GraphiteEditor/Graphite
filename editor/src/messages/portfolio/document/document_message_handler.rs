@@ -468,7 +468,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.layer_range_selection_reference = None;
 				self.chain_node_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => {
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
+			}
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
@@ -636,6 +639,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.node_graph_handler.leave_network(&mut self.network_interface, &self.breadcrumb_network_path, responses);
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
@@ -697,6 +701,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
+				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
@@ -1624,6 +1629,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
+			DocumentMessage::MakeNodeUnique { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::MakeUnique { node_id });
+				responses.add(DocumentMessage::EndTransaction);
+			}
 			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
@@ -1657,6 +1667,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
 				self.retire_storage_interaction();
 
 				self.network_interface.start_transaction();
@@ -2414,6 +2425,7 @@ impl DocumentMessageHandler {
 	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
 	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		self.network_interface.settle_definitions();
 		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;
@@ -2424,6 +2436,14 @@ impl DocumentMessageHandler {
 
 		if validate {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// Stages edits made after a transaction finished, such as those queued behind an `AddTransaction`, whose commit runs
+	/// first. They belong to the undo step that just ended, so they must reach storage before it closes.
+	fn stage_edits_outside_transaction(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		if self.network_interface.transaction_status() == TransactionStatus::Finished && self.network_interface.has_deltas() {
+			self.commit_storage_snapshot(byte_store, validate);
 		}
 	}
 
@@ -2590,6 +2610,8 @@ impl DocumentMessageHandler {
 		if !serialized_content.contains("\"grid_visible\":") {
 			document_message_handler.snapping_state.grid_visible = document_message_handler.snapping_state.grid_snapping;
 		}
+
+		document_message_handler.network_interface.move_interface_metadata_into_networks();
 
 		Ok(document_message_handler)
 	}

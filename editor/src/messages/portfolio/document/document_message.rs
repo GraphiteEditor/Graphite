@@ -245,6 +245,9 @@ pub enum DocumentMessage {
 	SetSnappingAngleStep {
 		degrees: f64,
 	},
+	MakeNodeUnique {
+		node_id: NodeId,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,

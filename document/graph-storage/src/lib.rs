@@ -11,7 +11,9 @@ pub mod model;
 mod prior;
 pub mod registry;
 pub mod resources;
+mod schema;
 pub mod session;
+mod sorted;
 mod touched;
 pub mod value;
 
@@ -23,23 +25,20 @@ pub mod metadata_source;
 pub mod to_runtime;
 
 pub use attributes::*;
-pub use crdt::*;
 pub use document::*;
-pub use history::History;
+pub use history::{History, rehash_deltas};
 pub use history_metadata::{HistoryMetadata, MetadataFact, Subject, WallStamp, rev_attr, user_attr};
 pub use ids::*;
-pub use model::*;
-pub use prior::{NetworkField, NodeField, Prior};
-pub use registry::*;
-pub use resources::*;
+pub use schema::*;
 pub use session::*;
+pub use sorted::Sorted;
 pub use touched::Touched;
-pub use value::{Value, ValueError, from_value, to_value};
+pub use value::{ValueError, from_value, to_value};
 
 #[cfg(any(feature = "conversion", test))]
 pub use from_runtime::{
-	PathResolver, RuntimeConversion, ScopedConversion, convert_input_attributes, convert_resource_entry, decode_declaration, encode_declaration, encode_input_ui_attributes, encode_node_ui_attributes,
-	node_value_resource_refs, value_resource_ref,
+	EncodedDeclaration, PathResolver, RuntimeConversion, ScopedConversion, convert_input_attributes, convert_resource_entry, decode_declaration, encode_declaration, encode_input_ui_attributes,
+	encode_node_ui_attributes, node_value_resource_refs, value_resource_ref,
 };
 #[cfg(any(feature = "conversion", test))]
 pub use metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NoMetadata, NodeMetadataEntry, NodeMetadataSource, Position};

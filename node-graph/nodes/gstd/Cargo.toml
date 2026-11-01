@@ -36,7 +36,6 @@ wasm = [
 ]
 image-compare = []
 vello = ["gpu"]
-shader-nodes = ["raster-nodes/shader-nodes"]
 
 [dependencies]
 # Local dependencies
@@ -59,6 +58,7 @@ brush-nodes = { workspace = true }
 graphene-core = { workspace = true }
 graphic-nodes = { workspace = true }
 repeat-nodes = { workspace = true }
+vectorize-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
