@@ -340,6 +340,9 @@ impl NodeNetworkInterface {
 
 		let (mut document_node, mut persistent_metadata) = template.into_parts();
 		self.lift_into_table(&mut document_node.implementation, &mut persistent_metadata.network_metadata);
+		if let DocumentNodeImplementation::Definition(id) = document_node.implementation {
+			self.insert_carried_definition(id);
+		}
 		let node = Box::new(document_node.clone());
 		let metadata = Box::new(persistent_metadata.clone());
 
@@ -423,6 +426,9 @@ impl NodeNetworkInterface {
 
 			self.lift_into_table(&mut implementation, &mut network_metadata);
 		}
+		if let DocumentNodeImplementation::Definition(id) = implementation {
+			self.insert_carried_definition(id);
+		}
 
 		let Some(mut node) = self.node_mut_at(location, locator.node_id) else {
 			log::error!("Could not get node {} in replace_node_implementation", locator.node_id);
@@ -454,6 +460,19 @@ impl NodeNetworkInterface {
 
 	/// Adds the definitions table entry `id` with its metadata, recording the network and then the metadata of it and its nodes.
 	pub(crate) fn insert_definition(&mut self, id: NetworkId, network: NodeNetwork, metadata: NodeNetworkMetadata) {
+		let mut named: Vec<NetworkId> = network
+			.nodes
+			.values()
+			.filter_map(|node| match node.implementation {
+				DocumentNodeImplementation::Definition(named) => Some(named),
+				_ => None,
+			})
+			.collect();
+		named.sort();
+		for named in named {
+			self.insert_carried_definition(named);
+		}
+
 		let location = OwnedNetworkLocation::definition(id);
 		self.deltas.push(EditorDelta::Graph(RuntimeDelta::AddNetwork {
 			id,
@@ -489,6 +508,86 @@ impl NodeNetworkInterface {
 
 		self.network.get_mut().network_mut().definitions.insert(id, network);
 		self.network_metadata.get_mut().persistent_metadata.definitions.insert(id, metadata);
+	}
+
+	/// Takes the table entries a paste carries, each listed after the entries it names, and returns the new ID of every entry that has to be renamed.
+	///
+	/// An entry the document already holds with the same content is reused. One it holds with different content goes in under a fresh ID.
+	/// Nothing is added yet: each entry goes in once a node names it, so it lands in the same transaction as that node.
+	///
+	/// Returns `None` for a list that names an entry before listing it, which no copy produces and which a cycle always does.
+	pub(crate) fn carry_definitions(&mut self, definitions: Vec<CopiedDefinition>) -> Option<HashMap<NetworkId, NetworkId>> {
+		let mut listed = HashSet::new();
+		for definition in &definitions {
+			let names_unlisted = definition.network.nodes.values().any(|node| match node.implementation {
+				DocumentNodeImplementation::Definition(named) => !listed.contains(&named) && !self.document_network().definitions.contains_key(&named),
+				_ => false,
+			});
+			if names_unlisted {
+				return None;
+			}
+			listed.insert(definition.id);
+		}
+
+		let mut renamed = HashMap::new();
+		let mut carried = HashMap::new();
+		for CopiedDefinition { id, mut network, metadata } in definitions {
+			for node in network.nodes.values_mut() {
+				if let DocumentNodeImplementation::Definition(named) = &mut node.implementation
+					&& let Some(new_id) = renamed.get(named)
+				{
+					*named = *new_id;
+				}
+			}
+
+			let held = self.document_network().definitions.get(&id).zip(self.network_metadata.persistent_metadata.definitions.get(&id));
+			let id = match held {
+				Some((held_network, held_metadata)) if *held_network != network || !same_content(&held_metadata.persistent_metadata, &metadata.persistent_metadata) => {
+					let new_id = NetworkId::new();
+					renamed.insert(id, new_id);
+					new_id
+				}
+				_ => id,
+			};
+			carried.insert(id, CopiedDefinition { id, network, metadata });
+		}
+
+		self.carried_definitions = carried;
+		Some(renamed)
+	}
+
+	/// Gives the node its own copy of the table entry it names, leaving the entries nested in it shared.
+	pub(crate) fn fork_definition(&mut self, locator: NodeLocator) -> bool {
+		let Some(location) = self.locate(locator.network_path) else { return false };
+		let Some(DocumentNodeImplementation::Definition(id)) = self
+			.document_network()
+			.located_network(location)
+			.and_then(|network| network.nodes.get(&locator.node_id))
+			.map(|node| node.implementation.clone())
+		else {
+			return false;
+		};
+		let Some(network) = self.document_network().definitions.get(&id).cloned() else { return false };
+		let Some(metadata) = self.network_metadata.persistent_metadata.definitions.get(&id).cloned() else {
+			return false;
+		};
+
+		let unique = NetworkId::new();
+		self.insert_definition(unique, network, metadata);
+		let Some(mut node) = self.node_mut_at(location, locator.node_id) else { return false };
+		node.replace_implementation(DocumentNodeImplementation::Definition(unique));
+		true
+	}
+
+	/// Adds the carried table entry `id` if the document does not hold it.
+	fn insert_carried_definition(&mut self, id: NetworkId) {
+		if self.document_network().definitions.contains_key(&id) {
+			return;
+		}
+		let Some(CopiedDefinition { network, metadata, .. }) = self.carried_definitions.get(&id).cloned() else {
+			return;
+		};
+		self.insert_definition(id, network, metadata);
 	}
 
 	/// Drops the definitions table entry `id` from both trees.
@@ -590,6 +689,18 @@ impl NodeNetworkInterface {
 			network.set_reference(None);
 		}
 	}
+}
+
+/// Whether two networks' metadata describe the same content, ignoring this peer's view of them.
+fn same_content(first: &NodeNetworkPersistentMetadata, second: &NodeNetworkPersistentMetadata) -> bool {
+	let content = |metadata: &NodeNetworkPersistentMetadata| NodeNetworkPersistentMetadata {
+		previewing: Previewing::No,
+		navigation_metadata: NavigationMetadata::default(),
+		selection_undo_history: VecDeque::new(),
+		selection_redo_history: VecDeque::new(),
+		..metadata.clone()
+	};
+	content(first) == content(second)
 }
 
 /// Whether any of `descriptions` says anything, since storage keeps the whole list then, but not a list that's all empty.

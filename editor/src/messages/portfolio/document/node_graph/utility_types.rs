@@ -159,6 +159,9 @@ pub enum ContextMenuData {
 		has_selected_layers: bool,
 		#[serde(rename = "allSelectedLayersLocked")]
 		all_selected_layers_locked: bool,
+		/// Whether the node names a table entry other nodes name too, which "Make Unique" gives it its own copy of.
+		#[serde(rename = "isShared")]
+		is_shared: bool,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]

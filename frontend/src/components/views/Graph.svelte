@@ -379,6 +379,17 @@
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 						flush={true}
 					/>
+					{#if $nodeGraph.contextMenuInformation.contextMenuData.data.isShared}
+						{@const nodeId = $nodeGraph.contextMenuInformation.contextMenuData.data.nodeId}
+						<TextButton
+							label="Make Unique"
+							action={() => {
+								editor.makeNodeUnique(nodeId);
+								closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
 					{#if $nodeGraph.contextMenuInformation.contextMenuData.data.hasSelectedLayers}
 						{@const allLocked = $nodeGraph.contextMenuInformation.contextMenuData.data.allSelectedLayersLocked}
 						{@const nodeId = $nodeGraph.contextMenuInformation.contextMenuData.data.nodeId}

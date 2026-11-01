@@ -1617,6 +1617,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
+			DocumentMessage::MakeNodeUnique { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::MakeUnique { node_id });
+				responses.add(DocumentMessage::EndTransaction);
+			}
 			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				responses.add(DocumentMessage::StartTransaction);
 				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
