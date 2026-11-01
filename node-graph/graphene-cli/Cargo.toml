@@ -29,16 +29,20 @@ document-format = { workspace = true, features = ["zip", "xz", "migrations"] }
 document-container = { workspace = true, features = ["zip", "xz"] }
 migration-formats = { workspace = true }
 migration-nodes = { workspace = true }
+document-graph-storage = { workspace = true }
+document-live = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
 fern = { workspace = true }
 chrono = { workspace = true }
 wgpu = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["io-util", "time"] }
+winit = { workspace = true }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
 serde_json = { workspace = true }
+getrandom = "0.3"
 wgpu-executor = { workspace = true, optional = true }
 
 [package.metadata.cargo-shear]

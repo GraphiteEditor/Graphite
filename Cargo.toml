@@ -18,6 +18,7 @@ members = [
 	"document/migrations/snapshot",
 	"document/migrations/nodes",
 	"document/peer-transport",
+	"document/live",
 	"editor",
 	"frontend/wrapper",
 	"libraries/dyn-any",
@@ -115,6 +116,7 @@ migration-runner = { path = "document/migrations/runner" }
 migration-formats = { path = "document/migrations/formats" }
 migration-nodes = { path = "document/migrations/nodes" }
 peer-transport = { path = "document/peer-transport" }
+document-live = { path = "document/live" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
