@@ -105,6 +105,11 @@ pub struct GraphUpdate {
 pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
 	for (network_path, previewed) in previewed {
 		let Some(nested) = network.nested_network_mut(network_path) else { continue };
+		if let Some(node) = nested.nodes.get(&previewed.node_id) {
+			if previewed.output_index >= node.implementation.output_count() {
+				continue;
+			}
+		}
 		let Some(export) = nested.exports.first_mut() else { continue };
 		*export = NodeInput::node(previewed.node_id, previewed.output_index);
 	}

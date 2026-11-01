@@ -3534,3 +3534,18 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 		"The evaluated network should fall back to the document's own export"
 	);
 }
+
+#[tokio::test]
+async fn cannot_preview_node_without_outputs() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let custom_node = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	assert_eq!(network_interface.number_of_outputs(&custom_node, &[]), 0);
+
+	// Attempting to toggle preview on a node without outputs should not enable previewing
+	network_interface.toggle_preview(custom_node, &[]);
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+}
