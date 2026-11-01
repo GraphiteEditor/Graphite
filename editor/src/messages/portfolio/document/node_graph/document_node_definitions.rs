@@ -1611,6 +1611,14 @@ pub fn collect_node_descriptions() -> Vec<(String, String)> {
 		.collect()
 }
 
+/// The identifiers of the catalog's network nodes.
+pub fn network_node_identifiers() -> impl Iterator<Item = &'static str> {
+	DOCUMENT_NODE_TYPES.keys().filter_map(|identifier| match identifier {
+		DefinitionIdentifier::Network(name) => Some(name.as_str()),
+		DefinitionIdentifier::ProtoNode(_) => None,
+	})
+}
+
 pub fn collect_node_icons() -> Vec<(String, IconName)> {
 	DOCUMENT_NODE_TYPES
 		.iter()

@@ -852,7 +852,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_input_override");
 			return;
 		};

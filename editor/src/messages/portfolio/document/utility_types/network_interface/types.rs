@@ -504,6 +504,18 @@ impl<'de> serde::Deserialize<'de> for Previewing {
 	}
 }
 
+/// Whether two networks' metadata match, ignoring view state.
+pub(crate) fn same_content(first: &NodeNetworkPersistentMetadata, second: &NodeNetworkPersistentMetadata) -> bool {
+	let content = |metadata: &NodeNetworkPersistentMetadata| NodeNetworkPersistentMetadata {
+		previewing: Previewing::No,
+		navigation_metadata: NavigationMetadata::default(),
+		selection_undo_history: VecDeque::new(),
+		selection_redo_history: VecDeque::new(),
+		..metadata.clone()
+	};
+	content(first) == content(second)
+}
+
 /// A definitions table entry carried by a copy, so a paste into a document that lacks it can add it.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct CopiedDefinition {

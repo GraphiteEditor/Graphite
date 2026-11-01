@@ -808,6 +808,14 @@ mod test {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.draw_rect(0., 0., 100., 100.).await;
+		let interface = &mut editor.active_document_mut().network_interface;
+		let rectangle = interface
+			.document_network()
+			.nodes
+			.iter()
+			.find_map(|(id, node)| matches!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(_)).then_some(*id))
+			.expect("the rectangle layer");
+		assert!(interface.make_unique(&rectangle, &[]), "a catalog network forks on every write, so it never diverges");
 		let clipboard = copy_layers_to_clipboard(&mut editor).await;
 
 		editor.new_document().await;

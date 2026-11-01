@@ -438,7 +438,7 @@ impl NodeNetworkInterface {
 			self.set_upstream_chain_to_absolute(&upstream_node_id, network_path);
 		}
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;
 		};
@@ -453,7 +453,9 @@ impl NodeNetworkInterface {
 		let number_of_inputs = node.inputs.len();
 		let definition = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type);
 
-		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		let Some(mut node_entry) = self.node_mut_unforked(NodeLocator::new(*node_id, network_path)) else {
+			return;
+		};
 		node_entry.pad_input_metadata(number_of_inputs, |input_index| {
 			definition.and_then(|definition| definition.node_template.input_metadata.get(input_index).cloned())
 		});
@@ -466,7 +468,7 @@ impl NodeNetworkInterface {
 		};
 		let number_of_exports = network.exports.len();
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_mut_unforked(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in validate_output_names");
 			return;
 		};
@@ -508,7 +510,9 @@ impl NodeNetworkInterface {
 			.filter(|template| template.output_names.len() == self.number_of_outputs(node_id, network_path))
 			.map(|template| template.output_descriptions.clone());
 
-		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		let Some(mut node_entry) = self.node_mut_unforked(NodeLocator::new(*node_id, network_path)) else {
+			return;
+		};
 		for (index, description) in input_descriptions {
 			node_entry.set_input_description(index, description);
 		}
@@ -1189,7 +1193,7 @@ impl NodeNetworkInterface {
 	/// Replaces the full list of output port names for a node. Used by document migrations that turn a single-output node
 	/// into a multi-output one, since the port labels are otherwise unnamed and fall back to the type name.
 	pub fn set_output_names(&mut self, node_id: &NodeId, output_names: Vec<String>, network_path: &[NodeId]) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_output_names");
 			return;
 		};
@@ -1202,7 +1206,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
 			log::error!("Could not get encapsulating node in set_import_export_name");
 			return;
 		};
@@ -1223,7 +1227,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
 			log::error!("Could not get encapsulating node in set_import_export_description");
 			return;
 		};

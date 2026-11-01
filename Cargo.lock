@@ -2968,6 +2968,7 @@ version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
  "bitflags 2.13.2",
+ "blake3",
  "color",
  "core-types",
  "derivative",
