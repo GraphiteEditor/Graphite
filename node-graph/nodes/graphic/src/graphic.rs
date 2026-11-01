@@ -956,7 +956,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("Graphic"), icon("NodeIntoGroup"))]
+#[node_macro::node(category("Graphic"), icon("NodeGroup"))]
 fn into_group<T: Into<Graphic>>(
 	_: impl Ctx,
 	#[implementations(
@@ -984,7 +984,7 @@ fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
-#[node_macro::node(category("Graphic"), icon("NodeFlattenGraphic"))]
+#[node_macro::node(category("Graphic"), icon("NodeUngroup"))]
 fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
