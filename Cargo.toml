@@ -191,6 +191,12 @@ web-sys = { version = "=0.3.104", features = [
 	"Gpu",
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
+	"Lock",
+	"LockInfo",
+	"LockManager",
+	"LockManagerSnapshot",
+	"LockMode",
+	"LockOptions",
 ] }
 winit = "0.31.0-beta.4"
 keyboard-types = "0.8"

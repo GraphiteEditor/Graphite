@@ -7,6 +7,7 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::error::EditorError;
 use super::document::utility_types::network_interface::OutputConnector;
 use super::document::utility_types::network_interface::storage_metadata::{apply_network_view_settings, build_interface_from_storage, network_ids_from_entries};
+use super::document_locks;
 use super::document_migration::*;
 use super::portfolio_message::PortfolioMessage;
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
@@ -18,6 +19,7 @@ use document_container::{AnyContainer, AsyncContainer};
 use document_format::{Error as DocumentFormatError, GddV1, GddV1Layout, Layout, ReadError};
 use document_graph_storage::{Declarations, PeerId};
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceStorage};
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -58,15 +60,28 @@ pub(crate) fn legacy_path() -> &'static str {
 	GddV1Layout.legacy_path()
 }
 
+/// Lists the stored documents after claiming every one that no other tab holds.
 pub(super) async fn list_stored_documents(store: DocumentStoreHandle) -> Message {
-	let document_ids = match store.list().await {
-		Ok(keys) => Some(keys.into_iter().map(|key| DocumentId(key.0)).collect()),
-		Err(error) => {
-			log::error!("Listing the document store failed: {error}");
-			None
+	let mut held = Vec::new();
+	let claimed = async {
+		let mut claimed = HashSet::new();
+		for key in store.list().await? {
+			let document_id = DocumentId(key.0);
+			match document_locks::claim(document_id).await {
+				true => claimed.insert(document_id),
+				false => {
+					held.push(document_id);
+					false
+				}
+			};
 		}
-	};
-	PortfolioMessage::StoredDocumentsListed { document_ids }.into()
+		// A tab releases a document after removing it, so one claimed just now may be gone
+		let remaining = store.list().await.inspect_err(|_| claimed.iter().copied().for_each(document_locks::release))?;
+		Ok::<_, document_container::ContainerError>(remaining.into_iter().map(|key| DocumentId(key.0)).filter(|document_id| claimed.contains(document_id)).collect())
+	}
+	.await;
+	let document_ids = claimed.map_err(|error| log::error!("Listing the document store failed: {error}")).ok();
+	PortfolioMessage::StoredDocumentsListed { document_ids, held }.into()
 }
 
 pub(super) async fn load_stored_document(store: DocumentStoreHandle, document_id: DocumentId, resources: ResourcesHandle, reset_nodes: bool) -> Message {
@@ -89,6 +104,7 @@ pub(super) async fn load_stored_document(store: DocumentStoreHandle, document_id
 
 /// Opens the container for a document created in this session.
 pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: DocumentId, resources: ResourcesHandle) -> Message {
+	document_locks::claim(document_id).await;
 	let container = match store.open(document_key(document_id)).await {
 		Ok(container) => container,
 		Err(error) => {
@@ -117,7 +133,51 @@ pub(super) async fn remove_stored_document(store: DocumentStoreHandle, document_
 	if let Err(error) = store.remove(document_key(document_id)).await {
 		log::error!("Removing the stored document {document_id:?} failed: {error}");
 	}
+	document_locks::release(document_id);
 	Message::NoOp
+}
+
+/// Opens a copy of a stored document that another tab may be writing. Its fresh manifest id separates it from the original.
+pub(super) async fn copy_stored_document(store: DocumentStoreHandle, source: DocumentId, document_id: DocumentId, document_name: String, resources: ResourcesHandle, reset_nodes: bool) -> Message {
+	document_locks::claim(document_id).await;
+	let copied = async {
+		if !store.list().await?.contains(&document_key(source)) {
+			return Err(document_container::ContainerError::NotFound(source.0.to_string()));
+		}
+		let (from, to) = (store.open(document_key(source)).await?, store.open(document_key(document_id)).await?);
+		let mut directories = vec![String::new()];
+		while let Some(directory) = directories.pop() {
+			for path in from.list(&directory).await? {
+				to.write(&path, from.read(&path).await?.as_slice()).await?;
+			}
+			directories.extend(from.list_dirs(&directory).await?);
+		}
+		Ok(to)
+	}
+	.await;
+	let (mut document, mut gdd) = match copied {
+		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes).await,
+		Err(error) => {
+			log::error!("Copying the stored document {source:?} failed: {error}");
+			(None, None)
+		}
+	};
+	if let Some(storage) = gdd.as_mut().or_else(|| document.as_mut().and_then(|document| document.storage_mut()))
+		&& let Err(error) = storage.update_manifest(|manifest| manifest.document_id = generate_uuid())
+	{
+		log::error!("Giving the copy of {source:?} its own id failed: {error}");
+		(document, gdd) = (None, None);
+	}
+	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
+	PortfolioMessage::DocumentFileLoaded {
+		document_id,
+		document_name: Some(document_name),
+		document_path: None,
+		document: document.map(Box::new),
+		gdd: gdd.map(Box::new),
+		declarations,
+	}
+	.into()
 }
 
 /// Materializes a `.gdd` archive into a fresh store container and loads it like a stored document.
@@ -130,6 +190,7 @@ pub(super) async fn open_document_file(
 	resources: ResourcesHandle,
 	reset_nodes: bool,
 ) -> Message {
+	document_locks::claim(document_id).await;
 	let materialized = async {
 		let mut container = store.open(document_key(document_id)).await.map_err(|error| error.to_string())?;
 		document_container::archive::open_auto(&content, &mut container).map_err(|error| error.to_string())?;

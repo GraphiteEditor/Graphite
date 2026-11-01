@@ -2,6 +2,7 @@ mod portfolio_message;
 mod portfolio_message_handler;
 
 pub mod document;
+mod document_locks;
 pub mod document_migration;
 pub mod document_storage_io;
 pub mod failed_documents;
