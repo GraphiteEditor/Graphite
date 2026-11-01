@@ -8,7 +8,8 @@ use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBM
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::list::Item;
 use core_types::math::bbox::Bbox;
-use core_types::transform::Transform;
+use core_types::ops::Convert;
+use core_types::transform::{Footprint, Transform};
 use core_types::{Interrupt, NodeError};
 use dyn_any::DynAny;
 use fastnoise_lite;
@@ -415,6 +416,24 @@ impl RasterKernel for ExtendToBounds {
 			"#,
 		)
 	}
+}
+
+/// Uploads an image to the GPU, so the nodes that come next run on the GPU rather than the CPU.
+#[node_macro::node(category("Raster"), icon("NodeUploadTexture"), memoize)]
+fn eager(
+	_: impl Ctx,
+	/// The image to upload.
+	image: Item<Raster<CPU>>,
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<Raster<GPU>>, Interrupt> {
+	let executor = pipeline.element().executor().cloned().ok_or_else(|| NodeError::new("A GPU is required to upload a raster"))?;
+
+	let (image, attributes) = image.into_parts();
+	if image.is_empty() {
+		return Ok(Item::from_parts(Raster::default(), attributes));
+	}
+
+	Ok(Item::from_parts(image.convert(Footprint::DEFAULT, executor), attributes))
 }
 
 /// Displays an image from a file.
