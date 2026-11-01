@@ -1,12 +1,13 @@
 +++
 title = "Year in review: 2024 highlights and a peek at 2025"
 date = 2025-01-16
+authors = ["Keavon Chambers"]
+description = "Graphite has come a long way in 2024. Read about the progress made and the plans for the upcoming year."
+
 
 [extra]
 banner = "https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.avif"
 banner_png = "https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.png"
-author = "Keavon Chambers"
-summary = "Graphite has come a long way in 2024. Read about the progress made and the plans for the upcoming year."
 reddit = "https://www.reddit.com/r/graphite/comments/1i3umnl/blog_post_year_in_review_2024_highlights_and_a/"
 twitter = "https://x.com/GraphiteEditor/status/1880404337345851612"
 bluesky = "https://bsky.app/profile/graphiteeditor.bsky.social/post/3lfxysayh622g"
@@ -25,12 +26,12 @@ Graphite is and will always remain yours to keep, whether that's by running the 
 
 <style class="float-image">
 .float-image + p {
-	text-align: left;
+ text-align: left;
 }
 .float-image + p > a {
-	float: right;
-	margin-left: 1.5em;
-	margin-bottom: 1em;
+ float: right;
+ margin-left: 1.5em;
+ margin-bottom: 1em;
 }
 </style>
 
