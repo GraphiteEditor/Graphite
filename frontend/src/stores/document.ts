@@ -3,7 +3,7 @@ import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { patchLayout } from "/src/utility-functions/widgets";
-import type { Layout, RenderStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { FrontendRemoteCursor, Layout, RenderStatus } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type DocumentStore = ReturnType<typeof createDocumentStore>;
 
@@ -33,6 +33,10 @@ let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<DocumentStoreState> = import.meta.hot?.data?.store || writable<DocumentStoreState>(initialState);
 if (import.meta.hot) import.meta.hot.data.store = store;
+
+// Kept apart from the main store since cursors move on every frame, and only the overlay draws them
+const remoteCursorsStore: Writable<FrontendRemoteCursor[]> = import.meta.hot?.data?.remoteCursorsStore || writable<FrontendRemoteCursor[]>([]);
+if (import.meta.hot) import.meta.hot.data.remoteCursorsStore = remoteCursorsStore;
 const { subscribe, update } = store;
 
 export function createDocumentStore(subscriptions: SubscriptionsRouter) {
@@ -71,6 +75,9 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		patchLayout(get(store).nodeGraphControlBarLayout, data);
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateDocumentCursors", (data) => {
+		remoteCursorsStore.set(data.cursors);
+	});
 	subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
@@ -85,7 +92,7 @@ export function createDocumentStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	return { subscribe };
+	return { subscribe, remoteCursorsStore };
 }
 
 export function destroyDocumentStore() {
@@ -95,6 +102,7 @@ export function destroyDocumentStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphFadeArtwork");
 	subscriptions.unsubscribeFrontendMessage("UpdateGraphViewOverlay");
 	subscriptions.unsubscribeFrontendMessage("UpdateRenderStatus");
+	subscriptions.unsubscribeFrontendMessage("UpdateDocumentCursors");
 	subscriptions.unsubscribeLayoutUpdate("ToolOptions");
 	subscriptions.unsubscribeLayoutUpdate("DocumentBar");
 	subscriptions.unsubscribeLayoutUpdate("ToolShelf");

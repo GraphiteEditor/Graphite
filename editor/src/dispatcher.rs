@@ -291,6 +291,7 @@ impl Dispatcher {
 							preferences: &self.message_handlers.preferences_message_handler,
 							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
 							tool_edit_target: &self.message_handlers.tool_message_handler.edit_target,
+							tools: &self.message_handlers.tool_message_handler,
 							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
 							timing_information: self.message_handlers.animation_message_handler.timing_information(),
 							animation: &self.message_handlers.animation_message_handler,

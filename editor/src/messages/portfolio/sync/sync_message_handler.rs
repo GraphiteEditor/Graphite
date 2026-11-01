@@ -1,15 +1,18 @@
-use super::identity::anonymous_name;
+use super::identity::{anonymous_name, user_color};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageHandler;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendRemoteCursor;
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::resource_storage::ResourcesHandle;
+use crate::messages::viewport::Position;
 use document_format::GddV1;
 use document_graph_storage::{HistoryMetadata, Subject, UserId, user_attr};
+use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{LoadResource, ResourceHash};
-use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, Incoming, MessageLoopFuture, RemotePeer, Role, Room, SessionToken, SyncTarget, TransportPeerId};
+use peer_transport::{CursorPosition, CursorSpace, DEFAULT_SIGNALING_SERVER, Event, Incoming, MessageLoopFuture, RemotePeer, Role, Room, SessionToken, SyncTarget, TransportPeerId};
 use std::collections::HashSet;
 
 /// How long a peer in a room without a host waits for one to greet it before taking the role itself.
@@ -25,6 +28,9 @@ pub struct SyncMessageContext<'a> {
 	pub active_document_id: Option<DocumentId>,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub ipp: &'a InputPreprocessorMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
+	pub tools: &'a ToolMessageHandler,
 }
 
 /// Drives every document's collaborative session. It connects them to their rooms, polls the rooms each frame and
@@ -47,6 +53,10 @@ pub struct SyncMessageHandler {
 	blocked_reason: HashMap<DocumentId, String>,
 	/// Held declarations being read from the byte store to be decoded.
 	decoding: HashSet<(DocumentId, ResourceHash)>,
+	/// The pointer position last sent for each connected document.
+	last_cursor: HashMap<DocumentId, Option<CursorPosition>>,
+	graph_cursors: Vec<FrontendRemoteCursor>,
+	document_cursors: Vec<FrontendRemoteCursor>,
 	/// When each document whose remote changes could not be applied next tries again, since a try can convert the whole registry.
 	retry_at: HashMap<DocumentId, f64>,
 	/// When each document whose transport went down is next to be reconnected.
@@ -61,6 +71,9 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 			active_document_id,
 			resource_storage,
 			preferences,
+			ipp,
+			viewport,
+			tools,
 		} = context;
 
 		match message {
@@ -163,13 +176,15 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				});
 			}
 			SyncMessage::Poll => {
-				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, responses);
+				let cursor = active_cursor(documents, active_document_id, ipp, viewport, tools);
+				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, cursor, responses);
 			}
 			SyncMessage::Wake { document_id, generation } => {
 				if !self.is_current(document_id, generation) {
 					return;
 				}
-				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, responses);
+				let cursor = active_cursor(documents, active_document_id, ipp, viewport, tools);
+				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, cursor, responses);
 				// The poll drained the inbox, so the next arrival wakes the next poll
 				self.arm(document_id, responses);
 			}
@@ -242,6 +257,7 @@ impl SyncMessageHandler {
 
 	fn detach(&mut self, document_id: DocumentId) {
 		self.incoming.remove(&document_id);
+		self.last_cursor.remove(&document_id);
 		self.reconnect_at.remove(&document_id);
 		self.retry_at.remove(&document_id);
 		self.undecided_since.remove(&document_id);
@@ -282,10 +298,24 @@ impl SyncMessageHandler {
 		active_document_id: Option<DocumentId>,
 		resources: ResourcesHandle,
 		preferences: &PreferencesMessageHandler,
+		active_cursor: Option<CursorPosition>,
 		responses: &mut VecDeque<Message>,
 	) {
 		for (&document_id, document) in documents.iter_mut() {
-			self.poll_document(document_id, document, &resources, preferences, responses);
+			let cursor = (Some(document_id) == active_document_id).then(|| active_cursor.clone()).flatten();
+			self.poll_document(document_id, document, &resources, preferences, cursor, responses);
+		}
+
+		let active_document = active_document_id.and_then(|id| documents.get(&id));
+		let graph_cursors = active_document.map(|document| graph_cursors(document, preferences)).unwrap_or_default();
+		if graph_cursors != self.graph_cursors {
+			self.graph_cursors = graph_cursors.clone();
+			responses.add(FrontendMessage::UpdateNodeGraphCursors { cursors: graph_cursors });
+		}
+		let document_cursors = active_document.map(|document| document_cursors(document, preferences)).unwrap_or_default();
+		if document_cursors != self.document_cursors {
+			self.document_cursors = document_cursors.clone();
+			responses.add(FrontendMessage::UpdateDocumentCursors { cursors: document_cursors });
 		}
 
 		self.apply_dirty(documents, active_document_id, &resources, responses);
@@ -297,6 +327,7 @@ impl SyncMessageHandler {
 		document: &mut DocumentMessageHandler,
 		resources: &ResourcesHandle,
 		preferences: &PreferencesMessageHandler,
+		cursor: Option<CursorPosition>,
 		responses: &mut VecDeque<Message>,
 	) {
 		// A local undo that could not apply what it changed leaves it here too
@@ -335,6 +366,14 @@ impl SyncMessageHandler {
 		document.stage_pending_edits(resources);
 		let Some(gdd) = document.storage_mut() else { return };
 		announce_name(gdd, &preferences.user_name);
+		if self.last_cursor.get(&document_id) != Some(&cursor) {
+			match gdd.send_cursor(cursor.clone()) {
+				Ok(()) => {
+					self.last_cursor.insert(document_id, cursor);
+				}
+				Err(error) => log::warn!("Sending the pointer position failed: {error}"),
+			}
+		}
 
 		let events = gdd.poll_peers();
 		// Taken on every poll, since a full sync can replace the registry without a change event
@@ -368,8 +407,14 @@ impl SyncMessageHandler {
 					log::debug!("Session role is now {role:?}");
 					refresh_session_views(responses);
 				}
-				Event::PeerJoined { .. } | Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
+				// Who joined has not seen the pointer yet, even if it stayed put
+				Event::PeerJoined { .. } => {
+					self.last_cursor.remove(&document_id);
+					refresh_session_views(responses);
+				}
+				Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
 				Event::MetadataChanged => refresh_session_views(responses),
+				// Cursors are gathered afresh on every poll
 				Event::CursorMoved { .. } => {}
 			}
 		}
@@ -504,12 +549,28 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 				.widget_instance(),
 		])
 	};
+	let cursors_row = || {
+		let checkbox_id = CheckboxId::new();
+		LayoutGroup::row(vec![
+			TextLabel::new("Show cursors")
+				.table_align(true)
+				.sizing(WidgetSizing::fixed(90))
+				.for_checkbox(checkbox_id)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			CheckboxInput::new(preferences.show_remote_cursors)
+				.tooltip_description("Draw the other peers' pointers over the document.")
+				.on_update(|checkbox: &CheckboxInput| PreferencesMessage::ShowRemoteCursors { enabled: checkbox.checked }.into())
+				.for_label(checkbox_id)
+				.widget_instance(),
+		])
+	};
 
 	let Some(document) = active_document_id.and_then(|id| documents.get(&id)) else {
 		return Layout(vec![note("Open a document to share it.")]);
 	};
 	let Some(gdd) = document.storage() else {
-		return Layout(vec![name_row(), note("The document's working copy is still being mounted.")]);
+		return Layout(vec![name_row(), cursors_row(), note("The document's working copy is still being mounted.")]);
 	};
 
 	let fork = || {
@@ -580,7 +641,7 @@ fn session_panel_layout(documents: &HashMap<DocumentId, DocumentMessageHandler>,
 			)
 		}
 	};
-	let mut groups = vec![name_row(), heading(state), LayoutGroup::row(actions), detail];
+	let mut groups = vec![name_row(), cursors_row(), heading(state), LayoutGroup::row(actions), detail];
 	if gdd.role().is_none() && !gdd.is_shared() {
 		groups.push(LayoutGroup::row(vec![
 			TextLabel::new("Join a session").table_align(true).sizing(WidgetSizing::fixed(90)).widget_instance(),
@@ -631,6 +692,99 @@ fn announce_name(gdd: &mut GddV1, name: &str) {
 	}
 }
 
+fn active_cursor(
+	documents: &HashMap<DocumentId, DocumentMessageHandler>,
+	active_document_id: Option<DocumentId>,
+	ipp: &InputPreprocessorMessageHandler,
+	viewport: &ViewportMessageHandler,
+	tools: &ToolMessageHandler,
+) -> Option<CursorPosition> {
+	let document = documents.get(&active_document_id?)?;
+	cursor_position(document, ipp, viewport, tools)
+}
+
+/// The pointer while it is over the viewport, in the node graph's network when the graph is open and in the document
+/// otherwise. Rounded to a hundredth of a unit, so jitter below that sends nothing.
+fn cursor_position(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, tools: &ToolMessageHandler) -> Option<CursorPosition> {
+	let mouse = ipp.mouse.position;
+	let size = viewport.size();
+	if mouse.x < 0. || mouse.y < 0. || mouse.x > size.x() || mouse.y > size.y() {
+		return None;
+	}
+	let (to_viewport, space) = match document.is_graph_overlay_open() {
+		true => (graph_to_viewport(document)?, CursorSpace::Graph { network: shown_network(document) }),
+		false => (document.metadata().document_to_viewport, CursorSpace::Document),
+	};
+	let position = to_viewport.inverse().transform_point2(mouse);
+	if !position.is_finite() {
+		return None;
+	}
+	let tool = tools.active_tool_icon();
+	Some(CursorPosition {
+		position: [(position.x * 100.).round() / 100., (position.y * 100.).round() / 100.],
+		space,
+		tool: (!tool.is_empty()).then_some(tool),
+	})
+}
+
+/// The other peers' pointers over the document while the canvas is showing.
+fn document_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
+	if !preferences.show_remote_cursors || document.is_graph_overlay_open() {
+		return Vec::new();
+	}
+	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
+	let to_viewport = document.metadata().document_to_viewport;
+	gdd.peers()
+		.filter_map(|remote| {
+			let cursor = remote.cursor.as_ref().filter(|cursor| matches!(cursor.space, CursorSpace::Document))?;
+			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
+		})
+		.collect()
+}
+
+/// The other peers' pointers over the network the node graph shows.
+fn graph_cursors(document: &DocumentMessageHandler, preferences: &PreferencesMessageHandler) -> Vec<FrontendRemoteCursor> {
+	if !preferences.show_remote_cursors || !document.is_graph_overlay_open() {
+		return Vec::new();
+	}
+	let Some(gdd) = document.storage().filter(|gdd| gdd.role().is_some()) else { return Vec::new() };
+	let Some(to_viewport) = graph_to_viewport(document) else { return Vec::new() };
+	let shown = shown_network(document);
+	gdd.peers()
+		.filter_map(|remote| {
+			let cursor = remote.cursor.as_ref()?;
+			let CursorSpace::Graph { network } = &cursor.space else { return None };
+			if *network != shown {
+				return None;
+			}
+			remote_cursor(remote, cursor, to_viewport, gdd.metadata())
+		})
+		.collect()
+}
+
+/// A peer's pointer in viewport pixels, `None` when the position it sent is not a finite point.
+fn remote_cursor(remote: &RemotePeer, cursor: &CursorPosition, to_viewport: DAffine2, metadata: &HistoryMetadata) -> Option<FrontendRemoteCursor> {
+	let [x, y] = cursor.position;
+	let point = to_viewport.transform_point2(DVec2::new(x, y));
+	point.is_finite().then(|| FrontendRemoteCursor {
+		x: point.x,
+		y: point.y,
+		name: display_name(remote, metadata),
+		anonymous: is_anonymous(remote, metadata),
+		color: user_color(remote.user),
+		tool: cursor.tool.clone(),
+	})
+}
+
+fn graph_to_viewport(document: &DocumentMessageHandler) -> Option<DAffine2> {
+	let metadata = document.network_interface.network_metadata(document.breadcrumb_network_path())?;
+	Some(metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
+}
+
+fn shown_network(document: &DocumentMessageHandler) -> Vec<u64> {
+	document.breadcrumb_network_path().iter().map(|id| id.0).collect()
+}
+
 /// The document's record of the user, else the name the peer announced to the room, else the stand-in.
 fn display_name(remote: &RemotePeer, metadata: &HistoryMetadata) -> String {
 	if let Some(name) = metadata.user_name(remote.user) {
@@ -653,7 +807,7 @@ mod tests {
 	#[test]
 	fn a_second_join_does_not_drop_the_first() {
 		let mut sync = SyncMessageHandler::default();
-		let (resource_storage, preferences) = Default::default();
+		let (resource_storage, preferences, ipp, viewport, tools) = Default::default();
 		let mut documents = HashMap::new();
 		for byte in [1, 2] {
 			let context = SyncMessageContext {
@@ -661,6 +815,9 @@ mod tests {
 				active_document_id: None,
 				resource_storage: &resource_storage,
 				preferences: &preferences,
+				ipp: &ipp,
+				viewport: &viewport,
+				tools: &tools,
 			};
 			let token = SessionToken([byte; 16]).to_string();
 			sync.process_message(SyncMessage::Join { token }, &mut VecDeque::new(), context);
