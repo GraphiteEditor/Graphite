@@ -23,6 +23,14 @@ fn producer_node_id(ident: &ProtoNodeIdentifier, key: impl Hash) -> NodeId {
 	NodeId(hasher.finish())
 }
 
+fn substitute_network_id(identifier: &ProtoNodeIdentifier, compile_metadata: Option<NodeCompileMetadata>) -> NetworkId {
+	let mut hasher = DefaultHasher::new();
+	"preprocessor substitute".hash(&mut hasher);
+	identifier.hash(&mut hasher);
+	compile_metadata.hash(&mut hasher);
+	NetworkId(hasher.finish())
+}
+
 #[derive(Debug, Clone)]
 struct Substitution {
 	node: DocumentNode,
@@ -38,10 +46,21 @@ pub struct Preprocessor {
 
 impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
-		network.inline_definitions().map_err(PreprocessorError::Definition)?;
+		network.validate_definitions().map_err(PreprocessorError::Definition)?;
 		self.insert_inject_scopes(network);
+
 		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
-		self.expand_network(network);
+		for definition in network.definitions.values_mut() {
+			self.replace_inputs_with_producer_nodes(definition, resolve_resource)?;
+		}
+
+		let mut substitutes = HashMap::new();
+		self.expand_network(network, &mut substitutes);
+		for definition in network.definitions.values_mut() {
+			self.expand_network(definition, &mut substitutes);
+		}
+		network.definitions.extend(substitutes);
+
 		Ok(())
 	}
 }
@@ -118,35 +137,46 @@ impl Preprocessor {
 		Ok(())
 	}
 
-	fn expand_network(&self, network: &mut NodeNetwork) {
+	/// Replaces each proto node that has a substitution with the table entry `substitutes` holds for its identifier and compile metadata.
+	fn expand_network(&self, network: &mut NodeNetwork, substitutes: &mut HashMap<NetworkId, NodeNetwork>) {
 		for node in network.nodes.values_mut() {
-			match &mut node.implementation {
-				DocumentNodeImplementation::Network(node_network) => self.expand_network(node_network),
-				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-					let compile_metadata = node.compile_metadata.take().or_else(|| self.compile_metadata.get(proto_node_identifier).copied());
-
-					if let Some(Substitution { node: new_node, wrapped_node_id }) = self.substitutions.get(proto_node_identifier) {
-						// Reconcile the document node's inputs with what the current node definition expects,
-						// since the saved document may have fewer or more inputs than the current version
-						while node.inputs.len() < new_node.inputs.len() {
-							node.inputs.push(new_node.inputs[node.inputs.len()].clone());
-						}
-						node.inputs.truncate(new_node.inputs.len());
-
-						node.implementation = new_node.implementation.clone();
-
-						// Move the compile metadata to the wrapped node because networks are not allowed to have compile metadata
-						if let DocumentNodeImplementation::Network(network) = &mut node.implementation
-							&& let Some(wrapped_node) = network.nodes.get_mut(wrapped_node_id)
-						{
-							wrapped_node.compile_metadata = compile_metadata;
-						}
-					} else {
-						node.compile_metadata = compile_metadata;
-					}
+			let identifier = match &mut node.implementation {
+				DocumentNodeImplementation::Network(node_network) => {
+					self.expand_network(node_network, substitutes);
+					continue;
 				}
-				DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => (),
+				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => proto_node_identifier.clone(),
+				DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => continue,
+			};
+			let compile_metadata = node.compile_metadata.take().or_else(|| self.compile_metadata.get(&identifier).copied());
+
+			let Some(Substitution { node: new_node, wrapped_node_id }) = self.substitutions.get(&identifier) else {
+				node.compile_metadata = compile_metadata;
+				continue;
+			};
+
+			// Reconcile the document node's inputs with what the current node definition expects,
+			// since the saved document may have fewer or more inputs than the current version
+			while node.inputs.len() < new_node.inputs.len() {
+				node.inputs.push(new_node.inputs[node.inputs.len()].clone());
 			}
+			node.inputs.truncate(new_node.inputs.len());
+
+			let DocumentNodeImplementation::Network(substitute) = &new_node.implementation else {
+				node.implementation = new_node.implementation.clone();
+				continue;
+			};
+
+			// Networks are not allowed to have compile metadata, so each set of compile metadata gets its own entry holding it on the wrapped node
+			let id = substitute_network_id(&identifier, compile_metadata);
+			substitutes.entry(id).or_insert_with(|| {
+				let mut substitute = substitute.clone();
+				if let Some(wrapped_node) = substitute.nodes.get_mut(wrapped_node_id) {
+					wrapped_node.compile_metadata = compile_metadata;
+				}
+				substitute
+			});
+			node.implementation = DocumentNodeImplementation::Definition(id);
 		}
 	}
 
@@ -537,9 +567,10 @@ mod destructure_tests {
 		// The multi-output node is substituted with a transient generated network: the struct as the hidden primary export,
 		// followed by one export per field, each pulled out of the struct by that field's extractor node
 		let node = network.nodes.get(&NodeId(0)).unwrap();
-		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+		let DocumentNodeImplementation::Definition(generated) = &node.implementation else {
 			panic!("The multi-output node should be substituted with a generated network")
 		};
+		let generated = &network.definitions[generated];
 		assert!(generated.generated, "The substituted network must be marked as generated so it stays out of node paths");
 		assert_eq!(generated.exports.len(), destructure.number_of_outputs());
 
@@ -592,9 +623,10 @@ mod destructure_tests {
 
 		// With a `#[primary]` field there is no hidden primary output, so there's one export per field
 		let node = network.nodes.get(&NodeId(0)).unwrap();
-		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+		let DocumentNodeImplementation::Definition(generated) = &node.implementation else {
 			panic!("The multi-output node should be substituted with a generated network")
 		};
+		let generated = &network.definitions[generated];
 		assert_eq!(generated.exports.len(), destructure.number_of_outputs());
 		for (field, export) in destructure.fields.iter().zip(&generated.exports) {
 			let NodeInput::Node { node_id: extractor_id, .. } = export else {
@@ -780,13 +812,15 @@ mod tests {
 			..Default::default()
 		};
 
-		Preprocessor::new().expand_network(&mut network);
+		let mut substitutes = HashMap::new();
+		Preprocessor::new().expand_network(&mut network, &mut substitutes);
 
 		let node = &network.nodes[&NodeId(0)];
 		assert_eq!(node.compile_metadata, None, "The network node replacing the substituted node should not keep its compile metadata");
-		let DocumentNodeImplementation::Network(substitution) = &node.implementation else {
+		let DocumentNodeImplementation::Definition(substitution) = &node.implementation else {
 			panic!("Boolean Operation is memoized, so it should be substituted with a network");
 		};
+		let substitution = &substitutes[substitution];
 
 		let wrapped_node = substitution
 			.nodes

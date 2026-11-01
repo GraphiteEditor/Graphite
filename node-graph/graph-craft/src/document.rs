@@ -556,6 +556,14 @@ pub struct NodeNetwork {
 /// Where a network of the document lives: a definitions table entry, or `None` for the document network itself.
 pub type NetworkLocation = Option<NetworkId>;
 
+/// The output count of `implementation`, or `None` for a table entry that `definitions` lacks.
+fn output_count_in(implementation: &DocumentNodeImplementation, definitions: &FxHashMap<NetworkId, NodeNetwork>) -> Option<usize> {
+	match implementation {
+		DocumentNodeImplementation::Definition(id) => definitions.get(id).map(|definition| definition.exports.len()),
+		_ => Some(implementation.output_count()),
+	}
+}
+
 /// One inline network that [`NodeNetwork::lift_nested_networks`] moved into the definitions table.
 /// The node `node_id` in table entry `containing` (`None` for the document network) now names it as `id`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -583,6 +591,75 @@ impl std::fmt::Display for DefinitionError {
 }
 
 impl std::error::Error for DefinitionError {}
+
+fn validate_named_definitions(
+	network: &NodeNetwork,
+	definitions: &FxHashMap<NetworkId, NodeNetwork>,
+	visiting: &mut Vec<NetworkId>,
+	validated: &mut FxHashSet<NetworkId>,
+) -> Result<(), DefinitionError> {
+	for node in network.nodes.values() {
+		match &node.implementation {
+			DocumentNodeImplementation::Definition(id) => {
+				if let Some(start) = visiting.iter().position(|visiting| visiting == id) {
+					return Err(DefinitionError::Cycle(visiting[start..].to_vec()));
+				}
+				if validated.contains(id) {
+					continue;
+				}
+
+				let definition = definitions.get(id).ok_or(DefinitionError::Missing(*id))?;
+				if !definition.definitions.is_empty() {
+					return Err(DefinitionError::NestedTable);
+				}
+				visiting.push(*id);
+				validate_named_definitions(definition, definitions, visiting, validated)?;
+				visiting.pop();
+				validated.insert(*id);
+			}
+			DocumentNodeImplementation::Network(nested) => {
+				if !nested.definitions.is_empty() {
+					return Err(DefinitionError::NestedTable);
+				}
+				validate_named_definitions(nested, definitions, visiting, validated)?;
+			}
+			_ => {}
+		}
+	}
+	Ok(())
+}
+
+/// Every table entry, each listed after the entries its nodes name. O(entries + nodes).
+fn definitions_children_first(definitions: &FxHashMap<NetworkId, NodeNetwork>) -> Vec<NetworkId> {
+	fn visit_network(network: &NodeNetwork, definitions: &FxHashMap<NetworkId, NodeNetwork>, visited: &mut FxHashSet<NetworkId>, order: &mut Vec<NetworkId>) {
+		for node in network.nodes.values() {
+			match &node.implementation {
+				DocumentNodeImplementation::Definition(id) => visit_definition(*id, definitions, visited, order),
+				DocumentNodeImplementation::Network(nested) => visit_network(nested, definitions, visited, order),
+				_ => {}
+			}
+		}
+	}
+	fn visit_definition(id: NetworkId, definitions: &FxHashMap<NetworkId, NodeNetwork>, visited: &mut FxHashSet<NetworkId>, order: &mut Vec<NetworkId>) {
+		if !visited.insert(id) {
+			return;
+		}
+		if let Some(definition) = definitions.get(&id) {
+			visit_network(definition, definitions, visited, order);
+		}
+		order.push(id);
+	}
+
+	let mut ids: Vec<NetworkId> = definitions.keys().copied().collect();
+	ids.sort();
+
+	let mut visited = FxHashSet::default();
+	let mut order = Vec::with_capacity(ids.len());
+	for id in ids {
+		visit_definition(id, definitions, &mut visited, &mut order);
+	}
+	order
+}
 
 struct DefinitionInliner {
 	definitions: FxHashMap<NetworkId, NodeNetwork>,
@@ -725,10 +802,7 @@ impl NodeNetwork {
 	}
 
 	pub fn implementation_output_count(&self, implementation: &DocumentNodeImplementation) -> usize {
-		match implementation {
-			DocumentNodeImplementation::Definition(_) => self.implementation_network(implementation).map_or(0, |network| network.exports.len()),
-			_ => implementation.output_count(),
-		}
+		output_count_in(implementation, &self.definitions).unwrap_or(0)
 	}
 
 	/// The path of the node producing this output once compiled, following network exports and the primary inputs of hidden and Passthrough nodes.
@@ -836,6 +910,11 @@ impl NodeNetwork {
 		dropped
 	}
 
+	/// Checks that every table entry a node names exists, that no entries name each other in a cycle, and that only this network holds a table.
+	pub fn validate_definitions(&self) -> Result<(), DefinitionError> {
+		validate_named_definitions(self, &self.definitions, &mut Vec::new(), &mut FxHashSet::default())
+	}
+
 	pub fn inline_definitions(&mut self) -> Result<(), DefinitionError> {
 		let mut inliner = DefinitionInliner {
 			definitions: std::mem::take(&mut self.definitions),
@@ -894,10 +973,67 @@ impl NodeNetwork {
 
 // Functions for resolving scope inputs
 impl NodeNetwork {
+	/// Resolves each scope input to the node injecting it, adding imports to carry it into nested networks.
+	///
+	/// Each table entry is resolved once, children first: the keys an entry does not inject become its imports,
+	/// and every node naming the entry gets a matching scope input that its own network then resolves.
 	pub fn resolve_scope_inputs(&mut self) {
+		let mut definitions = std::mem::take(&mut self.definitions);
+
+		let every_injection: FxHashMap<String, (NodeId, Type)> = std::iter::once(&*self)
+			.chain(definitions.values())
+			.flat_map(|network| network.scope_injections.iter().map(|(key, injection)| (key.clone(), injection.clone())))
+			.collect();
+		let outside = ScopeChain {
+			scopes: &every_injection,
+			parent: None,
+		};
+
+		let mut import_counts = FxHashMap::default();
+		for network in std::iter::once(&*self).chain(definitions.values()) {
+			network.collect_instance_input_counts(&mut import_counts);
+		}
+
+		let mut forwarded: FxHashMap<NetworkId, Vec<NodeInput>> = FxHashMap::default();
+		for id in definitions_children_first(&definitions) {
+			let Some(definition) = definitions.get_mut(&id) else { continue };
+			definition.append_forwarded_scopes(&forwarded);
+
+			// Stands in for an instance's inputs, so the forwarded keys become imports after the existing ones
+			let import_count = import_counts.get(&id).copied().unwrap_or_default();
+			let mut instance_inputs = vec![NodeInput::value(TaggedValue::None, false); import_count];
+			definition.resolve_scope_inputs_impl(Some(&outside), &mut instance_inputs);
+			forwarded.insert(id, instance_inputs.split_off(import_count));
+		}
+
+		self.append_forwarded_scopes(&forwarded);
+		self.definitions = definitions;
+
 		let mut leftover = Vec::new();
 		self.resolve_scope_inputs_impl(None, &mut leftover);
 		assert!(leftover.is_empty(), "Unresolved scope keys at top level: {leftover:?}");
+	}
+
+	fn collect_instance_input_counts(&self, counts: &mut FxHashMap<NetworkId, usize>) {
+		for node in self.nodes.values() {
+			match &node.implementation {
+				DocumentNodeImplementation::Definition(id) => {
+					counts.entry(*id).or_insert(node.inputs.len());
+				}
+				DocumentNodeImplementation::Network(nested) => nested.collect_instance_input_counts(counts),
+				_ => {}
+			}
+		}
+	}
+
+	fn append_forwarded_scopes(&mut self, forwarded: &FxHashMap<NetworkId, Vec<NodeInput>>) {
+		for node in self.nodes.values_mut() {
+			match &mut node.implementation {
+				DocumentNodeImplementation::Definition(id) => node.inputs.extend(forwarded.get(id).into_iter().flatten().cloned()),
+				DocumentNodeImplementation::Network(nested) => nested.append_forwarded_scopes(forwarded),
+				_ => {}
+			}
+		}
 	}
 
 	fn resolve_scope_inputs_impl(&mut self, parent: Option<&ScopeChain<'_>>, network_inputs: &mut Vec<NodeInput>) {
@@ -1010,29 +1146,46 @@ impl NodeNetwork {
 	}
 
 	/// Populate the [`DocumentNode::path`], which stores the location of the document node to allow for matching the resulting proto nodes to the document node for the purposes of typing and finding monitor nodes.
+	///
+	/// Table entries are not visited, since each instance gets its paths when [`Self::flatten`] copies the entry.
 	pub fn generate_node_paths(&mut self, prefix: &[NodeId]) {
+		let definitions = std::mem::take(&mut self.definitions);
+		self.generate_node_paths_with(prefix, &definitions);
+		self.definitions = definitions;
+	}
+
+	fn generate_node_paths_with(&mut self, prefix: &[NodeId], definitions: &FxHashMap<NetworkId, NodeNetwork>) {
 		for (node_id, node) in &mut self.nodes {
 			let mut new_path = prefix.to_vec();
 			if !self.generated {
 				new_path.push(*node_id);
 			}
 			if let DocumentNodeImplementation::Network(network) = &mut node.implementation {
-				network.generate_node_paths(new_path.as_slice());
+				network.generate_node_paths_with(new_path.as_slice(), definitions);
 			}
 			if node.original_location.path.is_some() {
 				log::warn!("Attempting to overwrite node path");
 			} else {
 				node.original_location.path = Some(new_path);
-				node.original_location.dependants = (0..node.implementation.output_count()).map(|_| Vec::new()).collect();
+				let output_count = output_count_in(&node.implementation, definitions).unwrap_or(1);
+				node.original_location.dependants = vec![Vec::new(); output_count];
 			}
 		}
+	}
+
+	/// A copy of table entry `id` for the instance at `instance_path`, with its node paths and dependant slots in place.
+	fn instantiate_definition(&self, id: NetworkId, instance_path: &[NodeId]) -> Option<NodeNetwork> {
+		let mut instance = self.definitions.get(&id)?.clone();
+		instance.generate_node_paths_with(instance_path, &self.definitions);
+		Some(instance)
 	}
 
 	pub fn populate_dependants(&mut self) {
 		let mut dep_changes = Vec::new();
 		for (node_id, node) in &mut self.nodes {
 			let len = node.original_location.dependants.len();
-			node.original_location.dependants.extend(vec![vec![]; (node.implementation.output_count()).max(len) - len]);
+			let output_count = output_count_in(&node.implementation, &self.definitions).unwrap_or(len);
+			node.original_location.dependants.extend(vec![vec![]; output_count.max(len) - len]);
 			for input in &node.inputs {
 				if let NodeInput::Node { node_id: dep_id, output_index, .. } = input {
 					dep_changes.push((*dep_id, *output_index, *node_id));
@@ -1173,6 +1326,14 @@ impl NodeNetwork {
 		// Replace value inputs with dedicated value nodes
 		if node.implementation != DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")) {
 			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
+		}
+
+		if let DocumentNodeImplementation::Definition(definition) = node.implementation {
+			let Some(instance) = self.instantiate_definition(definition, &path) else {
+				log::error!("Node {id} names definition {definition:?}, which the definitions table lacks");
+				return;
+			};
+			node.implementation = DocumentNodeImplementation::Network(instance);
 		}
 
 		let DocumentNodeImplementation::Network(mut inner_network) = node.implementation else {
@@ -2179,6 +2340,64 @@ mod test {
 		)
 	}
 
+	/// Two instances of `ADD`, one of them through another entry, with a scope input inside the entry it names.
+	fn shared_instances_with_a_scope_input() -> NodeNetwork {
+		let outer = NetworkId(2);
+		let mut add = add_network();
+		add.nodes.get_mut(&NodeId(1)).unwrap().inputs.push(NodeInput::scope("injected"));
+		let node = |implementation, inputs| DocumentNode {
+			implementation,
+			inputs,
+			..Default::default()
+		};
+		let value = |number| NodeInput::value(TaggedValue::Integer(number), false);
+
+		let outer_network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(10), 0)],
+			nodes: [(NodeId(10), node(DocumentNodeImplementation::Definition(ADD), vec![NodeInput::import(concrete!(i64), 0), value(2)]))]
+				.into_iter()
+				.collect(),
+			..Default::default()
+		};
+		let injected = node(DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::IdentityNode")), vec![value(7)]);
+
+		NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(11), 0)],
+			nodes: [
+				(NodeId(10), node(DocumentNodeImplementation::Definition(outer), vec![value(1)])),
+				(NodeId(11), node(DocumentNodeImplementation::Definition(ADD), vec![NodeInput::node(NodeId(10), 0), value(3)])),
+				(NodeId(20), injected),
+			]
+			.into_iter()
+			.collect(),
+			scope_injections: [("injected".to_string(), (NodeId(20), concrete!(i64)))].into_iter().collect(),
+			definitions: [(ADD, add), (outer, outer_network)].into_iter().collect(),
+			..Default::default()
+		}
+	}
+
+	#[test]
+	fn a_table_compiles_like_its_inlined_network() {
+		let table = shared_instances_with_a_scope_input();
+		let mut inlined = table.clone();
+		inlined.inline_definitions().unwrap();
+
+		// Flattening gives value nodes random IDs, which their paths carry, so only the other paths are compared
+		let compile = |network| {
+			let mut compiled = crate::graphene_compiler::Compiler {}.compile_single(network).expect("the network compiles").network;
+			let mut paths: Vec<_> = compiled
+				.nodes
+				.iter()
+				.filter(|(_, node)| node.identifier != ProtoNodeIdentifier::new("core_types::value::ClonedNode"))
+				.map(|(_, node)| node.original_location.path.clone())
+				.collect();
+			paths.sort();
+			compiled.nodes.iter_mut().for_each(|(_, node)| node.original_location = OriginalLocation::default());
+			(compiled, paths)
+		};
+		assert_eq!(compile(table), compile(inlined));
+	}
+
 	#[test]
 	fn definitions_inline_into_copies_of_their_network() {
 		let mut network = two_add_instances();
@@ -2244,13 +2463,18 @@ mod test {
 				(second, network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], [])),
 			],
 		);
+		assert_eq!(cyclic.validate_definitions(), Err(DefinitionError::Cycle(vec![first, second])));
 		assert_eq!(cyclic.inline_definitions(), Err(DefinitionError::Cycle(vec![first, second])));
 
 		let mut missing = network_with([(NodeId(10), DocumentNodeImplementation::Definition(first))], []);
+		assert_eq!(missing.validate_definitions(), Err(DefinitionError::Missing(first)));
 		assert_eq!(missing.inline_definitions(), Err(DefinitionError::Missing(first)));
 
 		let mut nested = network_with([(NodeId(10), DocumentNodeImplementation::Network(two_add_instances()))], []);
+		assert_eq!(nested.validate_definitions(), Err(DefinitionError::NestedTable));
 		assert_eq!(nested.inline_definitions(), Err(DefinitionError::NestedTable));
+
+		assert_eq!(two_add_instances().validate_definitions(), Ok(()));
 	}
 
 	#[test]
