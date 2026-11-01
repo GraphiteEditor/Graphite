@@ -231,8 +231,29 @@ impl DocumentHistory {
 	}
 
 	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) -> bool {
-		let Some(storage) = self.storage.as_mut() else { return false };
-		storage.redo_retired_step(rev).inspect_err(|error| log::error!("Redoing the dropped step failed: {error}")).is_ok()
+		self.change_line(|storage| storage.redo_retired_step(rev), "Redoing the dropped step failed")
+	}
+
+	pub fn drop_step(&mut self, rev: document_graph_storage::Rev) -> bool {
+		self.change_line(|storage| storage.drop_step(rev), "Removing the step failed")
+	}
+
+	pub fn move_head_to(&mut self, rev: document_graph_storage::Rev) -> bool {
+		self.change_line(|storage| storage.move_head(rev), "Moving the head failed")
+	}
+
+	fn change_line(&mut self, change: impl FnOnce(&mut document_format::GddV1) -> Result<(), document_format::Error>, failure: &str) -> bool {
+		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
+			return false;
+		};
+		change(storage).inspect_err(|error| log::error!("{failure}: {error}")).is_ok()
+	}
+
+	/// Forgets the legacy snapshots once the head has moved off their line.
+	pub fn clear_legacy(&mut self) {
+		self.legacy_undo_stack.clear();
+		self.legacy_redo_stack.clear();
+		self.undo_notes.clear();
 	}
 
 	pub fn retire_storage_interaction(&mut self) {

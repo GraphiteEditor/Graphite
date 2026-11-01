@@ -458,6 +458,23 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Move the head back to an ancestor, keeping the later line as a branch. A non-retiring peer asks the retirer.
+	#[cfg(feature = "network")]
+	pub fn move_head(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let (moved, touched) = self.session.move_head_to(rev)?;
+			self.remote_changes.touched.extend(touched);
+			self.persist_registry_snapshot()?;
+			self.persist_session_state()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_head_move(moved)?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_move(rev)?;
+		}
+		Ok(())
+	}
+
 	/// Redo a dropped step as a copy on top of the line. A non-retiring peer asks the retirer.
 	#[cfg(feature = "network")]
 	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
