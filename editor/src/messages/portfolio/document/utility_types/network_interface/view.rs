@@ -92,11 +92,10 @@ impl<'a, 'p> NetworkView<'a, 'p> {
 	}
 
 	pub fn implementation_metadata(&self, node_id: &NodeId) -> Result<Option<&'a NodeNetworkMetadata>, NetworkError> {
-		let network_metadata = match self.implementation(node_id)? {
-			DocumentNodeImplementation::Network(_) => self.node_metadata(node_id)?.persistent_metadata.network_metadata.as_ref(),
-			DocumentNodeImplementation::Definition(id) => self.interface.network_metadata.persistent_metadata.definitions.get(id),
-			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => return Ok(None),
+		let DocumentNodeImplementation::Definition(id) = self.implementation(node_id)? else {
+			return Ok(None);
 		};
+		let network_metadata = self.interface.network_metadata.persistent_metadata.definitions.get(id);
 		network_metadata.map(Some).ok_or(NetworkError::NestedMetadataNotFound { node_id: *node_id })
 	}
 

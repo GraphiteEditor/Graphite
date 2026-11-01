@@ -1,5 +1,5 @@
 use super::*;
-use graph_craft::document::OwnedNetworkLocation;
+use graph_craft::document::NetworkLocation;
 use graph_craft::runtime_delta::RuntimeDelta;
 
 mod accessors;
@@ -210,30 +210,27 @@ impl NodeNetworkInterface {
 
 		for (offset, export) in exports.into_iter().enumerate() {
 			self.deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-				network: location.to_owned_location(),
+				network: location,
 				export_index: index + offset,
 				input: Some(export),
 			}));
 		}
 		if let Some(vacated) = vacated {
 			self.deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-				network: location.to_owned_location(),
+				network: location,
 				export_index: vacated,
 				input: None,
 			}));
 		}
 
-		if location.is_root() {
+		if location.is_none() {
 			return;
 		}
 		let Some(metadata) = self.network_metadata.nested_metadata(location) else { return };
 		let export_names = NetworkMetadataChange::ExportNames(metadata.persistent_metadata.export_names.clone());
 		let export_descriptions = descriptions_changed.then(|| NetworkMetadataChange::ExportDescriptions(metadata.persistent_metadata.export_descriptions.clone()));
 		for change in std::iter::once(export_names).chain(export_descriptions) {
-			self.deltas.push(EditorDelta::NetworkMetadata {
-				network: location.to_owned_location(),
-				change,
-			});
+			self.deltas.push(EditorDelta::NetworkMetadata { network: location, change });
 		}
 	}
 
@@ -360,20 +357,11 @@ impl NodeNetworkInterface {
 
 		// Overwriting an existing entry replaces the node and everything nested under it, which is what
 		// distinguishes the two from the storage side.
-		let network = location.to_owned_location();
 		self.deltas.push(EditorDelta::Graph(match previous_node.is_some() {
-			true => RuntimeDelta::ReplaceNode {
-				network: network.clone(),
-				node_id,
-				node,
-			},
-			false => RuntimeDelta::AddNode {
-				network: network.clone(),
-				node_id,
-				node,
-			},
+			true => RuntimeDelta::ReplaceNode { network: location, node_id, node },
+			false => RuntimeDelta::AddNode { network: location, node_id, node },
 		}));
-		self.deltas.push(EditorDelta::NodeMetadataSnapshot { network, node_id, metadata });
+		self.deltas.push(EditorDelta::NodeMetadataSnapshot { network: location, node_id, metadata });
 
 		previous_node
 			.zip(previous_metadata)
@@ -400,10 +388,7 @@ impl NodeNetworkInterface {
 		let metadata = self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata.node_metadata.remove(&node_id);
 
 		if node.is_some() {
-			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNode {
-				network: location.to_owned_location(),
-				node_id,
-			}));
+			self.deltas.push(EditorDelta::Graph(RuntimeDelta::RemoveNode { network: location, node_id }));
 		}
 
 		node.zip(metadata).map(|(node, metadata)| NodeTemplate::from_parts(node, metadata.persistent_metadata))
@@ -481,7 +466,7 @@ impl NodeNetworkInterface {
 			self.insert_missing_definition(named);
 		}
 
-		let location = OwnedNetworkLocation::definition(id);
+		let location = Some(id);
 		self.deltas.push(EditorDelta::Graph(RuntimeDelta::AddNetwork {
 			id,
 			network: Box::new(network.clone()),
@@ -492,7 +477,7 @@ impl NodeNetworkInterface {
 		for node_id in node_ids {
 			let node_metadata = Box::new(metadata.persistent_metadata.node_metadata[&node_id].persistent_metadata.clone());
 			self.deltas.push(EditorDelta::NodeMetadataSnapshot {
-				network: location.clone(),
+				network: location,
 				node_id,
 				metadata: node_metadata,
 			});
@@ -511,7 +496,7 @@ impl NodeNetworkInterface {
 				NetworkMetadataChange::ExportDescriptions(persistent_metadata.export_descriptions.clone()),
 			]);
 		for change in changes {
-			self.deltas.push(EditorDelta::NetworkMetadata { network: location.clone(), change });
+			self.deltas.push(EditorDelta::NetworkMetadata { network: location, change });
 		}
 
 		self.network.get_mut().network_mut().definitions.insert(id, network);
@@ -605,7 +590,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Locates the network after forking the catalog entries along the path.
-	pub(super) fn locate_for_write<'p>(&mut self, network_path: &'p [NodeId]) -> Option<NetworkLocation<'p>> {
+	pub(super) fn locate_for_write(&mut self, network_path: &[NodeId]) -> Option<NetworkLocation> {
 		self.fork_catalog_entries_along(network_path);
 		self.locate(network_path)
 	}
@@ -708,9 +693,9 @@ impl NodeNetworkInterface {
 			let edited_nodes = new_deltas
 				.iter()
 				.filter_map(|delta| match delta {
-					EditorDelta::Graph(RuntimeDelta::AddNode { network, node_id, .. } | RuntimeDelta::ReplaceNode { network, node_id, .. }) if network.as_location().is_root() => Some(*node_id),
+					EditorDelta::Graph(RuntimeDelta::AddNode { network, node_id, .. } | RuntimeDelta::ReplaceNode { network, node_id, .. }) if network.is_none() => Some(*node_id),
 					// Judged by what the input holds now, since splicing in a node briefly disconnects a wire to a placeholder value
-					EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, .. }) if network.as_location().is_root() => {
+					EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id, input_index, .. }) if network.is_none() => {
 						let input = self.input_from_connector(&InputConnector::node_at_index(*node_id, *input_index), &[]);
 						input.is_some_and(|input| input.as_value().is_some()).then_some(*node_id)
 					}
@@ -759,13 +744,13 @@ fn input_slot_mut<'a>(network: &'a mut NodeNetwork, connector: &InputConnector) 
 fn input_write_delta(connector: &InputConnector, location: NetworkLocation, input: NodeInput) -> EditorDelta {
 	EditorDelta::Graph(match connector {
 		InputConnector::Node { node_id, input_index } => RuntimeDelta::SetInput {
-			network: location.to_owned_location(),
+			network: location,
 			node_id: *node_id,
 			input_index: *input_index,
 			input,
 		},
 		InputConnector::Export(export_index) => RuntimeDelta::SetExport {
-			network: location.to_owned_location(),
+			network: location,
 			export_index: *export_index,
 			input: Some(input),
 		},

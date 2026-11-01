@@ -553,67 +553,8 @@ pub struct NodeNetwork {
 	pub generated: bool,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NetworkLocation<'a> {
-	pub definition: Option<NetworkId>,
-	pub inline_path: &'a [NodeId],
-}
-
-impl NetworkLocation<'_> {
-	pub const ROOT: NetworkLocation<'static> = NetworkLocation { definition: None, inline_path: &[] };
-
-	pub fn to_owned_location(self) -> OwnedNetworkLocation {
-		OwnedNetworkLocation {
-			definition: self.definition,
-			inline_path: self.inline_path.to_vec(),
-		}
-	}
-
-	pub fn child(self, node_id: NodeId) -> OwnedNetworkLocation {
-		let mut location = self.to_owned_location();
-		location.inline_path.push(node_id);
-		location
-	}
-
-	/// The location of the network that the node `node_id` in this network implements with `implementation`.
-	pub fn implemented_by(self, node_id: NodeId, implementation: &DocumentNodeImplementation) -> OwnedNetworkLocation {
-		match implementation {
-			DocumentNodeImplementation::Definition(id) => OwnedNetworkLocation::definition(*id),
-			_ => self.child(node_id),
-		}
-	}
-
-	pub fn is_root(self) -> bool {
-		self == Self::ROOT
-	}
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct OwnedNetworkLocation {
-	pub definition: Option<NetworkId>,
-	pub inline_path: Vec<NodeId>,
-}
-
-impl OwnedNetworkLocation {
-	pub const ROOT: OwnedNetworkLocation = OwnedNetworkLocation {
-		definition: None,
-		inline_path: Vec::new(),
-	};
-
-	pub fn definition(id: NetworkId) -> Self {
-		Self {
-			definition: Some(id),
-			inline_path: Vec::new(),
-		}
-	}
-
-	pub fn as_location(&self) -> NetworkLocation<'_> {
-		NetworkLocation {
-			definition: self.definition,
-			inline_path: &self.inline_path,
-		}
-	}
-}
+/// Where a network of the document lives: a definitions table entry, or `None` for the document network itself.
+pub type NetworkLocation = Option<NetworkId>;
 
 /// One inline network that [`NodeNetwork::lift_nested_networks`] moved into the definitions table.
 /// The node `node_id` in table entry `containing` (`None` for the document network) now names it as `id`.
@@ -752,49 +693,27 @@ impl NodeNetwork {
 		self.located_network_mut(location)
 	}
 
-	pub fn locate<'a>(&self, nested_path: &'a [NodeId]) -> Option<NetworkLocation<'a>> {
-		let mut location = NetworkLocation {
-			definition: None,
-			inline_path: nested_path,
-		};
-		let mut network = self;
-
-		for (index, segment) in nested_path.iter().enumerate() {
-			let implementation = &network.nodes.get(segment)?.implementation;
-			if let DocumentNodeImplementation::Definition(id) = implementation {
-				location = NetworkLocation {
-					definition: Some(*id),
-					inline_path: &nested_path[index + 1..],
-				};
-			}
-			network = self.implementation_network(implementation)?;
+	/// The location of the network at `nested_path`, or `None` if the path doesn't end at a table entry.
+	pub fn locate(&self, nested_path: &[NodeId]) -> Option<NetworkLocation> {
+		let Some((node_id, parent_path)) = nested_path.split_last() else { return Some(None) };
+		match self.nested_network(parent_path)?.nodes.get(node_id)?.implementation {
+			DocumentNodeImplementation::Definition(id) => Some(Some(id)),
+			_ => None,
 		}
-
-		Some(location)
 	}
 
 	pub fn located_network(&self, location: NetworkLocation) -> Option<&Self> {
-		let mut network = match location.definition {
-			Some(id) => self.definitions.get(&id)?,
-			None => self,
-		};
-
-		for segment in location.inline_path {
-			network = network.nodes.get(segment)?.implementation.get_network()?;
+		match location {
+			Some(id) => self.definitions.get(&id),
+			None => Some(self),
 		}
-		Some(network)
 	}
 
 	pub fn located_network_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
-		let mut network = match location.definition {
-			Some(id) => self.definitions.get_mut(&id)?,
-			None => self,
-		};
-
-		for segment in location.inline_path {
-			network = network.nodes.get_mut(segment)?.implementation.get_network_mut()?;
+		match location {
+			Some(id) => self.definitions.get_mut(&id),
+			None => Some(self),
 		}
-		Some(network)
 	}
 
 	pub fn implementation_network<'a>(&'a self, implementation: &'a DocumentNodeImplementation) -> Option<&'a Self> {
@@ -2341,13 +2260,7 @@ mod test {
 		network.nested_network_mut(&[NodeId(10)]).unwrap().nodes.insert(NodeId(2), added.clone());
 
 		assert_eq!(network.nested_network(&[NodeId(11)]).unwrap().nodes.get(&NodeId(2)), Some(&added));
-		assert_eq!(
-			network.locate(&[NodeId(11)]),
-			Some(NetworkLocation {
-				definition: Some(ADD),
-				inline_path: &[]
-			})
-		);
+		assert_eq!(network.locate(&[NodeId(11)]), Some(Some(ADD)));
 		assert_eq!(network.implementation_output_count(&DocumentNodeImplementation::Definition(ADD)), 1);
 	}
 

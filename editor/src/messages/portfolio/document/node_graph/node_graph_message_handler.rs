@@ -514,7 +514,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(NodeGraphMessage::BeginEditLayerName { node_id: layer_id });
 					return;
 				}
-				if let Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) = network_interface.implementation(&node_id, selection_network_path) {
+				if let Some(DocumentNodeImplementation::Definition(_)) = network_interface.implementation(&node_id, selection_network_path) {
 					responses.add(DocumentMessage::EnterNestedNetwork { node_id });
 				}
 			}

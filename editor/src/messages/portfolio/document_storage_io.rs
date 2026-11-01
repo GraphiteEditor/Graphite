@@ -308,6 +308,8 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 		}
 	});
 
+	document.network_interface.lift_nested_networks();
+
 	// Ensure each node has the metadata for its inputs
 	for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
 		document.network_interface.validate_input_metadata(node_id, node, &path);
@@ -343,7 +345,6 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 		}
 	}
 
-	document.network_interface.lift_nested_networks();
 	document.network_interface.give_diverged_catalog_entries_new_ids();
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();

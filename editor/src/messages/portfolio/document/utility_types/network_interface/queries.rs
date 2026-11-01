@@ -83,7 +83,6 @@ impl NodeNetworkInterface {
 			for (node_id, node) in &network.nodes {
 				let mut enclosing_definitions = enclosing_definitions.clone();
 				match node.implementation {
-					DocumentNodeImplementation::Network(_) => {}
 					DocumentNodeImplementation::Definition(id) if !enclosing_definitions.contains(&id) => enclosing_definitions.push(id),
 					_ => continue,
 				}
@@ -101,7 +100,7 @@ impl NodeNetworkInterface {
 		Some(network)
 	}
 
-	pub fn locate<'p>(&self, network_path: &'p [NodeId]) -> Option<NetworkLocation<'p>> {
+	pub fn locate(&self, network_path: &[NodeId]) -> Option<NetworkLocation> {
 		self.document_network().locate(network_path)
 	}
 
@@ -194,11 +193,7 @@ impl NodeNetworkInterface {
 
 	pub fn encapsulating_nodes(&self, network_path: &[NodeId]) -> Vec<(Vec<NodeId>, NodeId)> {
 		let Some((&node_id, parent_path)) = network_path.split_last() else { return Vec::new() };
-		let Some(NetworkLocation {
-			definition: Some(instantiated),
-			inline_path: [],
-		}) = self.locate(network_path)
-		else {
+		let Some(Some(instantiated)) = self.locate(network_path) else {
 			return vec![(parent_path.to_vec(), node_id)];
 		};
 
@@ -210,7 +205,7 @@ impl NodeNetworkInterface {
 			};
 			for (id, node) in &network.nodes {
 				let is_instance = node.implementation == DocumentNodeImplementation::Definition(instantiated);
-				if is_instance && seen.insert((location.definition, location.inline_path.to_vec(), *id)) {
+				if is_instance && seen.insert((location, *id)) {
 					instances.push((path.to_vec(), *id));
 				}
 			}

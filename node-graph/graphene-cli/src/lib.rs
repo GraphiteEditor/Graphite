@@ -8,7 +8,7 @@ use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
@@ -70,13 +70,13 @@ pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocume
 
 /// The name of each node, keyed by the path the dump visits it at.
 /// This is its display name, or else the reference of the network it implements.
-fn instance_names(network: &NodeNetwork, references: &HashMap<OwnedNetworkLocation, String>, display_names: &HashMap<(OwnedNetworkLocation, NodeId), String>) -> HashMap<Vec<NodeId>, String> {
+fn instance_names(network: &NodeNetwork, references: &HashMap<NetworkLocation, String>, display_names: &HashMap<(NetworkLocation, NodeId), String>) -> HashMap<Vec<NodeId>, String> {
 	network
 		.recursive_nodes()
 		.filter_map(|(id, _, path)| {
-			let containing = network.locate(&path)?.to_owned_location();
+			let containing = network.locate(&path)?;
 			let node_path = [path.as_slice(), &[*id]].concat();
-			let implemented = network.locate(&node_path).map(NetworkLocation::to_owned_location);
+			let implemented = network.locate(&node_path);
 
 			let display_name = display_names.get(&(containing, *id)).filter(|name| !name.is_empty());
 			let reference = implemented.and_then(|location| references.get(&location)).filter(|name| !name.is_empty());

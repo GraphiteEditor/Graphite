@@ -402,7 +402,7 @@ impl<L: Layout> Gdd<L> {
 		&self,
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
-	) -> Result<std::collections::HashMap<graph_craft::document::OwnedNetworkLocation, document_graph_storage::NetworkId>, CommitError> {
+	) -> Result<std::collections::HashMap<graph_craft::document::NetworkLocation, document_graph_storage::NetworkId>, CommitError> {
 		self.session.network_ids(network, metadata)
 	}
 
