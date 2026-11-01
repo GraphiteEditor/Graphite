@@ -261,6 +261,46 @@ mod editor_commands {
 		WorkspaceMessage::FocusPanel { panel_type }.into()
 	}
 
+	/// Show or hide the deltas of one interaction in the History panel
+	fn expand_history_interaction(id: String, expanded: bool) -> Message {
+		HistoryMessage::Expand { id, expanded }.into()
+	}
+
+	/// Show older interactions in the History panel
+	fn load_more_history() -> Message {
+		HistoryMessage::LoadMore.into()
+	}
+
+	/// Move the head to an interaction shown in the History panel
+	fn go_back_to_history_interaction(id: String) -> Message {
+		HistoryMessage::GoBack { id }.into()
+	}
+
+	/// Remove one interaction from the line, keeping the later ones
+	fn remove_history_interaction(id: String) -> Message {
+		HistoryMessage::RemoveStep { id }.into()
+	}
+
+	/// Redo an undone interaction, or reapply an abandoned one
+	fn bring_back_history_interaction(id: String) -> Message {
+		HistoryMessage::BringBack { id }.into()
+	}
+
+	/// Show a branch's line in the History panel, or the head's line when `id` is `None`
+	fn follow_history_branch(id: Option<String>) -> Message {
+		HistoryMessage::Follow { id }.into()
+	}
+
+	/// Name an interaction in the History panel. An empty label removes the name
+	fn rename_history_interaction(id: String, label: String) -> Message {
+		HistoryMessage::Rename { id, label }.into()
+	}
+
+	/// Add or remove a tag on an interaction in the History panel
+	fn tag_history_interaction(id: String, tag: String, on: bool) -> Message {
+		HistoryMessage::Tag { id, tag, on }.into()
+	}
+
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),

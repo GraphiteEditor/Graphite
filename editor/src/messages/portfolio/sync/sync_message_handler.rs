@@ -413,7 +413,10 @@ impl SyncMessageHandler {
 					refresh_session_views(responses);
 				}
 				Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
-				Event::MetadataChanged => refresh_session_views(responses),
+				Event::MetadataChanged => {
+					refresh_session_views(responses);
+					responses.add(HistoryMessage::Refresh);
+				}
 				// Cursors are gathered afresh on every poll
 				Event::CursorMoved { .. } => {}
 			}
@@ -515,7 +518,7 @@ fn load_resource_future(document_id: DocumentId, to: TransportPeerId, hash: Reso
 }
 
 /// Wall-clock milliseconds since the Unix epoch.
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
 	#[cfg(target_arch = "wasm32")]
 	{
 		js_sys::Date::now()
