@@ -4,7 +4,7 @@ use std::collections::{BTreeMap, HashMap};
 use core_types::memo::MemoHash;
 use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NodeInput as GraphCraftNodeInput, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NetworkLocation, NodeInput as GraphCraftNodeInput, NodeNetwork};
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -137,10 +137,10 @@ fn runtime_network_id(id: NetworkId) -> RuntimeNetworkId {
 }
 
 /// Where the network stored as `id` sits in the runtime. This is the root or an entry in the root's table.
-fn runtime_location(id: NetworkId) -> OwnedNetworkLocation {
+fn runtime_location(id: NetworkId) -> NetworkLocation {
 	match id {
-		ROOT_NETWORK => OwnedNetworkLocation::default(),
-		id => OwnedNetworkLocation::definition(runtime_network_id(id)),
+		ROOT_NETWORK => NetworkLocation::default(),
+		id => Some(runtime_network_id(id)),
 	}
 }
 
@@ -153,7 +153,7 @@ fn runtime_node_id(global_id: NodeId, node: &Node) -> RuntimeNodeId {
 /// A node in runtime form with its metadata entry.
 pub struct ProjectedNode {
 	/// The runtime location of the network the node sits in.
-	pub network: OwnedNetworkLocation,
+	pub network: NetworkLocation,
 	pub local_id: RuntimeNodeId,
 	pub node: DocumentNode,
 	pub metadata: NodeMetadataEntry,
@@ -161,7 +161,7 @@ pub struct ProjectedNode {
 
 /// A network's own runtime form without its nodes, as [`RuntimeProjection::network_entry`] produces it.
 pub struct ProjectedNetwork {
-	pub network: OwnedNetworkLocation,
+	pub network: NetworkLocation,
 	pub exports: Vec<GraphCraftNodeInput>,
 	pub scope_injections: FxHashMap<String, (RuntimeNodeId, Type)>,
 	pub metadata: NetworkMetadataEntry,
@@ -186,12 +186,12 @@ impl Registry {
 
 impl RuntimeProjection<'_> {
 	/// The runtime location of `network`, or `None` if the root does not reach it.
-	pub fn network_location(&self, network: NetworkId) -> Option<OwnedNetworkLocation> {
+	pub fn network_location(&self, network: NetworkId) -> Option<NetworkLocation> {
 		(network == ROOT_NETWORK || self.reachable.contains(&network)).then(|| runtime_location(network))
 	}
 
 	/// The location of the node's network in the runtime, and the node's ID in that network.
-	pub fn node_address(&self, id: NodeId) -> Option<(OwnedNetworkLocation, RuntimeNodeId)> {
+	pub fn node_address(&self, id: NodeId) -> Option<(NetworkLocation, RuntimeNodeId)> {
 		let node = self.context.registry.node_instances.get(&id)?;
 		Some((self.network_location(node.network)?, runtime_node_id(id, node)))
 	}
@@ -210,7 +210,7 @@ impl RuntimeProjection<'_> {
 
 		Ok(ProjectedNode {
 			node: convert_node(&self.context, node)?,
-			metadata: extract_ui_metadata(node, id, network.clone(), local_id),
+			metadata: extract_ui_metadata(node, id, network, local_id),
 			network,
 			local_id,
 		})
@@ -223,7 +223,7 @@ impl RuntimeProjection<'_> {
 		let location = self.network_location(id).ok_or(ConversionError::NetworkNotFound(id))?;
 
 		Ok(ProjectedNetwork {
-			metadata: extract_network_metadata(registry, &network.attributes, location.clone(), id),
+			metadata: extract_network_metadata(registry, &network.attributes, location, id),
 			scope_injections: read_scope_injections(registry, id, &network.attributes)?,
 			exports: convert_exports(registry, id, network)?,
 			network: location,
@@ -296,13 +296,13 @@ fn convert_network(
 	let network = context.registry.network_or_removed(network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 	let location = runtime_location(network_id);
 
-	network_metadata.push(extract_network_metadata(context.registry, &network.attributes, location.clone(), network_id));
+	network_metadata.push(extract_network_metadata(context.registry, &network.attributes, location, network_id));
 
 	let mut nodes: FxHashMap<RuntimeNodeId, DocumentNode> = FxHashMap::default();
 	for &(global_id, node) in context.nodes_by_network.get(&network_id).map(Vec::as_slice).unwrap_or_default() {
 		let runtime_id = runtime_node_id(global_id, node);
 
-		node_metadata.push(extract_ui_metadata(node, global_id, location.clone(), runtime_id));
+		node_metadata.push(extract_ui_metadata(node, global_id, location, runtime_id));
 
 		// Two storage nodes resolving to the same runtime ID would silently collapse into one on
 		// insert, dropping a node from the reconstructed graph.
@@ -366,7 +366,7 @@ fn read_scope_injections(registry: &Registry, network_id: NetworkId, attributes:
 /// Emitted for every node, since `storage_id` is worth restoring even where no `ui::*` attribute is.
 /// `input_metadata` is always sized to match `node.inputs.len()` for a strict slot-by-slot rebuild;
 /// empty slots use `InputMetadataEntry::default()`.
-fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: OwnedNetworkLocation, local_id: RuntimeNodeId) -> NodeMetadataEntry {
+fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: NetworkLocation, local_id: RuntimeNodeId) -> NodeMetadataEntry {
 	let position: Option<Position> = node.attributes.get_typed(node::ui::POSITION);
 	let is_layer = node.attributes.get_or(node::ui::IS_LAYER, false);
 	let display_name: Option<String> = node.attributes.get_typed(node::ui::DISPLAY_NAME);
@@ -395,7 +395,7 @@ fn extract_ui_metadata(node: &crate::Node, storage_id: NodeId, network: OwnedNet
 /// Node references stored here are storage IDs, resolved back to runtime-local IDs the way
 /// `read_scope_injections` does. A reference to a node that is no longer in this network is dropped
 /// rather than failing the conversion: a pinned node can have been deleted.
-fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network: OwnedNetworkLocation, network_id: NetworkId) -> NetworkMetadataEntry {
+fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes, network: NetworkLocation, network_id: NetworkId) -> NetworkMetadataEntry {
 	let to_runtime_id = |storage_id: NodeId| {
 		let node = registry.node_instances.get(&storage_id).filter(|node| node.network == network_id)?;
 		Some(runtime_node_id(storage_id, node))

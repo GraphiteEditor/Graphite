@@ -390,7 +390,7 @@ impl NodeNetworkInterface {
 					.any(|connector| type_feeds_input(source_type, connector, conversions))
 			}
 			// The wire reaches every interior input fed by the import, so each of them has to accept it
-			Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
+			Some(DocumentNodeImplementation::Definition(_)) => {
 				let nested_path = [network_path, &[*node_id]].concat();
 				let interior_inputs = self
 					.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -434,7 +434,7 @@ impl NodeNetworkInterface {
 					Box::new(move |source_type| connectors.iter().any(|connector| type_feeds_input(source_type, connector, conversions)))
 				}
 				// The wire reaches every interior input fed by the import, so each of them has to accept it
-				Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
+				Some(DocumentNodeImplementation::Definition(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
 					let interior_inputs = self
 						.with_outward_wires(&nested_path, |outward_wires| outward_wires.get(&OutputConnector::Import(*input_index)).cloned())
@@ -522,7 +522,7 @@ impl NodeNetworkInterface {
 					.map(|node_io| node_io.return_value.nested_type().clone())
 					.collect(),
 				// A subgraph's output carries whatever feeds its export
-				Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_)) => {
+				Some(DocumentNodeImplementation::Definition(_)) => {
 					let nested_path = [network_path, &[*node_id]].concat();
 					let export = InputConnector::Export(*output_index);
 					match self.upstream_output_connector(&export, &nested_path) {

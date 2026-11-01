@@ -4,7 +4,7 @@
 //! reach the document without also reaching the delta buffer.
 
 use super::*;
-use graph_craft::document::OwnedNetworkLocation;
+use graph_craft::document::NetworkLocation;
 use graph_craft::runtime_delta::RuntimeDelta;
 
 /// A network's selection undo and redo stacks, borrowed together since every operation on one is
@@ -45,7 +45,7 @@ impl<'a> NodeMut<'a> {
 		metadata: &'a mut DocumentNodePersistentMetadata,
 		definition_metadata: Option<&'a mut NodeNetworkPersistentMetadata>,
 		deltas: &'a mut Vec<EditorDelta>,
-		network: NetworkLocation<'a>,
+		network: NetworkLocation,
 		node_id: NodeId,
 	) -> Self {
 		Self {
@@ -76,9 +76,6 @@ impl<'m> InterfaceMut<'m> {
 		if let Some(definition_metadata) = definition_metadata {
 			return Self::of_network(definition_metadata);
 		}
-		if let Some(network_metadata) = &mut metadata.network_metadata {
-			return Self::of_network(&mut network_metadata.persistent_metadata);
-		}
 		Self {
 			input_metadata: &mut metadata.input_metadata,
 			output_names: &mut metadata.output_names,
@@ -91,7 +88,7 @@ impl<'m> InterfaceMut<'m> {
 /// what it wrote without its caller repeating it.
 struct NodeDeltas<'a> {
 	pub(super) deltas: &'a mut Vec<EditorDelta>,
-	network: NetworkLocation<'a>,
+	network: NetworkLocation,
 	node_id: NodeId,
 }
 
@@ -104,12 +101,8 @@ impl NodeDeltas<'_> {
 		});
 	}
 
-	/// Records a change to the network the node implements with `implementation`.
-	fn owned_network(&mut self, implementation: &DocumentNodeImplementation, change: NetworkMetadataChange) {
-		self.deltas.push(EditorDelta::NetworkMetadata {
-			network: self.network.implemented_by(self.node_id, implementation),
-			change,
-		});
+	fn owned_network(&mut self, network: NetworkId, change: NetworkMetadataChange) {
+		self.deltas.push(EditorDelta::NetworkMetadata { network: Some(network), change });
 	}
 
 	fn graph(&mut self, delta: RuntimeDelta) {
@@ -132,8 +125,8 @@ impl NodeDeltas<'_> {
 		});
 	}
 
-	fn network(&self) -> OwnedNetworkLocation {
-		self.network.to_owned_location()
+	fn network(&self) -> NetworkLocation {
+		self.network
 	}
 
 	fn node_id(&self) -> NodeId {
@@ -367,28 +360,32 @@ impl NodeMut<'_> {
 		changed
 	}
 
-	fn interface_on_network(&self) -> bool {
-		self.definition_metadata.is_some() || self.metadata.network_metadata.is_some()
+	/// The table entry holding the node's interface, if the node names one.
+	fn interface_network(&self) -> Option<NetworkId> {
+		match self.node.implementation {
+			DocumentNodeImplementation::Definition(id) if self.definition_metadata.is_some() => Some(id),
+			_ => None,
+		}
 	}
 
 	fn record_input_change(&mut self, change: NodeMetadataChange) {
-		match self.interface_on_network() {
-			true => self.emit_input_metadata(),
-			false => self.deltas.metadata(change),
+		match self.interface_network() {
+			Some(_) => self.emit_input_metadata(),
+			None => self.deltas.metadata(change),
 		}
 	}
 
 	fn record_output_names(&mut self, output_names: Vec<String>) {
-		match self.interface_on_network() {
-			true => self.deltas.owned_network(&self.node.implementation, NetworkMetadataChange::ExportNames(output_names)),
-			false => self.deltas.metadata(NodeMetadataChange::OutputNames(output_names)),
+		match self.interface_network() {
+			Some(network) => self.deltas.owned_network(network, NetworkMetadataChange::ExportNames(output_names)),
+			None => self.deltas.metadata(NodeMetadataChange::OutputNames(output_names)),
 		}
 	}
 
 	fn record_output_descriptions(&mut self, output_descriptions: Vec<String>) {
-		match self.interface_on_network() {
-			true => self.deltas.owned_network(&self.node.implementation, NetworkMetadataChange::ExportDescriptions(output_descriptions)),
-			false => self.deltas.metadata(NodeMetadataChange::OutputDescriptions(output_descriptions)),
+		match self.interface_network() {
+			Some(network) => self.deltas.owned_network(network, NetworkMetadataChange::ExportDescriptions(output_descriptions)),
+			None => self.deltas.metadata(NodeMetadataChange::OutputDescriptions(output_descriptions)),
 		}
 	}
 
@@ -396,9 +393,6 @@ impl NodeMut<'_> {
 	pub(crate) fn input_metadata(&self) -> &[InputMetadata] {
 		if let Some(definition_metadata) = &self.definition_metadata {
 			return &definition_metadata.import_metadata;
-		}
-		if let Some(network_metadata) = &self.metadata.network_metadata {
-			return &network_metadata.persistent_metadata.import_metadata;
 		}
 		&self.metadata.input_metadata
 	}
@@ -518,9 +512,9 @@ impl NodeMut<'_> {
 
 	fn emit_input_metadata(&mut self) {
 		let input_metadata = self.input_metadata().to_vec();
-		match self.interface_on_network() {
-			true => self.deltas.owned_network(&self.node.implementation, NetworkMetadataChange::ImportMetadata(input_metadata)),
-			false => self.deltas.input_metadata(input_metadata),
+		match self.interface_network() {
+			Some(network) => self.deltas.owned_network(network, NetworkMetadataChange::ImportMetadata(input_metadata)),
+			None => self.deltas.input_metadata(input_metadata),
 		}
 	}
 }
@@ -532,11 +526,11 @@ impl NodeMut<'_> {
 pub(crate) struct NetworkMut<'a> {
 	pub(super) metadata: &'a mut NodeNetworkPersistentMetadata,
 	pub(super) deltas: &'a mut Vec<EditorDelta>,
-	pub(super) network: NetworkLocation<'a>,
+	pub(super) network: NetworkLocation,
 }
 
 impl<'a> NetworkMut<'a> {
-	pub(super) fn new(metadata: &'a mut NodeNetworkPersistentMetadata, deltas: &'a mut Vec<EditorDelta>, network: NetworkLocation<'a>) -> Self {
+	pub(super) fn new(metadata: &'a mut NodeNetworkPersistentMetadata, deltas: &'a mut Vec<EditorDelta>, network: NetworkLocation) -> Self {
 		Self { metadata, deltas, network }
 	}
 }
@@ -655,10 +649,7 @@ impl NetworkMut<'_> {
 	}
 
 	fn emit(&mut self, change: NetworkMetadataChange) {
-		self.deltas.push(EditorDelta::NetworkMetadata {
-			network: self.network.to_owned_location(),
-			change,
-		});
+		self.deltas.push(EditorDelta::NetworkMetadata { network: self.network, change });
 	}
 
 	/// The transform from node graph space to viewport space.

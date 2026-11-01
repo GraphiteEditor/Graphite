@@ -562,28 +562,17 @@ impl PartialEq for NodeNetworkMetadata {
 
 impl NodeNetworkMetadata {
 	pub fn nested_metadata(&self, location: NetworkLocation) -> Option<&Self> {
-		let mut network_metadata = match location.definition {
-			Some(id) => self.persistent_metadata.definitions.get(&id)?,
-			None => self,
-		};
-
-		for segment in location.inline_path {
-			network_metadata = network_metadata.persistent_metadata.node_metadata.get(segment)?.persistent_metadata.network_metadata.as_ref()?;
+		match location {
+			Some(id) => self.persistent_metadata.definitions.get(&id),
+			None => Some(self),
 		}
-		Some(network_metadata)
 	}
 
-	/// Get the mutable nested network given by the path of node ids
 	pub fn nested_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
-		let mut network_metadata = match location.definition {
-			Some(id) => self.persistent_metadata.definitions.get_mut(&id)?,
-			None => self,
-		};
-
-		for segment in location.inline_path {
-			network_metadata = network_metadata.persistent_metadata.node_metadata.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?;
+		match location {
+			Some(id) => self.persistent_metadata.definitions.get_mut(&id),
+			None => Some(self),
 		}
-		Some(network_metadata)
 	}
 
 	pub fn move_interface_metadata_into_networks(&mut self, document_network: &NodeNetwork) {
@@ -605,12 +594,8 @@ impl NodeNetworkMetadata {
 	/// Moves the metadata of each network that [`NodeNetwork::lift_nested_networks`] lifted into the definitions table.
 	pub fn lift_nested_metadata(&mut self, lifted: &[LiftedNetwork]) {
 		for entry in lifted {
-			let containing = NetworkLocation {
-				definition: entry.containing,
-				inline_path: &[],
-			};
 			let network_metadata = self
-				.nested_metadata_mut(containing)
+				.nested_metadata_mut(entry.containing)
 				.and_then(|containing| containing.persistent_metadata.node_metadata.get_mut(&entry.node_id))
 				.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.take())
 				.unwrap_or_default();
@@ -630,7 +615,7 @@ impl NodeNetworkMetadata {
 		instantiated: Option<NetworkId>,
 	) -> Option<(&mut DocumentNodeMetadata, Option<&mut NodeNetworkPersistentMetadata>)> {
 		let NodeNetworkPersistentMetadata { node_metadata, definitions, .. } = &mut self.persistent_metadata;
-		let (mut nodes, definition) = match (location.definition, instantiated) {
+		let (nodes, definition) = match (location, instantiated) {
 			(None, None) => (node_metadata, None),
 			(None, Some(instantiated)) => (node_metadata, Some(definitions.get_mut(&instantiated)?)),
 			(Some(containing), None) => (&mut definitions.get_mut(&containing)?.persistent_metadata.node_metadata, None),
@@ -641,9 +626,6 @@ impl NodeNetworkMetadata {
 			(Some(_), Some(_)) => return None,
 		};
 
-		for segment in location.inline_path {
-			nodes = &mut nodes.get_mut(segment)?.persistent_metadata.network_metadata.as_mut()?.persistent_metadata.node_metadata;
-		}
 		Some((nodes.get_mut(node_id)?, definition.map(|definition| &mut definition.persistent_metadata)))
 	}
 }
@@ -1284,9 +1266,6 @@ pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(R
 	for input in &node.inputs {
 		visit_input_resource(input, visit);
 	}
-	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-		visit_network_resources(nested, visit);
-	}
 }
 
 pub(crate) fn visit_input_resource(input: &NodeInput, visit: &mut impl FnMut(ResourceId)) {
@@ -1302,7 +1281,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn resource_visits_reach_nested_networks_and_exports() {
+	fn resource_visits_reach_definitions_and_exports() {
 		let shared = ResourceId::from(1);
 		let uses = |id: ResourceId| NodeInput::value(TaggedValue::Resource(id), false);
 		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
@@ -1317,13 +1296,14 @@ mod tests {
 				(
 					NodeId(3),
 					DocumentNode {
-						implementation: DocumentNodeImplementation::Network(inner),
+						implementation: DocumentNodeImplementation::Definition(NetworkId(4)),
 						..Default::default()
 					},
 				),
 			]
 			.into_iter()
 			.collect(),
+			definitions: [(NetworkId(4), inner)].into_iter().collect(),
 			..Default::default()
 		};
 

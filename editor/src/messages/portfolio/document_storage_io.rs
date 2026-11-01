@@ -347,6 +347,8 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	let (document_serialized_content, resource_hash_to_id_migration_map) = document_migration_replace_resources_referenced_by_hash(document_serialized_content);
 
 	let mut document = DocumentMessageHandler::deserialize_document(&document_serialized_content)?;
+	document.network_interface.lift_nested_networks();
+
 	// Upgrade the document's nodes to be compatible with the latest version
 	document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
@@ -404,7 +406,6 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 		}
 	}
 
-	document.network_interface.lift_nested_networks();
 	document.network_interface.give_diverged_catalog_entries_new_ids();
 	document.network_interface.discard_deltas();
 	document.require_whole_document_stage();

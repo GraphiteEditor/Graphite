@@ -34,7 +34,7 @@ fn assert_documents_match(original: &NodeNetworkInterface, round_trip: &RoundTri
 
 	for (network, local_id) in node_locations(original) {
 		let at = format!("node {local_id:?} in network {network:?}");
-		let network_path = network.as_location();
+		let network_path = network;
 		assert_eq!(rebuilt_view.position(network_path, local_id), original_view.position(network_path, local_id), "position: {at}");
 		assert_eq!(rebuilt_view.is_layer(network_path, local_id), original_view.is_layer(network_path, local_id), "is_layer: {at}");
 		assert_eq!(

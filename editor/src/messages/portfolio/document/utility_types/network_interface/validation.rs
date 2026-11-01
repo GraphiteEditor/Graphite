@@ -77,12 +77,9 @@ impl NodeNetworkInterface {
 		}
 
 		for (node_id, node) in &network.nodes {
-			let descend = match node.implementation {
-				DocumentNodeImplementation::Network(_) => true,
-				DocumentNodeImplementation::Definition(id) => validated_definitions.insert(id),
-				_ => false,
-			};
-			if descend {
+			if let DocumentNodeImplementation::Definition(id) = node.implementation
+				&& validated_definitions.insert(id)
+			{
 				path.push(*node_id);
 				self.validate_outward_wires(path, validated_definitions, violations);
 				path.pop();
@@ -167,7 +164,6 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 		let persistent = &metadata.persistent_metadata;
 
 		let implementation_metadata = match &node.implementation {
-			DocumentNodeImplementation::Network(_) => persistent.network_metadata.as_ref(),
 			DocumentNodeImplementation::Definition(id) => document_metadata.persistent_metadata.definitions.get(id),
 			_ => None,
 		};
@@ -200,20 +196,9 @@ fn validate_network(root: &mut DocumentRoot, network: &NodeNetwork, network_meta
 			}
 		};
 
-		// Nested network metadata must exist exactly for nodes implemented as networks
 		match (&node.implementation, &persistent.network_metadata) {
-			(DocumentNodeImplementation::Network(nested_network), Some(nested_metadata)) => {
-				validate_output_names(nested_network.exports.len(), violations);
-
-				path.push(*node_id);
-				validate_network(root, nested_network, nested_metadata, path, Some(node.inputs.len()), violations);
-				path.pop();
-			}
-			(DocumentNodeImplementation::Network(_), None) => {
-				violations.push(format!("Network node {node_id} in network {path:?} is missing its nested network metadata"));
-			}
 			(_, Some(_)) => {
-				violations.push(format!("Non-network node {node_id} in network {path:?} has nested network metadata"));
+				violations.push(format!("Node {node_id} in network {path:?} has nested network metadata, which belongs in the definitions table"));
 			}
 			(DocumentNodeImplementation::Definition(id), None) => {
 				let Some(definition) = document_network.definitions.get(id) else {

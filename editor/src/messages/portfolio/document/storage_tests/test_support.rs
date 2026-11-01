@@ -7,7 +7,7 @@ use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::PeerId;
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeId, NodeNetwork};
 
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::network_interface::storage_metadata::{DocumentSettings, StorageMetadataView, build_interface_from_storage};
@@ -70,44 +70,28 @@ pub fn node_paths(interface: &NodeNetworkInterface) -> Vec<(Vec<NodeId>, NodeId)
 	out
 }
 
-/// Every network the document holds, once each.
-/// This is the document network, its definitions, and the inline networks nested in them.
-pub fn network_locations(interface: &NodeNetworkInterface) -> Vec<OwnedNetworkLocation> {
-	fn walk(network: &NodeNetwork, location: OwnedNetworkLocation, out: &mut Vec<OwnedNetworkLocation>) {
-		for (&local_id, node) in &network.nodes {
-			if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-				walk(nested, location.as_location().child(local_id), out);
-			}
-		}
-		out.push(location);
-	}
-
-	let document_network = interface.document_network();
-	let mut out = Vec::new();
-	walk(document_network, OwnedNetworkLocation::default(), &mut out);
-	for (&id, definition) in &document_network.definitions {
-		walk(definition, OwnedNetworkLocation::definition(id), &mut out);
-	}
-	out
+/// Every network the document holds, once each: the document network and its definitions.
+pub fn network_locations(interface: &NodeNetworkInterface) -> Vec<NetworkLocation> {
+	std::iter::once(None).chain(interface.document_network().definitions.keys().copied().map(Some)).collect()
 }
 
 /// Every node the document holds, once each.
 /// Each node is addressed by the location of its network.
-pub fn node_locations(interface: &NodeNetworkInterface) -> Vec<(OwnedNetworkLocation, NodeId)> {
+pub fn node_locations(interface: &NodeNetworkInterface) -> Vec<(NetworkLocation, NodeId)> {
 	network_locations(interface)
 		.into_iter()
 		.flat_map(|location| {
 			let node_ids: Vec<NodeId> = located_network(interface, &location).map(|network| network.nodes.keys().copied().collect()).unwrap_or_default();
-			node_ids.into_iter().map(move |node_id| (location.clone(), node_id))
+			node_ids.into_iter().map(move |node_id| (location, node_id))
 		})
 		.collect()
 }
 
-pub fn located_network<'a>(interface: &'a NodeNetworkInterface, location: &OwnedNetworkLocation) -> Option<&'a NodeNetwork> {
-	interface.document_network().located_network(location.as_location())
+pub fn located_network<'a>(interface: &'a NodeNetworkInterface, location: &NetworkLocation) -> Option<&'a NodeNetwork> {
+	interface.document_network().located_network(*location)
 }
 
-pub fn located_node<'a>(interface: &'a NodeNetworkInterface, location: &OwnedNetworkLocation, node_id: NodeId) -> Option<&'a DocumentNode> {
+pub fn located_node<'a>(interface: &'a NodeNetworkInterface, location: &NetworkLocation, node_id: NodeId) -> Option<&'a DocumentNode> {
 	located_network(interface, location)?.nodes.get(&node_id)
 }
 

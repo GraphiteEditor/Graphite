@@ -650,10 +650,7 @@ impl NodeNetworkInterface {
 					self.unload_all_nodes_bounding_box(network_path);
 
 					// A nested network draws its interior ports from the encapsulating node's inputs
-					if matches!(
-						self.implementation(node_id, network_path),
-						Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_))
-					) {
+					if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Definition(_))) {
 						let nested_path = [network_path, &[*node_id]].concat();
 						self.invalidate_import_export(&nested_path);
 					}

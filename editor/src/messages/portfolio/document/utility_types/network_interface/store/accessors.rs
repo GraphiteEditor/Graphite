@@ -23,9 +23,7 @@ impl NodeNetworkInterface {
 
 	/// The persistent metadata of the network at `location`, or `None` for the document network, which no node implements.
 	pub(super) fn subnetwork_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut NodeNetworkPersistentMetadata> {
-		if location.is_root() {
-			return None;
-		}
+		location?;
 		Some(&mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata)
 	}
 
@@ -74,7 +72,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// The persistent metadata of the network at `location`.
-	pub(crate) fn network_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>) -> Option<NetworkMut<'a>> {
+	pub(crate) fn network_mut_at<'a>(&'a mut self, location: NetworkLocation) -> Option<NetworkMut<'a>> {
 		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata;
 		Some(NetworkMut::new(metadata, &mut self.deltas, location))
 	}
@@ -100,7 +98,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Both halves of the node `node_id` in the network at `location`, or `None` if either is missing.
-	pub(crate) fn node_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>, node_id: NodeId) -> Option<NodeMut<'a>> {
+	pub(crate) fn node_mut_at<'a>(&'a mut self, location: NetworkLocation, node_id: NodeId) -> Option<NodeMut<'a>> {
 		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&node_id)?;
 		let instantiated = match node.implementation {
 			DocumentNodeImplementation::Definition(id) => Some(id),

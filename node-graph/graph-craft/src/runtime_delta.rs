@@ -1,4 +1,4 @@
-use crate::document::{DocumentNode, NetworkId, NodeId, NodeInput, NodeNetwork, OwnedNetworkLocation};
+use crate::document::{DocumentNode, NetworkId, NetworkLocation, NodeId, NodeInput, NodeNetwork};
 use core_types::Type;
 
 /// One mutation's worth of structural graph change, carrying its post-change data as plain runtime
@@ -28,22 +28,22 @@ pub enum RuntimeDelta {
 	},
 	/// The node's nested network, if it implements one, rides inside the [`DocumentNode`].
 	AddNode {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 		node: Box<DocumentNode>,
 	},
 	ReplaceNode {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 		node: Box<DocumentNode>,
 	},
 	/// Address-only: removal snapshots come from the storage layer's working registry.
 	RemoveNode {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 	},
 	SetInput {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 		input_index: usize,
 		input: NodeInput,
@@ -51,24 +51,24 @@ pub enum RuntimeDelta {
 	/// A node's whole input list, which is how a change to the number or order of its slots is
 	/// expressed, since [`SetInput`](Self::SetInput) addresses one index and cannot move the others.
 	SetInputs {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 		inputs: Vec<NodeInput>,
 	},
 	/// `None` removes the slot, matching the storage op this converts to.
 	SetExport {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		export_index: usize,
 		input: Option<NodeInput>,
 	},
 	SetVisibility {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 		visible: bool,
 	},
 	/// The [`Type`] of argument the node can be evaluated with.
 	SetCallArgument {
-		network: OwnedNetworkLocation,
+		network: NetworkLocation,
 		node_id: NodeId,
 		call_argument: Type,
 	},
