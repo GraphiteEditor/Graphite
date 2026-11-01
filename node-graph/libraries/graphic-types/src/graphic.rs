@@ -360,6 +360,16 @@ impl TryFromGraphic for Raster<CPU> {
 	}
 }
 
+impl TryFromGraphic for Raster<GPU> {
+	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
+		match graphic {
+			Graphic::RasterGPU(item) => Some(List::new_from_item(item)),
+			Graphic::RasterGPUList(list) => Some(list),
+			_ => None,
+		}
+	}
+}
+
 impl TryFromGraphic for Color {
 	fn try_from_graphic(graphic: Graphic) -> Option<List<Self>> {
 		match graphic {
