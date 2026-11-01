@@ -94,6 +94,7 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) manifest: Manifest,
 	/// See [`HistoryMetadata`].
 	pub(crate) metadata: HistoryMetadata,
+	pub(crate) wall_clock_ms: Option<f64>,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
 	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
@@ -110,6 +111,9 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
 	#[cfg(feature = "network")]
 	pub(crate) remote_changes: network::RemoteChanges,
+	pub(crate) interactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
+	pub(crate) own_last_staged_ms: Option<f64>,
+	pub(crate) own_staged_since_tick: bool,
 	/// Whether the document belongs in its room, persisted so a reopen reconnects.
 	pub(crate) shared: bool,
 }
@@ -139,9 +143,13 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 		Self {
 			view_settings: self.view_settings.clone(),
 			network_view_settings: self.network_view_settings.clone(),
+			wall_clock_ms: self.wall_clock_ms,
 			byte_store: self.byte_store.clone(),
 			migrated: self.migrated,
 			shared: self.shared,
+			interactions_seen: self.interactions_seen.clone(),
+			own_last_staged_ms: self.own_last_staged_ms,
+			own_staged_since_tick: self.own_staged_since_tick,
 			..Self::assemble(self.session.clone(), self.working.clone(), self.layout.clone(), self.manifest.clone(), self.metadata.clone())
 		}
 	}
@@ -156,6 +164,7 @@ impl<L: Layout> Gdd<L> {
 			layout,
 			manifest,
 			metadata,
+			wall_clock_ms: None,
 			view_settings: Default::default(),
 			network_view_settings: Default::default(),
 			byte_store: None,
@@ -166,6 +175,9 @@ impl<L: Layout> Gdd<L> {
 			pending_persist: PendingPersist::default(),
 			#[cfg(feature = "network")]
 			remote_changes: network::RemoteChanges::default(),
+			interactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
 			shared: false,
 		}
 	}
@@ -448,6 +460,10 @@ impl<L: Layout> Gdd<L> {
 	/// undo has dropped them from the current registry.
 	pub fn all_referenced_resource_hashes(&self) -> std::collections::HashSet<ResourceHash> {
 		self.session.all_referenced_resource_hashes()
+	}
+
+	pub fn resource_gc_roots(&self) -> std::collections::HashSet<ResourceHash> {
+		self.session.resource_gc_roots()
 	}
 
 	/// Drop the session and return the working-copy container + layout.
