@@ -137,6 +137,12 @@ impl<L: Layout + Send + Sync> LoadResource for Gdd<L> {
 
 pub struct ResourceProxy<T: Layout>(AnyContainer, T);
 
+impl<T: Layout + Clone> Clone for ResourceProxy<T> {
+	fn clone(&self) -> Self {
+		Self(self.0.clone(), self.1.clone())
+	}
+}
+
 impl<L: Layout + Send + Sync> LoadResource for ResourceProxy<L> {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {
 		Box::pin(async move {
