@@ -1308,7 +1308,9 @@ impl NodeNetwork {
 						NodeInput::Node { node_id, output_index } => {
 							nested_node.populate_first_network_input(node_id, output_index, nested_input_index);
 							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("Unable to find input node {node_id:?}"));
-							input_node.original_location.dependants[output_index].push(nested_node_id);
+							if let Some(deps) = input_node.original_location.dependants.get_mut(output_index) {
+								deps.push(nested_node_id);
+							}
 						}
 						NodeInput::Import { import_index, .. } => {
 							let parent_input_index = import_index;
@@ -1331,8 +1333,9 @@ impl NodeNetwork {
 		for parent_input in &node.inputs {
 			if let NodeInput::Node { node_id, output_index } = *parent_input
 				&& let Some(input_node) = self.nodes.get_mut(&node_id)
+				&& let Some(deps) = input_node.original_location.dependants.get_mut(output_index)
 			{
-				input_node.original_location.dependants[output_index].retain(|&dependant| dependant != id);
+				deps.retain(|&dependant| dependant != id);
 			}
 		}
 
@@ -1356,12 +1359,16 @@ impl NodeNetwork {
 				}
 
 				if let Some(new_output_node) = self.nodes.get_mut(node_id) {
-					for dep in &original_location.dependants[i] {
-						new_output_node.original_location.dependants[*output_index].push(*dep);
-					}
+					if let Some(dependants) = original_location.dependants.get(i) {
+						if let Some(new_deps) = new_output_node.original_location.dependants.get_mut(*output_index) {
+							for dep in dependants {
+								new_deps.push(*dep);
+							}
 
-					// Remove references from dependants on wrapper
-					new_output_node.original_location.dependants[*output_index].retain(|&dependant| dependant != id);
+							// Remove references from dependants on wrapper
+							new_deps.retain(|&dependant| dependant != id);
+						}
+					}
 				}
 			}
 
@@ -1437,10 +1444,12 @@ impl NodeNetwork {
 			..
 		} = node.inputs[0]
 			&& let Some(upstream_node) = self.nodes.get_mut(&upstream_node_id)
+			&& let Some(dependants_of_upstream) = upstream_node.original_location.dependants.get_mut(upstream_output_index)
 		{
-			let dependants_of_upstream = &mut upstream_node.original_location.dependants[upstream_output_index];
 			// Add our dependants to the list of dependants
-			dependants_of_upstream.extend(node.original_location.dependants[0].iter().copied());
+			if let Some(our_dependants) = node.original_location.dependants.first() {
+				dependants_of_upstream.extend(our_dependants.iter().copied());
+			}
 			// Remove ourselves from the list of dependants
 			dependants_of_upstream.retain(|&dependant| dependant != passthrough_id);
 		};
@@ -1453,7 +1462,8 @@ impl NodeNetwork {
 		}
 
 		// Look at all downstream nodes
-		for &dependant_id in &node.original_location.dependants[0] {
+		let downstream_dependants = node.original_location.dependants.first().map(|d| d.as_slice()).unwrap_or_default();
+		for &dependant_id in downstream_dependants {
 			let Some(dependant_node) = self.nodes.get_mut(&dependant_id) else {
 				error!("remove_passthrough_node got a dependant id {dependant_id:?} that did not exist in the network\n{self:#?}");
 				continue;
@@ -1838,6 +1848,53 @@ mod test {
 		println!("{network:#?}");
 
 		assert_eq!(expected, network);
+	}
+
+	#[test]
+	fn flatten_nested_network_with_missing_dependant_index() {
+		let inner = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(10), 0)],
+			nodes: [(
+				NodeId(10),
+				DocumentNode {
+					inputs: vec![],
+					implementation: DocumentNodeImplementation::Network(NodeNetwork::default()),
+					original_location: OriginalLocation {
+						dependants: vec![],
+						..Default::default()
+					},
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(NodeId(1), 0)],
+			nodes: [(
+				NodeId(1),
+				DocumentNode {
+					inputs: vec![],
+					implementation: DocumentNodeImplementation::Network(inner),
+					original_location: OriginalLocation {
+						dependants: vec![],
+						..Default::default()
+					},
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+
+		network.flatten_with_fns(NodeId(1), |_, inner_id| inner_id, NodeId::new);
+
+		assert_eq!(network.exports, vec![NodeInput::node(NodeId(10), 0)]);
+		assert!(network.nodes.contains_key(&NodeId(10)));
+		assert!(!network.nodes.contains_key(&NodeId(1)));
 	}
 
 	#[test]

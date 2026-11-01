@@ -1401,8 +1401,10 @@ impl NodeNetworkInterface {
 		let primary_output = RootNode { node_id: toggle_id, output_index: 0 };
 		let previewing = if self.previewing(network_path).previews(toggle_id) || self.root_node(network_path) == Some(primary_output) {
 			Previewing::No
-		} else {
+		} else if self.number_of_outputs(&toggle_id, network_path) > 0 {
 			Previewing::Yes { previewed: primary_output }
+		} else {
+			return;
 		};
 		self.set_previewing(previewing, network_path);
 	}
