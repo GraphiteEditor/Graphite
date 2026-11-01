@@ -235,6 +235,10 @@ pub enum NodeGraphMessage {
 		network_path: Vec<NodeId>,
 		alias: String,
 	},
+	/// Gives the node its own copy of the network it shares with other nodes.
+	MakeUnique {
+		node_id: NodeId,
+	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
 		is_layer: bool,

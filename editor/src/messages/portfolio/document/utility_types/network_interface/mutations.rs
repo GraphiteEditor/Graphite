@@ -394,6 +394,11 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	/// Gives the node its own copy of the network it shares with other nodes, returning whether it had one to copy.
+	pub fn make_unique(&mut self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		self.fork_definition(NodeLocator::new(*node_id, network_path))
+	}
+
 	/// Replaces the implementation and corresponding metadata.
 	pub fn replace_implementation(&mut self, node_id: &NodeId, network_path: &[NodeId], new_template: &mut NodeTemplate) {
 		let (new_implementation, new_network_metadata) = std::mem::take(&mut new_template.implementation).into_parts();

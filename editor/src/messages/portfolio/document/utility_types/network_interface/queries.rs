@@ -515,6 +515,22 @@ impl NodeNetworkInterface {
 		ordered.push(id);
 	}
 
+	/// Whether the node names a table entry that another node names too.
+	pub fn is_shared(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
+		let Some(location) = self.locate(network_path) else { return false };
+		let network = self.document_network();
+		let Some(DocumentNodeImplementation::Definition(id)) = network.located_network(location).and_then(|located| located.nodes.get(node_id)).map(|node| &node.implementation) else {
+			return false;
+		};
+
+		let naming = std::iter::once(network)
+			.chain(network.definitions.values())
+			.flat_map(|network| network.nodes.values())
+			.filter(|node| node.implementation == DocumentNodeImplementation::Definition(*id))
+			.count();
+		naming > 1
+	}
+
 	/// Create a node template from an existing node.
 	pub fn create_node_template(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<NodeTemplate> {
 		self.query(network_path, "create_node_template", |view| view.create_node_template(node_id))

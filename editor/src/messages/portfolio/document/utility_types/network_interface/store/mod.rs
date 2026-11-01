@@ -542,6 +542,29 @@ impl NodeNetworkInterface {
 		renamed
 	}
 
+	/// Gives the node its own copy of the table entry it names, leaving the entries nested in it shared.
+	pub(crate) fn fork_definition(&mut self, locator: NodeLocator) -> bool {
+		let Some(location) = self.locate(locator.network_path) else { return false };
+		let Some(DocumentNodeImplementation::Definition(id)) = self
+			.document_network()
+			.located_network(location)
+			.and_then(|network| network.nodes.get(&locator.node_id))
+			.map(|node| node.implementation.clone())
+		else {
+			return false;
+		};
+		let Some(network) = self.document_network().definitions.get(&id).cloned() else { return false };
+		let Some(metadata) = self.network_metadata.persistent_metadata.definitions.get(&id).cloned() else {
+			return false;
+		};
+
+		let unique = NetworkId::new();
+		self.insert_definition(unique, network, metadata);
+		let Some(mut node) = self.node_mut_at(location, locator.node_id) else { return false };
+		node.replace_implementation(DocumentNodeImplementation::Definition(unique));
+		true
+	}
+
 	/// Adds the carried table entry `id` if the document does not hold it.
 	fn insert_carried_definition(&mut self, id: NetworkId) {
 		if self.document_network().definitions.contains_key(&id) {

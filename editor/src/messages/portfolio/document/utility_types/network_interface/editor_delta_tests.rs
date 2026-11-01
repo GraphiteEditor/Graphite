@@ -946,6 +946,7 @@ fn insert_shared_copy(editor: &mut EditorTestUtils, layer: NodeId) -> NodeId {
 
 	let copy = NodeId::new();
 	interface.insert_node_entry(super::NodeLocator::new(copy, &[]), super::NodeTemplate::from_parts(node, metadata));
+	interface.unload_outward_wires(&[]);
 	interface.settle_definitions();
 	copy
 }
@@ -1094,4 +1095,39 @@ async fn a_resource_exported_and_removed_in_one_batch_leaves_nothing_behind() {
 		interface.set_input(&InputConnector::Export(0), NodeInput::value(TaggedValue::Resource(resource), false), &[layer]);
 		interface.delete_nodes(vec![layer], true, &[]);
 	});
+}
+
+/// Making one of two instances unique gives it its own copy of the network, so an edit inside it no longer reaches the other.
+#[tokio::test]
+async fn making_an_instance_unique_forks_its_network() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+
+	let (layer, definition) = table_layer(&editor);
+	let copy = insert_shared_copy(&mut editor, layer);
+	assert!(editor.active_document().network_interface.is_shared(&copy, &[]));
+
+	assert_stages_incrementally(&mut editor, "make an instance unique", |editor| {
+		assert!(editor.active_document_mut().network_interface.make_unique(&copy, &[]));
+	});
+
+	let interface = &editor.active_document().network_interface;
+	let graph_craft::document::DocumentNodeImplementation::Definition(forked) = interface.document_network().nodes[&copy].implementation else {
+		panic!("the copy should still name a table entry")
+	};
+	assert_ne!(forked, definition);
+	assert!(!interface.is_shared(&copy, &[]) && !interface.is_shared(&layer, &[]));
+
+	let (inner, input_index) = value_input_inside(&editor, forked);
+	let original = editor.active_document().network_interface.document_network().definitions[&definition].clone();
+	let interface = &mut editor.active_document_mut().network_interface;
+	let NodeInput::Value { tagged_value, exposed } = &interface.document_network().definitions[&forked].nodes[&inner].inputs[input_index] else {
+		unreachable!("the input was found as a value")
+	};
+	let flipped = NodeInput::value((**tagged_value).clone(), !exposed);
+	interface.set_input(&InputConnector::node_at_index(inner, input_index), flipped, &[copy]);
+
+	assert_ne!(interface.document_network().definitions[&forked], original, "the edit should change the copy's network");
+	assert_eq!(interface.document_network().definitions[&definition], original, "the original's network should be untouched");
 }
