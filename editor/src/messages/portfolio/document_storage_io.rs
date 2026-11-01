@@ -286,6 +286,8 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 	let (document_serialized_content, resource_hash_to_id_migration_map) = document_migration_replace_resources_referenced_by_hash(document_serialized_content);
 
 	let mut document = DocumentMessageHandler::deserialize_document(&document_serialized_content)?;
+	document.network_interface.lift_nested_networks();
+
 	// Upgrade the document's nodes to be compatible with the latest version
 	document_migration_upgrades(&mut document, reset_node_definitions_on_open);
 
@@ -307,8 +309,6 @@ pub(super) fn load_legacy_document(document_serialized_content: String, byte_sto
 			document.resources.registry.push_source_back(id, DataSource::Embedded);
 		}
 	});
-
-	document.network_interface.lift_nested_networks();
 
 	// Ensure each node has the metadata for its inputs
 	for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {

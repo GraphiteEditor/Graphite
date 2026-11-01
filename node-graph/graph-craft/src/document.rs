@@ -697,7 +697,7 @@ impl NodeNetwork {
 	pub fn locate(&self, nested_path: &[NodeId]) -> Option<NetworkLocation> {
 		let Some((node_id, parent_path)) = nested_path.split_last() else { return Some(None) };
 		match self.nested_network(parent_path)?.nodes.get(node_id)?.implementation {
-			DocumentNodeImplementation::Definition(id) => Some(Some(id)),
+			DocumentNodeImplementation::Definition(id) if self.definitions.contains_key(&id) => Some(Some(id)),
 			_ => None,
 		}
 	}
