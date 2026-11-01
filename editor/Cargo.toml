@@ -22,7 +22,7 @@ gpu = ["interpreted-executor/gpu", "dep:wgpu-executor"]
 # Local dependencies
 graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
-document-format = { workspace = true, features = ["migrations"] }
+document-format = { workspace = true, features = ["migrations", "network"] }
 migration-formats = { workspace = true }
 migration-nodes = { workspace = true }
 document-graph-storage = { workspace = true, features = ["conversion"] }

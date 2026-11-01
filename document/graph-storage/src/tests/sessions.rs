@@ -1,8 +1,13 @@
 //! Peers exchanging retired history, moving the shared head, and undoing against what other peers hold.
 
+use core_types::uuid::NodeId as RuntimeNodeId;
+use graph_craft::ProtoNodeIdentifier;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput as RuntimeInput, NodeNetwork};
+
 use crate::{
-	AttributeDelta, CrdtError, Delta, History, HotOp, HotOpId, Implementation, InputSlot, MergeOutcome, Network, NetworkId, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta, ResourceEntry,
-	ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId, Value,
+	AttributeDelta, CrdtError, Delta, History, HotOp, HotOpId, Implementation, InputSlot, MergeOutcome, Network, NetworkId, NoMetadata, Node, NodeId, NodeInput, PeerId, Registry, RegistryDelta,
+	ResourceEntry, ResourceHash, ResourceId, Rev, Session, TimeStamp, UserId, Value,
 };
 use std::collections::HashSet;
 
@@ -397,6 +402,49 @@ fn rebuilt_working(session: &Session) -> Registry {
 	copy.document.working_registry
 }
 
+fn runtime_network(values: [u32; 2]) -> NodeNetwork {
+	NodeNetwork {
+		exports: vec![RuntimeInput::node(RuntimeNodeId(0), 0)],
+		nodes: [(
+			RuntimeNodeId(0),
+			DocumentNode {
+				inputs: values.iter().map(|&value| RuntimeInput::value(TaggedValue::Integer(value as i64), false)).collect(),
+				implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::identity::IdentityNode")),
+				..Default::default()
+			},
+		)]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	}
+}
+
+/// After a peer shrank a node's input list, a whole-document stage still writes the slot past the new end. It lands as
+/// a peer's write would instead of failing on every later stage.
+#[test]
+fn a_local_stage_after_a_peers_input_list_change_still_lands() {
+	let resources = graphene_resource::ResourceRegistry::new();
+	let mut a = Session::with_peer(PeerId(1));
+	a.stage_from_runtime(&runtime_network([1, 2]), &NoMetadata, &resources).expect("first stage");
+	let up_to = a.hot_log().last().unwrap().timestamp;
+	a.retire(up_to).unwrap();
+
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&mut a, &mut b);
+	let (&id, node) = b.registry().node_instances.iter().find(|(_, node)| node.inputs().len() == 2).expect("the converted node");
+	let first = node.inputs()[0].clone();
+	let shrink = b.stage_ops([RegistryDelta::SetNodeInputs { id, inputs: vec![first] }]).unwrap();
+	for hot_op in shrink {
+		a.replay_hot_op(hot_op).unwrap();
+	}
+
+	// The runtime on A still shows two inputs and edits the second one.
+	let edit = a.stage_from_runtime(&runtime_network([1, 5]), &NoMetadata, &resources);
+	// Even if that concurrent edit were refused, an edit of the first input alone must still land.
+	let later = a.stage_from_runtime(&runtime_network([9, 5]), &NoMetadata, &resources);
+	assert!(edit.is_ok() || later.is_ok(), "a later stage still lands: first {:?}, later {:?}", edit.err(), later.err());
+}
+
 struct Lcg(u64);
 impl Lcg {
 	fn below(&mut self, bound: u64) -> u64 {
@@ -439,7 +487,11 @@ fn local_op(rng: &mut Lcg, registry: &Registry) -> Option<RegistryDelta> {
 		key: key.into(),
 		value: (rng.below(4) > 0).then(|| Value::from(serde_json::json!(rng.below(50)))),
 	};
-	Some(match rng.below(9) {
+	let source_key = |rng: &mut Lcg| crate::SourceKey {
+		priority: crate::Priority::new(rng.below(2) as f64).expect("finite"),
+		peer: PeerId(1 + rng.below(2)),
+	};
+	Some(match rng.below(17) {
 		0 | 1 => RegistryDelta::ChangeDocumentAttribute {
 			delta: {
 				let key = ["x", "y"][rng.below(2) as usize];
@@ -500,7 +552,7 @@ fn local_op(rng: &mut Lcg, registry: &Registry) -> Option<RegistryDelta> {
 				new_input: input(rng),
 			}
 		}
-		_ => {
+		8 => {
 			let id = pick(rng, seen_nodes.clone())?;
 			let inputs = (0..1 + rng.below(3))
 				.map(|_| InputSlot {
@@ -511,6 +563,55 @@ fn local_op(rng: &mut Lcg, registry: &Registry) -> Option<RegistryDelta> {
 				.collect();
 			RegistryDelta::SetNodeInputs { id: NodeId(id), inputs }
 		}
+		9 => RegistryDelta::SetNetworkExport {
+			id: NetworkId(pick(rng, seen_networks.clone())?),
+			index: rng.below(2) as u32,
+			export: (rng.below(3) > 0).then(|| input(rng)),
+		},
+		10 => RegistryDelta::ChangeNetworkAttribute {
+			id: NetworkId(pick(rng, seen_networks.clone())?),
+			delta: attribute(rng, "name"),
+		},
+		11 => RegistryDelta::SetNodeImplementation {
+			id: NodeId(pick(rng, seen_nodes.clone())?),
+			implementation: Implementation::Network(NetworkId(pick(rng, seen_networks.clone())?)),
+		},
+		12 => {
+			let mut entry = ResourceEntry {
+				hash: Some(ResourceHash::from([rng.below(2) as u8; 32])),
+				..Default::default()
+			};
+			entry.force_set_source(
+				source_key(rng),
+				crate::SourceValue {
+					source: Value::from(serde_json::json!(rng.below(9))),
+					timestamp: TimeStamp::ORIGIN,
+					deleted: false,
+				},
+			);
+			RegistryDelta::AddResource {
+				id: ResourceId::from(1 + rng.below(2)),
+				entry,
+			}
+		}
+		13 => {
+			let id = ResourceId::from(1 + rng.below(2));
+			let snapshot = registry.resources.get(&id)?.clone();
+			RegistryDelta::RemoveResource { id, snapshot }
+		}
+		14 => RegistryDelta::SetResourceHash {
+			id: ResourceId::from(1 + rng.below(2)),
+			hash: Some(ResourceHash::from([rng.below(2) as u8; 32])),
+		},
+		15 => RegistryDelta::AddSource {
+			id: ResourceId::from(1 + rng.below(2)),
+			key: source_key(rng),
+			source: Value::from(serde_json::json!(rng.below(9))),
+		},
+		_ => RegistryDelta::RemoveSource {
+			id: ResourceId::from(1 + rng.below(2)),
+			key: source_key(rng),
+		},
 	})
 }
 
@@ -774,7 +875,7 @@ fn a_dropped_interaction_leaves_the_line_and_the_room_follows() {
 	host.commit_op_for_test(set_attribute("shared", 2)).expect("later step");
 	let later = host.head_rev().expect("rev");
 	host.mark_interaction_end(later);
-	host.document.history.set_retired_at(later, 1_234);
+	host.stamp_retired_at(&[later], 1_234);
 	catch_up(&mut guest, &host);
 	assert_eq!(guest.head_rev(), host.head_rev());
 	assert_eq!(guest.latest_own_interaction(), Some(undone));
@@ -1017,6 +1118,69 @@ fn discarded_hot_ops_leave_the_working_registry_at_the_snapshot() {
 	assert_eq!(session.registry(), session.retired_registry());
 }
 
+/// A peer removes a node and its nested network while another keeps writing to the node, which the newer write keeps
+/// alive. Rebuilding the runtime and staging it back unchanged must not bring the removed network back.
+#[test]
+fn restaging_an_unchanged_runtime_does_not_revive_a_nested_network_removed_under_a_live_owner() {
+	let resources = graphene_resource::ResourceRegistry::new();
+	let outer = NodeNetwork {
+		exports: vec![RuntimeInput::node(RuntimeNodeId(0), 0)],
+		nodes: [(
+			RuntimeNodeId(0),
+			DocumentNode {
+				implementation: DocumentNodeImplementation::Definition(graph_craft::document::NetworkId(9)),
+				..Default::default()
+			},
+		)]
+		.into_iter()
+		.collect(),
+		definitions: [(graph_craft::document::NetworkId(9), runtime_network([1, 2]))].into_iter().collect(),
+		..Default::default()
+	};
+	let mut a = Session::with_peer(PeerId(1));
+	let (_, conversion) = a.stage_from_runtime(&outer, &NoMetadata, &resources).expect("first stage");
+	let up_to = a.hot_log().last().unwrap().timestamp;
+	a.retire(up_to).unwrap();
+	let mut b = Session::with_peer(PeerId(2));
+	sync(&mut a, &mut b);
+
+	let (&owner, owner_node) = b
+		.registry()
+		.node_instances
+		.iter()
+		.find(|(_, node)| matches!(node.implementation(), Implementation::Network(_)))
+		.expect("the owner");
+	let Implementation::Network(nested) = *owner_node.implementation() else { unreachable!() };
+	let mut removal = vec![RegistryDelta::RemoveNode {
+		id: owner,
+		snapshot: owner_node.clone(),
+	}];
+	for (&id, node) in b.registry().node_instances.iter().filter(|(_, node)| node.network() == nested) {
+		removal.push(RegistryDelta::RemoveNode { id, snapshot: node.clone() });
+	}
+	removal.push(RegistryDelta::RemoveNetwork {
+		id: nested,
+		snapshot: b.registry().networks[&nested].clone(),
+	});
+	let removal = b.stage_ops(removal).unwrap();
+
+	// A writes to the owner later than the removal, so the owner stays and only the nested network goes.
+	for _ in 0..10 {
+		a.document.clock.tick();
+	}
+	a.stage_ops([change_node_attribute(owner, "tint", serde_json::json!(1))]).unwrap();
+	for hot_op in removal {
+		a.replay_hot_op(hot_op).unwrap();
+	}
+	assert!(a.registry().node_instances.contains_key(&owner));
+	assert!(!a.registry().networks.contains_key(&nested));
+
+	let (runtime, _) = a.registry().to_runtime_with_metadata(&conversion.declarations).expect("to runtime");
+	a.mark_runtime_current();
+	a.stage_from_runtime(&runtime, &NoMetadata, &resources).expect("restage");
+	assert!(!a.registry().networks.contains_key(&nested), "the removed network stays removed");
+}
+
 #[test]
 fn a_drop_whose_copy_fails_leaves_the_session_unchanged() {
 	let mut session = Session::with_peer(PeerId(1));
@@ -1046,4 +1210,47 @@ fn a_drop_whose_copy_fails_leaves_the_session_unchanged() {
 	assert_eq!(session.history_len(), history_len);
 	assert_eq!(session.retired_registry(), &retired);
 	assert_eq!(session.registry(), &registry);
+}
+
+/// A redo carrying the registration its retraction took back is not given a second one.
+#[test]
+fn a_batch_carrying_its_registration_is_not_given_another() {
+	let mut session = Session::with_peer(crate::PeerId(1));
+	let register = RegistryDelta::RegisterPeer {
+		peer: crate::PeerId(1),
+		user: session.user(),
+	};
+	assert_eq!(session.stage_computed_ops(vec![register]).expect("stage").len(), 1);
+}
+
+/// Only what the root reaches renders, so a removal no rendered node undoes stays a removal.
+#[test]
+fn a_removed_network_counts_as_rendered_only_when_the_root_reaches_it() {
+	let (run_by_root, nested, run_by_stray, stray) = (NetworkId(1), NetworkId(2), NetworkId(3), NetworkId(4));
+	let node = |network, runs| crate::Node {
+		presence: TimeStamp::default(),
+		network,
+		network_timestamp: TimeStamp::default(),
+		implementation: Implementation::Network(runs),
+		implementation_timestamp: TimeStamp::default(),
+		inputs: Vec::new(),
+		inputs_timestamp: TimeStamp::default(),
+		attributes: Default::default(),
+	};
+	let mut registry = Registry::default();
+	for (id, network, runs) in [(1, crate::ROOT_NETWORK, run_by_root), (2, run_by_root, nested), (3, stray, run_by_stray)] {
+		registry.node_instances.insert(crate::NodeId(id), node(network, runs));
+	}
+	for id in [run_by_root, nested, run_by_stray] {
+		let mark = crate::Tombstone {
+			content: Network::default(),
+			timestamp: TimeStamp::default(),
+			placeholder: false,
+		};
+		registry.removed_networks.insert(id, mark);
+	}
+
+	let rendered = registry.as_rendered();
+	assert!(rendered.networks.contains_key(&run_by_root) && rendered.networks.contains_key(&nested));
+	assert!(!rendered.networks.contains_key(&run_by_stray) && rendered.removed_networks.contains_key(&run_by_stray));
 }

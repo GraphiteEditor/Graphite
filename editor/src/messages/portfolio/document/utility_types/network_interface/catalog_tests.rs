@@ -1,6 +1,7 @@
 use super::template::NodeTemplateImplementation;
 use super::{InputConnector, OutputConnector, catalog};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{network_node_identifiers, resolve_network_node_type};
+use crate::messages::portfolio::document::storage_tests::test_support::round_trip_through_gdd;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::{DocumentNodeImplementation, NetworkId, NodeInput};
 use graphene_std::uuid::NodeId;
@@ -147,4 +148,15 @@ async fn an_entry_that_diverged_under_a_catalog_id_gets_a_fresh_id_on_open() {
 	let network = editor.active_document().network_interface.document_network();
 	assert!(!network.definitions.contains_key(&shipped));
 	assert!(network.definitions[&renamed].exports.len() > catalog::entry(shipped).expect("shipped").network.exports.len());
+}
+
+#[tokio::test]
+async fn a_reopened_document_keeps_its_catalog_entries() {
+	let (editor, blends) = editor_with_blends(1).await;
+	let shipped = entry_of(&editor, blends[0]);
+
+	let mut reopened = round_trip_through_gdd(editor.active_document()).await.rebuilt;
+	reopened.give_diverged_catalog_entries_new_ids();
+
+	assert!(reopened.document_network().definitions.contains_key(&shipped));
 }

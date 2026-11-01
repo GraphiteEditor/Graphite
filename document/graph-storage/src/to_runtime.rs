@@ -190,6 +190,24 @@ impl RuntimeProjection<'_> {
 		(network == ROOT_NETWORK || self.reachable.contains(&network)).then(|| runtime_location(network))
 	}
 
+	/// The table entries the root reaches, by their runtime IDs.
+	pub fn definitions(&self) -> impl Iterator<Item = RuntimeNetworkId> + '_ {
+		self.reachable.iter().map(|&id| runtime_network_id(id))
+	}
+
+	/// The nodes stored in `network`.
+	pub fn network_nodes(&self, network: NetworkId) -> impl Iterator<Item = NodeId> + '_ {
+		self.context.nodes_by_network.get(&network).into_iter().flatten().map(|&(id, _)| id)
+	}
+
+	/// The network the node implements, if it implements one.
+	pub fn implemented_network(&self, id: NodeId) -> Option<NetworkId> {
+		match self.context.registry.node_instances.get(&id)?.implementation {
+			Implementation::Network(network) => Some(network),
+			_ => None,
+		}
+	}
+
 	/// The location of the node's network in the runtime, and the node's ID in that network.
 	pub fn node_address(&self, id: NodeId) -> Option<(OwnedNetworkLocation, RuntimeNodeId)> {
 		let node = self.context.registry.node_instances.get(&id)?;

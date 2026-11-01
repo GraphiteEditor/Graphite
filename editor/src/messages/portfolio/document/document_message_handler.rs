@@ -23,7 +23,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -37,7 +37,7 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_container::AnyContainer;
 use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceId;
+use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceStorage};
 use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
@@ -53,6 +53,7 @@ use graphene_std::vector::style::{GradientStops, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -172,6 +173,9 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore")]
 	pub(crate) container: Option<AnyContainer>,
+	/// What peers changed in the working registry that the interface does not show yet, held until every declaration it needs is cached.
+	#[serde(skip)]
+	pub(crate) pending_remote: document_format::network::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -235,6 +239,7 @@ impl Default for DocumentMessageHandler {
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
 			container: None,
+			pending_remote: Default::default(),
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -1659,7 +1664,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
 				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
-				self.retire_storage_interaction();
+				self.end_storage_interaction();
 
 				self.network_interface.start_transaction();
 				self.history.push_undo(self.network_interface.clone());
@@ -2177,7 +2182,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 impl DocumentMessageHandler {
 	/// Build a document handler from a `.gdd` working copy.
-	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, declarations: Declarations, name: String, path: Option<std::path::PathBuf>) -> Self {
+	pub fn from_storage(
+		interface: NodeNetworkInterface,
+		storage: document_format::GddV1,
+		declarations: Declarations,
+		byte_store: Arc<dyn ResourceStorage>,
+		name: String,
+		path: Option<std::path::PathBuf>,
+	) -> Self {
 		let mut document = Self {
 			network_interface: interface,
 			name,
@@ -2186,11 +2198,7 @@ impl DocumentMessageHandler {
 		};
 
 		document.apply_stored_document_settings(storage.view_settings());
-		match storage.registry().to_resource_registry() {
-			Ok(resource_registry) => document.resources.registry = resource_registry,
-			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
-		}
-		document.history.set_storage(storage, declarations);
+		document.set_storage(storage, declarations, byte_store);
 
 		document
 	}
@@ -2390,8 +2398,15 @@ impl DocumentMessageHandler {
 	}
 
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
-	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+	pub fn set_storage(&mut self, mut storage: document_format::GddV1, declarations: Declarations, byte_store: Arc<dyn ResourceStorage>) {
+		storage.set_byte_store(byte_store);
 		self.history.set_storage(storage, declarations);
+		self.refresh_resource_registry();
+	}
+
+	/// Close the open storage interaction at an undo-step boundary.
+	pub(crate) fn end_storage_interaction(&mut self) {
+		self.history.end_storage_interaction();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
@@ -2420,7 +2435,8 @@ impl DocumentMessageHandler {
 		let view_settings = self.storage_view_settings();
 		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
 
-		if validate {
+		// The interface lags the registry until what peers changed is applied
+		if validate && self.pending_remote.is_empty() {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
 		}
 	}
@@ -2495,6 +2511,82 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Rebuild the runtime resource registry from storage, keeping the current one on failure. The preprocessor resolves
+	/// `Resource` inputs through it, so it must follow any interface change that comes from storage.
+	fn refresh_resource_registry(&mut self) {
+		let Some(storage) = self.history.storage() else { return };
+
+		match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => self.resources.registry = resource_registry,
+			Err(error) => log::error!("Failed to rebuild the resource registry from storage: {error}"),
+		}
+	}
+
+	/// Brings the interface into line with what peers changed in the registry, reconciling the touched entities in place
+	/// and rebuilding it whole only when the registry was rederived or the reconcile failed.
+	///
+	/// Changes that could not be applied are kept for a later call, and false is returned.
+	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
+		let changes = std::mem::take(&mut self.pending_remote);
+		if changes.is_empty() {
+			return true;
+		}
+
+		if !changes.rebuilt
+			&& let Some(gdd) = self.history.storage()
+		{
+			let peer = gdd.session().peer();
+			match self.network_interface.reconcile_remote(gdd.registry(), self.history.declarations(), &changes.touched, peer) {
+				Ok(reconciled) => {
+					self.finish_remote_reconcile(reconciled, changes.touched.resources, responses);
+					return true;
+				}
+				Err(ReconcileError::DeclarationMissing(id)) => {
+					log::debug!("Remote changes wait for declaration {id}");
+					self.pending_remote = changes;
+					return false;
+				}
+				Err(error) => log::warn!("Reconciling remote changes failed, rebuilding the interface instead: {error}"),
+			}
+		}
+
+		match self.history.rebuild_interface() {
+			Some(rebuilt) => {
+				self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+				true
+			}
+			None => {
+				self.pending_remote = changes;
+				false
+			}
+		}
+	}
+
+	/// Does for the networks a reconcile changed what a rebuild does for the whole interface.
+	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, responses: &mut VecDeque<Message>) {
+		for path in self.network_interface.paths_reaching(&reconciled.networks) {
+			self.network_interface.unload_stack_dependents(&path);
+			self.network_interface.unload_import_export_ports(&path);
+			self.network_interface.unload_all_nodes_bounding_box(&path);
+			self.network_interface.unload_outward_wires(&path);
+			self.network_interface.unload_all_nodes_click_targets(&path);
+		}
+		self.network_interface.load_structure();
+
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
+		if resources_changed {
+			self.refresh_resource_registry();
+		}
+
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
+	}
+
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
 	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
@@ -2506,6 +2598,11 @@ impl DocumentMessageHandler {
 		}
 
 		self.network_interface = rebuilt;
+		self.pending_remote = Default::default();
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
+		self.refresh_resource_registry();
 
 		if validate {
 			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
@@ -2827,14 +2924,33 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+		// The storage path below skips `undo`, which settles a glide before the snapshot moves
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+
+		// A step still hot is taken back in storage, and the interface follows only the entities that changed
+		if self.history.undo_in_storage() {
+			self.follow_storage_changes(responses);
+			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			return;
+		}
+
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
+			self.history.note_cursor_undo();
 			true
 		} else {
 			false
 		};
-
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
+	}
+
+	/// Reconciles the interface with what storage just changed under it, as for remote changes.
+	fn follow_storage_changes(&mut self, responses: &mut VecDeque<Message>) {
+		if let Some(gdd) = self.history.storage_mut() {
+			let changes = gdd.take_remote_changes();
+			self.pending_remote.extend(changes);
+		}
+		self.apply_remote_changes(responses);
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2871,13 +2987,21 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+
+		if self.history.redo_in_storage() {
+			self.follow_storage_changes(responses);
+			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			return;
+		}
+
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
+			self.history.forget_undo_note();
 			true
 		} else {
 			false
 		};
-
 		self.drive_storage_undo_redo(document_id, legacy_applied, false, validate, responses);
 	}
 
@@ -4111,6 +4235,11 @@ impl DocumentMessageHandler {
 		self.resources.collect_garbage(&used_resources);
 	}
 
+	/// The resource bytes garbage collection must keep for the stored document.
+	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
+		self.history.resource_gc_roots()
+	}
+
 	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
@@ -5114,5 +5243,21 @@ mod document_message_handler_tests {
 		(state.grid_snapping, state.snapping_enabled) = (true, false);
 		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
 		assert_bounds(&editor, rectangle, [DVec2::new(105., 32.), DVec2::new(165., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn remote_changes_that_neither_reconcile_nor_rebuild_are_kept_for_a_retry() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let document = editor.active_document_mut();
+		let storage = document.storage().expect("the document has a working copy").clone();
+		document.history.set_storage(storage, Declarations::default());
+		assert!(document.history.rebuild_interface().is_none(), "the registry should not convert without its declarations");
+
+		document.pending_remote.rebuilt = true;
+		document.apply_remote_changes(&mut VecDeque::new());
+		assert!(document.pending_remote.rebuilt, "the changes should be kept when the interface could not be rebuilt");
 	}
 }

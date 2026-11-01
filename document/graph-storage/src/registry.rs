@@ -1,5 +1,5 @@
-use crate::{Attributes, NetworkId, NodeId, PeerId, Registry, ResourceId, ResourceStore, SourceKey, TimeStamp, Tombstone};
-use std::collections::HashMap;
+use crate::{Attributes, Implementation, NetworkId, NodeId, PeerId, ROOT_NETWORK, Registry, ResourceId, ResourceStore, SourceKey, TimeStamp, Tombstone};
+use std::collections::{HashMap, HashSet};
 
 impl Registry {
 	/// The node under `id`, live or as removed, for a reference to a node the runtime cannot hold.
@@ -23,6 +23,32 @@ impl Registry {
 			removed_resources: HashMap::new(),
 			..self.clone()
 		}
+	}
+
+	/// The registry as `to_runtime` renders it. A removed network that the root still reaches through live nodes counts
+	/// as present, so a diff against the runtime does not take it for an addition.
+	pub(crate) fn as_rendered(&self) -> Registry {
+		let mut nodes_by_network: HashMap<NetworkId, Vec<&crate::Node>> = HashMap::new();
+		for node in self.node_instances.values() {
+			nodes_by_network.entry(node.network).or_default().push(node);
+		}
+
+		let mut rendered = self.clone();
+		let mut reached = HashSet::from([ROOT_NETWORK]);
+		let mut pending = vec![ROOT_NETWORK];
+		while let Some(network) = pending.pop() {
+			for node in nodes_by_network.get(&network).into_iter().flatten() {
+				if let Implementation::Network(id) = node.implementation
+					&& reached.insert(id)
+				{
+					pending.push(id);
+					if let Some(mark) = rendered.removed_networks.remove(&id) {
+						rendered.networks.insert(id, mark.content);
+					}
+				}
+			}
+		}
+		rendered
 	}
 
 	/// Whether both registries removed the same entities at the same times. Registries equal in value but not in their
