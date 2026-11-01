@@ -352,6 +352,8 @@ jobs:
       BINARYEN_VERSION: "130"
       CARGO_ABOUT_VERSION: "0.9.2"
       CARGO_BINSTALL_VERSION: "1.23.0"
+      CMAKE_VERSION: "4.4.4"
+      NINJA_VERSION: "1.13.2"
 
     steps:
       - name: 📥 Clone repository
@@ -399,13 +401,21 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           BINSTALL_DISABLE_TELEMETRY: "true"
         run: |
-          winget install --id LLVM.LLVM -e --accept-package-agreements --accept-source-agreements
-          winget install --id Kitware.CMake -e --accept-package-agreements --accept-source-agreements
-          winget install --id OpenSSL.OpenSSL -e --accept-package-agreements --accept-source-agreements
-          winget install --id GnuWin32.PkgConfig -e --accept-package-agreements --accept-source-agreements
+          # Stop at the first failed download rather than leaving a missing tool for the build to trip over later
+          $PSNativeCommandUseErrorActionPreference = $true
 
-          "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Append
-          "PKG_CONFIG_PATH=C:\Program Files\OpenSSL-Win64\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
+          # CMake and Ninja build CEF's C++ wrapper, and are downloaded since not every provider's runner image includes them or winget
+          # Windows' own `tar.exe` unzips them, since Git's GNU `tar` can't read zips and `Expand-Archive` takes minutes
+          $Unzip = "$env:SystemRoot\System32\tar.exe"
+
+          curl.exe -sSfL -o "$env:RUNNER_TEMP\cmake.zip" "https://github.com/Kitware/CMake/releases/download/v$env:CMAKE_VERSION/cmake-$env:CMAKE_VERSION-windows-x86_64.zip"
+          & $Unzip -xf "$env:RUNNER_TEMP\cmake.zip" -C $env:RUNNER_TEMP
+          "$env:RUNNER_TEMP\cmake-$env:CMAKE_VERSION-windows-x86_64\bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+
+          curl.exe -sSfL -o "$env:RUNNER_TEMP\ninja.zip" "https://github.com/ninja-build/ninja/releases/download/v$env:NINJA_VERSION/ninja-win.zip"
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\ninja" | Out-Null
+          & $Unzip -xf "$env:RUNNER_TEMP\ninja.zip" -C "$env:RUNNER_TEMP\ninja"
+          "$env:RUNNER_TEMP\ninja" | Out-File -FilePath $env:GITHUB_PATH -Append
 
           curl.exe -sSfL -o "$env:RUNNER_TEMP\binaryen.tar.gz" "https://github.com/WebAssembly/binaryen/releases/download/version_$env:BINARYEN_VERSION/binaryen-version_$env:BINARYEN_VERSION-x86_64-windows.tar.gz"
           tar -xzf "$env:RUNNER_TEMP\binaryen.tar.gz" -C $env:RUNNER_TEMP
@@ -415,7 +425,7 @@ jobs:
           cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
 
       - name: 🏗 Build Windows bundle
-        shell: bash # `cargo-about` refuses to run in powershell
+        shell: bash
         env:
           CARGO_TERM_COLOR: always
         run: cargo run build desktop${{ inputs.debug && ' debug' || '' }}
@@ -466,19 +476,47 @@ jobs:
             gh pr comment "$PR_NUMBER" --repo ${{ github.repository }} --body "$BODY"
           fi
 
+      # Azure login and signing occasionally fail on a brief outage of Azure's sign-in endpoints or the PowerShell Gallery (which the signing action installs its module from),
+      # so each is retried twice, after waiting 30 seconds and then 2 minutes
       - name: 🔑 Azure login
+        id: azure-login
         if: github.event_name == 'push'
+        continue-on-error: true
         uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
-        with:
+        with: &azure-login-inputs
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
           enable-AzPSSession: true
 
+      - name: ⏳ Wait to retry Azure login
+        if: steps.azure-login.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 30
+
+      - name: 🔑 Azure login (retry 1)
+        id: azure-login-retry
+        if: steps.azure-login.outcome == 'failure'
+        continue-on-error: true
+        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
+        with: *azure-login-inputs
+
+      - name: ⏳ Wait to retry Azure login again
+        if: steps.azure-login-retry.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 120
+
+      - name: 🔑 Azure login (retry 2)
+        if: steps.azure-login-retry.outcome == 'failure'
+        uses: azure/login@cb79c773a3cfa27f31f25eb3f677781210c9ce3d # v1.6.1
+        with: *azure-login-inputs
+
       - name: 🔏 Sign
+        id: sign
         if: github.event_name == 'push'
+        continue-on-error: true
         uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
-        with:
+        with: &signing-inputs
           endpoint: https://eus.codesigning.azure.net/
           signing-account-name: Graphite
           certificate-profile-name: Graphite
@@ -493,6 +531,28 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
           correlation-id: ${{ github.sha }}
+
+      - name: ⏳ Wait to retry signing
+        if: steps.sign.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 30
+
+      - name: 🔏 Sign (retry 1)
+        id: sign-retry
+        if: steps.sign.outcome == 'failure'
+        continue-on-error: true
+        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
+        with: *signing-inputs
+
+      - name: ⏳ Wait to retry signing again
+        if: steps.sign-retry.outcome == 'failure'
+        shell: pwsh
+        run: Start-Sleep -Seconds 120
+
+      - name: 🔏 Sign (retry 2)
+        if: steps.sign-retry.outcome == 'failure'
+        uses: azure/artifact-signing-action@b443cf8ea4124818d2ea9f043cba29fc3ec47b16 # v1.2.0
+        with: *signing-inputs
 
       - name: ✅ Verify signatures
         if: github.event_name == 'push'
