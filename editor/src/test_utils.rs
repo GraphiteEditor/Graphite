@@ -82,6 +82,7 @@ impl EditorTestUtils {
 		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
 			return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
 		}
+		self.runtime.update();
 		self.runtime.run().await;
 
 		let frontend_messages = self.dispatch(Message::Wake);

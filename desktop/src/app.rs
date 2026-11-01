@@ -5,7 +5,7 @@ use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -45,7 +45,7 @@ pub(crate) struct App {
 	desktop_wrapper: DesktopWrapper,
 	ui: UiInstance,
 	ui_frame_received: bool,
-	start_render_sender: SyncSender<()>,
+	start_render_sender: Sender<bool>,
 	ui_initialized: Option<Instant>,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	preferences: preferences::DesktopPreferences,
@@ -76,7 +76,7 @@ impl App {
 
 		let exiting = Arc::new(AtomicBool::new(false));
 
-		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+		let (start_render_sender, start_render_receiver) = std::sync::mpsc::channel();
 
 		let async_runtime = tokio::runtime::Builder::new_multi_thread()
 			.thread_name("graphite-async")
@@ -92,7 +92,7 @@ impl App {
 		};
 		let runtime_wake_sender = start_render_sender.clone();
 		let runtime_wake = move || {
-			let _ = runtime_wake_sender.try_send(());
+			let _ = runtime_wake_sender.send(false);
 		};
 		let wgpu_executor = WgpuExecutor::with_context(wgpu_context).expect("Failed to create WgpuExecutor");
 		let (desktop_wrapper, mut node_runtime) = DesktopWrapper::new(
@@ -108,10 +108,16 @@ impl App {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
+			let mut update = false;
 			loop {
+				if update {
+					node_runtime.update();
+				}
 				let texture = async_runtime.block_on(node_runtime.run());
 				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
-				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
+
+				let first = start_render_receiver.recv_timeout(Duration::from_millis(100)).unwrap_or(true);
+				update = start_render_receiver.try_iter().fold(first, |update, request| update || request);
 				if exiting_clone.load(Ordering::Relaxed) {
 					break;
 				}
@@ -154,7 +160,7 @@ impl App {
 		if self.exiting.swap(true, Ordering::Relaxed) {
 			return;
 		}
-		let _ = self.start_render_sender.send(());
+		let _ = self.start_render_sender.send(false);
 		if let Some(reason) = reason {
 			self.exit_reason = reason;
 		}
@@ -646,7 +652,7 @@ impl ApplicationHandler for App {
 						}
 						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
-					let _ = self.start_render_sender.try_send(());
+					let _ = self.start_render_sender.send(true);
 				}
 
 				if !self.ui_frame_received

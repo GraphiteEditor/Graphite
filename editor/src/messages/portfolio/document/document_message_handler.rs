@@ -4695,6 +4695,7 @@ mod document_message_handler_tests {
 			.executor
 			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO)
 			.unwrap();
+		editor.runtime.update();
 		editor.runtime.run().await;
 
 		let frontend_messages = editor.editor.handle_message(Message::Wake);
