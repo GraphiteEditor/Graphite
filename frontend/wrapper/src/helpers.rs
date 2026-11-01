@@ -7,7 +7,7 @@ use editor::messages::input_mapper::utility_types::keyboard::Key;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::messages::prelude::*;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
-use editor::task::{Clock, Spawn, Task};
+use editor::task::{Spawn, Task};
 use js_sys::{Object, Reflect};
 use std::cell::RefCell;
 use std::collections::HashSet;
@@ -67,16 +67,6 @@ pub(crate) struct WasmSpawner;
 impl Spawn for WasmSpawner {
 	fn spawn(&self, task: Task) {
 		wasm_bindgen_futures::spawn_local(task);
-	}
-}
-
-#[cfg(all(not(feature = "native"), target_family = "wasm"))]
-pub(crate) struct PerformanceClock;
-#[cfg(all(not(feature = "native"), target_family = "wasm"))]
-impl Clock for PerformanceClock {
-	fn now(&self) -> Duration {
-		let performance = window().and_then(|window| window.performance()).expect("the editor runs in a window with `performance`");
-		Duration::from_secs_f64(performance.now() / 1000.)
 	}
 }
 

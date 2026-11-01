@@ -110,7 +110,7 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 		application_io: Some(application_io.clone()),
 	});
 	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(std::time::Instant::now()));
+	let runtime = AsyncRuntime::new(spawner.clone());
 
 	let mut network = wrap_network_in_scope(document.network, editor_api, runtime.handle());
 

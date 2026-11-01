@@ -81,11 +81,7 @@ impl EditorWrapper {
 					.with_resource_storage(storage)
 					.with_document_store(document_store),
 			)
-			.with_runtime(
-				RuntimeBuilder::new(std::sync::Arc::new(crate::helpers::PerformanceClock))
-					.with_wake(crate::helpers::wake_runtime)
-					.with_application_io(application_io),
-			)
+			.with_runtime(RuntimeBuilder::new().with_wake(crate::helpers::wake_runtime).with_application_io(application_io))
 			.with_spawner(crate::helpers::WasmSpawner)
 			.with_random_seed(uuid_random_seed)
 			.build();
@@ -197,14 +193,7 @@ impl EditorWrapper {
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
-				{
-					if let Some(mut runtime) = crate::NODE_RUNTIME.try_lock()
-						&& let Some(runtime) = runtime.as_mut()
-					{
-						runtime.begin_frame();
-					}
-					wasm_bindgen_futures::spawn_local(run_node_runtime());
-				}
+				wasm_bindgen_futures::spawn_local(run_node_runtime());
 
 				#[cfg(any(not(feature = "native"), target_family = "wasm"))]
 				wrapper(|wrapper| {
