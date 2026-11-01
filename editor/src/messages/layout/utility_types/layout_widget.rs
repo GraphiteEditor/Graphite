@@ -76,6 +76,8 @@ define_layout_target!(
 	NodeGraphControlBar,
 	/// The body of the Inspector containing many collapsable sections.
 	Inspector,
+	/// The body of the Session panel.
+	SessionPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
 	/// The version information shown in the status bar at the bottom right of the window.

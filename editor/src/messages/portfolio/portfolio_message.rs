@@ -67,6 +67,9 @@ pub enum PortfolioMessage {
 		source: DocumentId,
 		document_name: String,
 	},
+	JoinStoredSession {
+		source: DocumentId,
+	},
 	CollectResources,
 	StoredDocumentLoaded {
 		document_id: DocumentId,
@@ -83,6 +86,11 @@ pub enum PortfolioMessage {
 	NewDocumentWithName {
 		name: String,
 	},
+	/// Creates the document under a given id, so the sender can recognize it when it mounts.
+	NewDocumentWithId {
+		name: String,
+		document_id: DocumentId,
+	},
 	OpenLegacyDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -92,6 +100,8 @@ pub enum PortfolioMessage {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		content: Vec<u8>,
+		/// Give the copy its own document id, and so its own session room.
+		fresh_identity: bool,
 	},
 	DocumentFileLoaded {
 		document_id: DocumentId,
