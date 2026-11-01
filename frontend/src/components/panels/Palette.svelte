@@ -9,6 +9,7 @@
 	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const _editor = getContext<EditorWrapper>("editor");
+	const portfolio = getContext<PortfolioStore>("palette");
 
 	let sectionsCol: LayoutCol | undefined;
 
@@ -16,8 +17,6 @@
 	type DragState = { nodeId: bigint; startX: number; startY: number; active: boolean };
 	let dragState: DragState | undefined = undefined;
 	let dragging = false;
-	let fromIndex: number | undefined = undefined;
-	let insertIndex: number | undefined = undefined;
 	let insertMarker: { top: number; left: number; width: number } | undefined = undefined;
 	let justFinishedDrag = false; // Used to suppress the click event that follows a drag release (which would otherwise toggle a section)
 
@@ -94,7 +93,6 @@
 
 			dragState.active = true;
 			dragging = true;
-			fromIndex = reorderableSections().findIndex((section) => section.getAttribute("data-node-id") === String(dragState?.nodeId));
 		}
 
 		lastDragClientY = e.clientY;
@@ -108,7 +106,6 @@
 		const container = sectionsCol?.div();
 		const sections = reorderableSections();
 		if (!container || sections.length === 0) {
-			insertIndex = undefined;
 			insertMarker = undefined;
 			return;
 		}
@@ -143,7 +140,6 @@
 		// Spanning the sections, which a layer's frame around them indents
 		const firstRect = sections[0].getBoundingClientRect();
 
-		insertIndex = index;
 		insertMarker = { top: toContentOffset(markerViewportY), left: firstRect.left - containerRect.left, width: firstRect.width };
 	}
 
@@ -182,14 +178,13 @@
 		autoScroller.stop();
 		dragState = undefined;
 		dragging = false;
-		fromIndex = undefined;
-		insertIndex = undefined;
 		insertMarker = undefined;
 	}
 </script>
 
 <LayoutCol class="palette">
 	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown}>
+		<!-- <button class="" data-tooltop-label="hello">Click Me</button> -->
 		<WidgetLayout layout={paletteLayout} layoutTarget="Palette" />
 		{#if dragging && insertMarker}
 			<div class="insert-mark" style:top={`${insertMarker.top}px`} style:left={`${insertMarker.left}px`} style:width={`${insertMarker.width}px`}></div>
@@ -201,11 +196,11 @@
 	.palette {
 		height: 100%;
 		flex: 1 1 100%;
+		margin: 0.5rem;
 
 		.sections {
 			flex: 1 1 100%;
 			position: relative;
-			padding-top: 4px;
 
 			// While dragging a section, disable pointer events (which inherit down to the sections) so the drop doesn't toggle a section's expansion, and prevent text selection
 			&.dragging {
@@ -215,7 +210,6 @@
 
 			// Used as a placeholder for empty assist widgets
 			.separator.section.horizontal {
-				margin: 0;
 				margin-left: 24px;
 
 				div {

@@ -13,6 +13,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions;
+use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::portfolio::document_storage_io::{
 	DocumentStoreHandle, attach_container, legacy_path, list_stored_documents, load_legacy_document, load_stored_document, open_document_file, open_storage, remove_stored_document,
 };
@@ -1226,6 +1227,10 @@ impl PortfolioMessageHandler {
 		if self.active_document().is_some() {
 			responses.add(EventMessage::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
+		}
+
+		if self.workspace.panel_layout.is_panel_visible(PanelType::Palette) {
+			responses.add(PaletteMessage::Refresh)
 		}
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect

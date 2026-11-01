@@ -145,6 +145,8 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 
 	subscriptions.subscribeLayoutUpdate("DataPanelPath", (data) => {
 		patchLayout(dataPanelPathLayout, data);
+	});
+
 	subscriptions.subscribeLayoutUpdate("Palette", (data) => {
 		patchLayout(paletteLayout, data);
 	});
