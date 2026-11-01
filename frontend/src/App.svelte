@@ -3,7 +3,7 @@
 	import Editor from "/src/components/Editor.svelte";
 	import { createSubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageName, SubscriptionsRouter } from "/src/subscriptions-router";
-	import { loadDemoArtwork } from "/src/utility-functions/network";
+	import { joinSessionFromUrl, loadDemoArtwork } from "/src/utility-functions/network";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import { initWasm } from "/src/utility-functions/wasm-loader";
 	import { EditorWrapper, receiveNativeMessage } from "/wrapper/pkg/graphite_wasm_wrapper";
@@ -29,6 +29,7 @@
 		});
 
 		await loadDemoArtwork(editor);
+		joinSessionFromUrl(editor);
 	});
 
 	onDestroy(() => {

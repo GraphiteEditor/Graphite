@@ -140,6 +140,9 @@ pub enum FrontendMessage {
 		url: String,
 	},
 	TriggerClipboardRead,
+	TriggerSessionLinkCopy {
+		token: String,
+	},
 	TriggerClipboardWrite {
 		content: String,
 	},

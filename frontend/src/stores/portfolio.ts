@@ -42,6 +42,7 @@ export const inspectorLayout = persistedLayout("inspectorLayout");
 export const dataPanelLayout = persistedLayout("dataPanelLayout");
 export const dataPanelContextLayout = persistedLayout("dataPanelContextLayout");
 export const dataPanelPathLayout = persistedLayout("dataPanelPathLayout");
+export const sessionPanelLayout = persistedLayout("sessionPanelLayout");
 export const layersPanelControlBarLeftLayout = persistedLayout("layersPanelControlBarLeftLayout");
 export const layersPanelBottomBarLeftLayout = persistedLayout("layersPanelBottomBarLeftLayout");
 export const layersPanelBottomBarRightLayout = persistedLayout("layersPanelBottomBarRightLayout");
@@ -81,7 +82,7 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
-			editor.ingestPicked(data.filename, "", await response.bytes(), "Open");
+			editor.ingestPicked(data.filename, "", await response.bytes(), "OpenDemo");
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
@@ -144,6 +145,10 @@ export function createPortfolioStore(subscriptions: SubscriptionsRouter, editor:
 
 	subscriptions.subscribeLayoutUpdate("DataPanelPath", (data) => {
 		patchLayout(dataPanelPathLayout, data);
+	});
+
+	subscriptions.subscribeLayoutUpdate("SessionPanel", (data) => {
+		patchLayout(sessionPanelLayout, data);
 	});
 
 	subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
@@ -209,6 +214,7 @@ export function destroyPortfolioStore() {
 	subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	subscriptions.unsubscribeLayoutUpdate("DataPanelContext");
 	subscriptions.unsubscribeLayoutUpdate("DataPanelPath");
+	subscriptions.unsubscribeLayoutUpdate("SessionPanel");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomLeftBar");
 	subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomRightBar");
