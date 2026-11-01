@@ -7,6 +7,16 @@ pub struct ResourcesHandle {
 	inner: Arc<dyn ResourceStorage>,
 }
 
+impl ResourcesHandle {
+	pub fn new(inner: Arc<dyn ResourceStorage>) -> Self {
+		Self { inner }
+	}
+
+	pub fn storage(&self) -> Arc<dyn ResourceStorage> {
+		self.inner.clone()
+	}
+}
+
 impl LoadResource for ResourcesHandle {
 	fn load(&self, hash: ResourceHash) -> ResourceFuture<'_> {
 		self.inner.load(hash)

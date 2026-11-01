@@ -567,9 +567,11 @@ impl NodeNetworkInterface {
 			return false;
 		};
 		let Some(network) = self.document_network().definitions.get(&id).cloned() else { return false };
-		let Some(metadata) = self.network_metadata.persistent_metadata.definitions.get(&id).cloned() else {
+		let Some(mut metadata) = self.network_metadata.persistent_metadata.definitions.get(&id).cloned() else {
 			return false;
 		};
+		// The copy's nodes are new and can't keep the originals' storage identities
+		clear_storage_ids(&mut metadata.persistent_metadata);
 
 		let unique = NetworkId::new();
 		self.insert_definition(unique, network, metadata);
@@ -658,6 +660,42 @@ impl NodeNetworkInterface {
 		self.dots_that_lost_a_wire.clear();
 	}
 
+	/// Pins each unpinned node to the identity a conversion derives from its location, and returns where each identity is held.
+	pub(crate) fn pin_storage_identities(&mut self, peer: document_graph_storage::PeerId) -> HashMap<document_graph_storage::NodeId, (NetworkLocation, NodeId)> {
+		let mut index = HashMap::new();
+		let mut unpinned = Vec::new();
+		{
+			let view = super::storage_metadata::StorageMetadataView::new(self);
+			let resolver = document_graph_storage::PathResolver::new(Some(&view), peer);
+			let definitions = self.network_metadata.persistent_metadata.definitions.iter().map(|(id, metadata)| (Some(*id), metadata));
+			for (location, metadata) in definitions.chain([(None, &*self.network_metadata)]) {
+				for (&local_id, node) in &metadata.persistent_metadata.node_metadata {
+					let storage_id = match node.persistent_metadata.storage_id {
+						Some(pinned) => document_graph_storage::NodeId(pinned),
+						None => {
+							let derived = resolver.node_id(location, local_id);
+							unpinned.push((location, local_id, derived));
+							derived
+						}
+					};
+					index.insert(storage_id, (location, local_id));
+				}
+			}
+		}
+
+		for (location, local_id, storage_id) in unpinned {
+			if let Some(node) = self
+				.network_metadata
+				.get_mut()
+				.nested_metadata_mut(location)
+				.and_then(|network| network.persistent_metadata.node_metadata.get_mut(&local_id))
+			{
+				node.persistent_metadata.storage_id = Some(storage_id.0);
+			}
+		}
+		index
+	}
+
 	/// Records the open transaction's bookkeeping, so writes that are undone before [`Self::restore_transaction_checkpoint`] don't count toward it.
 	pub fn transaction_checkpoint(&mut self) -> TransactionCheckpoint {
 		self.scan_transaction_edited_nodes();
@@ -722,6 +760,15 @@ impl NodeNetworkInterface {
 	pub(crate) fn clear_encapsulating_reference(&mut self, network_path: &[NodeId]) {
 		if let Some(mut network) = self.network_mut(network_path) {
 			network.set_reference(None);
+		}
+	}
+}
+
+fn clear_storage_ids(metadata: &mut NodeNetworkPersistentMetadata) {
+	for node in metadata.node_metadata.values_mut() {
+		node.persistent_metadata.storage_id = None;
+		if let Some(nested) = &mut node.persistent_metadata.network_metadata {
+			clear_storage_ids(&mut nested.persistent_metadata);
 		}
 	}
 }
