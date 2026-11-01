@@ -460,7 +460,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.layer_range_selection_reference = None;
 				self.chain_node_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => {
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
+			}
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
@@ -1655,6 +1658,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
 				self.retire_storage_interaction();
 
 				self.network_interface.start_transaction();
@@ -2423,6 +2427,14 @@ impl DocumentMessageHandler {
 
 		if validate {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// Stages edits made after a transaction finished, such as those queued behind an `AddTransaction`, whose commit runs
+	/// first. They belong to the undo step that just ended, so they must reach storage before it closes.
+	fn stage_edits_outside_transaction(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		if self.network_interface.transaction_status() == TransactionStatus::Finished && self.network_interface.has_deltas() {
+			self.commit_storage_snapshot(byte_store, validate);
 		}
 	}
 

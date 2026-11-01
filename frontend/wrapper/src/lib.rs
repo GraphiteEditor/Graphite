@@ -58,7 +58,12 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 	// Node graph panics can only originate here when the node graph runs inside this wasm module
 	#[cfg(feature = "editor")]
 	{
+		// V8 records only 10 frames by default, too few to reach the node frame beneath the panic machinery
+		let previous_stack_trace_limit = js_sys::Error::stack_trace_limit();
+		js_sys::Error::set_stack_trace_limit(&f64::INFINITY.into());
 		let backtrace = Error::new("stack").stack().to_string();
+		js_sys::Error::set_stack_trace_limit(&previous_stack_trace_limit);
+
 		if backtrace.contains("DynAnyNode") {
 			log::error!("Node graph evaluation panicked {info}");
 
