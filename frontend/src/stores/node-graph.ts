@@ -3,7 +3,16 @@ import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type {
+	NodeGraphErrorDiagnostic,
+	BoxSelection,
+	FrontendClickTargets,
+	ContextMenuInformation,
+	FrontendNode,
+	FrontendNodeType,
+	FrontendRemoteCursor,
+	WirePath,
+} from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 
@@ -113,6 +122,10 @@ export type GlideOffsets = { nodes: Map<bigint, [number, number]>; imports: [num
 const glideOffsetsStore: Writable<GlideOffsets> = import.meta.hot?.data?.glideOffsetsStore || writable<GlideOffsets>({ nodes: new Map(), imports: [0, 0], exports: [0, 0] });
 if (import.meta.hot) import.meta.hot.data.glideOffsetsStore = glideOffsetsStore;
 
+// Kept apart from the main store since cursors move on every frame, and only the overlay draws them
+const remoteCursorsStore: Writable<FrontendRemoteCursor[]> = import.meta.hot?.data?.remoteCursorsStore || writable<FrontendRemoteCursor[]>([]);
+if (import.meta.hot) import.meta.hot.data.remoteCursorsStore = remoteCursorsStore;
+
 export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
 
@@ -132,6 +145,10 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 			state.box = data.box;
 			return state;
 		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateNodeGraphCursors", (data) => {
+		remoteCursorsStore.set(data.cursors);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateClickTargets", (data) => {
@@ -312,7 +329,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, thumbnailImagesStore, wiresStore, wireInsertionPreviewStore, glideOffsetsStore };
+	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, thumbnailImagesStore, wiresStore, wireInsertionPreviewStore, glideOffsetsStore, remoteCursorsStore };
 }
 
 export function destroyNodeGraphStore() {
@@ -321,6 +338,7 @@ export function destroyNodeGraphStore() {
 
 	subscriptions.unsubscribeFrontendMessage("SendUIMetadata");
 	subscriptions.unsubscribeFrontendMessage("UpdateBox");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphCursors");
 	subscriptions.unsubscribeFrontendMessage("UpdateClickTargets");
 	subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");

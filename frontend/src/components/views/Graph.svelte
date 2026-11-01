@@ -6,6 +6,7 @@
 	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import NodeGraphWire from "/src/components/views/NodeGraphWire.svelte";
+	import RemoteCursor from "/src/components/views/RemoteCursor.svelte";
 	import ThumbnailCanvas from "/src/components/views/ThumbnailCanvas.svelte";
 	import ThumbnailImage from "/src/components/views/ThumbnailImage.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
@@ -33,6 +34,7 @@
 	const nodeGraphWires = nodeGraph.wiresStore;
 	const wireInsertionPreview = nodeGraph.wireInsertionPreviewStore;
 	const nodeGlideOffsets = nodeGraph.glideOffsetsStore;
+	const remoteCursors = nodeGraph.remoteCursorsStore;
 	const documentState = getContext<DocumentStore>("document");
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
@@ -1124,6 +1126,11 @@
 		{/each}
 	</div>
 </div>
+
+<!-- Other peers' pointers -->
+{#each $remoteCursors as cursor}
+	<RemoteCursor {cursor} />
+{/each}
 
 <!-- Box selection widget -->
 {#if $nodeGraph.box}

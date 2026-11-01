@@ -79,3 +79,22 @@ const ANONYMOUS_ANIMALS: [&str; 64] = [
 	"Tiger",
 	"Turtle",
 ];
+
+/// A hue picked by the user id, at a fixed saturation and lightness, as `#rrggbb`.
+pub(crate) fn user_color(user: UserId) -> String {
+	let hue = (scramble(user) >> 32) % 360;
+	let (h, s, l): (f64, f64, f64) = (hue as f64 / 60., 0.65, 0.5);
+	let c = (1. - (2. * l - 1.).abs()) * s;
+	let x = c * (1. - (h % 2. - 1.).abs());
+	let m = l - c / 2.;
+	let (r, g, b) = match h as u32 {
+		0 => (c, x, 0.),
+		1 => (x, c, 0.),
+		2 => (0., c, x),
+		3 => (0., x, c),
+		4 => (x, 0., c),
+		_ => (c, 0., x),
+	};
+	let channel = |value: f64| ((value + m) * 255.).round() as u8;
+	format!("#{:02x}{:02x}{:02x}", channel(r), channel(g), channel(b))
+}

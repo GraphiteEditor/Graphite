@@ -2385,6 +2385,11 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	/// The network the node graph shows, from the document network down.
+	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
+		&self.breadcrumb_network_path
+	}
+
 	/// The name the working copy's registry holds as [`DOCUMENT_NAME_ATTRIBUTE`].
 	fn stored_name(&self) -> Option<&str> {
 		let attribute = self.storage()?.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE).filter(|attribute| !attribute.deleted)?;
