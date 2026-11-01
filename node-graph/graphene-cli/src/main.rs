@@ -1,4 +1,9 @@
+mod live;
+mod repl;
+mod watch;
+
 use clap::{Args, Parser, Subcommand};
+use document_live::SessionToken;
 use fern::colors::{Color, ColoredLevelConfig};
 use graphene_cli::{compile_document, dump, export, open_document, open_gdd};
 use std::error::Error;
@@ -80,6 +85,24 @@ enum Command {
 	ExtractLegacyDoc {
 		document: PathBuf,
 	},
+	/// Host a collaborative session on a .gdd document, or an empty one, driven from stdin.
+	Host {
+		document: Option<PathBuf>,
+		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
+	/// Join a collaborative session and drive it from stdin.
+	Join {
+		token: SessionToken,
+		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
+	/// Join a collaborative session and show the document in a window.
+	Watch {
+		token: SessionToken,
+		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		signaling: String,
+	},
 }
 
 #[derive(Debug, Args)]
@@ -96,6 +119,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	init_logging(app.global_opts.verbose);
 
 	let document_path = match &app.command {
+		Command::Host { document, signaling } => return live::host(signaling, document.as_deref()).await,
+		Command::Join { token, signaling } => return live::join(signaling, *token).await,
+		Command::Watch { token, signaling } => return live::watch(signaling, *token).await,
 		Command::Compile { document, .. } | Command::Export { document, .. } | Command::ExtractLegacyDoc { document } => document,
 		Command::ListNodeIdentifiers => {
 			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
@@ -177,7 +203,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				export::export_document(executor, wgpu_executor, output, settings, runtime, spawner).await?;
 			}
 		}
-		Command::ListNodeIdentifiers | Command::ExtractLegacyDoc { .. } => unreachable!("Handled before compiling"),
+		Command::ListNodeIdentifiers | Command::ExtractLegacyDoc { .. } | Command::Host { .. } | Command::Join { .. } | Command::Watch { .. } => unreachable!("Handled before compiling"),
 	}
 
 	Ok(())
