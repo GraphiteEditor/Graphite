@@ -3,7 +3,8 @@ use crate::messages::prelude::*;
 
 /// Lists the stored documents that stayed closed because another tab has them open.
 pub struct DocumentsOpenElsewhereDialog {
-	pub documents: Vec<(DocumentId, String)>,
+	/// Each document's id, name and whether it is in a live session.
+	pub documents: Vec<(DocumentId, String, bool)>,
 }
 
 impl DialogLayoutHolder for DocumentsOpenElsewhereDialog {
@@ -24,19 +25,23 @@ impl LayoutHolder for DocumentsOpenElsewhereDialog {
 		let mut rows = vec![
 			LayoutGroup::row(vec![TextLabel::new(format!("{count} {documents} open in another tab.")).bold(true).multiline(true).widget_instance()]),
 			LayoutGroup::row(vec![
-				TextLabel::new(format!("{are} closed here so the two tabs don't overwrite each other.\nA copy opens here as a separate document."))
-					.multiline(true)
-					.widget_instance(),
+				TextLabel::new(format!(
+					"{are} closed here so the two tabs don't overwrite each other.\nA copy is a separate document, while joining a session edits it live."
+				))
+				.multiline(true)
+				.widget_instance(),
 			]),
 		];
-		rows.extend(self.documents.iter().cloned().map(|(source, name)| {
+		rows.extend(self.documents.iter().cloned().map(|(source, name, shared)| {
 			let label = TextLabel::new(name.clone()).widget_instance();
-			let button = TextButton::new("Open a Copy")
+			let button = TextButton::new(if shared { "Join in This Tab" } else { "Open a Copy" })
 				.on_update(move |_| {
-					DialogMessage::CloseAndThen {
-						followups: vec![PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() }.into()],
-					}
-					.into()
+					let followup = if shared {
+						PortfolioMessage::JoinStoredSession { source }
+					} else {
+						PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() }
+					};
+					DialogMessage::CloseAndThen { followups: vec![followup.into()] }.into()
 				})
 				.widget_instance();
 			LayoutGroup::row(vec![label, Separator::new(SeparatorStyle::Unrelated).widget_instance(), button])

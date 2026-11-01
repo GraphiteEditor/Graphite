@@ -187,11 +187,7 @@ mod editor_commands {
 	}
 
 	fn load_preferences(preferences: Option<String>) -> Message {
-		let Some(preferences) = preferences else { return Message::NoOp };
-		let Ok(preferences) = serde_json::from_str(&preferences) else {
-			log::error!("Failed to deserialize preferences");
-			return Message::NoOp;
-		};
+		let preferences = PreferencesMessageHandler::from_stored(preferences.as_deref());
 		PreferencesMessage::Load { preferences }.into()
 	}
 
@@ -206,6 +202,11 @@ mod editor_commands {
 
 	fn new_document_dialog() -> Message {
 		DialogMessage::RequestNewDocumentDialog.into()
+	}
+
+	/// Join the live session under `token`
+	fn join_session(token: String) -> Message {
+		SyncMessage::Join { token }.into()
 	}
 
 	fn trigger_auto_save(document_id: u64) -> Message {
@@ -253,6 +254,11 @@ mod editor_commands {
 			tab_index,
 		}
 		.into()
+	}
+
+	/// Bring a panel to the front, reopening it at its default position if it is closed
+	fn focus_panel(panel_type: PanelType) -> Message {
+		WorkspaceMessage::FocusPanel { panel_type }.into()
 	}
 
 	fn split_panel_group(target_group: u64, direction: DockingSplitDirection, tabs: PanelTypes, active_tab_index: usize) -> Message {
@@ -918,6 +924,7 @@ editor_proxy_types! {
 	IngestAction = editor::messages::portfolio::ingest::utility_types::IngestAction;
 	LayoutTarget = editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 	DockingSplitDirection = editor::messages::portfolio::utility_types::DockingSplitDirection;
+	PanelType = editor::messages::portfolio::utility_types::PanelType;
 	PanelTypes = Vec<editor::messages::portfolio::utility_types::PanelType>;
 	SRGBA8 = graphene_std::color::SRGBA8;
 }

@@ -124,6 +124,11 @@ impl Replica {
 		Some(Role::Host)
 	}
 
+	/// Whether a host is in the room to take this peer's requests.
+	pub fn has_host(&self) -> bool {
+		self.current_host().is_some()
+	}
+
 	/// The link and id of the peer greeting as host. While two coexist this is the one with the lower id, which keeps
 	/// the role once they meet.
 	fn current_host(&self) -> Option<(TransportPeerId, PeerId)> {

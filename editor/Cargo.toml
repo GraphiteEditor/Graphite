@@ -27,6 +27,7 @@ migration-formats = { workspace = true }
 migration-nodes = { workspace = true }
 document-graph-storage = { workspace = true, features = ["conversion"] }
 document-container = { workspace = true }
+peer-transport = { workspace = true }
 graphene-hash = { workspace = true }
 blake3 = { workspace = true }
 interpreted-executor = { workspace = true }

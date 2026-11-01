@@ -424,6 +424,67 @@ impl<L: Layout> Gdd<L> {
 		Ok(Some(retraction.ops))
 	}
 
+	/// Undo this peer's latest retired step, the one [`Session::latest_own_interaction`] names, through
+	/// [`drop_step`](Self::drop_step). `None` when this peer has no retired step of its own on the line.
+	#[cfg(feature = "network")]
+	pub fn undo_retired_step(&mut self) -> Result<Option<Rev>, Error> {
+		if !self.can_change_line() {
+			return Ok(None);
+		}
+		let Some(rev) = self.session.latest_own_interaction() else {
+			return Ok(None);
+		};
+		self.drop_step(rev)?;
+		Ok(Some(rev))
+	}
+
+	/// Whether this peer can change the line now, which a peer that does not retire can't with no host to ask.
+	#[cfg(feature = "network")]
+	pub fn can_change_line(&self) -> bool {
+		self.retires_locally() || self.network.as_ref().is_some_and(|replica| replica.has_host())
+	}
+
+	/// Drop a retired interaction out of the line. See [`Session::drop_interaction`]. A peer that does not retire asks
+	/// the retirer to, and the head move comes back through the poll.
+	#[cfg(feature = "network")]
+	pub fn drop_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let (moved, touched) = self.session.drop_interaction(rev)?;
+			self.remote_changes.touched.extend(touched);
+			self.persist_rewritten_line()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_head_move(moved)?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_undo(rev, false)?;
+		}
+		Ok(())
+	}
+
+	/// Redo a step [`drop_step`](Self::drop_step) dropped, as a copy on top of the line. A peer that does not retire
+	/// asks the retirer to.
+	#[cfg(feature = "network")]
+	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let deltas = self.restore_dropped_interaction(rev)?;
+			self.persist_rewritten_line()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_retired(&deltas, &[])?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_undo(rev, true)?;
+		}
+		Ok(())
+	}
+
+	/// Persist a head change that rewrote the history file's order but left the hot log alone.
+	#[cfg(feature = "network")]
+	fn persist_rewritten_line(&mut self) -> Result<(), Error> {
+		self.rewrite_history()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()
+	}
+
 	/// Stage ops a retraction took back as a fresh interaction, recorded in the remote changes like a peer's edit.
 	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
 		#[cfg(feature = "network")]

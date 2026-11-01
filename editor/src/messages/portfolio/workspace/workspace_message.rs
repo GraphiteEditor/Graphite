@@ -30,7 +30,12 @@ pub enum WorkspaceMessage {
 		active_tab_index: usize,
 	},
 	ToggleFocusDocument,
+	/// Bring a panel to the front as the active tab of its group, reopening it first when it is closed.
+	FocusPanel {
+		panel_type: PanelType,
+	},
 	ToggleDataPanelOpen,
+	ToggleSessionPanelOpen,
 	ToggleInspectorOpen,
 	ToggleLayersPanelOpen,
 	UpdatePanelsLayout,

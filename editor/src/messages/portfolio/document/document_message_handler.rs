@@ -56,6 +56,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+/// The document attribute holding the document's name, shared by a session so a rename reaches every peer.
+pub const DOCUMENT_NAME_ATTRIBUTE: &str = "name";
+
 #[derive(ExtractField)]
 pub struct DocumentMessageContext<'a> {
 	pub document_id: DocumentId,
@@ -1152,6 +1155,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.path = None;
 				self.set_save_state(false);
 				self.set_auto_save_state(false);
+				self.stage_name_attribute();
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
@@ -2381,6 +2385,39 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	/// The name the working copy's registry holds as [`DOCUMENT_NAME_ATTRIBUTE`].
+	fn stored_name(&self) -> Option<&str> {
+		let attribute = self.storage()?.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE).filter(|attribute| !attribute.deleted)?;
+		match &attribute.value {
+			document_graph_storage::Value::Str(name) => Some(name),
+			_ => None,
+		}
+	}
+
+	/// Write the document's name into its registry as [`DOCUMENT_NAME_ATTRIBUTE`] unless it already holds it.
+	pub fn stage_name_attribute(&mut self) {
+		if self.stored_name() == Some(self.name.as_str()) {
+			return;
+		}
+		let delta = document_graph_storage::AttributeDelta {
+			key: DOCUMENT_NAME_ATTRIBUTE.to_string(),
+			value: Some(document_graph_storage::Value::Str(self.name.clone())),
+		};
+		let Some(gdd) = self.storage_mut() else { return };
+		if let Err(error) = gdd.stage_ops([document_graph_storage::RegistryDelta::ChangeDocumentAttribute { delta }]) {
+			log::error!("Staging the document name failed: {error}");
+		}
+	}
+
+	/// Take the name the registry holds. Returns whether the name changed.
+	pub fn adopt_name_from_storage(&mut self) -> bool {
+		let Some(name) = self.stored_name().filter(|name| *name != self.name).map(str::to_string) else {
+			return false;
+		};
+		self.name = name;
+		true
+	}
+
 	/// Path to the subnetwork that the user's selection is currently scoped to.
 	/// Empty when the selection lives in the root document network.
 	pub fn selection_network_path(&self) -> &[NodeId] {
@@ -2522,6 +2559,15 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Stages what the interface recorded since the last drain, without the view state a commit also persists.
+	pub(crate) fn stage_pending_edits(&mut self, byte_store: &dyn ResourceStorage) {
+		let deltas = self.network_interface.take_deltas();
+		if deltas.is_empty() {
+			return;
+		}
+		self.history.stage_graph(&deltas, &self.network_interface, &self.resources.registry, byte_store);
+	}
+
 	/// Brings the interface into line with what peers changed in the registry, reconciling the touched entities in place
 	/// and rebuilding it whole only when the registry was rederived or the reconcile failed.
 	///
@@ -2585,6 +2631,16 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SendWires);
+	}
+
+	/// Cache a resource received from a peer as a proto-node declaration, so a rebuild can resolve it.
+	pub(crate) fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) -> bool {
+		self.history.cache_declaration_bytes(hash, bytes)
+	}
+
+	/// The hashes of declaration resources the working copy names but holds no decoded declaration for.
+	pub(crate) fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
+		self.history.undecoded_declaration_hashes()
 	}
 
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
@@ -2927,10 +2983,15 @@ impl DocumentMessageHandler {
 		// The storage path below skips `undo`, which settles a glide before the snapshot moves
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
-		// A step still hot is taken back in storage, and the interface follows only the entities that changed
-		if self.history.undo_in_storage() {
-			self.follow_storage_changes(responses);
+		// The legacy snapshot predates what peers wrote since, so the interface follows only the entities storage changed
+		let stored_name = self.stored_name().map(str::to_string);
+		if self.history.undo_in_storage(self.is_in_session()) {
+			self.follow_storage_changes(stored_name, responses);
 			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			return;
+		}
+		// A session's history is shared, so no legacy snapshot may be installed
+		if self.is_in_session() {
 			return;
 		}
 
@@ -2944,13 +3005,21 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
-	/// Reconciles the interface with what storage just changed under it, as for remote changes.
-	fn follow_storage_changes(&mut self, responses: &mut VecDeque<Message>) {
+	/// Reconciles the interface with what storage just changed under it, as for remote changes. The tab takes the stored
+	/// name only if that changed from `name_before`, since a tab may instead be named after its file.
+	fn follow_storage_changes(&mut self, name_before: Option<String>, responses: &mut VecDeque<Message>) {
 		if let Some(gdd) = self.history.storage_mut() {
 			let changes = gdd.take_remote_changes();
 			self.pending_remote.extend(changes);
 		}
 		self.apply_remote_changes(responses);
+		if self.stored_name() != name_before.as_deref() && self.adopt_name_from_storage() {
+			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		}
+	}
+
+	pub(crate) fn is_in_session(&self) -> bool {
+		self.storage().is_some_and(|gdd| gdd.role().is_some())
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2989,9 +3058,13 @@ impl DocumentMessageHandler {
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
 		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 
+		let stored_name = self.stored_name().map(str::to_string);
 		if self.history.redo_in_storage() {
-			self.follow_storage_changes(responses);
+			self.follow_storage_changes(stored_name, responses);
 			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			return;
+		}
+		if self.is_in_session() {
 			return;
 		}
 

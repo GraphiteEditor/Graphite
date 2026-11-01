@@ -11,8 +11,10 @@ use super::document_locks;
 use super::document_migration::*;
 use super::portfolio_message::PortfolioMessage;
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
+use crate::messages::dialog::DialogMessage;
 use crate::messages::message::Message;
 use crate::messages::portfolio::document::utility_types::misc::DocumentId;
+use crate::messages::portfolio::sync::SyncMessage;
 use crate::messages::resource_storage::ResourcesHandle;
 use document_container::store::{DocumentKey, DocumentStore, MemoryStore};
 use document_container::{AnyContainer, AsyncContainer};
@@ -137,6 +139,26 @@ pub(super) async fn remove_stored_document(store: DocumentStoreHandle, document_
 	Message::NoOp
 }
 
+/// Joins the live session of a stored document that another tab holds, as a document and a peer of this tab's own.
+pub(super) async fn join_stored_session(store: DocumentStoreHandle, source: DocumentId) -> Message {
+	let manifest = async {
+		let container = store.open(document_key(source)).await.map_err(|error| error.to_string())?;
+		GddV1::read_manifest(&container, &GddV1Layout).await.map_err(|error| error.to_string())
+	}
+	.await;
+	match manifest {
+		Ok(manifest) => SyncMessage::Join {
+			token: peer_transport::SessionToken::for_document(manifest.document_id).to_string(),
+		}
+		.into(),
+		Err(error) => DialogMessage::DisplayDialogError {
+			title: "Failed to join the session".into(),
+			description: format!("The session's document could not be read: {error}"),
+		}
+		.into(),
+	}
+}
+
 /// Opens a copy of a stored document that another tab may be writing. Its fresh manifest id separates it from the original.
 pub(super) async fn copy_stored_document(store: DocumentStoreHandle, source: DocumentId, document_id: DocumentId, document_name: String, resources: ResourcesHandle, reset_nodes: bool) -> Message {
 	document_locks::claim(document_id).await;
@@ -181,12 +203,14 @@ pub(super) async fn copy_stored_document(store: DocumentStoreHandle, source: Doc
 }
 
 /// Materializes a `.gdd` archive into a fresh store container and loads it like a stored document.
+#[allow(clippy::too_many_arguments)]
 pub(super) async fn open_document_file(
 	store: DocumentStoreHandle,
 	document_id: DocumentId,
 	document_name: Option<String>,
 	document_path: Option<PathBuf>,
 	content: Vec<u8>,
+	fresh_identity: bool,
 	resources: ResourcesHandle,
 	reset_nodes: bool,
 ) -> Message {
@@ -197,13 +221,21 @@ pub(super) async fn open_document_file(
 		Ok::<_, String>(container)
 	}
 	.await;
-	let (document, gdd) = match materialized {
+	let (mut document, mut gdd) = match materialized {
 		Ok(container) => load_from_container(container, document_id, &resources, reset_nodes).await,
 		Err(error) => {
 			log::error!("Opening the document archive for {document_id:?} failed: {error}");
 			(None, None)
 		}
 	};
+	// The session room derives from the manifest's document id, so a fresh id gives the copy a room of its own
+	if fresh_identity
+		&& let Some(storage) = gdd.as_mut().or_else(|| document.as_mut().and_then(|document| document.storage_mut()))
+		&& let Err(error) = storage.update_manifest(|manifest| manifest.document_id = generate_uuid())
+	{
+		log::error!("Giving the copy of {document_id:?} its own id failed: {error}");
+		(document, gdd) = (None, None);
+	}
 	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::DocumentFileLoaded {
 		document_id,

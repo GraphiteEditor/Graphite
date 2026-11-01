@@ -43,6 +43,8 @@ pub struct DocumentHistory {
 enum UndoNote {
 	/// The step was still hot and its ops were taken back.
 	Retracted(Vec<document_graph_storage::RegistryDelta>),
+	/// The step had retired in a session and was dropped out of the shared line.
+	Dropped(document_graph_storage::Rev),
 	/// The storage cursor moved back over the step.
 	Cursor,
 }
@@ -137,19 +139,24 @@ impl DocumentHistory {
 	}
 
 	/// Undoes the latest step in storage alone, moving its legacy snapshot to the redo stack uninstalled. A hot step is
-	/// taken back so it never becomes history. Returns whether storage undid it.
-	pub fn undo_in_storage(&mut self) -> bool {
+	/// taken back so it never becomes history. In a session, a retired step is dropped out of the shared line.
+	/// Returns whether storage undid it.
+	pub fn undo_in_storage(&mut self, in_session: bool) -> bool {
 		if self.legacy_undo_stack.is_empty() {
 			return false;
 		}
-		let Some(ops) = self.retract_storage_interaction() else {
+		let note = if let Some(ops) = self.retract_storage_interaction() {
+			UndoNote::Retracted(ops)
+		} else if in_session && let Some(rev) = self.undo_retired_step() {
+			UndoNote::Dropped(rev)
+		} else {
 			return false;
 		};
 
 		if let Some(snapshot) = self.pop_undo() {
 			self.push_redo(snapshot);
 		}
-		self.note_undo(UndoNote::Retracted(ops));
+		self.note_undo(note);
 		true
 	}
 
@@ -159,7 +166,11 @@ impl DocumentHistory {
 		if self.legacy_redo_stack.is_empty() {
 			return false;
 		}
-		let Some(note) = self.undo_notes.pop_if(|note| !matches!(note, UndoNote::Cursor)) else {
+		let reachable = self.storage.as_ref().is_some_and(|storage| storage.can_change_line());
+		let Some(note) = self
+			.undo_notes
+			.pop_if(|note| matches!(note, UndoNote::Retracted(_)) || (reachable && matches!(note, UndoNote::Dropped(_))))
+		else {
 			return false;
 		};
 
@@ -168,6 +179,7 @@ impl DocumentHistory {
 		}
 		match note {
 			UndoNote::Retracted(ops) => self.restage_ops(ops),
+			UndoNote::Dropped(rev) => self.redo_retired_step(rev),
 			UndoNote::Cursor => {}
 		}
 		true
@@ -203,9 +215,24 @@ impl DocumentHistory {
 		}
 	}
 
+	fn undo_retired_step(&mut self) -> Option<document_graph_storage::Rev> {
+		self.storage.as_mut()?.undo_retired_step().unwrap_or_else(|error| {
+			log::error!("Undoing the retired step failed: {error}");
+			None
+		})
+	}
+
 	/// The resource bytes garbage collection must keep for the stored document.
 	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
 		self.storage.as_ref().map(|storage| storage.resource_gc_roots()).unwrap_or_default()
+	}
+
+	/// Puts a step dropped out of a session's line back on top.
+	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.redo_retired_step(rev) {
+			log::error!("Redoing the dropped step failed: {error}");
+		}
 	}
 
 	/// Close this peer's open interaction and retire every closed one into durable Gdd history. No-op while unmounted.
@@ -221,7 +248,16 @@ impl DocumentHistory {
 	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are closed into one
 	/// interaction by [`end_storage_interaction`](Self::end_storage_interaction) at undo-step boundaries.
 	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
-		let Some(storage) = self.storage.as_mut() else { return };
+		if !self.stage_graph(deltas, interface, registry, byte_store) {
+			return;
+		}
+
+		self.persist_view_state(interface, view_settings);
+	}
+
+	/// [`stage_snapshot`](Self::stage_snapshot) without the view state. Returns whether the working copy took the batch.
+	pub fn stage_graph(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, byte_store: &dyn ResourceStorage) -> bool {
+		let Some(storage) = self.storage.as_mut() else { return false };
 
 		let staged = match self.needs_whole_document_stage {
 			true => Self::stage_whole_document(storage, interface, registry, byte_store),
@@ -242,14 +278,13 @@ impl DocumentHistory {
 			Ok(declarations) => {
 				self.declarations.extend(declarations);
 				self.needs_whole_document_stage = false;
+				true
 			}
 			Err(error) => {
 				log::error!("Storage snapshot staging failed: {error}");
-				return;
+				false
 			}
 		}
-
-		self.persist_view_state(interface, view_settings);
 	}
 
 	/// Converts the whole document and stages the difference from what the working copy holds.
@@ -344,6 +379,50 @@ impl DocumentHistory {
 			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
 			.inspect_err(|error| log::error!("Storage interface rebuild failed: {error}"))
 			.ok()
+	}
+
+	/// The hashes of declaration resources the working copy names but holds no decoded declaration for.
+	pub fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
+		let Some(storage) = self.storage.as_ref() else { return Vec::new() };
+
+		let mut hashes: Vec<ResourceHash> = storage
+			.session()
+			.all_declaration_resources()
+			.into_iter()
+			.filter_map(|(id, hash)| hash.filter(|_| !self.declarations.contains_key(&id)))
+			.collect();
+		hashes.sort_unstable();
+		hashes.dedup();
+		hashes
+	}
+
+	/// Cache a resource that arrived from a peer as a proto-node declaration, under every declaration
+	/// resource referencing its hash. Ignores resources no declaration refers to, such as images and fonts.
+	///
+	/// Returns false when the bytes do not decode.
+	pub fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) -> bool {
+		let Some(storage) = self.storage.as_ref() else { return true };
+
+		let referencing: Vec<ResourceId> = storage
+			.session()
+			.all_declaration_resources()
+			.into_iter()
+			.filter_map(|(id, declaration_hash)| (declaration_hash == Some(hash)).then_some(id))
+			.collect();
+		if referencing.is_empty() {
+			return true;
+		}
+
+		match document_graph_storage::decode_declaration(bytes) {
+			Ok(declaration) => {
+				self.declarations.extend(referencing.into_iter().map(|id| (id, declaration.clone())));
+				true
+			}
+			Err(error) => {
+				log::error!("Failed to deserialize a received ProtoNode declaration: {error}");
+				false
+			}
+		}
 	}
 
 	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`
