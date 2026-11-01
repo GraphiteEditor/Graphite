@@ -455,4 +455,13 @@ mod tests {
 			}
 		}
 	}
+
+	#[test]
+	fn dehaze_runs_on_a_cpu_raster_without_a_gpu() {
+		let image = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE)));
+
+		let dehazed = futures::executor::block_on(Raster::<CPU>::dehaze(image, 50., &WgpuPipelineCache::default())).unwrap();
+
+		assert_eq!((dehazed.element().width, dehazed.element().height), (4, 4));
+	}
 }

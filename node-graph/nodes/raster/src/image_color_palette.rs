@@ -338,4 +338,13 @@ mod test {
 		let colors = palette(&[(Color::BLACK, 50), (Color::WHITE, 50)], 1);
 		assert_colors_near(&colors, &[Color::from_rgbf32_unchecked(0.125, 0.125, 0.125)]);
 	}
+
+	#[test]
+	fn the_palette_reads_a_cpu_raster_without_a_gpu() {
+		let image = Raster::new_cpu(Image::new(4, 4, Color::WHITE));
+
+		let pixels = futures::executor::block_on(image.read_pixels(&WgpuPipelineCache::default())).unwrap();
+
+		assert_eq!(palette_colors(&pixels, 1).len(), 1);
+	}
 }

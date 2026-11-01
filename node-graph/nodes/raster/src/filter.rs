@@ -587,3 +587,19 @@ fn median_quickselect(values: &mut [f32]) -> f32 {
 	// Use total_cmp for safe NaN handling instead of partial_cmp().unwrap()
 	*values.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use raster_types::Image;
+
+	#[test]
+	fn blur_runs_on_a_cpu_raster_without_a_gpu() {
+		let image = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::WHITE)));
+		let pipeline = Item::new_from_element(WgpuPipelineCache::default());
+
+		let blurred: Item<Raster<CPU>> = blur((), image, Item::new_from_element(2.), Item::new_from_element(false), Item::new_from_element(false), pipeline).unwrap();
+
+		assert_eq!((blurred.element().width, blurred.element().height), (4, 4));
+	}
+}

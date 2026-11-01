@@ -3701,4 +3701,13 @@ mod tests {
 		// A white filter alters nothing, so the pixel keeps its channels once the above-white red is clipped
 		assert_close(run_photo_filter([300., 200., 100.], [255., 255., 255.], 100., true), [255., 200., 100.]);
 	}
+
+	#[test]
+	fn an_adjustment_runs_on_a_cpu_raster_without_a_gpu() {
+		let image = Item::new_from_element(Raster::new_cpu(Image::new(4, 4, Color::BLACK)));
+
+		let inverted: Item<Raster<CPU>> = invert((), image, Item::new_from_element(WgpuPipelineCache::default())).unwrap();
+
+		assert!(inverted.element().data.iter().all(|pixel| *pixel == Color::WHITE));
+	}
 }

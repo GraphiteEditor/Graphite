@@ -605,3 +605,15 @@ impl ReadPixels for Raster<GPU> {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn the_pipeline_node_needs_no_gpu() {
+		let pipeline = raster_kernel_pipeline((), &WgpuPipelineCache::default(), Item::new_from_element(None));
+
+		assert!(pipeline.element().executor().is_none());
+	}
+}
