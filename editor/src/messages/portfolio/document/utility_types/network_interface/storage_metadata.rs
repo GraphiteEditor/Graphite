@@ -218,6 +218,33 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 	Ok(NodeNetworkInterface::from_trees(network, network_metadata))
 }
 
+/// The runtime node and its persistent metadata from a single-node projection, patched as a whole rebuild patches its entry.
+pub(super) fn node_metadata_from_projection(projected: document_graph_storage::ProjectedNode) -> Result<(graph_craft::document::DocumentNode, DocumentNodePersistentMetadata), InterfaceRebuildError> {
+	let document_graph_storage::ProjectedNode { local_id, node, metadata: entry, .. } = projected;
+
+	// The scratch tree is rooted at the node's own network
+	let entry = NodeMetadataEntry {
+		network: OwnedNetworkLocation::ROOT,
+		..entry
+	};
+
+	let mut scratch = NodeNetwork::default();
+	scratch.nodes.insert(local_id, node);
+	let mut metadata = NodeNetworkMetadata::default();
+	seed_metadata_tree(&scratch, &mut metadata);
+	apply_entries_into_tree(&scratch, &mut metadata, vec![entry])?;
+
+	let mut persistent = metadata.persistent_metadata.node_metadata.remove(&local_id).map(|node| node.persistent_metadata).unwrap_or_default();
+	let node = scratch.nodes.remove(&local_id).expect("inserted above");
+	// An instance's interface belongs to the network implementing it
+	if matches!(node.implementation, DocumentNodeImplementation::Definition(_)) {
+		persistent.input_metadata.clear();
+		persistent.output_names.clear();
+		persistent.output_descriptions.clear();
+	}
+	Ok((node, persistent))
+}
+
 /// Maps each runtime network location to its stable `NetworkId`, from the entries `to_runtime_with_full_metadata` returns.
 pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId> {
 	network_entries.iter().map(|entry| (entry.network.clone(), entry.network_id)).collect()
@@ -436,7 +463,7 @@ pub(super) fn input_metadata_entry_from_runtime(input_metadata: &InputMetadata) 
 }
 
 /// Storage-side `None` restores as `""` (the runtime's "unset" sentinel for `input_name` / `input_description`).
-fn input_metadata_entry_to_runtime(entry: InputMetadataEntry) -> InputMetadata {
+pub(super) fn input_metadata_entry_to_runtime(entry: InputMetadataEntry) -> InputMetadata {
 	InputMetadata {
 		persistent_metadata: InputPersistentMetadata {
 			input_name: entry.input_name.unwrap_or_default(),

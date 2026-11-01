@@ -334,7 +334,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 	interface.give_diverged_catalog_entries_new_ids();
 	// TODO: Run document upgrades here once this format has a versioned migration
 
-	let mut document = DocumentMessageHandler::from_storage(interface, gdd, declarations, String::new(), None);
+	let mut document = DocumentMessageHandler::from_storage(interface, gdd, declarations, byte_store.storage(), String::new(), None);
 	document.finalize_storage_load();
 	Some(document)
 }

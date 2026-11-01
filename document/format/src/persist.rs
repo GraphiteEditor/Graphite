@@ -77,6 +77,7 @@ impl<L: Layout> Gdd<L> {
 			return Err(Error::UserChangeWhileConnected);
 		}
 		let closing = self.session.set_user(user, peer)?;
+		self.own_last_staged_ms = None;
 		self.persist_staged(&closing)?;
 		self.persist_session_state()
 	}
@@ -147,6 +148,9 @@ impl<L: Layout> Gdd<L> {
 
 	/// Append the frames of freshly staged hot ops, then broadcast them.
 	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
+		if hot_ops.iter().any(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta)) {
+			self.own_staged_since_tick = true;
+		}
 		for hot_op in hot_ops {
 			self.append_hot_frame(hot_op)?;
 		}
@@ -384,6 +388,15 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// How many closed interactions must be waiting before they retire. Retiring later fuses more of a gesture
+	/// into one delta and leaves more for undo to rewind silently.
+	pub const RETIRE_AFTER_INTERACTIONS: usize = 10;
+	/// How long a closed interaction sits before it may retire, so every peer has seen all of it.
+	pub const RETIRE_MIN_AGE_MS: f64 = 2_000.0;
+	/// The longest anything waits. A quiet session still retires, and an interaction with a gap in its author's
+	/// run retires with what arrived.
+	pub const RETIRE_MAX_AGE_MS: f64 = 60_000.0;
+
 	/// Close this peer's open interaction, if any, with a marker staged like any other hot op.
 	pub fn end_interaction(&mut self) -> Result<(), Error> {
 		let staged = self.session.end_interaction()?;
@@ -391,10 +404,82 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Undo this peer's latest interaction while it is still hot, here and on every peer the retraction reaches.
+	/// `None` when it already retired. What the ops named lands in the remote changes.
+	pub fn retract_interaction(&mut self) -> Result<Option<Vec<RegistryDelta>>, Error> {
+		let Some(retraction) = self.session.retract_interaction()? else {
+			return Ok(None);
+		};
+		self.own_last_staged_ms = None;
+		self.rewrite_hot_log()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()?;
+		#[cfg(feature = "network")]
+		{
+			self.remote_changes.touched.extend(retraction.touched);
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_retraction(&retraction.ids)?;
+			}
+		}
+		Ok(Some(retraction.ops))
+	}
+
+	/// Stage ops a retraction took back as a fresh interaction, recorded in the remote changes like a peer's edit.
+	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
+		#[cfg(feature = "network")]
+		for op in &ops {
+			self.remote_changes.touched.record(op);
+		}
+		self.stage_ops(ops)?;
+		Ok(())
+	}
+
+	/// Retire every interaction the policy says is due at `now_ms`, the wall clock in milliseconds. Closed interactions
+	/// are due after waiting [`RETIRE_MIN_AGE_MS`](Self::RETIRE_MIN_AGE_MS), once [`RETIRE_AFTER_INTERACTIONS`](Self::RETIRE_AFTER_INTERACTIONS)
+	/// of them are waiting or the oldest has waited [`RETIRE_MAX_AGE_MS`](Self::RETIRE_MAX_AGE_MS). Open interactions
+	/// never retire. `idle` says whether the editor is between steps. A peer that does not retire only closes its own
+	/// quiet interaction.
+	pub fn retire_due(&mut self, now_ms: f64, idle: bool) -> Result<Vec<Rev>, Error> {
+		self.wall_clock_ms = Some(now_ms);
+		// An interaction left open closes once quiet, but only between steps, so a pause mid-gesture does not split it.
+		if self.own_staged_since_tick {
+			self.own_staged_since_tick = false;
+			self.own_last_staged_ms = Some(now_ms);
+		} else if idle && self.own_last_staged_ms.is_some_and(|last| now_ms - last >= Self::RETIRE_MIN_AGE_MS) {
+			self.end_interaction()?;
+			self.own_last_staged_ms = None;
+		}
+		if !self.retires_locally() {
+			return Ok(Vec::new());
+		}
+
+		let closed = self.session.closed_interactions();
+		let mut seen = std::mem::take(&mut self.interactions_seen);
+		let mut due = Vec::new();
+		let mut oldest_age: f64 = 0.0;
+		for interaction in &closed {
+			let Some(&marker) = interaction.ops.last() else { continue };
+			let age = now_ms - *seen.entry(marker).or_insert(now_ms);
+			if age >= Self::RETIRE_MIN_AGE_MS && (interaction.contiguous || age >= Self::RETIRE_MAX_AGE_MS) {
+				due.push(interaction.clone());
+				oldest_age = oldest_age.max(age);
+			}
+		}
+		seen.retain(|marker, _| closed.iter().any(|interaction| interaction.ops.last() == Some(marker)));
+		self.interactions_seen = seen;
+
+		if due.len() >= Self::RETIRE_AFTER_INTERACTIONS || oldest_age >= Self::RETIRE_MAX_AGE_MS {
+			self.retire_interactions(&due)
+		} else {
+			Ok(Vec::new())
+		}
+	}
+
 	/// Close this peer's open interaction and retire every closed one with no ops still on their way, whoever authored
 	/// it. A peer that does not retire only closes its own.
 	pub fn retire_pending_interaction(&mut self) -> Result<Vec<Rev>, Error> {
 		self.end_interaction()?;
+		self.own_last_staged_ms = None;
 		let closed = self.contiguous_interactions();
 		self.retire_interactions(&closed)
 	}
@@ -430,8 +515,11 @@ impl<L: Layout> Gdd<L> {
 		Ok(revs)
 	}
 
-	/// Publish and persist freshly retired deltas, then broadcast them with the hot ops they retired.
+	/// Stamp, publish and persist freshly retired deltas, then broadcast them with the hot ops they retired.
 	fn finish_retirement(&mut self, new_revs: &[Rev], retired_hot_ops: &[document_graph_storage::HotOpId]) -> Result<(), Error> {
+		if let Some(wall_ms) = self.wall_clock_ms {
+			self.session.stamp_retired_at(new_revs, wall_ms as u64);
+		}
 		// Deltas peers hold are published, so undo past them moves the shared head instead of rewinding.
 		#[cfg(feature = "network")]
 		if self.network.is_some()

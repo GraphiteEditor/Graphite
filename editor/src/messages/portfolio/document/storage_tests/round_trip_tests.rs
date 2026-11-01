@@ -4,11 +4,13 @@
 //! postcard codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
 //! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
 
+use crate::messages::resource_storage::ResourcesHandle;
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{NodeMetadataSource, PeerId, UserId, to_value};
 use graph_craft::application_io::resource::HashMapResourceStorage;
+use std::sync::Arc;
 
 use super::test_support::{RoundTrip, node_locations, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
@@ -158,7 +160,7 @@ async fn edit_after_open_commits_cleanly() {
 
 	// Persist the document into a fresh Gdd and reopen it, then build a runtime document from the
 	// reopened registry: the editor's .gdd-open path.
-	let byte_store = HashMapResourceStorage::new();
+	let byte_store = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
 	let source = editor.active_document();
 	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let source_network = source.network_interface.document_network().clone();
@@ -176,7 +178,7 @@ async fn edit_after_open_commits_cleanly() {
 	{
 		let document = editor.active_document_mut();
 		document.network_interface = rebuilt;
-		document.set_storage(reopened, declarations);
+		document.set_storage(reopened, declarations, byte_store.storage());
 		document.finalize_storage_load();
 	}
 
@@ -664,10 +666,11 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
-fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
+fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> ResourcesHandle {
 	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0x5EED, "test".into(), "test".into()).expect("create_in");
-	editor.active_document_mut().set_storage(gdd, Default::default());
-	HashMapResourceStorage::new()
+	let byte_store = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
+	editor.active_document_mut().set_storage(gdd, Default::default(), byte_store.storage());
+	byte_store
 }
 
 /// Open a real demo artwork, mount storage, edit it, and trigger autosave. The autosave runs
@@ -701,8 +704,9 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	// Second autosave: again verifies the round-trip, and the edit must produce new retired history.
+	// Second autosave verifies the round-trip again, and retiring turns the edit into history
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
 		history_after_edit > history_after_open,
@@ -935,4 +939,42 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 		matches!(transform, Some(TaggedValue::DAffine2(_))),
 		"the transform input should shift down intact, but became {transform:?}"
 	);
+}
+
+/// Undoing a hot step takes it back rather than moving the cursor, and redo stages the same ops afresh.
+#[tokio::test]
+async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().retire_storage_interaction();
+	let history_base = editor.active_document().storage().unwrap().session().history().count();
+	let before_edit = editor.active_document().network_interface.document_network().clone();
+
+	editor.draw_rect(64., 64., 192., 192.).await;
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	let after_edit = editor.active_document().network_interface.document_network().clone();
+	assert_ne!(after_edit, before_edit);
+	assert!(!editor.active_document().storage().unwrap().session().hot_log().is_empty(), "the step is hot");
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &before_edit, "undo restores the pre-edit network");
+	let storage = editor.active_document().storage().unwrap();
+	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
+	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	// The step held for redo keeps its declaration bytes, which nothing in storage names, from garbage collection
+	let storage = editor.active_document().storage().unwrap();
+	assert!(
+		!editor.active_document().resource_gc_roots().is_subset(&storage.all_referenced_resource_hashes()),
+		"the retracted step names its declaration resource"
+	);
+
+	editor.handle_message(DocumentMessage::Redo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo restores the edit");
+	let storage = editor.active_document().storage().unwrap();
+	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
+	assert_eq!(storage.session().history().count(), history_base);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 }

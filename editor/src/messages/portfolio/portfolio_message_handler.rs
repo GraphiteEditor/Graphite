@@ -58,6 +58,7 @@ pub struct PortfolioMessageHandler {
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
 	ingest: IngestMessageHandler,
+	sync: SyncMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
@@ -133,6 +134,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document_open: self.active_document().is_some(),
 				};
 				self.ingest.process_message(message, responses, context);
+			}
+			PortfolioMessage::Sync(message) => {
+				let context = SyncMessageContext { documents: &mut self.documents };
+				self.sync.process_message(message, responses, context);
 			}
 			PortfolioMessage::Workspace(message) => {
 				let context = WorkspaceMessageContext {
@@ -385,10 +390,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document in self.documents.values_mut() {
 					document.garbage_collect_resources();
 					used_resources.extend(document.resources.registry.resolved().filter_map(|info| info.hash.cloned()));
-
-					if let Some(storage) = document.storage() {
-						used_resources.extend(storage.all_referenced_resource_hashes());
-					}
+					used_resources.extend(document.resource_gc_roots());
 				}
 				used_resources.extend(self.fonts.used_resources());
 				responses.add(ResourceStorageMessage::GarbageCollect {
@@ -514,7 +516,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						document.path = info.path;
 						document.set_save_state(info.is_saved);
 						self.load_document(document, document_id, resource_storage.resources_mut(), responses);
-						self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+						self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 					}
 					None => {
 						self.document_ids.retain(|id| *id != document_id);
@@ -643,7 +645,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				document.path = document_path;
 
 				self.load_document(document, document_id, resource_storage.resources_mut(), responses);
-				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::StorageAttached {
@@ -662,7 +664,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 				document.container = Some(container);
-				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences);
+				self.attach_storage(document_id, gdd, declarations, resource_storage, preferences, responses);
 				self.save_if_needed(document_id, responses);
 			}
 			PortfolioMessage::NextDocument => {
@@ -1162,6 +1164,7 @@ impl PortfolioMessageHandler {
 			persistent_state: Default::default(),
 			fonts: Default::default(),
 			ingest: Default::default(),
+			sync: Default::default(),
 			executor,
 			selection_mode: Default::default(),
 			reset_node_definitions_on_open: Default::default(),
@@ -1293,12 +1296,19 @@ impl PortfolioMessageHandler {
 		declarations: Declarations,
 		resource_storage: &ResourceStorageMessageHandler,
 		preferences: &PreferencesMessageHandler,
+		responses: &mut VecDeque<Message>,
 	) {
-		let (Some(document), Some(gdd)) = (self.documents.get_mut(&document_id), gdd) else { return };
-		document.set_storage(*gdd, declarations);
-		document.require_whole_document_stage();
-		document.commit_storage_snapshot(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
-		document.retire_storage_interaction();
+		if let (Some(document), Some(gdd)) = (self.documents.get_mut(&document_id), gdd) {
+			let resources = resource_storage.resources_mut();
+			document.set_storage(*gdd, declarations, resources.storage());
+			document.require_whole_document_stage();
+			document.commit_storage_snapshot(&resources, preferences.validate_storage_round_trip);
+			document.retire_storage_interaction();
+		}
+		// A document recovered from its storage already holds it
+		if self.documents.get(&document_id).is_some_and(|document| document.storage().is_some()) {
+			responses.add(SyncMessage::StorageMounted);
+		}
 	}
 
 	/// The resources of documents that are not loaded yet are unknown, so GC waits for every load and for a successful store listing.

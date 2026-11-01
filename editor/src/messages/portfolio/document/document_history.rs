@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::collections::{BTreeMap, HashSet};
 
 use document_graph_storage::{Declarations, Registry, Value};
-use graph_craft::application_io::resource::{ResourceId, ResourceRegistry, ResourceStorage};
+use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceRegistry, ResourceStorage};
 
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::editor_delta::{EditorDelta, StagingError, construct_batch};
@@ -35,6 +35,16 @@ pub struct DocumentHistory {
 	/// moved without recording it (an upgrade on open), since the recorded batch would then describe only
 	/// part of the distance between the two.
 	needs_whole_document_stage: bool,
+	/// How storage undid each step on the legacy redo stack, aligned with its top.
+	undo_notes: Vec<UndoNote>,
+}
+
+#[derive(Clone, Debug)]
+enum UndoNote {
+	/// The step was still hot and its ops were taken back.
+	Retracted(Vec<document_graph_storage::RegistryDelta>),
+	/// The storage cursor moved back over the step.
+	Cursor,
 }
 
 /// Why [`DocumentHistory::move_cursor`] produced no interface.
@@ -77,6 +87,7 @@ impl DocumentHistory {
 	/// Clear the redo stack, called when a fresh edit invalidates the redo future.
 	pub fn clear_redo(&mut self) {
 		self.legacy_redo_stack.clear();
+		self.undo_notes.clear();
 	}
 
 	/// Add the resources referenced by every snapshot in both history stacks into `resources`, so
@@ -99,6 +110,11 @@ impl DocumentHistory {
 		self.storage.as_mut()
 	}
 
+	/// The decoded proto-node declarations the working copy's registry states reference.
+	pub fn declarations(&self) -> &Declarations {
+		&self.declarations
+	}
+
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
 	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
 		self.needs_whole_document_stage |= storage.registry().node_instances.is_empty();
@@ -112,9 +128,87 @@ impl DocumentHistory {
 		self.needs_whole_document_stage = true;
 	}
 
-	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
-	/// boundary (a new `StartTransaction`) and before undo/redo, so the per-`CommitTransaction` staging
-	/// coalesces into one interaction aligned with the legacy step. No-op while unmounted.
+	/// Close the open storage interaction at an undo-step boundary, so it aligns with the legacy step. No-op while unmounted.
+	pub fn end_storage_interaction(&mut self) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.end_interaction() {
+			log::error!("Closing the storage interaction failed: {error}");
+		}
+	}
+
+	/// Undoes the latest step in storage alone, moving its legacy snapshot to the redo stack uninstalled. A hot step is
+	/// taken back so it never becomes history. Returns whether storage undid it.
+	pub fn undo_in_storage(&mut self) -> bool {
+		if self.legacy_undo_stack.is_empty() {
+			return false;
+		}
+		let Some(ops) = self.retract_storage_interaction() else {
+			return false;
+		};
+
+		if let Some(snapshot) = self.pop_undo() {
+			self.push_redo(snapshot);
+		}
+		self.note_undo(UndoNote::Retracted(ops));
+		true
+	}
+
+	/// Redoes a step [`undo_in_storage`](Self::undo_in_storage) undid, moving its legacy snapshot back uninstalled.
+	/// Returns whether the next redo step was one.
+	pub fn redo_in_storage(&mut self) -> bool {
+		if self.legacy_redo_stack.is_empty() {
+			return false;
+		}
+		let Some(note) = self.undo_notes.pop_if(|note| !matches!(note, UndoNote::Cursor)) else {
+			return false;
+		};
+
+		if let Some(snapshot) = self.pop_redo() {
+			self.push_undo(snapshot);
+		}
+		match note {
+			UndoNote::Retracted(ops) => self.restage_ops(ops),
+			UndoNote::Cursor => {}
+		}
+		true
+	}
+
+	/// Records that the snapshot just pushed onto the redo stack was undone by moving the storage cursor.
+	pub fn note_cursor_undo(&mut self) {
+		self.note_undo(UndoNote::Cursor);
+	}
+
+	/// Forgets the note of the snapshot just popped off the redo stack.
+	pub fn forget_undo_note(&mut self) {
+		self.undo_notes.pop();
+	}
+
+	fn note_undo(&mut self, note: UndoNote) {
+		self.undo_notes.push(note);
+		let evicted = self.undo_notes.len().saturating_sub(self.legacy_redo_stack.len());
+		self.undo_notes.drain(..evicted);
+	}
+
+	fn retract_storage_interaction(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
+		self.storage.as_mut()?.retract_interaction().unwrap_or_else(|error| {
+			log::error!("Taking the storage interaction back failed: {error}");
+			None
+		})
+	}
+
+	fn restage_ops(&mut self, ops: Vec<document_graph_storage::RegistryDelta>) {
+		let Some(storage) = self.storage.as_mut() else { return };
+		if let Err(error) = storage.restage_ops(ops) {
+			log::error!("Staging the redone step failed: {error}");
+		}
+	}
+
+	/// The resource bytes garbage collection must keep for the stored document.
+	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
+		self.storage.as_ref().map(|storage| storage.resource_gc_roots()).unwrap_or_default()
+	}
+
+	/// Close this peer's open interaction and retire every closed one into durable Gdd history. No-op while unmounted.
 	pub fn retire_storage_interaction(&mut self) {
 		let Some(storage) = self.storage.as_mut() else { return };
 		if let Err(error) = storage.retire_pending_interaction() {
@@ -124,8 +218,8 @@ impl DocumentHistory {
 
 	/// Stage a `CommitTransaction` into the `Gdd` working copy: the first commit writes the whole document,
 	/// every later one stages the `deltas` the store recorded. No-op while unmounted. Proto-node declaration
-	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are retired by
-	/// [`retire_storage_interaction`](Self::retire_storage_interaction) at undo-step boundaries.
+	/// bytes go into `byte_store` (the app-global resource cache). The staged hot ops are closed into one
+	/// interaction by [`end_storage_interaction`](Self::end_storage_interaction) at undo-step boundaries.
 	pub fn stage_snapshot(&mut self, deltas: &[EditorDelta], interface: &NodeNetworkInterface, registry: &ResourceRegistry, view_settings: BTreeMap<String, Value>, byte_store: &dyn ResourceStorage) {
 		let Some(storage) = self.storage.as_mut() else { return };
 
@@ -235,15 +329,21 @@ impl DocumentHistory {
 			return Err(CursorMoveError::NotMoved);
 		}
 
+		self.rebuild_interface().ok_or(CursorMoveError::RebuildFailed)
+	}
+
+	/// Build a fresh interface from the working registry, using the declaration cache so no resource load
+	/// is needed. `None` when the registry does not convert.
+	pub fn rebuild_interface(&self) -> Option<NodeNetworkInterface> {
+		let storage = self.storage.as_ref()?;
+
 		storage
 			.registry()
 			.to_runtime_with_full_metadata(&self.declarations)
 			.map_err(|error| error.to_string())
 			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
-			.map_err(|error| {
-				log::error!("Storage undo/redo rebuild failed: {error}");
-				CursorMoveError::RebuildFailed
-			})
+			.inspect_err(|error| log::error!("Storage interface rebuild failed: {error}"))
+			.ok()
 	}
 
 	/// Step the cursor back the other way, undoing a [`move_cursor`](Self::move_cursor) in the `undo`
