@@ -40,6 +40,9 @@ pub enum PreferencesMessage {
 		enabled: bool,
 	},
 	ToggleShowStoragePreferences,
+	UserName {
+		name: String,
+	},
 	#[cfg(target_os = "macos")]
 	VSync {
 		vsync: bool,

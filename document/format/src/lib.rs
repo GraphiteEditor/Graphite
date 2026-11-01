@@ -237,6 +237,11 @@ impl<L: Layout> Gdd<L> {
 	/// # Errors
 	/// [`Error::MissingManifest`] if the container holds no manifest, [`Error::WrongFormat`] / [`Error::UnsupportedVersion`]
 	/// if it fails validation, plus the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
+	/// Reads the manifest without opening the copy, which may be another writer's.
+	pub async fn read_manifest(working: &AnyContainer, layout: &L) -> Result<Manifest, Error> {
+		Ok(io::read_single(working, layout.manifest_basename(), MANIFEST_CODEC).await?)
+	}
+
 	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, Error> {
 		Self::open_stored(working, layout, MigrationInputs::default()).await
 	}

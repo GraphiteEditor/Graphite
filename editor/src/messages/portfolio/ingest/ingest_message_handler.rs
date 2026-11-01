@@ -49,6 +49,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 			IngestMessage::Ingest { data, action, mime_type, path } => {
 				let data_type = DataType::detect(&data, &mime_type, path.as_deref());
 
+				let fresh_identity = matches!(action, IngestAction::OpenDemo);
 				let placement = match action {
 					IngestAction::ResourceInput {
 						document_id,
@@ -80,7 +81,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 						}
 						return;
 					}
-					IngestAction::Open => None,
+					IngestAction::Open | IngestAction::OpenDemo => None,
 					IngestAction::Import | IngestAction::Paste => Some((None, None)),
 					IngestAction::DropOnCanvas { mouse } => Some((Some(mouse), None)),
 					IngestAction::DropOnLayers { parent, insert_index } => Some((None, Some((parent, insert_index as usize)))),
@@ -109,6 +110,7 @@ impl MessageHandler<IngestMessage, IngestMessageContext> for IngestMessageHandle
 							document_name: name,
 							document_path,
 							content: data,
+							fresh_identity,
 						});
 						return;
 					}

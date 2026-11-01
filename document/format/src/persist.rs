@@ -419,6 +419,61 @@ impl<L: Layout> Gdd<L> {
 		Ok(Some(retraction.ops))
 	}
 
+	#[cfg(feature = "network")]
+	pub fn undo_retired_step(&mut self) -> Result<Option<Rev>, Error> {
+		if !self.can_change_line() {
+			return Ok(None);
+		}
+		let Some(rev) = self.session.latest_own_interaction() else {
+			return Ok(None);
+		};
+		self.drop_step(rev)?;
+		Ok(Some(rev))
+	}
+
+	#[cfg(feature = "network")]
+	pub fn can_change_line(&self) -> bool {
+		self.retires_locally() || self.network.as_ref().is_some_and(|replica| replica.has_host())
+	}
+
+	/// Drop a retired interaction from the line. A non-retiring peer asks the retirer.
+	#[cfg(feature = "network")]
+	pub fn drop_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let (moved, touched) = self.session.drop_interaction(rev)?;
+			self.remote_changes.touched.extend(touched);
+			self.persist_rewritten_line()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_head_move(moved)?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_undo(rev, false)?;
+		}
+		Ok(())
+	}
+
+	/// Redo a dropped step as a copy on top of the line. A non-retiring peer asks the retirer.
+	#[cfg(feature = "network")]
+	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
+		if self.retires_locally() {
+			let deltas = self.restore_dropped_interaction(rev)?;
+			self.persist_rewritten_line()?;
+			if let Some(replica) = &mut self.network {
+				replica.broadcast_retired(&deltas, &[])?;
+			}
+		} else if let Some(replica) = &mut self.network {
+			replica.request_undo(rev, true)?;
+		}
+		Ok(())
+	}
+
+	#[cfg(feature = "network")]
+	fn persist_rewritten_line(&mut self) -> Result<(), Error> {
+		self.rewrite_history()?;
+		self.persist_registry_snapshot()?;
+		self.persist_session_state()
+	}
+
 	/// Stage retracted ops as a new interaction. They count as remote changes.
 	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
 		#[cfg(feature = "network")]
