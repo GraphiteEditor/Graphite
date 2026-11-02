@@ -72,7 +72,7 @@ impl AsyncRuntime {
 		}))
 	}
 
-	pub fn retain_sources(&self, live: &[SourceId]) {
+	pub fn update_sources(&self, live: &[SourceId]) {
 		let mut generations = self.0.generations.lock().unwrap_or_else(PoisonError::into_inner);
 		generations.retain(|source, _| live.contains(source));
 		for source in live {
@@ -248,7 +248,7 @@ mod tests {
 	fn a_completion_bumps_its_generation() {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
-		runtime.retain_sources(&[SOURCE]);
+		runtime.update_sources(&[SOURCE]);
 
 		runtime.handle().spawn(SOURCE, Box::pin(YieldOnce(false)));
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 0)]);
@@ -258,17 +258,17 @@ mod tests {
 	}
 
 	#[test]
-	fn retaining_sources_keeps_live_generations() {
+	fn updating_sources_keeps_live_generations() {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
-		runtime.retain_sources(&[SOURCE]);
+		runtime.update_sources(&[SOURCE]);
 		runtime.spawn(SOURCE, Box::pin(YieldOnce(false)));
 		spawner.drain();
 
-		runtime.retain_sources(&[SOURCE, SourceId(9)]);
+		runtime.update_sources(&[SOURCE, SourceId(9)]);
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 1), (SourceId(9), 0)]);
 
-		runtime.retain_sources(&[SourceId(9)]);
+		runtime.update_sources(&[SourceId(9)]);
 		assert_eq!(&*runtime.snapshot(), &[(SourceId(9), 0)]);
 	}
 
@@ -276,7 +276,7 @@ mod tests {
 	fn an_inline_completion_and_a_dropped_source_bump_nothing() {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
-		runtime.retain_sources(&[SOURCE]);
+		runtime.update_sources(&[SOURCE]);
 
 		let slots = Slots::default();
 		assert_eq!(slots.resolve(1, &runtime, SOURCE, None, || async { Poll::Final(1u32) }), Poll::Final(1));
@@ -284,7 +284,7 @@ mod tests {
 		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 0)]);
 
 		runtime.spawn(SOURCE, Box::pin(YieldOnce(false)));
-		runtime.retain_sources(&[]);
+		runtime.update_sources(&[]);
 		assert_eq!(spawner.drain(), 1);
 		assert!(runtime.snapshot().is_empty());
 	}
@@ -293,7 +293,7 @@ mod tests {
 	fn a_slot_serves_the_placeholder_until_the_response_lands() {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
-		runtime.retain_sources(&[SOURCE]);
+		runtime.update_sources(&[SOURCE]);
 		let slots = Slots::default();
 		let fetch = || async {
 			YieldOnce(false).await;
@@ -310,7 +310,7 @@ mod tests {
 	#[test]
 	fn a_blocking_spawner_lands_the_slot_in_the_same_resolve() {
 		let runtime = AsyncRuntime::new(Arc::new(BlockingSpawner));
-		runtime.retain_sources(&[SOURCE]);
+		runtime.update_sources(&[SOURCE]);
 		let slots = Slots::default();
 		let fetch = || async {
 			YieldOnce(false).await;

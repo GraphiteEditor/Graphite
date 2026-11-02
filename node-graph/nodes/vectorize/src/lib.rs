@@ -340,7 +340,7 @@ mod test {
 	fn collecting_runtime() -> (Arc<CollectSpawner>, AsyncRuntime) {
 		let spawner = Arc::new(CollectSpawner::default());
 		let runtime = AsyncRuntime::new(spawner.clone());
-		runtime.retain_sources(&[SOURCE]);
+		runtime.update_sources(&[SOURCE]);
 		(spawner, runtime)
 	}
 
@@ -389,7 +389,7 @@ mod test {
 		assert!(generation > 0, "the trace took a single slice");
 	}
 
-	/// New inputs leave the former trace's request for its next slice, which coalesces with the new one into one evaluation.
+	/// New inputs leave the former trace's request for its next slice, which bumps the generation along with the new trace's own.
 	#[test]
 	fn new_inputs_ask_for_their_own_slice() {
 		let (spawner, runtime) = collecting_runtime();
@@ -398,5 +398,6 @@ mod test {
 		assert!(matches!(evaluate(&slot, &busy(128), &runtime), Poll::Partial(_)));
 
 		assert_eq!(spawner.drain(), 2);
+		assert_eq!(&*runtime.snapshot(), &[(SOURCE, 2)]);
 	}
 }

@@ -8,7 +8,11 @@ use editor::messages::input_mapper::utility_types::keyboard::Key;
 use editor::messages::prelude::*;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::task::{Spawn, Task};
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use graphene_std::runtime::Instant;
 use js_sys::{Object, Reflect};
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
 #[cfg(not(feature = "native"))]
@@ -50,7 +54,7 @@ pub(crate) fn wrapper(callback: impl FnOnce(&mut EditorWrapper)) {
 }
 
 #[cfg(not(feature = "native"))]
-pub(crate) async fn run_node_runtime() {
+pub(crate) async fn run_node_runtime(update: bool) {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
@@ -58,6 +62,9 @@ pub(crate) async fn run_node_runtime() {
 
 	let Some(mut runtime) = crate::NODE_RUNTIME.try_lock() else { return };
 	let Some(runtime) = runtime.as_mut() else { return };
+	if update {
+		runtime.update();
+	}
 	runtime.run().await;
 }
 
@@ -78,10 +85,42 @@ pub(crate) fn wake_editor() {
 	});
 }
 
-/// Web runtime wake: queues a run of the node runtime. Used to wake the runtime on async task completion.
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+thread_local! {
+	static IDLE_RUN_QUEUED: Cell<bool> = const { Cell::new(false) };
+	static IDLE_PERIOD: RefCell<Option<(web_sys::IdleDeadline, Instant)>> = const { RefCell::new(None) };
+	static IDLE_RUN: Closure<dyn FnMut(web_sys::IdleDeadline)> = Closure::new(|deadline| {
+		IDLE_RUN_QUEUED.set(false);
+		IDLE_PERIOD.set(Some((deadline, Instant::now())));
+		wasm_bindgen_futures::spawn_local(run_node_runtime(false));
+	});
+}
+
+/// Web runtime wake: runs the node runtime in the time left before the next frame, so it can't hold up the browser's painting
+/// Within an idle period it runs again at once if the time the last run took still fits.
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 pub(crate) fn wake_runtime() {
-	wasm_bindgen_futures::spawn_local(run_node_runtime());
+	let fits = IDLE_PERIOD.with_borrow_mut(|period| {
+		period.as_mut().is_some_and(|(deadline, run_start)| {
+			let now = Instant::now();
+			let fits = deadline.time_remaining() > (now - *run_start).as_secs_f64() * 1000.;
+			if fits {
+				*run_start = now;
+			}
+			fits
+		})
+	});
+	if fits {
+		wasm_bindgen_futures::spawn_local(run_node_runtime(false));
+		return;
+	}
+
+	let Some(window) = window() else { return };
+	if Reflect::has(&window, &"requestIdleCallback".into()).unwrap_or(false) && !IDLE_RUN_QUEUED.replace(true) {
+		IDLE_RUN.with(|run| {
+			let _ = window.request_idle_callback(run.as_ref().unchecked_ref());
+		});
+	}
 }
 
 thread_local! {

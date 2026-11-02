@@ -143,7 +143,7 @@ impl CompiledDocument {
 			let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
 			messages.join("\n")
 		})?;
-		self.runtime.retain_sources(executor.sources());
+		self.runtime.update_sources(executor.sources());
 
 		let device = self.application_io.gpu_executor().ok_or("No GPU executor is available")?.context().device.clone();
 		let polling = Arc::new(AtomicBool::new(true));

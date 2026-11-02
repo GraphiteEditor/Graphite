@@ -193,7 +193,7 @@ impl EditorWrapper {
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
 				#[cfg(not(feature = "native"))]
-				wasm_bindgen_futures::spawn_local(run_node_runtime());
+				wasm_bindgen_futures::spawn_local(run_node_runtime(true));
 
 				#[cfg(any(not(feature = "native"), target_family = "wasm"))]
 				wrapper(|wrapper| {
