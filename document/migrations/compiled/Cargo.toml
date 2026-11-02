@@ -13,7 +13,7 @@ graph-craft = { workspace = true }
 graphene-std = { workspace = true }
 migration-core = { workspace = true, features = ["typed"] }
 preprocessor = { workspace = true }
+serde = { workspace = true }
 
 [dev-dependencies]
 migration-runner = { workspace = true, features = ["testing"] }
-serde = { workspace = true }

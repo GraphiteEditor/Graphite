@@ -4425,6 +4425,7 @@ dependencies = [
 name = "migration-nodes"
 version = "0.0.0"
 dependencies = [
+ "document-graph-storage",
  "migration-core",
  "migration-runner",
  "serde",

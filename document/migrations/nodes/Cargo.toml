@@ -12,8 +12,5 @@ migration-core = { workspace = true, features = ["typed"] }
 serde = { workspace = true }
 
 [dev-dependencies]
+document-graph-storage = { workspace = true, default-features = false }
 migration-runner = { workspace = true, features = ["testing"] }
-
-[package.metadata.cargo-shear]
-# Frozen mirrors of stored values, once a node migration needs one
-ignored = ["serde"]
