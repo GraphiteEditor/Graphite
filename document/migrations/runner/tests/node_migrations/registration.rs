@@ -1,5 +1,6 @@
 //! What `#[migration]` and `rename!` generate and register, and how the runner orders and chains the registry.
 
+use crate::compiler;
 use crate::examples::{ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, TransformDegrees};
 use document_graph_storage::{Delta, Implementation, Network, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, RegistryDelta, Session, UserId};
 use migration_core::{AnchorContext, Declaration, DeclarationResolver, Edits, MigrationError, NodeMigration, Region, decl, literal, registered_migrations};
@@ -13,8 +14,16 @@ fn every_migration_registers_once() {
 
 	let mut expected = vec![
 		decl!("blending_nodes::opacity"@1),
+		decl!("compiler::anchor"@1),
+		decl!("compiler::graph_reader"@1),
+		decl!("choice::toggle"@1),
+		decl!("choice::unnamed"@1),
 		decl!("graphene_core::ops::AddNode"@1),
 		decl!("math_nodes::multiply"@1),
+		decl!("order::asking"@1),
+		decl!("order::inspector"@1),
+		decl!("order::pinned_asking"@1),
+		decl!("order::static_late"@1),
 		decl!("transform_nodes::transform"@1),
 		decl!("vector_nodes::angle_between"@1),
 		decl!("vector_nodes::extract_xy"@1),
@@ -198,7 +207,7 @@ fn migrate_history_chains_every_pending_migration() {
 	});
 
 	let history: Vec<Delta> = session.history().cloned().collect();
-	let migrated = migrate_history(&registered_migrations(), history.clone(), &table).unwrap();
+	let migrated = migrate_history(&registered_migrations(), history.clone(), &table, Some(&compiler::AnswerHost::default()), None).unwrap();
 	let registry = replay(&migrated.deltas);
 
 	let declaration_of = |id: NodeId| match registry.node_instances[&id].implementation() {

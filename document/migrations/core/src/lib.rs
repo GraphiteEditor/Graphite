@@ -6,6 +6,8 @@
 //! lives in `node-graph/rfcs/document-format-migrations.md`.
 
 #[cfg(feature = "typed")]
+mod compiler;
+#[cfg(feature = "typed")]
 mod connector;
 #[cfg(feature = "typed")]
 mod declaration;
@@ -20,6 +22,8 @@ mod value;
 #[cfg(feature = "typed")]
 mod view;
 
+#[cfg(feature = "typed")]
+pub use compiler::{Compiler, MigrationHost, ValueType};
 #[cfg(feature = "typed")]
 pub use connector::{InputConnector, NewNode, OutputConnector};
 #[cfg(feature = "typed")]
@@ -40,7 +44,7 @@ pub use registry::{register_migration, registered_migrations};
 #[cfg(feature = "typed")]
 pub use value::{encode, literal, literal_of};
 #[cfg(feature = "typed")]
-pub use view::{AddedNode, AnchorContext, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Upstream, View};
+pub use view::{AddedNode, AnchorContext, Downstream, Edits, Graph, Inputs, InputsEdit, Node, Region, Target, Upstream, View};
 
 // For the registration `#[migration]`, `rename!`, and `format_migration!` generate
 #[doc(hidden)]

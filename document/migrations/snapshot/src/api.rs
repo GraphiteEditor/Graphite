@@ -1,8 +1,8 @@
 //! Compares every node's API against a baseline commit, to find changes that need a version bump or a migration.
 
-use crate::lineage::{MigrationStep, find_migrations};
+use crate::lineage::{MigrationStep, find_all_migrations};
 use crate::nodes::{NodeSource, find_nodes};
-use crate::scaffold::{MIGRATIONS, NODE_CRATES};
+use crate::scaffold::{MIGRATION_CRATES, NODE_CRATES};
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::{Command, Stdio};
@@ -10,7 +10,7 @@ use std::process::{Command, Stdio};
 /// Fail if the nodes at the git ref `baseline` differ from the working tree's in a way documents would notice.
 pub(crate) fn check_against(workspace: &Path, baseline: &str) -> Result<(), String> {
 	let current = find_nodes(&workspace.join(NODE_CRATES))?;
-	let migrations = find_migrations(&workspace.join(MIGRATIONS))?;
+	let migrations = find_all_migrations(workspace, &MIGRATION_CRATES)?;
 
 	let directory = std::env::temp_dir().join(format!("migration-api-baseline-{}", std::process::id()));
 	let baseline_nodes = extract_baseline(workspace, baseline, &directory).and_then(|()| find_nodes(&directory.join(NODE_CRATES)));

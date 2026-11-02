@@ -18,6 +18,7 @@ use document_container::store::{DocumentKey, DocumentStore, MemoryStore};
 use document_container::{AnyContainer, AsyncContainer};
 use document_format::{Error as DocumentFormatError, GddV1, GddV1Layout, Layout, ReadError};
 use document_graph_storage::{Declarations, PeerId};
+use graph_craft::application_io::resource::LoadResource;
 use graph_craft::application_io::resource::{DataSource, ResourceHash, ResourceStorage};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -118,7 +119,7 @@ pub(super) async fn attach_container(store: DocumentStoreHandle, document_id: Do
 			.into();
 		}
 	};
-	let gdd = open_storage_or_fallback_to_legacy(container.clone(), document_id).await;
+	let gdd = open_storage_or_fallback_to_legacy(container.clone(), document_id, &resources).await;
 	let declarations = load_declarations(gdd.as_ref(), &resources, document_id).await;
 	PortfolioMessage::StorageAttached {
 		document_id,
@@ -228,11 +229,11 @@ async fn load_from_container(container: AnyContainer, document_id: DocumentId, r
 		Ok(mut document) => {
 			document.set_auto_save_state(true);
 			document.container = Some(container.clone());
-			let gdd = open_storage_or_fallback_to_legacy(container, document_id).await;
+			let gdd = open_storage_or_fallback_to_legacy(container, document_id, resources).await;
 			(Some(document), gdd)
 		}
 		Err(legacy_error) => {
-			let gdd = match GddV1::open_in(container.clone(), GddV1Layout).await {
+			let gdd = match open_migrating(container.clone(), resources).await {
 				Ok(gdd) => gdd,
 				Err(storage_error) => {
 					log::error!("Loading {document_id:?} failed. Legacy: {legacy_error}. Storage: {storage_error}");
@@ -249,8 +250,14 @@ async fn load_from_container(container: AnyContainer, document_id: DocumentId, r
 	}
 }
 
-async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id: DocumentId) -> Option<GddV1> {
-	match GddV1::open_in(container.clone(), GddV1Layout).await {
+/// Open a document's storage, offering its migrations the compiler and the global cache's declarations.
+async fn open_migrating(container: AnyContainer, resources: &dyn LoadResource) -> Result<GddV1, DocumentFormatError> {
+	let host = migration_compiled::CompilerHost::default();
+	GddV1::open_in_with(container, GddV1Layout, Some(resources), Some(&host)).await
+}
+
+async fn open_storage_or_fallback_to_legacy(container: AnyContainer, document_id: DocumentId, resources: &dyn LoadResource) -> Option<GddV1> {
+	match open_migrating(container.clone(), resources).await {
 		Ok(gdd) => return Some(gdd),
 		Err(DocumentFormatError::MissingManifest) => {}
 		// Container I/O, newer-format, and migration errors keep the existing files, since a later build can still read them. Anything else is broken data the legacy document replaces.
@@ -427,7 +434,11 @@ mod tests {
 		gdd.update_manifest(|manifest| manifest.format_version = 0).unwrap();
 		let files = container.list("").await.unwrap();
 
-		assert!(open_storage_or_fallback_to_legacy(container.clone(), DocumentId(1)).await.is_none());
+		assert!(
+			open_storage_or_fallback_to_legacy(container.clone(), DocumentId(1), &graph_craft::application_io::resource::HashMapResourceStorage::new())
+				.await
+				.is_none()
+		);
 		assert_eq!(container.list("").await.unwrap(), files, "the document's files should survive for a build that can migrate them");
 		let manifest = container
 			.read(&document_format::io::path_for(GddV1Layout.manifest_basename(), document_format::MANIFEST_CODEC))

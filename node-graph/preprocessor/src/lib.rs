@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate log;
 
+mod value_types;
+
 use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::*;

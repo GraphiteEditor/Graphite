@@ -1,4 +1,4 @@
-use document_graph_storage::{ResourceEntry, ResourceId};
+use document_graph_storage::{ProtoNode, ResourceEntry, ResourceId};
 use serde::Serialize;
 
 /// A proto-node declaration at one version, written `identifier@version`.
@@ -36,6 +36,10 @@ pub trait DeclarationResolver {
 	fn resource(&self, declaration: Declaration) -> ResourceId;
 	/// The registry entry of that resource, added when a migration first references it. `None` leaves the registry's resources alone.
 	fn resource_entry(&self, _declaration: Declaration) -> Option<ResourceEntry> {
+		None
+	}
+	/// What a resource this resolver knows decodes to, for converting a state to a runtime network.
+	fn proto(&self, _resource: ResourceId) -> Option<ProtoNode> {
 		None
 	}
 }

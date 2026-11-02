@@ -39,6 +39,18 @@ pub(crate) fn find_migrations(directory: &Path) -> Result<Vec<MigrationStep>, St
 	Ok(steps)
 }
 
+/// Every migration step of the crates at `directories` under `workspace`, leaving out those that don't exist.
+pub(crate) fn find_all_migrations(workspace: &Path, directories: &[&str]) -> Result<Vec<MigrationStep>, String> {
+	let mut steps = Vec::new();
+	for directory in directories {
+		let directory = workspace.join(directory);
+		if directory.exists() {
+			steps.extend(find_migrations(&directory)?);
+		}
+	}
+	Ok(steps)
+}
+
 /// `file` is a module whose `mod child;` declarations live in `children`.
 fn read_module(file: &Path, children: &Path, steps: &mut Vec<MigrationStep>) -> Result<(), String> {
 	let source = std::fs::read_to_string(file).map_err(|error| format!("{}: {error}", file.display()))?;

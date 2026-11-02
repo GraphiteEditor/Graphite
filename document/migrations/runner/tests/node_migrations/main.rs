@@ -1,3 +1,4 @@
+mod compiler;
 mod examples;
 mod registration;
 mod rewrite;

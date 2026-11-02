@@ -28,6 +28,7 @@ preprocessor = { workspace = true }
 document-format = { workspace = true, features = ["zip", "xz", "migrations"] }
 document-container = { workspace = true, features = ["zip", "xz"] }
 migration-formats = { workspace = true }
+migration-compiled = { workspace = true }
 migration-nodes = { workspace = true }
 
 # Workspace dependencies
