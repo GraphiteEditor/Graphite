@@ -55,6 +55,19 @@ impl Session {
 		self.document.user
 	}
 
+	/// Hand this device to `user` under `peer`, an unused id, so the old peer's ops keep their author.
+	pub fn set_user(&mut self, user: UserId, peer: PeerId) -> Result<Vec<HotOp>, CrdtError> {
+		let closing = self.end_interaction()?;
+		let mut clock = LamportClock::new(peer);
+		clock.counter = self.document.clock.counter;
+		self.document.clock = clock;
+		self.document.peer = peer;
+		self.document.user = user;
+		self.document.last_hot_sequence = HotSequence::NONE;
+		self.document.redo_stack.clear();
+		Ok(closing)
+	}
+
 	pub fn user_of(&self, peer: PeerId) -> Option<UserId> {
 		let registered = || self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user);
 		(peer == self.document.peer).then_some(self.document.user).or_else(registered)

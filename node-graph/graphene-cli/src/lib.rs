@@ -95,7 +95,6 @@ pub struct CompiledDocument {
 	spawner: Arc<TokioSpawner>,
 }
 
-/// Compile `document` against a fresh GPU context, resolving its resources from its `.gdd`.
 pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
 	log::info!("Creating GPU context");
 	let mut application_io = PlatformApplicationIo::new().await;
