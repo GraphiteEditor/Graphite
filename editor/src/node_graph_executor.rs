@@ -1067,7 +1067,7 @@ fn remove_pending_gradient_bake(document: &mut DocumentMessageHandler, network_p
 // TODO: Eventually remove this document upgrade code
 /// Redirect the primary export at each level of `network` down through the subnetwork nodes named by `full_path`,
 /// un-hiding each so the innermost node's branch evaluates. Returns false if any step is missing or not a subnetwork.
-fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId]) -> bool {
+pub(crate) fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId]) -> bool {
 	let Some((node_id, deeper_path)) = full_path.split_first() else { return true };
 
 	let Some(export) = network.exports.first_mut() else { return false };

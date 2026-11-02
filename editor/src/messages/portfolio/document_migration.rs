@@ -4,16 +4,21 @@
 use crate::messages::portfolio::document::graph_operation::utility_types::set_stroke_paint_order;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, NodeTemplateImplementation, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, NodeTemplateImplementation, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
+use crate::node_graph_executor::redirect_export_chain;
 use glam::{DVec2, IVec2};
+use graph_craft::application_io::PlatformEditorApi;
 use graph_craft::application_io::resource::{DataSource, Resource, ResourceHash, ResourceId};
 use graph_craft::document::DocumentNode;
-use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
+use graph_craft::document::{DocumentNodeImplementation, NodeInput, NodeNetwork, value::TaggedValue};
+use graph_craft::graphene_compiler::Compiler;
+use graph_craft::proto::TypingContext;
 use graph_craft::{Type, concrete, item, list};
 use graphene_std::Color;
 use graphene_std::ParameterRef;
 use graphene_std::ProtoNodeIdentifier;
+use graphene_std::RuntimeHandle;
 use graphene_std::extract_xy::XY;
 use graphene_std::raster::RedGreenBlueAlpha;
 use graphene_std::text::{TextAlign, TypesettingConfig};
@@ -21,9 +26,11 @@ use graphene_std::transform::ScaleType;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::graphic_types;
 use graphene_std::vector::style::{GradientRamp, GradientSpread, PaintOrder, StrokeAlign};
+use interpreted_executor::node_registry::NODE_REGISTRY;
 use std::collections::{HashMap, HashSet};
 use std::f64::consts::PI;
 use std::ops::Range;
+use std::sync::Arc;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
@@ -787,10 +794,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::AreaNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::assign_colors::IDENTIFIER,
-		aliases: &["graphene_core::vector::AssignColorsNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::vector::smooth_anchors::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::AutoTangentsNode",
@@ -918,10 +921,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::repeat::repeat_on_points::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceOnPointsNode", "core_types::vector::InstanceOnPointsNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::copy_to_points::IDENTIFIER,
-		aliases: &["graphene_core::vector::CopyToPointsNode", "core_types::vector::CopyToPointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::jitter_points::IDENTIFIER,
@@ -1860,6 +1859,11 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			.network_interface
 			.set_input(&InputConnector::node_at_index(node_id, index), NodeInput::value(TaggedValue::Integer(integer), exposed), &network_path);
 	}
+
+	migrate_assign_colors_nodes(document);
+
+	// Last, so the rest of the graph is upgraded enough to compile when each Copy to Points node's content type is resolved
+	migrate_copy_to_points_nodes(document);
 
 	// Bringing an old document up to date is not a set of edits on it, it is how the document arrives.
 	// The upgrades run through the ordinary mutators, so the store records them; dropping what they
@@ -3843,6 +3847,382 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	Some(())
 }
 
+/// Splits each removed Assign Colors node into the Vary Fill Colors and Vary Stroke Colors nodes its Fill and Stroke toggles call for.
+fn migrate_assign_colors_nodes(document: &mut DocumentMessageHandler) {
+	let assign_colors_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter(|(_, node, _)| node.inputs.len() == 8 && matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if identifier.as_str().ends_with("::AssignColorsNode")))
+		.map(|(node_id, _, path)| (*node_id, path))
+		.collect();
+
+	for (node_id, network_path) in assign_colors_nodes {
+		migrate_assign_colors(&node_id, &network_path, document);
+	}
+}
+
+/// Rebuilds a removed Assign Colors node as Vary Fill Colors, Vary Stroke Colors, or both in a row ending at the original node to keep its downstream wires.
+/// A wired toggle counts as enabled, and a node with both toggles disabled is hidden so it still passes its content through unchanged.
+fn migrate_assign_colors(node_id: &NodeId, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
+	use graphene_std::vector::{vary_fill_colors, vary_stroke_colors};
+
+	let enabled = |input: &NodeInput| !matches!(input.as_value(), Some(TaggedValue::Bool(false)));
+	let old_node = document.network_interface.document_node(node_id, network_path)?;
+	let (fill, stroke) = (enabled(&old_node.inputs[1]), enabled(&old_node.inputs[2]));
+
+	let identifier = if stroke { vary_stroke_colors::IDENTIFIER } else { vary_fill_colors::IDENTIFIER };
+	let mut node_template = resolve_proto_node_type(identifier)?.default_node_template();
+	document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+	let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+	reset_default_display_name(document, node_id, network_path, "Assign Colors");
+
+	// The content and color parameters carry over in the same order, without the toggles
+	let [content, _, _, gradient, reverse, randomize, seed, repeat_every] = <[NodeInput; 8]>::try_from(old_inputs).ok()?;
+	let carried_inputs = [content, gradient, reverse, randomize, seed, repeat_every];
+	for (index, input) in carried_inputs.iter().enumerate() {
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input.clone(), network_path);
+	}
+
+	// Styling both gets a Vary Fill Colors node with the same parameters inserted before the Vary Stroke Colors one
+	if fill && stroke {
+		let fill_id = NodeId::new();
+		document
+			.network_interface
+			.insert_node(fill_id, resolve_proto_node_type(vary_fill_colors::IDENTIFIER)?.default_node_template(), network_path);
+		for (index, input) in carried_inputs.iter().enumerate().skip(1) {
+			document.network_interface.set_input(&InputConnector::node_at_index(fill_id, index), input.clone(), network_path);
+		}
+		document.network_interface.insert_node_before_input(&fill_id, &InputConnector::node_at_index(*node_id, 0), network_path);
+	}
+
+	if !fill && !stroke {
+		document.network_interface.set_visibility(node_id, network_path, false);
+	}
+
+	Some(())
+}
+
+/// Rebuilds each removed Copy to Points node, with any feeding another's content rebuilt first so that content compiles when its type is resolved.
+fn migrate_copy_to_points_nodes(document: &mut DocumentMessageHandler) {
+	let copy_to_points_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter(|(_, node, _)| node.inputs.len() == 8 && matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if identifier.as_str().ends_with("::CopyToPointsNode")))
+		.map(|(node_id, _, path)| (*node_id, path))
+		.collect();
+	if copy_to_points_nodes.is_empty() {
+		return;
+	}
+
+	// A node feeding another's content has fewer of these nodes upstream of its own content, so sorting by that count puts it first
+	let mut ordered = copy_to_points_nodes.clone();
+	ordered.sort_by_cached_key(|(node_id, network_path)| {
+		let Some(NodeInput::Node { node_id: content_source, .. }) = document.network_interface.document_node(node_id, network_path).and_then(|node| node.inputs.get(1)) else {
+			return 0;
+		};
+		document
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![*content_source], network_path, FlowType::UpstreamFlow)
+			.filter(|upstream| copy_to_points_nodes.iter().any(|(other, other_path)| other == upstream && other_path == network_path))
+			.count()
+	});
+
+	let preprocessor = preprocessor::Preprocessor::new();
+	let mut content_types: HashMap<(Vec<NodeId>, NodeId, usize), Option<Type>> = HashMap::new();
+	for (node_id, network_path) in ordered {
+		let Some(node) = document.network_interface.document_node(&node_id, &network_path).cloned() else {
+			continue;
+		};
+
+		let content_type = match &node.inputs[1] {
+			NodeInput::Node { node_id: source, output_index, .. } => content_types
+				.entry((network_path.clone(), *source, *output_index))
+				.or_insert_with(|| resolved_output_type(document, &preprocessor, &node.inputs[1], &network_path))
+				.clone(),
+			_ => None,
+		};
+		migrate_copy_to_points(&node_id, &node, &network_path, content_type, document);
+	}
+}
+
+/// The compile-time type of the node output an input is wired to, resolved on a copy of the graph pruned to that output's upstream.
+/// It is `None` where that copy doesn't compile, such as for content reading a scope only the runtime provides.
+fn resolved_output_type(document: &DocumentMessageHandler, preprocessor: &preprocessor::Preprocessor, input: &NodeInput, network_path: &[NodeId]) -> Option<Type> {
+	let NodeInput::Node { node_id, output_index: 0, .. } = input else { return None };
+
+	// A hidden node passes its primary input through rather than giving the output its type describes
+	if !document.network_interface.is_visible(node_id, network_path) {
+		return None;
+	}
+
+	// Subnetworks stored as shared definitions are inlined so the export chain can be redirected down through them
+	let mut network = document.network_interface.document_network().clone();
+	network.inline_definitions().ok()?;
+	let output_path: Vec<NodeId> = network_path.iter().copied().chain([*node_id]).collect();
+	if !redirect_export_chain(&mut network, &output_path) {
+		return None;
+	}
+	network.exports.truncate(1);
+	network.remove_dead_nodes(0);
+
+	// Wrap it in the scopes the runtime injects, given only as types since nothing is evaluated
+	let scope_stand_in = |ty: Type| DocumentNode {
+		implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
+		inputs: vec![NodeInput::value(TaggedValue::TypeDefault(ty), false)],
+		..Default::default()
+	};
+	let content_network = DocumentNode {
+		implementation: DocumentNodeImplementation::Network(network),
+		..Default::default()
+	};
+	let mut scoped_network = NodeNetwork {
+		exports: vec![NodeInput::node(NodeId(0), 0)],
+		nodes: [
+			(NodeId(0), content_network),
+			(NodeId(1), scope_stand_in(item!(Arc<PlatformEditorApi>))),
+			(NodeId(2), scope_stand_in(item!(RuntimeHandle))),
+		]
+		.into_iter()
+		.collect(),
+		scope_injections: [
+			("editor-api".to_string(), (NodeId(1), item!(Arc<PlatformEditorApi>))),
+			("runtime".to_string(), (NodeId(2), item!(RuntimeHandle))),
+		]
+		.into_iter()
+		.collect(),
+		definitions: Default::default(),
+		generated: true,
+	};
+
+	let resources = &document.resources.registry;
+	preprocessor.preprocess(&mut scoped_network, &|resource_id| resources.hash(&resource_id)).ok()?;
+
+	// The compiler asserts every scope input resolves, so content reading any other scope is left unresolved
+	if !scope_inputs_resolve(&scoped_network, &HashSet::new()) {
+		return None;
+	}
+
+	let proto_network = Compiler {}.compile_single(scoped_network).ok()?.network;
+	let mut typing_context = TypingContext::new(&NODE_REGISTRY);
+	typing_context.update(&proto_network).ok()?;
+
+	typing_context.type_of(proto_network.output).map(|types| types.return_value.clone())
+}
+
+/// Whether every scope input in the network is injected by it or a network enclosing it.
+fn scope_inputs_resolve(network: &NodeNetwork, enclosing_scopes: &HashSet<String>) -> bool {
+	let scopes: HashSet<String> = enclosing_scopes.iter().cloned().chain(network.scope_injections.keys().cloned()).collect();
+
+	network.nodes.values().all(|node| {
+		let inputs_resolve = node.inputs.iter().all(|input| !matches!(input, NodeInput::Scope(key) if !scopes.contains(key.as_ref())));
+		let nested_resolve = match &node.implementation {
+			DocumentNodeImplementation::Network(nested) => scope_inputs_resolve(nested, &scopes),
+			_ => true,
+		};
+		inputs_resolve && nested_resolve
+	})
+}
+
+/// Rebuilds a removed Copy to Points node as a Repeat on Points, then Vary Rotations and Vary Scales, ending at the original node to keep its downstream wires.
+/// The points stay on the primary input so tools still edit them. List content other than a lone layer (or content of an unknown type) is grouped into one item to be repeated, then flattened back out with the node for its type.
+fn migrate_copy_to_points(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], content_type: Option<Type>, document: &mut DocumentMessageHandler) -> Option<()> {
+	use graphene_std::graphic::{flatten_color, flatten_gradient, flatten_graphic, flatten_raster, flatten_vector, into_group};
+	use graphene_std::math_nodes::multiply;
+	use graphene_std::raster_types::{CPU, Raster};
+	use graphene_std::repeat::repeat_on_points;
+	use graphene_std::transform_nodes::{vary_rotations, vary_scales};
+	use graphene_std::vector::Vector;
+	use graphene_std::vector::style::Gradient;
+
+	let number = |input: &NodeInput| match input.as_value() {
+		Some(TaggedValue::Number(number)) => Some(*number),
+		_ => None,
+	};
+
+	// A layer with nothing stacked below it gives one group, which is repeated as it is like a single item
+	let lone_layer = match &node.inputs[1] {
+		NodeInput::Node { node_id: source, .. } => {
+			document.network_interface.is_layer(source, network_path)
+				&& document
+					.network_interface
+					.document_node(source, network_path)
+					.is_some_and(|layer| matches!(layer.inputs.first(), Some(NodeInput::Value { .. })))
+		}
+		_ => false,
+	};
+
+	let flatten = match content_type {
+		_ if lone_layer => None,
+		Some(Type::Item(_)) => None,
+		Some(content_type) if content_type == list!(Vector) => Some(flatten_vector::IDENTIFIER),
+		Some(content_type) if content_type == list!(Raster<CPU>) => Some(flatten_raster::IDENTIFIER),
+		Some(content_type) if content_type == list!(Color) => Some(flatten_color::IDENTIFIER),
+		Some(content_type) if content_type == list!(Gradient) => Some(flatten_gradient::IDENTIFIER),
+		_ => Some(flatten_graphic::IDENTIFIER),
+	};
+
+	// The vary nodes are left out where they would leave every copy unchanged
+	let rotates = number(&node.inputs[6]) != Some(0.);
+	let scales = number(&node.inputs[2]) != Some(1.) || number(&node.inputs[3]) != Some(1.);
+	let mut stages = vec![repeat_on_points::IDENTIFIER];
+	if rotates {
+		stages.push(vary_rotations::IDENTIFIER);
+	}
+	if scales {
+		stages.push(vary_scales::IDENTIFIER);
+	}
+	stages.extend(flatten.clone());
+	let last_stage = stages.pop()?;
+
+	// Note the nodes laid out along a layer's chain through this one, since rewiring breaks that chain
+	let position = document.network_interface.position(node_id, network_path).unwrap_or_default();
+	let chained: Vec<NodeId> = if document.network_interface.is_chain(node_id, network_path) {
+		document
+			.network_interface
+			.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::HorizontalFlow)
+			.take_while(|upstream| document.network_interface.is_chain(upstream, network_path))
+			.collect()
+	} else {
+		Vec::new()
+	};
+
+	let mut last_stage_template = resolve_proto_node_type(last_stage)?.default_node_template();
+	document.network_interface.replace_implementation(node_id, network_path, &mut last_stage_template);
+	let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut last_stage_template)?;
+	reset_default_display_name(document, node_id, network_path, "Copy to Points");
+	let [points, content, scale_min, scale_max, scale_bias, scale_seed, rotation, rotation_seed] = <[NodeInput; 8]>::try_from(old_inputs).ok()?;
+
+	let insert = |document: &mut DocumentMessageHandler, identifier: ProtoNodeIdentifier, position: IVec2| -> Option<NodeId> {
+		let id = NodeId::new();
+		document.network_interface.insert_node(id, resolve_proto_node_type(identifier)?.default_node_template(), network_path);
+		document.network_interface.set_absolute_position(&id, position, network_path);
+		Some(id)
+	};
+
+	// Wire the points through each stage in turn, in a row leading up to the original node
+	let mut stage_ids = Vec::new();
+	for (index, identifier) in stages.iter().enumerate() {
+		stage_ids.push(insert(document, identifier.clone(), position - IVec2::new(7 * (stages.len() - index) as i32, 0))?);
+	}
+	stage_ids.push(*node_id);
+	let points_source = points.as_node();
+	document
+		.network_interface
+		.set_input(&InputConnector::node(stage_ids[0], repeat_on_points::PointsInput), points, network_path);
+	for pair in stage_ids.windows(2) {
+		document
+			.network_interface
+			.set_input(&InputConnector::node_at_index(pair[1], 0), NodeInput::node(pair[0], 0), network_path);
+	}
+
+	// A hidden node passed its points through, so its stages are hidden to keep doing that
+	if !node.visible {
+		for stage_id in &stage_ids {
+			document.network_interface.set_visibility(stage_id, network_path, false);
+		}
+	}
+
+	// The stages join the layer's chain if there is one, and the other nodes feeding the row move left to make room
+	if !chained.is_empty() {
+		for chain_node_id in stage_ids.iter().chain(&chained) {
+			document.network_interface.set_chain_position(chain_node_id, network_path);
+		}
+	}
+	let mut upstream = points_source;
+	while let Some(upstream_id) = upstream
+		&& !document.network_interface.is_layer(&upstream_id, network_path)
+	{
+		if !document.network_interface.is_chain(&upstream_id, network_path)
+			&& let Some(upstream_position) = document.network_interface.position(&upstream_id, network_path)
+		{
+			let shifted = upstream_position - IVec2::new(7 * stages.len() as i32, 0);
+			document.network_interface.set_absolute_position(&upstream_id, shifted, network_path);
+		}
+		upstream = document.network_interface.document_node(&upstream_id, network_path).and_then(|node| node.inputs.first()?.as_node());
+	}
+	let offset_from_stage = |document: &DocumentMessageHandler, stage_id: &NodeId, offset: IVec2| document.network_interface.position(stage_id, network_path).unwrap_or(position) + offset;
+
+	// Repeat the content at each point, grouped if it's flattened back out at the end
+	let repeated_content = match flatten {
+		Some(_) => {
+			let group_id = insert(document, into_group::IDENTIFIER, offset_from_stage(document, &stage_ids[0], IVec2::new(-7, 3)))?;
+			document.network_interface.set_input(&InputConnector::node(group_id, into_group::ContentInput), content, network_path);
+			NodeInput::node(group_id, 0)
+		}
+		None => content,
+	};
+	document
+		.network_interface
+		.set_input(&InputConnector::node(stage_ids[0], repeat_on_points::ContentInput), repeated_content, network_path);
+
+	// The rotation range was centered on zero, so a wired one is halved to each side by Multiply nodes
+	if rotates {
+		let rotations_id = stage_ids[1];
+		document
+			.network_interface
+			.set_input(&InputConnector::node(rotations_id, vary_rotations::SeedInput), rotation_seed, network_path);
+
+		let ends = [
+			(InputConnector::node(rotations_id, vary_rotations::MinInput), -0.5),
+			(InputConnector::node(rotations_id, vary_rotations::MaxInput), 0.5),
+		];
+		for (index, (end, factor)) in ends.into_iter().enumerate() {
+			let half_rotation = match number(&rotation) {
+				Some(rotation) => NodeInput::value(TaggedValue::Number(rotation * factor), false),
+				None => {
+					let multiply_id = insert(document, multiply::IDENTIFIER, offset_from_stage(document, &rotations_id, IVec2::new(-7, 3 + 3 * index as i32)))?;
+					document
+						.network_interface
+						.set_input(&InputConnector::node(multiply_id, multiply::MultiplierInput), rotation.clone(), network_path);
+					document.network_interface.set_input(
+						&InputConnector::node(multiply_id, multiply::MultiplicandInput),
+						NodeInput::value(TaggedValue::Number(factor), false),
+						network_path,
+					);
+					NodeInput::node(multiply_id, 0)
+				}
+			};
+			document.network_interface.set_input(&end, half_rotation, network_path);
+		}
+	}
+
+	// The bias is converted to the one that keeps its average scale, though a wired bias can't be converted and is left at the default
+	if scales {
+		let scales_id = stage_ids[1 + rotates as usize];
+		document.network_interface.set_input(&InputConnector::node(scales_id, vary_scales::MinInput), scale_min, network_path);
+		document.network_interface.set_input(&InputConnector::node(scales_id, vary_scales::MaxInput), scale_max, network_path);
+		document.network_interface.set_input(&InputConnector::node(scales_id, vary_scales::SeedInput), scale_seed, network_path);
+		if let Some(bias) = number(&scale_bias) {
+			let bias = NodeInput::value(TaggedValue::Number(vary_scales_bias_from_copy_to_points(bias)), false);
+			document.network_interface.set_input(&InputConnector::node(scales_id, vary_scales::BiasInput), bias, network_path);
+		}
+	}
+
+	Some(())
+}
+
+/// The Vary Scales bias giving the same average scale, as a fraction of its range, that the removed Copy to Points node's random scale distribution had for the scale bias it was given.
+fn vary_scales_bias_from_copy_to_points(bias: f64) -> f64 {
+	if bias.abs() < 1e-6 {
+		return 0.5;
+	}
+
+	// Its bias curve `log2(1 + r (2^b - 1)) / b` averages `2^b / (2^b - 1) - 1 / (b ln 2)`, written with `x = b ln 2` to stay finite for a large bias
+	let x = bias * std::f64::consts::LN_2;
+	let average = -1. / (-x).exp_m1() - 1. / x;
+
+	// The new curve averages `k / (k + 1)` for `1 - (1 - t)^k` below a bias of 0.5, where `k = -log2(1 - bias)`, and `1 / (p + 1)` for `t^p` above it, where `p = -log2(bias)`
+	if average < 0.5 {
+		let k = average / (1. - average);
+		1. - (-k).exp2()
+	} else {
+		let p = 1. / average - 1.;
+		(-p).exp2()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
@@ -5184,6 +5564,332 @@ mod tests {
 				"node {node_id}"
 			);
 			assert_eq!(interface.display_name(&node_id, &[]), "Image", "node {node_id}");
+		}
+	}
+
+	#[tokio::test]
+	async fn copy_to_points_opens_as_a_chain_that_compiles() {
+		use crate::messages::portfolio::ingest::utility_types::IngestAction;
+		use crate::test_utils::test_prelude::*;
+		use graphene_std::NodeParameter;
+		use graphene_std::graphic::{flatten_graphic, flatten_vector, into_group};
+		use graphene_std::math_nodes::multiply;
+		use graphene_std::repeat::repeat_on_points;
+		use graphene_std::transform_nodes::{vary_rotations, vary_scales};
+		use graphene_std::vector::generator_nodes::{circle, rectangle};
+
+		let default_template = |identifier| {
+			resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+				.expect("the definition should exist")
+				.default_node_template()
+		};
+		let number = |value| NodeInput::value(TaggedValue::Number(value), false);
+		let integer = |value| NodeInput::value(TaggedValue::Integer(value), false);
+		let copy_to_points = |[scale_min, scale_max, scale_bias]: [f64; 3], scale_seed, rotation, rotation_seed| {
+			let wired = || NodeInput::value(TaggedValue::None, false);
+			let inputs = vec![
+				wired(),
+				wired(),
+				number(scale_min),
+				number(scale_max),
+				number(scale_bias),
+				integer(scale_seed),
+				number(rotation),
+				integer(rotation_seed),
+			];
+			NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::vector::CopyToPointsNode")),
+				input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
+				inputs,
+				display_name: "Copy to Points".to_string(),
+				..Default::default()
+			}
+		};
+
+		let (points, content, rotation, layer) = (NodeId(1), NodeId(2), NodeId(3), NodeId(4));
+		let (stored, wired, unchanged) = (NodeId(5), NodeId(6), NodeId(7));
+		let (lone_layer, single, layer_below) = (NodeId(8), NodeId(9), NodeId(10));
+
+		// Chain the variants so each is evaluated and rebuilt after those it depends on: a vector item with stored values, a list of vectors
+		// with a wired rotation, then a lone layer and a hidden stack of layers with settings that change nothing
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node(unchanged, copy_to_points([1., 1., 0.], 0, 0., 0), &[]);
+		interface.insert_node(single, copy_to_points([1., 1., 0.], 0, 0., 0), &[]);
+		interface.insert_node(wired, copy_to_points([1., 1., 0.], 0, 0., 4), &[]);
+		interface.insert_node(stored, copy_to_points([0.5, 2., -10.], 7, 90., 3), &[]);
+		interface.insert_node(points, default_template(rectangle::IDENTIFIER), &[]);
+		interface.insert_node(content, default_template(circle::IDENTIFIER), &[]);
+		interface.insert_node(rotation, default_template(graphene_std::math_nodes::number_value::IDENTIFIER), &[]);
+		let merge = resolve_document_node_type(&DefinitionIdentifier::Network("Merge".into())).expect("the Merge definition should exist");
+		for layer_id in [layer, lone_layer, layer_below] {
+			interface.insert_node(layer_id, merge.default_node_template(), &[]);
+		}
+		interface.set_input(&InputConnector::node_at_index(layer, 1), NodeInput::node(wired, 0), &[]);
+		interface.set_input(&InputConnector::node_at_index(layer, 0), NodeInput::node(layer_below, 0), &[]);
+		interface.set_input(&InputConnector::node_at_index(layer_below, 1), NodeInput::node(single, 0), &[]);
+		for (node_id, content_source) in [(stored, content), (wired, stored), (single, lone_layer), (unchanged, layer)] {
+			interface.set_input(&InputConnector::node_at_index(node_id, 0), NodeInput::node(points, 0), &[]);
+			interface.set_input(&InputConnector::node_at_index(node_id, 1), NodeInput::node(content_source, 0), &[]);
+		}
+		interface.set_input(&InputConnector::node_at_index(wired, 6), NodeInput::node(rotation, 0), &[]);
+		interface.create_wire(&OutputConnector::primary_output(unchanged), &InputConnector::Export(0), &[]);
+		interface.set_visibility(&unchanged, &[], false);
+		let serialized = editor.active_document().serialize_document();
+
+		// Opening migrates the document, then evaluates its graph and checks the interface, failing on any error
+		editor
+			.handle_message(IngestMessage::Ingest {
+				data: serialized.into_bytes(),
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some("copy-to-points.graphite".into()),
+			})
+			.await;
+
+		let interface = &editor.active_document().network_interface;
+		let node = |node_id| interface.document_node(&node_id, &[]).expect("the node should exist");
+		let upstream = |node_id, index: usize| match &node(node_id).inputs[index] {
+			NodeInput::Node { node_id, .. } => *node_id,
+			input => panic!("input {index} of node {node_id} should be wired, found {input:?}"),
+		};
+		let proto = DocumentNodeImplementation::ProtoNode;
+
+		// The points stay on the primary input, where tools look for the path to edit
+		let assert_repeats_on_points = |repeat_id, content_source, grouped: bool| {
+			assert_eq!(node(repeat_id).implementation, proto(repeat_on_points::IDENTIFIER));
+			assert_eq!(upstream(repeat_id, repeat_on_points::PointsInput::INDEX), points);
+
+			let repeated_content = upstream(repeat_id, repeat_on_points::ContentInput::INDEX);
+			if grouped {
+				assert_eq!(node(repeated_content).implementation, proto(into_group::IDENTIFIER));
+				assert_eq!(upstream(repeated_content, 0), content_source);
+			} else {
+				assert_eq!(repeated_content, content_source);
+			}
+		};
+
+		// One item is copied as it is, with the stored rotation range centered on zero and the bias kept as the average scale
+		assert_eq!(node(stored).implementation, proto(vary_scales::IDENTIFIER));
+		assert_ne!(interface.display_name(&stored, &[]), "Copy to Points");
+		assert_eq!(node(stored).input_value(vary_scales::MinInput), Some(&TaggedValue::Number(0.5)));
+		assert_eq!(node(stored).input_value(vary_scales::MaxInput), Some(&TaggedValue::Number(2.)));
+		assert_eq!(node(stored).input_value(vary_scales::SeedInput), Some(&TaggedValue::Integer(7)));
+		assert_eq!(node(stored).input_value(vary_scales::BiasInput), Some(&TaggedValue::Number(vary_scales_bias_from_copy_to_points(-10.))));
+
+		let rotations = upstream(stored, 0);
+		assert_eq!(node(rotations).implementation, proto(vary_rotations::IDENTIFIER));
+		assert_eq!(node(rotations).input_value(vary_rotations::MinInput), Some(&TaggedValue::Number(-45.)));
+		assert_eq!(node(rotations).input_value(vary_rotations::MaxInput), Some(&TaggedValue::Number(45.)));
+		assert_eq!(node(rotations).input_value(vary_rotations::SeedInput), Some(&TaggedValue::Integer(3)));
+		assert_repeats_on_points(upstream(rotations, 0), content, false);
+
+		// A list of vectors is grouped and flattened back out as vectors, a wired rotation is halved to each side of zero, and a scale range of 1 drops Vary Scales
+		assert_eq!(node(wired).implementation, proto(flatten_vector::IDENTIFIER));
+		let wired_rotations = upstream(wired, 0);
+		assert_eq!(node(wired_rotations).implementation, proto(vary_rotations::IDENTIFIER));
+		assert_eq!(node(wired_rotations).input_value(vary_rotations::SeedInput), Some(&TaggedValue::Integer(4)));
+		for (end, factor) in [(vary_rotations::MinInput::INDEX, -0.5), (vary_rotations::MaxInput::INDEX, 0.5)] {
+			let half_rotation = upstream(wired_rotations, end);
+			assert_eq!(node(half_rotation).implementation, proto(multiply::IDENTIFIER));
+			assert_eq!(upstream(half_rotation, 0), rotation);
+			assert_eq!(node(half_rotation).input_value(multiply::MultiplicandInput), Some(&TaggedValue::Number(factor)));
+		}
+		assert_repeats_on_points(upstream(wired_rotations, 0), stored, true);
+
+		// Feeding the layer, its stages join the layer's chain
+		assert!(interface.is_chain(&wired, &[]));
+		assert!(interface.is_chain(&wired_rotations, &[]));
+		assert!(interface.is_chain(&upstream(wired_rotations, 0), &[]));
+
+		// A lone layer is one group, repeated as it is
+		assert_repeats_on_points(single, lone_layer, false);
+
+		// A stack of layers is flattened back out as graphics, with only the Repeat on Points between since the settings change nothing
+		assert_eq!(node(unchanged).implementation, proto(flatten_graphic::IDENTIFIER));
+		assert_repeats_on_points(upstream(unchanged, 0), layer, true);
+
+		// Its stages are hidden with it, so the row still passes the points through
+		assert!(!interface.is_visible(&upstream(unchanged, 0), &[]));
+	}
+
+	#[tokio::test]
+	async fn copy_to_points_in_a_subnetwork_resolves_its_content_type() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkTemplate;
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::repeat::repeat_on_points;
+		use graphene_std::vector::generator_nodes::{circle, rectangle};
+
+		let default_template = |identifier| {
+			resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+				.expect("the definition should exist")
+				.default_node_template()
+		};
+		let number = |value| NodeInput::value(TaggedValue::Number(value), false);
+		let integer = |value| NodeInput::value(TaggedValue::Integer(value), false);
+
+		// A subnetwork copying a circle onto a rectangle's corners
+		let (points, content, copy_to_points, subnetwork) = (NodeId(1), NodeId(2), NodeId(3), NodeId(4));
+		let copy_to_points_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::vector::CopyToPointsNode")),
+			inputs: vec![
+				NodeInput::node(points, 0),
+				NodeInput::node(content, 0),
+				number(1.),
+				number(1.),
+				number(0.),
+				integer(0),
+				number(0.),
+				integer(0),
+			],
+			..Default::default()
+		};
+		let subnetwork_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+				exports: vec![NodeInput::node(copy_to_points, 0)],
+				nodes: [
+					(points, default_template(rectangle::IDENTIFIER)),
+					(content, default_template(circle::IDENTIFIER)),
+					(copy_to_points, copy_to_points_template),
+				]
+				.into_iter()
+				.collect(),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node(subnetwork, subnetwork_template, &[]);
+		interface.create_wire(&OutputConnector::primary_output(subnetwork), &InputConnector::Export(0), &[]);
+		assert!(!interface.document_network().definitions.is_empty(), "the subnetwork should be stored as a shared definition");
+		let serialized = editor.active_document().serialize_document();
+
+		// The circle is one vector item, so it's repeated as it is rather than grouped and flattened back out as graphics
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let migrated = opened.network_interface.document_node(&copy_to_points, &[subnetwork]).expect("the node should exist");
+		assert_eq!(migrated.implementation, DocumentNodeImplementation::ProtoNode(repeat_on_points::IDENTIFIER));
+	}
+
+	#[tokio::test]
+	async fn assign_colors_splits_by_its_fill_and_stroke_toggles() {
+		use crate::messages::portfolio::ingest::utility_types::IngestAction;
+		use crate::test_utils::test_prelude::*;
+		use graphene_std::NodeParameter;
+		use graphene_std::vector::generator_nodes::rectangle;
+		use graphene_std::vector::{vary_fill_colors, vary_stroke_colors};
+
+		let default_template = |identifier| {
+			resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+				.expect("the definition should exist")
+				.default_node_template()
+		};
+		let gradient = default_template(vary_fill_colors::IDENTIFIER).inputs[vary_fill_colors::GradientInput::INDEX].clone();
+		let assign_colors = |fill, stroke, seed| {
+			let boolean = |value| NodeInput::value(TaggedValue::Bool(value), false);
+			let integer = |value| NodeInput::value(TaggedValue::Integer(value), false);
+			let inputs = vec![
+				NodeInput::value(TaggedValue::None, false),
+				boolean(fill),
+				boolean(stroke),
+				gradient.clone(),
+				boolean(false),
+				boolean(true),
+				integer(seed),
+				integer(0),
+			];
+			NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::AssignColorsNode")),
+				input_metadata: inputs.iter().map(|_| ("Value", "").into()).collect(),
+				inputs,
+				display_name: "Assign Colors".to_string(),
+				..Default::default()
+			}
+		};
+
+		// Chain every combination of the toggles after a rectangle, so the whole row is evaluated
+		let (shape, fill_only, stroke_only, both, neither) = (NodeId(1), NodeId(2), NodeId(3), NodeId(4), NodeId(5));
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node(shape, default_template(rectangle::IDENTIFIER), &[]);
+		for (node_id, fill, stroke, seed) in [(fill_only, true, false, 1), (stroke_only, false, true, 2), (both, true, true, 3), (neither, false, false, 4)] {
+			interface.insert_node(node_id, assign_colors(fill, stroke, seed), &[]);
+		}
+		for pair in [shape, fill_only, stroke_only, both, neither].windows(2) {
+			interface.set_input(&InputConnector::node_at_index(pair[1], 0), NodeInput::node(pair[0], 0), &[]);
+		}
+		interface.create_wire(&OutputConnector::primary_output(neither), &InputConnector::Export(0), &[]);
+		let serialized = editor.active_document().serialize_document();
+
+		// Opening migrates the document, then evaluates its graph and checks the interface, failing on any error
+		editor
+			.handle_message(IngestMessage::Ingest {
+				data: serialized.into_bytes(),
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some("assign-colors.graphite".into()),
+			})
+			.await;
+
+		let interface = &editor.active_document().network_interface;
+		let node = |node_id| interface.document_node(&node_id, &[]).expect("the node should exist");
+		let upstream = |node_id| match &node(node_id).inputs[0] {
+			NodeInput::Node { node_id, .. } => *node_id,
+			input => panic!("the content of node {node_id} should be wired, found {input:?}"),
+		};
+		let proto = DocumentNodeImplementation::ProtoNode;
+
+		assert_eq!(node(fill_only).implementation, proto(vary_fill_colors::IDENTIFIER));
+		assert_eq!(node(fill_only).input_value(vary_fill_colors::SeedInput), Some(&TaggedValue::Integer(1)));
+		assert_ne!(interface.display_name(&fill_only, &[]), "Assign Colors");
+
+		assert_eq!(node(stroke_only).implementation, proto(vary_stroke_colors::IDENTIFIER));
+		assert_eq!(node(stroke_only).input_value(vary_stroke_colors::SeedInput), Some(&TaggedValue::Integer(2)));
+
+		// Styling both puts a Vary Fill Colors node with the same parameters in front of the Vary Stroke Colors node
+		assert_eq!(node(both).implementation, proto(vary_stroke_colors::IDENTIFIER));
+		let inserted_fill = upstream(both);
+		assert_eq!(node(inserted_fill).implementation, proto(vary_fill_colors::IDENTIFIER));
+		assert_eq!(node(inserted_fill).input_value(vary_fill_colors::SeedInput), Some(&TaggedValue::Integer(3)));
+		assert_eq!(upstream(inserted_fill), stroke_only);
+
+		// Styling neither is kept as a hidden node, which passes its content through as before
+		assert_eq!(node(neither).implementation, proto(vary_fill_colors::IDENTIFIER));
+		assert!(!interface.is_visible(&neither, &[]));
+	}
+
+	#[test]
+	fn copy_to_points_bias_keeps_its_average() {
+		use graphene_std::core_types::math::midpoint::apply_midpoint_inverse;
+
+		// The removed node's bias curve, mapping a uniform random draw to a fraction of its scale range
+		let legacy_bias_curve = |random: f64, bias: f64| (1. - random * (1. - 2_f64.powf(bias))).log2() / bias;
+
+		// Averages a curve over evenly spaced draws from 0 to 1
+		fn average(curve: impl Fn(f64) -> f64) -> f64 {
+			const SAMPLES: usize = 100_000;
+			(0..SAMPLES).map(|i| curve((i as f64 + 0.5) / SAMPLES as f64)).sum::<f64>() / SAMPLES as f64
+		}
+
+		assert_eq!(vary_scales_bias_from_copy_to_points(0.), 0.5);
+		for bias in [-100., -10., -1., 1., 10., 100.] {
+			let converted = vary_scales_bias_from_copy_to_points(bias);
+			let legacy_average = average(|random| legacy_bias_curve(random, bias));
+			let migrated_average = average(|random| apply_midpoint_inverse(random, converted));
+			assert!(
+				(migrated_average - legacy_average).abs() < 1e-4,
+				"bias {bias} became {converted}, averaging {migrated_average} rather than {legacy_average}"
+			);
+		}
+		for bias in [-2000., 2000.] {
+			let converted = vary_scales_bias_from_copy_to_points(bias);
+			assert!(converted > 0. && converted < 1., "bias {bias} became {converted}");
 		}
 	}
 }
