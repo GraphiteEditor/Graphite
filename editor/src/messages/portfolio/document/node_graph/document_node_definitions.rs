@@ -1234,33 +1234,50 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
-		"assign_colors_gradient".to_string(),
+		"vary_fill_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
 			let gradient_row = node_inspector::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
 			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
-		"assign_colors_seed".to_string(),
+		"vary_fill_colors_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, vector::vary_fill_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_fill_colors_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, vector::vary_fill_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_stroke_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
-			let randomize_enabled = node_inspector::query_assign_colors_randomize(node_id, context)?;
-			let seed_row = node_inspector::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				NumberInput::default().min(0.).int().disabled(!randomize_enabled),
-			);
-			Ok(vec![seed_row.into()])
+			let gradient_row = node_inspector::color_widget(ParameterWidgetsInfo::at_index(node_id, index, true, context), ColorInput::default().allow_none(false));
+			Ok(vec![gradient_row])
 		}),
 	);
 	map.insert(
-		"assign_colors_repeat_every".to_string(),
-		Box::new(|node_id, index, context| {
-			let randomize_enabled = node_inspector::query_assign_colors_randomize(node_id, context)?;
-			let repeat_every_row = node_inspector::number_widget(
-				ParameterWidgetsInfo::at_index(node_id, index, true, context),
-				NumberInput::default().min(0.).int().disabled(randomize_enabled),
-			);
-			Ok(vec![repeat_every_row.into()])
-		}),
+		"vary_stroke_colors_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, vector::vary_stroke_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_stroke_colors_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, vector::vary_stroke_colors::RandomizeInput)),
+	);
+	map.insert(
+		"vary_rotations_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, transform_nodes::vary_rotations::RandomizeInput)),
+	);
+	map.insert(
+		"vary_rotations_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, transform_nodes::vary_rotations::RandomizeInput)),
+	);
+	map.insert(
+		"vary_scales_seed".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_seed_widget(node_id, index, context, transform_nodes::vary_scales::RandomizeInput)),
+	);
+	map.insert(
+		"vary_scales_repeat_every".to_string(),
+		Box::new(|node_id, index, context| node_inspector::vary_repeat_every_widget(node_id, index, context, transform_nodes::vary_scales::RandomizeInput)),
 	);
 	map.insert(
 		"transform_rotation".to_string(),

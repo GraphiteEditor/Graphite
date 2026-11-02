@@ -1637,15 +1637,33 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodeInspectorContext
 	))
 }
 
-pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodeInspectorContext) -> Result<bool, String> {
-	use graphene_std::vector::assign_colors::*;
-
+fn query_vary_randomize(node_id: NodeId, context: &NodeInspectorContext, randomize: impl NodeParameter) -> Result<bool, String> {
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
-	Ok(match document_node.input(RandomizeInput).and_then(|input| input.as_value()) {
+	Ok(match document_node.input(randomize).and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
+}
+
+/// The seed of a vary node (like Vary Fill Colors), which applies only while its given Randomize parameter is enabled.
+pub fn vary_seed_widget(node_id: NodeId, index: usize, context: &mut NodeInspectorContext, randomize: impl NodeParameter) -> Result<Vec<LayoutGroup>, String> {
+	let randomize_enabled = query_vary_randomize(node_id, context, randomize)?;
+	let seed_row = number_widget(
+		ParameterWidgetsInfo::at_index(node_id, index, true, context),
+		NumberInput::default().min(0.).int().disabled(!randomize_enabled),
+	);
+	Ok(vec![seed_row.into()])
+}
+
+/// The repeat count of a vary node (like Vary Fill Colors), which applies only while its given Randomize parameter is disabled.
+pub fn vary_repeat_every_widget(node_id: NodeId, index: usize, context: &mut NodeInspectorContext, randomize: impl NodeParameter) -> Result<Vec<LayoutGroup>, String> {
+	let randomize_enabled = query_vary_randomize(node_id, context, randomize)?;
+	let repeat_every_row = number_widget(
+		ParameterWidgetsInfo::at_index(node_id, index, true, context),
+		NumberInput::default().min(0.).int().disabled(randomize_enabled),
+	);
+	Ok(vec![repeat_every_row.into()])
 }
 
 /// 2-stop black-to-white gradient track for sliders that map a value to a grayscale axis.

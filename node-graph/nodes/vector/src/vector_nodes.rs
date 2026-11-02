@@ -6,6 +6,7 @@ use core::hash::{Hash, Hasher};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, ATTR_ID, ATTR_PATHS, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
+use core_types::math::spread::spread_factors;
 use core_types::transform::{Footprint, Transform};
 use core_types::uuid::NodeId;
 use core_types::{
@@ -78,7 +79,7 @@ fn next_working_segment_id(working: &WorkingVector) -> SegmentId {
 }
 
 /// Implemented for `List` types that contain vector items reachable via mutable access.
-/// Used by the whole-collection Assign Colors node so it can apply to either `List<Graphic>` or `List<Vector>`.
+/// Used by the whole-collection Vary Fill Colors and Vary Stroke Colors nodes so they can apply to either `List<Graphic>` or `List<Vector>`.
 trait VectorListIterMut {
 	fn for_each_vector_list_mut(&mut self, f: impl FnMut(&mut List<Vector>));
 
@@ -275,49 +276,87 @@ impl ExpandVectorItems for Graphic {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum AssignColorsError {
+pub enum VaryColorsError {
 	#[error("The gradient has no colors to assign")]
 	EmptyGradient,
 }
 
-/// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
-#[node_macro::node(category("Vector: Style"), icon("NodeAssignColors"), path(graphene_core::vector))]
-fn assign_colors<T>(
+/// Uniquely recolors the fill of every vector element to individual colors sampled along a chosen gradient.
+#[node_macro::node(category("Vector: Style"), icon("NodeVaryFillColors"), path(graphene_core::vector))]
+fn vary_fill_colors<T>(
 	_: impl Ctx,
-	/// The content with vector paths to apply the fill and/or stroke style to.
+	/// The content with vector paths to apply the fill style to.
 	#[implementations(List<Graphic>, List<Vector>)]
 	#[widget(ParsedWidgetOverride::Hidden)]
 	content: T,
-	/// Whether to style the fill.
-	#[default(true)]
-	fill: Item<bool>,
-	/// Whether to style the stroke.
-	stroke: Item<bool>,
 	/// The range of colors to select from.
 	#[default(Color::BLACK, Color::WHITE)]
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
+	#[widget(ParsedWidgetOverride::Custom = "vary_fill_colors_gradient")]
 	gradient: Item<Gradient>,
 	/// Whether to reverse the gradient.
 	reverse: Item<bool>,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
 	randomize: Item<bool>,
 	/// Seed to determine unique variations on the randomized color selection.
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_seed")]
+	#[widget(ParsedWidgetOverride::Custom = "vary_fill_colors_seed")]
 	#[hard(0..)]
 	seed: Item<i64>,
 	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
-	#[widget(ParsedWidgetOverride::Custom = "assign_colors_repeat_every")]
+	#[widget(ParsedWidgetOverride::Custom = "vary_fill_colors_repeat_every")]
 	#[hard(0..)]
 	repeat_every: Item<i64>,
-) -> Result<T, AssignColorsError>
+) -> Result<T, VaryColorsError>
 where
 	T: VectorListIterMut + Send,
 {
-	let (fill, stroke, reverse, randomize) = (fill.into_element(), stroke.into_element(), reverse.into_element(), randomize.into_element());
-	let (seed, repeat_every) = (seed.into_element(), repeat_every.into_element());
+	vary_cover_colors(content, Cover::Fill, gradient, reverse, randomize, seed, repeat_every)
+}
 
-	if (fill || stroke) && gradient.element().is_empty() {
-		return Err(AssignColorsError::EmptyGradient);
+/// Uniquely recolors the stroke of every vector element to individual colors sampled along a chosen gradient.
+#[node_macro::node(category("Vector: Style"), icon("NodeVaryStrokeColors"), path(graphene_core::vector))]
+fn vary_stroke_colors<T>(
+	_: impl Ctx,
+	/// The content with vector paths to apply the stroke style to.
+	#[implementations(List<Graphic>, List<Vector>)]
+	#[widget(ParsedWidgetOverride::Hidden)]
+	content: T,
+	/// The range of colors to select from.
+	#[default(Color::BLACK, Color::WHITE)]
+	#[widget(ParsedWidgetOverride::Custom = "vary_stroke_colors_gradient")]
+	gradient: Item<Gradient>,
+	/// Whether to reverse the gradient.
+	reverse: Item<bool>,
+	/// Whether to randomize the color selection for each element from throughout the gradient.
+	randomize: Item<bool>,
+	/// Seed to determine unique variations on the randomized color selection.
+	#[widget(ParsedWidgetOverride::Custom = "vary_stroke_colors_seed")]
+	#[hard(0..)]
+	seed: Item<i64>,
+	/// The number of elements to span across the gradient before repeating. A 0 value will span the entire gradient once.
+	#[widget(ParsedWidgetOverride::Custom = "vary_stroke_colors_repeat_every")]
+	#[hard(0..)]
+	repeat_every: Item<i64>,
+) -> Result<T, VaryColorsError>
+where
+	T: VectorListIterMut + Send,
+{
+	vary_cover_colors(content, Cover::Stroke, gradient, reverse, randomize, seed, repeat_every)
+}
+
+/// Paints the fill or stroke of each vector element with its own color from along the gradient, for the Vary Fill Colors and Vary Stroke Colors nodes.
+fn vary_cover_colors<T: VectorListIterMut>(
+	content: T,
+	cover: Cover,
+	gradient: Item<Gradient>,
+	reverse: Item<bool>,
+	randomize: Item<bool>,
+	seed: Item<i64>,
+	repeat_every: Item<i64>,
+) -> Result<T, VaryColorsError> {
+	let (reverse, randomize, seed, repeat_every) = (reverse.into_element(), randomize.into_element(), seed.into_element(), repeat_every.into_element());
+
+	if gradient.element().is_empty() {
+		return Err(VaryColorsError::EmptyGradient);
 	}
 
 	let mut content = content;
@@ -331,42 +370,33 @@ where
 	let gradient = if reverse { element.reversed(settings.cyclic) } else { element };
 	let evaluator = gradient.evaluator(settings);
 
-	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+	let mut factors = spread_factors(length, randomize, seed as u64, repeat_every as u64);
 
-	let mut i: usize = 0;
 	content.for_each_vector_list_mut(|vector_list| {
 		for index in 0..vector_list.len() {
-			let factor = match randomize {
-				true => rng.random::<f64>(),
-				false => match repeat_every {
-					0 => i as f64 / (length - 1).max(1) as f64,
-					1 => 0.,
-					_ => i as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
-				},
-			};
+			let factor = factors.next().unwrap_or_default();
 
 			let color = evaluator.evaluate(factor);
 			let color_paint = Graphic::ColorList(List::new_from_element(color));
 
-			if fill {
-				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
+			match cover {
+				Cover::Fill => vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
 					if !appearance.set_paint_of(Cover::Fill, color_paint.clone()) {
 						appearance.replace_or_insert(Coverage::new_fill(), color_paint.clone(), CoverPlacement::Below);
 					}
-				});
+				}),
+				// The stroke recolor is gated on an existing stroke coverage, since restyling never adds a stroke
+				Cover::Stroke => {
+					if vector_list
+						.attribute::<Appearance>(ATTR_APPEARANCE, index)
+						.is_some_and(|appearance| appearance.has_cover(Cover::Stroke))
+					{
+						vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
+							appearance.set_paint_of(Cover::Stroke, color_paint.clone());
+						});
+					}
+				}
 			}
-			// The stroke recolor is gated on an existing stroke coverage, since restyling never adds a stroke
-			if stroke
-				&& vector_list
-					.attribute::<Appearance>(ATTR_APPEARANCE, index)
-					.is_some_and(|appearance| appearance.has_cover(Cover::Stroke))
-			{
-				vector_list.with_attribute_mut_or_default::<Appearance, _, _>(ATTR_APPEARANCE, index, |appearance| {
-					appearance.set_paint_of(Cover::Stroke, color_paint.clone());
-				});
-			}
-
-			i += 1;
 		}
 	});
 
@@ -541,103 +571,6 @@ fn dash_pattern(
 ) -> Item<DashPattern> {
 	let lengths: Vec<f64> = lengths.iter_element_values().copied().collect();
 	Item::new_from_element(DashPattern::from(lengths))
-}
-
-#[node_macro::node(category("Graphic"), icon("NodeRepeatOnPoints"), name("Copy to Points"), path(core_types::vector))]
-fn copy_to_points<I: Send + Clone>(
-	_: impl Ctx,
-	points: List<Vector>,
-	/// Artwork to be copied and placed at each point.
-	#[expose]
-	#[implementations(List<Graphic>, List<Vector>, List<String>, List<Raster<CPU>>, List<Color>, List<Gradient>)]
-	content: List<I>,
-	/// Minimum range of randomized sizes given to each placed copy.
-	#[default(1)]
-	#[range]
-	#[soft(0..2)]
-	#[unit("x")]
-	random_scale_min: Item<f64>,
-	/// Maximum range of randomized sizes given to each placed copy.
-	#[default(1)]
-	#[range]
-	#[soft(0..2)]
-	#[unit("x")]
-	random_scale_max: Item<f64>,
-	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
-	#[range]
-	#[soft(-50..50)]
-	random_scale_bias: Item<f64>,
-	/// Seed to determine unique variations on all the randomized copy sizes.
-	#[hard(0..)]
-	random_scale_seed: Item<i64>,
-	/// Range of randomized angles given to each placed copy, in degrees ranging from furthest clockwise to counterclockwise.
-	#[unit("°")]
-	#[range]
-	#[soft(0..360)]
-	random_rotation: Item<f64>,
-	/// Seed to determine unique variations on all the randomized copy angles.
-	#[hard(0..)]
-	random_rotation_seed: Item<i64>,
-) -> List<I> {
-	let (random_scale_min, random_scale_max, random_scale_bias) = (random_scale_min.into_element(), random_scale_max.into_element(), random_scale_bias.into_element());
-	let (random_scale_seed, random_rotation, random_rotation_seed) = (random_scale_seed.into_element(), random_rotation.into_element(), random_rotation_seed.into_element());
-
-	let mut result_list = List::new();
-
-	let random_scale_difference = random_scale_max - random_scale_min;
-
-	for row in points.into_iter() {
-		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed as u64);
-		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed as u64);
-
-		let do_scale = random_scale_difference.abs() > 1e-6;
-		let do_rotation = random_rotation.abs() > 1e-6;
-
-		let points_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-		let row_paths = shared_paths_from_item_attributes(&row);
-		for point in row.element().anchor_positions(&row_paths) {
-			let translation = points_transform.transform_point2(point);
-
-			let rotation = if do_rotation {
-				let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
-				degrees / 360. * TAU
-			} else {
-				0.
-			};
-
-			let scale = if do_scale {
-				if random_scale_bias.abs() < 1e-6 {
-					// Linear
-					random_scale_min + scale_rng.random::<f64>() * random_scale_difference
-				} else {
-					// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-					let random = scale_rng.random::<f64>();
-					let scale_factor = if random_scale_bias > 0. {
-						// Rearranged as `b + log2(r + (1 - r) 2^-b)` so a large bias can't overflow `2^b`, with the log floored at `-b` where `2^-b` underflows
-						1. + (random + (1. - random) * (-random_scale_bias).exp2()).log2().max(-random_scale_bias) / random_scale_bias
-					} else {
-						let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-						(1. - random * horizontal_scale_factor).log2() / random_scale_bias
-					};
-					random_scale_min + scale_factor * random_scale_difference
-				}
-			} else {
-				random_scale_min
-			};
-
-			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
-
-			for row_index in 0..content.len() {
-				let Some(mut row) = content.clone_item(row_index) else { continue };
-				let row_transform: DAffine2 = row.attribute_cloned_or_default(ATTR_TRANSFORM);
-				row.set_attribute(ATTR_TRANSFORM, transform * row_transform);
-
-				result_list.push(row);
-			}
-		}
-	}
-
-	result_list
 }
 
 #[node_macro::node(category("Vector: Path"), icon("NodeRoundCorners"), path(core_types::vector))]
@@ -4323,43 +4256,6 @@ mod test {
 		}
 	}
 	#[test]
-	fn copy_to_points() {
-		let points = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
-		let element = Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY);
-
-		let expected_points = {
-			let (vector, paths) = Vector::from_bezpath(&points);
-			vector.anchor_positions(&paths)
-		};
-
-		let copy_to_points = super::copy_to_points(
-			Footprint::default(),
-			vector_node_from_bezpath(points),
-			vector_node_from_bezpath(element),
-			Item::new_from_element(1.),
-			Item::new_from_element(1.),
-			Item::new_from_element(0.),
-			Item::new_from_element(0),
-			Item::new_from_element(0.),
-			Item::new_from_element(0),
-		);
-		let combined = List::new_from_item(super::combine_paths(Footprint::default(), List::new_from_element(Graphic::VectorList(copy_to_points))));
-		let combined_paths = row_paths(&combined, 0);
-		let combined_copy_to_points = combined.element(0).unwrap();
-
-		assert_eq!(combined_copy_to_points.stroke_manipulator_groups(combined_paths).count(), expected_points.len());
-
-		for (index, (manipulator_groups, _)) in combined_copy_to_points.stroke_manipulator_groups(combined_paths).enumerate() {
-			let offset = expected_points[index];
-			let manipulator_groups_anchors = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<DVec2>>();
-			assert_eq!(
-				&manipulator_groups_anchors,
-				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
-			);
-		}
-	}
-
-	#[test]
 	fn vector_to_points() {
 		let square = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0., DVec2::new(5., 7.));
@@ -4945,15 +4841,13 @@ mod test {
 
 	// A rank-0 vector reaches the same per-list styling path as a vector list, rather than being skipped
 	#[test]
-	fn assign_colors_reaches_rank_0_vector_graphics() {
+	fn vary_fill_colors_reaches_rank_0_vector_graphics() {
 		let leaf = Graphic::Vector(Box::new(vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY))));
 		let content = List::new_from_element(leaf);
 
-		let styled = super::assign_colors(
+		let styled = super::vary_fill_colors(
 			Footprint::default(),
 			content,
-			Item::new_from_element(true),
-			Item::new_from_element(false),
 			Item::new_from_element(Gradient::from(vec![Color::BLACK, Color::WHITE])),
 			Item::new_from_element(false),
 			Item::new_from_element(false),
@@ -5303,25 +5197,33 @@ mod test {
 	}
 
 	#[test]
-	fn assign_colors_from_an_empty_gradient() {
+	fn vary_colors_from_an_empty_gradient() {
 		let content = || List::new_from_item(vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY)));
-		let assign = |fill: bool| {
-			super::assign_colors(
-				(),
-				content(),
-				item(fill),
-				item(false),
-				item(Gradient::from(Vec::<Color>::new())),
-				item(false),
-				item(false),
-				item(0),
-				item(0),
-			)
-		};
+		let empty = || item(Gradient::from(Vec::<Color>::new()));
 
-		assert!(matches!(assign(true), Err(AssignColorsError::EmptyGradient)));
-		// With neither the fill nor the stroke styled, the gradient goes unused
-		assert!(assign(false).is_ok());
+		let fills = super::vary_fill_colors((), content(), empty(), item(false), item(false), item(0), item(0));
+		let strokes = super::vary_stroke_colors((), content(), empty(), item(false), item(false), item(0), item(0));
+		assert!(matches!(fills, Err(VaryColorsError::EmptyGradient)));
+		assert!(matches!(strokes, Err(VaryColorsError::EmptyGradient)));
+	}
+
+	#[test]
+	fn vary_stroke_colors_recolors_only_existing_strokes() {
+		let rect = || vector_item_from_bezpath(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY));
+		let mut stroked = Appearance::default();
+		stroked.replace_or_insert(Coverage::new_stroke(&Stroke::new(4.)), Graphic::from(List::new_from_element(Color::BLACK)), CoverPlacement::Above);
+		let content: List<Vector> = [rect().with_attribute(ATTR_APPEARANCE, stroked), rect()].into_iter().collect();
+
+		let styled = super::vary_stroke_colors((), content, item(Gradient::from(vec![Color::WHITE])), item(false), item(false), item(0), item(0)).unwrap();
+
+		let stroke_paint = styled
+			.attribute::<Appearance>(ATTR_APPEARANCE, 0)
+			.and_then(|appearance| appearance.first_paint_of(Cover::Stroke).cloned());
+		assert_eq!(stroke_paint, Some(Graphic::ColorList(List::new_from_element(Color::WHITE))));
+		assert!(
+			!styled.attribute::<Appearance>(ATTR_APPEARANCE, 1).is_some_and(|appearance| appearance.has_cover(Cover::Stroke)),
+			"an element without a stroke should not gain one"
+		);
 	}
 
 	#[test]
@@ -5333,18 +5235,5 @@ mod test {
 		assert_eq!(solidified.len(), 1);
 		assert_eq!(solidified.element(0), Some(filled.element()));
 		assert_eq!(solidified.attribute::<Appearance>(ATTR_APPEARANCE, 0), filled.attribute::<Appearance>(ATTR_APPEARANCE));
-	}
-
-	#[test]
-	fn copy_to_points_with_a_large_scale_bias() {
-		let points = vector_node_from_bezpath(Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY));
-		let content = vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
-
-		let copies = super::copy_to_points((), points, content, item(1.), item(2.), item(2000.), item(0), item(0.), item(0));
-		for index in 0..copies.len() {
-			let transform: DAffine2 = copies.attribute_cloned_or_default(ATTR_TRANSFORM, index);
-			let scale = transform.matrix2.x_axis.length();
-			assert!((1. ..=2.).contains(&scale), "copy {index} has scale {scale}");
-		}
 	}
 }

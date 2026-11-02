@@ -768,7 +768,7 @@ impl NodeGraphExecutor {
 			self.advance_gradient_migration(document, document_id, responses);
 			return;
 		}
-		if !redirect_export_chain(&mut network, &full_path) {
+		if !redirect_export_chain(&mut network, &full_path, 0) {
 			// The fill was deleted or is otherwise unreachable, so drop its stale entry instead of retrying it on every open
 			log::warn!("Gradient migration: could not redirect the document network's export chain to fill node {fill_node_id:?}; dropping its pending gradient bake");
 			remove_pending_gradient_bake(document, &network_path, fill_node_id);
@@ -1065,13 +1065,13 @@ fn remove_pending_gradient_bake(document: &mut DocumentMessageHandler, network_p
 }
 
 // TODO: Eventually remove this document upgrade code
-/// Redirect the primary export at each level of `network` down through the subnetwork nodes named by `full_path`,
-/// un-hiding each so the innermost node's branch evaluates. Returns false if any step is missing or not a subnetwork.
-fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId]) -> bool {
+/// Redirect the primary export at each level of `network` down through the subnetwork nodes named by `full_path` to the innermost node's `output_index`,
+/// un-hiding each so its branch evaluates. Returns false if any step is missing or not a subnetwork.
+pub(crate) fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId], output_index: usize) -> bool {
 	let Some((node_id, deeper_path)) = full_path.split_first() else { return true };
 
 	let Some(export) = network.exports.first_mut() else { return false };
-	*export = NodeInput::node(*node_id, 0);
+	*export = NodeInput::node(*node_id, if deeper_path.is_empty() { output_index } else { 0 });
 
 	let Some(node) = network.nodes.get_mut(node_id) else { return false };
 	node.visible = true;
@@ -1080,7 +1080,7 @@ fn redirect_export_chain(network: &mut NodeNetwork, full_path: &[NodeId]) -> boo
 		return true;
 	}
 	match &mut node.implementation {
-		DocumentNodeImplementation::Network(nested) => redirect_export_chain(nested, deeper_path),
+		DocumentNodeImplementation::Network(nested) => redirect_export_chain(nested, deeper_path, output_index),
 		_ => false,
 	}
 }
