@@ -3950,7 +3950,7 @@ fn migrate_copy_to_points_nodes(document: &mut DocumentMessageHandler) {
 /// The compile-time type of the node output an input is wired to, resolved on a copy of the graph pruned to that output's upstream.
 /// It is `None` where that copy doesn't compile, such as for content reading a scope only the runtime provides.
 fn resolved_output_type(document: &DocumentMessageHandler, preprocessor: &preprocessor::Preprocessor, input: &NodeInput, network_path: &[NodeId]) -> Option<Type> {
-	let NodeInput::Node { node_id, output_index: 0, .. } = input else { return None };
+	let NodeInput::Node { node_id, output_index, .. } = input else { return None };
 
 	// A hidden node passes its primary input through rather than giving the output its type describes
 	if !document.network_interface.is_visible(node_id, network_path) {
@@ -3961,7 +3961,7 @@ fn resolved_output_type(document: &DocumentMessageHandler, preprocessor: &prepro
 	let mut network = document.network_interface.document_network().clone();
 	network.inline_definitions().ok()?;
 	let output_path: Vec<NodeId> = network_path.iter().copied().chain([*node_id]).collect();
-	if !redirect_export_chain(&mut network, &output_path) {
+	if !redirect_export_chain(&mut network, &output_path, *output_index) {
 		return None;
 	}
 	network.exports.truncate(1);
@@ -5773,6 +5773,78 @@ mod tests {
 		// The circle is one vector item, so it's repeated as it is rather than grouped and flattened back out as graphics
 		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
 		let migrated = opened.network_interface.document_node(&copy_to_points, &[subnetwork]).expect("the node should exist");
+		assert_eq!(migrated.implementation, DocumentNodeImplementation::ProtoNode(repeat_on_points::IDENTIFIER));
+	}
+
+	#[tokio::test]
+	async fn copy_to_points_content_from_a_secondary_output_resolves_its_type() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkTemplate;
+		use crate::messages::portfolio::document_storage_io::load_legacy_document;
+		use crate::test_utils::test_prelude::*;
+		use graph_craft::application_io::resource::HashMapResourceStorage;
+		use graphene_std::NodeParameter;
+		use graphene_std::repeat::repeat_on_points;
+		use graphene_std::vector::generator_nodes::{circle, rectangle};
+
+		let default_template = |identifier| {
+			resolve_document_node_type(&DefinitionIdentifier::ProtoNode(identifier))
+				.expect("the definition should exist")
+				.default_node_template()
+		};
+		let number = |value| NodeInput::value(TaggedValue::Number(value), false);
+		let integer = |value| NodeInput::value(TaggedValue::Integer(value), false);
+
+		// A subnetwork exporting a list of circles repeated on a rectangle's corners first, then a lone circle
+		let (subnetwork_points, subnetwork_content, subnetwork_repeat) = (NodeId(1), NodeId(2), NodeId(3));
+		let mut repeat_template = default_template(repeat_on_points::IDENTIFIER);
+		repeat_template.inputs[repeat_on_points::PointsInput::INDEX] = NodeInput::node(subnetwork_points, 0);
+		repeat_template.inputs[repeat_on_points::ContentInput::INDEX] = NodeInput::node(subnetwork_content, 0);
+		let subnetwork_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
+				exports: vec![NodeInput::node(subnetwork_repeat, 0), NodeInput::node(subnetwork_content, 0)],
+				nodes: [
+					(subnetwork_points, default_template(rectangle::IDENTIFIER)),
+					(subnetwork_content, default_template(circle::IDENTIFIER)),
+					(subnetwork_repeat, repeat_template),
+				]
+				.into_iter()
+				.collect(),
+				..Default::default()
+			}),
+			..Default::default()
+		};
+
+		// Copy the subnetwork's lone circle onto another rectangle's corners
+		let (points, subnetwork, copy_to_points) = (NodeId(4), NodeId(5), NodeId(6));
+		let copy_to_points_template = NodeTemplate {
+			implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::vector::CopyToPointsNode")),
+			inputs: vec![
+				NodeInput::value(TaggedValue::None, false),
+				NodeInput::value(TaggedValue::None, false),
+				number(1.),
+				number(1.),
+				number(0.),
+				integer(0),
+				number(0.),
+				integer(0),
+			],
+			..Default::default()
+		};
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let interface = &mut editor.active_document_mut().network_interface;
+		interface.insert_node(points, default_template(rectangle::IDENTIFIER), &[]);
+		interface.insert_node(subnetwork, subnetwork_template, &[]);
+		interface.insert_node(copy_to_points, copy_to_points_template, &[]);
+		interface.set_input(&InputConnector::node_at_index(copy_to_points, 0), NodeInput::node(points, 0), &[]);
+		interface.set_input(&InputConnector::node_at_index(copy_to_points, 1), NodeInput::node(subnetwork, 1), &[]);
+		interface.create_wire(&OutputConnector::primary_output(copy_to_points), &InputConnector::Export(0), &[]);
+		let serialized = editor.active_document().serialize_document();
+
+		// The second output is one vector item, so it's repeated as it is rather than grouped and flattened back out
+		let opened = load_legacy_document(serialized, &HashMapResourceStorage::new(), false).expect("the document should open");
+		let migrated = opened.network_interface.document_node(&copy_to_points, &[]).expect("the node should exist");
 		assert_eq!(migrated.implementation, DocumentNodeImplementation::ProtoNode(repeat_on_points::IDENTIFIER));
 	}
 
