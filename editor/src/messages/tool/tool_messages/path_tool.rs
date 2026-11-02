@@ -625,6 +625,7 @@ struct PathToolData {
 	temporary_colinear_handles: bool,
 	molding_info: Option<(DVec2, DVec2)>,
 	molding_segment: bool,
+	molding_snap_origin: Option<DVec2>,
 	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	frontier_handles_info: Option<HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 	adjacent_anchor_offset: Option<DVec2>,
@@ -2011,7 +2012,7 @@ impl Fsm for PathToolFsmState {
 						// Draw the snapping axis lines through where the point under the pointer began
 						if let Some(axis) = tool_data.snapping_axis {
 							let slide_start = tool_data.slide.as_ref().map(|slide| document.metadata().document_to_viewport.transform_point2(slide.start));
-							let origin = slide_start.unwrap_or(tool_data.drag_start_pos);
+							let origin = tool_data.molding_snap_origin.or(slide_start).unwrap_or(tool_data.drag_start_pos);
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							match axis {
@@ -2144,11 +2145,32 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					let mouse_position = if snap_angle_state {
+						let transform = document.metadata().transform_to_viewport_if_feeds(segment.layer(), &document.network_interface);
+						let parametric_bezier_mid = point_to_dvec2(segment.pathseg().eval(0.5));
+						let mid = transform.transform_point2(parametric_bezier_mid);
+
+						tool_data.molding_snap_origin = Some(mid);
+						let drag_start = tool_data.drag_start_pos;
+
+						let delta = input.mouse.position - drag_start;
+						tool_data.snapping_axis = Some(if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y });
+						match tool_data.snapping_axis {
+							Some(Axis::X) => DVec2::new(input.mouse.position.x, drag_start.y),
+							Some(Axis::Y) => DVec2::new(drag_start.x, input.mouse.position.y),
+							_ => input.mouse.position,
+						}
+					} else {
+						tool_data.snapping_axis = None;
+						tool_data.molding_snap_origin = None;
+						input.mouse.position
+					};
 					// Past the threshold, the press on the segment molds it rather than clicking to insert a point
 					if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 						tool_data.molding_segment = true;
@@ -2158,7 +2180,7 @@ impl Fsm for PathToolFsmState {
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2199,7 +2221,6 @@ impl Fsm for PathToolFsmState {
 				let toggle_colinear_state = input.keyboard.get(toggle_colinear as usize);
 				let equidistant_state = input.keyboard.get(equidistant as usize);
 				let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				if !lock_angle_state {
 					tool_data.angle_locked = false;
@@ -2415,6 +2436,11 @@ impl Fsm for PathToolFsmState {
 					tool_data.saved_selection_before_handle_drag.clear();
 					tool_data.handle_drag_toggle = false;
 				}
+				tool_data.molding_info = None;
+				tool_data.molding_segment = false;
+				tool_data.molding_snap_origin = None;
+				tool_data.snapping_axis = None;
+				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.end_molding();
 				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
@@ -2670,6 +2696,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				tool_data.sliding_point_info = None;
+				tool_data.snapping_axis = None;
 
 				// Close the transaction the press opened, which adds no undo step when nothing changed, as for a plain click
 				responses.add(DocumentMessage::EndTransaction);
