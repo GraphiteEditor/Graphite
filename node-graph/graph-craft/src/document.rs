@@ -975,19 +975,32 @@ impl NodeNetwork {
 impl NodeNetwork {
 	/// Resolves each scope input to the node injecting it, adding imports to carry it into nested networks.
 	///
-	/// Each table entry is resolved once, children first: the keys an entry does not inject become its imports,
-	/// and every node naming the entry gets a matching scope input that its own network then resolves.
+	/// Each table entry is resolved once per scope context, children first: the keys an entry does not inject become its imports,
+	/// and every node naming the entry gets a matching scope input that its own network then resolves, so the nearest injection wins.
+	/// An entry reached from contexts that give a key different types is specialized into one entry per context.
 	pub fn resolve_scope_inputs(&mut self) {
-		let mut definitions = std::mem::take(&mut self.definitions);
+		let mut free_keys = FxHashMap::default();
+		for id in definitions_children_first(&self.definitions) {
+			let Some(definition) = self.definitions.get(&id) else { continue };
+			let keys = definition.free_scope_keys(&free_keys);
+			free_keys.insert(id, keys);
+		}
 
-		let every_injection: FxHashMap<String, (NodeId, Type)> = std::iter::once(&*self)
-			.chain(definitions.values())
-			.flat_map(|network| network.scope_injections.iter().map(|(key, injection)| (key.clone(), injection.clone())))
-			.collect();
-		let outside = ScopeChain {
-			scopes: &every_injection,
-			parent: None,
+		let originals = std::mem::take(&mut self.definitions);
+		let mut specializer = ScopeSpecializer {
+			originals: &originals,
+			free_keys: &free_keys,
+			base_signatures: FxHashMap::default(),
+			contexts: FxHashMap::default(),
+			specialized: FxHashMap::default(),
 		};
+		let root_chain = self.scope_injections.clone();
+		specializer.specialize(self, &root_chain);
+		let ScopeSpecializer {
+			contexts,
+			specialized: mut definitions,
+			..
+		} = specializer;
 
 		let mut import_counts = FxHashMap::default();
 		for network in std::iter::once(&*self).chain(definitions.values()) {
@@ -996,12 +1009,15 @@ impl NodeNetwork {
 
 		let mut forwarded: FxHashMap<NetworkId, Vec<NodeInput>> = FxHashMap::default();
 		for id in definitions_children_first(&definitions) {
-			let Some(definition) = definitions.get_mut(&id) else { continue };
+			let (Some(definition), Some(context)) = (definitions.get_mut(&id), contexts.get(&id)) else {
+				continue;
+			};
 			definition.append_forwarded_scopes(&forwarded);
 
 			// Stands in for an instance's inputs, so the forwarded keys become imports after the existing ones
 			let import_count = import_counts.get(&id).copied().unwrap_or_default();
 			let mut instance_inputs = vec![NodeInput::value(TaggedValue::None, false); import_count];
+			let outside = ScopeChain { scopes: context, parent: None };
 			definition.resolve_scope_inputs_impl(Some(&outside), &mut instance_inputs);
 			forwarded.insert(id, instance_inputs.split_off(import_count));
 		}
@@ -1012,6 +1028,25 @@ impl NodeNetwork {
 		let mut leftover = Vec::new();
 		self.resolve_scope_inputs_impl(None, &mut leftover);
 		assert!(leftover.is_empty(), "Unresolved scope keys at top level: {leftover:?}");
+	}
+
+	/// The scope keys this network reads, directly or through the networks it contains, without injecting them itself.
+	fn free_scope_keys(&self, entry_keys: &FxHashMap<NetworkId, FxHashSet<String>>) -> FxHashSet<String> {
+		let mut keys = FxHashSet::default();
+		for node in self.nodes.values() {
+			keys.extend(node.inputs.iter().filter_map(|input| match input {
+				NodeInput::Scope(key) => Some(key.to_string()),
+				_ => None,
+			}));
+			match &node.implementation {
+				DocumentNodeImplementation::Definition(id) => keys.extend(entry_keys.get(id).into_iter().flatten().cloned()),
+				DocumentNodeImplementation::Network(nested) => keys.extend(nested.free_scope_keys(entry_keys)),
+				_ => {}
+			}
+		}
+
+		keys.retain(|key| !self.scope_injections.contains_key(key));
+		keys
 	}
 
 	fn collect_instance_input_counts(&self, counts: &mut FxHashMap<NetworkId, usize>) {
@@ -1071,8 +1106,73 @@ impl NodeNetwork {
 	}
 }
 
+type ScopeInjections = FxHashMap<String, (NodeId, Type)>;
+
+/// Gives every instance the entry matching the scope types its context provides, copying an entry for each further context.
+struct ScopeSpecializer<'a> {
+	originals: &'a FxHashMap<NetworkId, NodeNetwork>,
+	free_keys: &'a FxHashMap<NetworkId, FxHashSet<String>>,
+	/// The signature of the first context reaching each original entry, which keeps the entry's ID.
+	base_signatures: FxHashMap<NetworkId, Vec<(String, Type)>>,
+	/// The injections each specialized entry resolves its free keys against.
+	contexts: FxHashMap<NetworkId, ScopeInjections>,
+	specialized: FxHashMap<NetworkId, NodeNetwork>,
+}
+
+impl ScopeSpecializer<'_> {
+	/// Points every instance in `network` at its specialization, where `chain` holds the nearest injection of every key visible in `network`.
+	fn specialize(&mut self, network: &mut NodeNetwork, chain: &ScopeInjections) {
+		let mut node_ids: Vec<NodeId> = network.nodes.keys().copied().collect();
+		node_ids.sort();
+
+		for node_id in node_ids {
+			let Some(node) = network.nodes.get_mut(&node_id) else { continue };
+			match &mut node.implementation {
+				DocumentNodeImplementation::Definition(id) => *id = self.specialization(*id, chain),
+				DocumentNodeImplementation::Network(nested) => {
+					let mut nested_chain = chain.clone();
+					nested_chain.extend(nested.scope_injections.iter().map(|(key, injection)| (key.clone(), injection.clone())));
+					self.specialize(nested, &nested_chain);
+				}
+				_ => {}
+			}
+		}
+	}
+
+	fn specialization(&mut self, id: NetworkId, chain: &ScopeInjections) -> NetworkId {
+		let Some(original) = self.originals.get(&id) else { return id };
+
+		let context: ScopeInjections = self.free_keys.get(&id).into_iter().flatten().filter_map(|key| Some((key.clone(), chain.get(key)?.clone()))).collect();
+		let mut signature: Vec<(String, Type)> = context.iter().map(|(key, (_, ty))| (key.clone(), ty.clone())).collect();
+		signature.sort_by(|(a, _), (b, _)| a.cmp(b));
+
+		let base_signature = self.base_signatures.entry(id).or_insert_with(|| signature.clone());
+		let specialized_id = if *base_signature == signature { id } else { specialized_network_id(id, &signature) };
+		if self.contexts.contains_key(&specialized_id) {
+			return specialized_id;
+		}
+
+		let mut body = original.clone();
+		let mut inner_chain = context.clone();
+		inner_chain.extend(body.scope_injections.iter().map(|(key, injection)| (key.clone(), injection.clone())));
+		self.contexts.insert(specialized_id, context);
+
+		self.specialize(&mut body, &inner_chain);
+		self.specialized.insert(specialized_id, body);
+		specialized_id
+	}
+}
+
+fn specialized_network_id(id: NetworkId, signature: &[(String, Type)]) -> NetworkId {
+	let mut hasher = DefaultHasher::new();
+	"scope specialization".hash(&mut hasher);
+	id.hash(&mut hasher);
+	signature.hash(&mut hasher);
+	NetworkId(hasher.finish())
+}
+
 struct ScopeChain<'a> {
-	scopes: &'a FxHashMap<String, (NodeId, Type)>,
+	scopes: &'a ScopeInjections,
 	parent: Option<&'a ScopeChain<'a>>,
 }
 enum ScopeChainLookup<'a> {
@@ -1331,6 +1431,7 @@ impl NodeNetwork {
 		if let DocumentNodeImplementation::Definition(definition) = node.implementation {
 			let Some(instance) = self.instantiate_definition(definition, &path) else {
 				log::error!("Node {id} names definition {definition:?}, which the definitions table lacks");
+				self.nodes.insert(id, node);
 				return;
 			};
 			node.implementation = DocumentNodeImplementation::Network(instance);
@@ -2374,6 +2475,72 @@ mod test {
 			definitions: [(ADD, add), (outer, outer_network)].into_iter().collect(),
 			..Default::default()
 		}
+	}
+
+	/// A root instance of `ADD` and one inside `group`, which shadows the root's `injected` with a node of type `shadowing_type`.
+	fn shadowed_scope_input(shadowing_type: Type) -> NodeNetwork {
+		let group = NetworkId(2);
+		let mut add = add_network();
+		add.nodes.get_mut(&NodeId(1)).unwrap().inputs.push(NodeInput::scope("injected"));
+		let node = |implementation| DocumentNode { implementation, ..Default::default() };
+		let identity = || node(DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::IdentityNode")));
+
+		let group_network = NodeNetwork {
+			nodes: [(NodeId(10), node(DocumentNodeImplementation::Definition(ADD))), (NodeId(21), identity())].into_iter().collect(),
+			scope_injections: [("injected".to_string(), (NodeId(21), shadowing_type))].into_iter().collect(),
+			..Default::default()
+		};
+		NodeNetwork {
+			nodes: [
+				(NodeId(10), node(DocumentNodeImplementation::Definition(group))),
+				(NodeId(11), node(DocumentNodeImplementation::Definition(ADD))),
+				(NodeId(20), identity()),
+			]
+			.into_iter()
+			.collect(),
+			scope_injections: [("injected".to_string(), (NodeId(20), concrete!(i64)))].into_iter().collect(),
+			definitions: [(ADD, add), (group, group_network)].into_iter().collect(),
+			..Default::default()
+		}
+	}
+
+	fn scope_import_types(network: &NodeNetwork) -> Vec<Type> {
+		let mut types: Vec<Type> = network
+			.definitions
+			.values()
+			.filter_map(|definition| match definition.nodes.get(&NodeId(1))?.inputs.last()? {
+				NodeInput::Import { import_type, .. } => Some(import_type.clone()),
+				_ => None,
+			})
+			.collect();
+		types.sort_by_key(|ty| format!("{ty:?}"));
+		types
+	}
+
+	#[test]
+	fn the_nearest_injection_resolves_a_scope_input() {
+		let mut network = shadowed_scope_input(concrete!(i64));
+		network.resolve_scope_inputs();
+
+		assert_eq!(scope_import_types(&network), vec![concrete!(i64)], "a shadowing injection of the same type shares the entry");
+		assert_eq!(network.nodes[&NodeId(11)].inputs.last(), Some(&NodeInput::node(NodeId(20), 0)));
+		assert_eq!(network.definitions[&NetworkId(2)].nodes[&NodeId(10)].inputs.last(), Some(&NodeInput::node(NodeId(21), 0)));
+	}
+
+	#[test]
+	fn a_shadowing_injection_of_another_type_specializes_the_entry() {
+		let mut network = shadowed_scope_input(concrete!(f64));
+		network.resolve_scope_inputs();
+
+		assert_eq!(scope_import_types(&network), vec![concrete!(i64), concrete!(f64)]);
+		let DocumentNodeImplementation::Definition(root_instance) = network.nodes[&NodeId(11)].implementation else {
+			panic!()
+		};
+		let DocumentNodeImplementation::Definition(group_instance) = network.definitions[&NetworkId(2)].nodes[&NodeId(10)].implementation else {
+			panic!()
+		};
+		assert_ne!(root_instance, group_instance);
+		assert_eq!(network.definitions[&NetworkId(2)].nodes[&NodeId(10)].inputs.last(), Some(&NodeInput::node(NodeId(21), 0)));
 	}
 
 	#[test]
