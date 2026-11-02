@@ -1,8 +1,13 @@
 use crate::messages::prelude::*;
+use graphene_std::color::SRGBA8;
 
 #[impl_message(Message, DocumentMessage, Palette)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PaletteMessage {
+	ActivePaletteChanged { id: u64 },
+	PaletteNameChange { id: u64, name: String },
+	AddColor { color: SRGBA8 },
+	DeleteColor { swatch_id: u64 },
 	Refresh,
-	Upload,
+	UploadFromFile,
 }

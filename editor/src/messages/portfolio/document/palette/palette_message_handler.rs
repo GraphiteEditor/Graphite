@@ -1,10 +1,14 @@
-use graphene_std::color::SRGBA8;
+use crate::application::generate_uuid;
 use graphene_std::vector::style::FillChoice;
+use graphene_std::{Color, color::SRGBA8};
 
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::palette::PaletteMessage;
 use crate::messages::prelude::*;
+use serde::{Deserialize, Serialize};
 
+// TODO: Ig this should be imported from some preloaded assets file after the
+// implementation of import from file feature.
 pub const DEFAULT_PALETTES: [(&str, u32, &[SRGBA8]); 2] = [
 	(
 		"Warm Landscape",
@@ -40,13 +44,86 @@ pub const DEFAULT_PALETTES: [(&str, u32, &[SRGBA8]); 2] = [
 	),
 ];
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct PaletteId(pub u64);
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct SwatchId(pub u64);
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct ColorSwatch {
+	pub id: SwatchId,
+	pub name: String,
+	pub color: Color,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+pub struct Palette {
+	pub id: PaletteId,
+	pub name: String,
+	// Palette specification where it can be 0 or None in which case the UI will flow
+	// the palettes accordingly
+	pub columns: Option<u32>,
+	pub grid: Vec<Option<SwatchId>>,
+	pub swatches: HashMap<SwatchId, ColorSwatch>,
+}
+
 #[derive(ExtractField)]
 pub struct PaletteMessageContext {
 	pub palette_open: bool,
 }
 
-#[derive(Debug, Clone, Default, ExtractField)]
-pub struct PaletteMessageHandler {}
+#[derive(Debug, Clone, ExtractField)]
+pub struct PaletteMessageHandler {
+	// At any moment in time at least one palette should be open in the palette section
+	pub active_palette: PaletteId,
+	pub order: Vec<PaletteId>,
+	pub palettes: HashMap<PaletteId, Palette>,
+}
+
+impl Default for PaletteMessageHandler {
+	fn default() -> Self {
+		let mut palettes = HashMap::new();
+		let mut order = Vec::new();
+		for &(name, columns, colors) in &DEFAULT_PALETTES {
+			let mut grid = Vec::new();
+			let mut swatches = HashMap::new();
+			for color in colors {
+				let id = SwatchId { 0: generate_uuid() };
+				grid.push(Some(id));
+				swatches.insert(
+					id,
+					ColorSwatch {
+						id,
+						name: "Some Color".to_string(),
+						color: (*color).into(),
+					},
+				);
+			}
+			let palette_id = PaletteId { 0: generate_uuid() };
+			order.push(palette_id);
+			palettes.insert(
+				palette_id,
+				Palette {
+					id: PaletteId { 0: generate_uuid() },
+					name: name.to_string(),
+					columns: Some(columns),
+					grid,
+					swatches,
+				},
+			);
+		}
+		Self {
+			active_palette: order[0],
+			order,
+			palettes,
+		}
+	}
+}
 
 #[message_handler_data]
 impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHandler {
@@ -58,9 +135,13 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 					return;
 				}
 
-				PaletteMessageHandler::refresh_palette(responses);
+				self.refresh_palette(responses);
 			}
-			PaletteMessage::Upload => todo!(),
+			PaletteMessage::UploadFromFile => todo!(),
+			PaletteMessage::ActivePaletteChanged { id } => todo!(),
+			PaletteMessage::PaletteNameChange { id, name } => todo!(),
+			PaletteMessage::AddColor { color } => todo!(),
+			PaletteMessage::DeleteColor { swatch_id } => todo!(),
 		}
 	}
 
@@ -70,27 +151,54 @@ impl MessageHandler<PaletteMessage, PaletteMessageContext> for PaletteMessageHan
 }
 
 impl PaletteMessageHandler {
-	pub fn refresh_palette(responses: &mut VecDeque<Message>) {
+	pub fn refresh_palette(&self, responses: &mut VecDeque<Message>) {
 		// TODO: Add Conditional to load palette from the open document's interface
 		// If none is present or it is a new document load the Default.
-		let mut widgets = Vec::new();
+		if true {
+			let mut widgets = Vec::new();
 
-		for &(name, columns, colors) in &DEFAULT_PALETTES {
-			widgets.push(LayoutGroup::row(vec![TextLabel::new(name).bold(true).widget_instance()]));
+			for palette_id in self.order.iter() {
+				let Palette { id: _, name, columns, grid, swatches } = self.palettes.get(palette_id).unwrap();
+				widgets.push(LayoutGroup::row(vec![TextLabel::new(name).bold(true).widget_instance()]));
 
-			let mut table_rows = Vec::new();
-			for chunk in colors.chunks(columns as usize) {
-				let row = chunk.iter().map(|&color| ColorInput::new(FillChoice::Solid(color)).widget_instance()).collect();
-				table_rows.push(row);
+				let mut table_rows = Vec::new();
+				if let Some(columns) = columns {
+					for chunk in grid.chunks(*columns as usize) {
+						let row = chunk
+							.iter()
+							.map(|&id| {
+								if let Some(swatch_id) = id {
+									let swatch = swatches.get(&swatch_id).unwrap();
+									ColorInput::new(FillChoice::Solid(swatch.color.into()))
+										.narrow(true)
+										.tooltip_label(swatch.name.clone())
+										.widget_instance()
+									// .on_update(|input: &ColorInput| {
+									// 	let ramp = input.value.as_gradient().cloned().unwrap_or_default();
+									// 	GradientToolMessage::UpdateRamp { ramp }.into()
+									// })
+									// .on_commit(|_| DocumentMessage::AddTransaction.into())
+								} else {
+									ColorInput::new(FillChoice::None).widget_instance()
+								}
+							})
+							.collect();
+						table_rows.push(row);
+					}
+				} else {
+					//TODO: Manage the case when the column size is not determined
+				}
+
+				widgets.push(LayoutGroup::table(table_rows, false));
+				widgets.push(LayoutGroup::row(vec![Separator::new(SeparatorStyle::Section).widget_instance()]));
 			}
 
-			widgets.push(LayoutGroup::table(table_rows, false));
-			widgets.push(LayoutGroup::row(vec![Separator::new(SeparatorStyle::Section).widget_instance()]));
+			responses.add(LayoutMessage::SendLayout {
+				layout: Layout(widgets),
+				layout_target: LayoutTarget::Palette,
+			});
+		} else {
+			// TODO: Add attached palettes instead
 		}
-
-		responses.add(LayoutMessage::SendLayout {
-			layout: Layout(widgets),
-			layout_target: LayoutTarget::Palette,
-		});
 	}
 }
