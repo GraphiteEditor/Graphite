@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::utility_types::network_interface::stor
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::portfolio::document_storage_io::load_legacy_document;
 use graph_craft::application_io::resource::HashMapResourceStorage;
-use graph_craft::document::{NodeId, OwnedNetworkLocation};
+use graph_craft::document::{NetworkLocation, NodeId};
 use graphene_std::vector::style::RenderMode;
 
 /// Storage drops output descriptions that are all empty, which means the same as having none.
@@ -43,7 +43,7 @@ fn editor_metadata_round_trip_against_demo() {
 	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
 
 	// Index emitted entries by their (network, local_id) address.
-	let entries_by_address: HashMap<(OwnedNetworkLocation, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network.clone(), e.local_id), e)).collect();
+	let entries_by_address: HashMap<(NetworkLocation, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network, e.local_id), e)).collect();
 
 	let mut checked_any_position = false;
 	let mut checked_any_layer = false;
@@ -51,25 +51,25 @@ fn editor_metadata_round_trip_against_demo() {
 	let mut checked_any_output_description = false;
 
 	for (network, local_id) in node_locations(interface) {
-		let expected_position = source.position(network.as_location(), local_id);
-		let expected_is_layer = source.is_layer(network.as_location(), local_id);
-		let expected_display = source.display_name(network.as_location(), local_id).map(str::to_owned);
-		let expected_locked = source.locked(network.as_location(), local_id);
-		let expected_pinned = source.pinned(network.as_location(), local_id);
-		let expected_output_names = source.output_names(network.as_location(), local_id);
-		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(network.as_location(), local_id));
+		let expected_position = source.position(network, local_id);
+		let expected_is_layer = source.is_layer(network, local_id);
+		let expected_display = source.display_name(network, local_id).map(str::to_owned);
+		let expected_locked = source.locked(network, local_id);
+		let expected_pinned = source.pinned(network, local_id);
+		let expected_output_names = source.output_names(network, local_id);
+		let expected_output_descriptions = normalize_output_descriptions(source.output_descriptions(network, local_id));
 
 		// Use the node's input count as the slot-by-slot iteration bound for the per-input metadata checks.
 		let input_count = located_node(interface, &network, local_id).map(|node| node.inputs.len()).unwrap_or(0);
 		let any_input_metadata_present = (0..input_count).any(|i| {
-			source.input_name(network.as_location(), local_id, i).is_some_and(|s| !s.is_empty())
-				|| source.input_description(network.as_location(), local_id, i).is_some_and(|s| !s.is_empty())
-				|| source.widget_override(network.as_location(), local_id, i).is_some()
-				|| !source.input_data(network.as_location(), local_id, i).is_empty()
+			source.input_name(network, local_id, i).is_some_and(|s| !s.is_empty())
+				|| source.input_description(network, local_id, i).is_some_and(|s| !s.is_empty())
+				|| source.widget_override(network, local_id, i).is_some()
+				|| !source.input_data(network, local_id, i).is_empty()
 		});
 
 		let entry = entries_by_address
-			.get(&(network.clone(), local_id))
+			.get(&(network, local_id))
 			.unwrap_or_else(|| panic!("missing entry for node {local_id:?} in network {network:?}"));
 
 		assert_eq!(entry.position, expected_position, "position mismatch for node {local_id:?} in network {network:?}");
@@ -95,10 +95,10 @@ fn editor_metadata_round_trip_against_demo() {
 			entry.input_metadata.len(),
 		);
 		for (index, input_entry) in entry.input_metadata.iter().enumerate() {
-			let expected_name = source.input_name(network.as_location(), local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
-			let expected_description = source.input_description(network.as_location(), local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
-			let expected_widget = source.widget_override(network.as_location(), local_id, index).map(str::to_owned);
-			let expected_data: std::collections::BTreeMap<_, _> = source.input_data(network.as_location(), local_id, index).into_iter().collect();
+			let expected_name = source.input_name(network, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
+			let expected_description = source.input_description(network, local_id, index).filter(|s| !s.is_empty()).map(str::to_owned);
+			let expected_widget = source.widget_override(network, local_id, index).map(str::to_owned);
+			let expected_data: std::collections::BTreeMap<_, _> = source.input_data(network, local_id, index).into_iter().collect();
 
 			assert_eq!(
 				input_entry.input_name, expected_name,
@@ -134,11 +134,11 @@ fn editor_metadata_round_trip_against_demo() {
 
 	for entry in &network_entries {
 		let network = &entry.network;
-		let location = network.as_location();
-		assert_eq!(entry.import_metadata, source.import_metadata(location), "import_metadata mismatch for network {network:?}");
-		assert_eq!(entry.export_names, source.export_names(location), "export_names mismatch for network {network:?}");
+		let location = network;
+		assert_eq!(entry.import_metadata, source.import_metadata(*location), "import_metadata mismatch for network {network:?}");
+		assert_eq!(entry.export_names, source.export_names(*location), "export_names mismatch for network {network:?}");
 
-		let expected_export_descriptions = normalize_output_descriptions(source.export_descriptions(location));
+		let expected_export_descriptions = normalize_output_descriptions(source.export_descriptions(*location));
 		assert_eq!(entry.export_descriptions, expected_export_descriptions, "export_descriptions mismatch for network {network:?}");
 		if !expected_export_descriptions.is_empty() {
 			checked_any_output_description = true;
@@ -178,31 +178,31 @@ fn editor_interface_rebuild_round_trip() {
 	// just the ones the entries vec mentioned.
 	for (network, local_id) in node_locations(&rebuilt) {
 		assert_eq!(
-			rebuilt_view.position(network.as_location(), local_id),
-			original_view.position(network.as_location(), local_id),
+			rebuilt_view.position(network, local_id),
+			original_view.position(network, local_id),
 			"position mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			rebuilt_view.is_layer(network.as_location(), local_id),
-			original_view.is_layer(network.as_location(), local_id),
+			rebuilt_view.is_layer(network, local_id),
+			original_view.is_layer(network, local_id),
 			"is_layer mismatch for node {local_id:?} in network {network:?}"
 		);
 		// Original display names are returned by the source as-is (including `""`). After
 		// round-trip the rebuilt interface also stores `""` for nodes that had no name set,
 		// so this comparison is exact.
 		assert_eq!(
-			rebuilt_view.display_name(network.as_location(), local_id),
-			original_view.display_name(network.as_location(), local_id),
+			rebuilt_view.display_name(network, local_id),
+			original_view.display_name(network, local_id),
 			"display_name mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			rebuilt_view.locked(network.as_location(), local_id),
-			original_view.locked(network.as_location(), local_id),
+			rebuilt_view.locked(network, local_id),
+			original_view.locked(network, local_id),
 			"locked mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			rebuilt_view.pinned(network.as_location(), local_id),
-			original_view.pinned(network.as_location(), local_id),
+			rebuilt_view.pinned(network, local_id),
+			original_view.pinned(network, local_id),
 			"pinned mismatch for node {local_id:?} in network {network:?}"
 		);
 
@@ -216,35 +216,35 @@ fn editor_interface_rebuild_round_trip() {
 
 		for index in 0..rebuilt_inputs {
 			assert_eq!(
-				rebuilt_view.input_name(network.as_location(), local_id, index),
-				original_view.input_name(network.as_location(), local_id, index),
+				rebuilt_view.input_name(network, local_id, index),
+				original_view.input_name(network, local_id, index),
 				"input_name mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
-				rebuilt_view.input_description(network.as_location(), local_id, index),
-				original_view.input_description(network.as_location(), local_id, index),
+				rebuilt_view.input_description(network, local_id, index),
+				original_view.input_description(network, local_id, index),
 				"input_description mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
-				rebuilt_view.widget_override(network.as_location(), local_id, index),
-				original_view.widget_override(network.as_location(), local_id, index),
+				rebuilt_view.widget_override(network, local_id, index),
+				original_view.widget_override(network, local_id, index),
 				"widget_override mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 			assert_eq!(
-				rebuilt_view.input_data(network.as_location(), local_id, index),
-				original_view.input_data(network.as_location(), local_id, index),
+				rebuilt_view.input_data(network, local_id, index),
+				original_view.input_data(network, local_id, index),
 				"input_data mismatch at slot {index} for node {local_id:?} in network {network:?}"
 			);
 		}
 
 		assert_eq!(
-			rebuilt_view.output_names(network.as_location(), local_id),
-			original_view.output_names(network.as_location(), local_id),
+			rebuilt_view.output_names(network, local_id),
+			original_view.output_names(network, local_id),
 			"output_names mismatch for node {local_id:?} in network {network:?}"
 		);
 		assert_eq!(
-			normalize_output_descriptions(rebuilt_view.output_descriptions(network.as_location(), local_id)),
-			normalize_output_descriptions(original_view.output_descriptions(network.as_location(), local_id)),
+			normalize_output_descriptions(rebuilt_view.output_descriptions(network, local_id)),
+			normalize_output_descriptions(original_view.output_descriptions(network, local_id)),
 			"output_descriptions mismatch for node {local_id:?} in network {network:?}"
 		);
 	}
@@ -262,7 +262,7 @@ fn editor_interface_rebuild_round_trip() {
 	// lives in `session.json`, not the registry, so they're not round-tripped here.
 	let mut checked_any_reference = false;
 	for network in network_locations(original) {
-		let location = network.as_location();
+		let location = network;
 		assert_eq!(rebuilt_view.reference(location), original_view.reference(location), "reference mismatch for network {network:?}");
 		if original_view.reference(location).is_some() {
 			checked_any_reference = true;

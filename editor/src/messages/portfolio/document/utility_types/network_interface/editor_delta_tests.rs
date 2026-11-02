@@ -6,7 +6,7 @@ use crate::test_utils::test_prelude::*;
 use document_graph_storage::delta::compute_deltas;
 use document_graph_storage::{PeerId, Registry, RegistryDelta, Session};
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{NodeInput, OwnedNetworkLocation};
+use graph_craft::document::{NetworkLocation, NodeInput};
 use graph_craft::runtime_delta::RuntimeDelta;
 use graphene_std::uuid::NodeId;
 
@@ -28,6 +28,13 @@ fn convert(editor: &EditorTestUtils) -> Registry {
 	.registry
 }
 
+/// The deltas a commit would stage, after settling the definitions table as a commit does.
+fn committed_deltas(editor: &mut EditorTestUtils) -> Vec<EditorDelta> {
+	let interface = &mut editor.active_document_mut().network_interface;
+	interface.settle_definitions();
+	interface.take_deltas()
+}
+
 fn construct(editor: &EditorTestUtils, deltas: &[EditorDelta], working: &Registry) -> Vec<RegistryDelta> {
 	let document = editor.active_document();
 	construct_batch(deltas, working, &document.resources.registry, &StorageMetadataView::new(&document.network_interface), PEER)
@@ -46,11 +53,7 @@ fn node_metadata(editor: &EditorTestUtils, node_id: NodeId) -> DocumentNodePersi
 }
 
 fn metadata_change(node_id: NodeId, change: NodeMetadataChange) -> EditorDelta {
-	EditorDelta::NodeMetadata {
-		network: OwnedNetworkLocation::ROOT,
-		node_id,
-		change,
-	}
+	EditorDelta::NodeMetadata { network: None, node_id, change }
 }
 
 fn assert_same_stored_effect(working: &Registry, constructed: Vec<RegistryDelta>, diffed: Vec<RegistryDelta>, at: &str) {
@@ -82,7 +85,7 @@ async fn set_input_value_constructs_the_exact_diff_op() {
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(node, 1), input.clone(), &[]);
 
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
-		network: OwnedNetworkLocation::ROOT,
+		network: None,
 		node_id: node,
 		input_index: 1,
 		input,
@@ -104,7 +107,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let wire = NodeInput::node(b, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::node_at_index(a, 1), wire.clone(), &[]);
 	let delta = EditorDelta::Graph(RuntimeDelta::SetInput {
-		network: OwnedNetworkLocation::ROOT,
+		network: None,
 		node_id: a,
 		input_index: 1,
 		input: wire,
@@ -117,7 +120,7 @@ async fn wiring_and_export_edits_construct_the_exact_diff_ops() {
 	let export = NodeInput::node(a, 0);
 	editor.active_document_mut().network_interface.set_input(&InputConnector::Export(0), export.clone(), &[]);
 	let delta = EditorDelta::Graph(RuntimeDelta::SetExport {
-		network: OwnedNetworkLocation::ROOT,
+		network: None,
 		export_index: 0,
 		input: Some(export),
 	});
@@ -141,12 +144,12 @@ async fn adding_a_node_as_structure_plus_metadata_matches_the_diff() {
 
 	let deltas = [
 		EditorDelta::Graph(RuntimeDelta::AddNode {
-			network: OwnedNetworkLocation::ROOT,
+			network: None,
 			node_id,
 			node: Box::new(document_node),
 		}),
 		EditorDelta::NodeMetadataSnapshot {
-			network: OwnedNetworkLocation::ROOT,
+			network: None,
 			node_id,
 			metadata: Box::new(metadata),
 		},
@@ -180,13 +183,13 @@ async fn per_field_metadata_edits_match_the_diff() {
 		metadata_change(node, NodeMetadataChange::Pinned(metadata.pinned)),
 		metadata_change(node, NodeMetadataChange::NodeType(metadata.node_type_metadata.clone())),
 		EditorDelta::Graph(RuntimeDelta::SetVisibility {
-			network: OwnedNetworkLocation::ROOT,
+			network: None,
 			node_id: node,
 			visible: false,
 		}),
 		// Pinning a node also appends it to the network's display order, which is network state.
 		EditorDelta::NetworkMetadata {
-			network: OwnedNetworkLocation::ROOT,
+			network: None,
 			change: NetworkMetadataChange::PinnedOrder(vec![node]),
 		},
 	];
@@ -247,7 +250,7 @@ async fn emitted_deltas_reproduce_the_diff() {
 		network_interface.shift_node(&node, glam::IVec2::new(3, 5), &[]);
 	}
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	assert!(!emitted.is_empty(), "the edits should have emitted deltas");
 
 	let constructed = construct(&editor, &emitted, &working);
@@ -273,7 +276,7 @@ async fn unchanged_writes_emit_nothing() {
 		network_interface.shift_node(&node, glam::IVec2::ZERO, &[]);
 	}
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	assert!(emitted.is_empty(), "re-writing the same values should emit nothing, got {emitted:#?}");
 }
 
@@ -293,7 +296,7 @@ async fn emitted_deltas_reproduce_the_diff_for_structural_edits() {
 	let node_id = NodeId(0xDE17A);
 	editor.active_document_mut().network_interface.insert_node(node_id, template, &[]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "emitted node insertion");
@@ -302,7 +305,7 @@ async fn emitted_deltas_reproduce_the_diff_for_structural_edits() {
 	editor.active_document_mut().network_interface.discard_deltas();
 	editor.active_document_mut().network_interface.delete_nodes(vec![node_id], true, &[]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "emitted node deletion");
@@ -339,7 +342,7 @@ async fn emitted_deltas_reproduce_the_diff_for_an_arity_change() {
 		.network_interface
 		.add_import(TaggedValue::Number(7.), true, -1, "Added", "An added import", &[group]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	assert!(!emitted.is_empty(), "adding an import should have emitted deltas");
 
 	let constructed = construct(&editor, &emitted, &working);
@@ -380,7 +383,7 @@ async fn an_arity_change_keeps_an_earlier_edit_to_the_same_node() {
 		.network_interface
 		.add_import(TaggedValue::Number(7.), true, -1, "Added", "An added import", &[group]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "rename then arity change");
@@ -508,7 +511,7 @@ async fn a_node_added_and_removed_in_one_batch_leaves_nothing_behind() {
 	editor.active_document_mut().network_interface.insert_node(node_id, template, &[]);
 	editor.active_document_mut().network_interface.delete_nodes(vec![node_id], true, &[]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "add then remove in one batch");
@@ -547,16 +550,11 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 	let mut deltas: Vec<EditorDelta> = before
 		.iter()
 		.filter(|id| !network.nodes.contains_key(id))
-		.map(|id| {
-			EditorDelta::Graph(RuntimeDelta::RemoveNode {
-				network: OwnedNetworkLocation::ROOT,
-				node_id: *id,
-			})
-		})
+		.map(|id| EditorDelta::Graph(RuntimeDelta::RemoveNode { network: None, node_id: *id }))
 		.collect();
 	for (index, export) in network.exports.iter().enumerate() {
 		deltas.push(EditorDelta::Graph(RuntimeDelta::SetExport {
-			network: OwnedNetworkLocation::ROOT,
+			network: None,
 			export_index: index,
 			input: Some(export.clone()),
 		}));
@@ -564,7 +562,7 @@ async fn removing_a_nested_network_node_matches_the_diff() {
 	for (node_id, node) in &network.nodes {
 		for (index, input) in node.inputs.iter().enumerate() {
 			deltas.push(EditorDelta::Graph(RuntimeDelta::SetInput {
-				network: OwnedNetworkLocation::ROOT,
+				network: None,
 				node_id: *node_id,
 				input_index: index,
 				input: input.clone(),
@@ -711,7 +709,7 @@ async fn output_descriptions_follow_their_exports() {
 		.collect::<Vec<_>>();
 	assert_eq!(descriptions, ["Third.", "Second."], "the descriptions should have moved with their exports");
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "moved output descriptions");
@@ -737,7 +735,7 @@ async fn exports_of_a_subgraph_without_descriptions_emit_no_description_write() 
 		network_interface.remove_export(last_export, &[merge]);
 	}
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let description_writes = emitted
 		.iter()
 		.filter(|delta| {
@@ -765,7 +763,7 @@ async fn adding_an_export_past_the_described_ones_matches_the_diff() {
 
 	editor.active_document_mut().network_interface.add_export(TaggedValue::None, -1, "", &[merge]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
 	assert_same_stored_effect(&working, constructed, diffed, "an export added past the described ones");
@@ -792,7 +790,7 @@ async fn exports_past_the_end_of_the_description_list_emit_no_description_write(
 		network_interface.remove_export(last_export, &[merge]);
 	}
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 	let description_writes = emitted
 		.iter()
 		.filter(|delta| {
@@ -832,11 +830,11 @@ fn value_input_inside(editor: &EditorTestUtils, definition: graph_craft::documen
 }
 
 /// The network location `deltas` recorded for a write to an input of `node_id`.
-fn recorded_input_write(deltas: &[EditorDelta], node_id: NodeId) -> OwnedNetworkLocation {
+fn recorded_input_write(deltas: &[EditorDelta], node_id: NodeId) -> NetworkLocation {
 	deltas
 		.iter()
 		.find_map(|delta| match delta {
-			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id: written, .. }) if *written == node_id => Some(network.clone()),
+			EditorDelta::Graph(RuntimeDelta::SetInput { network, node_id: written, .. }) if *written == node_id => Some(*network),
 			_ => None,
 		})
 		.expect("the input write should be recorded")
@@ -885,7 +883,7 @@ async fn an_edit_inside_a_table_entry_constructs_the_diff() {
 		.network_interface
 		.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
 
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(&mut editor);
 
 	let constructed = construct(&editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(&editor));
@@ -905,7 +903,7 @@ async fn a_template_of_a_table_node_names_its_entry() {
 	assert_eq!(node.implementation, graph_craft::document::DocumentNodeImplementation::Definition(definition));
 }
 
-/// A template of `node_id` that carries its table entry inline, as one from before networks moved into the table does.
+/// An inline copy of `node_id` without its catalog reference, so inserting it lifts a new entry.
 fn inline_copy(interface: &super::NodeNetworkInterface, node_id: NodeId) -> super::NodeTemplate {
 	let mut node = interface.document_network().nodes[&node_id].clone();
 	let mut metadata = interface.network_metadata.persistent_metadata.node_metadata[&node_id].persistent_metadata.clone();
@@ -913,8 +911,10 @@ fn inline_copy(interface: &super::NodeNetworkInterface, node_id: NodeId) -> supe
 		panic!("the node should name a table entry")
 	};
 
+	let mut network_metadata = interface.network_metadata.persistent_metadata.definitions[&id].clone();
+	network_metadata.persistent_metadata.reference = None;
 	node.implementation = graph_craft::document::DocumentNodeImplementation::Network(interface.document_network().definitions[&id].clone());
-	metadata.network_metadata = Some(interface.network_metadata.persistent_metadata.definitions[&id].clone());
+	metadata.network_metadata = Some(network_metadata);
 	super::NodeTemplate::from_parts(node, metadata)
 }
 
@@ -931,11 +931,14 @@ async fn a_write_keeps_its_network_when_the_instance_changes_implementation() {
 	interface.discard_deltas();
 
 	interface.set_input(&InputConnector::node_at_index(inner, input_index), NodeInput::value(TaggedValue::None, false), &[layer]);
+	let graph_craft::document::DocumentNodeImplementation::Definition(written) = interface.document_network().nodes[&layer].implementation else {
+		panic!("the layer should name a table entry")
+	};
 	let mut inline_copy = inline_copy(interface, layer);
 	interface.replace_implementation(&layer, &[], &mut inline_copy);
 
 	let deltas = interface.take_deltas();
-	assert_eq!(recorded_input_write(&deltas, inner), OwnedNetworkLocation::definition(definition));
+	assert_eq!(recorded_input_write(&deltas, inner), Some(written));
 }
 
 /// A copy of `layer` that names the same table entry, so the two share one network.
@@ -957,8 +960,7 @@ fn assert_stages_incrementally(editor: &mut EditorTestUtils, at: &str, edit: imp
 	editor.active_document_mut().network_interface.discard_deltas();
 
 	edit(editor);
-	editor.active_document_mut().network_interface.settle_definitions();
-	let emitted = editor.active_document_mut().network_interface.take_deltas();
+	let emitted = committed_deltas(editor);
 
 	let constructed = construct(editor, &emitted, &working);
 	let diffed = compute_deltas(&working, &convert(editor));

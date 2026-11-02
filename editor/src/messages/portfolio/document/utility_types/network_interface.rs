@@ -1,5 +1,8 @@
 mod apply;
 mod caches;
+mod catalog;
+#[cfg(test)]
+mod catalog_tests;
 #[cfg(test)]
 mod characterization_tests;
 mod deserialization;
@@ -137,6 +140,50 @@ impl NodeNetworkInterface {
 	/// Moves the interface metadata an older document stored on each instance node onto the network implementing it.
 	pub fn move_interface_metadata_into_networks(&mut self) {
 		self.migrate_metadata(NodeNetworkMetadata::move_interface_metadata_into_networks);
+	}
+
+	/// Gives each entry under a catalog ID that differs from the shipped network a fresh ID.
+	pub fn give_diverged_catalog_entries_new_ids(&mut self) {
+		loop {
+			let metadata_definitions = &self.network_metadata.persistent_metadata.definitions;
+			let diverged: HashMap<NetworkId, NetworkId> = self
+				.document_network()
+				.definitions
+				.iter()
+				.filter(|(id, network)| {
+					let Some(shipped) = catalog::entry(**id) else { return false };
+					let metadata = metadata_definitions.get(id).map(|metadata| &metadata.persistent_metadata);
+					shipped.network != **network || !metadata.is_some_and(|metadata| same_content(&shipped.metadata.persistent_metadata, metadata))
+				})
+				.map(|(id, _)| (*id, NetworkId::new()))
+				.collect();
+			if diverged.is_empty() {
+				return;
+			}
+
+			self.migrate_graph(|network| {
+				for (old, new) in &diverged {
+					if let Some(definition) = network.definitions.remove(old) {
+						network.definitions.insert(*new, definition);
+					}
+				}
+				let networks = std::iter::once(&mut network.nodes).chain(network.definitions.values_mut().map(|definition| &mut definition.nodes));
+				for node in networks.flat_map(|nodes| nodes.values_mut()) {
+					if let DocumentNodeImplementation::Definition(id) = &mut node.implementation
+						&& let Some(new) = diverged.get(id)
+					{
+						*id = *new;
+					}
+				}
+			});
+			self.migrate_metadata(|metadata, _| {
+				for (old, new) in &diverged {
+					if let Some(definition) = metadata.persistent_metadata.definitions.remove(old) {
+						metadata.persistent_metadata.definitions.insert(*new, definition);
+					}
+				}
+			});
+		}
 	}
 
 	// TODO: Eventually remove this document upgrade code

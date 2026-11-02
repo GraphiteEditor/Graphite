@@ -33,7 +33,7 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_transform(&mut self, transform: DAffine2, network_path: &[NodeId]) {
-		let Some(mut network) = self.network_mut(network_path) else {
+		let Some(mut network) = self.network_view_mut(network_path) else {
 			log::error!("Could not get nested network in set_transform");
 			return;
 		};
@@ -44,7 +44,7 @@ impl NodeNetworkInterface {
 
 	// This should be run whenever the pan ends, a zoom occurs, or the network is opened
 	pub fn set_node_graph_width(&mut self, node_graph_width: f64, network_path: &[NodeId]) {
-		let Some(mut network) = self.network_mut(network_path) else {
+		let Some(mut network) = self.network_view_mut(network_path) else {
 			log::error!("Could not get nested network in set_node_graph_width");
 			return;
 		};
@@ -72,6 +72,7 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new export at insert index. If the insert index is -1 it is inserted at the end. The output_name is used by the encapsulating node.
 	pub fn add_export(&mut self, default_value: TaggedValue, insert_index: isize, output_name: &str, network_path: &[NodeId]) {
+		self.fork_catalog_entries_along(network_path);
 		let inserted_index = if insert_index == -1 { self.number_of_exports(network_path) } else { insert_index as usize };
 		if !self.insert_export_slot(network_path, inserted_index, NodeInput::value(default_value, true), output_name.to_string(), String::new()) {
 			return;
@@ -109,6 +110,7 @@ impl NodeNetworkInterface {
 
 	/// Inserts a new input at insert index. If the insert index is -1 it is inserted at the end. The input_name is used by the encapsulating node.
 	pub fn add_import(&mut self, default_value: TaggedValue, exposed: bool, insert_index: isize, input_name: &str, input_description: &str, network_path: &[NodeId]) {
+		self.fork_catalog_entries_along(network_path);
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		let Some((first_path, first_node_id)) = encapsulating_nodes.first() else {
 			log::error!("Cannot add import for document network");
@@ -191,6 +193,7 @@ impl NodeNetworkInterface {
 
 	// First disconnects the export, then removes it
 	pub fn remove_export(&mut self, export_index: usize, network_path: &[NodeId]) {
+		self.fork_catalog_entries_along(network_path);
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Cannot remove export for document network");
@@ -235,6 +238,7 @@ impl NodeNetworkInterface {
 
 	// First disconnects the import, then removes it
 	pub fn remove_import(&mut self, import_index: usize, network_path: &[NodeId]) {
+		self.fork_catalog_entries_along(network_path);
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		let Some((first_path, first_parent_id)) = encapsulating_nodes.first() else {
 			log::error!("Cannot remove import for document network");
@@ -286,6 +290,7 @@ impl NodeNetworkInterface {
 
 	/// The end index is before the export is removed, so moving to the end is the length of the current exports
 	pub fn reorder_export(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
+		self.fork_catalog_entries_along(network_path);
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Could not reorder export for document network");
@@ -318,6 +323,7 @@ impl NodeNetworkInterface {
 
 	/// The end index is before the import is removed, so moving to the end is the length of the current imports
 	pub fn reorder_import(&mut self, start_index: usize, mut end_index: usize, network_path: &[NodeId]) {
+		self.fork_catalog_entries_along(network_path);
 		let encapsulating_nodes = self.encapsulating_nodes(network_path);
 		if encapsulating_nodes.is_empty() {
 			log::error!("Could not reorder import for document network");
@@ -438,7 +444,7 @@ impl NodeNetworkInterface {
 			self.set_upstream_chain_to_absolute(&upstream_node_id, network_path);
 		}
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in replace_inputs");
 			return None;
 		};
@@ -453,7 +459,9 @@ impl NodeNetworkInterface {
 		let number_of_inputs = node.inputs.len();
 		let definition = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type);
 
-		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		let Some(mut node_entry) = self.node_mut_unforked(NodeLocator::new(*node_id, network_path)) else {
+			return;
+		};
 		node_entry.pad_input_metadata(number_of_inputs, |input_index| {
 			definition.and_then(|definition| definition.node_template.input_metadata.get(input_index).cloned())
 		});
@@ -466,7 +474,7 @@ impl NodeNetworkInterface {
 		};
 		let number_of_exports = network.exports.len();
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_mut_unforked(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in validate_output_names");
 			return;
 		};
@@ -508,7 +516,9 @@ impl NodeNetworkInterface {
 			.filter(|template| template.output_names.len() == self.number_of_outputs(node_id, network_path))
 			.map(|template| template.output_descriptions.clone());
 
-		let Some(mut node_entry) = self.node_mut(NodeLocator::new(*node_id, network_path)) else { return };
+		let Some(mut node_entry) = self.node_mut_unforked(NodeLocator::new(*node_id, network_path)) else {
+			return;
+		};
 		for (index, description) in input_descriptions {
 			node_entry.set_input_description(index, description);
 		}
@@ -640,10 +650,7 @@ impl NodeNetworkInterface {
 					self.unload_all_nodes_bounding_box(network_path);
 
 					// A nested network draws its interior ports from the encapsulating node's inputs
-					if matches!(
-						self.implementation(node_id, network_path),
-						Some(DocumentNodeImplementation::Network(_) | DocumentNodeImplementation::Definition(_))
-					) {
+					if matches!(self.implementation(node_id, network_path), Some(DocumentNodeImplementation::Definition(_))) {
 						let nested_path = [network_path, &[*node_id]].concat();
 						self.invalidate_import_export(&nested_path);
 					}
@@ -1189,7 +1196,7 @@ impl NodeNetworkInterface {
 	/// Replaces the full list of output port names for a node. Used by document migrations that turn a single-output node
 	/// into a multi-output one, since the port labels are otherwise unnamed and fall back to the type name.
 	pub fn set_output_names(&mut self, node_id: &NodeId, output_names: Vec<String>, network_path: &[NodeId]) {
-		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_output_names");
 			return;
 		};
@@ -1202,7 +1209,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
 			log::error!("Could not get encapsulating node in set_import_export_name");
 			return;
 		};
@@ -1223,7 +1230,7 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		let Some(mut node) = self.node_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
+		let Some(mut node) = self.node_interface_mut(NodeLocator::new(*encapsulating_node_id, encapsulating_network_path)) else {
 			log::error!("Could not get encapsulating node in set_import_export_description");
 			return;
 		};
@@ -1408,7 +1415,7 @@ impl NodeNetworkInterface {
 	}
 
 	fn set_previewing(&mut self, previewing: Previewing, network_path: &[NodeId]) {
-		if let Some(mut network) = self.network_mut(network_path) {
+		if let Some(mut network) = self.network_view_mut(network_path) {
 			network.set_previewing(previewing);
 		}
 	}

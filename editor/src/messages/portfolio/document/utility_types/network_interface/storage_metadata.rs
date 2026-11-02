@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, HashMap};
 use document_graph_storage::attr::session;
 use document_graph_storage::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry, NodeMetadataSource, Position, Value, from_value, to_value};
 use glam::IVec2;
-use graph_craft::document::{DocumentNodeImplementation, NetworkLocation, NodeId, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graphene_std::vector::style::RenderMode;
 
 use super::{
@@ -25,12 +25,7 @@ use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 #[derive(Debug, thiserror::Error)]
 pub enum InterfaceRebuildError {
 	#[error("input_metadata length {got} does not match inputs length {expected} for node {node:?} in network {network:?}")]
-	InputMetadataLengthMismatch {
-		node: NodeId,
-		network: OwnedNetworkLocation,
-		expected: usize,
-		got: usize,
-	},
+	InputMetadataLengthMismatch { node: NodeId, network: NetworkLocation, expected: usize, got: usize },
 }
 
 /// Per-peer view settings persisted in `session.json` under `ui::doc::*` (viewport view, render mode,
@@ -71,10 +66,7 @@ impl StorageMetadataView<'_> {
 	}
 
 	fn subnetwork_persistent(&self, network: NetworkLocation) -> Option<&NodeNetworkPersistentMetadata> {
-		if network == NetworkLocation::ROOT {
-			return None;
-		}
-		self.network_persistent(network)
+		self.network_persistent(Some(network?))
 	}
 }
 
@@ -219,8 +211,8 @@ pub fn build_interface_from_storage(network: NodeNetwork, node_entries: Vec<Node
 }
 
 /// Maps each runtime network location to its stable `NetworkId`, from the entries `to_runtime_with_full_metadata` returns.
-pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId> {
-	network_entries.iter().map(|entry| (entry.network.clone(), entry.network_id)).collect()
+pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> HashMap<NetworkLocation, document_graph_storage::NetworkId> {
+	network_entries.iter().map(|entry| (entry.network, entry.network_id)).collect()
 }
 
 /// Collects each network's view state (node graph navigation and previewing) into a `session.json` map.
@@ -228,12 +220,12 @@ pub fn network_ids_from_entries(network_entries: &[NetworkMetadataEntry]) -> Has
 /// Networks with default navigation and no preview get no entry.
 pub fn collect_network_view_settings(
 	interface: &NodeNetworkInterface,
-	network_ids: &HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId>,
+	network_ids: &HashMap<NetworkLocation, document_graph_storage::NetworkId>,
 ) -> BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, Value>> {
 	let mut out = BTreeMap::new();
 
 	for (network, &network_id) in network_ids {
-		let Some(network_metadata) = interface.network_metadata.nested_metadata(network.as_location()) else {
+		let Some(network_metadata) = interface.network_metadata.nested_metadata(*network) else {
 			continue;
 		};
 		let navigation = &network_metadata.persistent_metadata.navigation_metadata;
@@ -276,12 +268,12 @@ pub fn collect_network_view_settings(
 /// Applies the view state stored in `session.json` onto `interface`. The inverse of [`collect_network_view_settings`].
 pub fn apply_network_view_settings(
 	interface: &mut NodeNetworkInterface,
-	network_ids: &HashMap<OwnedNetworkLocation, document_graph_storage::NetworkId>,
+	network_ids: &HashMap<NetworkLocation, document_graph_storage::NetworkId>,
 	network_view_settings: &BTreeMap<document_graph_storage::NetworkId, BTreeMap<String, Value>>,
 ) {
 	for (network, network_id) in network_ids {
 		let Some(settings) = network_view_settings.get(network_id) else { continue };
-		let Some(view_state) = interface.located_view_state_mut(network.as_location()) else {
+		let Some(view_state) = interface.located_view_state_mut(*network) else {
 			continue;
 		};
 		let navigation = view_state.navigation;
@@ -316,7 +308,7 @@ pub fn apply_network_view_settings(
 /// Entries with an unresolved location are skipped with a warning, since that is usually a stale location and not corruption.
 fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: Vec<NetworkMetadataEntry>) {
 	for entry in entries {
-		let Some(network_metadata) = metadata.nested_metadata_mut(entry.network.as_location()) else {
+		let Some(network_metadata) = metadata.nested_metadata_mut(entry.network) else {
 			log::warn!("apply_network_entries_into_tree: network at {:?} not found, skipping", entry.network);
 			continue;
 		};
@@ -343,13 +335,8 @@ fn seed_metadata_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata)
 }
 
 fn seed_network_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata) {
-	for (&local_id, node) in &network.nodes {
-		let node_metadata = metadata.persistent_metadata.node_metadata.entry(local_id).or_default();
-
-		if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-			let child = node_metadata.persistent_metadata.network_metadata.get_or_insert_with(NodeNetworkMetadata::default);
-			seed_network_metadata(nested, child);
-		}
+	for &local_id in network.nodes.keys() {
+		metadata.persistent_metadata.node_metadata.entry(local_id).or_default();
 	}
 }
 
@@ -358,15 +345,15 @@ fn seed_network_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetada
 /// An `input_metadata` length mismatch returns an `InterfaceRebuildError`.
 fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, entries: Vec<NodeMetadataEntry>) -> Result<(), InterfaceRebuildError> {
 	// Group entries by network so we do one nested_metadata_mut lookup per network.
-	let mut by_network: HashMap<OwnedNetworkLocation, Vec<NodeMetadataEntry>> = HashMap::new();
+	let mut by_network: HashMap<NetworkLocation, Vec<NodeMetadataEntry>> = HashMap::new();
 	for entry in entries {
-		by_network.entry(entry.network.clone()).or_default().push(entry);
+		by_network.entry(entry.network).or_default().push(entry);
 	}
 
 	for (location, entries) in by_network {
-		let nested_network = network.located_network(location.as_location());
+		let nested_network = network.located_network(location);
 
-		let Some(network_metadata) = metadata.nested_metadata_mut(location.as_location()) else {
+		let Some(network_metadata) = metadata.nested_metadata_mut(location) else {
 			log::warn!("apply_entries_into_tree: network at {location:?} not found, skipping {} entries", entries.len());
 			continue;
 		};
@@ -402,7 +389,7 @@ fn apply_entries_into_tree(network: &NodeNetwork, metadata: &mut NodeNetworkMeta
 			{
 				return Err(InterfaceRebuildError::InputMetadataLengthMismatch {
 					node: entry.local_id,
-					network: location.clone(),
+					network: location,
 					expected,
 					got: entry.input_metadata.len(),
 				});

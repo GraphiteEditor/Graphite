@@ -3225,8 +3225,6 @@ async fn gliding_nudged_node(editor: &mut EditorTestUtils) -> NodeId {
 #[tokio::test]
 async fn redoing_a_nudge_undone_while_it_glides_leaves_nothing_gliding() {
 	let mut editor = EditorTestUtils::create();
-	// Undone from the history's own snapshots, rather than the storage rebuilt afresh
-	editor.editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: false });
 	gliding_nudged_node(&mut editor).await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
@@ -3516,7 +3514,7 @@ async fn a_session_preview_of_a_removed_node_is_dropped() {
 	let network_interface = &mut editor.active_document_mut().network_interface;
 	network_interface.toggle_preview(node, &[]);
 
-	let network_ids = HashMap::from([(graph_craft::document::OwnedNetworkLocation::default(), document_graph_storage::NetworkId(0))]);
+	let network_ids = HashMap::from([(graph_craft::document::NetworkLocation::default(), document_graph_storage::NetworkId(0))]);
 	let stored = collect_network_view_settings(network_interface, &network_ids);
 
 	// As if another peer had removed the previewed node

@@ -99,11 +99,7 @@ impl Session {
 	/// The stable [`NetworkId`] of each runtime network location for this document's peer, to key per-network view state in `session.json`.
 	/// It depends only on the network structure, not on resources or declarations.
 	#[cfg(any(feature = "conversion", test))]
-	pub fn network_ids<M: NodeMetadataSource>(
-		&self,
-		network: &graph_craft::document::NodeNetwork,
-		metadata: &M,
-	) -> Result<HashMap<graph_craft::document::OwnedNetworkLocation, NetworkId>, CommitError> {
+	pub fn network_ids<M: NodeMetadataSource>(&self, network: &graph_craft::document::NodeNetwork, metadata: &M) -> Result<HashMap<graph_craft::document::NetworkLocation, NetworkId>, CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
 		Ok(conversion.network_ids)
 	}

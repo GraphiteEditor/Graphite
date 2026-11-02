@@ -2,7 +2,7 @@ use core_types::uuid::NodeId as RuntimeNodeId;
 use graph_craft::ProtoNodeIdentifier;
 use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NodeInput, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NetworkLocation, NodeInput, NodeNetwork};
 
 use crate::to_runtime::ConversionError;
 use crate::{Declarations, Network, NetworkId, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, Registry};
@@ -18,6 +18,9 @@ fn proto(identifier: &'static str, inputs: Vec<NodeInput>) -> DocumentNode {
 /// A root network holding a proto node and a group, with another proto node and a nested group inside
 /// the group, so projection is exercised two networks deep.
 fn nested_network() -> NodeNetwork {
+	const INNER: RuntimeNetworkId = RuntimeNetworkId(30);
+	const GROUP: RuntimeNetworkId = RuntimeNetworkId(20);
+
 	let inner = NodeNetwork {
 		exports: vec![NodeInput::node(RuntimeNodeId(30), 0)],
 		nodes: [(RuntimeNodeId(30), proto("graphene_core::ops::identity::IdentityNode", vec![NodeInput::import(concrete!(u32), 0)]))]
@@ -33,7 +36,7 @@ fn nested_network() -> NodeNetwork {
 				RuntimeNodeId(21),
 				DocumentNode {
 					inputs: vec![NodeInput::value(TaggedValue::Integer(3), false)],
-					implementation: DocumentNodeImplementation::Network(inner),
+					implementation: DocumentNodeImplementation::Definition(INNER),
 					..Default::default()
 				},
 			),
@@ -44,13 +47,14 @@ fn nested_network() -> NodeNetwork {
 	};
 	NodeNetwork {
 		exports: vec![NodeInput::node(RuntimeNodeId(1), 0)],
+		definitions: [(INNER, inner), (GROUP, group)].into_iter().collect(),
 		nodes: [
 			(RuntimeNodeId(1), proto("graphene_core::ops::identity::IdentityNode", vec![NodeInput::node(RuntimeNodeId(2), 0)])),
 			(
 				RuntimeNodeId(2),
 				DocumentNode {
 					inputs: vec![NodeInput::value(TaggedValue::Integer(7), true)],
-					implementation: DocumentNodeImplementation::Network(group),
+					implementation: DocumentNodeImplementation::Definition(GROUP),
 					..Default::default()
 				},
 			),
@@ -77,7 +81,7 @@ fn projecting_a_node_matches_the_whole_conversion() {
 		assert_eq!((&network, local_id), (&projected.network, projected.local_id));
 
 		assert_eq!(
-			whole.located_network(network.as_location()).and_then(|network| network.nodes.get(&local_id)),
+			whole.located_network(network).and_then(|network| network.nodes.get(&local_id)),
 			Some(&projected.node),
 			"node {id} projected differently than the whole conversion converts it"
 		);
@@ -96,12 +100,12 @@ fn a_network_entry_projects_its_dense_exports_and_location() {
 	let projection = registry.runtime_projection(&conversion.declarations);
 
 	let root = projection.network_entry(ROOT_NETWORK).expect("root");
-	assert_eq!(root.network, OwnedNetworkLocation::default());
+	assert_eq!(root.network, NetworkLocation::default());
 	assert_eq!(root.exports, whole.exports);
 
 	for &network_id in registry.networks.keys() {
 		let entry = projection.network_entry(network_id).expect("every stored network projects");
-		let located = whole.located_network(entry.network.as_location()).expect("the projected location exists in the whole conversion");
+		let located = whole.located_network(entry.network).expect("the projected location exists in the whole conversion");
 		assert_eq!(entry.exports, located.exports, "exports of the network at {:?}", entry.network);
 		assert_eq!(entry.scope_injections, located.scope_injections);
 	}
@@ -138,6 +142,6 @@ fn a_network_several_nodes_implement_has_one_location() {
 
 	let declarations = Declarations::new();
 	let projection = registry.runtime_projection(&declarations);
-	assert_eq!(projection.network_location(NetworkId(5)), Some(OwnedNetworkLocation::definition(RuntimeNetworkId(5))));
-	assert_eq!(projection.network_location(ROOT_NETWORK), Some(OwnedNetworkLocation::default()));
+	assert_eq!(projection.network_location(NetworkId(5)), Some(Some(RuntimeNetworkId(5))));
+	assert_eq!(projection.network_location(ROOT_NETWORK), Some(NetworkLocation::default()));
 }

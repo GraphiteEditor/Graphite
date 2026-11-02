@@ -2,7 +2,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 
 use core_types::uuid::NodeId;
-use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeInput, NodeNetwork, OwnedNetworkLocation};
+use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkLocation, NodeInput, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 
@@ -84,6 +84,8 @@ fn create_simple_network() -> NodeNetwork {
 	}
 }
 
+const NESTED: graph_craft::document::NetworkId = graph_craft::document::NetworkId(5);
+
 /// Creates a network with a nested sub-network
 fn create_nested_network() -> NodeNetwork {
 	// Create a simple inner network
@@ -105,12 +107,13 @@ fn create_nested_network() -> NodeNetwork {
 	// Create outer network that uses the inner network
 	NodeNetwork {
 		exports: vec![NodeInput::node(NodeId(1), 0)],
+		definitions: [(NESTED, inner_network)].into_iter().collect(),
 		nodes: [
 			(
 				NodeId(0),
 				DocumentNode {
 					inputs: vec![NodeInput::import(concrete!(u32), 0)],
-					implementation: DocumentNodeImplementation::Network(inner_network),
+					implementation: DocumentNodeImplementation::Definition(NESTED),
 					..Default::default()
 				},
 			),
@@ -196,7 +199,8 @@ fn test_nested_network_round_trip() {
 
 	// The nested network is preserved as an entry of the root's definitions table
 	match (&orig_nested_node.implementation, &conv_nested_node.implementation) {
-		(DocumentNodeImplementation::Network(orig_inner), DocumentNodeImplementation::Definition(id)) => {
+		(DocumentNodeImplementation::Definition(orig_id), DocumentNodeImplementation::Definition(id)) => {
+			let orig_inner = &original_network.definitions[orig_id];
 			let conv_inner = converted_network.definitions.get(id).expect("the nested network is a table entry");
 			assert_eq!(orig_inner.nodes.len(), conv_inner.nodes.len(), "Inner network node count should be preserved");
 			assert_eq!(orig_inner.exports.len(), conv_inner.exports.len(), "Inner network export count should be preserved");
@@ -319,7 +323,8 @@ fn test_demo_artwork_round_trip() {
 	for artwork_name in DEMO_ART {
 		println!("Testing artwork: {}", artwork_name);
 
-		let original_network = load_from_name(artwork_name);
+		let mut original_network = load_from_name(artwork_name);
+		original_network.lift_nested_networks();
 
 		// Convert to Registry
 		let (registry, declarations) = to_registry(&original_network);
@@ -384,7 +389,7 @@ struct UiState {
 /// In-test `NodeMetadataSource` backed by a `HashMap` keyed on the `(network, local_id)` addressing
 /// the editor would use.
 struct TestMetadata {
-	entries: HashMap<(OwnedNetworkLocation, NodeId), UiState>,
+	entries: HashMap<(NetworkLocation, NodeId), UiState>,
 }
 
 impl TestMetadata {
@@ -393,11 +398,11 @@ impl TestMetadata {
 	}
 
 	fn insert(&mut self, network: NetworkLocation, local_id: NodeId, state: UiState) {
-		self.entries.insert((network.to_owned_location(), local_id), state);
+		self.entries.insert((network, local_id), state);
 	}
 
 	fn get(&self, network: NetworkLocation, local_id: NodeId) -> Option<&UiState> {
-		self.entries.get(&(network.to_owned_location(), local_id))
+		self.entries.get(&(network, local_id))
 	}
 }
 
@@ -431,7 +436,7 @@ fn test_ui_metadata_round_trip() {
 	// Root-network node 0 (the one with a nested network): a layer at an absolute position with
 	// a display name.
 	metadata.insert(
-		NetworkLocation::ROOT,
+		None,
 		NodeId(0),
 		UiState {
 			position: Some(Position::Absolute([3, 5])),
@@ -444,7 +449,7 @@ fn test_ui_metadata_round_trip() {
 
 	// Root-network node 1: a plain node in a chain.
 	metadata.insert(
-		NetworkLocation::ROOT,
+		None,
 		NodeId(1),
 		UiState {
 			position: Some(Position::Chain),
@@ -454,10 +459,7 @@ fn test_ui_metadata_round_trip() {
 
 	// Nested-network node 10 (lives under node 0): a layer in a stack.
 	metadata.insert(
-		NetworkLocation {
-			definition: None,
-			inline_path: &[NodeId(0)],
-		},
+		Some(NESTED),
 		NodeId(10),
 		UiState {
 			position: Some(Position::Stack(7)),
@@ -479,23 +481,23 @@ fn test_ui_metadata_round_trip() {
 	assert_eq!(entries.len(), 3, "expected 3 metadata entries, got {}: {entries:#?}", entries.len());
 
 	// Look entries back up by their address so we don't rely on emission order.
-	let lookup: HashMap<(OwnedNetworkLocation, NodeId), &crate::NodeMetadataEntry> = entries.iter().map(|e| ((e.network.clone(), e.local_id), e)).collect();
+	let lookup: HashMap<(NetworkLocation, NodeId), &crate::NodeMetadataEntry> = entries.iter().map(|e| ((e.network, e.local_id), e)).collect();
 
-	let root_layer = lookup.get(&(OwnedNetworkLocation::default(), NodeId(0))).expect("entry for root-network layer node missing");
+	let root_layer = lookup.get(&(NetworkLocation::default(), NodeId(0))).expect("entry for root-network layer node missing");
 	assert_eq!(root_layer.position, Some(Position::Absolute([3, 5])));
 	assert!(root_layer.is_layer);
 	assert_eq!(root_layer.display_name.as_deref(), Some("Outer layer"));
 	assert!(root_layer.locked);
 	assert!(!root_layer.pinned);
 
-	let root_node = lookup.get(&(OwnedNetworkLocation::default(), NodeId(1))).expect("entry for root-network chain node missing");
+	let root_node = lookup.get(&(NetworkLocation::default(), NodeId(1))).expect("entry for root-network chain node missing");
 	assert_eq!(root_node.position, Some(Position::Chain));
 	assert!(!root_node.is_layer);
 
 	let DocumentNodeImplementation::Definition(nested) = converted.nodes[&NodeId(0)].implementation else {
 		panic!("the nested network converts back as a table entry")
 	};
-	let nested_layer = lookup.get(&(OwnedNetworkLocation::definition(nested), NodeId(10))).expect("entry for nested layer-in-stack missing");
+	let nested_layer = lookup.get(&(Some(nested), NodeId(10))).expect("entry for nested layer-in-stack missing");
 	assert_eq!(nested_layer.position, Some(Position::Stack(7)));
 	assert!(nested_layer.is_layer);
 }
@@ -797,9 +799,7 @@ fn a_shared_table_entry_round_trips_as_one_network() {
 
 	let shared = RuntimeNetworkId(77);
 	let mut network = create_nested_network();
-	let DocumentNodeImplementation::Network(body) = std::mem::take(&mut network.nodes.get_mut(&NodeId(0)).expect("node 0").implementation) else {
-		panic!("node 0 implements the nested network")
-	};
+	let body = network.definitions.remove(&NESTED).expect("the nested network");
 	network.definitions.insert(shared, body);
 	network.nodes.get_mut(&NodeId(0)).expect("node 0").implementation = DocumentNodeImplementation::Definition(shared);
 	network.nodes.get_mut(&NodeId(1)).expect("node 1").implementation = DocumentNodeImplementation::Definition(shared);

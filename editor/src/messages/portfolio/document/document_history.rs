@@ -112,12 +112,6 @@ impl DocumentHistory {
 		self.needs_whole_document_stage = true;
 	}
 
-	/// Detach the `Gdd` working copy, dropping its declaration cache with it.
-	pub fn clear_storage(&mut self) {
-		self.storage = None;
-		self.declarations.clear();
-	}
-
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit. Called at each undo-step
 	/// boundary (a new `StartTransaction`) and before undo/redo, so the per-`CommitTransaction` staging
 	/// coalesces into one interaction aligned with the legacy step. No-op while unmounted.

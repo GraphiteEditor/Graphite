@@ -23,9 +23,7 @@ impl NodeNetworkInterface {
 
 	/// The persistent metadata of the network at `location`, or `None` for the document network, which no node implements.
 	pub(super) fn subnetwork_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut NodeNetworkPersistentMetadata> {
-		if location.is_root() {
-			return None;
-		}
+		location?;
 		Some(&mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata)
 	}
 
@@ -63,24 +61,44 @@ impl NodeNetworkInterface {
 
 	/// The persistent metadata of a network, or `None` if the network is missing.
 	pub(crate) fn network_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
+		let location = self.locate_for_write(network_path)?;
+		self.network_mut_at(location)
+	}
+
+	/// Like [`Self::network_mut`] without forking, for the view state that catalog instances share.
+	pub(crate) fn network_view_mut<'a>(&'a mut self, network_path: &'a [NodeId]) -> Option<NetworkMut<'a>> {
 		let location = self.locate(network_path)?;
 		self.network_mut_at(location)
 	}
 
 	/// The persistent metadata of the network at `location`.
-	pub(crate) fn network_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>) -> Option<NetworkMut<'a>> {
+	pub(crate) fn network_mut_at<'a>(&'a mut self, location: NetworkLocation) -> Option<NetworkMut<'a>> {
 		let metadata = &mut self.network_metadata.get_mut().nested_metadata_mut(location)?.persistent_metadata;
 		Some(NetworkMut::new(metadata, &mut self.deltas, location))
 	}
 
-	/// Both halves of a node, or `None` if either is missing.
+	/// Both halves of a node, or `None` if either is missing, after forking the catalog entries along the path.
 	pub(crate) fn node_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
+		self.document_node(&locator.node_id, locator.network_path)?;
+		let location = self.locate_for_write(locator.network_path)?;
+		self.node_mut_at(location, locator.node_id)
+	}
+
+	/// Like [`Self::node_mut`], but also forks the catalog entry the node names, which holds its interface.
+	pub(crate) fn node_interface_mut<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
+		self.document_node(&locator.node_id, locator.network_path)?;
+		self.fork_catalog_entries_along(&[locator.network_path, &[locator.node_id]].concat());
+		self.node_mut(locator)
+	}
+
+	/// Like [`Self::node_mut`] without forking, for load-time repairs only.
+	pub(crate) fn node_mut_unforked<'a>(&'a mut self, locator: NodeLocator<'a>) -> Option<NodeMut<'a>> {
 		let location = self.locate(locator.network_path)?;
 		self.node_mut_at(location, locator.node_id)
 	}
 
 	/// Both halves of the node `node_id` in the network at `location`, or `None` if either is missing.
-	pub(crate) fn node_mut_at<'a>(&'a mut self, location: NetworkLocation<'a>, node_id: NodeId) -> Option<NodeMut<'a>> {
+	pub(crate) fn node_mut_at<'a>(&'a mut self, location: NetworkLocation, node_id: NodeId) -> Option<NodeMut<'a>> {
 		let node = self.network.get_mut().network_mut().located_network_mut(location)?.nodes.get_mut(&node_id)?;
 		let instantiated = match node.implementation {
 			DocumentNodeImplementation::Definition(id) => Some(id),

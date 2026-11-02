@@ -1,0 +1,47 @@
+use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::prelude::*;
+
+/// Lists the stored documents that stayed closed because another tab has them open.
+pub struct DocumentsOpenElsewhereDialog {
+	pub documents: Vec<(DocumentId, String)>,
+}
+
+impl DialogLayoutHolder for DocumentsOpenElsewhereDialog {
+	const ICON: &'static str = "Warning";
+	const TITLE: &'static str = "Open in Another Tab";
+
+	fn layout_buttons(&self) -> Layout {
+		let widgets = vec![TextButton::new("Dismiss").emphasized(true).on_update(|_| DialogMessage::Close.into()).widget_instance()];
+
+		Layout(vec![LayoutGroup::row(widgets)])
+	}
+}
+
+impl LayoutHolder for DocumentsOpenElsewhereDialog {
+	fn layout(&self) -> Layout {
+		let count = self.documents.len();
+		let (documents, are) = if count == 1 { ("document is", "It stays") } else { ("documents are", "They stay") };
+		let mut rows = vec![
+			LayoutGroup::row(vec![TextLabel::new(format!("{count} {documents} open in another tab.")).bold(true).multiline(true).widget_instance()]),
+			LayoutGroup::row(vec![
+				TextLabel::new(format!("{are} closed here so the two tabs don't overwrite each other.\nA copy opens here as a separate document."))
+					.multiline(true)
+					.widget_instance(),
+			]),
+		];
+		rows.extend(self.documents.iter().cloned().map(|(source, name)| {
+			let label = TextLabel::new(name.clone()).widget_instance();
+			let button = TextButton::new("Open a Copy")
+				.on_update(move |_| {
+					DialogMessage::CloseAndThen {
+						followups: vec![PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() }.into()],
+					}
+					.into()
+				})
+				.widget_instance();
+			LayoutGroup::row(vec![label, Separator::new(SeparatorStyle::Unrelated).widget_instance(), button])
+		}));
+
+		Layout(rows)
+	}
+}

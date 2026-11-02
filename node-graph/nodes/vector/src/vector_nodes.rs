@@ -1429,13 +1429,17 @@ fn smooth_anchors<V: MapVectorItems + Send>(
 						}
 					}
 
-					// If spread is 0, remove handles for this point, making it a sharp corner
+					// If spread is 0, remove handles for this point, making it a sharp corner, unless the existing handles are preserved
 					if spread == 0. {
-						new_manipulators_list.push(ManipulatorGroup {
-							anchor: current.anchor,
-							in_handle: None,
-							out_handle: None,
-							id: current.id,
+						new_manipulators_list.push(if preserve_existing {
+							*current
+						} else {
+							ManipulatorGroup {
+								anchor: current.anchor,
+								in_handle: None,
+								out_handle: None,
+								id: current.id,
+							}
 						});
 						continue;
 					}
@@ -1587,6 +1591,20 @@ fn points_to_vector(
 	}
 
 	Item::new_from_element(vector).with_paths(List::<Path>::new())
+}
+
+/// Lists the positions of the anchor points in the vector content, as placed by its transform. Wiring this into the **Translation** of a **Transform** node places a copy of its content at each point.
+#[node_macro::node(category("Vector: Point"), icon("NodeVectorToPoints"), name("Vector to Points"), path(core_types::vector))]
+fn vector_to_points(
+	_: impl Ctx,
+	/// The vector content with anchor points to list the positions of.
+	content: Item<Vector>,
+) -> List<DVec2> {
+	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let paths = shared_paths_from_item_attributes(&content);
+	let positions = content.element().anchor_positions(&paths).into_iter().map(|position| transform.transform_point2(position)).collect();
+
+	List::new_from_elements(positions)
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
@@ -4341,6 +4359,17 @@ mod test {
 		}
 	}
 
+	#[test]
+	fn vector_to_points() {
+		let square = Rect::new(-10., -10., 10., 10.).to_path(DEFAULT_ACCURACY);
+		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(2.), 0., DVec2::new(5., 7.));
+
+		let points = super::vector_to_points((), create_vector_item(square, transform));
+
+		let positions: Vec<DVec2> = points.iter_element_values().copied().collect();
+		assert_eq!(positions, [DVec2::new(-15., -13.), DVec2::new(25., -13.), DVec2::new(25., 27.), DVec2::new(-15., 27.)]);
+	}
+
 	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {
 		let hull = super::convex_hull((), create_vector_item(bezpath, transform), item(curvature));
 		assert_eq!(hull.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), transform, "the hull should keep its item's transform");
@@ -4605,6 +4634,23 @@ mod test {
 			smooth_anchors_by_contour(&output),
 			[vec![false, true, true, false], vec![true, true, true], vec![false, false, true, true]]
 		);
+	}
+
+	// Spreading by nothing is a no-op when the source's handles are preserved, so its curves keep their type and shape
+	#[test]
+	fn smooth_anchors_spread_of_zero_keeps_the_source_curves() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.curve_to((50., 0.), (100., 0.), (100., 0.));
+		bezpath.curve_to((100., 0.), (75., 100.), (50., 100.));
+		bezpath.curve_to((25., 100.), (0., 0.), (0., 0.));
+		bezpath.close_path();
+
+		let source = vector_item_from_bezpath(bezpath);
+		let output = super::smooth_anchors((), source.clone(), item(0.), item(true));
+
+		let segments = |item: &Item<Vector>| item.element().segment_iter(item_paths(item)).map(|(_, segment, ..)| segment).collect::<Vec<_>>();
+		assert_eq!(segments(&output), segments(&source));
 	}
 
 	// A loop of one segment has no neighbor to share a tangent with, so it passes through unchanged
