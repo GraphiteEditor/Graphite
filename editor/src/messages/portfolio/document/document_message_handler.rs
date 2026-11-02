@@ -1253,7 +1253,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMessage::SaveDocumentAs => None,
 					_ => self.path.clone().map(|path| path.with_extension(extension)),
 				};
-				if path.is_some() {
+				if path.is_some() || environment.is_web() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
