@@ -767,6 +767,8 @@ mod tests {
 	async fn editor(clock: &Arc<FakeClock>) -> EditorTestUtils {
 		let mut editor = EditorTestUtils::create_with(Scheduling::default(), clock.clone());
 		editor.new_document().await;
+		// We use the svg pipeline for these tests since we don't read back the result for editor tests anyway
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
 		editor.draw_rect(0., 0., 100., 100.).await;
 		editor.runtime.async_runtime().retain_sources(&[SOURCE]);
 		editor.runtime.begin_frame();

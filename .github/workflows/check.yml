@@ -163,6 +163,10 @@ jobs:
         with:
           version: ${{ env.SCCACHE_VERSION }}
 
+      # GitHub's runners have no GPU, so the editor's tests render on Mesa's software Vulkan driver
+      - name: 🎮 Install a software Vulkan driver
+        run: sudo apt-get update && sudo apt-get install --yes mesa-vulkan-drivers
+
       - name: 🦀 Fetch Rust dependencies
         run: cargo fetch --locked
 
