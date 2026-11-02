@@ -2924,6 +2924,7 @@ dependencies = [
  "ash",
  "bytemuck",
  "cef",
+ "dirs",
  "graphite-desktop-embedded-resources",
  "ipc-channel",
  "libc",
@@ -2949,7 +2950,6 @@ name = "graphite-desktop-wrapper"
 version = "0.0.0"
 dependencies = [
  "base64 0.22.1",
- "dirs",
  "graph-craft",
  "graphite-editor",
  "graphite-wasm-wrapper",

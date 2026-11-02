@@ -48,6 +48,10 @@ impl ImplApp for BrowserProcessAppImpl {
 			cmd.append_switch(Some(&"disable-default-apps".into()));
 			cmd.append_switch(Some(&"disable-breakpad".into()));
 			cmd.append_switch_with_value(Some(&"disable-blink-features".into()), Some(&"WebBluetooth,WebUSB,Serial".into()));
+			cmd.append_switch_with_value(
+				Some(&"host-resolver-rules".into()),
+				Some(&"MAP * ~NOTFOUND, EXCLUDE fonts.googleapis.com, EXCLUDE fonts.gstatic.com".into()),
+			);
 
 			let extra_disabled_features = ["OptimizationHints", "OnDeviceModelService", "TranslateUI"];
 			let disabled_features_switch = Some(&"disable-features".into());

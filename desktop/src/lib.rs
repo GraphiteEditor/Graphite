@@ -74,9 +74,6 @@ pub fn start() -> ExitCode {
 
 	dirs::clear_dir(&ui::temp_dir_root());
 
-	// TODO: Eventually remove this cleanup code for the old "browser" CEF directory
-	dirs::delete_old_cef_browser_directory();
-
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
 
