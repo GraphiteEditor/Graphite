@@ -112,7 +112,7 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 		application_io: Some(application_io.clone()),
 	});
 	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone(), Arc::new(std::time::Instant::now()));
+	let runtime = AsyncRuntime::new(spawner.clone());
 
 	let mut network = wrap_network_in_scope(document.network, editor_api, runtime.handle());
 
@@ -143,7 +143,7 @@ impl CompiledDocument {
 			let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
 			messages.join("\n")
 		})?;
-		self.runtime.retain_sources(executor.sources());
+		self.runtime.update_sources(executor.sources());
 
 		let device = self.application_io.gpu_executor().ok_or("No GPU executor is available")?.context().device.clone();
 		let polling = Arc::new(AtomicBool::new(true));
