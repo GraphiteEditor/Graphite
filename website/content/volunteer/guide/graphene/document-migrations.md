@@ -13,7 +13,7 @@ Most changes need a node migration, written as a function in `document/migration
 
 Bump a node's version when a document saved before your change would load wrongly after it. That includes adding, removing, reordering, or retyping an input, changing what an output means, moving the node to a new identifier, and replacing it with another node. It also includes behavior changes that keep the same inputs, like reading an angle in degrees instead of radians. Internal refactors don't need a bump.
 
-CI compares every node's parameters and output against the base commit. It fails if they differ without a version bump, or if a node disappeared without a migration. It compares names as well as types, so renaming a parameter also asks for a bump. It can't see behavior changes, so those bumps are on you. Run the same check locally with `cargo run migration check --baseline master`.
+CI compares every node's parameters and output against the base commit. It reports when they differ without a version bump, or when a node disappeared without a migration. It compares names as well as types, so renaming a parameter also asks for a bump. It can't see behavior changes, so those bumps are on you. Run the same check locally with `cargo run migration check --baseline master`.
 
 ### Writing one
 

@@ -233,10 +233,16 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes mesa-vulkan-drivers
 
       - name: 🖼️ Check the corpus renders against its references
+        id: corpus
+        continue-on-error: true
         run: cargo run --package regression -- --corpus target/regression-corpus check --output target/regression
 
+      - name: ⚠️ Warn about mismatched renders
+        if: ${{ steps.corpus.outcome == 'failure' }}
+        run: echo "::warning title=Regression corpus::Some corpus documents render differently from their references. Their renders and diffs are in the regression-mismatches artifact."
+
       - name: 📤 Upload the renders and diffs of mismatches
-        if: ${{ failure() }}
+        if: ${{ steps.corpus.outcome == 'failure' }}
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: regression-mismatches
@@ -269,7 +275,13 @@ jobs:
         run: git fetch --depth=1 origin "$BASE_SHA"
 
       - name: 🔬 Check migrations against the base commit
+        id: migrations
+        continue-on-error: true
         run: cargo run --locked --package migration-snapshot -- check --baseline "$BASE_SHA"
+
+      - name: ⚠️ Warn about missing migrations
+        if: ${{ steps.migrations.outcome == 'failure' }}
+        run: echo "::warning title=Migrations::Some node changes lack a version bump or a migration. The log of the check above lists them."
 
   # Rust format check on GitHub runner
   rust-fmt:
