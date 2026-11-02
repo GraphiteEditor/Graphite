@@ -83,9 +83,11 @@ You ask for what you need through the function's parameters, in any order. The f
 |---|---|---|
 | `&Node` | The anchor before migration | `id()`, `inputs()`, and the stored node's other accessors |
 | `&Graph` | The anchor's network before migration | `node(id)`, `declaration(id)`, `consumers(output)` |
+| `Option<&dyn Compiler>` | What only the compiler can tell about the state before migration, see [Asking the compiler](#asking-the-compiler) | `input_type(node, slot)` |
 | `&mut Inputs` | The anchor's input slots | `set`, `insert`, `push`, `remove`, `truncate`, `len` |
 | `&mut Upstream` | Nodes feeding the anchor | `add_node`, `add_node_keyed`, `remove_node` |
 | `&mut Downstream` | Whatever reads the anchor's outputs | `consumers`, `add_node`, `add_node_keyed`, `connect` |
+| `&mut Target` | Which declaration the anchor becomes, see [Choosing a target](#choosing-a-target) | `set` |
 
 Reads always see the old document. `node.inputs()` returns the old layout however many edits you've made, and nodes you add never show up in `consumers`. `Inputs` edits apply in order to the layout being built. After `inputs.insert(1, ...)`, later `Inputs` calls see the old slot 1 as slot 2. `node.inputs()[1]` is still the old slot 1.
 
@@ -184,9 +186,42 @@ rename!("graphene_core::ops::AddNode"@1 => "math_nodes::AddNode"@2);
 
 When the replacement also changes the inputs, scaffold a function with `cargo run migration new <old identifier>@<version> <identifier>`. The new node has to be at `version + 1`.
 
+### Choosing a target
+
+When a node splits into several, one target can't fit every anchor. `Target::set` switches this anchor to another declaration instead, named with `decl!` in the function body so the runner can order the migration against it. It can have any version, so a node that is only a target doesn't need a version bump, and documents that hold it but not the old node aren't rewritten. Only the target in the attribute has to be at `version + 1`.
+
+```rust
+/// Fill and stroke became separate nodes.
+#[migration("vector_nodes::style"@1 => "vector_nodes::vary_fill"@2)]
+pub fn vary_from_style(node: &Node, target: &mut Target) {
+	if literal_of::<Tagged>(&node.inputs()[STROKE].input).is_some_and(|stroke| stroke == Tagged::Bool(true)) {
+		target.set(decl!("vector_nodes::vary_stroke"@1));
+	}
+}
+```
+
+A wire written to a removed node brings that node back, so avoid switching a wire on and off depending on state. Keep the slot reading the same thing, and add nodes downstream of the anchor instead.
+
+### Asking the compiler
+
+Which node a migration inserts can depend on the type flowing through a wire, such as a flatten node restoring what a group erased. Such a migration goes in the `migration-compiled` crate, which links the node crates, and takes `Option<&dyn Compiler>`. It compares with `element_is`, which only compares `type_name`s within the running build, so no type name is ever stored, and removing a type breaks the build rather than changing the result:
+
+```rust
+#[migration("vector_nodes::copy"@1 => "vector_nodes::flatten_graphic"@2)]
+pub fn flatten_by_type(node: &Node, compiler: Option<&dyn Compiler>, target: &mut Target) {
+	if compiler.and_then(|compiler| compiler.input_type(node, CONTENT)).is_some_and(|value_type| value_type.element_is::<Vector>()) {
+		target.set(decl!("vector_nodes::flatten_vector"@1));
+	}
+}
+```
+
+There may be no compiler, and it may not have an answer, for a state that doesn't compile or for what only exists at runtime, so always have a fallback. A migration reading `&Graph` or asking the compiler runs on whole states only: the end of each interaction, which is what undo can land on, with everything since the previous one rewritten as one step. A document imported without history is therefore one evaluation. Migrations asking the compiler run as late as their dependencies allow, with upstream anchors first, so what they ask about is usually in its current shape. A document holding none of their nodes never builds the compiler or loads a declaration for it.
+
+Their result depends on the build, so peers on different builds can disagree, which is why other migrations should avoid the compiler wherever they can.
+
 ### What the function may depend on
 
-A migration runs many times on one document, once per relevant step of its history, and every collaborator has to get the same result. So it can only depend on its parameters. Randomness, clocks, global state, and calls into live node code are all off limits.
+A migration runs many times on one document, once per relevant step of its history, and every collaborator has to get the same result. So it can only depend on its parameters. Randomness, clocks, global state, and calls into live node code outside of the compiler are all off limits.
 
 It also has to handle every state the old version allowed, including wired inputs and exposed literals. Return `MigrationError::invariant` if the old state breaks its own node's rules. Return `MigrationError::unrepresentable` if the new version can't express something the old one could, which usually means the new version should change. Both are bugs. If one fires on an old step of a document's history, the document opens with its history cut off at that point. If it fires on the current state, the document doesn't open.
 

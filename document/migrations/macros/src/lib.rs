@@ -14,8 +14,8 @@ use syn::{Error, FnArg, Ident, ItemFn, ReturnType, Type, parse_macro_input};
 /// Turns a function into a node migration, named by its source and target declarations:
 /// `#[migration("module::node"@1 => @2)]` for a version step, `#[migration("module::old"@1 => "module::new"@2)]` for a replacement.
 ///
-/// Parameters state what the migration reads and writes: `&Node` and `&Graph` read the source state, and each `&mut` parameter is a
-/// view (`Inputs`, `Upstream`, `Downstream`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
+/// Parameters state what the migration reads and writes: `&Node` and `&Graph` read the source state, `Option<&dyn Compiler>` asks what only the
+/// compiler can tell about it, and each `&mut` parameter is a view (`Inputs`, `Upstream`, `Downstream`, `Target`) recording edits to its region. The function may return `()` or `Result<(), MigrationError>`.
 ///
 /// Generates a unit struct named after the function in Pascal case implementing `NodeMigration`, and registers it.
 #[proc_macro_attribute]
@@ -57,6 +57,7 @@ pub fn format_migration(input: TokenStream) -> TokenStream {
 enum Argument {
 	Node,
 	Graph,
+	Compiler,
 	View(Box<Type>),
 }
 
@@ -80,6 +81,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 		})
 		.collect();
 	let reads_graph = arguments.iter().any(|argument| matches!(argument, Argument::Graph));
+	let asks_compiler = arguments.iter().any(|argument| matches!(argument, Argument::Compiler));
 
 	// Call the function with the source state and one extracted view per `&mut` parameter
 	let view_bindings: Vec<Ident> = (0..views.len()).map(|index| format_ident!("__view_{index}")).collect();
@@ -87,6 +89,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 	let call_arguments = arguments.iter().map(|argument| match argument {
 		Argument::Node => quote!(context.source_node()),
 		Argument::Graph => quote!(&__graph),
+		Argument::Compiler => quote!(context.compiler()),
 		Argument::View(_) => {
 			let binding = &view_bindings[view_index];
 			view_index += 1;
@@ -118,7 +121,14 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 		}
 	};
 
-	let network_region = reads_graph.then(|| quote!(.union(#core::Region::NETWORK)));
+	let network_region = (reads_graph || asks_compiler).then(|| quote!(.union(#core::Region::NETWORK)));
+	let asks_compiler = asks_compiler.then(|| {
+		quote! {
+			fn asks_compiler(&self) -> bool {
+				true
+			}
+		}
+	});
 	let footprint = quote! {
 		fn footprint(&self) -> #core::Region {
 			#core::Region::ANCHOR #(.union(<#views as #core::View>::REGION))* #network_region
@@ -166,6 +176,7 @@ fn expand_migration(step: Step, function: ItemFn) -> syn::Result<TokenStream2> {
 				#target
 			}
 			#pins
+			#asks_compiler
 			#footprint
 			#run
 		}
@@ -182,8 +193,14 @@ fn classify(argument: &FnArg) -> syn::Result<Argument> {
 	let FnArg::Typed(typed) = argument else {
 		return Err(Error::new(argument.span(), "migrations are free functions"));
 	};
+	if let Type::Path(path) = &*typed.ty
+		&& path.path.segments.last().is_some_and(|segment| segment.ident == "Option")
+	{
+		return Ok(Argument::Compiler);
+	}
+
 	let Type::Reference(reference) = &*typed.ty else {
-		return Err(Error::new(typed.ty.span(), "migration parameters are `&Node`, `&Graph`, or `&mut` views"));
+		return Err(Error::new(typed.ty.span(), "migration parameters are `&Node`, `&Graph`, `Option<&dyn Compiler>`, or `&mut` views"));
 	};
 
 	if reference.mutability.is_some() {

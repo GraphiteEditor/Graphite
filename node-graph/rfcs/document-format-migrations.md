@@ -374,6 +374,16 @@ A naive rewrite evaluates `M` on a full state per delta. Instead, the runner:
 
 A migration whose edits are only `Inputs` operations with constant values, and every rename, is an index map over input slots. The runner applies such migrations per delta without replaying states, remapping `ChangeNodeInput`, `SetNodeInputs`, `ChangeNodeInputAttribute`, `AddNode` payloads, and removal snapshots directly. The commutation test proves this fast path equal to the state path.
 
+## The compiler and whole states
+
+Some migrations need to know what only the compiler or executor can tell, such as the type flowing through a wire or a measurement of evaluated geometry. Storing types to answer this offline isn't an option, since `TypeId`s aren't stable across builds and `type_name` output isn't stable at all. So a migration asks for the compiler with an `Option<&dyn Compiler>` parameter, which the caller opening the document offers through a `MigrationHost`, and these are the costs, paid only by what uses them:
+
+- **Whole states.** A delta in the middle of an interaction can leave a state no one ever saw, with nodes wired to what's not added yet, which reading the graph or compiling can only fail on. So a migration whose footprint reads the network runs at the boundaries undo can land on, the end of an interaction, a change of author, a branch point, or a cursor, and everything since the previous one becomes one chain. A history without interaction ends, such as an imported document's, is one evaluation. Bootstrapping marks its end, so the first edit after it is its own undo step.
+- **Order.** The compiler can't describe what the binary no longer implements, so these migrations run as late as their dependencies allow, within the one ordered pass opening runs. Within one, an anchor only runs once no other anchor is upstream of it. The declarations it needs are loaded only then, from the caller's byte store and otherwise the container.
+- **Failure.** There may be no compiler, and it may have no answer, so the migration must choose a fallback. A state that doesn't compile usually didn't before either, so there's nothing for a fallback to harm. Without a host the fallback is permanent, so the editor and CLI always offer one. A migration that itself fails falls back to truncating, as below.
+- **Determinism.** The result depends on the build, so unlike the rest of this document, two peers can compute different `Rev`s. Such a rewrite only suits a document with one peer until settling is built.
+- **Targets.** `Target` lets an anchor switch to any declaration its migration pins, which needs no version step, so documents holding a node that is only a target aren't rewritten for it.
+
 ## Errors and the truncate fallback
 
 A migration reports two kinds of failure:

@@ -4,7 +4,8 @@
 use crate::node::{apply_migration, rewrite_history};
 use crate::{DeclarationTable, RunnerError, references, registry_at};
 use document_graph_storage::{Delta, ExportSlot, Implementation, Network, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, Registry, RegistryDelta, Session, UserId, apply_retired_op};
-use migration_core::{Declaration, DeclarationResolver, NodeMigration, decl, literal, registered_migrations};
+use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration, decl, literal, registered_migrations};
+use std::collections::HashSet;
 
 /// A root network built node by node, for running one migration on.
 pub struct Fixture {
@@ -47,7 +48,11 @@ impl Fixture {
 	}
 
 	pub fn migrate(&self, migration: &dyn NodeMigration) -> Result<Registry, RunnerError> {
-		apply_migration(migration, &self.registry, &self.table)
+		self.migrate_with(migration, None)
+	}
+
+	pub fn migrate_with(&self, migration: &dyn NodeMigration, host: Option<&dyn MigrationHost>) -> Result<Registry, RunnerError> {
+		apply_migration(migration, &self.registry, &self.table, host)
 	}
 
 	pub fn declaration_of(&self, registry: &Registry, node: NodeId) -> Option<Declaration> {
@@ -262,15 +267,20 @@ pub fn replay(deltas: &[Delta]) -> Registry {
 /// `replay(rewrite(H)) == M(replay(H))` at every delta of generated histories, abandoned branches included, which also proves the rewrite
 /// leaves none of the old shape behind.
 pub fn check_commutation(migration: &dyn NodeMigration, contract: &SourceContract) {
+	check_commutation_with(migration, contract, None);
+}
+
+/// [`check_commutation`] for a migration asking `host`'s compiler.
+pub fn check_commutation_with(migration: &dyn NodeMigration, contract: &SourceContract, host: Option<&dyn MigrationHost>) {
 	for seed in 1..50 {
 		let (session, table) = generate(migration, contract, seed, 40);
 		let history: Vec<Delta> = session.history().cloned().collect();
 
-		let rewritten = rewrite_history(migration, &history, &table).unwrap_or_else(|error| panic!("seed {seed}: rewrite failed: {error}"));
+		let rewritten = rewrite_history(migration, &history, &table, host, &HashSet::new()).unwrap_or_else(|error| panic!("seed {seed}: rewrite failed: {error}"));
 
 		for delta in &history {
 			let original = registry_at(&history, Some(delta.id)).unwrap_or_else(|error| panic!("seed {seed}: {error}"));
-			let expected = apply_migration(migration, &original, &table).unwrap_or_else(|error| panic!("seed {seed}: M failed: {error}"));
+			let expected = apply_migration(migration, &original, &table, host).unwrap_or_else(|error| panic!("seed {seed}: M failed: {error}"));
 			let replayed = registry_at(&rewritten.deltas, rewritten.revs[&delta.id]).unwrap_or_else(|error| panic!("seed {seed}: {error}"));
 			assert!(
 				replayed.value_equal(&expected),
@@ -292,10 +302,15 @@ pub fn check_commutation(migration: &dyn NodeMigration, contract: &SourceContrac
 
 /// Undo walks the rewritten deltas' reverse priors, so undoing in rewritten history must land on `M` of the undone original.
 pub fn check_undo(migration: &dyn NodeMigration, contract: &SourceContract) {
+	check_undo_with(migration, contract, None);
+}
+
+/// [`check_undo`] for a migration asking `host`'s compiler.
+pub fn check_undo_with(migration: &dyn NodeMigration, contract: &SourceContract, host: Option<&dyn MigrationHost>) {
 	for seed in 1..20 {
 		let (session, table) = generate(migration, contract, seed, 30);
 		let history: Vec<Delta> = session.history().cloned().collect();
-		let rewritten = rewrite_history(migration, &history, &table).unwrap_or_else(|error| panic!("seed {seed}: rewrite failed: {error}"));
+		let rewritten = rewrite_history(migration, &history, &table, host, &HashSet::new()).unwrap_or_else(|error| panic!("seed {seed}: rewrite failed: {error}"));
 
 		let head = session.head_rev();
 		let migrated_head = head.and_then(|head| rewritten.revs[&head]);
@@ -305,13 +320,13 @@ pub fn check_undo(migration: &dyn NodeMigration, contract: &SourceContract) {
 		let mut original = Session::load(PeerId(1), UserId(1), original_registry, history, head, Vec::new(), 0);
 		let mut migrated = Session::load(PeerId(1), UserId(1), migrated_registry, rewritten.deltas, migrated_head, Vec::new(), 0);
 
-		let mut previous = apply_migration(migration, original.registry(), &table).unwrap_or_else(|error| panic!("seed {seed}: M failed: {error}"));
+		let mut previous = apply_migration(migration, original.registry(), &table, host).unwrap_or_else(|error| panic!("seed {seed}: M failed: {error}"));
 		for undo in 0..5 {
 			// An interaction that only touched what `M` drops left no delta in the rewrite, so undo there passes over it
 			let mut expected = previous.clone();
 			while expected.value_equal(&previous) && original.can_undo() {
 				original.undo().expect("can_undo said so");
-				expected = apply_migration(migration, original.registry(), &table).unwrap_or_else(|error| panic!("seed {seed}, undo {undo}: M failed: {error}"));
+				expected = apply_migration(migration, original.registry(), &table, host).unwrap_or_else(|error| panic!("seed {seed}, undo {undo}: M failed: {error}"));
 			}
 			if expected.value_equal(&previous) {
 				break;

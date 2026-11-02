@@ -7,6 +7,8 @@ use std::path::{Path, PathBuf};
 
 pub(crate) const NODE_CRATES: &str = "node-graph";
 pub(crate) const MIGRATIONS: &str = "document/migrations/nodes/src";
+/// Every crate holding migrations, including those asking for a capability, which `new` doesn't scaffold.
+pub(crate) const MIGRATION_CRATES: [&str; 2] = [MIGRATIONS, "document/migrations/compiled/src"];
 
 /// `new` scaffolds every step missing between a node's newest migration and its version, `new <identifier>` does so for one node,
 /// `new <old>@<version> <identifier>` replaces a node by another, and `rename <old>@<version> <identifier>` registers a finished rename.

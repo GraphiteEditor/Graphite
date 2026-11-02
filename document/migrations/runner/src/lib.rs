@@ -27,6 +27,8 @@ pub enum RunnerError {
 	Format { from: u32, error: MigrationError },
 	#[error("migration from {migration} failed on node {anchor:?}: {error}")]
 	Migration { migration: Declaration, anchor: NodeId, error: MigrationError },
+	#[error("node {anchor:?} chose {target}, which the migration from {migration} doesn't name")]
+	UnnamedTarget { migration: Declaration, anchor: NodeId, target: Declaration },
 	#[error("node {anchor:?} adds two nodes of {declaration} under the key {key:?}")]
 	DuplicateAddedNode { anchor: NodeId, declaration: Declaration, key: String },
 	#[error("added node {0:?} already exists")]

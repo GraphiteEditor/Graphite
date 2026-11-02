@@ -123,6 +123,17 @@ pub(crate) struct PendingPersist {
 	pub(crate) snapshot: bool,
 }
 
+/// What [`Gdd::open_in_with`] passes on to node migrations.
+#[derive(Default)]
+struct MigrationInputs<'a> {
+	#[cfg(feature = "migrations")]
+	byte_store: Option<&'a dyn graphene_resource::LoadResource>,
+	#[cfg(feature = "migrations")]
+	host: Option<&'a dyn migration_core::MigrationHost>,
+	#[cfg(not(feature = "migrations"))]
+	_lifetime: std::marker::PhantomData<&'a ()>,
+}
+
 impl<L: Layout + Clone> Clone for Gdd<L> {
 	fn clone(&self) -> Self {
 		Self {
@@ -195,12 +206,38 @@ impl<L: Layout> Gdd<L> {
 		Self::open_in(working, layout).await
 	}
 
+	/// [`open_from_archive`](Self::open_from_archive), offering migrations what [`open_in_with`](Self::open_in_with) describes.
+	#[cfg(all(feature = "migrations", any(feature = "zip", feature = "xz")))]
+	pub async fn open_from_archive_with(
+		bytes: &[u8],
+		mut working: AnyContainer,
+		layout: L,
+		byte_store: Option<&dyn graphene_resource::LoadResource>,
+		host: Option<&dyn migration_core::MigrationHost>,
+	) -> Result<Self, Error> {
+		document_container::archive::open_auto(bytes, &mut working)?;
+
+		Self::open_in_with(working, layout, byte_store, host).await
+	}
+
 	/// Backend-agnostic open. Splits out so tests can supply a [`document_container::backends::memory::MemoryBackend`].
 	///
 	/// # Errors
 	/// [`Error::MissingManifest`] if the container holds no manifest, [`Error::WrongFormat`] / [`Error::UnsupportedVersion`]
 	/// if it fails validation, plus the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
 	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, Error> {
+		Self::open_stored(working, layout, MigrationInputs::default()).await
+	}
+
+	/// [`open_in`](Self::open_in), offering migrations what only the caller has. `host` gives them the compiler, and without one, those asking for it
+	/// settle on their fallback for good. `byte_store` holds declarations the container doesn't, such as the editor's global cache.
+	#[cfg(feature = "migrations")]
+	pub async fn open_in_with(working: AnyContainer, layout: L, byte_store: Option<&dyn graphene_resource::LoadResource>, host: Option<&dyn migration_core::MigrationHost>) -> Result<Self, Error> {
+		Self::open_stored(working, layout, MigrationInputs { byte_store, host }).await
+	}
+
+	#[cfg_attr(not(feature = "migrations"), expect(unused_variables, reason = "only node migrations use what the caller offers"))]
+	async fn open_stored(working: AnyContainer, layout: L, inputs: MigrationInputs<'_>) -> Result<Self, Error> {
 		persist::finish_staged_rewrite(&working, &layout).await?;
 
 		let manifest: Manifest = match io::read_single(&working, layout.manifest_basename(), MANIFEST_CODEC).await {
@@ -291,7 +328,7 @@ impl<L: Layout> Gdd<L> {
 
 		#[cfg(feature = "migrations")]
 		{
-			let migrated_nodes = gdd.migrate_nodes().await?;
+			let migrated_nodes = gdd.migrate_nodes(inputs.byte_store, inputs.host).await?;
 			gdd.migrated = format_outcome.is_some() || migrated_nodes;
 			if gdd.migrated {
 				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);

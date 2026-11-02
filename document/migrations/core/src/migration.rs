@@ -4,11 +4,15 @@ use crate::{AnchorContext, Declaration, Edits, MigrationError, Region};
 pub trait NodeMigration: Send + Sync {
 	/// The declaration whose nodes are anchors.
 	fn source(&self) -> Declaration;
-	/// The declaration the runner switches anchors to.
+	/// The declaration the runner switches anchors to, unless a run chooses one of its [`pins`](Self::pins) through [`Target`](crate::Target).
 	fn target(&self) -> Declaration;
 	/// Declarations the body names, which order it after the migration producing each and before the one consuming it.
 	fn pins(&self) -> &'static [Declaration] {
 		&[]
+	}
+	/// Whether the body takes an `Option<&dyn Compiler>`, which orders it as late as its dependencies allow.
+	fn asks_compiler(&self) -> bool {
+		false
 	}
 	/// The union of the regions the migration's parameters read and edit.
 	fn footprint(&self) -> Region;

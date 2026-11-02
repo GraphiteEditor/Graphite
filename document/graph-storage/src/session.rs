@@ -935,7 +935,13 @@ impl Session {
 	pub fn bootstrap_from_registry(peer: PeerId, user: UserId, registry: Registry) -> Result<Self, CrdtError> {
 		let ops = crate::delta::compute_deltas(&Registry::default(), &registry);
 		let mut session = Self::with_identity(peer, user);
-		session.commit_ops(ops, false)?;
+		let revs = session.commit_ops(ops, false)?;
+
+		// All of it is one step that undo can land on, with the first edit after it undoable as its own
+		if let Some(last) = revs.last() {
+			session.mark_interaction_end(*last);
+		}
+
 		// No hot ops on this path, so the working registry must mirror the freshly-built snapshot.
 		session.document.working_registry = session.document.retired_snapshot.clone();
 		Ok(session)

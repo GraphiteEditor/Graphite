@@ -1,4 +1,4 @@
-use crate::{Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
+use crate::{Compiler, Declaration, DeclarationResolver, InputConnector, MigrationError, NewNode, OutputConnector};
 use document_graph_storage::{InputSlot, NetworkId, NodeId, NodeInput, Registry, TimeStamp};
 use std::ops::Deref;
 
@@ -17,6 +17,11 @@ impl Region {
 
 	pub const fn union(self, other: Self) -> Self {
 		Self(self.0 | other.0)
+	}
+
+	/// Whether a footprint reads the graph around its anchor, which needs a whole state rather than one in the middle of an interaction.
+	pub const fn reads_network(self) -> bool {
+		self.overlaps(Self::NETWORK)
 	}
 
 	const fn overlaps(self, other: Self) -> bool {
@@ -69,6 +74,7 @@ pub struct AnchorContext<'a> {
 	source: Declaration,
 	target: Declaration,
 	resolver: &'a dyn DeclarationResolver,
+	compiler: Option<&'a dyn Compiler>,
 }
 
 impl<'a> AnchorContext<'a> {
@@ -82,7 +88,19 @@ impl<'a> AnchorContext<'a> {
 			source,
 			target,
 			resolver,
+			compiler: None,
 		})
+	}
+
+	/// Offer the run a `compiler` describing the state this context reads.
+	pub fn with_compiler(mut self, compiler: Option<&'a dyn Compiler>) -> Self {
+		self.compiler = compiler;
+		self
+	}
+
+	/// What a migration's `Option<&dyn Compiler>` parameter receives.
+	pub fn compiler(&self) -> Option<&'a dyn Compiler> {
+		self.compiler
 	}
 
 	pub fn source_node(&self) -> &Node<'a> {
@@ -195,6 +213,8 @@ pub struct Edits {
 	pub added_nodes: Vec<AddedNode>,
 	pub removed_nodes: Vec<NodeId>,
 	pub connections: Vec<(OutputConnector, InputConnector)>,
+	/// The declaration this anchor switches to, when not the migration's target.
+	pub target: Option<Declaration>,
 }
 
 impl Edits {
@@ -205,6 +225,35 @@ impl Edits {
 		self.added_nodes.extend(other.added_nodes);
 		self.removed_nodes.extend(other.removed_nodes);
 		self.connections.extend(other.connections);
+		self.target = other.target.or(self.target);
+	}
+}
+
+/// Which declaration the anchor becomes, when that isn't the same for every anchor.
+#[derive(Default)]
+pub struct Target {
+	chosen: Option<Declaration>,
+}
+
+impl Target {
+	/// Switch this anchor to `declaration`, named with `decl!` in the migration's body, instead of the migration's target.
+	pub fn set(&mut self, declaration: Declaration) {
+		self.chosen = Some(declaration);
+	}
+}
+
+impl<'a> View<'a> for Target {
+	const REGION: Region = Region::ANCHOR;
+
+	fn extract(_context: &AnchorContext<'a>) -> Self {
+		Self::default()
+	}
+
+	fn into_edits(self) -> Result<Edits, MigrationError> {
+		Ok(Edits {
+			target: self.chosen,
+			..Default::default()
+		})
 	}
 }
 

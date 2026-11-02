@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 // Referenced so the linker keeps their self-registering migrations
+use migration_compiled as _;
 use migration_formats as _;
 use migration_nodes as _;
 
@@ -37,7 +38,8 @@ pub struct OpenedDocument {
 /// Open a `.gdd` from its archive bytes into memory, running the migrations this crate links.
 pub async fn open_gdd(archive: &[u8]) -> Result<GddV1, Box<dyn Error>> {
 	let container = AnyContainer::Memory(MemoryBackend::new());
-	let gdd = GddV1::open_from_archive(archive, container, GddV1Layout)
+	let host = migration_compiled::CompilerHost::default();
+	let gdd = GddV1::open_from_archive_with(archive, container, GddV1Layout, None, Some(&host))
 		.await
 		.map_err(|error| format!("Failed to open document: {error}"))?;
 	Ok(gdd)
