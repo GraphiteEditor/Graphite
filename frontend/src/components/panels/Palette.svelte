@@ -190,6 +190,9 @@
 			<div class="insert-mark" style:top={`${insertMarker.top}px`} style:left={`${insertMarker.left}px`} style:width={`${insertMarker.width}px`}></div>
 		{/if}
 	</LayoutCol>
+	<LayoutRow class="bottom-bar" scrollableX={true}>
+		<WidgetLayout layout={palettePanelBottomLeftBarLayout} layoutTarget="PalettePanelBottomLeftBar" />
+	</LayoutRow>
 </LayoutCol>
 
 <style lang="scss">

@@ -192,10 +192,15 @@ impl PaletteMessageHandler {
 				widgets.push(LayoutGroup::table(table_rows, false));
 				widgets.push(LayoutGroup::row(vec![Separator::new(SeparatorStyle::Section).widget_instance()]));
 			}
+			let left_bottom_bar = LayoutGroup::row(vec![TextLabel::new("Hello").widget_instance()]);
 
 			responses.add(LayoutMessage::SendLayout {
 				layout: Layout(widgets),
 				layout_target: LayoutTarget::Palette,
+			});
+			responses.add(LayoutMessage::SendLayout {
+				layout: Layout(vec![left_bottom_bar]),
+				layout_target: LayoutTarget::PalettePanelBottomLeftBar,
 			});
 		} else {
 			// TODO: Add attached palettes instead
