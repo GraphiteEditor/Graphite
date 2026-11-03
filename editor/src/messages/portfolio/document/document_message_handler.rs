@@ -21,6 +21,8 @@ use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
+use crate::messages::portfolio::document::palette::palette_message_handler::PaletteMessageContext;
+use crate::messages::portfolio::document::palette::{PaletteMessage, PaletteMessageHandler};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
@@ -68,6 +70,7 @@ pub struct DocumentMessageContext<'a> {
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub inspector_open: bool,
+	pub palette_open: bool,
 	pub viewport: &'a ViewportMessageHandler,
 	pub resource_storage: &'a ResourceStorageMessageHandler,
 	pub fonts: &'a FontsMessageHandler,
@@ -101,6 +104,8 @@ pub struct DocumentMessageHandler {
 	pub inspector_message_handler: InspectorMessageHandler,
 	#[serde(skip)]
 	pub data_panel_message_handler: DataPanelMessageHandler,
+	#[serde(skip)]
+	pub palette_message_handler: PaletteMessageHandler,
 
 	// ============================================
 	// Fields that are saved in the document format
@@ -211,6 +216,7 @@ impl Default for DocumentMessageHandler {
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			inspector_message_handler: InspectorMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
+			palette_message_handler: PaletteMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -266,6 +272,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			inspector_open,
+			palette_open,
 			resource_storage,
 			fonts,
 		} = context;
@@ -318,6 +325,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					},
 				);
 			}
+			DocumentMessage::Palette(message) => self.palette_message_handler.process_message(message, responses, PaletteMessageContext { palette_open }),
 			DocumentMessage::NodeGraph(message) => {
 				self.node_graph_handler.process_message(
 					message,
@@ -1508,6 +1516,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					PanelType::Layers => self.selection_network_path = vec![],
 					_ => {}
 				}
+				responses.add(PaletteMessage::Refresh);
 				responses.add(InspectorMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
 				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);

@@ -12,6 +12,7 @@ pub enum PanelType {
 	#[serde(alias = "Properties")]
 	Inspector,
 	Data,
+	Palette,
 }
 
 impl From<String> for PanelType {
@@ -22,6 +23,8 @@ impl From<String> for PanelType {
 			"Layers" => PanelType::Layers,
 			"Inspector" | "Properties" => PanelType::Inspector,
 			"Data" => PanelType::Data,
+			// TODO: Determine why it is not producing space betwen color and Palette
+			"Palette" => PanelType::Palette,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}
@@ -29,7 +32,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Inspector, PanelType::Data]
+		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Palette]
 	}
 }
 
