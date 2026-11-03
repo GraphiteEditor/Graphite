@@ -177,12 +177,14 @@ impl DocumentHistory {
 			return false;
 		};
 
-		let redone = match note {
-			UndoNote::Retracted(ops) => self.restage_ops(ops),
-			UndoNote::Dropped(rev) => self.redo_retired_step(rev),
+		let redone = match &note {
+			UndoNote::Retracted(ops) => self.restage_ops(ops.clone()),
+			UndoNote::Dropped(rev) => self.redo_retired_step(*rev),
 			UndoNote::Cursor => true,
 		};
 		if !redone {
+			// The note stays paired with its redo snapshot
+			self.undo_notes.push(note);
 			return false;
 		}
 		if let Some(snapshot) = self.pop_redo() {
