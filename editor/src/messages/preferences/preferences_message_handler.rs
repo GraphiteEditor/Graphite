@@ -23,6 +23,7 @@ pub struct PreferencesMessageHandler {
 	pub disable_ui_acceleration: bool,
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
+	pub save_with_history: bool,
 	pub show_storage_preferences: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
@@ -53,6 +54,7 @@ impl Default for PreferencesMessageHandler {
 			disable_ui_acceleration: true, // TODO: Set this back to false once we have ui acceleration working more reliably
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
+			save_with_history: false,
 			show_storage_preferences: false,
 			#[cfg(target_os = "macos")]
 			vsync: false,
@@ -120,6 +122,9 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::SaveAsGdd { enabled } => {
 				self.save_as_gdd = enabled;
+			}
+			PreferencesMessage::SaveWithHistory { enabled } => {
+				self.save_with_history = enabled;
 			}
 			PreferencesMessage::ToggleShowStoragePreferences => {
 				self.show_storage_preferences = !self.show_storage_preferences;

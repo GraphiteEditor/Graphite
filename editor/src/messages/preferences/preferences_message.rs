@@ -39,6 +39,9 @@ pub enum PreferencesMessage {
 	SaveAsGdd {
 		enabled: bool,
 	},
+	SaveWithHistory {
+		enabled: bool,
+	},
 	ToggleShowStoragePreferences,
 	#[cfg(target_os = "macos")]
 	VSync {
