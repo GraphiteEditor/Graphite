@@ -181,6 +181,19 @@ impl<L: Layout> Gdd<L> {
 		}
 		export_session.embed_resource_sources(links_to_promote)?;
 
+		// If the export includes history, also embed every resource referenced by the history.
+		if options.include_history {
+			let current: std::collections::HashSet<ResourceHash> = export_session.registry().resources.values().filter_map(|entry| entry.hash).collect();
+			for hash in export_session.all_referenced_resource_hashes() {
+				if current.contains(&hash) || working_copy_hashes.contains(&hash) {
+					continue;
+				}
+				if let Some(resource) = byte_store.load(hash).await {
+					embedded_bytes.push((hash, resource));
+				}
+			}
+		}
+
 		// Carry the per-peer cursor + view settings so a `.gdd` reopened elsewhere restores the viewport.
 		let mut session_state = self.exported_session_state(&export_session);
 
