@@ -19,6 +19,8 @@ pub struct Session {
 	/// leader-eligibility computation (lowest PeerId among peers whose tip matches the session max).
 	#[expect(dead_code, reason = "Populated once heartbeat/leader-election transport lands; held now so the field and constructors are in place.")]
 	remote_tips: HashMap<PeerId, Rev>,
+	/// The base of local diffs, so peers' edits to the working registry aren't diffed away.
+	runtime_base: Option<Registry>,
 	/// What the ops this peer took back named. A retirement racing the take-back may still name them, and this peer may
 	/// hold the only copy, so they stay garbage collection roots for the life of the session.
 	taken_back_resources: HashSet<ResourceHash>,
@@ -43,6 +45,7 @@ impl Session {
 		Self {
 			document: Document::empty(peer, user),
 			remote_tips: HashMap::new(),
+			runtime_base: None,
 			taken_back_resources: HashSet::new(),
 		}
 	}
@@ -104,9 +107,24 @@ impl Session {
 		resources: &graphene_resource::ResourceRegistry,
 	) -> Result<(Vec<HotOp>, from_runtime::RuntimeConversion), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
-		let ops = crate::delta::compute_deltas(&self.document.working_registry, &conversion.registry);
-		let hot_ops = self.stage_ops(ops)?;
+		let rendered;
+		let base = match &self.runtime_base {
+			Some(base) => base,
+			None => {
+				rendered = self.document.working_registry.as_rendered();
+				&rendered
+			}
+		};
+		let ops = crate::delta::compute_deltas(base, &conversion.registry);
+
+		// Lenient since a peer's concurrent write may have reshaped what the diff names.
+		let hot_ops = self.stage_ops_with(ops.into_iter().map(|op| (op, Attributes::new())), ApplyMode::Idempotent)?;
+		self.runtime_base = Some(conversion.registry.clone());
 		Ok((hot_ops, conversion))
+	}
+
+	pub fn mark_runtime_current(&mut self) {
+		self.runtime_base = Some(self.document.working_registry.as_rendered());
 	}
 
 	/// The stable [`NetworkId`] of each runtime network location for this document's peer, to key per-network view state in `session.json`.
@@ -182,10 +200,10 @@ impl Session {
 	/// `PeerId → UserId` mapping is established (and, under causal delivery, observed by other peers)
 	/// before any of its edits. A no-op batch doesn't register, since registration rides a real edit.
 	pub(crate) fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
-		self.stage_ops_with(ops.into_iter().map(|op| (op, Attributes::new())))
+		self.stage_ops_with(ops.into_iter().map(|op| (op, Attributes::new())), ApplyMode::Strict)
 	}
 
-	fn stage_ops_with(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Attributes)>) -> Result<Vec<HotOp>, CrdtError> {
+	fn stage_ops_with(&mut self, ops: impl IntoIterator<Item = (RegistryDelta, Attributes)>, mode: ApplyMode) -> Result<Vec<HotOp>, CrdtError> {
 		// A batch is staged whole or not at all.
 		let mut pending: Vec<(RegistryDelta, Attributes)> = ops.into_iter().collect();
 		if pending.is_empty() {
@@ -193,7 +211,10 @@ impl Session {
 		}
 
 		let (peer, user) = (self.document.peer, self.document.user);
-		if self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
+		let carried = pending
+			.iter()
+			.any(|(op, _)| matches!(op, RegistryDelta::RegisterPeer { peer: named, user: naming } if *named == peer && *naming == user));
+		if !carried && self.document.working_registry.peer_users.get(&peer).map(|registration| registration.user) != Some(user) {
 			pending.insert(0, (RegistryDelta::RegisterPeer { peer, user }, Attributes::new()));
 		}
 
@@ -212,7 +233,7 @@ impl Session {
 				sequence,
 				attributes,
 			};
-			if let Err(error) = self.document.stage_hot_op(hot_op.clone(), ApplyMode::Strict) {
+			if let Err(error) = self.document.stage_hot_op(hot_op.clone(), mode) {
 				// The run continues where it was, so no sequence goes unused.
 				self.document.last_hot_sequence = sequence_before;
 				if !staged.is_empty() {
@@ -226,7 +247,18 @@ impl Session {
 			self.document.last_hot_sequence = sequence;
 			staged.push(hot_op);
 		}
+		self.advance_runtime_base(&staged);
 		Ok(staged)
+	}
+
+	/// Keeps a later whole-document stage from restating a local batch.
+	fn advance_runtime_base(&mut self, staged: &[HotOp]) {
+		let Some(base) = self.runtime_base.take() else { return };
+		let working = std::mem::replace(&mut self.document.working_registry, base);
+		for hot_op in staged {
+			let _ = self.document.apply_op_with(RegistryTarget::Working, hot_op.op.clone(), hot_op.timestamp, ApplyMode::Idempotent);
+		}
+		self.runtime_base = Some(std::mem::replace(&mut self.document.working_registry, working));
 	}
 
 	/// Wrap each op as a `Delta`, apply it, and chain it onto the local history. One tick per op.
@@ -302,6 +334,7 @@ impl Session {
 				..Document::empty(peer, user)
 			},
 			remote_tips: HashMap::new(),
+			runtime_base: None,
 			taken_back_resources: HashSet::new(),
 		}
 	}
@@ -327,6 +360,7 @@ impl Session {
 	/// Drop hot ops another peer retired, without retiring them here. Until their deltas arrive, the working registry
 	/// shows the snapshot plus what is still hot.
 	pub fn discard_hot_ops(&mut self, retired: &[HotOpId]) -> Touched {
+		self.runtime_base = None;
 		self.document.mark_retired(retired.iter().copied())
 	}
 
@@ -351,6 +385,7 @@ impl Session {
 		if ids.iter().any(|&id| retired.covers(id)) || !retired.took_back_all(peer, own[own.len() - 1].sequence, self.document.last_hot_sequence) {
 			return Ok(None);
 		}
+		self.runtime_base = None;
 		let (touched, taken) = self.document.retract_hot_ops(&ids);
 		self.taken_back_resources.extend(taken.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
@@ -359,6 +394,7 @@ impl Session {
 
 	/// Take back hot ops another peer retracted. See [`retract_interaction`](Self::retract_interaction).
 	pub fn retract_hot_ops(&mut self, ids: &[HotOpId]) -> Touched {
+		self.runtime_base = None;
 		self.document.retract_hot_ops(ids).0
 	}
 
@@ -421,6 +457,7 @@ impl Session {
 
 		self.document.redo_stack.clear();
 		self.document.rebuild_working();
+		self.runtime_base = None;
 		if let Some(head) = self.document.head {
 			self.publish_up_to(head);
 		}
@@ -448,6 +485,7 @@ impl Session {
 		self.document.retired_snapshot = snapshot;
 		self.document.redo_stack.clear();
 		self.document.rebuild_working();
+		self.runtime_base = None;
 		self.publish_up_to(target);
 		Ok((
 			HeadMove {
@@ -495,6 +533,7 @@ impl Session {
 		}
 		self.document.redo_stack.clear();
 		self.document.rebuild_working();
+		self.runtime_base = None;
 		if let Some(head) = moved.head {
 			self.publish_up_to(head);
 		}
@@ -541,6 +580,7 @@ impl Session {
 		}
 		self.document.history.canonical_sort();
 		self.document.rebuild_working();
+		self.runtime_base = None;
 		Ok(revs)
 	}
 
@@ -551,7 +591,11 @@ impl Session {
 
 	/// Take on a peer's marks, or this peer's persisted ones, dropping the hot ops they cover. Returns what those named.
 	pub fn absorb_retired_marks(&mut self, remote: &RetiredMarks) -> Touched {
-		self.document.absorb_retired_marks(remote)
+		let touched = self.document.absorb_retired_marks(remote);
+		if !touched.is_empty() {
+			self.runtime_base = None;
+		}
+		touched
 	}
 
 	/// Replay a persisted hot op. Idempotent on structural ops, suitable for crash recovery
@@ -599,7 +643,7 @@ impl Session {
 		}
 		let mut closing = Attributes::new();
 		closing.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), TimeStamp::ORIGIN);
-		self.stage_ops_with([(RegistryDelta::Meta, closing)])
+		self.stage_ops_with([(RegistryDelta::Meta, closing)], ApplyMode::Strict)
 	}
 
 	/// Every author's closed interactions in the hot log, the earliest closed first.
@@ -693,6 +737,7 @@ impl Session {
 		} else {
 			self.document.retired_snapshot = self.snapshot_from_history()?;
 			self.document.rebuild_working();
+			self.runtime_base = None;
 		}
 		if !self.document.history.extends_canonically(length_before) {
 			self.document.history.canonical_sort();
@@ -767,6 +812,7 @@ impl Session {
 		if refold {
 			self.document.retired_snapshot = self.snapshot_from_history()?;
 			self.document.rebuild_working();
+			self.runtime_base = None;
 		}
 
 		Ok(outcome)
@@ -842,6 +888,13 @@ impl Session {
 		self.document.history.mark_interaction_end(rev, timestamp);
 	}
 
+	/// Record the retirer's clock for these deltas. Not part of their revs and never used for ordering.
+	pub fn stamp_retired_at(&mut self, revs: &[Rev], wall_ms: u64) {
+		for &rev in revs {
+			self.document.history.set_retired_at(rev, wall_ms);
+		}
+	}
+
 	/// Give a minted copy the attributes and retirement time of the delta it stands for.
 	fn carry_attributes(&mut self, original: &Delta, copy: Rev) {
 		if let Some(wall_ms) = original.retired_at() {
@@ -897,6 +950,7 @@ impl Session {
 	pub fn undo(&mut self) -> Result<Rev, CrdtError> {
 		let checkpoint = self.document.head.ok_or(CrdtError::NothingToUndo)?;
 		let base = self.interaction_start_parent(checkpoint, true).ok_or(CrdtError::NothingToUndo)?;
+		self.runtime_base = None;
 
 		while let Some(rev) = self.document.head.filter(|&rev| rev != base) {
 			let delta = self.document.history.get(rev).ok_or(CrdtError::NotFoundInHistory(rev))?.clone();
@@ -917,6 +971,7 @@ impl Session {
 	/// parents back from the checkpoint to `head` (the chain is linear in the silent solo zone).
 	pub fn redo(&mut self) -> Result<Rev, CrdtError> {
 		let checkpoint = self.document.redo_stack.pop().ok_or(CrdtError::NothingToRedo)?;
+		self.runtime_base = None;
 
 		let mut forward = Vec::new();
 		let mut cursor = Some(checkpoint);

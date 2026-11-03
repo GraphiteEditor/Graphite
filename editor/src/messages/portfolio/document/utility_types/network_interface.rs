@@ -17,6 +17,7 @@ mod layout;
 mod memo_network;
 mod mutations;
 mod queries;
+mod reconcile;
 mod resolved_types;
 pub mod storage_metadata;
 mod store;
@@ -28,6 +29,7 @@ mod validation;
 mod view;
 
 pub use editor_delta::{EditorDelta, NetworkMetadataChange, NodeMetadataChange};
+pub use reconcile::{ReconcileError, Reconciled};
 use store::Guarded;
 pub use store::NodeLocator;
 pub use template::*;
