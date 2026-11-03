@@ -6,6 +6,7 @@ extern crate core_types;
 pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, descriptor, generic, item, list};
 
 pub mod application_io;
+mod compiler;
 pub mod document;
 pub mod runtime_delta;
 pub use document::{DocumentNode, NodeNetwork};
