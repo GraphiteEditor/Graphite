@@ -1250,6 +1250,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Save as a `.gdd` container or a plain legacy `.graphite`, per the editor preference.
 				let save_as_gdd = preferences.save_as_gdd;
+				let include_history = preferences.save_with_history;
 				let extension = if save_as_gdd { GDD_FILE_EXTENSION } else { FILE_EXTENSION };
 				let name = format!("{}.{}", self.name.clone(), extension);
 
@@ -1285,7 +1286,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							.export_to_bytes(
 								document_format::ExportFormat::Xz,
 								document_format::ExportOptions {
-									include_history: false,
+									include_history,
 									..Default::default()
 								},
 								export_load_handle.as_ref(),

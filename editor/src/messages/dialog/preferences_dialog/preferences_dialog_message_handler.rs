@@ -330,6 +330,29 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
+			let save_with_history_description = "
+				Include the document's edit history in saved files. Only applies with \"Save as .gdd\" enabled.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let save_with_history_checkbox_id = CheckboxId::new();
+			let save_with_history = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.save_with_history)
+					.tooltip_label("Save with History")
+					.tooltip_description(save_with_history_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::SaveWithHistory { enabled: checkbox_input.checked }.into())
+					.for_label(save_with_history_checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Save with History")
+					.tooltip_label("Save with History")
+					.tooltip_description(save_with_history_description)
+					.for_checkbox(save_with_history_checkbox_id)
+					.widget_instance(),
+			];
+
 			let validate_description = "
 				Validate every document save, open, and undo by round-tripping it through the .gdd storage format and comparing against the legacy path, logging any mismatch. Useful for debugging the .gdd format during its soak, but the per-edit round-trip has a performance cost.\n\
 				\n\
@@ -353,7 +376,7 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, save_as_gdd, validate_storage_round_trip]);
+			rows.extend_from_slice(&[header, save_as_gdd, save_with_history, validate_storage_round_trip]);
 		}
 
 		// =============
