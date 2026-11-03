@@ -130,9 +130,15 @@ pub struct WorkspacePanelLayout {
 	/// Whether Focus Document mode is active, hiding all non-document panels.
 	#[serde(default)]
 	pub focus_document: bool,
+	/// A stored layout of another version is replaced by the default one.
+	#[serde(default)]
+	pub version: u32,
 }
 
 impl WorkspacePanelLayout {
+	/// Raised when the default layout gains a panel.
+	pub const VERSION: u32 = 1;
+
 	/// Generate a new unique panel group ID.
 	pub fn next_id(&mut self) -> PanelGroupId {
 		let id = self.next_group_id;
@@ -252,10 +258,6 @@ impl WorkspacePanelLayout {
 			slot_size,
 			sibling_fallback,
 		});
-	}
-
-	pub fn was_closed(&self, panel_type: PanelType) -> bool {
-		self.saved_positions.iter().any(|saved| saved.panel_type == panel_type)
 	}
 
 	/// Restore a panel to its previous position if available, otherwise to its default position.
@@ -447,6 +449,7 @@ impl Default for WorkspacePanelLayout {
 			next_group_id: PanelGroupId(3),
 			saved_positions: Vec::new(),
 			focus_document: false,
+			version: Self::VERSION,
 		}
 	}
 }

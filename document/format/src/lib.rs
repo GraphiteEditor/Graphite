@@ -111,6 +111,9 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
 	#[cfg(feature = "network")]
 	pub(crate) remote_changes: network::RemoteChanges,
+	/// The step a guest asked the host to undo, with the head it asked under. A repeat waits until the head moves.
+	#[cfg(feature = "network")]
+	pub(crate) undo_requested: Option<(document_graph_storage::Rev, Option<document_graph_storage::Rev>)>,
 	pub(crate) interactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
 	pub(crate) own_last_staged_ms: Option<f64>,
 	pub(crate) own_staged_since_tick: bool,
@@ -175,6 +178,8 @@ impl<L: Layout> Gdd<L> {
 			pending_persist: PendingPersist::default(),
 			#[cfg(feature = "network")]
 			remote_changes: network::RemoteChanges::default(),
+			#[cfg(feature = "network")]
+			undo_requested: None,
 			interactions_seen: Default::default(),
 			own_last_staged_ms: None,
 			own_staged_since_tick: false,

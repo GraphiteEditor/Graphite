@@ -427,7 +427,14 @@ impl<L: Layout> Gdd<L> {
 		let Some(rev) = self.session.latest_own_interaction() else {
 			return Ok(None);
 		};
+		let asked = Some((rev, self.session.head_rev()));
+		if self.undo_requested == asked {
+			return Ok(None);
+		}
 		self.drop_step(rev)?;
+		if !self.retires_locally() {
+			self.undo_requested = asked;
+		}
 		Ok(Some(rev))
 	}
 

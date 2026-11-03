@@ -86,6 +86,7 @@ impl<L: Layout> Gdd<L> {
 	/// Drop the connection but keep the document shared, so a reopen reconnects. A host first retires every closed
 	/// interaction with no ops still on their way.
 	pub fn disconnect(&mut self) {
+		self.undo_requested = None;
 		let closed = self.contiguous_interactions();
 		if let Err(error) = self.retire_interactions(&closed) {
 			log::error!("Retiring before leaving failed: {error}");

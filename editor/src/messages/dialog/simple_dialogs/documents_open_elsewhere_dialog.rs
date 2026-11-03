@@ -33,18 +33,18 @@ impl LayoutHolder for DocumentsOpenElsewhereDialog {
 			]),
 		];
 		rows.extend(self.documents.iter().cloned().map(|(source, name, shared)| {
-			let label = TextLabel::new(name.clone()).widget_instance();
-			let button = TextButton::new(if shared { "Join in This Tab" } else { "Open a Copy" })
-				.on_update(move |_| {
-					let followup = if shared {
-						PortfolioMessage::JoinStoredSession { source }
-					} else {
-						PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() }
-					};
-					DialogMessage::CloseAndThen { followups: vec![followup.into()] }.into()
-				})
-				.widget_instance();
-			LayoutGroup::row(vec![label, Separator::new(SeparatorStyle::Unrelated).widget_instance(), button])
+			let button = |label: &str, followup: Box<dyn Fn() -> PortfolioMessage + Send + Sync>| {
+				TextButton::new(label)
+					.on_update(move |_| DialogMessage::CloseAndThen { followups: vec![followup().into()] }.into())
+					.widget_instance()
+			};
+			let mut widgets = vec![TextLabel::new(name.clone()).widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance()];
+			// A copy stays possible, since joining needs the other tab to be connected
+			if shared {
+				widgets.push(button("Join in This Tab", Box::new(move || PortfolioMessage::JoinStoredSession { source })));
+			}
+			widgets.push(button("Open a Copy", Box::new(move || PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() })));
+			LayoutGroup::row(widgets)
 		}));
 
 		Layout(rows)

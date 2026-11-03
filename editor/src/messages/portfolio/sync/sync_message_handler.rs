@@ -31,6 +31,8 @@ pub struct SyncMessageContext<'a> {
 #[derive(Debug, Default, ExtractField)]
 pub struct SyncMessageHandler {
 	pending_joins: HashMap<DocumentId, SessionToken>,
+	/// Rooms joined by link until the host's state arrives, since the document's own id names another room.
+	joined: HashMap<DocumentId, SessionToken>,
 	polling: bool,
 	incoming: HashMap<DocumentId, (u32, Incoming)>,
 	connections: u32,
@@ -64,6 +66,12 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 					return;
 				};
 				if gdd.role().is_some() {
+					return;
+				}
+				if gdd.is_shared() {
+					// A reconnect leaves the clipboard and the panels alone
+					let Some(gdd) = document.storage_mut() else { return };
+					self.connect_document(document_id, gdd, preferences, responses);
 					return;
 				}
 				document.stage_name_attribute();
@@ -103,6 +111,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 						return;
 					}
 					announce_name(gdd, &preferences.user_name);
+					self.joined.insert(document_id, token);
 					self.attach(document_id, incoming, driver, responses);
 					refresh_session_views(responses);
 				} else if gdd.is_shared() && gdd.role().is_none() {
@@ -118,6 +127,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				};
 				gdd.leave();
 				self.detach(document_id);
+				self.joined.remove(&document_id);
 				refresh_session_views(responses);
 			}
 			SyncMessage::Fork => {
@@ -127,6 +137,7 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				let Some(gdd) = document.storage_mut() else { return };
 				gdd.leave();
 				self.detach(document_id);
+				self.joined.remove(&document_id);
 				// The room derives from the manifest's document id, so a fresh id is a fresh room
 				if let Err(error) = gdd.update_manifest(|manifest| manifest.document_id = generate_uuid()) {
 					log::error!("Forking the session failed: {error}");
@@ -155,13 +166,13 @@ impl MessageHandler<SyncMessage, SyncMessageContext<'_>> for SyncMessageHandler 
 				});
 			}
 			SyncMessage::Poll => {
-				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, responses);
+				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, None, responses);
 			}
 			SyncMessage::Wake { document_id, generation } => {
 				if !self.is_current(document_id, generation) {
 					return;
 				}
-				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, responses);
+				self.poll(documents, active_document_id, resource_storage.resources_mut(), preferences, Some(document_id), responses);
 				// The poll drained the inbox, so the next arrival wakes the next poll
 				self.arm(document_id, responses);
 			}
@@ -205,7 +216,7 @@ impl SyncMessageHandler {
 	}
 
 	fn connect_document(&mut self, document_id: DocumentId, gdd: &mut GddV1, preferences: &PreferencesMessageHandler, responses: &mut VecDeque<Message>) -> Option<SessionToken> {
-		let token = SessionToken::for_document(gdd.manifest().document_id);
+		let token = self.joined.get(&document_id).copied().unwrap_or_else(|| SessionToken::for_document(gdd.manifest().document_id));
 		let (room, driver) = Room::connect(&token.signaling_url(DEFAULT_SIGNALING_SERVER));
 		let incoming = room.incoming();
 		if let Err(error) = gdd.connect(room, UserId(preferences.user_id)) {
@@ -234,6 +245,7 @@ impl SyncMessageHandler {
 		self.reconnect_at.remove(&document_id);
 		self.retry_at.remove(&document_id);
 		self.undecided_since.remove(&document_id);
+		self.decoding.retain(|&(id, _)| id != document_id);
 	}
 
 	fn is_current(&self, document_id: DocumentId, generation: u32) -> bool {
@@ -262,15 +274,17 @@ impl SyncMessageHandler {
 		});
 	}
 
+	/// Polls `only`, or every document when it is `None`.
 	fn poll(
 		&mut self,
 		documents: &mut HashMap<DocumentId, DocumentMessageHandler>,
 		active_document_id: Option<DocumentId>,
 		resources: ResourcesHandle,
 		preferences: &PreferencesMessageHandler,
+		only: Option<DocumentId>,
 		responses: &mut VecDeque<Message>,
 	) {
-		for (&document_id, document) in documents.iter_mut() {
+		for (&document_id, document) in documents.iter_mut().filter(|(id, _)| only.is_none_or(|only| only == **id)) {
 			self.poll_document(document_id, document, &resources, preferences, responses);
 		}
 
@@ -307,7 +321,9 @@ impl SyncMessageHandler {
 			None => return,
 			Some(Role::Undecided) => {
 				let since = *self.undecided_since.entry(document_id).or_insert_with(now_ms);
-				if now_ms() - since >= ROLE_GRACE_MS && gdd.decide_role().is_some() {
+				// A joiner holds nothing yet, so it waits for a host instead of taking the room
+				let may_host = !self.joined.contains_key(&document_id);
+				if may_host && now_ms() - since >= ROLE_GRACE_MS && gdd.decide_role().is_some() {
 					self.undecided_since.remove(&document_id);
 					refresh_session_views(responses);
 				}
@@ -332,6 +348,7 @@ impl SyncMessageHandler {
 			match event {
 				Event::Synced => {
 					log::debug!("Synced with the host, applying its state");
+					self.joined.remove(&document_id);
 					refresh_session_views(responses);
 					self.dirty.insert(document_id);
 					self.fit_after_sync.insert(document_id);
@@ -368,11 +385,11 @@ impl SyncMessageHandler {
 				self.dirty.remove(&document_id);
 				continue;
 			};
-			let Some(gdd) = document.storage() else { continue };
-			let missing = SyncTarget::missing_resources(gdd).len();
 			if self.retry_at.get(&document_id).is_some_and(|&due| now_ms() < due) {
 				continue;
 			}
+			let Some(gdd) = document.storage() else { continue };
+			let missing = SyncTarget::missing_resources(gdd).len();
 			let transaction = document.network_interface.transaction_status();
 			if missing > 0 || transaction != TransactionStatus::Finished {
 				self.wait(document_id, format!("missing {missing} transaction {transaction:?}"));

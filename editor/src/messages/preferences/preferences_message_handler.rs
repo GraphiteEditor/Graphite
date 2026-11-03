@@ -97,8 +97,10 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			PreferencesMessage::ResetToDefaults => {
+				// The identity isn't a setting, and documents would record the cleared name
 				let preferences = Self {
 					user_id: self.user_id,
+					user_name: self.user_name.clone(),
 					..Self::default()
 				};
 				responses.add(PreferencesMessage::Load { preferences });

@@ -143,6 +143,10 @@ pub(super) async fn remove_stored_document(store: DocumentStoreHandle, document_
 /// Joins the session of a stored document another tab holds, as a document and peer of this tab's own.
 pub(super) async fn join_stored_session(store: DocumentStoreHandle, source: DocumentId) -> Message {
 	let manifest = async {
+		// Opening a missing key creates it, and the other tab may have closed the document since
+		if !store.list().await.map_err(|error| error.to_string())?.contains(&document_key(source)) {
+			return Err("the other tab closed it".to_string());
+		}
 		let container = store.open(document_key(source)).await.map_err(|error| error.to_string())?;
 		GddV1::read_manifest(&container, &GddV1Layout).await.map_err(|error| error.to_string())
 	}

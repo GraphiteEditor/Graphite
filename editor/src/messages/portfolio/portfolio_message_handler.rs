@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document_locks;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::PanelType;
+use super::utility_types::{PanelType, WorkspacePanelLayout};
 use crate::application::{Environment, generate_uuid};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
@@ -415,16 +415,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::LoadPersistedState { state } => {
-				if let Some(layout) = state.workspace_layout {
+				if let Some(layout) = state.workspace_layout.filter(|layout| layout.version == WorkspacePanelLayout::VERSION) {
 					self.workspace.panel_layout = layout;
-					// Add the Session panel beside the Inspector, unless the user closed it
-					let panel_layout = &mut self.workspace.panel_layout;
-					if !panel_layout.is_panel_present(PanelType::Session) && !panel_layout.was_closed(PanelType::Session) {
-						match panel_layout.find_panel(PanelType::Inspector).and_then(|group_id| panel_layout.panel_group_mut(group_id)) {
-							Some(group) => group.tabs.push(PanelType::Session),
-							None => panel_layout.restore_panel(PanelType::Session),
-						}
-					}
 					responses.add(WorkspaceMessage::UpdatePanelsLayout);
 
 					// Refill panels whose content was lost when the layout load remounted their frontend components

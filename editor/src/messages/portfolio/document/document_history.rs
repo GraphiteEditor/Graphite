@@ -141,7 +141,15 @@ impl DocumentHistory {
 		if self.legacy_undo_stack.is_empty() {
 			return false;
 		}
-		let note = if let Some(ops) = self.retract_storage_interaction() {
+		// A failed retract may already have taken the step back, so no older step is undone after it
+		let retracted = match self.retract_storage_interaction() {
+			Ok(retracted) => retracted,
+			Err(error) => {
+				log::error!("Taking the storage interaction back failed: {error}");
+				return false;
+			}
+		};
+		let note = if let Some(ops) = retracted {
 			UndoNote::Retracted(ops)
 		} else if in_session && let Some(rev) = self.undo_retired_step() {
 			UndoNote::Dropped(rev)
@@ -169,13 +177,16 @@ impl DocumentHistory {
 			return false;
 		};
 
-		if let Some(snapshot) = self.pop_redo() {
-			self.push_undo(snapshot);
-		}
-		match note {
+		let redone = match note {
 			UndoNote::Retracted(ops) => self.restage_ops(ops),
 			UndoNote::Dropped(rev) => self.redo_retired_step(rev),
-			UndoNote::Cursor => {}
+			UndoNote::Cursor => true,
+		};
+		if !redone {
+			return false;
+		}
+		if let Some(snapshot) = self.pop_redo() {
+			self.push_undo(snapshot);
 		}
 		true
 	}
@@ -194,18 +205,16 @@ impl DocumentHistory {
 		self.undo_notes.drain(..evicted);
 	}
 
-	fn retract_storage_interaction(&mut self) -> Option<Vec<document_graph_storage::RegistryDelta>> {
-		self.storage.as_mut()?.retract_interaction().unwrap_or_else(|error| {
-			log::error!("Taking the storage interaction back failed: {error}");
-			None
-		})
+	fn retract_storage_interaction(&mut self) -> Result<Option<Vec<document_graph_storage::RegistryDelta>>, document_format::Error> {
+		match self.storage.as_mut() {
+			Some(storage) => storage.retract_interaction(),
+			None => Ok(None),
+		}
 	}
 
-	fn restage_ops(&mut self, ops: Vec<document_graph_storage::RegistryDelta>) {
-		let Some(storage) = self.storage.as_mut() else { return };
-		if let Err(error) = storage.restage_ops(ops) {
-			log::error!("Staging the redone step failed: {error}");
-		}
+	fn restage_ops(&mut self, ops: Vec<document_graph_storage::RegistryDelta>) -> bool {
+		let Some(storage) = self.storage.as_mut() else { return false };
+		storage.restage_ops(ops).inspect_err(|error| log::error!("Staging the redone step failed: {error}")).is_ok()
 	}
 
 	fn undo_retired_step(&mut self) -> Option<document_graph_storage::Rev> {
@@ -219,11 +228,9 @@ impl DocumentHistory {
 		self.storage.as_ref().map(|storage| storage.resource_gc_roots()).unwrap_or_default()
 	}
 
-	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) {
-		let Some(storage) = self.storage.as_mut() else { return };
-		if let Err(error) = storage.redo_retired_step(rev) {
-			log::error!("Redoing the dropped step failed: {error}");
-		}
+	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) -> bool {
+		let Some(storage) = self.storage.as_mut() else { return false };
+		storage.redo_retired_step(rev).inspect_err(|error| log::error!("Redoing the dropped step failed: {error}")).is_ok()
 	}
 
 	pub fn retire_storage_interaction(&mut self) {
