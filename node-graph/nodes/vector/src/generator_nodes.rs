@@ -459,10 +459,36 @@ fn grid<T: GridSpacing>(
 		.into_item())
 }
 
+/// Draws paths by following a string of turtle commands, like the ones an **L-System** grows. A drawing symbol (`F` or `G`) moves forward a step while drawing, `f` moves without drawing, `+` and `-` turn left and right, `|` turns around, and `[` and `]` begin and end a branch.
+///
+/// A number in parentheses gives one command its own amount, like `F(25)` or `+(30)`, and `!(2)` sets the width. Each point records its branch depth, distance traveled, heading, and width as attributes.
+#[node_macro::node(category("String"), icon("NodeTurtlePath"))]
+fn turtle_path(
+	_: impl Ctx,
+	/// The commands for the turtle to follow, starting at the origin and facing up. Symbols without a meaning are skipped.
+	commands: Item<String>,
+	/// How far each step forward moves, unless a command gives its own distance like `F(25)`.
+	#[unit(" px")]
+	#[default(10.)]
+	step: Item<f64>,
+	/// How far `+` and `-` turn, unless a command gives its own angle like `+(30)`.
+	#[unit("°")]
+	#[default(90.)]
+	angle: Item<f64>,
+	/// The symbols that move forward while drawing.
+	#[default("FG")]
+	draw_symbols: Item<String>,
+	/// The symbols that move forward without drawing.
+	#[default("f")]
+	move_symbols: Item<String>,
+) -> Item<Vector> {
+	crate::turtle::turtle_path(commands.element(), *step.element(), *angle.element(), draw_symbols.element(), move_symbols.element())
+}
+
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::ATTR_SMOOTH;
+	use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_SMOOTH, ATTR_WIDTH};
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
 	use vector_types::vector::shared_paths_from_item_attributes;
@@ -705,5 +731,66 @@ mod tests {
 			let anchors = spiral.element().anchor_positions(&shared_paths_from_item_attributes(&spiral));
 			assert!(anchors.iter().all(|anchor| (anchor.length() - 25.).abs() < 1e-9));
 		}
+	}
+
+	fn turtle(commands: &str) -> Item<Vector> {
+		turtle_path((), item(commands.to_string()), item(10.), item(90.), item("FG".to_string()), item("f".to_string()))
+	}
+
+	/// Each path's pool references and whether it closes.
+	fn turtle_runs(drawing: &Item<Vector>) -> Vec<(Vec<u32>, bool)> {
+		let paths = shared_paths_from_item_attributes(drawing);
+		paths.iter_element_values().map(|path| (path.references().collect(), path.is_closed())).collect()
+	}
+
+	fn point_attributes<T: Copy + 'static>(drawing: &Item<Vector>, key: &str) -> Vec<T> {
+		drawing.element().0.iter_attribute_values::<T>(key).map(|values| values.copied().collect()).unwrap_or_default()
+	}
+
+	#[test]
+	fn turtle_square_closes_on_its_start() {
+		let square = turtle("F+F+F+F");
+
+		assert_eq!(turtle_runs(&square), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(
+			square.element().positions().collect::<Vec<_>>(),
+			[DVec2::ZERO, DVec2::new(0., -10.), DVec2::new(-10., -10.), DVec2::new(-10., 0.)]
+		);
+
+		// Drawing on after closing leaves the square closed and starts a new path from its first point
+		assert_eq!(turtle_runs(&turtle("F+F+F+F+F")), [(vec![0, 1, 2, 3, 0], true), (vec![0, 4], false)]);
+	}
+
+	#[test]
+	fn turtle_branches_weld_to_one_trunk() {
+		let tree = turtle("F[+F]F");
+
+		// The trunk stays one run through the junction, where the branch begins
+		assert_eq!(turtle_runs(&tree), [(vec![0, 1, 3], false), (vec![1, 2], false)]);
+		assert_eq!(point_attributes::<i64>(&tree, ATTR_DEPTH), [0, 0, 1, 0]);
+		assert_eq!(point_attributes::<f64>(&tree, ATTR_DISTANCE), [0., 10., 20., 20.]);
+		assert_eq!(point_attributes::<f64>(&tree, ATTR_HEADING), [-90., -90., 180., -90.]);
+
+		// Branches leaving before anything is drawn still share their starting point
+		assert_eq!(turtle_runs(&turtle("[+F][-F]F")), [(vec![0, 1], false), (vec![0, 2], false), (vec![0, 3], false)]);
+	}
+
+	#[test]
+	fn turtle_moves_break_paths_and_parameters_override_amounts() {
+		let drawing = turtle("FfF(25)+(45)F");
+
+		assert_eq!(turtle_runs(&drawing), [(vec![0, 1], false), (vec![2, 3, 4], false)]);
+		let positions: Vec<DVec2> = drawing.element().positions().collect();
+		assert_eq!(positions[3], DVec2::new(0., -45.));
+		assert!((positions[4] - DVec2::new(-10. * 0.5_f64.sqrt(), -45. - 10. * 0.5_f64.sqrt())).length() < 1e-9);
+	}
+
+	#[test]
+	fn turtle_width_is_restored_after_a_branch() {
+		let drawing = turtle("F[!(3)F]F");
+
+		assert_eq!(point_attributes::<f64>(&drawing, ATTR_WIDTH), [1., 1., 3., 1.]);
+		assert_eq!(point_attributes::<f64>(&turtle(""), ATTR_WIDTH), Vec::<f64>::new());
+		assert!(turtle("").element().0.iter_attribute_values::<f64>(ATTR_WIDTH).is_some(), "an empty drawing still has the attribute");
 	}
 }

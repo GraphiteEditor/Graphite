@@ -124,6 +124,15 @@ pub const ATTR_SMOOTH: &str = "smooth";
 /// the internal addressing: a `PointId` on a `Vector`'s point pool, or a `SegmentId` on the `List<i64>`
 /// inside a `Path` at the anchor reference the segment departs from.
 pub const ATTR_ID: &str = "id";
+/// Point's `i64` count of the `[` branches the turtle was nested in when drawing it, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_DEPTH: &str = "depth";
+/// Point's `f64` distance the turtle traveled from its start to reach it, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_DISTANCE: &str = "distance";
+/// Point's `f64` direction in degrees the turtle faced arriving at it (`0.` along +X, clockwise on screen), on a `Vector`'s
+/// point pool from Turtle Path.
+pub const ATTR_HEADING: &str = "heading";
+/// Point's `f64` width the turtle drew with there (`1.` unless set by `!(w)`), on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_WIDTH: &str = "width";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.
