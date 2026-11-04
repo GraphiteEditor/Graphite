@@ -481,16 +481,16 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 }
 
 /// A math expression's typeset text field, with a warning icon in the assist area giving the error in its tooltip while the expression fails to parse.
-pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, accepts_reducers: bool) -> Vec<WidgetInstance> {
+pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, operator_only: bool) -> Vec<WidgetInstance> {
 	let Some(TaggedValue::String(expression)) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
 		return text_widget(parameter_widgets_info);
 	};
-	let error = math_expression_error(expression, accepts_reducers);
-	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, accepts_reducers);
+	let error = math_expression_error(expression, operator_only);
+	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, operator_only);
 	let input = MathExpressionInput::new(expression.clone())
 		.tokens(tokens)
 		.tooltips(tooltips)
-		.accepts_reducers(accepts_reducers)
+		.operator_only(operator_only)
 		.errors(math_expression_error_ranges(expression, error.as_ref()))
 		.on_update(parameter_widgets_info.update_value(|x: &MathExpressionInput| TaggedValue::String(x.value.clone())))
 		.on_commit(commit_value)
@@ -500,7 +500,7 @@ pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, 
 	// padded to a checkbox's 16px so the field lines up with the rows around it
 	let icon = match &error {
 		Some(error) => IconLabel::new("Warning")
-			.tooltip_label("Invalid Math Expression")
+			.tooltip_label(if operator_only { "Invalid Operator" } else { "Invalid Math Expression" })
 			.tooltip_description(math_expression_error_description(error)),
 		None => IconLabel::new("Empty12px"),
 	};
@@ -3942,12 +3942,13 @@ mod tests {
 
 	#[test]
 	fn math_expressions_are_flagged_only_when_they_fail_to_parse() {
-		for (expression, accepts_reducers) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true)] {
-			assert!(math_expression_error(expression, accepts_reducers).is_none(), "`{expression}`");
+		for (expression, operator_only) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true), (" ≤ ", true)] {
+			assert!(math_expression_error(expression, operator_only).is_none(), "`{expression}`");
 		}
 
 		assert!(math_expression_error("2 +", false).is_some());
-		assert!(math_expression_error("+", false).is_some(), "a lone reducer is an error where the node applies none");
+		assert!(math_expression_error("+", false).is_some(), "a lone operator is an error where the node takes an expression");
+		assert!(math_expression_error("a + b", true).is_some(), "an expression is an error where the node takes a lone operator");
 		assert_eq!(description("sin(I)").as_deref(), Some("A matrix stands where a value is needed"));
 	}
 

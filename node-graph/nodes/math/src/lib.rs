@@ -13,13 +13,13 @@ use math_parser::lexer::Constant;
 use math_parser::matrix::{Affine2, Linear2, Matrix};
 use math_parser::object::Object;
 use math_parser::parser::{MessagePart, ParseError};
-use math_parser::reducer::classify_reducer;
+use math_parser::reducer::{Reducer, classify_reducer};
 use math_parser::value::{Value, Vector2, Vector3};
 use rand::{Rng, SeedableRng};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
-/// Why the "Math Function" or "Math Formula" node's expression gives no result.
+/// Why a math node's expression or operator gives no result.
 #[derive(Debug, thiserror::Error)]
 pub enum MathExpressionError {
 	#[error("The expression is empty")]
@@ -32,6 +32,10 @@ pub enum MathExpressionError {
 	OutputType { result: String, output_type: String },
 	#[error("The input can't be read as {0}")]
 	InputType(String),
+	#[error("`{0}` alone is an operator, which the Math Aggregate node applies across all the items")]
+	LoneOperator(String),
+	#[error("The operator must be a lone operator or function name, like `+` or `max`")]
+	NotAnOperator,
 	#[error("`{reducer}` gives no result for an empty list")]
 	EmptyReduction { reducer: String },
 	#[error("`{reducer}` gives no result across these items")]
@@ -95,7 +99,7 @@ trait ExpressionValue: Copy + Default + 'static {
 	fn items(items: impl Iterator<Item = Self>) -> Items;
 }
 
-/// The items of the "Math Formula" node's list, of one sort throughout, bound positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
+/// The items of a math node's list, of one sort throughout, which "Math Formula" binds positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
 enum Items {
 	Values(Vec<Value>),
 	Matrices(Vec<Matrix>),
@@ -310,9 +314,9 @@ impl ValueProvider for PositionalMathContext {
 	}
 }
 
-/// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
+/// Evaluates one math expression over all the items, taking them in order as its arguments `a`, `b`, `c`, …, or `A`, `B`, `C`, … for Transforms.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors.
 #[node_macro::node(category("Math"), icon("NodeMathFormula"), version(2))]
 fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
@@ -325,9 +329,9 @@ fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
 	)]
 	values: List<T>,
-	/// The expression evaluated over the items, such as `a * b + c`, or a lone operator or function applied across all of them.
+	/// The expression evaluated over the items, such as `a * b + c`.
 	#[name("f(…) =")]
-	#[widget(ParsedWidgetOverride::Custom = "math_expression_or_reducer")]
+	#[widget(ParsedWidgetOverride::Custom = "math_expression")]
 	f: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
@@ -342,30 +346,70 @@ fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 	let _ = output_type;
 
 	let expression = f.element();
+	if classify_reducer(expression, NothingMap).is_some() {
+		return Err(MathExpressionError::LoneOperator(expression.trim().to_string()));
+	}
+
 	let bindings = PositionalMathContext {
 		items: T::items(values.iter_element_values().copied()),
 	};
-
-	// A lone operator or variadic function name applies across all items rather than parsing as an expression
-	if let Some(reducer) = classify_reducer(expression, &bindings) {
-		let result = match &bindings.items {
-			Items::Values(values) => reducer.evaluate(values).map(Object::Value),
-			Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
-		};
-		let Some(result) = result else {
-			let name = expression.trim();
-			return match bindings.items.len() {
-				// Like the dedicated nodes, the minimum, maximum and mean of no values are 0
-				0 if matches!(bindings.items, Items::Values(_)) && matches!(name.trim_start_matches('\\'), "min" | "max" | "mean") => Ok(Item::new_from_element(U::default())),
-				0 => Err(MathExpressionError::EmptyReduction { reducer: name.to_string() }),
-				_ => Err(MathExpressionError::NoReduction { reducer: name.to_string() }),
-			};
-		};
-		return Ok(Item::new_from_element(output(&result)?));
-	}
-
 	let tree = parsed.parse(expression)?;
 	let result = evaluate_expression(&tree, bindings)?;
+	Ok(Item::new_from_element(output(&result)?))
+}
+
+/// The operator or function name a "Math Aggregate" or "Math Running" node applies across its items.
+fn operator_reducer(operator: &str) -> Result<Reducer, MathExpressionError> {
+	classify_reducer(operator, NothingMap).ok_or(MathExpressionError::NotAnOperator)
+}
+
+/// Reduces all the items to a single value by folding an operator like `+` or `*` across them, or by passing them all to a function like `max` or `mean`.
+///
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
+#[node_macro::node(category("Math"), icon("NodeMathAggregate"))]
+fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
+	_: impl Ctx,
+	/// The items reduced to one value.
+	#[implementations(
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+	)]
+	values: List<T>,
+	/// The operator folded across the items, like `+` or `*`, or a function given all of them, like `max` or `mean`.
+	#[default("+")]
+	#[widget(ParsedWidgetOverride::Custom = "math_operator")]
+	operator: Item<String>,
+	/// The type the result is read as.
+	#[implementations(
+		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+	)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
+) -> Result<Item<U>, MathExpressionError> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
+	let operator = operator.element();
+	let reducer = operator_reducer(operator)?;
+	let items = T::items(values.iter_element_values().copied());
+
+	let result = match &items {
+		Items::Values(values) => reducer.evaluate(values).map(Object::Value),
+		Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
+	};
+	let Some(result) = result else {
+		let name = operator.trim();
+		return match items.len() {
+			// Like the dedicated nodes, the minimum, maximum and mean of no values are 0
+			0 if matches!(items, Items::Values(_)) && matches!(name.trim_start_matches('\\'), "min" | "max" | "mean") => Ok(Item::new_from_element(U::default())),
+			0 => Err(MathExpressionError::EmptyReduction { reducer: name.to_string() }),
+			_ => Err(MathExpressionError::NoReduction { reducer: name.to_string() }),
+		};
+	};
 	Ok(Item::new_from_element(output(&result)?))
 }
 
@@ -2318,7 +2362,7 @@ mod test {
 
 		let items: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			math_formula((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
+			math_aggregate((), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
 				.unwrap()
 				.into_element(),
 			2,
@@ -2367,7 +2411,7 @@ mod test {
 
 		let items: List<f64> = [1., 2.].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			math_formula((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
+			math_aggregate((), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
 				.unwrap()
 				.into_element(),
 			2,
@@ -2466,17 +2510,9 @@ mod test {
 		assert!(matches!(&error, MathExpressionError::InputType(output_type) if output_type == "Bool"));
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
-		assert!(
-			!math_formula((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone())
-				.unwrap()
-				.into_element()
-		);
-		assert!(
-			math_formula((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone())
-				.unwrap()
-				.into_element()
-		);
-		assert!(!math_formula((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).unwrap().into_element());
+		assert!(!math_aggregate((), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).unwrap().into_element());
+		assert!(math_aggregate((), bools(), Item::new_from_element("||".to_string()), as_bool.clone()).unwrap().into_element());
+		assert!(!math_aggregate((), bools(), Item::new_from_element("xor".to_string()), as_bool).unwrap().into_element());
 	}
 
 	#[test]
@@ -2512,25 +2548,28 @@ mod test {
 		// A Transform can't pass through as a Number, so the output falls back to its default
 		assert_eq!(fx(shear, "x", 0.), Err(0.));
 
-		// A Transform list binds as `A`, `B`, `C`, and a lone operator composes, averages, or counts across it
+		// A Transform list binds as `A`, `B`, `C` in a formula, and an operator composes, averages, or counts across it
 		let scale = DAffine2::from_scale(DVec2::splat(2.));
-		fn f<U: ExpressionValue>(items: [DAffine2; 2], expression: &str, output_type: U) -> Result<U, MathExpressionError> {
-			let items: List<DAffine2> = items.into_iter().map(Item::new_from_element).collect();
+		let items = || [shear, scale].into_iter().map(Item::new_from_element).collect::<List<DAffine2>>();
+		fn formula<U: ExpressionValue>(items: List<DAffine2>, expression: &str, output_type: U) -> Result<U, MathExpressionError> {
 			math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
 		}
-		assert_eq!(f([shear, scale], "A B", DAffine2::IDENTITY).unwrap(), shear * scale);
-		assert_eq!(f([shear, scale], "A C", DAffine2::IDENTITY).unwrap(), shear);
-		assert_eq!(f([shear, scale], "*", DAffine2::IDENTITY).unwrap(), shear * scale);
-		assert_eq!(f([shear, scale], "/", DAffine2::IDENTITY).unwrap(), shear * scale.inverse());
-		assert_eq!(f([shear, scale], "mean", DAffine2::IDENTITY).unwrap().translation, DVec2::new(2.5, 2.));
-		assert_eq!(f([shear, scale], "count", 0.).unwrap(), 2.);
-		assert_eq!(f([shear, scale], "det(A)", 0.).unwrap(), 1.);
-		assert!(matches!(f([shear, scale], "min", DAffine2::IDENTITY), Err(MathExpressionError::NoReduction { .. })));
-		assert!(f([shear, scale], "a", DAffine2::IDENTITY).is_err());
+		fn aggregate<U: ExpressionValue>(items: List<DAffine2>, operator: &str, output_type: U) -> Result<U, MathExpressionError> {
+			math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
+		}
+		assert_eq!(formula(items(), "A B", DAffine2::IDENTITY).unwrap(), shear * scale);
+		assert_eq!(formula(items(), "A C", DAffine2::IDENTITY).unwrap(), shear);
+		assert_eq!(aggregate(items(), "*", DAffine2::IDENTITY).unwrap(), shear * scale);
+		assert_eq!(aggregate(items(), "/", DAffine2::IDENTITY).unwrap(), shear * scale.inverse());
+		assert_eq!(aggregate(items(), "mean", DAffine2::IDENTITY).unwrap().translation, DVec2::new(2.5, 2.));
+		assert_eq!(aggregate(items(), "count", 0.).unwrap(), 2.);
+		assert_eq!(formula(items(), "det(A)", 0.).unwrap(), 1.);
+		assert!(matches!(aggregate(items(), "min", DAffine2::IDENTITY), Err(MathExpressionError::NoReduction { .. })));
+		assert!(formula(items(), "a", DAffine2::IDENTITY).is_err());
 
 		// A sum of Transforms doubles the weight row, so it reads as no Transform
 		assert!(matches!(
-			f([shear, scale], "+", DAffine2::IDENTITY),
+			aggregate(items(), "+", DAffine2::IDENTITY),
 			Err(MathExpressionError::OutputType { output_type, .. }) if output_type == "Transform"
 		));
 	}
@@ -2548,9 +2587,14 @@ mod test {
 			.unwrap_or_else(|(_, error)| panic!("`{expression}` fails: {error}"))
 			.into_element()
 		}
-		fn f<U: ExpressionValue>(expression: &str, output_type: U) -> U {
-			let items: List<DVec2> = [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect();
+		let items = || [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect::<List<DVec2>>();
+		fn formula<U: ExpressionValue>(items: List<DVec2>, expression: &str, output_type: U) -> U {
 			math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type))
+				.unwrap()
+				.into_element()
+		}
+		fn aggregate<U: ExpressionValue>(items: List<DVec2>, operator: &str, output_type: U) -> U {
+			math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(output_type))
 				.unwrap()
 				.into_element()
 		}
@@ -2567,10 +2611,10 @@ mod test {
 		assert_eq!(fx(DVec2::new(3., 4.), "x + 2.6", 0_i64), 3);
 		assert!(fx(DVec2::new(3., 4.), "x + 1", false));
 
-		assert_eq!(f("+", DVec2::ZERO), DVec2::new(4., 7.));
-		assert_eq!(f("min", DVec2::ZERO), DVec2::new(1., 2.));
-		assert_eq!(f("a - b", DVec2::ZERO), DVec2::new(-2., 3.));
-		assert_eq!(f("dot(a, b)", 0.), 13.);
+		assert_eq!(aggregate(items(), "+", DVec2::ZERO), DVec2::new(4., 7.));
+		assert_eq!(aggregate(items(), "min", DVec2::ZERO), DVec2::new(1., 2.));
+		assert_eq!(formula(items(), "a - b", DVec2::ZERO), DVec2::new(-2., 3.));
+		assert_eq!(formula(items(), "dot(a, b)", 0.), 13.);
 	}
 
 	#[test]
@@ -2587,27 +2631,21 @@ mod test {
 	}
 
 	#[test]
-	fn test_positional_and_reducer_expressions() {
+	fn formula_reads_positions_and_aggregate_folds_operators() {
 		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
+		let formula = |expression: &str| math_formula((), &ParseCache::default(), values(), Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		let aggregate = |operator: &str| math_aggregate((), values(), Item::new_from_element(operator.to_string()), Item::new_from_element(0.)).map(Item::into_element);
 
-		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
-		let as_number = Item::new_from_element(0.);
-		assert_eq!(
-			math_formula((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone())
-				.unwrap()
-				.into_element(),
-			10.
-		);
-		assert_eq!(
-			math_formula((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone())
-				.unwrap()
-				.into_element(),
-			1.
-		);
-		assert_eq!(
-			math_formula((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).unwrap().into_element(),
-			12.
-		);
+		// A formula reads the items positionally as `a`, `b`, `c`, while an aggregate applies its operator across all of them
+		assert_eq!(formula("a - b + c").unwrap(), 10.);
+		assert_eq!(aggregate("min").unwrap(), 1.);
+		assert_eq!(aggregate("+").unwrap(), 12.);
+
+		// Each node takes only its own kind of string
+		assert!(matches!(formula(" + "), Err(MathExpressionError::LoneOperator(operator)) if operator == "+"));
+		assert!(matches!(formula("max"), Err(MathExpressionError::LoneOperator(_))));
+		assert!(matches!(aggregate("a + b"), Err(MathExpressionError::NotAnOperator)));
+		assert!(matches!(aggregate(""), Err(MathExpressionError::NotAnOperator)));
 	}
 
 	#[test]
@@ -2689,13 +2727,14 @@ mod test {
 		assert!(!message.contains(", at "), "{message}");
 
 		let values = |values: &[f64]| values.iter().copied().map(Item::new_from_element).collect::<List<f64>>();
-		let f = |items, expression: &str| math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
-		assert!(matches!(f(values(&[1.]), ""), Err(MathExpressionError::Empty)));
-		assert!(matches!(f(values(&[1.]), "a +"), Err(MathExpressionError::Invalid(_))));
-		assert_eq!(f(values(&[]), "min").unwrap(), 0.);
-		assert_eq!(f(values(&[]), "mean").unwrap(), 0.);
-		assert!(matches!(f(values(&[]), "-"), Err(MathExpressionError::EmptyReduction { .. })));
-		assert!(matches!(f(values(&[0., 0.]), "/"), Err(MathExpressionError::NoReduction { .. })));
+		let formula = |items, expression: &str| math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		let aggregate = |items, operator: &str| math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		assert!(matches!(formula(values(&[1.]), ""), Err(MathExpressionError::Empty)));
+		assert!(matches!(formula(values(&[1.]), "a +"), Err(MathExpressionError::Invalid(_))));
+		assert_eq!(aggregate(values(&[]), "min").unwrap(), 0.);
+		assert_eq!(aggregate(values(&[]), "mean").unwrap(), 0.);
+		assert!(matches!(aggregate(values(&[]), "-"), Err(MathExpressionError::EmptyReduction { .. })));
+		assert!(matches!(aggregate(values(&[0., 0.]), "/"), Err(MathExpressionError::NoReduction { .. })));
 	}
 
 	#[test]

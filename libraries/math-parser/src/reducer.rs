@@ -1,10 +1,11 @@
 use crate::ast::BinaryOp;
 use crate::constants::{Builtin, BuiltinFunction, builtin_function};
-use crate::context::ValueProvider;
+use crate::context::{NothingMap, ValueProvider};
 use crate::executer::settle_matrix;
 use crate::lexer::{Lexer, Token};
 use crate::matrix::Matrix;
 use crate::object::Object;
+use crate::parser::ParseError;
 use crate::value::{Number, Value};
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -78,6 +79,17 @@ pub fn classify_reducer(source: &str, bindings: impl ValueProvider) -> Option<Re
 		}
 		_ => return None,
 	})
+}
+
+/// Why an input string isn't a lone reducer token, for a host input taking only one, or `None` when it is one or is blank.
+pub fn reducer_error(source: &str) -> Option<ParseError> {
+	if source.trim().is_empty() || classify_reducer(source, NothingMap).is_some() {
+		return None;
+	}
+
+	// The whole source is wrong rather than any part of it, so the error spans all of it but the whitespace around it
+	let start = source.len() - source.trim_start().len();
+	Some(ParseError::lone_reducer_expected(start..source.trim_end().len()))
 }
 
 impl Reducer {

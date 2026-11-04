@@ -247,6 +247,7 @@ import NodeMandelbrot from "/../branding/assets/16x16-nodes/node-mandelbrot.svg"
 import NodeMapPoints from "/../branding/assets/16x16-nodes/node-map-points.svg";
 import NodeMap from "/../branding/assets/16x16-nodes/node-map.svg";
 import NodeMask from "/../branding/assets/16x16-nodes/node-mask.svg";
+import NodeMathAggregate from "/../branding/assets/16x16-nodes/node-math-aggregate.svg";
 import NodeMathFormula from "/../branding/assets/16x16-nodes/node-math-formula.svg";
 import NodeMathFunction from "/../branding/assets/16x16-nodes/node-math-function.svg";
 import NodeMax from "/../branding/assets/16x16-nodes/node-max.svg";
@@ -525,6 +526,7 @@ export const ICON_16X16_NODES = {
 	NodeMap: { svg: NodeMap, size: 16 },
 	NodeMapPoints: { svg: NodeMapPoints, size: 16 },
 	NodeMask: { svg: NodeMask, size: 16 },
+	NodeMathAggregate: { svg: NodeMathAggregate, size: 16 },
 	NodeMathFormula: { svg: NodeMathFormula, size: 16 },
 	NodeMathFunction: { svg: NodeMathFunction, size: 16 },
 	NodeMax: { svg: NodeMax, size: 16 },
