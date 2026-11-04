@@ -413,6 +413,66 @@ fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 	Ok(Item::new_from_element(output(&result)?))
 }
 
+/// Scans along the items, giving each one the result of folding an operator like `+` over it and every item before it, such as a running total, or of a function like `max`, such as the highest value so far.
+///
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` composes in order, which turns a list of steps into where each step ends up.
+#[node_macro::node(category("Math"), icon("NodeMathRunning"))]
+fn math_running<T: ExpressionValue, U: ExpressionValue>(
+	_: impl Ctx,
+	/// The items scanned along, each giving one result.
+	#[implementations(
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+	)]
+	values: List<T>,
+	/// The operator folded along the items, like `+` or `*`, or a function given the items so far, like `max` or `mean`.
+	#[default("+")]
+	#[widget(ParsedWidgetOverride::Custom = "math_operator")]
+	operator: Item<String>,
+	/// The type each result is read as.
+	#[implementations(
+		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+	)]
+	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
+	#[name("Output Type")]
+	output_type: Item<U>,
+) -> Result<List<U>, (List<U>, MathExpressionError)> {
+	// The output type input is a type witness: its type selects the implementation, and its value is never read
+	let _ = output_type;
+
+	let operator = operator.element();
+	let reducer = match operator_reducer(operator) {
+		Ok(reducer) => reducer,
+		Err(error) => return Err((values.into_iter().map(|item| Item::from_parts(U::default(), item.into_parts().1)).collect(), error)),
+	};
+
+	// Each item's run is folded on from the run before it, where a failed fold fails every run after it
+	let items = T::items(values.iter_element_values().copied());
+	let running = match &items {
+		Items::Values(values) => reducer.evaluate_running(values).into_iter().map(|result| result.map(Object::Value)).collect(),
+		Items::Matrices(matrices) => reducer.evaluate_running_matrices(matrices),
+	};
+
+	// A failing item takes the default, and the first failure is the one reported
+	let mut first_error = None;
+	let results = running.into_iter().map(|result| {
+		let no_reduction = || MathExpressionError::NoReduction { reducer: operator.trim().to_string() };
+		result.ok_or_else(no_reduction).and_then(|result| output(&result)).unwrap_or_else(|error| {
+			first_error.get_or_insert(error);
+			U::default()
+		})
+	});
+	let list = values.into_iter().zip(results).map(|(item, result)| Item::from_parts(result, item.into_parts().1)).collect();
+
+	match first_error {
+		Some(error) => Err((list, error)),
+		None => Ok(list),
+	}
+}
+
 /// An Integer result too large or too small for the Integer type to hold.
 #[derive(Debug, thiserror::Error)]
 pub enum IntegerOverflowError {
@@ -2646,6 +2706,59 @@ mod test {
 		assert!(matches!(formula("max"), Err(MathExpressionError::LoneOperator(_))));
 		assert!(matches!(aggregate("a + b"), Err(MathExpressionError::NotAnOperator)));
 		assert!(matches!(aggregate(""), Err(MathExpressionError::NotAnOperator)));
+	}
+
+	#[test]
+	fn running_results_follow_each_item() {
+		let numbers = |values: &[f64]| values.iter().copied().map(Item::new_from_element).collect::<List<f64>>();
+		let running = |items: List<f64>, operator: &str| {
+			math_running((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(0.))
+				.map(|list| list.iter_element_values().copied().collect::<Vec<_>>())
+				.map_err(|(_, error)| error)
+		};
+
+		// Each item gets the fold of it and those before it, like a running total or the highest value so far
+		assert_eq!(running(numbers(&[3., 1., 4., 1., 5.]), "+").unwrap(), [3., 4., 8., 9., 14.]);
+		assert_eq!(running(numbers(&[3., 1., 4., 1., 5.]), "max").unwrap(), [3., 3., 4., 4., 5.]);
+		assert_eq!(running(numbers(&[]), "-").unwrap(), Vec::<f64>::new());
+		assert!(matches!(running(numbers(&[1., 2.]), "a + b"), Err(MathExpressionError::NotAnOperator)));
+
+		let increasing = math_running((), numbers(&[1., 2., 5., 4., 6.]), Item::new_from_element("<".to_string()), Item::new_from_element(false)).unwrap();
+		assert_eq!(increasing.iter_element_values().copied().collect::<Vec<_>>(), [true, true, true, false, false]);
+	}
+
+	#[test]
+	fn running_results_keep_attributes_and_fail_only_where_they_fail() {
+		let items = [1., 2., 3.]
+			.into_iter()
+			.map(|value| Item::new_from_element(value).with_attribute("weight", value * 10.))
+			.collect::<List<f64>>();
+		let totals = math_running((), items, Item::new_from_element("+".to_string()), Item::new_from_element(0.)).unwrap();
+		assert_eq!(totals.iter_element_values().copied().collect::<Vec<_>>(), [1., 3., 6.]);
+		assert_eq!(
+			(0..3).map(|index| totals.attribute::<f64>("weight", index).copied()).collect::<Vec<_>>(),
+			[Some(10.), Some(20.), Some(30.)]
+		);
+
+		// Only the running total 2 can't be read as a Bool, so it alone takes the default
+		let items = [0., 1., 1., -1.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
+		let (stand_in, error) = math_running((), items, Item::new_from_element("+".to_string()), Item::new_from_element(false)).unwrap_err();
+		assert_eq!(stand_in.iter_element_values().copied().collect::<Vec<_>>(), [false, true, false, true]);
+		assert!(matches!(error, MathExpressionError::OutputType { .. }));
+	}
+
+	#[test]
+	fn running_transform_products_place_each_step() {
+		// Each step turns in place and then moves forward in its own direction, so the running product is where each step ends up
+		let forward = DAffine2::from_translation(DVec2::X);
+		let turn_then_forward = DAffine2::from_angle(std::f64::consts::FRAC_PI_2) * forward;
+		let steps = [forward, turn_then_forward, turn_then_forward].into_iter().map(Item::new_from_element).collect::<List<DAffine2>>();
+
+		let placed = math_running((), steps, Item::new_from_element("*".to_string()), Item::new_from_element(DAffine2::IDENTITY)).unwrap();
+		let translations = placed.iter_element_values().map(|transform| transform.translation).collect::<Vec<_>>();
+		for (translation, expected) in translations.into_iter().zip([DVec2::new(1., 0.), DVec2::new(1., 1.), DVec2::new(0., 1.)]) {
+			assert!(translation.abs_diff_eq(expected, 1e-12), "{translation} is not {expected}");
+		}
 	}
 
 	#[test]

@@ -99,8 +99,69 @@ impl Reducer {
 		if items.iter().any(|Value::Number(number)| number.is_nan()) {
 			return None;
 		}
-		let Value::Number(result) = self.evaluate_unsettled(items)?;
-		(!result.is_nan()).then(|| Value::Number(result.canonical()))
+		settle(self.evaluate_unsettled(items)?)
+	}
+
+	/// Evaluates this reducer across each leading run of the items, the first item alone, then the first two, and so on, giving for
+	/// each run exactly what [`Self::evaluate`] gives for it. Once a fold step fails, every longer run fails with it.
+	pub fn evaluate_running(&self, items: &[Value]) -> Vec<Option<Value>> {
+		// A NaN item makes every run containing it ill-formed
+		let valid_count = items.iter().position(|Value::Number(number)| number.is_nan()).unwrap_or(items.len());
+		let valid_items = &items[..valid_count];
+
+		// Items take canonical form first, as in `evaluate_unsettled`
+		let numbers = valid_items.iter().map(|Value::Number(number)| number.canonical());
+		let mut results: Vec<Option<Value>> = match self {
+			// O(n) by folding each item into the previous run's result
+			Reducer::FoldLeft(op) => {
+				let mut accumulated: Option<Number> = None;
+				numbers
+					.enumerate()
+					.map(|(index, item)| {
+						accumulated = match index {
+							// A lone item meets no operator, so logic checks it is a truth value here
+							0 if matches!(op, BinaryOp::And | BinaryOp::Or) => item.as_bool().map(|_| item),
+							0 => Some(item),
+							_ => accumulated.and_then(|accumulated| accumulated.binary_op(*op, item)),
+						};
+						accumulated.and_then(|accumulated| settle(Value::Number(accumulated)))
+					})
+					.collect()
+			}
+
+			// O(n) by checking only the newest adjacent pair against the previous run's result
+			Reducer::ChainAdjacent(op) => {
+				let mut satisfied = Some(true);
+				let mut previous = None;
+				numbers
+					.map(|number| {
+						if let Some(previous) = previous {
+							satisfied = satisfied.and_then(|satisfied| adjacent_holds(*op, previous, number).map(|holds| satisfied && holds));
+						}
+						previous = Some(number);
+						satisfied.and_then(|satisfied| settle(Value::from_bool(satisfied)))
+					})
+					.collect()
+			}
+
+			// O(n) by keeping the set of items seen so far
+			Reducer::ChainDistinct => {
+				let mut seen = HashSet::new();
+				let mut distinct = true;
+				numbers
+					.map(|number| {
+						distinct &= seen.insert(CanonicalBits::of(number));
+						settle(Value::from_bool(distinct))
+					})
+					.collect()
+			}
+
+			// O(n²) since `^` groups from the right and a variadic builtin reads its whole list, so no run builds on a shorter one's result
+			Reducer::FoldRight(_) | Reducer::Function { .. } => (1..=valid_count).map(|count| self.evaluate(&valid_items[..count])).collect(),
+		};
+
+		results.resize(items.len(), None);
+		results
 	}
 
 	fn evaluate_unsettled(&self, items: &[Value]) -> Option<Value> {
@@ -150,13 +211,7 @@ impl Reducer {
 
 		match self {
 			Reducer::FoldLeft(op) => {
-				let combine: fn(Matrix, Matrix) -> Option<Matrix> = match op {
-					BinaryOp::Add => |a, b| Some(a + b),
-					BinaryOp::Sub => |a, b| Some(a - b),
-					BinaryOp::Mul => |a, b| Some(a.compose(b)),
-					BinaryOp::Div => |a, b| Some(a.compose(b.inverse()?)),
-					_ => return None,
-				};
+				let combine = matrix_fold_step(*op)?;
 
 				let mut iter = items.iter().copied();
 				let Some(first) = iter.next() else {
@@ -173,6 +228,60 @@ impl Reducer {
 			Reducer::FoldRight(_) | Reducer::ChainAdjacent(_) | Reducer::ChainDistinct => None,
 		}
 	}
+
+	/// Evaluates this reducer across each leading run of the matrices, the first alone, then the first two, and so on, giving for
+	/// each run exactly what [`Self::evaluate_matrices`] gives for it. Under `*`, each result is where that many steps end up.
+	pub fn evaluate_running_matrices(&self, items: &[Matrix]) -> Vec<Option<Object>> {
+		// A NaN item makes every run containing it ill-formed
+		let valid_count = items.iter().position(|matrix| matrix.is_nan()).unwrap_or(items.len());
+		let valid_items = &items[..valid_count];
+
+		let mut results: Vec<Option<Object>> = match self {
+			// O(n) by folding each matrix into the previous run's result
+			Reducer::FoldLeft(op) => match matrix_fold_step(*op) {
+				Some(combine) => {
+					let mut accumulated: Option<Matrix> = None;
+					valid_items
+						.iter()
+						.enumerate()
+						.map(|(index, &matrix)| {
+							accumulated = match index {
+								0 => Some(matrix),
+								_ => accumulated.and_then(|accumulated| settle_matrix(combine(accumulated, matrix)?).ok()),
+							};
+							accumulated.map(Object::from)
+						})
+						.collect()
+				}
+				None => Vec::new(),
+			},
+
+			// O(n²) since a matrix function is an opaque function of its whole list
+			Reducer::Function { over_matrices, .. } => (1..=valid_count).map(|count| over_matrices.and_then(|function| function(&valid_items[..count]))).collect(),
+
+			Reducer::FoldRight(_) | Reducer::ChainAdjacent(_) | Reducer::ChainDistinct => Vec::new(),
+		};
+
+		results.resize(items.len(), None);
+		results
+	}
+}
+
+/// A reducer's result in canonical form, or `None` for an indeterminate result, since no operation produces NaN.
+fn settle(Value::Number(result): Value) -> Option<Value> {
+	(!result.is_nan()).then(|| Value::Number(result.canonical()))
+}
+
+/// How a fold combines its running matrix with the next one: `*` and `/` compose in list order, while `+` and `-` are pointwise.
+/// Any other operator has no action across matrices.
+fn matrix_fold_step(op: BinaryOp) -> Option<fn(Matrix, Matrix) -> Option<Matrix>> {
+	Some(match op {
+		BinaryOp::Add => |a, b| Some(a + b),
+		BinaryOp::Sub => |a, b| Some(a - b),
+		BinaryOp::Mul => |a, b| Some(a.compose(b)),
+		BinaryOp::Div => |a, b| Some(a.compose(b.inverse()?)),
+		_ => return None,
+	})
 }
 
 /// Whether every adjacent pair of items satisfies the chain's relation: true over zero or one items, since no pair exists to fail
@@ -441,5 +550,36 @@ mod tests {
 			assert_eq!(reduce(source, &[scale]), None, "`{source}`");
 		}
 		assert_eq!(reduce("+", &[scale, Matrix::IDENTITY.translated(Quaternion::splat(f64::NAN))]), None);
+	}
+
+	#[test]
+	fn running_results_match_each_leading_run() {
+		// Between them, the lists hold repeats, descents, a zero divisor, a NaN, and items that aren't truth values
+		let lists: [&[f64]; 6] = [&[3., 1., 4., 1., 5.], &[2., 0., 3.], &[1., 1., 0., 1.], &[0.5, 2., -1., 2.], &[1., f64::NAN, 2.], &[]];
+		for source in ["+", "-", "*", "/", "&&", "||", "^", "<", "<=", "==", "!=", "min", "max", "mean", "count"] {
+			let reducer = classify_reducer(source, NothingMap).unwrap();
+			for list in lists {
+				let items: Vec<Value> = list.iter().map(|&item| Value::from_f64(item)).collect();
+				let expected: Vec<Option<Value>> = (1..=items.len()).map(|count| reducer.evaluate(&items[..count])).collect();
+				assert_eq!(reducer.evaluate_running(&items), expected, "`{source}` over {list:?}");
+			}
+		}
+	}
+
+	#[test]
+	fn running_matrix_results_match_each_leading_run() {
+		let scale = Matrix::scale(Quaternion::new(2., 0., 0., 0.));
+		let shift = Matrix::IDENTITY.translated(Quaternion::I);
+		let nan = Matrix::IDENTITY.translated(Quaternion::splat(f64::NAN));
+
+		// Between them, the lists hold a singular divisor and a NaN
+		let lists: [&[Matrix]; 4] = [&[scale, shift, scale, shift], &[shift, Matrix::ZERO, scale], &[scale, nan, shift], &[]];
+		for source in ["*", "/", "+", "-", "mean", "count", "<", "min"] {
+			let reducer = classify_reducer(source, NothingMap).unwrap();
+			for (list_index, list) in lists.into_iter().enumerate() {
+				let expected: Vec<Option<Object>> = (1..=list.len()).map(|count| reducer.evaluate_matrices(&list[..count])).collect();
+				assert_eq!(reducer.evaluate_running_matrices(list), expected, "`{source}` over list {list_index}");
+			}
+		}
 	}
 }

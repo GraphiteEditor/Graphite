@@ -250,6 +250,7 @@ import NodeMask from "/../branding/assets/16x16-nodes/node-mask.svg";
 import NodeMathAggregate from "/../branding/assets/16x16-nodes/node-math-aggregate.svg";
 import NodeMathFormula from "/../branding/assets/16x16-nodes/node-math-formula.svg";
 import NodeMathFunction from "/../branding/assets/16x16-nodes/node-math-function.svg";
+import NodeMathRunning from "/../branding/assets/16x16-nodes/node-math-running.svg";
 import NodeMax from "/../branding/assets/16x16-nodes/node-max.svg";
 import NodeMaximum from "/../branding/assets/16x16-nodes/node-maximum.svg";
 import NodeMedianFilter from "/../branding/assets/16x16-nodes/node-median-filter.svg";
@@ -529,6 +530,7 @@ export const ICON_16X16_NODES = {
 	NodeMathAggregate: { svg: NodeMathAggregate, size: 16 },
 	NodeMathFormula: { svg: NodeMathFormula, size: 16 },
 	NodeMathFunction: { svg: NodeMathFunction, size: 16 },
+	NodeMathRunning: { svg: NodeMathRunning, size: 16 },
 	NodeMax: { svg: NodeMax, size: 16 },
 	NodeMaximum: { svg: NodeMaximum, size: 16 },
 	NodeMedianFilter: { svg: NodeMedianFilter, size: 16 },
