@@ -1,6 +1,7 @@
 pub mod fallback;
 mod font;
 pub mod json;
+pub mod l_system;
 mod path_builder;
 pub mod regex;
 mod text_context;
