@@ -472,7 +472,6 @@ impl<'a> Walk<'a, '_> {
 				let hash = path_hash ^ (reflection as u64 + 1).wrapping_mul(0x9E37_79B9_7F4A_7C15);
 				self.value_node(ty, hash, source, builtins.context, (path_hash, 0))
 			}
-			Input::Inline => Err("Inline inputs are not supported".to_string()),
 		}
 	}
 

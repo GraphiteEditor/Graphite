@@ -45,7 +45,7 @@ pub struct Baseline {
 	pub registry: Registry,
 	pub preprocessor: Preprocessor,
 	pub builtins: Builtins,
-	/// Analyzes each node's context dependencies once rather than once per path reaching it. Off reproduces Graphite.
+	/// Analyzes each node's context dependencies once rather than once per path reaching it, as Graphite does since #4834.
 	pub memoize_context_analysis: bool,
 	names: TypeNames,
 }
@@ -80,7 +80,11 @@ impl Baseline {
 			.collect();
 
 		let tables = workload::load_preprocessor_tables();
-		let mut converter = Converter { names: &mut names, from_code: true };
+		let mut converter = Converter {
+			names: &mut names,
+			from_code: true,
+			entries: Default::default(),
+		};
 		let substitutions = tables
 			.substitutions
 			.iter()
@@ -110,7 +114,7 @@ impl Baseline {
 				compile_metadata,
 			},
 			builtins,
-			memoize_context_analysis: false,
+			memoize_context_analysis: true,
 			names,
 		}
 	}
@@ -124,6 +128,7 @@ impl Baseline {
 		Converter {
 			names: &mut self.names,
 			from_code: false,
+			entries: Default::default(),
 		}
 		.network(network)
 	}
@@ -167,6 +172,8 @@ struct Converter<'a> {
 	names: &'a mut TypeNames,
 	/// Whether the structures were built in Graphite's code (borrowed names, `TypeId`s) rather than deserialized from a document.
 	from_code: bool,
+	/// The definitions table entries, which this port of the inline compiler inlines wherever a node names one.
+	entries: std::collections::HashMap<u64, workload::Network>,
 }
 
 impl Converter<'_> {
@@ -203,13 +210,16 @@ impl Converter<'_> {
 			},
 			workload::Input::Scope(key) => NodeInput::Scope(self.identifier(key)),
 			workload::Input::Reflection(reflection) => NodeInput::Reflection(*reflection),
-			workload::Input::Inline => NodeInput::Inline,
 		}
 	}
 
 	fn node(&mut self, node: &workload::Node) -> DocumentNode {
 		let implementation = match &node.implementation {
 			workload::Implementation::Network(network) => DocumentNodeImplementation::Network(self.network(network)),
+			workload::Implementation::Definition(id) => {
+				let entry = self.entries.get(id).unwrap_or_else(|| panic!("Definition {id} is missing from the definitions table")).clone();
+				DocumentNodeImplementation::Network(self.network(&entry))
+			}
 			workload::Implementation::Proto(identifier) => DocumentNodeImplementation::ProtoNode(self.identifier(identifier)),
 			workload::Implementation::Extract => DocumentNodeImplementation::Extract,
 		};
@@ -225,6 +235,7 @@ impl Converter<'_> {
 	}
 
 	fn network(&mut self, network: &workload::Network) -> NodeNetwork {
+		self.entries.extend(network.definitions.iter().cloned());
 		NodeNetwork {
 			exports: network.exports.iter().map(|input| self.input(input)).collect(),
 			nodes: network.nodes.iter().map(|(id, node)| (NodeId(*id), self.node(node))).collect(),

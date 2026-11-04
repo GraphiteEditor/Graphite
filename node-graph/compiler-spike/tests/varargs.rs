@@ -4,7 +4,7 @@ use compiler_spike::synthetic::wrap_in_scope;
 use compiler_spike::workload::{Implementation, Input, Network, Node, NodeReference, Type, Value};
 use std::hash::{DefaultHasher, Hash, Hasher};
 
-const COLOR: &str = "no_std_types::color::color_types::Color";
+const COLOR: &str = "core_types::color::color_types::Color";
 const VECTOR: &str = "vector_types::vector::vector_types::Vector";
 const STRING: &str = "alloc::string::String";
 const VARARGS: u32 = 1 << 6;
@@ -57,6 +57,7 @@ fn network(nodes: Vec<(u64, Node)>, output: u64) -> Network {
 		exports: vec![node(output)],
 		nodes,
 		scope_injections: Vec::new(),
+		definitions: Vec::new(),
 		generated: false,
 	}
 }

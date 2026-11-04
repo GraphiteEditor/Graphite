@@ -12,7 +12,6 @@ use std::hash::{Hash, Hasher};
 pub enum ConstructionArgs {
 	Value(MemoValue),
 	Nodes(Vec<NodeId>),
-	Inline,
 }
 
 impl ConstructionArgs {
@@ -25,7 +24,6 @@ impl ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.hash.hash(state),
-			Self::Inline => {}
 		}
 	}
 }
@@ -283,7 +281,7 @@ impl ProtoNetwork {
 					Some(id),
 				);
 			}
-			ConstructionArgs::Value(_) | ConstructionArgs::Inline => {
+			ConstructionArgs::Value(_) => {
 				return (
 					ContextModification {
 						features: dependencies.extract,

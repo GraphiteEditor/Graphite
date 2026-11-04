@@ -118,7 +118,6 @@ impl BorrowTree {
 				let node = observe(Box::new(ValueNode(value.clone())));
 				self.nodes.insert(id, (node, path, Box::default()));
 			}
-			ConstructionArgs::Inline => return Err("Inline nodes are not supported".to_string()),
 			ConstructionArgs::Nodes(ids) => {
 				let ids = ids.to_vec();
 				let mut construction_nodes: Vec<SharedNode> = ids.iter().map(|node| self.nodes.get(node).unwrap().0.clone()).collect();

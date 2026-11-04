@@ -450,8 +450,7 @@ pub enum PreprocessorError {
 	Definition(DefinitionError),
 }
 
-#[cfg(test)]
-mod spike_export;
+pub mod spike_export;
 
 #[cfg(test)]
 mod destructure_tests {

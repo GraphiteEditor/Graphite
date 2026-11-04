@@ -38,7 +38,6 @@ pub enum Input {
 	Import(u32),
 	Scope(u32),
 	Reflection(Reflection),
-	Inline,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -71,8 +70,8 @@ pub struct Definition {
 	pub in_document: bool,
 	/// A Merkle hash of everything elaboration reads, including nested definitions, which keys cached instances.
 	pub deep_hash: u64,
-	/// The document definition and node implemented by this definition, so edits can rehash up to the root.
-	pub owner: Option<(u32, u32)>,
+	/// Every document definition and node implemented by this definition, so edits can rehash up to the root.
+	pub owners: Vec<(u32, u32)>,
 	/// For each node, how many exports its instance has, or `SINGLE_OUTPUT` when it lowers to one IR node.
 	pub export_counts: Vec<u32>,
 }
@@ -112,7 +111,6 @@ fn hash_inputs(inputs: &[Input], hasher: &mut impl Hasher) {
 			Input::Import(index) => (2_u8, index).hash(hasher),
 			Input::Scope(key) => (3_u8, key).hash(hasher),
 			Input::Reflection(reflection) => (4_u8, reflection as u32).hash(hasher),
-			Input::Inline => 5_u8.hash(hasher),
 		}
 	}
 }
@@ -158,6 +156,8 @@ pub struct Converter<'a> {
 	pub definitions: &'a mut Vec<Definition>,
 	pub template: bool,
 	pub in_document: bool,
+	/// The converted entries of the definitions table, by their document network ID.
+	pub entries: FxHashMap<u64, DefinitionId>,
 }
 
 impl Converter<'_> {
@@ -181,7 +181,6 @@ impl Converter<'_> {
 			workload::Input::Import(import) => Input::Import(import.index as u32),
 			workload::Input::Scope(key) => Input::Scope(self.strings.intern(key)),
 			workload::Input::Reflection(reflection) => Input::Reflection(*reflection),
-			workload::Input::Inline => Input::Inline,
 		}
 	}
 
@@ -189,6 +188,7 @@ impl Converter<'_> {
 		let implementation = match &node.implementation {
 			workload::Implementation::Proto(identifier) => Implementation::Proto(IdentifierId(self.strings.intern(identifier))),
 			workload::Implementation::Network(network) => Implementation::Network(self.network(network)),
+			workload::Implementation::Definition(id) => Implementation::Network(*self.entries.get(id).unwrap_or_else(|| panic!("Definition {id} is missing from the definitions table"))),
 			workload::Implementation::Extract => Implementation::Extract,
 		};
 		let start = definition.inputs.len() as u32;
@@ -209,6 +209,11 @@ impl Converter<'_> {
 
 	/// Converts a network with additional root nodes, such as the preprocessor's inject scope templates.
 	pub fn network_with(&mut self, network: &workload::Network, extra_nodes: &[(u64, workload::Node)], extra_scopes: &[(String, u64)]) -> DefinitionId {
+		let table: FxHashMap<u64, &workload::Network> = network.definitions.iter().map(|(id, entry)| (*id, entry)).collect();
+		for (id, _) in &network.definitions {
+			self.entry(*id, &table);
+		}
+
 		let all_nodes: Vec<&(u64, workload::Node)> = network.nodes.iter().chain(extra_nodes).collect();
 		let locals: FxHashMap<u64, u32> = all_nodes.iter().enumerate().map(|(index, (id, _))| (*id, index as u32)).collect();
 
@@ -234,7 +239,7 @@ impl Converter<'_> {
 		definition.deep_hash = definition.compute_deep_hash(|nested| self.definitions[nested.index()].deep_hash);
 		for (local, node) in definition.nodes.iter().enumerate() {
 			if let Implementation::Network(nested) = node.implementation {
-				self.definitions[nested.index()].owner = Some((index, local as u32));
+				self.definitions[nested.index()].owners.push((index, local as u32));
 			}
 		}
 		self.definitions.push(definition);
@@ -243,5 +248,34 @@ impl Converter<'_> {
 
 	pub fn network(&mut self, network: &workload::Network) -> DefinitionId {
 		self.network_with(network, &[], &[])
+	}
+
+	/// Converts a definitions table entry once, after the entries it names, so every node naming it shares the definition.
+	fn entry(&mut self, id: u64, table: &FxHashMap<u64, &workload::Network>) -> DefinitionId {
+		if let Some(&converted) = self.entries.get(&id) {
+			return converted;
+		}
+		let network = *table.get(&id).unwrap_or_else(|| panic!("Definition {id} is missing from the definitions table"));
+
+		let mut named = Vec::new();
+		named_entries(network, &mut named);
+		for nested in named {
+			self.entry(nested, table);
+		}
+
+		let converted = self.network(network);
+		self.entries.insert(id, converted);
+		converted
+	}
+}
+
+/// The definitions table entries that nodes in `network` and its inline networks name.
+fn named_entries(network: &workload::Network, named: &mut Vec<u64>) {
+	for (_, node) in &network.nodes {
+		match &node.implementation {
+			workload::Implementation::Definition(id) => named.push(*id),
+			workload::Implementation::Network(nested) => named_entries(nested, named),
+			workload::Implementation::Proto(_) | workload::Implementation::Extract => {}
+		}
 	}
 }

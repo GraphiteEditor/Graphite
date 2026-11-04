@@ -8,8 +8,9 @@ const RENDER_NODE: u64 = 1;
 
 /// Places a document in the editor's scope wrapper, taken from an exported demo, as `wrap_network_in_scope` does.
 /// Without `render`, the document is exported directly, for documents whose output is not a graphic.
-pub fn wrap_in_scope(document: Network, render: bool) -> Network {
+pub fn wrap_in_scope(mut document: Network, render: bool) -> Network {
 	let mut scoped = load_network("procedural-string-lights");
+	scoped.definitions = std::mem::take(&mut document.definitions);
 	let (_, document_node) = scoped
 		.nodes
 		.iter_mut()
@@ -106,6 +107,7 @@ impl Builder {
 			exports: vec![export],
 			nodes: self.nodes,
 			scope_injections: Vec::new(),
+			definitions: Vec::new(),
 			generated: false,
 		}
 	}
@@ -270,15 +272,20 @@ pub fn rectangle_layers(count: usize) -> Network {
 }
 
 /// `count` instances of one subnetwork definition, each fed by its own time leaf and summed by a balanced tree.
+/// The instances name one shared definitions table entry, as nodes inserted from the catalog do.
 pub fn instances(count: usize, chain_length: usize) -> Network {
-	let definition = import_chain(chain_length);
+	const SHARED_DEFINITION: u64 = 1;
+
 	let mut builder = Builder::default();
 	let outputs = (0..count)
 		.map(|_| {
 			let source = builder.time();
-			builder.push_implementation(Implementation::Network(definition.clone()), vec![source])
+			builder.push_implementation(Implementation::Definition(SHARED_DEFINITION), vec![source])
 		})
 		.collect();
 	let export = builder.reduce(outputs);
-	builder.finish_document(export)
+
+	let mut document = builder.finish(export);
+	document.definitions = vec![(SHARED_DEFINITION, import_chain(chain_length))];
+	wrap_in_scope(document, false)
 }

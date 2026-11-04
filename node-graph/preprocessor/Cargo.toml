@@ -22,6 +22,7 @@ log = { workspace = true }
 graphene-std = { workspace = true, features = ["gpu"] }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
+serde_json = { workspace = true }
 
 [dev-dependencies]
 # Workspace dependencies
@@ -31,4 +32,3 @@ futures = { workspace = true }
 glam = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 node-macro = { workspace = true }
-serde_json = { workspace = true }

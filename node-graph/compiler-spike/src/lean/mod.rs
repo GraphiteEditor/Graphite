@@ -74,17 +74,25 @@ impl Document {
 		self.rehash(definition, local);
 	}
 
-	fn rehash(&mut self, mut definition: u32, mut local: u32) {
-		loop {
-			self.dirty_nodes.push((definition, local));
+	fn rehash(&mut self, definition: u32, local: u32) {
+		let mut dirty = rustc_hash::FxHashSet::default();
+		let mut pending = vec![(definition, local)];
+		while let Some(node) = pending.pop() {
+			if dirty.insert(node) {
+				pending.extend(self.definitions[node.0 as usize].owners.iter().copied());
+			}
+		}
+
+		// Definitions follow the ones they name, so ascending order rehashes every nested definition before its owners
+		let mut affected: Vec<u32> = dirty.iter().map(|(definition, _)| *definition).collect();
+		affected.sort_unstable();
+		affected.dedup();
+		for definition in affected {
 			let definitions = &self.definitions;
 			let deep_hash = definitions[definition as usize].compute_deep_hash(|nested| definitions[nested.index()].deep_hash);
 			self.definitions[definition as usize].deep_hash = deep_hash;
-			match self.definitions[definition as usize].owner {
-				Some((parent, owner_local)) => (definition, local) = (parent, owner_local),
-				None => break,
-			}
 		}
+		self.dirty_nodes.extend(dirty);
 	}
 }
 
@@ -199,6 +207,7 @@ impl Lean {
 				definitions: &mut templates,
 				template: true,
 				in_document: false,
+				entries: Default::default(),
 			};
 			let definition = converter.network(network);
 			let empty = FxHashMap::default();
@@ -255,6 +264,7 @@ impl Lean {
 			definitions: &mut definitions,
 			template: false,
 			in_document: true,
+			entries: Default::default(),
 		};
 		let root = converter.network_with(network, &extra_nodes, &extra_scopes);
 		self.annotate_export_counts(&mut definitions);

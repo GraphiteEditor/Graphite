@@ -3,7 +3,7 @@ use compiler_spike::lean::Lean;
 use compiler_spike::synthetic::wrap_in_scope;
 use compiler_spike::workload::{Implementation, Input, Network, Node, NodeReference, Type, Value};
 
-const COLOR: &str = "no_std_types::color::color_types::Color";
+const COLOR: &str = "core_types::color::color_types::Color";
 const VECTOR: &str = "vector_types::vector::vector_types::Vector";
 const GRADIENT: &str = "vector_types::gradient::Gradient";
 const RASTER_CPU: &str = "raster_types::raster_types::Raster<raster_types::raster_types::cpu::CPU>";
@@ -40,6 +40,7 @@ fn feed(element: &str, node: &str) -> Result<Coerced, String> {
 		exports: vec![Input::Node(NodeReference { node: 1, output: 0 })],
 		nodes: vec![(1, consumer)],
 		scope_injections: Vec::new(),
+		definitions: Vec::new(),
 		generated: false,
 	};
 

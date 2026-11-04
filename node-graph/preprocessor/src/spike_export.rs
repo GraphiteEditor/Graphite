@@ -1,18 +1,18 @@
 use crate::{Preprocessor, Substitution};
+use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
-use graph_craft::util::{DEMO_ART, load_from_name, load_network};
 use graph_craft::{ProtoNodeIdentifier, Type};
 use graphene_std::NodeCompileMetadata;
 use graphene_std::application_io::EditorApi;
+use graphene_std::platform_application_io::ResourceHash;
 use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
 use interpreted_executor::util::wrap_network_in_scope;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet};
+use std::path::Path;
 use std::sync::Arc;
-
-const OUTPUT_DIRECTORY: &str = "../compiler-spike/workloads";
 
 struct DummySpawner;
 impl Spawn for DummySpawner {
@@ -49,7 +49,6 @@ fn export_input(input: &NodeInput) -> Value {
 		NodeInput::Import { import_type, import_index } => json!({ "Import": { "ty": export_type(import_type), "index": import_index } }),
 		NodeInput::Scope(key) => json!({ "Scope": key }),
 		NodeInput::Reflection(metadata) => json!({ "Reflection": format!("{metadata:?}") }),
-		NodeInput::Inline(_) => json!("Inline"),
 	}
 }
 
@@ -66,6 +65,7 @@ fn export_compile_metadata(metadata: &NodeCompileMetadata) -> Value {
 fn export_node(node: &DocumentNode) -> Value {
 	let implementation = match &node.implementation {
 		DocumentNodeImplementation::Network(network) => json!({ "Network": export_network(network) }),
+		DocumentNodeImplementation::Definition(id) => json!({ "Definition": id.0 }),
 		DocumentNodeImplementation::ProtoNode(identifier) => json!({ "Proto": identifier.as_str() }),
 		DocumentNodeImplementation::Extract => json!("Extract"),
 	};
@@ -84,11 +84,14 @@ fn export_network(network: &NodeNetwork) -> Value {
 	nodes.sort_by_key(|(id, _)| id.0);
 	let mut scope_injections: Vec<_> = network.scope_injections.iter().collect();
 	scope_injections.sort_by_key(|(key, _)| key.as_str());
+	let mut definitions: Vec<_> = network.definitions.iter().collect();
+	definitions.sort_by_key(|(id, _)| id.0);
 
 	json!({
 		"exports": network.exports.iter().map(export_input).collect::<Vec<_>>(),
 		"nodes": nodes.into_iter().map(|(id, node)| json!([id.0, export_node(node)])).collect::<Vec<_>>(),
 		"scope_injections": scope_injections.into_iter().map(|(key, (id, ty))| json!([key, id.0, export_type(ty)])).collect::<Vec<_>>(),
+		"definitions": definitions.into_iter().map(|(id, definition)| json!([id.0, export_network(definition)])).collect::<Vec<_>>(),
 		"generated": network.generated,
 	})
 }
@@ -141,49 +144,50 @@ fn export_preprocessor(preprocessor: &Preprocessor) -> Value {
 	json!({ "substitutions": substitutions, "inject_scopes": inject_scopes, "compile_metadata": compile_metadata })
 }
 
-/// Writes the compiler spike's workloads: each demo's scoped network before preprocessing, the node registry,
-/// the preprocessor's tables, and the real compiler's results for validating the spike's baseline port.
-#[test]
-#[ignore]
-fn export_compiler_spike_workloads() {
-	std::fs::create_dir_all(OUTPUT_DIRECTORY).unwrap();
-	let write = |name: &str, value: &Value| std::fs::write(format!("{OUTPUT_DIRECTORY}/{name}.json"), serde_json::to_string(value).unwrap()).unwrap();
+/// A document to export, with the resource store its value inputs resolve against.
+pub struct WorkloadDocument<'a> {
+	pub name: String,
+	pub network: NodeNetwork,
+	pub resolve_resource: Box<dyn Fn(ResourceId) -> Option<ResourceHash> + 'a>,
+}
+
+/// Writes the compiler spike's workloads into `output_directory`: each document's scoped network before preprocessing,
+/// the node registry, the preprocessor's tables, and the real compiler's results for validating the spike's baseline port.
+pub fn export_compiler_spike_workloads<'a>(output_directory: &Path, documents: impl IntoIterator<Item = WorkloadDocument<'a>>) -> Result<(), String> {
+	std::fs::create_dir_all(output_directory).map_err(|error| error.to_string())?;
+	let write = |name: &str, value: &Value| std::fs::write(output_directory.join(format!("{name}.json")), value.to_string()).map_err(|error| error.to_string());
 
 	let preprocessor = Preprocessor::new();
-	write("registry", &export_registry());
-	write("preprocessor", &export_preprocessor(&preprocessor));
-
-	// Templates are documents the editor generates for the spike's synthetic workloads, such as `rectangle-layers`
-	let templates = std::fs::read_dir(format!("{OUTPUT_DIRECTORY}/templates")).into_iter().flatten().filter_map(|entry| {
-		let path = entry.ok()?.path();
-		let name = path.file_stem()?.to_str()?.to_string();
-		Some((name, load_network(&std::fs::read_to_string(&path).ok()?)))
-	});
-	let documents = DEMO_ART.iter().map(|name| (name.to_string(), load_from_name(name))).chain(templates);
+	write("registry", &export_registry())?;
+	write("preprocessor", &export_preprocessor(&preprocessor))?;
 
 	let runtime = AsyncRuntime::new(Arc::new(DummySpawner));
 	let mut expected = serde_json::Map::new();
-	for (name, document) in documents {
-		let name = name.as_str();
-		let scoped = wrap_network_in_scope(document, Arc::new(EditorApi::default()), runtime.handle());
-		write(name, &export_network(&scoped));
+	for WorkloadDocument { name, network, resolve_resource } in documents {
+		let scoped = wrap_network_in_scope(network, Arc::new(EditorApi::default()), runtime.handle());
+		write(&name, &export_network(&scoped))?;
 
 		let mut preprocessed = scoped;
-		preprocessor.preprocess(&mut preprocessed, &|_| None).unwrap();
-		let proto_network = Compiler {}.compile_single(preprocessed).unwrap().network;
+		preprocessor.preprocess(&mut preprocessed, &*resolve_resource).map_err(|error| format!("{name}: {error:?}"))?;
+		let proto_network = Compiler {}.compile_single(preprocessed).map_err(|error| format!("{name}: {error:?}"))?.network;
 		let unique_stable_ids: HashSet<_> = proto_network.nodes.iter().map(|(id, _)| *id).collect();
 		let distinct_identifiers: HashSet<_> = proto_network.nodes.iter().map(|(_, node)| node.identifier.clone()).collect();
-		let executor = interpreted_executor::dynamic_executor::DynamicExecutor::new(proto_network.clone()).unwrap();
+		let mut identifier_counts = std::collections::BTreeMap::<&str, usize>::new();
+		for (_, node) in &proto_network.nodes {
+			*identifier_counts.entry(node.identifier.as_str()).or_default() += 1;
+		}
+		let executor = interpreted_executor::dynamic_executor::DynamicExecutor::new(proto_network.clone()).map_err(|error| format!("{name}: {error:?}"))?;
 
 		expected.insert(
-			name.to_string(),
+			name,
 			json!({
 				"proto_nodes": proto_network.nodes.len(),
 				"unique_stable_ids": unique_stable_ids.len(),
 				"distinct_identifiers": distinct_identifiers.len(),
+				"identifier_counts": identifier_counts,
 				"output_type": executor.output_type().as_ref().map(export_type),
 			}),
 		);
 	}
-	write("expected", &Value::Object(expected));
+	write("expected", &Value::Object(expected))
 }

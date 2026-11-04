@@ -47,7 +47,6 @@ pub enum Input {
 	Import(Import),
 	Scope(String),
 	Reflection(Reflection),
-	Inline,
 }
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Hash)]
@@ -62,6 +61,8 @@ pub struct CompileMetadata {
 #[derive(Clone, Debug, Deserialize)]
 pub enum Implementation {
 	Network(Network),
+	/// An entry of the root network's definitions table.
+	Definition(u64),
 	Proto(String),
 	Extract,
 }
@@ -81,6 +82,9 @@ pub struct Network {
 	pub exports: Vec<Input>,
 	pub nodes: Vec<(u64, Node)>,
 	pub scope_injections: Vec<(String, u64, Type)>,
+	/// The networks shared by the nodes naming them, which only the root network holds.
+	#[serde(default)]
+	pub definitions: Vec<(u64, Network)>,
 	pub generated: bool,
 }
 
@@ -129,6 +133,9 @@ pub struct Expected {
 	pub proto_nodes: usize,
 	pub unique_stable_ids: usize,
 	pub distinct_identifiers: usize,
+	/// How many proto nodes have each identifier.
+	#[serde(default)]
+	pub identifier_counts: std::collections::BTreeMap<String, usize>,
 	pub output_type: Option<Type>,
 }
 

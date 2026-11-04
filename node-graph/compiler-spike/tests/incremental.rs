@@ -1,6 +1,6 @@
 use compiler_spike::lean::document::{Implementation, Input};
 use compiler_spike::lean::{Document, Lean};
-use compiler_spike::synthetic::rectangle_layers;
+use compiler_spike::synthetic::{instances, rectangle_layers};
 use compiler_spike::workload::load_network;
 use std::collections::BTreeMap;
 
@@ -76,4 +76,57 @@ fn incremental_compiles_match_cold_compiles_on_the_demos() {
 			assert_incremental_matches_cold(&mut incremental, &mut cold, &mut document, &format!("{name} after an edit"));
 		}
 	}
+}
+
+/// The value hashes reachable from the output, which an incremental compile that missed an edited instance would leave stale.
+fn reachable_values(lean: &Lean, output: u32) -> Vec<u64> {
+	let mut values: Vec<u64> = lean
+		.ir
+		.reachable(output)
+		.into_iter()
+		.filter_map(|id| lean.ir.nodes[id as usize].value.map(|value| value.hash))
+		.collect();
+	values.sort_unstable();
+	values
+}
+
+#[test]
+fn an_edit_inside_a_shared_definition_reaches_every_instance() {
+	const INSTANCES: usize = 8;
+	let mut incremental = Lean::load();
+	let mut cold = Lean::load();
+
+	let network = instances(INSTANCES, 4);
+	let mut document = incremental.convert_document(&network);
+	let _ = cold.convert_document(&network);
+	incremental.compile_incremental(&mut document).unwrap();
+
+	let (shared, definition) = document
+		.definitions
+		.iter()
+		.enumerate()
+		.find(|(_, definition)| definition.owners.len() == INSTANCES)
+		.expect("the instances should share one definition");
+	let (local, input) = definition
+		.nodes
+		.iter()
+		.enumerate()
+		.find_map(|(local, node)| {
+			definition
+				.node_inputs(node)
+				.iter()
+				.position(|input| matches!(input, Input::Value(_)))
+				.map(|input| (local as u32, input))
+		})
+		.expect("the shared definition should hold a value input");
+	let owners = definition.owners.clone();
+
+	document.set_value(shared as u32, local, input, 0xED17);
+	assert!(owners.iter().all(|owner| document.dirty_nodes.contains(owner)), "Every instance should be marked dirty");
+
+	let output = incremental.compile_incremental(&mut document).unwrap().output;
+	let incremental_values = reachable_values(&incremental, output);
+	let output = cold.compile(&document).unwrap().output;
+	assert_eq!(incremental_values, reachable_values(&cold, output));
+	assert!(incremental_values.contains(&0xED17), "The edited value should reach the output");
 }

@@ -120,7 +120,6 @@ impl<'a> TypingContext<'a> {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, String>>()?,
-			ConstructionArgs::Inline => return Err("Inline nodes are not supported".to_string()),
 		};
 
 		let call_argument = &node.call_argument;

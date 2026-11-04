@@ -103,7 +103,6 @@ pub enum NodeInput {
 	Import { import_type: Type, import_index: usize },
 	Scope(Cow<'static, str>),
 	Reflection(Reflection),
-	Inline,
 }
 
 impl NodeInput {
@@ -183,9 +182,6 @@ impl DocumentNode {
 		assert!(!self.inputs.iter().any(|input| matches!(input, NodeInput::Import { .. })), "received non-resolved input");
 
 		let mut construction_args = ConstructionArgs::Nodes(vec![]);
-		if let &[NodeInput::Inline] = self.inputs.as_slice() {
-			construction_args = ConstructionArgs::Inline;
-		}
 		if let &[NodeInput::Value { ref value, .. }] = self.inputs.as_slice() {
 			construction_args = ConstructionArgs::Value(value.clone());
 		}
@@ -430,7 +426,6 @@ impl NodeNetwork {
 						};
 						*import_index = parent_input_index;
 					}
-					NodeInput::Inline => (),
 					NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => unreachable!("Should have been resolved before flattening"),
 				}
 			}

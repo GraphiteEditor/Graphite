@@ -16,6 +16,24 @@ fn baseline_matches_graphite() {
 		let unique_stable_ids: HashSet<_> = proto_network.nodes.iter().map(|(id, _)| *id).collect();
 		let distinct_identifiers: HashSet<_> = proto_network.nodes.iter().map(|(_, node)| node.identifier.clone()).collect();
 		let expected = &expected[name];
+		let mut identifier_counts = std::collections::BTreeMap::<String, usize>::new();
+		for (_, node) in &proto_network.nodes {
+			*identifier_counts.entry(node.identifier.to_string()).or_default() += 1;
+		}
+		let differing: Vec<_> = identifier_counts
+			.keys()
+			.chain(expected.identifier_counts.keys())
+			.collect::<std::collections::BTreeSet<_>>()
+			.into_iter()
+			.filter_map(|identifier| {
+				let (actual, graphite) = (
+					identifier_counts.get(identifier).copied().unwrap_or(0),
+					expected.identifier_counts.get(identifier).copied().unwrap_or(0),
+				);
+				(actual != graphite).then(|| format!("{identifier}: {actual} instead of {graphite}"))
+			})
+			.collect();
+		assert!(differing.is_empty(), "{name}: proto nodes per identifier differ:\n{}", differing.join("\n"));
 		assert_eq!(proto_network.nodes.len(), expected.proto_nodes, "{name}: proto node count");
 		assert_eq!(unique_stable_ids.len(), expected.unique_stable_ids, "{name}: unique stable ID count");
 		assert_eq!(distinct_identifiers.len(), expected.distinct_identifiers, "{name}: distinct identifier count");
@@ -55,8 +73,8 @@ fn unique_nodes_and_nested_nullifications(proto_network: &ProtoNetwork) -> (usiz
 	(nodes.len(), nested)
 }
 
-/// Graphite reanalyzes a shared node once per path reaching it, and each revisit wraps its existing nullification in another one
-/// stripping the same features. Memoizing the analysis removes exactly those redundant memoize and nullification pairs.
+/// Graphite reanalyzed a shared node once per path reaching it before #4834, and each revisit wrapped its existing nullification in
+/// another one stripping the same features. Memoizing the analysis removes exactly those redundant memoize and nullification pairs.
 #[test]
 fn memoized_context_analysis_only_removes_nested_nullifications() {
 	let mut baseline = Baseline::load();
