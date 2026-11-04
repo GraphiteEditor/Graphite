@@ -430,9 +430,10 @@ impl SegmentGraph {
 
 	fn construct_face(&self, adjacency: &[Vec<FaceSide>], first: FaceSide, faces: &mut Faces, seen: &mut FaceSideSet) -> Option<()> {
 		faces.start_new_face();
+		// A tree's one orbit walks every side, so it takes all `2 * len` iterations to come back around
 		let max_iterations = self.len() * 2;
 		let mut side = first;
-		for _iteration in 1..max_iterations {
+		for _iteration in 0..max_iterations {
 			if seen.contains(side) {
 				return None;
 			}
@@ -1534,5 +1535,15 @@ mod tests {
 		let (vector, paths) = build_vector(&points, &segments);
 
 		vector.construct_faces(&paths);
+	}
+
+	#[test]
+	fn a_branching_tree_has_one_orbit_along_both_sides_of_every_segment() {
+		let points = [DVec2::new(0., 0.), DVec2::new(0., -10.), DVec2::new(-5., -15.), DVec2::new(5., -15.)];
+		let (vector, paths) = build_vector(&points, &[(0, 1), (1, 2), (1, 3)]);
+
+		let orbits = SegmentGraph::new(&vector, &paths).face_orbits();
+		assert_eq!(orbits.face_count(), 1);
+		assert_eq!(orbits.face_sides(0).len(), 6);
 	}
 }
