@@ -228,6 +228,7 @@ import NodeInvertTransform from "/../branding/assets/16x16-nodes/node-invert-tra
 import NodeInvert from "/../branding/assets/16x16-nodes/node-invert.svg";
 import NodeIsNonzero from "/../branding/assets/16x16-nodes/node-is-nonzero.svg";
 import NodeItemAtIndex from "/../branding/assets/16x16-nodes/node-item-at-index.svg";
+import NodeIterate from "/../branding/assets/16x16-nodes/node-iterate.svg";
 import NodeJitterPoints from "/../branding/assets/16x16-nodes/node-jitter-points.svg";
 import NodeLeastCommonMultiple from "/../branding/assets/16x16-nodes/node-least-common-multiple.svg";
 import NodeLerp from "/../branding/assets/16x16-nodes/node-lerp.svg";
@@ -509,6 +510,7 @@ export const ICON_16X16_NODES = {
 	NodeInvertTransform: { svg: NodeInvertTransform, size: 16 },
 	NodeIsNonzero: { svg: NodeIsNonzero, size: 16 },
 	NodeItemAtIndex: { svg: NodeItemAtIndex, size: 16 },
+	NodeIterate: { svg: NodeIterate, size: 16 },
 	NodeJitterPoints: { svg: NodeJitterPoints, size: 16 },
 	NodeLeastCommonMultiple: { svg: NodeLeastCommonMultiple, size: 16 },
 	NodeLerp: { svg: NodeLerp, size: 16 },

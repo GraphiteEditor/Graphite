@@ -6,7 +6,7 @@ pub const OMIT_HIDDEN: bool = true;
 pub fn category_description(category: &str) -> &str {
 	match category {
 		"Value" => "Nodes in this category supply data values of common types such as numbers, colors, gradients, booleans, and strings.",
-		"Routing" => "Nodes in this category direct how data flows through the graph, such as switching between inputs, wrapping nodes into a custom subgraph, and caching results.",
+		"Routing" => "Nodes in this category direct how data flows through the graph, such as switching between inputs, repeating steps on a result, wrapping nodes into a custom subgraph, and caching results.",
 		"Transform" => "Nodes in this category move, rotate, scale, and skew graphical content, read and combine the transformation matrices that place it, and arrange items by packing them into rows or columns.",
 		"Graphic" => "Nodes in this category compose graphical content of any kind, such as merging layers, making artboards and groups, blending and clipping, repeating and mirroring copies, and flattening nested groups.",
 		"Vector: Style" => "Nodes in this category apply fill and stroke styles to alter the appearance of vector graphics.",
