@@ -5,7 +5,7 @@
 
 use core_types::uuid::NodeId;
 use glam::{DAffine2, DVec2, UVec2};
-use graph_craft::application_io::{EditorPreferences, PlatformApplicationIo, PlatformEditorApi};
+use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, NodeNetwork};
 use graph_craft::proto::ProtoNetwork;
@@ -254,7 +254,7 @@ fn dump_stack(network: &NodeNetwork, depth: usize) {
 			.inputs
 			.iter()
 			.map(|input| match input {
-				NodeInput::Node { node_id, .. } => network.nodes.get(node_id).map(&describe).unwrap_or_default(),
+				NodeInput::Node { node_id, .. } => network.nodes.get(node_id).map(describe).unwrap_or_default(),
 				NodeInput::Value { tagged_value, .. } => format!("value {}", tagged_value.ty()),
 				NodeInput::Import { import_index, .. } => format!("import {import_index}"),
 				_ => "other".into(),
@@ -323,7 +323,6 @@ fn main() {
 	let editor_api = Arc::new(match vello {
 		true => PlatformEditorApi {
 			application_io: Some(Arc::new(futures::executor::block_on(PlatformApplicationIo::new()))),
-			editor_preferences: Box::new(EditorPreferences::default()),
 		},
 		false => PlatformEditorApi::default(),
 	});

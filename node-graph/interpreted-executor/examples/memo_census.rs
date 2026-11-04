@@ -58,7 +58,6 @@ fn main() {
 				let arguments = match &node.construction_args {
 					ConstructionArgs::Nodes(inputs) => format!("{} inputs", inputs.len()),
 					ConstructionArgs::Value(value) => format!("value {:?}", value.ty()),
-					ConstructionArgs::Inline(_) => "inline".into(),
 				};
 				println!("{:40} ({arguments})", short_identifier(node.identifier.as_str()));
 			}
