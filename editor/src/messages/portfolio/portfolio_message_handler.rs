@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document_locks;
 use super::persistent_state::{PersistentStateMessage, PersistentStateMessageContext, PersistentStateMessageHandler};
-use super::utility_types::{PanelType, WorkspacePanelLayout};
+use super::utility_types::PanelType;
 use crate::application::{Environment, generate_uuid};
 use crate::consts::DEFAULT_DOCUMENT_NAME;
 use crate::messages::animation::TimingInformation;
@@ -415,7 +415,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::LoadPersistedState { state } => {
-				if let Some(layout) = state.workspace_layout.filter(|layout| layout.version == WorkspacePanelLayout::VERSION) {
+				if let Some(layout) = state.workspace_layout {
 					self.workspace.panel_layout = layout;
 					responses.add(WorkspaceMessage::UpdatePanelsLayout);
 
