@@ -19,7 +19,7 @@ use rand::{Rng, SeedableRng};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
-/// Why the "Math f(x)" or "Math f(…)" node's expression gives no result.
+/// Why the "Math Function" or "Math Formula" node's expression gives no result.
 #[derive(Debug, thiserror::Error)]
 pub enum MathExpressionError {
 	#[error("The expression is empty")]
@@ -95,7 +95,7 @@ trait ExpressionValue: Copy + Default + 'static {
 	fn items(items: impl Iterator<Item = Self>) -> Items;
 }
 
-/// The items of the "Math f(…)" node's list, of one sort throughout, bound positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
+/// The items of the "Math Formula" node's list, of one sort throughout, bound positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
 enum Items {
 	Values(Vec<Value>),
 	Matrices(Vec<Matrix>),
@@ -212,7 +212,7 @@ impl ExpressionValue for DAffine2 {
 	}
 }
 
-/// Supplies the value of `x`, or the matrix of `X`, for the "Math f(x)" node's expression.
+/// Supplies the value of `x`, or the matrix of `X`, for the "Math Function" node's expression.
 struct SingleVariableMathContext<'a> {
 	x: &'a Object,
 }
@@ -228,11 +228,11 @@ impl ValueProvider for SingleVariableMathContext<'_> {
 	}
 }
 
-/// Evaluates a math expression written in terms of the single variable `x`, which carries the input value, or `X` when the input is a Transform.
+/// Maps a value through a math expression written as a function of `x`, which stands for the value, or of `X` when it's a Transform. Each item of a list is mapped on its own.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
-#[node_macro::node(name("Math f(x)"), category("Math"), icon("NodeMathFx"))]
-fn math_fx<T: ExpressionValue, U: ExpressionValue>(
+#[node_macro::node(category("Math"), icon("NodeMathFunction"), version(2))]
+fn math_function<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
 	#[implementations(
@@ -277,7 +277,7 @@ fn math_fx<T: ExpressionValue, U: ExpressionValue>(
 	}
 }
 
-/// Binds the items of the "Math f(…)" node's list to the positional variables `a`, `b`, `c`, and so on, or `A`, `B`, `C` for matrices.
+/// Binds the items of the "Math Formula" node's list to the positional variables `a`, `b`, `c`, and so on, or `A`, `B`, `C` for matrices.
 struct PositionalMathContext {
 	items: Items,
 }
@@ -313,8 +313,8 @@ impl ValueProvider for PositionalMathContext {
 /// Evaluates a math expression across all of the input items at once. A full expression reads the items as `a`, `b`, `c`, …, or as `A`, `B`, `C`, … for Transforms, while a math operator or N-argument function name (like `*` or `min`) applies across every item.
 ///
 /// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
-#[node_macro::node(name("Math f(…)"), category("Math"), icon("NodeMathF"))]
-fn math_f<T: ExpressionValue, U: ExpressionValue>(
+#[node_macro::node(category("Math"), icon("NodeMathFormula"), version(2))]
+fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
 	#[implementations(
@@ -2301,7 +2301,7 @@ mod test {
 	#[test]
 	fn integer_lane_keeps_integers_and_rounds_fractions() {
 		let integer = |value: i64, expression: &str| {
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(value),
@@ -2318,7 +2318,7 @@ mod test {
 
 		let items: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
+			math_formula((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
 				.unwrap()
 				.into_element(),
 			2,
@@ -2330,7 +2330,7 @@ mod test {
 	fn output_type_witness_picks_the_output_rung() {
 		// The witness input's type, not the input value's, decides how the result is read
 		assert_eq!(
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(2.5),
@@ -2342,7 +2342,7 @@ mod test {
 			5
 		);
 		assert!(
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(3_i64),
@@ -2353,7 +2353,7 @@ mod test {
 			.into_element()
 		);
 		assert_eq!(
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(true),
@@ -2367,7 +2367,7 @@ mod test {
 
 		let items: List<f64> = [1., 2.].into_iter().map(Item::new_from_element).collect();
 		assert_eq!(
-			math_f((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
+			math_formula((), &ParseCache::default(), items, Item::new_from_element("mean".to_string()), Item::new_from_element(0_i64))
 				.unwrap()
 				.into_element(),
 			2,
@@ -2385,7 +2385,7 @@ mod test {
 
 	#[test]
 	fn test_basic_expression() {
-		let result = math_fx(
+		let result = math_function(
 			(),
 			&ParseCache::default(),
 			Item::new_from_element(0.),
@@ -2397,7 +2397,7 @@ mod test {
 
 	#[test]
 	fn test_complex_expression() {
-		let result = math_fx(
+		let result = math_function(
 			(),
 			&ParseCache::default(),
 			Item::new_from_element(0.),
@@ -2409,7 +2409,7 @@ mod test {
 
 	#[test]
 	fn test_variable_binding() {
-		let result = math_fx(
+		let result = math_function(
 			(),
 			&ParseCache::default(),
 			Item::new_from_element(7.),
@@ -2421,7 +2421,7 @@ mod test {
 
 	#[test]
 	fn test_invalid_expression() {
-		let result = math_fx(
+		let result = math_function(
 			(),
 			&ParseCache::default(),
 			Item::new_from_element(0.),
@@ -2445,44 +2445,44 @@ mod test {
 		// Booleans read as exactly 0 and 1, and logical results convert back
 		let as_bool = Item::new_from_element(false);
 		assert!(
-			!math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone())
+			!math_function((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone())
 				.unwrap()
 				.into_element()
 		);
 		assert!(
-			math_fx((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone())
+			math_function((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone())
 				.unwrap()
 				.into_element()
 		);
 
 		// A result that is not exactly 0 or 1 cannot be a truth value, so the input passes through
-		let (stand_in, error) = math_fx((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
+		let (stand_in, error) = math_function((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
 		assert!(stand_in.into_element());
 		assert!(matches!(&error, MathExpressionError::OutputType { output_type, .. } if output_type == "Bool"));
 
 		// An input that is not exactly 0 or 1 cannot pass through as a truth value either, so the output falls back to false
-		let (stand_in, error) = math_fx((), &ParseCache::default(), Item::new_from_element(2.), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
+		let (stand_in, error) = math_function((), &ParseCache::default(), Item::new_from_element(2.), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
 		assert!(!stand_in.into_element());
 		assert!(matches!(&error, MathExpressionError::InputType(output_type) if output_type == "Bool"));
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
 		assert!(
-			!math_f((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone())
+			!math_formula((), &ParseCache::default(), bools(), Item::new_from_element("&&".to_string()), as_bool.clone())
 				.unwrap()
 				.into_element()
 		);
 		assert!(
-			math_f((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone())
+			math_formula((), &ParseCache::default(), bools(), Item::new_from_element("||".to_string()), as_bool.clone())
 				.unwrap()
 				.into_element()
 		);
-		assert!(!math_f((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).unwrap().into_element());
+		assert!(!math_formula((), &ParseCache::default(), bools(), Item::new_from_element("xor".to_string()), as_bool).unwrap().into_element());
 	}
 
 	#[test]
 	fn test_transform_items() {
 		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> Result<U, U> {
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(value),
@@ -2516,7 +2516,7 @@ mod test {
 		let scale = DAffine2::from_scale(DVec2::splat(2.));
 		fn f<U: ExpressionValue>(items: [DAffine2; 2], expression: &str, output_type: U) -> Result<U, MathExpressionError> {
 			let items: List<DAffine2> = items.into_iter().map(Item::new_from_element).collect();
-			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
+			math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
 		}
 		assert_eq!(f([shear, scale], "A B", DAffine2::IDENTITY).unwrap(), shear * scale);
 		assert_eq!(f([shear, scale], "A C", DAffine2::IDENTITY).unwrap(), shear);
@@ -2538,7 +2538,7 @@ mod test {
 	#[test]
 	fn test_vec2_items() {
 		fn fx<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, output_type: U) -> U {
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(value),
@@ -2550,7 +2550,7 @@ mod test {
 		}
 		fn f<U: ExpressionValue>(expression: &str, output_type: U) -> U {
 			let items: List<DVec2> = [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect();
-			math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type))
+			math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type))
 				.unwrap()
 				.into_element()
 		}
@@ -2593,19 +2593,19 @@ mod test {
 		// A full expression reads the items positionally as `a`, `b`, `c`, while a lone token applies across all of them
 		let as_number = Item::new_from_element(0.);
 		assert_eq!(
-			math_f((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone())
+			math_formula((), &ParseCache::default(), values(), Item::new_from_element("a - b + c".to_string()), as_number.clone())
 				.unwrap()
 				.into_element(),
 			10.
 		);
 		assert_eq!(
-			math_f((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone())
+			math_formula((), &ParseCache::default(), values(), Item::new_from_element("min".to_string()), as_number.clone())
 				.unwrap()
 				.into_element(),
 			1.
 		);
 		assert_eq!(
-			math_f((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).unwrap().into_element(),
+			math_formula((), &ParseCache::default(), values(), Item::new_from_element("+".to_string()), as_number).unwrap().into_element(),
 			12.
 		);
 	}
@@ -2671,7 +2671,7 @@ mod test {
 		);
 
 		let fx = |value: f64, expression: &str| {
-			math_fx(
+			math_function(
 				(),
 				&ParseCache::default(),
 				Item::new_from_element(value),
@@ -2689,7 +2689,7 @@ mod test {
 		assert!(!message.contains(", at "), "{message}");
 
 		let values = |values: &[f64]| values.iter().copied().map(Item::new_from_element).collect::<List<f64>>();
-		let f = |items, expression: &str| math_f((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		let f = |items, expression: &str| math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
 		assert!(matches!(f(values(&[1.]), ""), Err(MathExpressionError::Empty)));
 		assert!(matches!(f(values(&[1.]), "a +"), Err(MathExpressionError::Invalid(_))));
 		assert_eq!(f(values(&[]), "min").unwrap(), 0.);
