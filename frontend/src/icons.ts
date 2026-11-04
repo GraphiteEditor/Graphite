@@ -230,6 +230,7 @@ import NodeIsNonzero from "/../branding/assets/16x16-nodes/node-is-nonzero.svg";
 import NodeItemAtIndex from "/../branding/assets/16x16-nodes/node-item-at-index.svg";
 import NodeIterate from "/../branding/assets/16x16-nodes/node-iterate.svg";
 import NodeJitterPoints from "/../branding/assets/16x16-nodes/node-jitter-points.svg";
+import NodeLSystem from "/../branding/assets/16x16-nodes/node-l-system.svg";
 import NodeLeastCommonMultiple from "/../branding/assets/16x16-nodes/node-least-common-multiple.svg";
 import NodeLerp from "/../branding/assets/16x16-nodes/node-lerp.svg";
 import NodeLessThan from "/../branding/assets/16x16-nodes/node-less-than.svg";
@@ -524,6 +525,7 @@ export const ICON_16X16_NODES = {
 	NodeLogicalNot: { svg: NodeLogicalNot, size: 16 },
 	NodeLogicalOr: { svg: NodeLogicalOr, size: 16 },
 	NodeLoremIpsum: { svg: NodeLoremIpsum, size: 16 },
+	NodeLSystem: { svg: NodeLSystem, size: 16 },
 	NodeMagnitude: { svg: NodeMagnitude, size: 16 },
 	NodeMakeOpaque: { svg: NodeMakeOpaque, size: 16 },
 	NodeMandelbrot: { svg: NodeMandelbrot, size: 16 },
