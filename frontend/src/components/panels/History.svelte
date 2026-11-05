@@ -51,6 +51,11 @@
 		if (tag.trim()) editor.tagHistoryInteraction(id, tag, true);
 		taggingId = undefined;
 	}
+
+	// The inputs open focused and close once focus leaves them, committed or not
+	function focusInput(node: HTMLElement) {
+		node.querySelector("input")?.focus();
+	}
 </script>
 
 <LayoutCol class="history-panel">
@@ -85,7 +90,9 @@
 				<span class="rail"><span class="dot" style:background={row.color}></span></span>
 				<div class="text">
 					{#if renamingId === row.id}
-						<TextInput value={row.named ? row.label : ""} placeholder={row.label} on:commitText={({ detail }) => commitName(row.id, detail)} />
+						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
+							<TextInput value={row.named ? row.label : ""} placeholder={row.label} on:commitText={({ detail }) => commitName(row.id, detail)} />
+						</span>
 					{:else}
 						<span class="label" class:named={row.named}>{row.label}</span>
 					{/if}
@@ -100,7 +107,9 @@
 								<span class="tag">{tag}<button class="remove" data-tooltip-label="Remove the tag" on:click={() => editor.tagHistoryInteraction(row.id, tag, false)}>×</button></span>
 							{/each}
 							{#if taggingId === row.id}
-								<TextInput value="" placeholder="Tag name" narrow={true} on:commitText={({ detail }) => commitTag(row.id, detail)} />
+								<span class="editing" use:focusInput on:focusout={() => (taggingId = undefined)}>
+									<TextInput value="" placeholder="Tag name" narrow={true} on:commitText={({ detail }) => commitTag(row.id, detail)} />
+								</span>
 							{/if}
 						</span>
 					{/if}
@@ -113,8 +122,8 @@
 					{/if}
 				</div>
 				<span class="actions">
-					<button class="chip" data-tooltip-label="Name this step" on:click={() => (renamingId = renamingId === row.id ? undefined : row.id)}>Name</button>
-					<button class="chip" data-tooltip-label="Tag this step" on:click={() => (taggingId = taggingId === row.id ? undefined : row.id)}>Tag</button>
+					<button class="chip" data-tooltip-label="Name this step" on:click={() => (renamingId = row.id)}>Name</button>
+					<button class="chip" data-tooltip-label="Tag this step" on:click={() => (taggingId = row.id)}>Tag</button>
 					{#if row.undone || row.abandoned}
 						<IconButton
 							icon="HistoryRedo"
@@ -129,7 +138,7 @@
 								icon="HistoryUndo"
 								size={16}
 								tooltipLabel="Go back to here"
-								tooltipDescription={$history.session ? "Move everyone's document back to this step. The steps since stay as a branch." : "Undo up to this step."}
+								tooltipDescription={$history.session ? "Move everyone's document back to this step. The steps since stay as a branch." : "Move the document back to this step. The steps since stay as a branch."}
 								action={() => editor.goBackToHistoryInteraction(row.id)}
 							/>
 						{/if}
@@ -374,6 +383,10 @@
 				background: var(--color-5-dullgray);
 				color: var(--color-e-nearwhite);
 			}
+		}
+
+		.editing {
+			display: contents;
 		}
 
 		.more {

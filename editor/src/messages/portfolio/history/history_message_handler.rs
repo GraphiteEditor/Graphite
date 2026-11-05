@@ -64,11 +64,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(0)) => {}
-					// A session moves the head for everyone at once. Alone, undo each interaction to keep undo in step
-					Some(Place::Line(steps)) => match gdd.role().is_some() {
-						true => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
-						false => (0..steps).for_each(|_| responses.add(DocumentMessage::Undo)),
-					},
+					Some(Place::Line(_)) => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
 					None => log::warn!("The History panel asked to go to {rev:?}, which is not on the head's line"),
 				}
 			}
