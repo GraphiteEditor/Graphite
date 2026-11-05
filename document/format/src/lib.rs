@@ -111,6 +111,9 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
 	#[cfg(feature = "network")]
 	pub(crate) remote_changes: network::RemoteChanges,
+	/// The step a guest asked the host to undo, with the head it asked under. A repeat waits until the head moves.
+	#[cfg(feature = "network")]
+	pub(crate) undo_requested: Option<(document_graph_storage::Rev, Option<document_graph_storage::Rev>)>,
 	pub(crate) interactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
 	pub(crate) own_last_staged_ms: Option<f64>,
 	pub(crate) own_staged_since_tick: bool,
@@ -175,6 +178,8 @@ impl<L: Layout> Gdd<L> {
 			pending_persist: PendingPersist::default(),
 			#[cfg(feature = "network")]
 			remote_changes: network::RemoteChanges::default(),
+			#[cfg(feature = "network")]
+			undo_requested: None,
 			interactions_seen: Default::default(),
 			own_last_staged_ms: None,
 			own_staged_since_tick: false,
@@ -230,6 +235,11 @@ impl<L: Layout> Gdd<L> {
 		document_container::archive::open_auto(bytes, &mut working)?;
 
 		Self::open_in_with(working, layout, byte_store, host).await
+	}
+
+	/// Reads the manifest without opening the copy, which may be another writer's.
+	pub async fn read_manifest(working: &AnyContainer, layout: &L) -> Result<Manifest, Error> {
+		Ok(io::read_single(working, layout.manifest_basename(), MANIFEST_CODEC).await?)
 	}
 
 	/// Backend-agnostic open. Splits out so tests can supply a [`document_container::backends::memory::MemoryBackend`].
