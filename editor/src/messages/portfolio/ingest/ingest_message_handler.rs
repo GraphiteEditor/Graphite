@@ -206,7 +206,7 @@ fn rejection(data: &[u8], data_type: DataType, accepted_types: &[DataType]) -> O
 
 /// Determine the size of an SVG file (the viewBox is already applied by the SVG importer so can be ignored)
 fn svg_canvas(svg: &str) -> Option<(IVec2, IVec2)> {
-	usvg::Tree::from_str(&svg, &usvg::Options::default()).ok().map(|tree| {
+	usvg::Tree::from_str(svg, &usvg::Options::default()).ok().map(|tree| {
 		let size = tree.size();
 		(glam::IVec2::ZERO, glam::IVec2::new(size.width().round() as i32, size.height().round() as i32))
 	})

@@ -114,7 +114,7 @@ impl EditorTestUtils {
 				return Ok(result);
 			}
 		}
-		return Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")));
+		Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")))
 	}
 
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
