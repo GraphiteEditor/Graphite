@@ -445,6 +445,41 @@ fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	Ok(rows)
 }
 
+/// Feeds the content through the same steps over and over, each time starting from the previous result. Inside the steps, a **Read** node like **Read String** or **Read Vector** reads the result so far, and **Read Index** reads how many times around it has been.
+#[node_macro::node(category("Routing"), icon("NodeIterate"))]
+fn iterate<T: AnyHash + Send + Sync + CacheHash + Clone>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	/// The starting value, which the steps rework each time around.
+	#[implementations(String, f64, Vector, Graphic, Raster<CPU>, Color, Gradient)]
+	content: Item<T>,
+	/// The steps applied each time around, reading the result so far with a **Read** node.
+	#[expose]
+	#[implementations(
+		Context -> Item<String>,
+		Context -> Item<f64>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+	)]
+	steps: impl Node<Context<'static>, Output = Item<T>>,
+	/// How many times to apply the steps. Zero passes the content through unchanged.
+	#[default(1)]
+	#[hard(0..)]
+	count: Item<i64>,
+) -> Result<Item<T>, Interrupt> {
+	let count = count.into_element().max(0) as usize;
+
+	let mut result = content;
+	for index in 0..count {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(result)).with_index(index);
+		result = steps.eval(owned_ctx.into_context())?;
+	}
+
+	Ok(result)
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum MirrorError {
 	#[error("Text and fills have no bounds to mirror relative to, so set Relative to Bounds to None")]
@@ -1119,6 +1154,36 @@ mod test {
 
 	fn list_of<T>(elements: impl IntoIterator<Item = T>) -> List<T> {
 		elements.into_iter().map(Item::new_from_element).collect()
+	}
+
+	/// Appends the loop index to the string read from the context, the way a Read String node reads it.
+	#[derive(Clone)]
+	struct AppendIndexNode;
+
+	impl<I: Ctx + core_types::ExtractVarArgs + core_types::ExtractIndex> core_types::Node<I> for AppendIndexNode {
+		type Output = Item<String>;
+
+		fn eval(&self, input: &I) -> core_types::Poll<Item<String>> {
+			let so_far = input
+				.vararg(0)
+				.ok()
+				.and_then(|value| (value as &dyn std::any::Any).downcast_ref::<Item<String>>().map(|item| item.element().clone()));
+			let index = input.try_index().and_then(|mut indices| indices.next());
+			core_types::Poll::Final(Item::new_from_element(format!("{}{}", so_far.unwrap_or_default(), index.unwrap_or_default())))
+		}
+	}
+
+	#[test]
+	fn iterate_feeds_each_result_into_the_next_time_around() {
+		let status = core_types::Status::new();
+		let iterated = |count: i64| {
+			let steps = core_types::LazyInput::new(&AppendIndexNode, &status, 1);
+			let start = Item::new_from_element("x".to_string());
+			iterate(OwnedContextImpl::default().into_context(), start, steps, Item::new_from_element(count)).unwrap().into_element()
+		};
+
+		assert_eq!(iterated(0), "x");
+		assert_eq!(iterated(3), "x012");
 	}
 
 	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
