@@ -174,23 +174,12 @@ jobs:
         env:
           # `--cfg=web_sys_unstable_apis` mirrors the `[build]` section of `.cargo/config.toml`
           RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
-        run: cargo test --all-features
-
-      # The plain `cargo test` above only covers the workspace's default members, which leave these out
-      - name: 🧪 Run document migration tests
-        env:
-          RUSTFLAGS: "-Dwarnings --cfg=web_sys_unstable_apis"
+        # The desktop crates need CEF, and `third-party-licenses` only pulls it in through its `desktop` feature, so it runs on its own without `--all-features`
         run: >-
-          cargo test --all-features
-          --package migration-core
-          --package migration-runner
-          --package migration-formats
-          --package migration-nodes
-          --package migration-snapshot
-          --package document-graph-storage
-          --package document-format
-          --package graphene-cli
-          --package regression
+          cargo test --workspace --all-features
+          --exclude 'graphite-desktop*'
+          --exclude third-party-licenses
+          && cargo test --package third-party-licenses
 
   # Render the documents of the regression corpus and compare them with their reference images
   regression-corpus:
