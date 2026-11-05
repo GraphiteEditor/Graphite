@@ -3410,7 +3410,8 @@ impl NodeGraphMessageHandler {
 				.exports
 				.iter()
 				.any(|export| matches!(export, NodeInput::Node { node_id: export_node_id, .. } if *export_node_id == node_id));
-			if selection_is_not_already_the_output && no_other_selections {
+			let has_outputs = network_interface.number_of_outputs(&node_id, breadcrumb_network_path) > 0;
+			if selection_is_not_already_the_output && no_other_selections && has_outputs {
 				let button = TextButton::new("Preview")
 					.icon("FrameAll")
 					.tooltip_label("Preview")
