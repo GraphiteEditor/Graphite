@@ -158,6 +158,7 @@ pub fn derive_widget_builder_impl(input_item: TokenStream2) -> syn::Result<Token
 
 		quote::quote! {
 			#[doc = #new_doc_comment]
+			#[allow(clippy::redundant_field_names)]
 			pub fn new(#(#idents: #types),*) -> Self {
 				#construction
 			}

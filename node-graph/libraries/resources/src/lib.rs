@@ -135,7 +135,7 @@ impl std::str::FromStr for ResourceHash {
 		}
 
 		let mut out = [0u8; 32];
-		for (index, chunk) in bytes.chunks_exact(2).enumerate() {
+		for (index, chunk) in bytes.as_chunks::<2>().0.iter().enumerate() {
 			let high = decode_hex_nibble(chunk[0], index * 2)?;
 			let low = decode_hex_nibble(chunk[1], index * 2 + 1)?;
 			out[index] = (high << 4) | low;

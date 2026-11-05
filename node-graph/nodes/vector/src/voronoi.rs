@@ -128,7 +128,7 @@ fn voronoi_cells_per_site(sites: &[DVec2]) -> Result<(Vec<Option<Vec<DVec2>>>, V
 	}
 
 	// One Voronoi vertex per Delaunay triangle.
-	let circumcenters: Vec<DVec2> = triangles.chunks_exact(3).map(|t| circumcenter(sites[t[0]], sites[t[1]], sites[t[2]])).collect();
+	let circumcenters: Vec<DVec2> = triangles.as_chunks::<3>().0.iter().map(|&[a, b, c]| circumcenter(sites[a], sites[b], sites[c])).collect();
 
 	// The convex hull polygon, which clips the diagram to a finite region.
 	let hull: Vec<DVec2> = hull_indices.iter().map(|&i| sites[i]).collect();

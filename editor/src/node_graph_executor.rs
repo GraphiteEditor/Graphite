@@ -448,7 +448,7 @@ impl NodeGraphExecutor {
 
 		let mut all_dropped_thumbnails = Vec::new();
 		let mut results = self.receiver.try_iter().collect::<Vec<_>>().into_iter();
-		while let Some(response) = results.next() {
+		for response in results.by_ref() {
 			match response {
 				NodeGraphUpdate::ExecutionResponse(execution_response) => {
 					let ExecutionResponse {

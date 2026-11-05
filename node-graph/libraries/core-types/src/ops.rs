@@ -44,7 +44,6 @@ pub trait Convert<T, C>: Sized {
 
 /// Asynchronous version of [`Convert`]
 pub trait ConvertAsync<T, C>: Sized {
-	#[must_use]
 	fn convert(self, footprint: Footprint, converter: C) -> impl std::future::Future<Output = T> + Send + 'static;
 }
 

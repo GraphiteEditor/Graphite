@@ -213,13 +213,13 @@ unsafe impl<T: StaticTypeSized> StaticType for [T] {
 	type Static = [<T as StaticTypeSized>::Static];
 }
 
-unsafe impl StaticType for dyn for<'i> DynAny<'_> + '_ {
+unsafe impl StaticType for dyn DynAny<'_> + '_ {
 	type Static = dyn DynAny<'static>;
 }
-unsafe impl StaticType for dyn for<'i> DynAny<'_> + Send + Sync + '_ {
+unsafe impl StaticType for dyn DynAny<'_> + Send + Sync + '_ {
 	type Static = dyn DynAny<'static> + Send + Sync;
 }
-unsafe impl StaticType for dyn for<'i> DynAny<'_> + Send + '_ {
+unsafe impl StaticType for dyn DynAny<'_> + Send + '_ {
 	type Static = dyn DynAny<'static> + Sync;
 }
 unsafe impl<T: StaticTypeSized> StaticType for dyn core::future::Future<Output = T> + Send + Sync + '_ {

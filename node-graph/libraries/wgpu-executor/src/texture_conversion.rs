@@ -114,8 +114,8 @@ impl RasterGpuToRasterCpuConverter {
 		for row in 0..self.height as usize {
 			let start = row * row_stride;
 			let row_slice = &view[start..start + row_bytes];
-			for px in row_slice.chunks_exact(4) {
-				cpu_data.push(SRGBA8::new(px[0], px[1], px[2], px[3]).into());
+			for &[red, green, blue, alpha] in row_slice.as_chunks::<4>().0 {
+				cpu_data.push(SRGBA8::new(red, green, blue, alpha).into());
 			}
 		}
 

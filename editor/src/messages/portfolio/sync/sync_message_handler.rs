@@ -290,6 +290,7 @@ impl SyncMessageHandler {
 	}
 
 	/// Polls `only`, or every document when it is `None`.
+	#[allow(clippy::too_many_arguments)]
 	fn poll(
 		&mut self,
 		documents: &mut HashMap<DocumentId, DocumentMessageHandler>,
