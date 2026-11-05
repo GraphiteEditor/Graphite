@@ -377,6 +377,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
+		node: graphene_std::math_nodes::math_function::IDENTIFIER,
+		aliases: &["math_nodes::MathFxNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::max::IDENTIFIER,
 		aliases: &["graphene_math_nodes::MaxNode", "graphene_core::ops::MaxNode"],
 	},
@@ -1266,6 +1270,10 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 					document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 0), under.clone(), &network_path);
 					document.network_interface.set_input(&InputConnector::node_at_index(*node_id, 1), over.clone(), &network_path);
 				}
+
+				if *new == graphene_std::math_nodes::math_function::IDENTIFIER {
+					reset_default_display_name(document, node_id, &network_path, "Math f(x)");
+				}
 			}
 		}
 	}
@@ -1384,8 +1392,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		document.network_interface.replace_implementation(node_id, network_path, &mut definition.default_node_template());
 	}
 
-	// The old "Math" node evaluated an expression over "A" and "B". A lexable static expression not reading a wired `B` becomes "Math f(x)"
-	// with `A` as `x` and a constant `B` inlined. Anything else becomes "Extend" feeding "Math f(…)", which reads the pair as `a` and `b`.
+	// The old "Math" node evaluated an expression over "A" and "B". A lexable static expression not reading a wired `B` becomes "Math Function"
+	// with `A` as `x` and a constant `B` inlined. Anything else becomes "Extend" feeding "Math Formula", which reads the pair as `a` and `b`.
 	let math_nodes: Vec<(NodeId, Vec<NodeId>, Vec<NodeInput>)> = document
 		.network_interface
 		.document_network()
@@ -1416,7 +1424,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			})
 			.is_some();
 
-		// The rewritten "Math f(x)" expression, or `None` when only the Extend + "Math f(…)" form can preserve the node's meaning
+		// The rewritten "Math Function" expression, or `None` when only the Extend + "Math Formula" form can preserve the node's meaning
 		let inline_b_constant = match operand_b.as_value() {
 			Some(TaggedValue::Number(constant)) => Some(*constant),
 			_ => None,
@@ -1436,8 +1444,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 		};
 
 		if let Some(fx_expression) = fx_expression {
-			// "Math f(x)": forward the old `A` input and the rewritten expression; the old `B` input is dropped
-			let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_fx::IDENTIFIER)) else {
+			// "Math Function": forward the old `A` input and the rewritten expression; the old `B` input is dropped
+			let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_function::IDENTIFIER)) else {
 				continue;
 			};
 			let mut node_template = definition.default_node_template();
@@ -1451,7 +1459,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				.network_interface
 				.set_input(&InputConnector::node_at_index(*node_id, 1), NodeInput::value(TaggedValue::String(fx_expression), false), network_path);
 		} else {
-			// "Extend" joins the two operands into the list "Math f(…)" reads; an unwired constant operand becomes a one-item list value
+			// "Extend" joins the two operands into the list "Math Formula" reads; an unwired constant operand becomes a one-item list value
 			let as_list_input = |input: &NodeInput| match input.as_value() {
 				Some(TaggedValue::Number(value)) => NodeInput::value(TaggedValue::Numbers(vec![*value]), input.is_exposed()),
 				_ => input.clone(),
@@ -1461,7 +1469,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 			};
 			let extend_template = extend_definition.default_node_template();
 
-			let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_f::IDENTIFIER)) else {
+			let Some(definition) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_formula::IDENTIFIER)) else {
 				continue;
 			};
 			let mut node_template = definition.default_node_template();
@@ -1854,6 +1862,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 	}
 
 	migrate_assign_colors_nodes(document);
+	migrate_math_f_nodes(document);
 
 	// Last, so the rest of the graph is upgraded enough to compile when each Copy to Points node's content type is resolved
 	migrate_copy_to_points_nodes(document);
@@ -1976,10 +1985,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	let mut inputs_count = node.inputs.len();
 
-	// The expression nodes gained an output-type input, a type witness the Inspector edits. A node from before it
-	// takes the definition's default choice, Number, which is the output type every such node had.
-	let expression_node_identifiers = [graphene_std::math_nodes::math_fx::IDENTIFIER, graphene_std::math_nodes::math_f::IDENTIFIER];
-	if expression_node_identifiers.iter().any(|identifier| reference == DefinitionIdentifier::ProtoNode(identifier.clone())) && inputs_count == 2 {
+	// The expression nodes gained an output-type input, a type witness the Inspector edits. A node from before it takes the definition's
+	// default choice, Number, which is the output type every such node had. Math f(…) nodes get it as `migrate_math_f` splits them.
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::math_function::IDENTIFIER) && inputs_count == 2 {
 		let definition = resolve_document_node_type(&reference)?;
 		let mut template = definition.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
@@ -3840,6 +3848,46 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	Some(())
 }
 
+/// Splits each removed Math f(…) node by the kind of string it held, into Math Aggregate or Math Formula.
+fn migrate_math_f_nodes(document: &mut DocumentMessageHandler) {
+	let math_f_nodes: Vec<(NodeId, Vec<NodeId>)> = document
+		.network_interface
+		.document_network()
+		.recursive_nodes()
+		.filter(|(_, node, _)| matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(identifier) if identifier.as_str().ends_with("::MathFNode")))
+		.map(|(node_id, _, path)| (*node_id, path))
+		.collect();
+
+	for (node_id, network_path) in math_f_nodes {
+		migrate_math_f(&node_id, &network_path, document);
+	}
+}
+
+/// Rebuilds a removed Math f(…) node as Math Aggregate if its string was a lone operator or function name it applied across its items, or as
+/// Math Formula otherwise, including when the string is wired, since a wired string can't be read before it runs.
+fn migrate_math_f(node_id: &NodeId, network_path: &[NodeId], document: &mut DocumentMessageHandler) -> Option<()> {
+	use graphene_std::math_nodes::{math_aggregate, math_formula};
+
+	let old_node = document.network_interface.document_node(node_id, network_path)?;
+	let applies_operator = matches!(
+		old_node.inputs.get(1).and_then(|input| input.as_value()),
+		Some(TaggedValue::String(expression)) if math_parser::reducer::classify_reducer(expression, math_parser::context::NothingMap).is_some()
+	);
+
+	let identifier = if applies_operator { math_aggregate::IDENTIFIER } else { math_formula::IDENTIFIER };
+	let mut node_template = resolve_proto_node_type(identifier)?.default_node_template();
+	document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+	let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+	reset_default_display_name(document, node_id, network_path, "Math f(…)");
+
+	// The items, string, and output type keep their places, where a node from before the output type takes its default, Number
+	for (index, input) in old_inputs.into_iter().enumerate().take(3) {
+		document.network_interface.set_input(&InputConnector::node_at_index(*node_id, index), input, network_path);
+	}
+
+	Some(())
+}
+
 /// Splits each removed Assign Colors node into the Vary Fill Colors and Vary Stroke Colors nodes its Fill and Stroke toggles call for.
 fn migrate_assign_colors_nodes(document: &mut DocumentMessageHandler) {
 	let assign_colors_nodes: Vec<(NodeId, Vec<NodeId>)> = document
@@ -4556,7 +4604,7 @@ mod tests {
 		document.network_interface.insert_node(
 			node_id,
 			NodeTemplate {
-				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::math_fx::IDENTIFIER),
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::math_function::IDENTIFIER),
 				inputs: vec![NodeInput::value(TaggedValue::Number(4.), false), NodeInput::value(TaggedValue::String("x^2".into()), false)],
 				..Default::default()
 			},
@@ -4591,7 +4639,7 @@ mod tests {
 		document.network_interface.insert_node(
 			node_id,
 			NodeTemplate {
-				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::math_fx::IDENTIFIER),
+				implementation: NodeTemplateImplementation::ProtoNode(graphene_std::math_nodes::math_function::IDENTIFIER),
 				inputs: vec![NodeInput::value(TaggedValue::Number(4.), false), NodeInput::value(TaggedValue::String("x^2".into()), false)],
 				..Default::default()
 			},
@@ -4614,8 +4662,44 @@ mod tests {
 		assert_eq!(outward_wires.as_deref(), Some([InputConnector::node_at_index(node_id, 0)].as_slice()));
 	}
 
-	// The old Math node's expression decides its replacement: a static string that never reads `B` becomes "Math f(x)",
-	// while a wired `B` or an uninspectable expression becomes "Extend" feeding "Math f(…)"
+	// Math f(…) either applied a lone operator across its items or evaluated an expression over them, which are now two nodes
+	#[test]
+	fn math_f_nodes_split_into_aggregate_and_formula() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+		use graphene_std::math_nodes::{math_aggregate, math_formula};
+
+		let migrated_implementation = |inputs: Vec<NodeInput>| {
+			let node_id = NodeId(1);
+			let mut document = DocumentMessageHandler::default();
+			document.network_interface.insert_node(
+				node_id,
+				NodeTemplate {
+					implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("math_nodes::MathFNode")),
+					inputs,
+					..Default::default()
+				},
+				&[],
+			);
+			migrate(&mut document);
+
+			let node = &document.network_interface.document_network().nodes[&node_id];
+			assert_eq!(node.inputs.len(), 3, "the output type is kept, or added to a node from before it");
+			match &node.implementation {
+				DocumentNodeImplementation::ProtoNode(identifier) => identifier.clone(),
+				other => panic!("expected a proto node implementation, got {other:?}"),
+			}
+		};
+		let items = || NodeInput::value(TaggedValue::None, false);
+		let expression = |text: &str| NodeInput::value(TaggedValue::String(text.into()), false);
+		let output_type = || NodeInput::value(TaggedValue::Number(0.), false);
+
+		assert_eq!(migrated_implementation(vec![items(), expression(" max "), output_type()]), math_aggregate::IDENTIFIER);
+		assert_eq!(migrated_implementation(vec![items(), expression("+")]), math_aggregate::IDENTIFIER);
+		assert_eq!(migrated_implementation(vec![items(), expression("a * b + c"), output_type()]), math_formula::IDENTIFIER);
+	}
+
+	// The old Math node's expression decides its replacement: a static string that never reads `B` becomes "Math Function",
+	// while a wired `B` or an uninspectable expression becomes "Extend" feeding "Math Formula"
 	#[test]
 	fn old_math_nodes_split_into_the_expression_node_pair() {
 		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
@@ -4666,7 +4750,7 @@ mod tests {
 				.expect("an Extend node should be spliced in")
 		};
 
-		// A static expression that never reads `B` becomes "Math f(x)" with `A` renamed to `x` and the `B` input dropped
+		// A static expression that never reads `B` becomes "Math Function" with `A` renamed to `x` and the `B` input dropped
 		{
 			let inputs = vec![
 				NodeInput::node(source_a_id, 0),
@@ -4676,7 +4760,7 @@ mod tests {
 			let mut document = build_document("math_nodes::MathNode", inputs);
 			migrate(&mut document);
 
-			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_function::IDENTIFIER);
 			let node = &document.network_interface.document_network().nodes[&math_id];
 			assert_eq!(
 				node.inputs.len(),
@@ -4698,7 +4782,7 @@ mod tests {
 			let mut document = build_document("graphene_core::ops::MathNode", inputs);
 			migrate(&mut document);
 
-			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_fx::IDENTIFIER);
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_function::IDENTIFIER);
 			let node = &document.network_interface.document_network().nodes[&math_id];
 			assert_eq!(
 				node.inputs.get(1).and_then(|input| input.as_value()).cloned(),
@@ -4717,7 +4801,7 @@ mod tests {
 			let mut document = build_document("math_nodes::MathNode", inputs);
 			migrate(&mut document);
 
-			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_f::IDENTIFIER);
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_formula::IDENTIFIER);
 			let extend_id = find_extend(&document);
 			let network = document.network_interface.document_network();
 			assert_eq!(network.nodes[&math_id].inputs.first(), Some(&NodeInput::node(extend_id, 0)));
@@ -4739,7 +4823,7 @@ mod tests {
 			let mut document = build_document("math_nodes::MathNode", inputs);
 			migrate(&mut document);
 
-			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_f::IDENTIFIER);
+			assert_eq!(implementation_of(&document, math_id), graphene_std::math_nodes::math_formula::IDENTIFIER);
 			let extend_id = find_extend(&document);
 			let network = document.network_interface.document_network();
 			assert_eq!(network.nodes[&math_id].inputs.get(1), Some(&NodeInput::node(source_expression_id, 0)));

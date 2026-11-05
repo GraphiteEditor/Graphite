@@ -1394,8 +1394,8 @@ fn static_input_inspector() -> InputInspector {
 		}),
 	);
 	map.insert(
-		// Like `math_expression`, where a lone reducer token like `+` or `min` applied across the node's items is also valid
-		"math_expression_or_reducer".to_string(),
+		// Like `math_expression`, but taking only a lone operator or function name like `+` or `min` to apply across the node's items
+		"math_operator".to_string(),
 		Box::new(|node_id, index, context| {
 			let info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
 			Ok(vec![LayoutGroup::row(node_inspector::math_expression_widget(info, true))])
