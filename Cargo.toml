@@ -150,7 +150,7 @@ bitflags = { version = "2.4", features = ["serde"] }
 ctor = "1.0"
 convert_case = "0.12"
 titlecase = "3.6"
-fancy-regex = "0.19.0"
+fancy-regex = "0.20.0"
 unicode-segmentation = "1.13.2"
 indoc = "2.0.5"
 derivative = "2.2"
@@ -210,16 +210,16 @@ tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-mult
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.13", features = ["serde"] }
 vello_gpu = { version = "0.3", default-features = false, features = ["wgpu", "full_image_support"] }
-usvg = "0.47"
+usvg = "0.49"
 simplecss = "0.2"
-parley = { version = "0.11", default-features = false, features = ["std"] }
-skrifa = "0.47"
+parley = { version = "0.12", default-features = false, features = ["std"] }
+skrifa = "0.44"
 polycool = "0.4"
 color = "0.3"
 # Linebender ecosystem (END)
 rand = { version = "0.10", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.10"
-glam = { version = "0.33", default-features = false, features = [
+glam = { version = "0.34", default-features = false, features = [
 	"std",
 	"scalar-math",
 	"bytemuck",
@@ -266,9 +266,9 @@ petgraph = { version = "0.8", default-features = false, features = ["graphmap"] 
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }
 criterion = { version = "0.8", features = ["html_reports"] }
-gungraun = { version = "0.19" }
+gungraun = { version = "0.20" }
 ndarray = "0.17"
-ollev = "0.1.1"
+ollev = "0.1.2"
 dirs = "7.0"
 cef = "156"
 cef-dll-sys = "156"
@@ -280,11 +280,11 @@ open = "5.3"
 spin = "0.12"
 clap = "4.5"
 qrcodegen = "1.8"
-lzma-rust2 = { version = "0.21", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
-scraper = "0.27"
-linesweeper = "0.4"
+lzma-rust2 = { version = "0.25", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+scraper = "0.29"
+linesweeper = "0.5"
 smallvec = "1.13.2"
-zip = { version = "8", default-features = false }
+zip = { version = "9", default-features = false }
 
 [workspace.lints]
 
