@@ -8,9 +8,7 @@ use math_parser::value::Value;
 use rand::rngs::StdRng;
 use rand::{RngExt, SeedableRng};
 use std::collections::HashMap;
-
-/// The most symbols a generation may grow to, since each generation can multiply the string's length.
-const MAX_SYMBOLS: usize = 1_000_000;
+use std::ops::Range;
 
 /// Why the "L-System" node's string stops short of what its inputs describe.
 #[derive(Debug, thiserror::Error)]
@@ -21,8 +19,12 @@ pub enum LSystemError {
 	InvalidAxiom(String),
 	#[error("A rule's math gives no number: {0}")]
 	Evaluation(String),
-	#[error("Stopped after {completed} generations, since the next would be longer than a million symbols")]
-	TooLong { completed: i64 },
+	#[error("A rule's chance came out as {0}, which isn't zero or more")]
+	InvalidChance(f64),
+	#[error("Stopped after {completed} generations, since the next would grow past the Max Symbols limit of {limit}")]
+	TooLong { completed: i64, limit: usize },
+	#[error("Stopped after {limit} generations, since Max Symbols also limits how many generations run")]
+	TooManyGenerations { limit: usize },
 }
 
 /// Grows a string by rewriting all of its symbols at once with the rules, once per generation, for drawing with the **Turtle Path** node.
@@ -33,17 +35,21 @@ fn l_system(
 	_: impl Ctx,
 	/// The string to start growing from.
 	axiom: Item<String>,
-	/// One rule per line, like `F = F+F-F-F+F`, which replaces every `F` with `F+F-F-F+F` in each generation. Symbols without a rule stay as they are.
+	/// One rule per line, like `F = F+F-F-F+F` (or `F -> F+F-F-F+F`), which replaces every `F` with `F+F-F-F+F` in each generation. Symbols without a rule stay as they are.
 	///
 	/// A rule can also check the symbols around one, as in `A < B > C = D`, which rewrites a `B` only between an `A` and a `C`. When several rules for a symbol end with a chance, like `F = F[+F]F : 0.6`, one of them is picked at random by those odds.
 	///
-	/// Symbols can carry numbers, like `F(10)`. A rule names them to work out new numbers with math, and to apply only when the condition after `:` holds, as in `F(x) : x > 2 = F(x/2)[+F(x/2)]`.
+	/// Symbols can carry numbers, like `F(10)`. A rule names them to work out new numbers with math, and to apply only when the condition after `:` holds, as in `F(x) : x > 2 = F(x/2)[+F(x/2)]`. A chance can be worked out from them too.
+	///
+	/// A `%` cuts off the rest of its branch, up to the `]` that ends it.
 	///
 	/// Lines starting with `//` are skipped.
 	#[default("F = F+F-F-F+F")]
 	#[widget(ParsedWidgetOverride::Custom = "text_area")]
 	rules: Item<String>,
 	/// Symbols to look past when a rule checks the symbols around one, usually the turns between them.
+	///
+	/// Listing `[` and `]` reads the string straight through its branches, as if it had no brackets.
 	#[default("+-")]
 	ignored_symbols: Item<String>,
 	/// How many times the rules rewrite the whole string. Each generation can multiply its length.
@@ -53,21 +59,27 @@ fn l_system(
 	/// Seed to determine unique variations on which rule is picked where several give chances.
 	#[hard(0..)]
 	seed: Item<i64>,
+	/// The longest the string may grow, in symbols, and the most generations that run. A generation past either is left out, guarding against a number of generations that would freeze the editor.
+	#[default(1_000_000)]
+	#[hard(1..)]
+	max_symbols: Item<i64>,
 ) -> Result<Item<String>, (Item<String>, LSystemError)> {
 	// The grown string takes the axiom's place in its item, keeping the attributes it carries
 	let mut string = axiom;
 
-	let axiom = match parse_axiom(string.element()) {
+	let mut axiom = match parse_axiom(string.element()) {
 		Ok(axiom) => axiom,
 		Err(reason) => {
 			string.element_mut().clear();
 			return Err((string, LSystemError::InvalidAxiom(reason)));
 		}
 	};
+	cut_branches(&mut axiom);
 	let (rule_set, rule_error) = RuleSet::parse(rules.element());
 	let ignored_symbols: Vec<char> = ignored_symbols.element().chars().filter(|symbol| !symbol.is_whitespace()).collect();
+	let max_symbols = (*max_symbols.element()).max(1) as usize;
 
-	let (modules, rewrite_error) = rewrite(axiom, &rule_set, *generations.element(), &ignored_symbols, *seed.element() as u64);
+	let (modules, rewrite_error) = rewrite(axiom, &rule_set, *generations.element(), max_symbols, &ignored_symbols, *seed.element() as u64);
 	*string.element_mut() = modules_to_string(&modules);
 
 	// An invalid rule is reported first, since it is usually being typed and explains any other surprise
@@ -106,7 +118,13 @@ struct Rule {
 	condition: Option<ast::Node>,
 	successor: Vec<WrittenSymbol>,
 	/// The odds of picking this rule among the other matching rules that give chances.
-	chance: Option<f64>,
+	chance: Option<Chance>,
+}
+
+/// A rule's chance, as a written number or as math to work out from the numbers it names.
+enum Chance {
+	Fixed(f64),
+	Computed(ast::Node),
 }
 
 /// The rules, looked up by the symbol each one rewrites.
@@ -168,11 +186,16 @@ impl<'a> Bindings<'a> {
 }
 
 /// Rewrites every module once per generation, giving the last complete generation and why it stopped early, if it did.
-fn rewrite(axiom: Vec<Module>, rule_set: &RuleSet, generations: i64, ignored_symbols: &[char], seed: u64) -> (Vec<Module>, Option<LSystemError>) {
+fn rewrite(axiom: Vec<Module>, rule_set: &RuleSet, generations: i64, max_symbols: usize, ignored_symbols: &[char], seed: u64) -> (Vec<Module>, Option<LSystemError>) {
 	let mut rng = StdRng::seed_from_u64(seed);
 	let mut modules = axiom;
 
 	for generation in 0..generations {
+		// Running more generations than Max Symbols without passing it takes a string that stopped growing, which could otherwise run long enough to freeze the editor
+		if generation >= max_symbols as i64 {
+			return (modules, Some(LSystemError::TooManyGenerations { limit: max_symbols }));
+		}
+
 		let partners = if rule_set.uses_context { bracket_partners(&modules) } else { Vec::new() };
 		let neighbors = Neighbors {
 			modules: &modules,
@@ -181,10 +204,11 @@ fn rewrite(axiom: Vec<Module>, rule_set: &RuleSet, generations: i64, ignored_sym
 		};
 
 		let mut next = Vec::with_capacity(modules.len());
+		let mut rolled = false;
 		for (index, module) in modules.iter().enumerate() {
-			let chosen = match choose_rule(rule_set, &neighbors, index, &mut rng) {
+			let chosen = match choose_rule(rule_set, &neighbors, index, &mut rng, &mut rolled) {
 				Ok(chosen) => chosen,
-				Err(reason) => return (modules, Some(LSystemError::Evaluation(reason))),
+				Err(error) => return (modules, Some(error)),
 			};
 
 			let Some((rule, bindings)) = chosen else {
@@ -199,32 +223,83 @@ fn rewrite(axiom: Vec<Module>, rule_set: &RuleSet, generations: i64, ignored_sym
 				next.push(Module { symbol: written.symbol, parameters });
 			}
 
-			if next.len() > MAX_SYMBOLS {
-				return (modules, Some(LSystemError::TooLong { completed: generation }));
+			if next.len() > max_symbols {
+				return (
+					modules,
+					Some(LSystemError::TooLong {
+						completed: generation,
+						limit: max_symbols,
+					}),
+				);
 			}
 		}
 
+		cut_branches(&mut next);
+
+		// A generation that changed nothing without rolling any chances would repeat forever, so growth has settled
+		let settled = !rolled && next == modules;
 		modules = next;
+		if settled {
+			break;
+		}
 	}
 
 	(modules, None)
 }
 
+/// Erases each `%` along with the rest of its branch, up to the `]` that ends it, or to the end of the string outside any branch. O(n).
+fn cut_branches(modules: &mut Vec<Module>) {
+	if !modules.iter().any(|module| module.symbol == '%') {
+		return;
+	}
+
+	// While cutting, the count of branches opened since the `%`, so the `]` ending the cut branch is kept
+	let mut cut_depth: Option<usize> = None;
+	modules.retain(|module| match (cut_depth, module.symbol) {
+		(None, '%') => {
+			cut_depth = Some(0);
+			false
+		}
+		(None, _) => true,
+		(Some(0), ']') => {
+			cut_depth = None;
+			true
+		}
+		(Some(depth), '[') => {
+			cut_depth = Some(depth + 1);
+			false
+		}
+		(Some(depth), ']') => {
+			cut_depth = Some(depth - 1);
+			false
+		}
+		(Some(_), _) => false,
+	});
+}
+
 /// The rule that rewrites the module at `index` with its names bound. The first matching rule applies, unless it gives a chance, in which case one of the matching rules that give chances is picked by the odds.
-fn choose_rule<'a>(rule_set: &'a RuleSet, neighbors: &Neighbors, index: usize, rng: &mut StdRng) -> Result<Option<(&'a Rule, Bindings<'a>)>, String> {
+/// Picking by the odds sets `rolled`.
+fn choose_rule<'a>(rule_set: &'a RuleSet, neighbors: &Neighbors, index: usize, rng: &mut StdRng, rolled: &mut bool) -> Result<Option<(&'a Rule, Bindings<'a>)>, LSystemError> {
 	let module = &neighbors.modules[index];
 	let Some(candidates) = rule_set.by_symbol.get(&module.symbol) else { return Ok(None) };
 
 	let mut chance_matches = Vec::new();
 	for &rule_index in candidates {
 		let rule = &rule_set.rules[rule_index];
-		let Some(bindings) = matching_bindings(rule, neighbors, index)? else { continue };
+		let Some(bindings) = matching_bindings(rule, neighbors, index).map_err(LSystemError::Evaluation)? else {
+			continue;
+		};
 
-		match rule.chance {
-			Some(chance) => chance_matches.push((rule, bindings, chance)),
+		let chance = match &rule.chance {
+			Some(Chance::Fixed(chance)) => *chance,
+			Some(Chance::Computed(expression)) => evaluate_number(expression, &bindings).map_err(LSystemError::Evaluation)?,
 			None if chance_matches.is_empty() => return Ok(Some((rule, bindings))),
-			None => {}
+			None => continue,
+		};
+		if chance.is_nan() || chance < 0. {
+			return Err(LSystemError::InvalidChance(chance));
 		}
+		chance_matches.push((rule, bindings, chance));
 	}
 
 	let total: f64 = chance_matches.iter().map(|(_, _, chance)| chance).sum();
@@ -232,6 +307,7 @@ fn choose_rule<'a>(rule_set: &'a RuleSet, neighbors: &Neighbors, index: usize, r
 		return Ok(None);
 	}
 
+	*rolled = true;
 	let mut pick = rng.random::<f64>() * total;
 	let last = chance_matches.len() - 1;
 	for (position, (rule, bindings, chance)) in chance_matches.into_iter().enumerate() {
@@ -294,9 +370,9 @@ impl Neighbors<'_> {
 		while current > 0 {
 			current -= 1;
 			match self.modules[current].symbol {
+				symbol if self.ignored_symbols.contains(&symbol) => {}
 				']' => current = self.partners[current]?,
 				'[' => {}
-				symbol if self.ignored_symbols.contains(&symbol) => {}
 				_ => return Some(current),
 			}
 		}
@@ -308,9 +384,9 @@ impl Neighbors<'_> {
 		let mut current = index + 1;
 		while current < self.modules.len() {
 			match self.modules[current].symbol {
+				symbol if self.ignored_symbols.contains(&symbol) => current += 1,
 				'[' => current = self.partners[current]? + 1,
 				']' => return None,
-				symbol if self.ignored_symbols.contains(&symbol) => current += 1,
 				_ => return Some(current),
 			}
 		}
@@ -372,7 +448,10 @@ fn parse_rule(line: &str) -> Result<Rule, String> {
 	let Some(separator) = rule_separator(line) else {
 		return Err("it needs an `=` between the symbol and what it becomes".to_string());
 	};
-	let (left_side, right_side) = (&line[..separator], &line[separator + 1..]);
+	let (left_side, right_side) = (&line[..separator.start], &line[separator.end..]);
+	if rule_separator(right_side).is_some() {
+		return Err("it has a second `=`, but a condition checks equality with `==`".to_string());
+	}
 
 	// The left side reads `left < symbol > right : condition`, where all but the symbol are optional
 	let (pattern_text, condition_text) = split_at_first(left_side, ':');
@@ -398,10 +477,10 @@ fn parse_rule(line: &str) -> Result<Rule, String> {
 		None => (right_side, None),
 	};
 	let chance = chance_text
-		.map(|text| {
-			parse_f64(text)
-				.filter(|chance| *chance >= 0.)
-				.ok_or_else(|| format!("the chance `{text}` isn't a number of zero or more"))
+		.map(|text| match parse_f64(text) {
+			Some(chance) if chance >= 0. => Ok(Chance::Fixed(chance)),
+			Some(_) => Err(format!("the chance `{text}` isn't a number of zero or more")),
+			None => parse_expression(text).map(Chance::Computed),
 		})
 		.transpose()?;
 
@@ -446,13 +525,25 @@ fn parse_patterns(text: &str) -> Result<Vec<Pattern>, String> {
 		.collect()
 }
 
-/// The byte index of the `=` between a rule's two sides, passing over the ones in comparisons like `==`, `<=`, `>=` and `!=`.
-fn rule_separator(line: &str) -> Option<usize> {
-	let bytes = line.as_bytes();
-	(0..bytes.len()).find(|&index| {
+/// The bytes of the first `=` or `->` outside parentheses, which separates a rule's two sides, passing over comparisons like `==`, `<=`, `>=` and `!=`.
+fn rule_separator(text: &str) -> Option<Range<usize>> {
+	let bytes = text.as_bytes();
+	let mut depth = 0;
+
+	for (index, &byte) in bytes.iter().enumerate() {
 		let previous = index.checked_sub(1).map(|previous| bytes[previous]);
-		bytes[index] == b'=' && !matches!(previous, Some(b'=' | b'<' | b'>' | b'!')) && bytes.get(index + 1) != Some(&b'=')
-	})
+		let next = bytes.get(index + 1).copied();
+
+		match byte {
+			b'(' => depth += 1,
+			b')' => depth -= 1,
+			b'-' if depth == 0 && next == Some(b'>') => return Some(index..index + 2),
+			b'=' if depth == 0 && !matches!(previous, Some(b'=' | b'<' | b'>' | b'!')) && next != Some(b'=') => return Some(index..index + 1),
+			_ => {}
+		}
+	}
+
+	None
 }
 
 /// Splits the text at the first `delimiter` outside parentheses, giving the text before it and, if found, the text after it.
@@ -567,10 +658,30 @@ mod tests {
 	}
 
 	fn grow_with(axiom: &str, rules: &str, generations: i64, ignored_symbols: &str, seed: i64) -> Result<String, (String, String)> {
+		grow_up_to(axiom, rules, generations, ignored_symbols, seed, 1_000_000)
+	}
+
+	fn grow_up_to(axiom: &str, rules: &str, generations: i64, ignored_symbols: &str, seed: i64, max_symbols: i64) -> Result<String, (String, String)> {
 		let item = |text: &str| Item::new_from_element(text.to_string());
-		l_system((), item(axiom), item(rules), item(ignored_symbols), Item::new_from_element(generations), Item::new_from_element(seed))
+		let number = Item::new_from_element;
+		l_system((), item(axiom), item(rules), item(ignored_symbols), number(generations), number(seed), number(max_symbols))
 			.map(Item::into_element)
 			.map_err(|(result, error)| (result.into_element(), error.to_string()))
+	}
+
+	#[test]
+	fn accepts_an_arrow_between_a_rules_sides() {
+		assert_eq!(grow("F", "F -> F+F", 1).unwrap(), "F+F");
+		assert_eq!(grow("F(3)", "F(x) : x > 2 -> F(x-1)", 1).unwrap(), "F(2)");
+	}
+
+	#[test]
+	fn rejects_a_single_equals_comparing_in_a_condition() {
+		let (_, error) = grow("F(0)", "F(m) : m=0 = X", 1).unwrap_err();
+		assert_eq!(error, "Line 1 of the rules isn't a valid rule: it has a second `=`, but a condition checks equality with `==`");
+
+		// Neither comparisons nor a `where` inside a symbol's parentheses separate the sides
+		assert_eq!(grow("F(0)", "F(m) : m == 0 = F(n where n = m + 1)", 1).unwrap(), "F(1)");
 	}
 
 	#[test]
@@ -598,6 +709,18 @@ mod tests {
 		// Right context ends with the branch
 		assert_eq!(grow("[AB]", "A > B = X", 1).unwrap(), "[XB]");
 		assert_eq!(grow("[A]B", "A > B = X", 1).unwrap(), "[A]B");
+
+		// Ignoring the brackets reads straight through branches
+		assert_eq!(grow_with("A[B]", "A > B = X", 1, "[]", 0).unwrap(), "X[B]");
+		assert_eq!(grow_with("A[Q]B", "A > B = X", 1, "[]", 0).unwrap(), "A[Q]B");
+		assert_eq!(grow_with("A[Q]B", "Q < B = X", 1, "[]", 0).unwrap(), "A[Q]X");
+	}
+
+	#[test]
+	fn cuts_the_rest_of_a_branch_after_a_percent_sign() {
+		assert_eq!(grow("[AB[C]D]E", "A = F%", 1).unwrap(), "[F]E");
+		assert_eq!(grow("AB[C]D", "A = F%", 1).unwrap(), "F");
+		assert_eq!(grow("F[%G]%H", "", 0).unwrap(), "F[]");
 	}
 
 	#[test]
@@ -630,6 +753,11 @@ mod tests {
 
 		// A chance of zero is never picked
 		assert_eq!(grow_with("FFFF", "F = A : 0\nF = B : 1", 1, "", 3).unwrap(), "BBBB");
+
+		// A chance can be worked out from the symbol's numbers
+		assert_eq!(grow_with("F(1)F(0)", "F(x) = A : x\nF(x) = B : 1 - x", 1, "", 0).unwrap(), "AB");
+		let (_, error) = grow_with("F(2)", "F(x) = A : 1 - x", 1, "", 0).unwrap_err();
+		assert_eq!(error, "A rule's chance came out as -1, which isn't zero or more");
 	}
 
 	#[test]
@@ -647,9 +775,24 @@ mod tests {
 	}
 
 	#[test]
-	fn stops_before_a_generation_grows_too_long() {
-		let (result, error) = grow("F", "F = FFFFFFFFFF", 7).unwrap_err();
-		assert_eq!(result.len(), 1_000_000);
-		assert_eq!(error, "Stopped after 6 generations, since the next would be longer than a million symbols");
+	fn stops_before_a_generation_grows_past_max_symbols() {
+		let (result, error) = grow_up_to("F", "F = FFFFFFFFFF", 7, "", 0, 1000).unwrap_err();
+		assert_eq!(result.len(), 1000);
+		assert_eq!(error, "Stopped after 3 generations, since the next would grow past the Max Symbols limit of 1000");
+	}
+
+	#[test]
+	fn settled_growth_ends_early_and_max_symbols_caps_generations() {
+		// Once nothing changes, any number of generations finishes at once
+		assert_eq!(grow("F", "F = F", i64::MAX), Ok("F".to_string()));
+		assert_eq!(grow("A(1)", "A(n) : n < 3 = A(n+1)", i64::MAX), Ok("A(3)".to_string()));
+
+		// A string that keeps changing without growing stops at as many generations as Max Symbols
+		let (result, error) = grow_up_to("A(0)", "A(n) = A(n+1)", i64::MAX, "", 0, 100).unwrap_err();
+		assert_eq!(result, "A(100)");
+		assert_eq!(error, "Stopped after 100 generations, since Max Symbols also limits how many generations run");
+
+		// A generation left unchanged by a chance can still change in a later one
+		assert_eq!(grow("F", "F = F : 0.99\nF = G : 0.01", 2000), Ok("G".to_string()));
 	}
 }
