@@ -460,6 +460,17 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 }
 
 impl ToolMessageHandler {
+	/// The icon of the active tool, or of the selected shape while the Shape tool is active.
+	pub fn active_tool_icon(&self) -> String {
+		let tool_data = &self.tool_state.tool_data;
+		match tool_data.active_shape_type {
+			Some(ToolType::Line) => Line.icon_name(),
+			Some(ToolType::Rectangle) => Rectangle.icon_name(),
+			Some(ToolType::Ellipse) => Ellipse.icon_name(),
+			_ => tool_data.tools.get(&tool_data.active_tool_type).map(|tool| tool.icon_name()).unwrap_or_default(),
+		}
+	}
+
 	/// Lets go of what the snapping session holds and has woken, so none of it carries over while the tools are off or into another document.
 	fn release_snapping(&mut self, responses: &mut VecDeque<Message>) {
 		self.snap_session.end_gesture();

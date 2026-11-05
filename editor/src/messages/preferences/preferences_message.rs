@@ -46,6 +46,9 @@ pub enum PreferencesMessage {
 	UserName {
 		name: String,
 	},
+	ShowRemoteCursors {
+		enabled: bool,
+	},
 	#[cfg(target_os = "macos")]
 	VSync {
 		vsync: bool,

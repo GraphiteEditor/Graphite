@@ -2387,6 +2387,10 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
+		&self.breadcrumb_network_path
+	}
+
 	fn stored_name(&self) -> Option<&str> {
 		let attribute = self.storage()?.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE).filter(|attribute| !attribute.deleted)?;
 		match &attribute.value {
