@@ -272,6 +272,7 @@ import NodeNumbersToVec2 from "/../branding/assets/16x16-nodes/node-numbers-to-v
 import NodeOffsetPath from "/../branding/assets/16x16-nodes/node-offset-path.svg";
 import NodeOffsetPoints from "/../branding/assets/16x16-nodes/node-offset-points.svg";
 import NodeOpacity from "/../branding/assets/16x16-nodes/node-opacity.svg";
+import NodeOpenEnds from "/../branding/assets/16x16-nodes/node-open-ends.svg";
 import NodeOriginsToPolyline from "/../branding/assets/16x16-nodes/node-origins-to-polyline.svg";
 import NodePackStrips from "/../branding/assets/16x16-nodes/node-pack-strips.svg";
 import NodePassthrough from "/../branding/assets/16x16-nodes/node-passthrough.svg";
@@ -552,6 +553,7 @@ export const ICON_16X16_NODES = {
 	NodeOffsetPath: { svg: NodeOffsetPath, size: 16 },
 	NodeOffsetPoints: { svg: NodeOffsetPoints, size: 16 },
 	NodeOpacity: { svg: NodeOpacity, size: 16 },
+	NodeOpenEnds: { svg: NodeOpenEnds, size: 16 },
 	NodeOriginsToPolyline: { svg: NodeOriginsToPolyline, size: 16 },
 	NodePackStrips: { svg: NodePackStrips, size: 16 },
 	NodePassthrough: { svg: NodePassthrough, size: 16 },

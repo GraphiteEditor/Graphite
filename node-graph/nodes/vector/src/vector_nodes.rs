@@ -1527,6 +1527,8 @@ fn points_to_vector(
 }
 
 /// Lists the positions of the anchor points in the vector content, as placed by its transform. Wiring this into the **Translation** of a **Transform** node places a copy of its content at each point.
+///
+/// Each point keeps its attributes, so **Read Attribute** can read them alongside the positions.
 #[node_macro::node(category("Vector: Point"), icon("NodeVectorToPoints"), name("Vector to Points"), path(core_types::vector))]
 fn vector_to_points(
 	_: impl Ctx,
@@ -1535,9 +1537,36 @@ fn vector_to_points(
 ) -> List<DVec2> {
 	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 	let paths = shared_paths_from_item_attributes(&content);
-	let positions = content.element().anchor_positions(&paths).into_iter().map(|position| transform.transform_point2(position)).collect();
+	let vector = content.element();
 
-	List::new_from_elements(positions)
+	vector.anchor_indices(&paths).into_iter().filter_map(|index| placed_point(vector, index, transform)).collect()
+}
+
+/// Lists the positions of the open ends in the vector content, where a path stops without meeting another, like the tips of a tree's branches.
+///
+/// Each point keeps its attributes, so **Read Attribute** can read them alongside the positions.
+#[node_macro::node(category("Vector: Point"), icon("NodeOpenEnds"), path(core_types::vector))]
+fn open_ends(
+	_: impl Ctx,
+	/// The vector content with paths to find the open ends of.
+	content: Item<Vector>,
+) -> List<DVec2> {
+	let transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
+	let paths = shared_paths_from_item_attributes(&content);
+	let vector = content.element();
+
+	// An open end is the anchor of exactly one segment, unlike a point along a path or a junction
+	let connectivity = vector.connectivity(&paths);
+	(0..vector.point_count())
+		.filter(|&index| connectivity.spokes(index as u32) == 1)
+		.filter_map(|index| placed_point(vector, index, transform))
+		.collect()
+}
+
+/// The pool point at `index` with its attributes, placed by the transform.
+fn placed_point(vector: &Vector, index: usize, transform: DAffine2) -> Option<Item<DVec2>> {
+	let (position, attributes) = vector.0.clone_item(index)?.into_parts();
+	Some(Item::from_parts(transform.transform_point2(position), attributes))
 }
 
 /// Creates a polyline from a series of vector points, replacing any existing segments that may already exist.
@@ -4265,6 +4294,34 @@ mod test {
 
 		let positions: Vec<DVec2> = points.iter_element_values().copied().collect();
 		assert_eq!(positions, [DVec2::new(-15., -13.), DVec2::new(25., -13.), DVec2::new(25., 27.), DVec2::new(-15., 27.)]);
+	}
+
+	#[test]
+	fn vector_to_points_and_open_ends_keep_point_attributes() {
+		use core_types::list::{ATTR_DEPTH, ATTR_HEADING};
+
+		// A trunk with a branch to the left, placed 100 px to the right
+		let tree = crate::turtle::turtle_path("F[+F]F", 10., 90., "FG", "f").with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(100., 0.)));
+
+		let points = super::vector_to_points((), tree.clone());
+		assert_eq!(points.iter_element_values().count(), 4);
+		assert_eq!(
+			points.iter_attribute_values::<i64>(ATTR_DEPTH).map(|depths| depths.copied().collect::<Vec<_>>()),
+			Some(vec![0, 0, 1, 0])
+		);
+
+		// The root and both tips, but not the junction where the branch leaves the trunk
+		let ends = super::open_ends((), tree);
+		let positions: Vec<DVec2> = ends.iter_element_values().copied().collect();
+		assert_eq!(positions, [DVec2::new(100., 0.), DVec2::new(90., -10.), DVec2::new(100., -20.)]);
+		assert_eq!(
+			ends.iter_attribute_values::<f64>(ATTR_HEADING).map(|headings| headings.copied().collect::<Vec<_>>()),
+			Some(vec![-90., 180., -90.])
+		);
+
+		// A closed path has no open ends
+		let square = crate::turtle::turtle_path("F+F+F+F", 10., 90., "FG", "f");
+		assert_eq!(super::open_ends((), square).len(), 0);
 	}
 
 	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {
