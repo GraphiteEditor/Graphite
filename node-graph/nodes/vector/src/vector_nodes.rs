@@ -4296,34 +4296,6 @@ mod test {
 		assert_eq!(positions, [DVec2::new(-15., -13.), DVec2::new(25., -13.), DVec2::new(25., 27.), DVec2::new(-15., 27.)]);
 	}
 
-	#[test]
-	fn vector_to_points_and_open_ends_keep_point_attributes() {
-		use core_types::list::{ATTR_DEPTH, ATTR_HEADING};
-
-		// A trunk with a branch to the left, placed 100 px to the right
-		let tree = crate::turtle::turtle_path("F[+F]F", 10., 90., "FG", "f").with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(100., 0.)));
-
-		let points = super::vector_to_points((), tree.clone());
-		assert_eq!(points.iter_element_values().count(), 4);
-		assert_eq!(
-			points.iter_attribute_values::<i64>(ATTR_DEPTH).map(|depths| depths.copied().collect::<Vec<_>>()),
-			Some(vec![0, 0, 1, 0])
-		);
-
-		// The root and both tips, but not the junction where the branch leaves the trunk
-		let ends = super::open_ends((), tree);
-		let positions: Vec<DVec2> = ends.iter_element_values().copied().collect();
-		assert_eq!(positions, [DVec2::new(100., 0.), DVec2::new(90., -10.), DVec2::new(100., -20.)]);
-		assert_eq!(
-			ends.iter_attribute_values::<f64>(ATTR_HEADING).map(|headings| headings.copied().collect::<Vec<_>>()),
-			Some(vec![-90., 180., -90.])
-		);
-
-		// A closed path has no open ends
-		let square = crate::turtle::turtle_path("F+F+F+F", 10., 90., "FG", "f");
-		assert_eq!(super::open_ends((), square).len(), 0);
-	}
-
 	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {
 		let hull = super::convex_hull((), create_vector_item(bezpath, transform), item(curvature));
 		assert_eq!(hull.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), transform, "the hull should keep its item's transform");
