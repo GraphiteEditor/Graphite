@@ -30,7 +30,11 @@ pub enum WorkspaceMessage {
 		active_tab_index: usize,
 	},
 	ToggleFocusDocument,
+	FocusPanel {
+		panel_type: PanelType,
+	},
 	ToggleDataPanelOpen,
+	ToggleSessionPanelOpen,
 	ToggleInspectorOpen,
 	ToggleLayersPanelOpen,
 	UpdatePanelsLayout,

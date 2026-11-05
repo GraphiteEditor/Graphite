@@ -12,6 +12,17 @@ pub struct DocumentInfo {
 	#[serde(default)]
 	pub path: Option<PathBuf>,
 	pub is_saved: bool,
+	/// `None` when not shared.
+	#[serde(default)]
+	pub session: Option<SessionStatus>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SessionStatus {
+	Connected,
+	/// The transport is down or the document isn't mounted. It reconnects on mount.
+	Disconnected,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints, from_wasm_abi))]

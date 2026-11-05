@@ -229,6 +229,7 @@ mod tests {
 			name: name.to_string(),
 			path: None,
 			is_saved: true,
+			session: None,
 		});
 
 		let names: HashSet<_> = recovery_file_names(infos.iter()).into_iter().map(|(_, name)| name).collect();

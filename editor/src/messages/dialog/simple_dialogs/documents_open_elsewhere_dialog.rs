@@ -3,7 +3,8 @@ use crate::messages::prelude::*;
 
 /// Lists the stored documents that stayed closed because another tab has them open.
 pub struct DocumentsOpenElsewhereDialog {
-	pub documents: Vec<(DocumentId, String)>,
+	/// Id, name and whether it is in a live session.
+	pub documents: Vec<(DocumentId, String, bool)>,
 }
 
 impl DialogLayoutHolder for DocumentsOpenElsewhereDialog {
@@ -24,22 +25,26 @@ impl LayoutHolder for DocumentsOpenElsewhereDialog {
 		let mut rows = vec![
 			LayoutGroup::row(vec![TextLabel::new(format!("{count} {documents} open in another tab.")).bold(true).multiline(true).widget_instance()]),
 			LayoutGroup::row(vec![
-				TextLabel::new(format!("{are} closed here so the two tabs don't overwrite each other.\nA copy opens here as a separate document."))
-					.multiline(true)
-					.widget_instance(),
+				TextLabel::new(format!(
+					"{are} closed here so the two tabs don't overwrite each other.\nA copy is a separate document, while joining a session edits it live."
+				))
+				.multiline(true)
+				.widget_instance(),
 			]),
 		];
-		rows.extend(self.documents.iter().cloned().map(|(source, name)| {
-			let label = TextLabel::new(name.clone()).widget_instance();
-			let button = TextButton::new("Open a Copy")
-				.on_update(move |_| {
-					DialogMessage::CloseAndThen {
-						followups: vec![PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() }.into()],
-					}
-					.into()
-				})
-				.widget_instance();
-			LayoutGroup::row(vec![label, Separator::new(SeparatorStyle::Unrelated).widget_instance(), button])
+		rows.extend(self.documents.iter().cloned().map(|(source, name, shared)| {
+			let button = |label: &str, followup: Box<dyn Fn() -> PortfolioMessage + Send + Sync>| {
+				TextButton::new(label)
+					.on_update(move |_| DialogMessage::CloseAndThen { followups: vec![followup().into()] }.into())
+					.widget_instance()
+			};
+			let mut widgets = vec![TextLabel::new(name.clone()).widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance()];
+			// A copy stays possible, since joining needs the other tab to be connected
+			if shared {
+				widgets.push(button("Join in This Tab", Box::new(move || PortfolioMessage::JoinStoredSession { source })));
+			}
+			widgets.push(button("Open a Copy", Box::new(move || PortfolioMessage::OpenDocumentCopy { source, document_name: name.clone() })));
+			LayoutGroup::row(widgets)
 		}));
 
 		Layout(rows)

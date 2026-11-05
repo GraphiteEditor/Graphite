@@ -99,6 +99,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardWrite { content } => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
 		}
+		// No web origin here, so use the hosted editor
+		FrontendMessage::TriggerSessionLinkCopy { token } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite {
+				content: format!("https://editor.graphite.rs/?session={token}"),
+			});
+		}
 		FrontendMessage::WindowPointerLock => {
 			dispatcher.respond(DesktopFrontendMessage::PointerLock);
 		}
