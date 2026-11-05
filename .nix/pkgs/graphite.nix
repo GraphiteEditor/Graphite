@@ -83,7 +83,7 @@ deps.crane.lib.buildPackage (
       pkgs.lld
       pkgs.nodejs
       pkgs.binaryen
-      pkgs.wasm-bindgen-cli_0_2_127
+      pkgs.wasm-bindgen-cli_0_2_129
       deps.cargoAbout
       pkgs.removeReferencesTo
       pkgs.importNpmLock.npmConfigHook

@@ -3016,7 +3016,7 @@ fn draw_glyph_run_to_bezpaths(glyph_run: &parley::GlyphRun<'_, ()>, x_offset: f3
 	let run = glyph_run.run();
 	let font = run.font();
 	let font_size_pts = run.font_size();
-	let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(*c)).collect();
+	let normalized_coords: Vec<NormalizedCoord> = run.normalized_coords().iter().map(|c| NormalizedCoord::from_bits(c.to_bits())).collect();
 
 	let Ok(font_ref) = SkrifaFontRef::from_index(font.data.as_ref(), font.index) else { return };
 	let outlines = font_ref.outline_glyphs();

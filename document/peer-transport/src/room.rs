@@ -14,7 +14,7 @@ const FRAME_FINAL: u8 = 1;
 const FRAME_MORE: u8 = 0;
 
 /// Split a packet into `[flag][bytes]` chunks, the last carrying [`FRAME_FINAL`] so no length prefix is needed.
-fn frames(bytes: &[u8]) -> Vec<Box<[u8]>> {
+fn frames(bytes: &[u8]) -> Vec<Packet> {
 	// Chunking an empty packet would yield no frame at all.
 	let chunks: Vec<&[u8]> = if bytes.is_empty() { vec![&[]] } else { bytes.chunks(CHUNK_BYTES).collect() };
 
@@ -258,7 +258,7 @@ mod tests {
 
 		assert_eq!(incoming.wait().now_or_never(), None, "nothing arrived yet");
 
-		lock(&inbox).packets.push_back((peer(1), Box::new([FRAME_FINAL, 7])));
+		lock(&inbox).packets.push_back((peer(1), Packet::from_static(&[FRAME_FINAL, 7])));
 		assert_eq!(incoming.wait().now_or_never(), Some(true), "an arrival resolves the wait");
 		assert_eq!(incoming.wait().now_or_never(), Some(true), "and keeps it resolved until the inbox is drained");
 

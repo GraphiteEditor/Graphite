@@ -1,4 +1,4 @@
-use rand::{Rng, SeedableRng};
+use rand::{RngExt, SeedableRng};
 
 /// Gives each of `count` items a factor from 0 to 1, either spread evenly in item order or drawn at random from the `seed`.
 /// The even spread restarts after every `repeat_every` items, unless it is 0 to span all the items once.

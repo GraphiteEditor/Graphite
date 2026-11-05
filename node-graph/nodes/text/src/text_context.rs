@@ -44,7 +44,7 @@ pub fn for_each_styled_glyph_run(layout: &Layout<()>, text: &str, typesetting: T
 
 		if is_last_para_line && let Some(correction) = last_line_correction {
 			let metrics = line.metrics();
-			let content_advance = metrics.advance - metrics.trailing_whitespace;
+			let content_advance = metrics.advance - metrics.hanging_advance;
 			let free_space = alignment_width - content_advance;
 
 			match correction {

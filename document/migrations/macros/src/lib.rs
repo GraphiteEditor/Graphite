@@ -244,7 +244,7 @@ fn registration(core: &TokenStream2, register: TokenStream2, migration: TokenStr
 	quote! {
 		use #core::ctor::ctor;
 
-		#[cfg_attr(not(target_family = "wasm"), ctor)]
+		#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = #core::ctor))]
 		fn register() {
 			#core::#register(#migration);
 		}
