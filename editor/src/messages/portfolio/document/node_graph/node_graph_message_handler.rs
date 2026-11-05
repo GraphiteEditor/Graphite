@@ -131,9 +131,9 @@ pub struct NodeGraphMessageHandler {
 	reordering_export: Option<usize>,
 	/// The end index of the moved connector
 	end_index: Option<usize>,
-	/// Used to keep track of what nodes are sent to the front end so that only visible ones are sent to the frontend
-	frontend_nodes: Vec<NodeId>,
-	/// Used to keep track of what wires are sent to the front end so the old ones can be removed
+	/// The nodes the frontend currently knows about
+	frontend_nodes: Vec<FrontendNode>,
+	/// Used to keep track of what wires are sent to the frontend so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
 	evaluation_errors: Vec<NodeEvaluationError>,
 }
@@ -2017,7 +2017,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
-				for node_id in &self.frontend_nodes {
+				for node_id in self.frontend_nodes.iter().map(|node| &node.id) {
 					let Some(node_bbox) = network_interface.node_bounding_box(node_id, breadcrumb_network_path) else {
 						log::error!("Could not get bbox for node: {node_id:?}");
 						continue;
@@ -2052,9 +2052,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(InspectorMessage::Refresh);
 				responses.add(EventMessage::GraphChanged);
 				if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
-					let nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
-					self.frontend_nodes = nodes.iter().map(|node| node.id).collect();
-					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
+					self.frontend_nodes = self.collect_nodes(network_interface, breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes: self.frontend_nodes.clone() });
 
 					let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
 					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
@@ -2070,6 +2069,36 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(NodeGraphMessage::UpdateHoveredConnector);
 					self.update_node_graph_hints(responses);
 				}
+			}
+			NodeGraphMessage::SendNodePositions => {
+				if breadcrumb_network_path != selection_network_path || !graph_view_overlay_open {
+					return;
+				}
+
+				let Some(network) = network_interface.nested_network(breadcrumb_network_path) else { return };
+				let same_nodes = network.nodes.len() == self.frontend_nodes.len() && self.frontend_nodes.iter().all(|node| network.nodes.contains_key(&node.id));
+				if !same_nodes {
+					responses.add(NodeGraphMessage::SendGraph);
+					return;
+				}
+
+				for node in &mut self.frontend_nodes {
+					if let Some(position) = network_interface.position(&node.id, breadcrumb_network_path) {
+						node.position = position.into();
+					}
+				}
+				responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes: self.frontend_nodes.clone() });
+
+				let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
+				responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
+
+				let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
+				responses.add(FrontendMessage::UpdateLayerWidths {
+					layer_widths,
+					chain_widths,
+					has_left_input_wire,
+				});
+				responses.add(NodeGraphMessage::UpdateImportsExports);
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
 				use graphene_std::vector::generator_nodes::*;
@@ -2134,12 +2163,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				if graph_view_overlay_open {
-					responses.add(NodeGraphMessage::SendGraph);
+					if !rubber_band {
+						responses.add(NodeGraphMessage::SendGraph);
+					}
 					responses.add(DocumentMessage::RenderRulers);
 					responses.add(DocumentMessage::RenderScrollbars);
 				}
 			}
 			NodeGraphMessage::ShiftSelectedNodesByAmount { mut graph_delta, rubber_band, glide } => {
+				let moved = graph_delta != IVec2::ZERO;
 				while graph_delta != IVec2::ZERO {
 					match graph_delta.x.cmp(&0) {
 						Ordering::Greater => {
@@ -2183,6 +2215,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				responses.add(NodeGraphMessage::SendWires);
+				if rubber_band && moved {
+					responses.add(NodeGraphMessage::SendNodePositions);
+				}
 			}
 			NodeGraphMessage::ToggleSelectedAsLayersOrNodes => {
 				let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {

@@ -208,6 +208,7 @@ pub enum NodeGraphMessage {
 	SendWires,
 	UpdateVisibleNodes,
 	SendGraph,
+	SendNodePositions,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,
