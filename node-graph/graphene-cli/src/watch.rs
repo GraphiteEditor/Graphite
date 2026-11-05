@@ -19,12 +19,13 @@ use winit::window::{Window, WindowAttributes, WindowId};
 const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const BACKGROUND: wgpu::Color = wgpu::Color { r: 0.015, g: 0.015, b: 0.015, a: 1. };
 
-pub async fn run(live: LiveDocument) -> Result<(), Box<dyn Error>> {
+pub async fn run(mut live: LiveDocument) -> Result<(), Box<dyn Error>> {
 	let (application_io, editor_api) = editor_api(Some(live.document())).await;
 	if application_io.gpu_executor().is_none() {
+		live.leave();
 		return Err("watching a session needs a usable GPU".into());
 	}
-	let event_loop = EventLoop::new()?;
+	let event_loop = EventLoop::new().inspect_err(|_| live.leave())?;
 	let spawner = Arc::new(TokioSpawner::default());
 
 	let viewer = Viewer {
@@ -65,9 +66,9 @@ impl Viewer {
 		self.application_io.gpu_executor().expect("`run` checks for a GPU executor")
 	}
 
-	fn create_surface(&mut self, window: &Arc<dyn Window>) {
+	fn create_surface(&mut self, window: &Arc<dyn Window>) -> Result<(), wgpu::CreateSurfaceError> {
 		let context = self.wgpu_executor().context();
-		let surface = context.instance.create_surface(window.clone()).expect("create surface");
+		let surface = context.instance.create_surface(window.clone())?;
 		let capabilities = surface.get_capabilities(&context.adapter);
 		// The bytes are already sRGB encoded, so a non-sRGB target passes them through
 		let preferred = [wgpu::TextureFormat::Bgra8Unorm, wgpu::TextureFormat::Rgba8Unorm];
@@ -88,6 +89,12 @@ impl Viewer {
 
 		self.blitter = Some(TextureBlitterBuilder::new(&context.device, format).blend_state(wgpu::BlendState::ALPHA_BLENDING).build());
 		self.surface = Some((surface, config));
+		Ok(())
+	}
+
+	fn quit(&mut self, event_loop: &dyn ActiveEventLoop) {
+		self.live.leave();
+		event_loop.exit();
 	}
 
 	fn resize(&mut self) {
@@ -164,6 +171,11 @@ impl Viewer {
 		let surface_texture = match surface.get_current_texture(&context.queue) {
 			WgpuCurrentSurfaceTexture::Success(texture) | WgpuCurrentSurfaceTexture::Suboptimal(texture) => texture,
 			WgpuCurrentSurfaceTexture::Occluded => return Ok(()),
+			WgpuCurrentSurfaceTexture::Lost | WgpuCurrentSurfaceTexture::Outdated | WgpuCurrentSurfaceTexture::Timeout => {
+				surface.configure(&context.device, config);
+				window.request_redraw();
+				return Ok(());
+			}
 			other => return Err(format!("surface unavailable: {other:?}").into()),
 		};
 		let target = surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default());
@@ -202,8 +214,17 @@ impl ApplicationHandler for Viewer {
 		let attributes = WindowAttributes::default()
 			.with_title(format!("Graphite live view {}", self.live.token()))
 			.with_surface_size(winit::dpi::LogicalSize::new(800, 600));
-		let window: Arc<dyn Window> = event_loop.create_window(attributes).expect("create window").into();
-		self.create_surface(&window);
+		let window: Arc<dyn Window> = match event_loop.create_window(attributes) {
+			Ok(window) => window.into(),
+			Err(error) => {
+				log::error!("Failed to create the window: {error}");
+				return self.quit(event_loop);
+			}
+		};
+		if let Err(error) = self.create_surface(&window) {
+			log::error!("Failed to create the window surface: {error}");
+			return self.quit(event_loop);
+		}
 		window.request_redraw();
 		self.window = Some(window);
 		event_loop.set_control_flow(ControlFlow::WaitUntil(Instant::now() + POLL_INTERVAL));
@@ -239,10 +260,7 @@ impl ApplicationHandler for Viewer {
 
 	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
 		match event {
-			WindowEvent::CloseRequested => {
-				self.live.leave();
-				event_loop.exit();
-			}
+			WindowEvent::CloseRequested => self.quit(event_loop),
 			WindowEvent::SurfaceResized(_) => {
 				self.resize();
 				if let Some(window) = &self.window {

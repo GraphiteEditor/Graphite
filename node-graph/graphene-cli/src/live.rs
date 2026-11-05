@@ -62,7 +62,11 @@ async fn drive_from_stdin(mut live: LiveDocument) {
 }
 
 fn spawn_driver(driver: document_live::MessageLoopFuture) {
-	tokio::spawn(driver);
+	tokio::spawn(async move {
+		if let Err(error) = driver.await {
+			log::error!("Session transport ended: {error}");
+		}
+	});
 }
 
 fn identity() -> Result<(PeerId, UserId), getrandom::Error> {

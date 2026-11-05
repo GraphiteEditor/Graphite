@@ -405,6 +405,12 @@ impl Replica {
 	}
 
 	pub fn send_resource(&mut self, to: TransportPeerId, hash: ResourceHash, bytes: Vec<u8>) -> Result<(), PacketError> {
+		if let Some(recipients) = self.owed_resources.get_mut(&hash) {
+			recipients.remove(&to);
+			if recipients.is_empty() {
+				self.owed_resources.remove(&hash);
+			}
+		}
 		self.transport.send(to, &SyncPacket::Resource { hash, bytes })
 	}
 
@@ -1125,5 +1131,19 @@ mod tests {
 		network.disconnect(bare.id());
 		host.poll(&mut session);
 		assert!(host.owed_resources.is_empty(), "nothing is owed to a link that closed");
+	}
+
+	#[test]
+	fn an_answered_request_is_owed_no_more() {
+		let (mut network, mut host, host_link, mut session) = hosted_room();
+		let mut bare = connect_bare_peer(&mut network, &mut host, &mut session);
+		let hash = ResourceHash::from(b"bytes".as_slice());
+
+		bare.send(host_link, &hello(0)).unwrap();
+		bare.send(host_link, &SyncPacket::ResourceRequest(vec![hash])).unwrap();
+		network.deliver_all();
+		host.poll(&mut session);
+		host.send_resource(bare.id(), hash, b"bytes".to_vec()).unwrap();
+		assert!(host.owed_resources.is_empty());
 	}
 }
