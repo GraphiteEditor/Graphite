@@ -13,7 +13,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graphene_std::application_io::ApplicationIo;
-use graphene_std::runtime::{AsyncRuntime, Spawn, Task};
+use graphene_std::runtime::{AsyncRuntime, RuntimeHandle, Spawn, Task};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::collections::HashMap;
@@ -95,10 +95,10 @@ pub struct CompiledDocument {
 	spawner: Arc<TokioSpawner>,
 }
 
-pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
+pub async fn editor_api(gdd: Option<&GddV1>) -> (Arc<PlatformApplicationIo>, Arc<PlatformEditorApi>) {
 	log::info!("Creating GPU context");
 	let mut application_io = PlatformApplicationIo::new().await;
-	if let Some(gdd) = &document.gdd {
+	if let Some(gdd) = gdd {
 		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
 	}
 	let application_io = Arc::new(application_io);
@@ -110,14 +110,14 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 	let editor_api = Arc::new(PlatformEditorApi {
 		application_io: Some(application_io.clone()),
 	});
-	let spawner = Arc::new(TokioSpawner::default());
-	let runtime = AsyncRuntime::new(spawner.clone());
+	(application_io, editor_api)
+}
 
-	let mut network = wrap_network_in_scope(document.network, editor_api, runtime.handle());
+pub fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
+	let mut network = wrap_network_in_scope(network, editor_api, runtime);
 
-	// A `.gdd` resolves resource hashes from its registry, while a legacy `.graphite` has no resource store
 	let preprocessor = preprocessor::Preprocessor::new();
-	let preprocessed = match &document.gdd {
+	let preprocessed = match gdd {
 		Some(gdd) => preprocessor.preprocess(&mut network, &|resource_id| gdd.registry().resources.get(&resource_id).and_then(|resource| resource.hash)),
 		None => preprocessor.preprocess(&mut network, &|_| None),
 	};
@@ -127,9 +127,24 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 	for warning in &compiled_network.warnings {
 		eprintln!("{warning:?}");
 	}
+	Ok(compiled_network.network)
+}
+
+pub fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
+	DynamicExecutor::new(proto_network).map_err(|errors| {
+		let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
+		messages.join("\n").into()
+	})
+}
+
+pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
+	let (application_io, editor_api) = editor_api(document.gdd.as_ref()).await;
+	let spawner = Arc::new(TokioSpawner::default());
+	let runtime = AsyncRuntime::new(spawner.clone());
+	let proto_network = compile_graph(document.network, editor_api, document.gdd.as_ref(), runtime.handle())?;
 
 	Ok(CompiledDocument {
-		proto_network: compiled_network.network,
+		proto_network,
 		application_io,
 		runtime,
 		spawner,
@@ -138,10 +153,7 @@ pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocume
 
 impl CompiledDocument {
 	pub fn into_renderer(self) -> Result<Renderer, Box<dyn Error>> {
-		let executor = DynamicExecutor::new(self.proto_network).map_err(|errors| {
-			let messages: Vec<String> = errors.iter().map(|error| format!("{error:?}")).collect();
-			messages.join("\n")
-		})?;
+		let executor = create_executor(self.proto_network)?;
 		self.runtime.update_sources(executor.sources());
 
 		let device = self.application_io.gpu_executor().ok_or("No GPU executor is available")?.context().device.clone();

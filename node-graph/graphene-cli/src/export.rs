@@ -391,7 +391,7 @@ pub async fn export_image_sequence(
 	Ok(())
 }
 
-async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+pub async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
 	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
 	let mut frame = execute()?;
 	while spawner.join().await {
