@@ -664,6 +664,39 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 	}
 }
 
+#[tokio::test]
+async fn pasted_image_resource_survives_inserting_a_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	editor.handle_message(paste_named_image()).await;
+	editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER)).await;
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	let document = editor.active_document();
+	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
+}
+
+#[tokio::test]
+async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	editor.handle_message(paste_named_image()).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	let document = editor.active_document();
+	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
+}
+
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
 fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> ResourcesHandle {

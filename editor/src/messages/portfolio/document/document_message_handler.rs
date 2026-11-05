@@ -2200,6 +2200,7 @@ impl DocumentMessageHandler {
 
 		document.apply_stored_document_settings(storage.view_settings());
 		document.set_storage(storage, declarations, byte_store);
+		document.refresh_resource_registry();
 
 		document
 	}
@@ -2402,7 +2403,6 @@ impl DocumentMessageHandler {
 	pub fn set_storage(&mut self, mut storage: document_format::GddV1, declarations: Declarations, byte_store: Arc<dyn ResourceStorage>) {
 		storage.set_byte_store(byte_store);
 		self.history.set_storage(storage, declarations);
-		self.refresh_resource_registry();
 	}
 
 	pub(crate) fn end_storage_interaction(&mut self) {
