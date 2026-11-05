@@ -798,7 +798,7 @@ impl MapColor for Levels {
 // Each curve is any number of (x, y) points on 0..1 joined by a natural cubic spline held flat beyond the outermost
 // points, and the per-channel curves apply before the composite one, like Levels. The value between those two stages
 // stays exact rather than rounding through an 8-bit table, which can leave results a level away from 8-bit pipelines.
-// Needs the heap for its curves, so it stays off the shader build for now.
+// On the GPU, the curves are baked on the CPU into a lookup table that the kernel samples.
 #[node_macro::node(category("Raster: Adjustment"), icon("NodeCurves"), inspector("transfer_curves_inspector"), version(2))]
 fn curves<T: Adjust>(
 	_: impl Ctx,

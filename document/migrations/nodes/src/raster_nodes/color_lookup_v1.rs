@@ -14,7 +14,7 @@ mod tests {
 	use migration_runner::testing::{SourceContract, check_commutation, check_undo};
 
 	fn contract() -> SourceContract {
-		SourceContract::new(3, |random, _slot| literal(random.below(10) as f64))
+		SourceContract::new(2, |random, _slot| literal(random.below(10) as f64))
 	}
 
 	#[test]

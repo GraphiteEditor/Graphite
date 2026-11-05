@@ -263,7 +263,7 @@ impl PlacedRaster for Raster<CPU> {
 }
 
 impl PlacedRaster for Raster<GPU> {
-	/// Each channel is placed by its transform into their [`union_frame`], which takes the red channel's other attributes, and gives its luminance weighted by its alpha.
+	/// Each channel is placed by its transform into their [`union_frame`], which takes the first present channel's other attributes, and gives its luminance weighted by its alpha.
 	/// An empty channel gives zero, or full opacity for the alpha channel.
 	fn channels_to_image(channels: [Item<Self>; 4], pipeline: &WgpuPipelineCache) -> Result<Item<Self>, NodeError> {
 		if channels.iter().all(|channel| channel.element().is_empty()) {
@@ -273,8 +273,9 @@ impl PlacedRaster for Raster<GPU> {
 		let frame = union_frame(&channels.each_ref().map(raster_placement)).ok_or_else(|| NodeError::new("Every channel must be placed by an invertible transform"))?;
 		let raster = run_raster_kernel(&CombineChannels {}, frame.kernel_inputs(&channels.each_ref().map(Item::element)), frame.size, pipeline)?;
 
-		let [red, ..] = channels;
-		let (_, mut attributes) = red.into_parts();
+		// Take this item's blending attributes from the first present channel, as on the CPU
+		let first_present = channels.into_iter().find(|channel| !channel.element().is_empty()).expect("a channel is present");
+		let (_, mut attributes) = first_present.into_parts();
 		attributes.insert(ATTR_TRANSFORM, frame.transform);
 		Ok(Item::from_parts(raster, attributes))
 	}
@@ -304,14 +305,25 @@ impl PlacedRaster for Raster<GPU> {
 	}
 
 	fn extend_image_to_bounds(image: Item<Self>, bounds: DAffine2, pipeline: &WgpuPipelineCache) -> Result<Item<Self>, (Item<Self>, NodeError)> {
-		if image.element().is_empty() {
-			return Ok(image);
-		}
-
 		let (image_size, image_transform) = raster_placement(&image);
 		let image_aabb = Bbox::unit().affine_transform(image_transform).to_axis_aligned_bbox();
 		let bounds_aabb = Bbox::unit().affine_transform(bounds.transform()).to_axis_aligned_bbox();
-		if image_transform.matrix2.determinant() == 0. || (image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end)) {
+		if image_aabb.contains(bounds_aabb.start) && image_aabb.contains(bounds_aabb.end) {
+			return Ok(image);
+		}
+
+		// An empty image becomes a transparent one filling the bounds, as on the CPU
+		if image.element().is_empty() {
+			let size = UVec2::new(bounds.transform_vector2(DVec2::X).length() as u32, bounds.transform_vector2(DVec2::Y).length() as u32);
+			if size.x == 0 || size.y == 0 {
+				return Ok(Item::default().with_attribute(ATTR_TRANSFORM, bounds));
+			}
+			return match run_raster_kernel(&Transparent {}, Vec::new(), size, pipeline) {
+				Ok(raster) => Ok(Item::new_from_element(raster).with_attribute(ATTR_TRANSFORM, bounds)),
+				Err(error) => Err((image, error)),
+			};
+		}
+		if image_transform.matrix2.determinant() == 0. {
 			return Ok(image);
 		}
 
@@ -415,6 +427,18 @@ impl RasterKernel for ExtendToBounds {
 			return input_0_load(texel);
 			"#,
 		)
+	}
+}
+
+gpu_params! {
+	#[derive(Clone)]
+	struct Transparent {}
+}
+
+impl RasterKernel for Transparent {
+	const INPUTS: usize = 0;
+	fn wgsl() -> Wgsl {
+		Wgsl::body("return vec4<f32>(0.);")
 	}
 }
 
@@ -737,5 +761,42 @@ mod tests {
 		let raster: Item<Raster<CPU>> = mandelbrot(context).unwrap();
 
 		assert_eq!((raster.element().width, raster.element().height), (8, 8));
+	}
+
+	#[test]
+	fn channels_to_image_takes_the_first_present_channels_attributes_on_both_paths() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = gpu_pipeline(&executor);
+
+			// Only green is connected, so its opacity carries over rather than red's absence
+			let green = Item::new_from_element(Raster::new_cpu(Image::new(2, 2, Color::WHITE))).with_attribute(core_types::list::ATTR_OPACITY, 0.25_f64);
+			let channels = || [Item::default(), green.clone(), Item::default(), Item::default()];
+			let cpu = Raster::<CPU>::channels_to_image(channels(), pipeline.element()).unwrap();
+			let gpu_channels = channels().map(|channel| eager((), channel, pipeline.clone()).unwrap());
+			let gpu = Raster::<GPU>::channels_to_image(gpu_channels, pipeline.element()).unwrap();
+
+			assert_eq!(cpu.attribute::<f64>(core_types::list::ATTR_OPACITY), Some(&0.25));
+			assert_eq!(gpu.attribute::<f64>(core_types::list::ATTR_OPACITY), Some(&0.25));
+		});
+	}
+
+	#[test]
+	fn extending_an_empty_image_fills_the_bounds_on_both_paths() {
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = gpu_pipeline(&executor);
+
+			let bounds = DAffine2::from_translation(DVec2::new(5., 7.)) * DAffine2::from_scale(DVec2::new(6., 3.));
+			let cpu = Raster::<CPU>::extend_image_to_bounds(Item::default(), bounds, pipeline.element()).unwrap();
+			let gpu = Raster::<GPU>::extend_image_to_bounds(Item::default(), bounds, pipeline.element()).unwrap();
+
+			assert_eq!((cpu.element().width, cpu.element().height), (6, 3));
+			assert_eq!(gpu.element().size(), UVec2::new(6, 3));
+			assert_eq!(cpu.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), bounds);
+			assert_eq!(gpu.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM), bounds);
+			let downloaded: Raster<CPU> = gpu.into_element().convert(Footprint::DEFAULT, executor).await;
+			assert!(downloaded.data.iter().all(|pixel| *pixel == Color::TRANSPARENT));
+		});
 	}
 }
