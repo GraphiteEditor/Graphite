@@ -56,16 +56,9 @@ pub enum DocumentMessage {
 	DeselectAllLayers,
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
-	/// Moves the shared head to an earlier interaction and keeps the later steps as a branch.
-	HistoryMoveHead {
+	ChangeHistoryLine {
 		rev: document_graph_storage::Rev,
-	},
-	/// Drops a retired interaction and mints the later ones again on its parent.
-	HistoryRemoveStep {
-		rev: document_graph_storage::Rev,
-	},
-	HistoryRestoreStep {
-		rev: document_graph_storage::Rev,
+		change: crate::messages::portfolio::history::utility_types::LineChange,
 	},
 	DocumentStructureChanged,
 	DrawArtboardOverlays {

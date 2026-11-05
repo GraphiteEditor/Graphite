@@ -107,14 +107,14 @@
 					{#if row.branches.length > 0}
 						<span class="branches">
 							{#each row.branches as branch (branch.id)}
-								<button class="branch" data-tooltip-label="Show this branch" on:click={() => editor.followHistoryBranch(branch.id)}>↳ {branch.label}</button>
+								<button class="chip branch" data-tooltip-label="Show this branch" on:click={() => editor.followHistoryBranch(branch.id)}>↳ {branch.label}</button>
 							{/each}
 						</span>
 					{/if}
 				</div>
 				<span class="actions">
-					<button class="small" data-tooltip-label="Name this step" on:click={() => (renamingId = renamingId === row.id ? undefined : row.id)}>Name</button>
-					<button class="small" data-tooltip-label="Tag this step" on:click={() => (taggingId = taggingId === row.id ? undefined : row.id)}>Tag</button>
+					<button class="chip" data-tooltip-label="Name this step" on:click={() => (renamingId = renamingId === row.id ? undefined : row.id)}>Name</button>
+					<button class="chip" data-tooltip-label="Tag this step" on:click={() => (taggingId = taggingId === row.id ? undefined : row.id)}>Tag</button>
 					{#if row.undone || row.abandoned}
 						<IconButton
 							icon="HistoryRedo"
@@ -215,26 +215,26 @@
 				align-items: center;
 				gap: 2px;
 				visibility: hidden;
-
-				.small {
-					font-size: 11px;
-					line-height: 14px;
-					padding: 0 4px;
-					border: none;
-					border-radius: 2px;
-					background: var(--color-4-dimgray);
-					color: var(--color-c-brightgray);
-					cursor: pointer;
-
-					&:hover {
-						background: var(--color-5-dullgray);
-						color: var(--color-e-nearwhite);
-					}
-				}
 			}
 
 			&:hover .actions {
 				visibility: visible;
+			}
+
+			.chip {
+				font-size: 11px;
+				line-height: 14px;
+				padding: 0 4px;
+				border: none;
+				border-radius: 2px;
+				background: var(--color-4-dimgray);
+				color: var(--color-c-brightgray);
+				cursor: pointer;
+
+				&:hover {
+					background: var(--color-5-dullgray);
+					color: var(--color-e-nearwhite);
+				}
 			}
 
 			.expand {
@@ -246,6 +246,11 @@
 				background: none;
 				position: relative;
 				cursor: pointer;
+				color: var(--color-8-uppergray);
+
+				&:hover {
+					color: var(--color-e-nearwhite);
+				}
 
 				&::after {
 					content: "";
@@ -253,23 +258,11 @@
 					left: 5px;
 					top: 4px;
 					border: 4px solid transparent;
-					border-left: 5px solid var(--color-8-uppergray);
+					border-left: 5px solid currentColor;
 				}
 
 				&.expanded::after {
-					left: 3px;
-					top: 6px;
-					border: 4px solid transparent;
-					border-top: 5px solid var(--color-8-uppergray);
-				}
-
-				&:hover::after {
-					border-left-color: var(--color-e-nearwhite);
-				}
-
-				&.expanded:hover::after {
-					border-left-color: transparent;
-					border-top-color: var(--color-e-nearwhite);
+					transform: rotate(90deg);
 				}
 			}
 
@@ -364,23 +357,10 @@
 					margin-top: 2px;
 
 					.branch {
-						font-size: 11px;
-						line-height: 14px;
-						padding: 0 4px;
-						border: none;
-						border-radius: 2px;
-						background: var(--color-4-dimgray);
-						color: var(--color-c-brightgray);
-						cursor: pointer;
 						max-width: 100%;
 						white-space: nowrap;
 						overflow: hidden;
 						text-overflow: ellipsis;
-
-						&:hover {
-							background: var(--color-5-dullgray);
-							color: var(--color-e-nearwhite);
-						}
 					}
 				}
 			}

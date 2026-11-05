@@ -24,6 +24,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
+use crate::messages::portfolio::history::utility_types::LineChange;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -35,7 +36,7 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use document_container::AnyContainer;
-use document_graph_storage::Declarations;
+use document_graph_storage::{Declarations, Rev};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceStorage};
 use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
@@ -473,27 +474,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
 			}
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
-			DocumentMessage::HistoryMoveHead { rev } => self.apply_history_action(
-				document_id,
-				|history| history.move_head_to(rev),
-				&resource_storage.resources_mut(),
-				preferences.validate_storage_round_trip,
-				responses,
-			),
-			DocumentMessage::HistoryRemoveStep { rev } => self.apply_history_action(
-				document_id,
-				|history| history.drop_step(rev),
-				&resource_storage.resources_mut(),
-				preferences.validate_storage_round_trip,
-				responses,
-			),
-			DocumentMessage::HistoryRestoreStep { rev } => self.apply_history_action(
-				document_id,
-				|history| history.redo_retired_step(rev),
-				&resource_storage.resources_mut(),
-				preferences.validate_storage_round_trip,
-				responses,
-			),
+			DocumentMessage::ChangeHistoryLine { rev, change } => {
+				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), preferences.validate_storage_round_trip, responses)
+			}
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -3019,15 +3002,8 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
-	/// Performs a History panel action in storage and drops the legacy snapshots, which are off the head's line.
-	fn apply_history_action(
-		&mut self,
-		document_id: DocumentId,
-		action: impl FnOnce(&mut DocumentHistory) -> bool,
-		byte_store: &dyn ResourceStorage,
-		validate: bool,
-		responses: &mut VecDeque<Message>,
-	) {
+	/// Makes a History panel change in storage and drops the legacy snapshots, which are off the head's line.
+	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, validate: bool, responses: &mut VecDeque<Message>) {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
 		}
@@ -3035,7 +3011,7 @@ impl DocumentMessageHandler {
 		self.stage_edits_outside_transaction(byte_store, validate);
 		self.history.retire_storage_interaction();
 		let stored_name = self.stored_name().map(str::to_string);
-		if !action(&mut self.history) {
+		if !self.history.change_line(rev, change) {
 			return;
 		}
 		self.history.clear_legacy();

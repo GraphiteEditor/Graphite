@@ -1,4 +1,14 @@
-//! What the History panel shows, as the frontend receives it.
+//! What the History panel shows, as the frontend receives it, and the changes it asks of the head's line.
+
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum LineChange {
+	/// Moves the shared head to an earlier interaction and keeps the later steps as a branch.
+	MoveHead,
+	/// Drops a retired interaction and mints the later ones again on its parent.
+	Remove,
+	/// Does a step off the line again on top of it.
+	Restore,
+}
 
 /// The panel's content, newest first. The head's line with undone interactions above it, or a followed branch's line.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

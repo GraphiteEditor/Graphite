@@ -415,10 +415,7 @@ impl SyncMessageHandler {
 					refresh_session_views(responses);
 				}
 				Event::PeerLeft { .. } | Event::ProfileChanged { .. } => refresh_session_views(responses),
-				Event::MetadataChanged => {
-					refresh_session_views(responses);
-					responses.add(HistoryMessage::Refresh);
-				}
+				Event::MetadataChanged => refresh_session_views(responses),
 				Event::CursorMoved { .. } => {}
 			}
 		}

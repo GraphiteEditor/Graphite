@@ -1,4 +1,4 @@
-use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow};
+use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, LineChange};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::portfolio::sync::now_ms;
@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 use document_format::GddV1;
 use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, Subject, UserId, rev_attr};
 use peer_transport::RemotePeer;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 #[derive(ExtractField)]
@@ -20,7 +20,7 @@ pub struct HistoryMessageContext<'a> {
 #[derive(Debug, Default, ExtractField)]
 pub struct HistoryMessageHandler {
 	ticking: bool,
-	expanded: HashSet<Rev>,
+	expanded: BTreeSet<Rev>,
 	limit: usize,
 	following: Option<Rev>,
 	last_sent: Option<u64>,
@@ -31,9 +31,11 @@ const PAGE: usize = 100;
 
 #[message_handler_data]
 impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessageHandler {
+	/// Every change reaches the panel through the next `Tick`, which sends whenever the panel's inputs changed.
 	fn process_message(&mut self, message: HistoryMessage, responses: &mut VecDeque<Message>, mut context: HistoryMessageContext) {
 		match message {
 			HistoryMessage::Refresh => {
+				self.last_sent = None;
 				if !self.ticking {
 					self.ticking = true;
 					responses.add(BroadcastMessage::SubscribeEvent {
@@ -41,11 +43,10 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 						send: Box::new(HistoryMessage::Tick.into()),
 					});
 				}
-				self.send(&context, responses, true);
 			}
 			HistoryMessage::Tick => {
 				if context.panel_open {
-					self.send(&context, responses, false);
+					self.send(&context, responses);
 				}
 			}
 			HistoryMessage::Expand { id, expanded } => {
@@ -55,16 +56,9 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 						false => self.expanded.remove(&rev),
 					};
 				}
-				self.send(&context, responses, true);
 			}
-			HistoryMessage::LoadMore => {
-				self.limit = self.limit.max(PAGE) + PAGE;
-				self.send(&context, responses, true);
-			}
-			HistoryMessage::Follow { id } => {
-				self.following = id.as_deref().and_then(parse_rev);
-				self.send(&context, responses, true);
-			}
+			HistoryMessage::LoadMore => self.limit = self.limit.max(PAGE) + PAGE,
+			HistoryMessage::Follow { id } => self.following = id.as_deref().and_then(parse_rev),
 			HistoryMessage::GoBack { id } => {
 				let Some((gdd, rev)) = active_storage(&context).zip(parse_rev(&id)) else { return };
 				match place(gdd.session(), rev) {
@@ -72,7 +66,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 					Some(Place::Line(0)) => {}
 					// A session moves the head for everyone at once. Alone, undo each interaction to keep undo in step
 					Some(Place::Line(steps)) => match gdd.role().is_some() {
-						true => responses.add(DocumentMessage::HistoryMoveHead { rev }),
+						true => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::MoveHead }),
 						false => (0..steps).for_each(|_| responses.add(DocumentMessage::Undo)),
 					},
 					None => log::warn!("The History panel asked to go to {rev:?}, which is not on the head's line"),
@@ -80,7 +74,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::RemoveStep { id } => {
 				if let Some(rev) = parse_rev(&id) {
-					responses.add(DocumentMessage::HistoryRemoveStep { rev });
+					responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::Remove });
 				}
 			}
 			HistoryMessage::BringBack { id } => {
@@ -88,7 +82,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				match place(gdd.session(), rev) {
 					Some(Place::Undone(steps)) => (0..steps).for_each(|_| responses.add(DocumentMessage::Redo)),
 					Some(Place::Line(_)) => {}
-					None => responses.add(DocumentMessage::HistoryRestoreStep { rev }),
+					None => responses.add(DocumentMessage::ChangeHistoryLine { rev, change: LineChange::Restore }),
 				}
 			}
 			HistoryMessage::Rename { id, label } => {
@@ -96,18 +90,15 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 				if let Err(error) = gdd.record(Subject::Rev(rev), rev_attr::LABEL, serde_json::Value::from(label.trim()), now_ms()) {
 					log::warn!("Naming the step failed: {error}");
 				}
-				self.send(&context, responses, true);
 			}
 			HistoryMessage::Tag { id, tag, on } => {
 				let tag = tag.trim();
-				if tag.is_empty() {
+				let Some((gdd, rev)) = active_storage_mut(&mut context).zip(parse_rev(&id)).filter(|_| !tag.is_empty()) else {
 					return;
-				}
-				let Some((gdd, rev)) = active_storage_mut(&mut context).zip(parse_rev(&id)) else { return };
+				};
 				if let Err(error) = gdd.record(Subject::Rev(rev), &format!("{}{tag}", rev_attr::TAG_PREFIX), serde_json::Value::Bool(on), now_ms()) {
 					log::warn!("Tagging the step failed: {error}");
 				}
-				self.send(&context, responses, true);
 			}
 		}
 	}
@@ -116,24 +107,18 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 }
 
 impl HistoryMessageHandler {
-	fn send(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>, force: bool) {
-		let Some(gdd) = active_storage(context) else {
-			if force || self.last_sent.is_some() {
-				self.last_sent = None;
-				responses.add(FrontendMessage::UpdateHistoryPanel { state: HistoryPanelState::default() });
-			}
-			return;
-		};
-		if self.following.is_some_and(|tip| gdd.session().delta(tip).is_none()) {
+	fn send(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
+		let gdd = active_storage(context);
+		if self.following.is_some_and(|tip| gdd.is_none_or(|gdd| gdd.session().delta(tip).is_none())) {
 			self.following = None;
 		}
 		let limit = self.limit.max(PAGE);
 		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following);
-		if !force && self.last_sent == Some(fingerprint) {
+		if self.last_sent == Some(fingerprint) {
 			return;
 		}
 		self.last_sent = Some(fingerprint);
-		let state = panel_state(gdd, limit, &self.expanded, self.following);
+		let state = gdd.map(|gdd| panel_state(gdd, limit, &self.expanded, self.following)).unwrap_or_default();
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
 	}
 }
@@ -173,31 +158,23 @@ fn place(session: &Session, rev: Rev) -> Option<Place> {
 }
 
 /// A hash of the panel's inputs, cheap enough for every frame.
-fn fingerprint(document_id: Option<DocumentId>, gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Option<Rev>) -> u64 {
-	let session = gdd.session();
+fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> u64 {
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
-	document_id.hash(&mut hasher);
-	session.history_len().hash(&mut hasher);
-	session.head_rev().hash(&mut hasher);
-	session.redo_stack().hash(&mut hasher);
-	session.hot_log().len().hash(&mut hasher);
-	gdd.role().is_some().hash(&mut hasher);
-	for remote in gdd.peers() {
-		remote.user.hash(&mut hasher);
-		remote.name.hash(&mut hasher);
+	(document_id, limit, expanded, following).hash(&mut hasher);
+	if let Some(gdd) = gdd {
+		let session = gdd.session();
+		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), gdd.role().is_some()).hash(&mut hasher);
+		for remote in gdd.peers() {
+			(remote.user, &remote.name).hash(&mut hasher);
+		}
+		for fact in gdd.metadata().facts() {
+			(&fact.subject, &fact.key, &fact.stamp).hash(&mut hasher);
+		}
 	}
-	for fact in gdd.metadata().facts() {
-		fact.subject.hash(&mut hasher);
-		fact.key.hash(&mut hasher);
-		fact.stamp.hash(&mut hasher);
-	}
-	limit.hash(&mut hasher);
-	expanded.len().hash(&mut hasher);
-	following.hash(&mut hasher);
 	hasher.finish()
 }
 
-fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
+fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
 	let session = gdd.session();
 	let people = People {
 		session,
@@ -266,7 +243,7 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &HashSet<Rev>, following: Op
 
 /// The deltas from `from` back along first parents to `until` (exclusive) or the root, newest first. Stops after
 /// `limit` interaction ends, and the flag says whether it did.
-fn line(session: &Session, from: Option<Rev>, until: Option<Rev>, limit: usize) -> (Vec<Delta>, bool) {
+fn line(session: &Session, from: Option<Rev>, until: Option<Rev>, limit: usize) -> (Vec<&Delta>, bool) {
 	let mut deltas = Vec::new();
 	let mut ends = 0;
 	let mut current = from;
@@ -280,16 +257,16 @@ fn line(session: &Session, from: Option<Rev>, until: Option<Rev>, limit: usize) 
 			}
 			ends += 1;
 		}
-		deltas.push(delta.clone());
+		deltas.push(delta);
 		current = delta.parent;
 	}
 	(deltas, false)
 }
 
 /// Groups a newest-first line into interactions. Newest deltas without an end, retired mid-interaction, form their own.
-fn interactions(deltas: &[Delta]) -> Vec<Vec<&Delta>> {
+fn interactions<'a>(deltas: &[&'a Delta]) -> Vec<Vec<&'a Delta>> {
 	let mut groups: Vec<Vec<&Delta>> = Vec::new();
-	for delta in deltas {
+	for &delta in deltas {
 		match groups.last_mut() {
 			Some(group) if !delta.is_interaction_end() => group.push(delta),
 			_ => groups.push(vec![delta]),
@@ -304,7 +281,7 @@ struct View<'a> {
 	head_line: &'a HashSet<Rev>,
 	head: Option<Rev>,
 	people: &'a People<'a>,
-	expanded: &'a HashSet<Rev>,
+	expanded: &'a BTreeSet<Rev>,
 	session: &'a Session,
 	metadata: &'a HistoryMetadata,
 }
@@ -494,7 +471,7 @@ mod tests {
 		gdd.undo().expect("undo");
 		gdd.undo().expect("undo");
 
-		assert_eq!(panel_state(&gdd, PAGE, &HashSet::new(), None).rows.len(), 3);
+		assert_eq!(panel_state(&gdd, PAGE, &BTreeSet::new(), None).rows.len(), 3);
 	}
 
 	#[test]
