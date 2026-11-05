@@ -81,7 +81,7 @@ impl Pixel for RGBA16F {}
 /// bijective with hex codes, byte-identical to CSS/SVG/PNG/peniko conventions. Internal computations use
 /// the linear-light [`Color`] type. Convert via [`From<SRGBA8> for Color`] and [`From<Color> for SRGBA8`].
 #[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(dyn_any::DynAny, graphene_hash::CacheHash, Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Pod, Zeroable)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct SRGBA8 {
