@@ -4301,7 +4301,7 @@ mod test {
 		use core_types::list::{ATTR_DEPTH, ATTR_HEADING};
 
 		// A trunk with a branch to the left, placed 100 px to the right
-		let tree = crate::turtle::turtle_path("F[+F]F", 10., 90., "FG", "f").with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(100., 0.)));
+		let tree = crate::turtle::turtle_path("F[+F]F", &Default::default()).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(100., 0.)));
 
 		let points = super::vector_to_points((), tree.clone());
 		assert_eq!(points.iter_element_values().count(), 4);
@@ -4320,7 +4320,7 @@ mod test {
 		);
 
 		// A closed path has no open ends
-		let square = crate::turtle::turtle_path("F+F+F+F", 10., 90., "FG", "f");
+		let square = crate::turtle::turtle_path("F+F+F+F", &Default::default());
 		assert_eq!(super::open_ends((), square).len(), 0);
 	}
 

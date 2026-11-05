@@ -461,7 +461,13 @@ fn grid<T: GridSpacing>(
 
 /// Draws paths by following a string of turtle commands, like the ones an **L-System** grows. A drawing symbol (`F` or `G`) moves forward a step while drawing, `f` moves without drawing, `+` and `-` turn left and right, `|` turns around, and `[` and `]` begin and end a branch.
 ///
-/// A number in parentheses gives one command its own amount, like `F(25)` or `+(30)`, and `!(2)` sets the width. Each point records its branch depth, distance traveled, heading, and width as attributes.
+/// A number in parentheses gives one command its own amount, like `F(25)` or `+(30)`, and a drawing symbol's second number is the width it draws to, like `F(25, 3)`. `!(2)` sets the width from then on.
+///
+/// `H` and `h` go half a step, drawing or not. `"` and `_` multiply and divide the step from then on, as `;` and `@` do the angle. `~` turns a random amount, and `T` bends the heading toward the ground. `'` and `#` count up two numbers, U and V, for coloring or anything else downstream.
+///
+/// `{` begins a filled shape, `.` adds an anchor where the turtle stands, and `}` closes it.
+///
+/// Each point records its branch depth, distance traveled, heading, width, and UV as attributes.
 #[node_macro::node(category("String"), icon("NodeTurtlePath"))]
 fn turtle_path(
 	_: impl Ctx,
@@ -471,10 +477,48 @@ fn turtle_path(
 	#[unit(" px")]
 	#[default(10.)]
 	step: Item<f64>,
+	/// The factor that `"` multiplies the step by and `_` divides it by, unless a command gives its own like `"(0.8)`.
+	#[unit("x")]
+	#[default(0.5)]
+	step_scale: Item<f64>,
+	/// How much longer or shorter each step may randomly be, as a fraction of its length.
+	#[range]
+	#[hard(0..1)]
+	step_jitter: Item<f64>,
 	/// How far `+` and `-` turn, unless a command gives its own angle like `+(30)`.
 	#[unit("°")]
 	#[default(90.)]
 	angle: Item<f64>,
+	/// The factor that `;` multiplies the angle by and `@` divides it by, unless a command gives its own like `;(0.8)`.
+	#[unit("x")]
+	#[default(0.5)]
+	angle_scale: Item<f64>,
+	/// How much wider or narrower each turn by `+` and `-` may randomly be, as a fraction of its angle.
+	#[range]
+	#[hard(0..1)]
+	angle_jitter: Item<f64>,
+	/// The width the turtle starts drawing with.
+	#[unit(" px")]
+	#[default(1.)]
+	width: Item<f64>,
+	/// How much thicker or thinner each line's width may randomly be, as a fraction of it.
+	#[range]
+	#[hard(0..1)]
+	width_jitter: Item<f64>,
+	/// How far `T` bends a sideways heading toward the ground like branches sagging under gravity, and less the nearer it is to vertical, unless a command gives its own amount like `T(5)`. A negative amount bends toward the sky instead.
+	#[unit("°")]
+	#[default(10.)]
+	#[range]
+	#[soft(-90..90)]
+	tropism: Item<f64>,
+	/// How much `'` and `#` count up U and V, unless a command gives its own amount like `'(2)`.
+	#[name("UV Increment")]
+	#[default(1., 1.)]
+	#[widget(ParsedWidgetOverride::Custom = "vec2_uv")]
+	uv_increment: Item<DVec2>,
+	/// Seed to determine unique variations on the random turns of `~` and the step, angle, and width jitters.
+	#[hard(0..)]
+	seed: Item<i64>,
 	/// The symbols that move forward while drawing.
 	#[default("FG")]
 	draw_symbols: Item<String>,
@@ -482,13 +526,29 @@ fn turtle_path(
 	#[default("f")]
 	move_symbols: Item<String>,
 ) -> Item<Vector> {
-	crate::turtle::turtle_path(commands.element(), *step.element(), *angle.element(), draw_symbols.element(), move_symbols.element())
+	let settings = crate::turtle::TurtleSettings {
+		step: *step.element(),
+		step_scale: *step_scale.element(),
+		step_jitter: *step_jitter.element(),
+		angle: *angle.element(),
+		angle_scale: *angle_scale.element(),
+		angle_jitter: *angle_jitter.element(),
+		width: *width.element(),
+		width_jitter: *width_jitter.element(),
+		tropism: *tropism.element(),
+		uv_increment: *uv_increment.element(),
+		seed: *seed.element() as u64,
+		draw_symbols: draw_symbols.element(),
+		move_symbols: move_symbols.element(),
+	};
+
+	crate::turtle::turtle_path(commands.element(), &settings)
 }
 
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_SMOOTH, ATTR_WIDTH};
+	use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_SMOOTH, ATTR_UV, ATTR_WIDTH};
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
 	use vector_types::vector::shared_paths_from_item_attributes;
@@ -734,7 +794,32 @@ mod tests {
 	}
 
 	fn turtle(commands: &str) -> Item<Vector> {
-		turtle_path((), item(commands.to_string()), item(10.), item(90.), item("FG".to_string()), item("f".to_string()))
+		turtle_varied(commands, 0., 0)
+	}
+
+	fn turtle_varied(commands: &str, step_jitter: f64, seed: i64) -> Item<Vector> {
+		let text = |text: &str| item(text.to_string());
+		turtle_path(
+			(),
+			text(commands),
+			item(10.),
+			item(0.5),
+			item(step_jitter),
+			item(90.),
+			item(0.5),
+			item(0.),
+			item(1.),
+			item(0.),
+			item(10.),
+			item(DVec2::ONE),
+			item(seed),
+			text("FG"),
+			text("f"),
+		)
+	}
+
+	fn positions(drawing: &Item<Vector>) -> Vec<DVec2> {
+		drawing.element().positions().collect()
 	}
 
 	/// Each path's pool references and whether it closes.
@@ -792,5 +877,115 @@ mod tests {
 		assert_eq!(point_attributes::<f64>(&drawing, ATTR_WIDTH), [1., 1., 3., 1.]);
 		assert_eq!(point_attributes::<f64>(&turtle(""), ATTR_WIDTH), Vec::<f64>::new());
 		assert!(turtle("").element().0.iter_attribute_values::<f64>(ATTR_WIDTH).is_some(), "an empty drawing still has the attribute");
+
+		// A draw's second number stamps only the point it draws to
+		assert_eq!(point_attributes::<f64>(&turtle("F(10, 3)F"), ATTR_WIDTH), [1., 3., 1.]);
+	}
+
+	#[test]
+	fn turtle_half_steps_and_scaled_steps() {
+		let halves = turtle("HhH");
+		assert_eq!(turtle_runs(&halves), [(vec![0, 1], false), (vec![2, 3], false)]);
+		assert_eq!(positions(&halves), [DVec2::ZERO, DVec2::new(0., -5.), DVec2::new(0., -10.), DVec2::new(0., -15.)]);
+
+		// The step halves and doubles back, and dividing by zero leaves it alone
+		let ys: Vec<f64> = positions(&turtle("F\"F_F_(0)F")).iter().map(|position| position.y).collect();
+		assert_eq!(ys, [0., -10., -15., -25., -35.]);
+
+		// The angle halves to 45°, then doubles back to 90° once the branch ends
+		let angled = positions(&turtle("[;+F]+F"));
+		assert!((angled[1] - DVec2::new(-10. * 0.5_f64.sqrt(), -10. * 0.5_f64.sqrt())).length() < 1e-9);
+		assert_eq!(angled[2], DVec2::new(-10., 0.));
+	}
+
+	#[test]
+	fn turtle_bends_toward_the_ground_without_passing_it() {
+		// Heading left, the turtle bends 10° down
+		let bent = positions(&turtle("+T(10)F"));
+		assert!((bent[1] - 10. * DVec2::from_angle(170_f64.to_radians())).length() < 1e-9);
+
+		// A vertical heading doesn't bend, and a strong pull stops at straight down
+		assert_eq!(positions(&turtle("T(10)F"))[1], DVec2::new(0., -10.));
+		assert_eq!(positions(&turtle("+T(1000)F"))[1], DVec2::new(0., 10.));
+	}
+
+	#[test]
+	fn turtle_closes_polygons_through_recorded_anchors() {
+		let square = turtle("{.f.+f.+f.}");
+		assert_eq!(turtle_runs(&square), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&square), [DVec2::ZERO, DVec2::new(0., -10.), DVec2::new(-10., -10.), DVec2::new(-10., 0.)]);
+
+		// A last anchor back on the first isn't repeated, and too few anchors make no shape
+		assert_eq!(turtle_runs(&turtle("{.f.+f.+f.+f.}")), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&turtle("{.f.}")), []);
+
+		// A shape the commands leave open still closes, as if its `}` came last
+		assert_eq!(turtle_runs(&turtle("{.f.+f.+f.")), [(vec![0, 1, 2, 3, 0], true)]);
+	}
+
+	#[test]
+	fn turtle_counts_up_uv() {
+		let drawing = turtle("F'F#F'(2)F");
+		let expected = [DVec2::ZERO, DVec2::ZERO, DVec2::new(1., 0.), DVec2::new(1., 1.), DVec2::new(3., 1.)];
+		assert_eq!(point_attributes::<DVec2>(&drawing, ATTR_UV), expected);
+	}
+
+	#[test]
+	fn turtle_randomness_follows_the_seed() {
+		let wander = |seed: i64| positions(&turtle_varied("~(30)F~(30)F", 0.2, seed));
+		assert_eq!(wander(3), wander(3));
+		assert_ne!(wander(3), wander(4));
+
+		// The first step stays within 20% of its length and 30° of straight up
+		let first = wander(3)[1];
+		assert!((8. ..=12.).contains(&first.length()));
+		assert!(first.angle_to(DVec2::NEG_Y).abs() <= 30_f64.to_radians() + 1e-9);
+		assert!((0..8).any(|seed| (wander(seed)[1].length() - 10.).abs() > 1.), "some seed should stray past 10%");
+	}
+
+	#[test]
+	fn turtle_jitters_turns_and_widths() {
+		let jittered = |seed: u64| {
+			let settings = crate::turtle::TurtleSettings {
+				angle_jitter: 0.5,
+				width_jitter: 0.5,
+				seed,
+				..Default::default()
+			};
+			crate::turtle::turtle_path("F+F", &settings)
+		};
+		let turn = |seed: u64| {
+			let points = positions(&jittered(seed));
+			(points[1] - points[0]).angle_to(points[2] - points[1]).to_degrees().abs()
+		};
+
+		// A 90° turn stays within half of itself either way, and so does the width each line draws to
+		assert!((0..8).all(|seed| (45. - 1e-9..=135. + 1e-9).contains(&turn(seed))));
+		assert!((0..8).any(|seed| (turn(seed) - 90.).abs() > 10.), "some seed should turn well off 90°");
+		let widths: Vec<f64> = (0..8).flat_map(|seed| point_attributes::<f64>(&jittered(seed), ATTR_WIDTH)[1..].to_vec()).collect();
+		assert!(widths.iter().all(|width| (0.5..=1.5).contains(width)));
+		assert!(widths.iter().any(|width| (width - 1.).abs() > 0.1), "some seed should vary the width");
+	}
+
+	#[test]
+	fn turtle_jitters_grow_gradually_and_leave_random_turns_alone() {
+		let drawn = |step_jitter: f64, angle_jitter: f64, width_jitter: f64| {
+			let settings = crate::turtle::TurtleSettings {
+				step_jitter,
+				angle_jitter,
+				width_jitter,
+				seed: 3,
+				..Default::default()
+			};
+			positions(&crate::turtle::turtle_path("~F+F~F", &settings))
+		};
+		let unjittered = drawn(0., 0., 0.);
+
+		// Width moves no points, so turning it up keeps the `~` turns as they were
+		assert_eq!(drawn(0., 0., 0.5), unjittered);
+
+		// Barely turning up the step and angle jitters barely moves the points
+		let nudged = drawn(1e-6, 1e-6, 0.);
+		assert!(nudged.iter().zip(&unjittered).all(|(nudged, unjittered)| nudged.distance(*unjittered) < 1e-3));
 	}
 }

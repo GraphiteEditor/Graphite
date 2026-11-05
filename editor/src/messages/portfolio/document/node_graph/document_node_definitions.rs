@@ -1448,6 +1448,13 @@ fn static_input_inspector() -> InputInspector {
 			Ok(vec![choices])
 		}),
 	);
+	map.insert(
+		"vec2_uv".to_string(),
+		Box::new(|node_id, index, context| {
+			let parameter_widgets_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
+			Ok(vec![node_inspector::vec2_widget(parameter_widgets_info, "U", "V", "", None, false)])
+		}),
+	);
 	map
 }
 
