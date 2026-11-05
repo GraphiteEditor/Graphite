@@ -117,6 +117,43 @@ mod test {
 	}
 
 	#[test]
+	fn vivid_light_overlays_match_on_the_cpu_and_gpu() {
+		use core_types::ops::{Convert, ConvertAsync};
+		use core_types::transform::Footprint;
+		use raster_types::{CPU, GPU};
+		use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelRuntime;
+		use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
+
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+			let pipeline = Item::new_from_element(pipeline);
+
+			// A row of backdrops from black to white, overlaid by sources across both halves of Vivid Light
+			let steps = 11;
+			let backdrops = (0..steps).map(|step| step as f32 / (steps - 1) as f32);
+			let image = Image {
+				width: steps,
+				height: 1,
+				data: backdrops.map(|value| Color::from_rgbaf32_unchecked(value, value, value, 1.)).collect(),
+			};
+			for source in [0., 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1.] {
+				let color = Color::from_rgbaf32_unchecked(source, source, source, 1.);
+				let cpu = Item::new_from_element(Raster::new_cpu(image.clone()));
+				let cpu = super::color_overlay((), cpu, color.into(), BlendMode::VividLight.into(), 100_f64.into(), pipeline.clone()).unwrap();
+				let uploaded: Raster<GPU> = Raster::new_cpu(image.clone()).convert(Footprint::DEFAULT, executor.clone());
+				let gpu = super::color_overlay((), Item::new_from_element(uploaded), color.into(), BlendMode::VividLight.into(), 100_f64.into(), pipeline.clone()).unwrap();
+				let gpu: Raster<CPU> = gpu.into_element().convert(Footprint::DEFAULT, executor.clone()).await;
+
+				for (cpu, gpu) in cpu.element().data.iter().zip(&gpu.data) {
+					assert!((cpu.r() - gpu.r()).abs() < 2e-3, "source {source}: CPU {cpu:?} against GPU {gpu:?}");
+				}
+			}
+		});
+	}
+
+	#[test]
 	fn mix_colors_paints_over_at_its_opacity() {
 		let red = Color::from_rgbaf32_unchecked(1., 0., 0., 1.);
 		let blue = Color::from_rgbaf32_unchecked(0., 0., 1., 1.);

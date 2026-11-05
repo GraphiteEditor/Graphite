@@ -694,12 +694,12 @@ impl Color {
 		Color::blend_hardlight(c_s, c_b)
 	}
 
-	/// Per-channel "Vivid Light" blend.
+	/// Per-channel "Vivid Light" blend: "Color Burn" of the backdrop by the doubled source in its darker half, and "Color Dodge" in its lighter half.
 	pub fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {
-			Color::blend_color_burn(2. * c_s, c_b)
+			Color::blend_color_burn(c_b, 2. * c_s)
 		} else {
-			Color::blend_color_dodge(2. * c_s - 1., c_b)
+			Color::blend_color_dodge(c_b, 2. * c_s - 1.)
 		}
 	}
 
@@ -1015,6 +1015,18 @@ impl Color {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn vivid_light_burns_and_dodges_the_backdrop_by_the_doubled_source() {
+		// The darker half is Color Burn of the backdrop by twice the source: 1 - (1 - 0.8) / 0.5
+		assert!((Color::blend_vivid_light(0.8, 0.25) - 0.6).abs() < 1e-6);
+		// The lighter half is Color Dodge of the backdrop by twice the source less one: 0.4 / (1 - 0.5)
+		assert!((Color::blend_vivid_light(0.4, 0.75) - 0.8).abs() < 1e-6);
+		// A mid-gray source leaves the backdrop unchanged, and the extremes saturate
+		assert!((Color::blend_vivid_light(0.3, 0.5) - 0.3).abs() < 1e-6);
+		assert_eq!(Color::blend_vivid_light(0.3, 0.), 0.);
+		assert_eq!(Color::blend_vivid_light(0.3, 1.), 1.);
+	}
 
 	#[test]
 	fn oklab_lightness_spans_black_to_white() {

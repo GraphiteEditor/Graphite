@@ -110,9 +110,9 @@ fn blend_overlay(c_b: f32, c_s: f32) -> f32 {
 
 fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
 	if c_s <= 0.5 {
-		return blend_color_burn(2. * c_s, c_b);
+		return blend_color_burn(c_b, 2. * c_s);
 	}
-	return blend_color_dodge(2. * c_s - 1., c_b);
+	return blend_color_dodge(c_b, 2. * c_s - 1.);
 }
 
 fn blend_linear_light(c_b: f32, c_s: f32) -> f32 {
