@@ -458,3 +458,28 @@
 .donation-picker:has([value="github"]:checked) :is(.action, .method-note)[data-method="github"] {
 	display: block;
 }
+
+// ===============
+// ACKNOWLEDGMENTS
+// ===============
+
+.acknowledgments {
+	.acknowledgment-logos {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+		gap: calc(40 * var(--variable-px)) calc(60 * var(--variable-px));
+		margin-top: calc(40 * var(--variable-px));
+
+		a {
+			min-width: 0;
+			max-width: 100%;
+		}
+	}
+
+	img {
+		display: block;
+		max-width: 100%;
+		height: auto;
+	}
+}

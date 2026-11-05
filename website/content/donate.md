@@ -212,3 +212,19 @@ js = ["/js/page/donate.js"]
 </div>
 </div>
 </section>
+
+<section class="acknowledgments">
+<div class="block">
+
+## Acknowledgments
+
+We're grateful to these programs and organizations for the grants and services that help make Graphite possible.
+
+<div class="acknowledgment-logos">
+	<a href="https://nlnet.nl/commonsfund/"><img src="https://static.graphite.art/content/donate/logo-ngi-zero-commons-fund.svg" width="571" height="80" alt="European Commission, NGI Zero, and NLnet Foundation" /></a>
+	<a href="https://summerofcode.withgoogle.com/"><img src="https://static.graphite.art/content/donate/logo-google-summer-of-code.svg" width="476" height="80" alt="Google Summer of Code" /></a>
+	<a href="https://www.blacksmith.sh/"><img src="https://static.graphite.art/content/donate/logo-blacksmith.png" width="234" height="80" alt="CI powered by Blacksmith" /></a>
+</div>
+
+</div>
+</section>
