@@ -1,7 +1,7 @@
 use crate::TokioSpawner;
 use graph_craft::document::value::{DAffine2, DVec2, RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
-use graphene_std::application_io::{ExportFormat, RenderConfig, Texture, TimingInformation};
+use graphene_std::application_io::{ExportFormat, RenderConfig, TimingInformation};
 use graphene_std::core_types::ops::ConvertAsync;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -206,16 +206,6 @@ pub(crate) async fn render_frame(
 	}
 }
 
-pub async fn render_texture(executor: &DynamicExecutor, render_config: RenderConfig, runtime: &AsyncRuntime, spawner: &TokioSpawner) -> Result<Texture, Box<dyn Error>> {
-	match execute_until_settled(executor, runtime, spawner, render_config).await? {
-		TaggedValue::RenderOutput(output) => match output.data {
-			RenderOutputType::Texture(texture) => Ok(texture),
-			other => Err(format!("Expected a GPU render output, got: {other:?}").into()),
-		},
-		other => Err(format!("Expected RenderOutput, got: {other:?}").into()),
-	}
-}
-
 /// Writes a rendered frame to a file of the export's type.
 fn write_frame(path: &Path, settings: ExportSettings, frame: RenderedFrame) -> Result<(), Box<dyn Error>> {
 	let contents = match frame {
@@ -401,7 +391,7 @@ pub async fn export_image_sequence(
 	Ok(())
 }
 
-async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
+pub async fn execute_until_settled(executor: &DynamicExecutor, runtime: &AsyncRuntime, spawner: &TokioSpawner, render_config: RenderConfig) -> Result<TaggedValue, Box<dyn Error>> {
 	let execute = || executor.execute(render_config.into_context_with_generations(runtime.snapshot()));
 	let mut frame = execute()?;
 	while spawner.join().await {

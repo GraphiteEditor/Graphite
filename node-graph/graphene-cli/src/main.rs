@@ -3,7 +3,7 @@ mod repl;
 mod watch;
 
 use clap::{Args, Parser, Subcommand};
-use document_live::SessionToken;
+use document_live::{DEFAULT_SIGNALING_SERVER, SessionToken};
 use fern::colors::{Color, ColoredLevelConfig};
 use graphene_cli::{compile_document, dump, export, open_document, open_gdd};
 use std::error::Error;
@@ -88,19 +88,19 @@ enum Command {
 	/// Host a collaborative session on a .gdd document, or an empty one, driven from stdin.
 	Host {
 		document: Option<PathBuf>,
-		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		#[clap(long, default_value = DEFAULT_SIGNALING_SERVER)]
 		signaling: String,
 	},
 	/// Join a collaborative session and drive it from stdin.
 	Join {
 		token: SessionToken,
-		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		#[clap(long, default_value = DEFAULT_SIGNALING_SERVER)]
 		signaling: String,
 	},
 	/// Join a collaborative session and show the document in a window.
 	Watch {
 		token: SessionToken,
-		#[clap(long, default_value = live::DEFAULT_SIGNALING_SERVER)]
+		#[clap(long, default_value = DEFAULT_SIGNALING_SERVER)]
 		signaling: String,
 	},
 }

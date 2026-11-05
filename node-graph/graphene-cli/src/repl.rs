@@ -1,12 +1,4 @@
 //! Line commands that drive a live document from stdin.
-//!
-//! ```text
-//! set <key> <json>   stage a document attribute as a hot op
-//! retire             promote pending hot ops (host only)
-//! show               print document attributes and networks
-//! history            print retired deltas
-//! quit
-//! ```
 
 use document_graph_storage::{AttributeDelta, RegistryDelta, Rev};
 use document_live::{Event, LiveDocument};

@@ -1,9 +1,7 @@
-//! A window that follows a live document.
-
 use document_live::{Event, LiveDocument};
 use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::document::value::UVec2;
+use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue, UVec2};
 use graphene_cli::{TokioSpawner, compile_graph, create_executor, editor_api, export};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, RenderConfig};
 use graphene_std::runtime::AsyncRuntime;
@@ -22,7 +20,7 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 const BACKGROUND: wgpu::Color = wgpu::Color { r: 0.015, g: 0.015, b: 0.015, a: 1. };
 
 pub async fn run(live: LiveDocument) -> Result<(), Box<dyn Error>> {
-	let (application_io, editor_api) = editor_api(Some(Box::new(live.resource_proxy()))).await;
+	let (application_io, editor_api) = editor_api(Some(live.document())).await;
 	if application_io.gpu_executor().is_none() {
 		return Err("watching a session needs a usable GPU".into());
 	}
@@ -151,7 +149,13 @@ impl Viewer {
 					..Default::default()
 				};
 				render_config.viewport.resolution = UVec2::new(config.width, config.height);
-				Some(self.runtime.block_on(export::render_texture(executor, render_config, &self.graph_runtime, &self.spawner))?)
+				match self.runtime.block_on(export::execute_until_settled(executor, &self.graph_runtime, &self.spawner, render_config))? {
+					TaggedValue::RenderOutput(RenderOutput {
+						data: RenderOutputType::Texture(texture),
+						..
+					}) => Some(texture),
+					other => return Err(format!("Expected a GPU texture, got: {other:?}").into()),
+				}
 			}
 			None => None,
 		};

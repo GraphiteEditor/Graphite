@@ -7,7 +7,6 @@ pub mod export;
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use graph_craft::application_io::resource::LoadResource;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::{NetworkLocation, NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::Compiler;
@@ -96,12 +95,11 @@ pub struct CompiledDocument {
 	spawner: Arc<TokioSpawner>,
 }
 
-/// A GPU context and the editor API, resolving resources through `resource_proxy` if given.
-pub async fn editor_api(resource_proxy: Option<Box<dyn LoadResource>>) -> (Arc<PlatformApplicationIo>, Arc<PlatformEditorApi>) {
+pub async fn editor_api(gdd: Option<&GddV1>) -> (Arc<PlatformApplicationIo>, Arc<PlatformEditorApi>) {
 	log::info!("Creating GPU context");
 	let mut application_io = PlatformApplicationIo::new().await;
-	if let Some(resource_proxy) = resource_proxy {
-		application_io.inject_resource_proxy(resource_proxy);
+	if let Some(gdd) = gdd {
+		application_io.inject_resource_proxy(Box::new(gdd.resource_proxy()));
 	}
 	let application_io = Arc::new(application_io);
 	if let Some(executor) = application_io.gpu_executor() {
@@ -115,7 +113,6 @@ pub async fn editor_api(resource_proxy: Option<Box<dyn LoadResource>>) -> (Arc<P
 	(application_io, editor_api)
 }
 
-/// Compile `network`. Only a `.gdd` has a resource store.
 pub fn compile_graph(network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
 	let mut network = wrap_network_in_scope(network, editor_api, runtime);
 
@@ -141,7 +138,7 @@ pub fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, B
 }
 
 pub async fn compile_document(document: OpenedDocument) -> Result<CompiledDocument, Box<dyn Error>> {
-	let (application_io, editor_api) = editor_api(document.gdd.as_ref().map(|gdd| Box::new(gdd.resource_proxy()) as Box<dyn LoadResource>)).await;
+	let (application_io, editor_api) = editor_api(document.gdd.as_ref()).await;
 	let spawner = Arc::new(TokioSpawner::default());
 	let runtime = AsyncRuntime::new(spawner.clone());
 	let proto_network = compile_graph(document.network, editor_api, document.gdd.as_ref(), runtime.handle())?;

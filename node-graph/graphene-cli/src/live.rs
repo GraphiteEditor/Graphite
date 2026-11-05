@@ -1,9 +1,4 @@
-//! The `host`, `join` and `watch` subcommands.
-
 use crate::repl;
-use document_container::AnyContainer;
-use document_container::backends::memory::MemoryBackend;
-use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{PeerId, UserId};
 use document_live::{LiveDocument, SessionToken};
 use std::error::Error;
@@ -11,13 +6,12 @@ use std::path::Path;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, BufReader};
 
-pub use document_live::DEFAULT_SIGNALING_SERVER;
-
 pub async fn host(signaling: &str, document: Option<&Path>) -> Result<(), Box<dyn Error>> {
 	let (peer, user) = identity()?;
 	let live = match document {
 		Some(path) => {
-			let mut gdd = open_archive(path).await?;
+			let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
+			let mut gdd = graphene_cli::open_gdd(&archive).await?;
 			// The source document may be open elsewhere under the peer the archive holds
 			gdd.set_user(user, peer)?;
 			let token = SessionToken::for_document(gdd.manifest().document_id);
@@ -43,12 +37,6 @@ pub async fn watch(signaling: &str, token: SessionToken) -> Result<(), Box<dyn E
 	let (peer, user) = identity()?;
 	let live = LiveDocument::join(signaling, token, peer, user, spawn_driver).await?;
 	crate::watch::run(live).await
-}
-
-async fn open_archive(path: &Path) -> Result<GddV1, Box<dyn Error>> {
-	let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
-	let container = AnyContainer::Memory(MemoryBackend::new());
-	Ok(GddV1::open_from_archive(&archive, container, GddV1Layout).await?)
 }
 
 async fn drive_from_stdin(mut live: LiveDocument) {

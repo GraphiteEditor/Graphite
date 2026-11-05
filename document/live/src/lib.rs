@@ -2,7 +2,7 @@
 
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
-use document_format::{GddV1, GddV1Layout, ResourceProxy};
+use document_format::{GddV1, GddV1Layout};
 use document_graph_storage::{PeerId, UserId};
 use graph_craft::application_io::resource::ResourceHash;
 use graph_craft::document::NodeNetwork;
@@ -10,7 +10,7 @@ use peer_transport::{Room, SyncTarget};
 
 pub use document_format::Error as FormatError;
 pub use document_graph_storage::to_runtime::ConversionError;
-pub use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, MessageLoopFuture, Role, SessionToken};
+pub use peer_transport::{DEFAULT_SIGNALING_SERVER, Event, MessageLoopFuture, SessionToken};
 
 #[derive(Debug, thiserror::Error)]
 pub enum LiveError {
@@ -58,10 +58,6 @@ impl LiveDocument {
 		self.token
 	}
 
-	pub fn role(&self) -> Option<Role> {
-		self.gdd.role()
-	}
-
 	pub fn is_synced(&self) -> bool {
 		self.gdd.is_synced()
 	}
@@ -101,15 +97,10 @@ impl LiveDocument {
 		&mut self.gdd
 	}
 
-	/// Async because proto-node declarations are resources.
 	pub async fn network(&self) -> Result<NodeNetwork, LiveError> {
 		let declarations = self.gdd.declarations(&self.gdd).await;
 		let (network, _metadata) = self.gdd.registry().to_runtime_with_metadata(&declarations)?;
 		Ok(network)
-	}
-
-	pub fn resource_proxy(&self) -> ResourceProxy<GddV1Layout> {
-		self.gdd.resource_proxy()
 	}
 
 	pub fn leave(&mut self) {
