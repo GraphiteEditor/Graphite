@@ -226,7 +226,8 @@
 				visibility: hidden;
 			}
 
-			&:hover .actions {
+			&:hover .actions,
+			&:focus-within .actions {
 				visibility: visible;
 			}
 

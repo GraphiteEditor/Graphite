@@ -3007,6 +3007,7 @@ impl DocumentMessageHandler {
 		if self.network_interface.transaction_status() != TransactionStatus::Finished {
 			return;
 		}
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
 		responses.add(EventMessage::ToolAbort);
 		self.stage_edits_outside_transaction(byte_store, validate);
 		self.history.retire_storage_interaction();
