@@ -193,6 +193,16 @@ fn blobs_resolve_after_a_reopen_and_an_archive_round_trip() {
 		let archive = reopened.export_to_bytes(ExportFormat::Zip, ExportOptions::default(), &store, None).await.unwrap();
 		let unpacked = GddV1::open_from_archive(&archive, AnyContainer::Memory(MemoryBackend::new()), GddV1Layout).await.unwrap();
 
+		let flat_options = ExportOptions {
+			include_history: false,
+			..Default::default()
+		};
+		let flat_archive = reopened.export_to_bytes(ExportFormat::Zip, flat_options, &store, None).await.unwrap();
+		let flat = GddV1::open_from_archive(&flat_archive, AnyContainer::Memory(MemoryBackend::new()), GddV1Layout).await.unwrap();
+		let declarations = flat.declarations(&store).await;
+		assert_eq!(flat.blobs().len(), 1, "a copy without history leaves the undone value behind");
+		assert_eq!(input_value(&flat, &declarations), edited);
+
 		for mut gdd in [reopened, unpacked] {
 			let declarations = gdd.declarations(&store).await;
 			assert_eq!(gdd.blobs().len(), 2, "both values' blobs load, the undone one included");

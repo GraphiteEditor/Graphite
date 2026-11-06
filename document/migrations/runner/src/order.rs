@@ -1,7 +1,7 @@
 //! Orders registered node migrations by the declarations they read and write, and runs every pending one over a history.
 
 use crate::node::{apply_migration, rewrite_history};
-use crate::{RewrittenHistory, RunnerError};
+use crate::{MigrationBlobs, RewrittenHistory, RunnerError};
 use document_graph_storage::{Delta, Implementation, Node, Registry, RegistryDelta, Rev};
 use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration};
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -76,13 +76,15 @@ pub fn order_migrations(migrations: &[&'static dyn NodeMigration]) -> Result<Vec
 
 /// Rewrite `history` through every migration whose source declaration it references, in dependency order. A migration is pending
 /// even when no live node uses its source, since a removed node keeps its old shape in history and undo can bring it back. `kept` names the
-/// states a cursor rests on, which even a migration only running at interaction boundaries has to keep.
+/// states a cursor rests on, which even a migration only running at interaction boundaries has to keep. `blobs` resolves the
+/// blobs migrations read and collects the ones they add.
 pub fn migrate_history(
 	migrations: &[&'static dyn NodeMigration],
 	history: Vec<Delta>,
 	resolver: &dyn DeclarationResolver,
 	host: Option<&dyn MigrationHost>,
 	kept: impl IntoIterator<Item = Rev>,
+	blobs: &mut MigrationBlobs,
 ) -> Result<RewrittenHistory, RunnerError> {
 	let mut kept: HashSet<Rev> = kept.into_iter().collect();
 	let mut revs: HashMap<Rev, Option<Rev>> = history.iter().map(|delta| (delta.id, Some(delta.id))).collect();
@@ -93,7 +95,7 @@ pub fn migrate_history(
 			continue;
 		}
 
-		let step = rewrite_history(migration, &deltas, resolver, host, &kept)?;
+		let step = rewrite_history(migration, &deltas, resolver, host, &kept, blobs)?;
 		kept = kept.iter().filter_map(|rev| step.revs.get(rev).copied().flatten()).collect();
 		for rev in revs.values_mut() {
 			*rev = rev.and_then(|rev| step.revs.get(&rev).copied().flatten());
@@ -104,11 +106,17 @@ pub fn migrate_history(
 	Ok(RewrittenHistory { deltas, revs })
 }
 
-/// `M` of every migration on one state, for a document whose history can't be rewritten. Undo can't cross the result.
-pub fn migrate_registry(migrations: &[&'static dyn NodeMigration], registry: &Registry, resolver: &dyn DeclarationResolver, host: Option<&dyn MigrationHost>) -> Result<Registry, RunnerError> {
+/// `M` of every migration on one state, for a document whose history can't be rewritten. Undo can't cross the result. See [`migrate_history`] for `blobs`.
+pub fn migrate_registry(
+	migrations: &[&'static dyn NodeMigration],
+	registry: &Registry,
+	resolver: &dyn DeclarationResolver,
+	host: Option<&dyn MigrationHost>,
+	blobs: &mut MigrationBlobs,
+) -> Result<Registry, RunnerError> {
 	let mut migrated = registry.clone();
 	for migration in order_migrations(migrations)? {
-		migrated = apply_migration(migration, &migrated, resolver, host)?;
+		migrated = apply_migration(migration, &migrated, resolver, host, blobs)?;
 	}
 	Ok(migrated)
 }

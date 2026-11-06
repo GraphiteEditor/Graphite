@@ -561,7 +561,10 @@ fn move_values_into_blobs(document: &mut DocumentPayloads) -> Result<(), Migrati
 	}
 	if let Some(record) = &mut document.registry {
 		let mut registry: v4::Registry = record.decode()?;
-		for (id, node) in &mut registry.node_instances {
+		// In ID order, so which of two slots sharing a new value bases it doesn't depend on hashing
+		let mut nodes: Vec<_> = registry.node_instances.iter_mut().collect();
+		nodes.sort_unstable_by_key(|(id, _)| **id);
+		for (id, node) in nodes {
 			blobs.node(*id, node);
 		}
 		registry.removed_nodes.values_mut().for_each(|tombstone| blobs.loose_node(&mut tombstone.content));
@@ -596,7 +599,7 @@ impl Blobs {
 		}
 	}
 
-	/// Priors restore a value an earlier op wrote, so they rarely make a new blob and never move a slot forward.
+	/// Priors only restore earlier values, so they never advance a slot's latest blob.
 	fn prior(&mut self, prior: &mut v4::Prior) {
 		match prior {
 			v4::Prior::Node { node, .. } => self.loose_node(node),
@@ -610,9 +613,11 @@ impl Blobs {
 			v4::Prior::NodeField {
 				field: v4::NodeField::Inputs { previous, .. },
 				..
-			} => previous.iter_mut().for_each(|slot| {
-				self.move_into_blob(&mut slot.input);
-			}),
+			} => {
+				for slot in previous {
+					self.move_into_blob(&mut slot.input);
+				}
+			}
 			_ => {}
 		}
 	}
@@ -646,7 +651,7 @@ impl Blobs {
 	fn move_into_blob(&mut self, input: &mut v4::NodeInput) -> Option<(ResourceHash, bool)> {
 		let v4::NodeInput::Value { value, .. } = input else { return None };
 		if let v4::Value::Blob(hash) = value {
-			return Some((*hash, false));
+			return Some((hash.0, false));
 		}
 
 		let encoded = postcard::to_stdvec(value).ok()?;
@@ -655,9 +660,8 @@ impl Blobs {
 		}
 
 		let hash = ResourceHash::from(encoded.as_slice());
-		*value = v4::Value::Blob(hash);
-		let created = !self.bytes.contains_key(&hash);
-		self.bytes.insert(hash, encoded);
+		*value = v4::Value::Blob(v4::BlobHash(hash));
+		let created = self.bytes.insert(hash, encoded).is_none();
 		Some((hash, created))
 	}
 }

@@ -236,18 +236,31 @@ impl<L: Layout> Gdd<L> {
 
 		// Every resource and blob record in path order, whether its bytes sit in the working copy or come from the byte store,
 		// so where they sat does not change the archive. `None` marks bytes the working copy already holds.
-		let mut resources: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
+		let mut entries: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
 		let directories = self.working.list_dirs("").await?;
-		for directory in [self.layout.resources_dir(), self.layout.blobs_dir()] {
-			if directories.iter().any(|d| d == directory) {
-				resources.extend(self.working.list(directory).await?.into_iter().map(|path| (path, None)));
-			}
+		if directories.iter().any(|name| name == self.layout.resources_dir()) {
+			entries.extend(self.working.list(self.layout.resources_dir()).await?.into_iter().map(|path| (path, None)));
 		}
 		for (hash, resource) in embedded_bytes {
-			resources.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
+			entries.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
 		}
 
-		for (path, resource) in resources {
+		// A copy without history carries only the current values, each in full since the blobs it was based on stay behind
+		match &flat {
+			Some(flat) => {
+				for hash in flat.registry().blob_hashes() {
+					if let Some(record) = self.blobs.full_record(&hash) {
+						entries.insert(self.layout.blob_path(&hash), Some(Resource::new_unchecked(record, hash.into())));
+					}
+				}
+			}
+			None if directories.iter().any(|name| name == self.layout.blobs_dir()) => {
+				entries.extend(self.working.list(self.layout.blobs_dir()).await?.into_iter().map(|path| (path, None)));
+			}
+			None => {}
+		}
+
+		for (path, resource) in entries {
 			if let Some(resource) = resource {
 				sink.write_entry(&path, resource.as_ref())?;
 				continue;

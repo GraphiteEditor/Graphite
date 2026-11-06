@@ -3,7 +3,7 @@
 use document_graph_storage::{Implementation, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, Registry, RegistryDelta, Session, UserId};
 use migration_core::{Compiler, DeclarationResolver, Graph, MigrationError, MigrationHost, NodeMigration, Target, ValueType, decl, literal, literal_of, migration};
 use migration_runner::testing::{Fixture, SourceContract, check_commutation, check_commutation_with, check_undo, check_undo_with};
-use migration_runner::{DeclarationTable, RunnerError, migrate_history, order_migrations};
+use migration_runner::{DeclarationTable, MigrationBlobs, RunnerError, migrate_history, order_migrations};
 use std::any::type_name;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -219,7 +219,7 @@ fn the_compiler_is_only_asked_at_interaction_boundaries() {
 	let history: Vec<_> = session.history().cloned().collect();
 	let host = AnswerHost::default();
 
-	let rewritten = migrate_history(&[&ByCompiler], history.clone(), &table, Some(&host), session.head_rev()).unwrap();
+	let rewritten = migrate_history(&[&ByCompiler], history.clone(), &table, Some(&host), session.head_rev(), &mut MigrationBlobs::default()).unwrap();
 
 	// The root network's interaction has no anchors yet, so it never asks, and each of the other two asks once for its one round of unrelated anchors
 	assert_eq!(host.asked.load(Ordering::Relaxed), 2);
@@ -242,7 +242,7 @@ fn a_cursor_inside_an_interaction_keeps_its_state() {
 	let inside = history[history.len() - 2].id;
 	let host = AnswerHost::default();
 
-	let rewritten = migrate_history(&[&ByCompiler], history, &table, Some(&host), [inside]).unwrap();
+	let rewritten = migrate_history(&[&ByCompiler], history, &table, Some(&host), [inside], &mut MigrationBlobs::default()).unwrap();
 	assert_eq!(host.asked.load(Ordering::Relaxed), 2, "the cursor and the interaction's end");
 	assert!(rewritten.revs[&inside].is_some());
 }
@@ -254,7 +254,7 @@ fn reading_the_graph_also_only_sees_whole_states() {
 	let history: Vec<_> = session.history().cloned().collect();
 
 	let before = GRAPH_READS.load(Ordering::Relaxed);
-	migrate_history(&[&GraphReader], history, &table, None, session.head_rev()).unwrap();
+	migrate_history(&[&GraphReader], history, &table, None, session.head_rev(), &mut MigrationBlobs::default()).unwrap();
 
 	// All five anchors exist at the one boundary, and the anchorless root network's boundary reads nothing
 	assert_eq!(GRAPH_READS.load(Ordering::Relaxed) - before, 5);

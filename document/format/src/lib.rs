@@ -12,7 +12,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::blob_store::BlobStore;
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
@@ -48,6 +47,8 @@ pub use io::ReadError;
 pub use layout::{GddV1Layout, Layout};
 pub use manifest::{Manifest, PayloadCodecs};
 pub use resource::ResourceProxy;
+
+use blob_store::BlobStore;
 
 /// The default [`Layout`], so callers write `GddV1` for the common `Gdd<GddV1Layout>` handle.
 pub type GddV1 = Gdd<GddV1Layout>;
@@ -105,7 +106,7 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) migrated: bool,
 	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
 	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
-	/// The bytes of every blob [`Session::all_blob_hashes`] names, for resolving them in `to_runtime`.
+	/// Decoded bytes of every blob the document names.
 	pub(crate) blobs: BlobStore,
 	#[cfg(feature = "network")]
 	pub(crate) network: Option<peer_transport::Replica>,
@@ -333,18 +334,20 @@ impl<L: Layout> Gdd<L> {
 		};
 
 		#[cfg(feature = "migrations")]
+		if let Some(blobs) = migrated_blobs {
+			gdd.keep_blobs_durably(blobs).await?;
+		}
+		// Before node migrations, which read the values blobs hold
+		gdd.load_blobs().await;
+
+		#[cfg(feature = "migrations")]
 		{
-			if let Some(blobs) = migrated_blobs {
-				gdd.keep_blobs(blobs.bytes, &blobs.bases)?;
-			}
 			let migrated_nodes = gdd.migrate_nodes(inputs.byte_store, inputs.host).await?;
 			gdd.migrated = format_outcome.is_some() || migrated_nodes;
 			if gdd.migrated {
 				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);
 			}
 		}
-
-		gdd.load_blobs().await;
 
 		if bootstrapped || gdd.migrated {
 			gdd.persist_all().await?;

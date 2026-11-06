@@ -1765,7 +1765,6 @@ dependencies = [
  "core-types",
  "document-container",
  "document-graph-storage",
- "flate2",
  "futures",
  "graph-craft",
  "graphene-resource",

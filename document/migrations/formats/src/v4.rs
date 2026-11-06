@@ -278,6 +278,10 @@ pub struct SessionState {
 	pub shared: bool,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BlobHash(pub ResourceHash);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(remote = "Self")]
 pub enum Value {
@@ -288,7 +292,7 @@ pub enum Value {
 	Str(String),
 	Array(Vec<Value>),
 	Object(Vec<(String, Value)>),
-	Blob(ResourceHash),
+	Blob(BlobHash),
 }
 
 impl Serialize for Value {
@@ -387,7 +391,7 @@ impl Value {
 			&& key == Self::BLOB_KEY
 			&& let Ok(hash) = ResourceHash::try_from(hex.as_str())
 		{
-			return Value::Blob(hash);
+			return Value::Blob(BlobHash(hash));
 		}
 		Value::Object(object)
 	}

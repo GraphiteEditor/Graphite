@@ -47,7 +47,7 @@ impl From<Value> for serde_json::Value {
 			Value::Str(string) => Json::String(string),
 			Value::Array(array) => Json::Array(array.into_iter().map(Into::into).collect()),
 			Value::Object(object) => Json::Object(object.into_iter().map(|(key, value)| (key, value.into())).collect()),
-			Value::Blob(hash) => serde_json::json!({ Value::BLOB_KEY: String::from(&hash) }),
+			Value::Blob(hash) => serde_json::json!({ Value::BLOB_KEY: String::from(&hash.0) }),
 		}
 	}
 }
@@ -59,7 +59,7 @@ pub struct ValueError(serde_json::Error);
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::ResourceHash;
+	use crate::{BlobHash, ResourceHash};
 	use serde::Deserialize;
 
 	#[test]
@@ -159,12 +159,12 @@ mod tests {
 		assert_eq!(encode(Value::Str("ab".into())), [4, 2, b'a', b'b']);
 		assert_eq!(encode(Value::Array(vec![Value::None])), [5, 1, 0]);
 		assert_eq!(encode(Value::Object(vec![("k".into(), Value::None)])), [6, 1, 1, b'k', 0]);
-		assert_eq!(encode(Value::Blob(ResourceHash::from([9; 32])))[..2], [7, 32]);
+		assert_eq!(encode(Value::Blob(BlobHash(ResourceHash::from([9; 32]))))[..2], [7, 32]);
 	}
 
 	#[test]
 	fn blob_round_trips_as_reserved_object() {
-		let blob = Value::Blob(ResourceHash::from(b"bytes".as_slice()));
+		let blob = Value::Blob(BlobHash::of(b"bytes"));
 
 		let text = serde_json::to_string(&blob).unwrap();
 		assert!(text.starts_with(r#"{"$blob":""#), "got {text}");

@@ -1,15 +1,43 @@
-//! Large node input values move out of the registry, history, and hot log into the resource store, leaving a
-//! [`Value::Blob`] naming their bytes. A blob's bytes are the value's postcard encoding.
+//! Large node input values move out of the registry, history, and hot log into blobs, leaving a [`Value::Blob`]
+//! naming their bytes. A blob's bytes are the value's postcard encoding, so its hash identifies the value.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::fmt;
 
-use crate::{InputSlot, NodeId, NodeInput, Registry, RegistryDelta, ResourceHash, Value};
+use crate::{BlobHash, NodeId, NodeInput, Registry, RegistryDelta, ResourceHash, Value};
 
 /// Values whose encoding reaches this many bytes are stored as blobs.
 pub const BLOB_THRESHOLD: usize = 1024;
 
-/// Blob contents keyed by hash, for the caller's byte store.
-pub type BlobBytes = HashMap<ResourceHash, Vec<u8>>;
+/// Blob bytes by hash.
+pub type BlobBytes = HashMap<BlobHash, Vec<u8>>;
+
+/// Blobs about to be stored, with the base each can be encoded against.
+#[derive(Clone, Debug, Default)]
+pub struct NewBlobs {
+	pub bytes: BlobBytes,
+	pub bases: HashMap<BlobHash, BlobHash>,
+}
+
+impl BlobHash {
+	/// The hash of a blob holding `bytes`.
+	pub fn of(bytes: &[u8]) -> Self {
+		Self(ResourceHash::from(bytes))
+	}
+}
+
+impl fmt::Display for BlobHash {
+	fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		self.0.fmt(formatter)
+	}
+}
+
+/// Blob bytes are content addressed like resource bytes, so a peer can fetch a blob through the resource path.
+impl From<BlobHash> for ResourceHash {
+	fn from(hash: BlobHash) -> Self {
+		hash.0
+	}
+}
 
 /// The value a blob's bytes encode.
 pub fn decode_blob(bytes: &[u8]) -> Result<Value, postcard::Error> {
@@ -24,13 +52,13 @@ impl NodeInput {
 			return;
 		}
 
-		// Encoding a `Value` into memory has no failure case, so an error just leaves it inline
+		// Encoding into memory can't fail
 		let Ok(encoded) = postcard::to_stdvec(value) else { return };
 		if encoded.len() < BLOB_THRESHOLD {
 			return;
 		}
 
-		let hash = ResourceHash::from(encoded.as_slice());
+		let hash = BlobHash::of(&encoded);
 		*value = Value::Blob(hash);
 		bytes.insert(hash, encoded);
 	}
@@ -52,24 +80,34 @@ impl RegistryDelta {
 impl Registry {
 	/// Move the large values of every node input into blobs. See [`NodeInput::move_into_blob`].
 	pub fn move_values_into_blobs(&mut self, bytes: &mut BlobBytes) {
-		let slots = self.node_instances.values_mut().flat_map(|node| node.inputs.iter_mut());
-		slots.for_each(|slot: &mut InputSlot| slot.input.move_into_blob(bytes));
+		for slot in self.node_instances.values_mut().flat_map(|node| &mut node.inputs) {
+			slot.input.move_into_blob(bytes);
+		}
 	}
 
-	/// For each blob `ops` write, the blob its input slot held before, as the base a store can encode it against.
-	/// A slot written twice in `ops` bases the second blob on the first.
-	pub fn blob_bases(&self, ops: &[RegistryDelta]) -> HashMap<ResourceHash, ResourceHash> {
-		let mut latest: HashMap<(NodeId, usize), ResourceHash> = HashMap::new();
+	/// Every blob the live nodes and the tombstones of removed ones name.
+	pub fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let live = self.node_instances.values();
+		let removed = self.removed_nodes.values().map(|tombstone| &tombstone.content);
+		live.chain(removed).flat_map(|node| node.inputs()).filter_map(|slot| slot.input.blob())
+	}
+
+	/// The base each blob written by `ops` encodes against: the blob its slot held before, earlier in `ops` or in `self`.
+	pub fn blob_bases(&self, ops: &[RegistryDelta]) -> HashMap<BlobHash, BlobHash> {
+		let mut latest: HashMap<(NodeId, usize), BlobHash> = HashMap::new();
+		let mut written = HashSet::new();
 		let mut bases = HashMap::new();
 
 		let mut write = |id: NodeId, index: usize, input: &NodeInput| {
 			let Some(hash) = input.blob() else { return };
 
+			// Only a blob's first write takes a base, which keeps bases acyclic
 			let previous = latest.get(&(id, index)).copied().or_else(|| self.node_instances.get(&id)?.inputs().get(index)?.input.blob());
-			if let Some(previous) = previous
+			if written.insert(hash)
+				&& let Some(previous) = previous
 				&& previous != hash
 			{
-				bases.entry(hash).or_insert(previous);
+				bases.insert(hash, previous);
 			}
 			latest.insert((id, index), hash);
 		};
@@ -82,6 +120,27 @@ impl Registry {
 			}
 		}
 
+		bases
+	}
+
+	/// [`blob_bases`](Self::blob_bases) for the blobs `self` holds where `previous` held another in the same slot, in node ID order.
+	pub fn blob_bases_since(&self, previous: &Registry) -> HashMap<BlobHash, BlobHash> {
+		let mut nodes: Vec<_> = self.node_instances.iter().collect();
+		nodes.sort_unstable_by_key(|(id, _)| **id);
+
+		let mut written = HashSet::new();
+		let mut bases = HashMap::new();
+		for (id, node) in nodes {
+			for (index, slot) in node.inputs().iter().enumerate() {
+				if let Some(hash) = slot.input.blob()
+					&& written.insert(hash)
+					&& let Some(base) = previous.node_instances.get(id).and_then(|node| node.inputs().get(index)?.input.blob())
+					&& base != hash
+				{
+					bases.insert(hash, base);
+				}
+			}
+		}
 		bases
 	}
 }
@@ -120,5 +179,18 @@ mod tests {
 		input.move_into_blob(&mut bytes);
 		assert_eq!(input, once);
 		assert_eq!(bytes.len(), 1);
+	}
+
+	#[test]
+	fn bases_stay_acyclic_when_slots_swap_blobs() {
+		let [x, a] = [b"x", b"a"].map(|bytes| BlobHash::of(bytes));
+		let write = |node: u64, hash: BlobHash| RegistryDelta::ChangeNodeInput {
+			id: NodeId(node),
+			index: 0,
+			new_input: value_input(Value::Blob(hash)),
+		};
+
+		let bases = Registry::default().blob_bases(&[write(1, x), write(1, a), write(2, a), write(2, x)]);
+		assert_eq!(bases, HashMap::from([(a, x)]), "only first writes take a base");
 	}
 }

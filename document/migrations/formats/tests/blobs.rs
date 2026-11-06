@@ -83,6 +83,7 @@ fn version_four_moves_large_values_into_blobs_based_on_their_slot() {
 	assert_eq!(registry.node_instances[&id].inputs()[0].input.blob(), Some(second));
 
 	assert_eq!(document.blobs.len(), 3);
+	let [first, second, third] = [first, second, third].map(|hash| hash.0);
 	assert_eq!(decode_blob(&document.blobs[&third]).unwrap(), Value::Str(format!("c{}", "a".repeat(BLOB_THRESHOLD))));
 	assert_eq!(document.blob_bases.get(&first), None, "the first value of a slot has nothing to be based on");
 	assert_eq!(document.blob_bases.get(&second), Some(&first));

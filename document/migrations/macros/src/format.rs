@@ -11,8 +11,7 @@ const ROOTS: &[(&str, &str)] = &[
 	("session", "migrate_session"),
 ];
 
-/// `1 => 2, registry: v1::Registry, delta: v1::Delta`: the version step and the frozen type of each root it converts. An entry
-/// `document: function` names a `fn(&mut DocumentPayloads) -> Result<(), MigrationError>` run on the converted document.
+/// `1 => 2, registry: v1::Registry, delta: v1::Delta`: the version step and the frozen type of each root it converts.
 pub(crate) struct FormatStep {
 	pub from: u32,
 	pub to: u32,

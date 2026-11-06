@@ -11,7 +11,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::attr::*;
 use crate::blob::{BlobBytes, decode_blob};
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
-use crate::{Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, Value, from_value};
+use crate::{BlobHash, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
@@ -24,7 +24,7 @@ pub enum ConversionError {
 	#[error("Deserialization error: {0}")]
 	DeserializationError(String),
 	#[error("Blob {0} not found in provided blobs")]
-	BlobNotFound(ResourceHash),
+	BlobNotFound(BlobHash),
 	#[error("Network {network} has two nodes mapping to runtime ID {runtime_id}")]
 	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
 	#[error("Network {network} references node {referenced}, which lives in a different network")]
@@ -115,6 +115,12 @@ impl<'a> ConversionContext<'a> {
 			blobs,
 			nodes_by_network,
 		}
+	}
+
+	/// The value blob `hash` holds.
+	fn resolve_blob(&self, hash: BlobHash) -> Result<Value, ConversionError> {
+		let bytes = self.blobs.get(&hash).ok_or(ConversionError::BlobNotFound(hash))?;
+		decode_blob(bytes).map_err(|error| ConversionError::DeserializationError(format!("Blob {hash}: {error}")))
 	}
 
 	/// The networks other than the root that the root reaches through node implementations.
@@ -484,17 +490,12 @@ fn convert_input(context: &ConversionContext, network_id: NetworkId, input: &Nod
 			}
 		}
 		NodeInput::Value { value, exposed } => {
-			let resolved;
 			let value = match value {
-				Value::Blob(hash) => {
-					let bytes = context.blobs.get(hash).ok_or(ConversionError::BlobNotFound(*hash))?;
-					resolved = decode_blob(bytes).map_err(|error| ConversionError::DeserializationError(format!("Blob {hash}: {error}")))?;
-					&resolved
-				}
-				value => value,
+				Value::Blob(hash) => Cow::Owned(context.resolve_blob(*hash)?),
+				value => Cow::Borrowed(value),
 			};
 
-			let tagged_value: TaggedValue = from_value(value).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
+			let tagged_value: TaggedValue = from_value(&value).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
 			GraphCraftNodeInput::Value {
 				tagged_value: MemoHash::new(tagged_value),
 				exposed: *exposed,

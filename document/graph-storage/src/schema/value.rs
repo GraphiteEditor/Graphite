@@ -1,3 +1,4 @@
+use crate::BlobHash;
 use graphene_resource::ResourceHash;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -13,8 +14,8 @@ pub enum Value {
 	Str(String),
 	Array(Vec<Value>),
 	Object(Vec<(String, Value)>),
-	/// A large node input value whose serialized bytes live in the resource store under this hash.
-	Blob(ResourceHash),
+	/// A large node input value, stored as a blob under the hash of its postcard bytes. See [`crate::blob`].
+	Blob(BlobHash),
 }
 
 // Using `Serializer::is_human_readable` to determine whether to serialize tagged.
@@ -112,7 +113,8 @@ impl<'de> Deserialize<'de> for Value {
 }
 
 impl Value {
-	/// The key of the single-entry object a [`Value::Blob`] is written as in human-readable formats.
+	/// The key of the single-entry object a [`Value::Blob`] is written as in human-readable formats. The key is reserved:
+	/// an object holding only it with a hash string reads back as a blob.
 	pub const BLOB_KEY: &str = "$blob";
 
 	/// An object, unless it is the single-entry form a [`Value::Blob`] takes in human-readable formats.
@@ -121,7 +123,7 @@ impl Value {
 			&& key == Self::BLOB_KEY
 			&& let Ok(hash) = ResourceHash::try_from(hex.as_str())
 		{
-			return Value::Blob(hash);
+			return Value::Blob(BlobHash(hash));
 		}
 		Value::Object(object)
 	}

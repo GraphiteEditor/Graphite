@@ -74,7 +74,7 @@ impl History {
 	/// (idempotent re-apply) overwrites the existing entry in place rather than appending, so the
 	/// order and index are unchanged.
 	pub fn push(&mut self, delta: Delta) {
-		self.resource_hashes.extend(delta.resource_hashes());
+		self.resource_hashes.extend(delta.kind.resource_hash());
 		if let Some(&position) = self.index.get(&delta.id) {
 			self.deltas[position] = delta;
 			return;

@@ -62,8 +62,7 @@ pub trait FormatMigration: Send + Sync {
 	fn migrate_session(&self, session: &Payload) -> Result<Payload, MigrationError> {
 		Ok(session.clone())
 	}
-	/// Transform the whole document after its records converted, for a change that needs state across records.
-	/// It may rewrite history records only under [`HistoryPolicy::Rewrite`].
+	/// Transform the whole document once its records are converted, for a change needing state across records.
 	fn migrate_document(&self, _document: &mut DocumentPayloads) -> Result<(), MigrationError> {
 		Ok(())
 	}

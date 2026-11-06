@@ -2,13 +2,13 @@
 //! fonts, embedded WASM, and proto-node declarations. Registration goes through the session as an
 //! `AddResource` delta; the bytes live in the working copy's `resources/<hash>` directory.
 
-use std::collections::HashMap;
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 use std::sync::Arc;
 
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
-use document_graph_storage::blob::BlobBytes;
+use document_graph_storage::BlobHash;
+use document_graph_storage::blob::{BlobBytes, NewBlobs};
 use graphene_resource::ResourceFuture;
 use graphene_resource::{LoadResource, Resource, ResourceHash, ResourceStorage};
 
@@ -127,32 +127,31 @@ impl<L: Layout> Gdd<L> {
 		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
 	}
 
-	/// The bytes of every blob the registry, history, or hot log names, for [`Registry::to_runtime_with_metadata`](document_graph_storage::Registry::to_runtime_with_metadata).
+	/// The decoded bytes of every blob the document names, for `to_runtime`.
 	pub fn blobs(&self) -> &BlobBytes {
 		&self.blobs.bytes
 	}
 
-	/// Write the records of staged blobs ahead of the hot frames naming them, each a delta against its entry in `bases` where it has one.
-	pub(crate) fn keep_blobs(&mut self, mut blobs: BlobBytes, bases: &HashMap<ResourceHash, ResourceHash>) -> Result<(), ContainerError> {
-		// In hash order, so the same staging writes the same records
-		let mut hashes: Vec<_> = blobs.keys().copied().collect();
-		hashes.sort_unstable();
+	/// Hold staged blobs and queue their records ahead of the hot frames naming them, each a delta against its base where it has one.
+	/// Returns the records, for peers to receive with the ops.
+	pub(crate) fn keep_blobs(&mut self, blobs: NewBlobs) -> Result<Vec<(BlobHash, Vec<u8>)>, ContainerError> {
+		let records = self.blobs.insert_all(blobs);
 
-		for hash in hashes {
-			// A base still waiting in `blobs` goes first, or its dependent would find nothing to encode against
-			let mut chain = vec![hash];
-			while let Some(base) = chain.last().and_then(|hash| bases.get(hash))
-				&& blobs.contains_key(base)
-				&& chain.len() <= blobs.len()
-			{
-				chain.push(*base);
+		for (index, (hash, record)) in records.iter().enumerate() {
+			if let Err(error) = self.working.write_non_blocking(&self.layout.blob_path(hash), record) {
+				// Unwritten blobs leave the store, so staging them again writes them
+				records[index..].iter().for_each(|(hash, _)| self.blobs.forget(hash));
+				return Err(error);
 			}
+		}
+		Ok(records)
+	}
 
-			for hash in chain.into_iter().rev() {
-				let Some(bytes) = blobs.remove(&hash) else { continue };
-				let Some(record) = self.blobs.insert(hash, bytes, bases.get(&hash).copied()) else { continue };
-				self.working.write_non_blocking(&self.layout.blob_path(&hash), &record)?;
-			}
+	/// [`keep_blobs`](Self::keep_blobs), returning once the records are written, for a migration replacing the records that held the values inline.
+	#[cfg(feature = "migrations")]
+	pub(crate) async fn keep_blobs_durably(&mut self, blobs: NewBlobs) -> Result<(), ContainerError> {
+		for (hash, record) in self.blobs.insert_all(blobs) {
+			self.working.write(&self.layout.blob_path(&hash), &record).await?;
 		}
 		Ok(())
 	}

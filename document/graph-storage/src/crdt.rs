@@ -1,4 +1,4 @@
-use crate::{Attributes, Delta, InputSlot, NodeField, NodeInput, PeerId, Prior, RegistryDelta, Rev, TimeStamp, Tombstone, Value, attr, compute_rev};
+use crate::{Attributes, BlobHash, Delta, InputSlot, NodeField, NodeInput, PeerId, Prior, RegistryDelta, Rev, TimeStamp, Tombstone, Value, attr, compute_rev};
 use graphene_resource::ResourceHash;
 
 impl Delta {
@@ -78,33 +78,24 @@ impl Delta {
 	pub fn has_valid_id(&self) -> bool {
 		self.id == self.recomputed_id()
 	}
-}
-
-impl Delta {
-	/// Every content hash the op or its priors name, so undo and redo find their bytes kept.
-	pub fn resource_hashes(&self) -> impl Iterator<Item = ResourceHash> + '_ {
-		self.kind.resource().into_iter().chain(self.blob_hashes())
-	}
 
 	/// The blobs the op writes or its priors restore.
-	pub fn blob_hashes(&self) -> impl Iterator<Item = ResourceHash> + '_ {
-		let prior_slots = self.reverse.iter().flat_map(|prior| -> Box<dyn Iterator<Item = &InputSlot> + '_> {
-			match prior {
-				Prior::Node { node, .. }
-				| Prior::RemovedNode {
-					tombstone: Tombstone { content: node, .. },
-					..
-				} => Box::new(node.inputs().iter()),
-				Prior::NodeField {
-					field: NodeField::Input { previous, .. },
-					..
-				} => Box::new(std::iter::once(previous)),
-				Prior::NodeField {
-					field: NodeField::Inputs { previous, .. },
-					..
-				} => Box::new(previous.iter()),
-				_ => Box::new(std::iter::empty()),
-			}
+	pub fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let prior_slots = self.reverse.iter().flat_map(|prior| match prior {
+			Prior::Node { node, .. }
+			| Prior::RemovedNode {
+				tombstone: Tombstone { content: node, .. },
+				..
+			} => node.inputs(),
+			Prior::NodeField {
+				field: NodeField::Input { previous, .. },
+				..
+			} => std::slice::from_ref(previous),
+			Prior::NodeField {
+				field: NodeField::Inputs { previous, .. },
+				..
+			} => previous.as_slice(),
+			_ => &[],
 		});
 
 		self.kind.blob_hashes().chain(prior_slots.filter_map(|slot| slot.input.blob()))
@@ -112,13 +103,7 @@ impl Delta {
 }
 
 impl RegistryDelta {
-	/// Every content hash the op names: a resource's, or a blob's in an input value it writes.
-	pub fn resource_hashes(&self) -> impl Iterator<Item = ResourceHash> + '_ {
-		self.resource().into_iter().chain(self.blob_hashes())
-	}
-
-	/// The hash of the resource the op adds, removes, or points at.
-	fn resource(&self) -> Option<ResourceHash> {
+	pub fn resource_hash(&self) -> Option<ResourceHash> {
 		match self {
 			RegistryDelta::AddResource { entry, .. } => entry.hash,
 			RegistryDelta::RemoveResource { snapshot, .. } => snapshot.hash,
@@ -128,15 +113,15 @@ impl RegistryDelta {
 	}
 
 	/// The blobs in the input values the op writes.
-	pub fn blob_hashes(&self) -> impl Iterator<Item = ResourceHash> + '_ {
-		let inputs: Box<dyn Iterator<Item = &NodeInput> + '_> = match self {
-			RegistryDelta::ChangeNodeInput { new_input, .. } => Box::new(std::iter::once(new_input)),
-			RegistryDelta::AddNode { node, .. } | RegistryDelta::RemoveNode { snapshot: node, .. } => Box::new(node.inputs().iter().map(|slot| &slot.input)),
-			RegistryDelta::SetNodeInputs { inputs, .. } => Box::new(inputs.iter().map(|slot| &slot.input)),
-			_ => Box::new(std::iter::empty()),
+	pub(crate) fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let (input, slots): (Option<&NodeInput>, &[InputSlot]) = match self {
+			RegistryDelta::ChangeNodeInput { new_input, .. } => (Some(new_input), &[]),
+			RegistryDelta::AddNode { node, .. } | RegistryDelta::RemoveNode { snapshot: node, .. } => (None, node.inputs()),
+			RegistryDelta::SetNodeInputs { inputs, .. } => (None, inputs),
+			_ => (None, &[]),
 		};
 
-		inputs.filter_map(NodeInput::blob)
+		input.into_iter().chain(slots.iter().map(|slot| &slot.input)).filter_map(NodeInput::blob)
 	}
 }
 

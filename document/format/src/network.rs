@@ -4,8 +4,10 @@
 
 use std::collections::HashSet;
 
-use document_graph_storage::{CrdtError, Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredMarks, Rev, Session, Touched, UserId};
-use peer_transport::{Event, Replica, Role, SyncTarget, TargetError, Transport};
+use document_container::AsyncContainer;
+use document_graph_storage::blob::{BlobBytes, NewBlobs};
+use document_graph_storage::{BlobHash, CrdtError, Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredMarks, Rev, Session, Touched, UserId};
+use peer_transport::{BlobRecord, Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
 use crate::layout::Layout;
@@ -365,12 +367,36 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
+	/// Includes blobs this peer holds no record for, which it asks for in full like resources.
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
-		self.unstored_resources().into_iter().collect()
+		let missing_blobs = self.session.all_blob_hashes().into_iter().filter(|hash| !self.blobs.bytes.contains_key(hash));
+		self.unstored_resources().into_iter().chain(missing_blobs.map(ResourceHash::from)).collect()
 	}
 
-	fn store_resource(&mut self, _hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
+	fn resource_bytes(&self, hash: ResourceHash) -> Option<Vec<u8>> {
+		self.blobs.bytes.get(&BlobHash(hash)).cloned()
+	}
+
+	fn store_resource(&mut self, hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
+		let blob = BlobHash(hash);
+		if self.session.all_blob_hashes().contains(&blob) {
+			let bytes = BlobBytes::from([(blob, bytes.to_vec())]);
+			self.keep_blobs(NewBlobs { bytes, ..Default::default() })?;
+			return Ok(());
+		}
 		self.hold_resource(bytes)?;
+		Ok(())
+	}
+
+	fn blob_records(&self) -> Vec<BlobRecord> {
+		self.blobs.records().into_iter().map(|(hash, record)| BlobRecord { hash, record }).collect()
+	}
+
+	fn absorb_blob_records(&mut self, records: Vec<BlobRecord>) -> Result<(), TargetError> {
+		let held = self.blobs.absorb(records.into_iter().map(|BlobRecord { hash, record }| (hash, record)).collect());
+		for (hash, record) in held {
+			self.working.write_non_blocking(&self.layout.blob_path(&hash), &record)?;
+		}
 		Ok(())
 	}
 }

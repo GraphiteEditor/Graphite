@@ -4,6 +4,7 @@
 //! read/write call site. Working-copy creation, exports, and migrations may all hit the same
 //! basename with different codecs.
 
+use document_graph_storage::BlobHash;
 use graphene_resource::ResourceHash;
 
 pub trait Layout: Send + Sync {
@@ -15,9 +16,10 @@ pub trait Layout: Send + Sync {
 	fn metadata_basename(&self) -> &str;
 	fn resources_dir(&self) -> &str;
 	fn resource_path(&self, hash: &ResourceHash) -> String;
-	/// The directory of blob records, each a large node input value stored whole or as a delta. See `blob_store`.
+	/// The directory of blob records. See `blob_store`.
 	fn blobs_dir(&self) -> &str;
-	fn blob_path(&self, hash: &ResourceHash) -> String;
+	/// The record of one blob.
+	fn blob_path(&self, hash: &BlobHash) -> String;
 	/// The embedded legacy `.graphite` document, stored verbatim during the dual-write soak so the
 	/// new format can be validated against (and recovered from) the old one. Dropped once `.gdd`
 	/// becomes the sole source of truth.
@@ -57,7 +59,7 @@ impl Layout for GddV1Layout {
 	fn blobs_dir(&self) -> &str {
 		"blobs"
 	}
-	fn blob_path(&self, hash: &ResourceHash) -> String {
+	fn blob_path(&self, hash: &BlobHash) -> String {
 		format!("{}/{hash}", self.blobs_dir())
 	}
 	fn legacy_path(&self) -> &str {
