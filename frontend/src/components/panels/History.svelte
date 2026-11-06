@@ -54,7 +54,8 @@
 
 	// The inputs open focused and close once focus leaves them, committed or not
 	function focusInput(node: HTMLElement) {
-		node.querySelector("input")?.focus();
+		const input = node.querySelector("[data-input-element]");
+		if (input instanceof HTMLElement) input.focus();
 	}
 </script>
 
@@ -138,7 +139,9 @@
 								icon="HistoryUndo"
 								size={16}
 								tooltipLabel="Go back to here"
-								tooltipDescription={$history.session ? "Move everyone's document back to this step. The steps since stay as a branch." : "Move the document back to this step. The steps since stay as a branch."}
+								tooltipDescription={$history.session
+									? "Move everyone's document back to this step. The steps since stay as a branch."
+									: "Move the document back to this step. The steps since stay as a branch."}
 								action={() => editor.goBackToHistoryInteraction(row.id)}
 							/>
 						{/if}
