@@ -19,8 +19,8 @@ pub struct HistoryPanelState {
 	pub progress: Vec<HistoryProgressRow>,
 	pub more: bool,
 	pub following: Option<String>,
-	/// In a session, a head move affects everyone.
-	pub session: bool,
+	/// Others are connected, so authors, work in progress and head moves concern them too.
+	pub collaborating: bool,
 }
 
 /// One interaction, a run of deltas that undo takes back together.
@@ -63,7 +63,7 @@ pub struct HistoryDeltaRow {
 	pub id: String,
 	pub label: String,
 	pub author: String,
-	pub color: String,
+	pub mine: bool,
 	pub time: Option<f64>,
 }
 

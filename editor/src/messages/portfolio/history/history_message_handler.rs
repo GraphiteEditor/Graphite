@@ -159,7 +159,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usiz
 	(document_id, limit, expanded, following).hash(&mut hasher);
 	if let Some(gdd) = gdd {
 		let session = gdd.session();
-		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), gdd.role().is_some()).hash(&mut hasher);
+		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len()).hash(&mut hasher);
 		for remote in gdd.peers() {
 			(remote.user, &remote.name).hash(&mut hasher);
 		}
@@ -210,7 +210,18 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: O
 	let shown_rows = interactions(&shown).into_iter().map(|group| view.row(&group, false));
 	let rows = undone_rows.chain(shown_rows).collect();
 
-	// Open interactions first, then closed ones waiting to retire, newest first
+	let collaborating = gdd.peers().next().is_some();
+	HistoryPanelState {
+		rows,
+		progress: if collaborating { progress_rows(session, &people) } else { Vec::new() },
+		more,
+		following: following.map(|tip| tip.to_string()),
+		collaborating,
+	}
+}
+
+/// Open interactions first, then closed ones waiting to retire, newest first.
+fn progress_rows(session: &Session, people: &People) -> Vec<HistoryProgressRow> {
 	let hot_log = session.hot_log();
 	let closed = session.closed_interactions();
 	let in_closed: HashSet<HotOpId> = closed.iter().flat_map(|interaction| interaction.ops.iter().copied()).collect();
@@ -221,20 +232,13 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: O
 			None => open_by_peer.push((hot_op.timestamp.peer, vec![&hot_op.op])),
 		}
 	}
-	let mut progress: Vec<HistoryProgressRow> = open_by_peer.into_iter().map(|(peer, ops)| progress_row(&people, peer, &ops, true)).collect();
+	let mut progress: Vec<HistoryProgressRow> = open_by_peer.into_iter().map(|(peer, ops)| progress_row(people, peer, &ops, true)).collect();
 	for interaction in closed.iter().rev() {
 		let ids: HashSet<HotOpId> = interaction.ops.iter().copied().collect();
 		let ops: Vec<&RegistryDelta> = hot_log.iter().filter(|hot_op| ids.contains(&hot_op.id())).map(|hot_op| &hot_op.op).collect();
-		progress.push(progress_row(&people, interaction.author, &ops, false));
+		progress.push(progress_row(people, interaction.author, &ops, false));
 	}
-
-	HistoryPanelState {
-		rows,
-		progress,
-		more,
-		following: following.map(|tip| tip.to_string()),
-		session: gdd.role().is_some(),
-	}
+	progress
 }
 
 /// The deltas from `from` back along first parents to `until` (exclusive) or the root, newest first. Stops after
@@ -302,7 +306,7 @@ impl View<'_> {
 						id: delta.id.to_string(),
 						label: describe(&delta.kind),
 						author: author.name,
-						color: author.color,
+						mine: author.mine,
 						time: delta.retired_at().map(|ms| ms as f64),
 					}
 				})
