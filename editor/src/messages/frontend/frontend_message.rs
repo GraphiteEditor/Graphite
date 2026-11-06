@@ -199,6 +199,11 @@ pub enum FrontendMessage {
 	UpdateHistoryPanel {
 		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
 	},
+	/// A History panel step's captured image, which the panel shows wherever a row names `id`.
+	UpdateHistoryThumbnail {
+		id: String,
+		svg: String,
+	},
 	UpdateNodeGraphCursors {
 		cursors: Vec<FrontendRemoteCursor>,
 	},

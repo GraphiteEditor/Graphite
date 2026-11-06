@@ -81,7 +81,15 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
-	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
+	Thumbnails {
+		responses: VecDeque<FrontendMessage>,
+		document_id: DocumentId,
+	},
+	DocumentCapture {
+		document_id: DocumentId,
+		rev: document_graph_storage::Rev,
+		capture: Box<crate::messages::portfolio::history::utility_types::DocumentCapture>,
+	},
 	InspectResult(Box<InspectResult>),
 }
 
@@ -201,6 +209,16 @@ impl NodeGraphExecutor {
 		self.sender
 			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
 			.expect("Failed to send the thumbnails in view");
+	}
+
+	/// Asks for the document as rendered once what was submitted before has run, for the History panel's step `rev`.
+	/// Returns false when the runtime holds another document's graph, so nothing was asked.
+	pub fn submit_document_capture(&self, document_id: DocumentId, rev: document_graph_storage::Rev) -> bool {
+		if self.node_graph_document != Some(document_id) {
+			return false;
+		}
+		self.sender.send(GraphRuntimeRequest::CaptureDocument { document_id, rev }).expect("Failed to send the capture request");
+		true
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
@@ -664,6 +682,7 @@ impl NodeGraphExecutor {
 						Self::receive_thumbnails(document, thumbnails, responses);
 					}
 				}
+				NodeGraphUpdate::DocumentCapture { document_id, rev, capture } => responses.add(HistoryMessage::Captured { document_id, rev, capture }),
 			}
 		}
 

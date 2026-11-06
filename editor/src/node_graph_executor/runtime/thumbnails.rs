@@ -1,5 +1,6 @@
 use super::evaluated_output;
 use crate::messages::frontend::FrontendMessage;
+use crate::messages::portfolio::history::utility_types::DocumentCapture;
 #[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
@@ -224,22 +225,19 @@ impl Thumbnails {
 	}
 
 	async fn render_svg(&mut self, layer: NodeId, content: &ThumbnailContent, responses: &mut VecDeque<FrontendMessage>) {
-		let bounds = content.bounds();
-		let footprint = Footprint {
-			transform: DAffine2::from_translation(bounds[0]),
-			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
-			quality: RenderQuality::Full,
-		};
-		let render_params = RenderParams {
-			footprint,
-			thumbnail: true,
-			..Default::default()
-		};
-		let mut render = SvgRender::new();
-		content.graphic().render_svg(&mut render, &render_params);
-		render.format_svg(bounds[0], bounds[1]);
+		self.show_svg(layer, content.svg(), responses).await;
+	}
 
-		self.show_svg(layer, render.svg.to_svg_string(), responses).await;
+	/// Renders the whole document as the network's export gives it, along with what each layer currently shows.
+	pub fn capture_document(&self, network: &NodeNetwork, executor: &DynamicExecutor) -> Option<DocumentCapture> {
+		let source = network.input_source(&[], network.exports.first()?)?;
+		let &(content_node, _) = executor.tree().source_map().get(source.as_slice())?;
+		let content = ThumbnailContent::evaluate(executor, content_node)?;
+		Some(DocumentCapture {
+			svg: content.svg(),
+			frame: content.bounds(),
+			layer_sources: self.sources.clone(),
+		})
 	}
 
 	/// Draws the SVG into the canvases the layer's rows show, so the browser rasterizes it once rather than keeping it in the page.
@@ -342,6 +340,24 @@ impl ThumbnailContent {
 			Self::Artboards(artboards) => artboards,
 			Self::Text(text) => text,
 		}
+	}
+
+	fn svg(&self) -> String {
+		let bounds = self.bounds();
+		let footprint = Footprint {
+			transform: DAffine2::from_translation(bounds[0]),
+			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
+			quality: RenderQuality::Full,
+		};
+		let render_params = RenderParams {
+			footprint,
+			thumbnail: true,
+			..Default::default()
+		};
+		let mut render = SvgRender::new();
+		self.graphic().render_svg(&mut render, &render_params);
+		render.format_svg(bounds[0], bounds[1]);
+		render.svg.to_svg_string()
 	}
 
 	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
@@ -465,6 +481,23 @@ mod tests {
 
 	fn compiled_id(editor: &EditorTestUtils, path: &[NodeId]) -> Option<NodeId> {
 		editor.runtime.executor.tree().source_map().get(path).map(|(id, _)| *id)
+	}
+
+	#[tokio::test]
+	async fn a_document_capture_shows_the_document_and_what_each_layer_shows() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+		let layer = editor.get_selected_layer().await.expect("The drawn rectangle should be selected").to_node();
+
+		compile_and_run(&mut editor).await;
+		let runtime = &editor.runtime;
+		let network = runtime.old_graph.as_ref().expect("The document should have compiled");
+		let capture = runtime.thumbnails.capture_document(network, &runtime.executor).expect("The document should render");
+		assert!(capture.svg.contains("<path"), "The rectangle should be drawn: {}", capture.svg);
+		assert!(capture.layer_sources.contains_key(&layer), "The rectangle's layer should have its content");
+		let [min, max] = capture.frame;
+		assert!(min.cmple(DVec2::ZERO).all() && max.cmpge(DVec2::splat(10.)).all(), "The frame {min} to {max} should hold the rectangle");
 	}
 
 	#[tokio::test]
