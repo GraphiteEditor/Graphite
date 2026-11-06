@@ -1,8 +1,8 @@
-import { tick } from "svelte";
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
+import { createLayout } from "/src/utility-functions/layout-state.svelte";
 import { patchLayout } from "/src/utility-functions/widgets";
 import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
@@ -21,9 +21,9 @@ const initialState: DialogStoreState = {
 	visible: false,
 	title: "",
 	icon: undefined,
-	buttons: [],
-	column1: [],
-	column2: [],
+	buttons: createLayout(),
+	column1: createLayout(),
+	column2: createLayout(),
 	// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 	panicDetails: "",
 };
@@ -51,9 +51,7 @@ export function createDialogStore(subscriptions: SubscriptionsRouter, editor: Ed
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("DialogButtons", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DialogButtons", (data) => {
 		update((state) => {
 			patchLayout(state.buttons, data);
 
@@ -61,9 +59,7 @@ export function createDialogStore(subscriptions: SubscriptionsRouter, editor: Ed
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("DialogColumn1", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DialogColumn1", (data) => {
 		update((state) => {
 			patchLayout(state.column1, data);
 
@@ -71,9 +67,7 @@ export function createDialogStore(subscriptions: SubscriptionsRouter, editor: Ed
 		});
 	});
 
-	subscriptions.subscribeLayoutUpdate("DialogColumn2", async (data) => {
-		await tick();
-
+	subscriptions.subscribeLayoutUpdate("DialogColumn2", (data) => {
 		update((state) => {
 			patchLayout(state.column2, data);
 

@@ -159,6 +159,9 @@ pub enum ContextMenuData {
 		has_selected_layers: bool,
 		#[serde(rename = "allSelectedLayersLocked")]
 		all_selected_layers_locked: bool,
+		/// Whether the node names a table entry other nodes name too, which "Make Unique" gives it its own copy of.
+		#[serde(rename = "isShared")]
+		is_shared: bool,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]
@@ -229,4 +232,17 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
+}
+
+/// Another peer's pointer over the node graph, in viewport pixels.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendRemoteCursor {
+	pub x: f64,
+	pub y: f64,
+	pub name: String,
+	/// A stand-in name, shown in italics.
+	pub anonymous: bool,
+	pub color: String,
+	pub tool: Option<String>,
 }

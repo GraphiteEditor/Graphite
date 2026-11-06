@@ -4,23 +4,21 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { createLayout } from "/src/utility-functions/layout-state.svelte";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const subscriptions = getContext<SubscriptionsRouter>("subscriptions");
 
-	let statusBarHintsLayout: Layout = [];
-	let statusBarInfoLayout: Layout = [];
+	const statusBarHintsLayout = createLayout();
+	const statusBarInfoLayout = createLayout();
 
 	onMount(() => {
 		subscriptions.subscribeLayoutUpdate("StatusBarHints", (data) => {
 			patchLayout(statusBarHintsLayout, data);
-			statusBarHintsLayout = statusBarHintsLayout;
 		});
 
 		subscriptions.subscribeLayoutUpdate("StatusBarInfo", (data) => {
 			patchLayout(statusBarInfoLayout, data);
-			statusBarInfoLayout = statusBarInfoLayout;
 		});
 	});
 

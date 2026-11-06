@@ -2,8 +2,9 @@ use super::{
 	ChainInsertionPoint, FlowType, GlideOffsets, ImportOrExport, InputConnector, NodeNetworkInterface, NodeNetworkTemplate, NodeTemplate, NodeTemplateImplementation, NodeTypePersistentMetadata,
 	OutputConnector, Previewing, RootNode, TransactionStatus,
 };
-use crate::consts::GRID_SIZE;
+use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
@@ -18,6 +19,13 @@ fn assert_invariants(editor: &EditorTestUtils, context: &str) {
 
 fn rectangle_definition() -> DefinitionIdentifier {
 	DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER)
+}
+
+/// The graph the runtime compiles: the document network with its previews applied.
+fn evaluated_network(network_interface: &NodeNetworkInterface) -> graph_craft::document::NodeNetwork {
+	let mut network = network_interface.document_network().clone();
+	crate::node_graph_executor::apply_previews(&mut network, &network_interface.previewed_nodes());
+	network
 }
 
 fn new_artboard_message(id: NodeId) -> GraphOperationMessage {
@@ -176,31 +184,6 @@ async fn connecting_an_export_is_never_cyclic() {
 	);
 
 	assert_invariants(&editor, "after connecting the export");
-}
-
-#[tokio::test]
-async fn toggling_preview_on_a_disconnected_export() {
-	let mut editor = EditorTestUtils::create();
-	editor.new_document().await;
-
-	let node = editor.create_node_by_name(rectangle_definition()).await;
-
-	let network_interface = &mut editor.active_document_mut().network_interface;
-	network_interface.disconnect_input(&InputConnector::Export(0), &[]);
-
-	// Previewing a node while the export is disconnected is a preview with nothing to restore
-	network_interface.toggle_preview(node, &[]);
-	assert_eq!(network_interface.previewing(&[]), Previewing::Yes { root_node_to_restore: None });
-	let export = network_interface.input_from_connector(&InputConnector::Export(0), &[]);
-	assert_eq!(export.and_then(|input| input.as_node()), Some(node), "The previewed node should be wired to the export");
-
-	// Ending the preview restores the disconnected export
-	network_interface.toggle_preview(node, &[]);
-	assert_eq!(network_interface.previewing(&[]), Previewing::No);
-	let export = network_interface.input_from_connector(&InputConnector::Export(0), &[]);
-	assert!(export.is_some_and(|input| input.as_node().is_none()), "Ending the preview should disconnect the export again");
-
-	assert_invariants(&editor, "after toggling preview twice");
 }
 
 #[tokio::test]
@@ -1366,7 +1349,7 @@ async fn showing_a_secondary_import_in_the_inspector_keeps_its_wires_in_the_subg
 }
 
 #[tokio::test]
-async fn toggle_preview_transitions_with_a_connected_export() {
+async fn previewing_leaves_the_export_alone() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
@@ -1378,31 +1361,31 @@ async fn toggle_preview_transitions_with_a_connected_export() {
 	let export_node = |network_interface: &super::NodeNetworkInterface| network_interface.input_from_connector(&InputConnector::Export(0), &[]).and_then(|input| input.as_node());
 	assert_eq!(export_node(network_interface), Some(artboard));
 
-	// Previewing a node remembers the artboard as the connection to restore
+	// Previewing a node names it without touching the export
 	network_interface.toggle_preview(node, &[]);
-	assert_eq!(export_node(network_interface), Some(node));
 	assert_eq!(
 		network_interface.previewing(&[]),
 		Previewing::Yes {
-			root_node_to_restore: Some(RootNode { node_id: artboard, output_index: 0 })
+			previewed: RootNode { node_id: node, output_index: 0 }
 		}
 	);
+	assert_eq!(export_node(network_interface), Some(artboard), "Previewing must not rewire the export");
 
-	// Toggling the previewed node again restores the artboard connection
+	// Toggling the previewed node again ends the preview, leaving the export as it always was
 	network_interface.toggle_preview(node, &[]);
-	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+	assert_eq!(export_node(network_interface), Some(artboard));
 
-	// Toggling the restore node while previewing ends the preview by restoring it
+	// Toggling the node feeding the export while previewing ends the preview
 	network_interface.toggle_preview(node, &[]);
 	network_interface.toggle_preview(artboard, &[]);
-	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+	assert_eq!(export_node(network_interface), Some(artboard));
 
 	// Toggling the node already feeding the export changes nothing
 	network_interface.toggle_preview(artboard, &[]);
-	assert_eq!(export_node(network_interface), Some(artboard));
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+	assert_eq!(export_node(network_interface), Some(artboard));
 
 	assert_invariants(&editor, "after cycling through the preview states");
 }
@@ -2841,7 +2824,7 @@ async fn imports_and_exports_keep_just_a_grid_cell_from_a_dot() {
 }
 
 #[tokio::test]
-async fn previewing_keeps_the_dot_it_will_restore_the_export_to_and_outlasts_removing_other_dots() {
+async fn previewing_keeps_the_dot_on_the_export_wire_and_outlasts_removing_other_dots() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 
@@ -2871,7 +2854,7 @@ async fn previewing_keeps_the_dot_it_will_restore_the_export_to_and_outlasts_rem
 	network_interface.remove_orphaned_dots(&[]);
 
 	assert!(!exists(&editor, other_dot), "the dot left with nothing to feed should be removed");
-	assert!(exists(&editor, export_dot), "the dot the preview will restore the export to should stay");
+	assert!(exists(&editor, export_dot), "the dot on the export's wire should stay while previewing");
 	assert!(
 		matches!(editor.active_document().network_interface.previewing(&[]), Previewing::Yes { .. }),
 		"removing a dot outside the preview should leave it running"
@@ -2881,7 +2864,7 @@ async fn previewing_keeps_the_dot_it_will_restore_the_export_to_and_outlasts_rem
 	assert_eq!(
 		editor.active_document().network_interface.upstream_output_connector(&InputConnector::Export(0), &[]),
 		Some(OutputConnector::node(export_dot, 0)),
-		"ending the preview should restore the export to the dot"
+		"ending the preview should leave the export wired through the dot"
 	);
 	assert_invariants(&editor, "after previewing past a dot on the export's wire");
 }
@@ -3243,14 +3226,37 @@ async fn gliding_nudged_node(editor: &mut EditorTestUtils) -> NodeId {
 #[tokio::test]
 async fn redoing_a_nudge_undone_while_it_glides_leaves_nothing_gliding() {
 	let mut editor = EditorTestUtils::create();
-	// Undone from the history's own snapshots, rather than the storage rebuilt afresh
-	editor.editor.handle_message(PreferencesMessage::SaveAsGdd { enabled: false });
 	gliding_nudged_node(&mut editor).await;
 
 	editor.handle_message(DocumentMessage::Undo).await;
 	editor.handle_message(DocumentMessage::Redo).await;
 
 	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
+}
+
+#[tokio::test]
+async fn undoing_a_nudge_keeps_the_node_it_moved() {
+	let mut editor = EditorTestUtils::create();
+	let node = gliding_nudged_node(&mut editor).await;
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(editor.active_document().network_interface.position(&node, &[]), Some(IVec2::ZERO));
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert!(editor.active_document().network_interface.document_network().nodes.is_empty());
+}
+
+#[tokio::test]
+async fn undoing_right_after_creating_a_node_removes_only_that_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let kept = editor.create_node_by_name_at(rectangle_definition(), 0, 0).await;
+	editor.create_node_by_name_at(rectangle_definition(), 5, 0).await;
+
+	editor.handle_message(DocumentMessage::Undo).await;
+
+	let nodes = &editor.active_document().network_interface.document_network().nodes;
+	assert_eq!(nodes.keys().copied().collect::<Vec<_>>(), vec![kept]);
 }
 
 #[tokio::test]
@@ -3262,4 +3268,386 @@ async fn entering_a_node_while_its_network_glides_settles_it() {
 	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: merge }).await;
 
 	assert!(editor.active_document().network_interface.glide_offsets(&[]).is_empty());
+}
+
+#[tokio::test]
+async fn resting_a_wire_on_an_exposed_input_reveals_nothing_that_would_move_it_from_under_the_pointer() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	// A viewport around the graph keeps auto-panning from moving the view while the wire rests
+	editor.set_viewport_size(DVec2::ZERO, DVec2::splat(4000.)).await;
+
+	let number = editor
+		.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::number_value::IDENTIFIER), 0, 10)
+		.await;
+	let transform = editor
+		.create_node_by_name_at(DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER), 20, 0)
+		.await;
+	let [translation, rotation, scale] = [1, 2, 3].map(|input_index| InputConnector::node_at_index(transform, input_index));
+	editor
+		.handle_message(NodeGraphMessage::ExposeInput {
+			input_connector: rotation,
+			set_to_exposed: true,
+			start_transaction: true,
+		})
+		.await;
+
+	let exposed = |editor: &EditorTestUtils, input_connector: InputConnector| {
+		matches!(
+			editor.active_document().network_interface.input_from_connector(&input_connector, &[]),
+			Some(NodeInput::Value { exposed: true, .. })
+		)
+	};
+	let viewport_position = |editor: &EditorTestUtils, position: Option<DVec2>| {
+		let network_interface = &editor.active_document().network_interface;
+		let node_graph_to_viewport = network_interface
+			.network_metadata(&[])
+			.expect("the network should have metadata")
+			.persistent_metadata
+			.navigation_metadata
+			.node_graph_to_viewport;
+		node_graph_to_viewport.transform_point2(position.expect("the connector should have a position"))
+	};
+
+	// Drag a wire from Number Value's output and rest it on Rotation, which Translation would be revealed above
+	let output = viewport_position(&editor, editor.active_document().network_interface.output_position(&OutputConnector::node(number, 0), &[]));
+	let on_rotation = viewport_position(&editor, editor.active_document().network_interface.input_position(&rotation, &[]));
+	editor.animation_frame(1000).await;
+	editor.move_mouse(output.x, output.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+	editor
+		.handle_message(NodeGraphMessage::PointerDown {
+			shift_click: false,
+			control_click: false,
+			alt_click: false,
+			right_click: false,
+		})
+		.await;
+	editor.move_mouse(on_rotation.x, on_rotation.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.animation_frame(1000 + WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS).await;
+	assert!(!exposed(&editor, translation), "resting on Rotation shouldn't reveal Translation above it");
+
+	// Resting on the node's title instead reveals the hidden inputs that can take a number
+	let on_title = viewport_position(&editor, editor.active_document().network_interface.input_position(&InputConnector::node_at_index(transform, 0), &[])) + DVec2::new(48., 0.);
+	editor.move_mouse(on_title.x, on_title.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.animation_frame(1000 + 2 * WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS).await;
+	assert!(exposed(&editor, translation) && exposed(&editor, scale), "resting on the title should reveal Translation and Scale");
+
+	// Dropping on Rotation, now a row lower, wires it and hides the revealed inputs again
+	let on_rotation = viewport_position(&editor, editor.active_document().network_interface.input_position(&rotation, &[]));
+	editor.move_mouse(on_rotation.x, on_rotation.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	editor.handle_message(NodeGraphMessage::PointerMove { shift: Key::Shift }).await;
+	editor.handle_message(NodeGraphMessage::PointerUp).await;
+
+	assert_eq!(
+		editor.active_document().network_interface.upstream_output_connector(&rotation, &[]),
+		Some(OutputConnector::node(number, 0)),
+		"the wire should connect Rotation"
+	);
+	assert!(!exposed(&editor, translation) && !exposed(&editor, scale), "the unused revealed inputs should hide again");
+}
+
+#[tokio::test]
+async fn the_evaluated_network_renders_the_previewed_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.toggle_preview(node, &[]);
+
+	let evaluated = evaluated_network(network_interface);
+	assert_eq!(
+		evaluated.exports.first().and_then(|export| export.as_node()),
+		Some(node),
+		"The network being evaluated should export the previewed node"
+	);
+	assert_eq!(
+		network_interface.document_network().exports.first().and_then(|export| export.as_node()),
+		Some(artboard),
+		"The document itself should be unchanged"
+	);
+}
+
+#[test]
+fn a_preview_written_by_the_rewiring_version_still_deserializes() {
+	let stored = r#"{"Yes":{"root_node_to_restore":{"node_id":7,"output_index":1}}}"#;
+
+	let previewing: Previewing = serde_json::from_str(stored).expect("a preview written by the rewiring version should deserialize");
+
+	assert_eq!(
+		previewing,
+		Previewing::LegacyRewired {
+			root_node_to_restore: Some(RootNode { node_id: NodeId(7), output_index: 1 })
+		},
+		"The stored preview should be read as one needing migration"
+	);
+}
+
+#[test]
+fn the_current_preview_shape_round_trips() {
+	let previewing = Previewing::Yes {
+		previewed: RootNode { node_id: NodeId(7), output_index: 1 },
+	};
+
+	let stored = serde_json::to_string(&previewing).expect("previewing should serialize");
+
+	assert_eq!(serde_json::from_str::<Previewing>(&stored).expect("previewing should deserialize"), previewing);
+}
+
+#[tokio::test]
+async fn migrating_a_rewired_preview_restores_the_export() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	// What the rewiring version saved: the export wired to the previewed node, and the artboard recorded to restore
+	network_interface.create_wire(&OutputConnector::primary_output(node), &InputConnector::Export(0), &[]);
+	let Some(mut network) = network_interface.network_mut(&[]) else {
+		panic!("the document network should resolve")
+	};
+	network.set_previewing(Previewing::LegacyRewired {
+		root_node_to_restore: Some(RootNode { node_id: artboard, output_index: 0 }),
+	});
+
+	network_interface.migrate_rewired_previews();
+
+	assert_eq!(
+		network_interface.document_network().exports.first().and_then(|export| export.as_node()),
+		Some(artboard),
+		"The export should be back to what the document recorded to restore"
+	);
+	assert_eq!(
+		network_interface.previewing(&[]),
+		Previewing::Yes {
+			previewed: RootNode { node_id: node, output_index: 0 }
+		},
+		"The node the export had been moved to should become the preview"
+	);
+	assert_eq!(
+		evaluated_network(network_interface).exports.first().and_then(|export| export.as_node()),
+		Some(node),
+		"What is evaluated should still be the previewed node, so the user sees what they saved"
+	);
+}
+
+#[tokio::test]
+async fn toggling_a_preview_changes_the_network_hash() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let before = network_interface.network_hash();
+
+	network_interface.toggle_preview(node, &[]);
+	let previewing = network_interface.network_hash();
+	assert_ne!(before, previewing, "Starting a preview should change the hash, since it changes what is evaluated");
+
+	network_interface.toggle_preview(node, &[]);
+	assert_eq!(before, network_interface.network_hash(), "Ending the preview should return the hash to what it was");
+}
+
+#[tokio::test]
+async fn toggling_a_node_to_a_layer_changes_the_network_hash() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	let before = network_interface.network_hash();
+
+	network_interface.set_to_node_or_layer(&node, &[], true);
+	assert_ne!(
+		before,
+		network_interface.network_hash(),
+		"A new layer should change the hash, since it gives the runtime another thumbnail to render"
+	);
+
+	network_interface.set_to_node_or_layer(&node, &[], false);
+	assert_eq!(before, network_interface.network_hash(), "Returning to a node should return the hash to what it was");
+}
+
+#[tokio::test]
+async fn the_network_hash_is_stable_while_previewing() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.toggle_preview(node, &[]);
+
+	let hash = network_interface.network_hash();
+	for _ in 0..8 {
+		assert_eq!(hash, network_interface.network_hash(), "Re-reading the hash of an unchanged document should give the same value");
+	}
+}
+
+#[tokio::test]
+async fn a_session_preview_of_a_removed_node_is_dropped() {
+	use super::storage_metadata::{apply_network_view_settings, collect_network_view_settings};
+
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let artboard = NodeId::new();
+	editor.handle_message(new_artboard_message(artboard)).await;
+	let node = editor.create_node_by_name_at(rectangle_definition(), 0, 20).await;
+
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.toggle_preview(node, &[]);
+
+	let network_ids = HashMap::from([(graph_craft::document::NetworkLocation::default(), document_graph_storage::NetworkId(0))]);
+	let stored = collect_network_view_settings(network_interface, &network_ids);
+
+	// As if another peer had removed the previewed node
+	network_interface.delete_nodes(vec![node], false, &[]);
+	apply_network_view_settings(network_interface, &network_ids, &stored);
+
+	assert_eq!(
+		network_interface.previewing(&[]),
+		Previewing::No,
+		"A preview naming a node the document no longer has should be dropped rather than restored"
+	);
+	assert_eq!(
+		evaluated_network(network_interface).exports.first().and_then(|export| export.as_node()),
+		Some(artboard),
+		"The evaluated network should fall back to the document's own export"
+	);
+}
+
+#[tokio::test]
+async fn cannot_preview_node_without_outputs() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let custom_node = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
+	let network_interface = &mut editor.active_document_mut().network_interface;
+
+	assert_eq!(network_interface.number_of_outputs(&custom_node, &[]), 0);
+
+	// Attempting to toggle preview on a node without outputs should not enable previewing
+	network_interface.toggle_preview(custom_node, &[]);
+	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+}
+
+fn map_definition() -> DefinitionIdentifier {
+	DefinitionIdentifier::ProtoNode(graphene_std::graphic::map::IDENTIFIER)
+}
+
+async fn layer_with_chain_and_unwired_map(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId) {
+	let (layer, near, ..) = layer_with_chain(editor).await;
+	editor
+		.active_document_mut()
+		.network_interface
+		.create_wire(&OutputConnector::primary_output(layer), &InputConnector::Export(0), &[]);
+	editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
+
+	let map = editor.create_node_by_name_at(map_definition(), 0, 30).await;
+	(layer, near, map)
+}
+
+async fn drop_map_onto_chain(editor: &mut EditorTestUtils, layer: NodeId, map: NodeId) {
+	editor
+		.handle_message(NodeGraphMessage::InsertNodeBetween {
+			node_id: map,
+			input_connector: InputConnector::layer_secondary_input(layer),
+			insert_node_input_index: 0,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn dropping_a_map_node_onto_a_wire_feeds_it_the_matching_read_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, map) = layer_with_chain_and_unwired_map(&mut editor).await;
+
+	drop_map_onto_chain(&mut editor, layer, map).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let Some(NodeInput::Node { node_id: read_node, .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(map, 1), &[]).cloned() else {
+		panic!("The Map node's mapped input should be fed by a new node");
+	};
+	assert_eq!(
+		network_interface.reference(&read_node, &[]),
+		Some(DefinitionIdentifier::ProtoNode(graphene_std::context::read_vector::IDENTIFIER))
+	);
+
+	let map_position = network_interface.position(&map, &[]).unwrap();
+	let near_position = network_interface.position(&near, &[]).unwrap();
+	let near_bottom = near_position.y + network_interface.node_height(&near, &[]) as i32;
+	let read_node_position = network_interface.position(&read_node, &[]).unwrap();
+	assert_eq!(read_node_position.x, map_position.x - crate::consts::NODE_CHAIN_WIDTH);
+	assert!(
+		read_node_position.y > near_bottom,
+		"The Read node should sit below the Map node's content source rather than overlap it"
+	);
+	assert_invariants(&editor, "after dropping a Map node onto a wire");
+}
+
+#[test]
+fn map_content_types_resolve_to_the_read_node_of_their_element() {
+	use super::layout::read_node_for_content;
+	use super::resolved_types::TypeSource;
+	use graph_craft::{item, list};
+	use graphene_std::context::{read_graphic, read_number, read_vector};
+	use graphene_std::list::Bundle;
+	use graphene_std::text_nodes::read_string;
+	use graphene_std::{Graphic, Vector};
+
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(Vector))), Some(read_vector::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Graphic))), Some(read_graphic::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(f64))), Some(read_number::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::TaggedValue(list!(String))), Some(read_string::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Bundle<Vector>))), Some(read_vector::IDENTIFIER));
+
+	assert_eq!(
+		read_node_for_content(&TypeSource::Compiled(list!(i64))),
+		None,
+		"Read Number yields f64, which a Map over integers can't take"
+	);
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(bool))), None);
+	assert_eq!(read_node_for_content(&TypeSource::Unknown), None);
+}
+
+#[tokio::test]
+async fn dropping_a_map_node_onto_a_wire_keeps_its_wired_mapped_input() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, map) = layer_with_chain_and_unwired_map(&mut editor).await;
+
+	let mapped_source = NodeId::new();
+	let read_vector = resolve_proto_node_type(graphene_std::context::read_vector::IDENTIFIER).unwrap().default_node_template();
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.insert_node(mapped_source, read_vector, &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(mapped_source), &InputConnector::node_at_index(map, 1), &[]);
+	let node_count = editor.active_document().network_interface.document_network().nodes.len();
+
+	drop_map_onto_chain(&mut editor, layer, map).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(map, 1), &[]),
+		Some(&NodeInput::node(mapped_source, 0))
+	);
+	assert_eq!(network_interface.document_network().nodes.len(), node_count);
 }

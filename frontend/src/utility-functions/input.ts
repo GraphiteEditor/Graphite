@@ -13,7 +13,12 @@ const BUTTON_RIGHT = 2;
 const BUTTON_BACK = 3;
 const BUTTON_FORWARD = 4;
 
+// How far the pointer can move between a press and its release for it to still be a click, as in the backend and desktop app
+const DOUBLE_CLICK_ALLOWED_TRAVEL = 4;
+
 let viewportPointerInteractionOngoing = false;
+// The latest press of any mouse button, since a press of another button ends a run of clicks
+let latestMousePress: { button: number; x: number; y: number } | undefined = undefined;
 let textToolInteractiveInputElement: HTMLDivElement | undefined = undefined;
 let inPointerLock = false;
 let lastShakeTime = 0;
@@ -188,8 +193,13 @@ export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
 	const isTargetingCanvas = e.target instanceof Element && e.target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 	if (!(isTargetingCanvas instanceof Element)) return;
 
-	// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
-	if (e.detail % 2 == 1) return;
+	// Allow only double-clicks (2, 4, etc.), not 0 for a canceled click
+	if (e.detail === 0 || e.detail % 2 === 1) return;
+
+	// A press dragged away from where it was made, or followed by another button's press, isn't a click
+	const press = latestMousePress;
+	if (!press || press.button !== e.button) return;
+	if (Math.abs(e.clientX - press.x) > DOUBLE_CLICK_ALLOWED_TRAVEL || Math.abs(e.clientY - press.y) > DOUBLE_CLICK_ALLOWED_TRAVEL) return;
 
 	// `e.buttons` is always 0 in the `mouseup` event, so we have to convert from `e.button` instead
 	let buttons = 1;
@@ -204,6 +214,8 @@ export function onPotentialDoubleClick(e: MouseEvent, editor: EditorWrapper) {
 }
 
 export function onMouseDown(e: MouseEvent) {
+	latestMousePress = { button: e.button, x: e.clientX, y: e.clientY };
+
 	// Block middle mouse button auto-scroll mode (the circular gizmo that appears and allows quick scrolling by moving the cursor above or below it)
 	if (e.button === BUTTON_MIDDLE) e.preventDefault();
 }

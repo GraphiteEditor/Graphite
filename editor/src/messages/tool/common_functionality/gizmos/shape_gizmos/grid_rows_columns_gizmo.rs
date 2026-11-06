@@ -265,31 +265,41 @@ fn calculate_isometric_point(column: u32, row: u32, angles: DVec2, spacing: DVec
 	DVec2::new(spacing.x * column as f64, spacing.y * row as f64 + offset_y_fraction * spacing.x)
 }
 
-fn calculate_isometric_top_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
-	let top_left = calculate_isometric_point(0, 0, angles, spacing);
-	let top_right = calculate_isometric_point(columns - 1, 0, angles, spacing);
+/// Runs along the tops of the odd columns, which are higher except on Symmetric −1.
+fn calculate_isometric_top_line_points(grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
+	let half_row = DVec2::new(0., calculate_isometric_offset(spacing, angles).y);
+	let even_columns_on_top = grid_type == GridType::IsometricSymmetricMinusOne;
+	let last_column_odd = columns.is_multiple_of(2);
+
+	let top_left = calculate_isometric_point(0, 0, angles, spacing) - if even_columns_on_top { DVec2::ZERO } else { half_row };
+	let top_right = calculate_isometric_point(columns - 1, 0, angles, spacing)
+		+ match (even_columns_on_top, last_column_odd) {
+			(false, false) => -half_row,
+			(true, true) => half_row,
+			_ => DVec2::ZERO,
+		};
 
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
-	let isometric_spacing = calculate_isometric_offset(spacing, angles);
-	let isometric_offset = DVec2::new(0., isometric_spacing.y);
-	let end_isometric_offset = if columns.is_multiple_of(2) { DVec2::ZERO } else { DVec2::new(0., isometric_spacing.y) };
 
-	(top_left + offset - isometric_offset, top_right - offset - end_isometric_offset)
+	(top_left + offset, top_right - offset)
 }
 
-fn calculate_isometric_bottom_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
-	let bottom_left = calculate_isometric_point(0, rows - 1, angles, spacing);
-	let bottom_right = calculate_isometric_point(columns - 1, rows - 1, angles, spacing);
+/// Runs along the bottoms of the even columns, which are lower except on Symmetric +1.
+fn calculate_isometric_bottom_line_points(grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
+	let half_row = DVec2::new(0., calculate_isometric_offset(spacing, angles).y);
+	let odd_columns_on_bottom = grid_type == GridType::IsometricSymmetricPlusOne;
+	let last_column_odd = columns.is_multiple_of(2);
 
-	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
-	let isometric_offset = if columns.is_multiple_of(2) {
-		let offset = calculate_isometric_offset(spacing, angles);
-		DVec2::new(0., offset.y)
-	} else {
-		DVec2::ZERO
+	let bottom_left = calculate_isometric_point(0, rows - 1, angles, spacing) + if odd_columns_on_bottom { half_row } else { DVec2::ZERO };
+	let bottom_right = match (odd_columns_on_bottom, last_column_odd) {
+		(true, true) => calculate_isometric_point(columns - 1, rows, angles, spacing),
+		(false, false) => calculate_isometric_point(columns - 1, rows - 1, angles, spacing),
+		_ => calculate_isometric_point(columns - 1, rows - 1, angles, spacing) + half_row,
 	};
 
-	(bottom_left + offset, bottom_right - offset + isometric_offset)
+	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
+
+	(bottom_left + offset, bottom_right - offset)
 }
 
 fn calculate_isometric_offset(spacing: DVec2, angles: DVec2) -> DVec2 {
@@ -299,9 +309,16 @@ fn calculate_isometric_offset(spacing: DVec2, angles: DVec2) -> DVec2 {
 	DVec2::new(first_point.x - second_point.x, first_point.y - second_point.y)
 }
 
-fn calculate_isometric_right_line_points(columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
-	let top_right = calculate_isometric_point(columns - 1, 0, angles, spacing);
-	let bottom_right = calculate_isometric_point(columns - 1, rows - 1, angles, spacing);
+fn calculate_isometric_right_line_points(grid_type: GridType, columns: u32, rows: u32, spacing: DVec2, angles: DVec2) -> (DVec2, DVec2) {
+	// A last odd column has one more point on Symmetric +1 and one fewer on Symmetric −1
+	let (top_row, bottom_row) = match grid_type {
+		GridType::IsometricSymmetricPlusOne if columns.is_multiple_of(2) => (0, rows),
+		GridType::IsometricSymmetricMinusOne if columns.is_multiple_of(2) => (1, rows.saturating_sub(1).max(1)),
+		_ => (0, rows - 1),
+	};
+
+	let top_right = calculate_isometric_point(columns - 1, top_row, angles, spacing);
+	let bottom_right = calculate_isometric_point(columns - 1, bottom_row, angles, spacing);
 
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(0., -spacing.y * 0.5) };
 
@@ -337,10 +354,10 @@ impl RowColumnGizmoType {
 				Self::Left => get_rectangle_left_line_points(columns, rows, spacing),
 				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
 			},
-			GridType::Isometric => match self {
-				Self::Top => calculate_isometric_top_line_points(columns, rows, spacing, angles),
-				Self::Right => calculate_isometric_right_line_points(columns, rows, spacing, angles),
-				Self::Bottom => calculate_isometric_bottom_line_points(columns, rows, spacing, angles),
+			_ => match self {
+				Self::Top => calculate_isometric_top_line_points(grid_type, columns, rows, spacing, angles),
+				Self::Right => calculate_isometric_right_line_points(grid_type, columns, rows, spacing, angles),
+				Self::Bottom => calculate_isometric_bottom_line_points(grid_type, columns, rows, spacing, angles),
 				Self::Left => calculate_isometric_left_line_points(columns, rows, spacing, angles),
 				Self::None => panic!("RowColumnGizmoType::None does not have line points"),
 			},

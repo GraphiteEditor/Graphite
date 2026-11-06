@@ -1,5 +1,5 @@
 use crate::poll::Poll;
-use crate::{Color, ContextFeature, Node, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
+use crate::{Color, ContextFeature, Node, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend, WasmNotSync};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -15,10 +15,20 @@ pub struct NodeMetadata {
 	pub description: &'static str,
 	pub inspector: Option<&'static str>,
 	pub context_features: Vec<ContextFeature>,
+	pub flags: NodeFlags,
+	/// The declaration version from `#[node(version(N))]`, starting at 1.
+	pub version: u32,
+	pub output_fields: Option<DestructureMetadata>,
+}
+
+/// Boolean node properties from `#[node_macro::node(...)]` and the node function's signature.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct NodeFlags {
 	pub memoize: bool,
+	pub footprint_invariant: bool,
+	pub forwards_input: bool,
 	pub inject_scope: bool,
 	pub asynchronous: bool,
-	pub output_fields: Option<DestructureMetadata>,
 }
 
 // Translation struct between macro and definition
@@ -48,6 +58,8 @@ pub struct FieldMetadata {
 	pub multiline: bool,
 	/// Whether a number parameter uses the progression widget, which splits the value into fractional-progress and whole-element-number fields, from `#[progression]`.
 	pub progression: bool,
+	/// Whether the input must be fed by a value known at compile time, from `#[constant]`.
+	pub constant: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -157,6 +169,52 @@ pub fn is_hidden_category(category: &str) -> bool {
 	category.is_empty() || category.starts_with('_')
 }
 
+/// Whether nodes in this category are developer tools for testing, listed in the node catalog only in development builds.
+pub fn is_development_category(category: &str) -> bool {
+	category == "Debug"
+}
+
+/// The node catalog's categories in display order, each master category's own nodes first and then its subcategories.
+pub const CATEGORY_ORDER: &[&str] = &[
+	"Value",
+	"Routing",
+	"Transform",
+	"Graphic",
+	"Vector: Style",
+	"Vector: Geometry",
+	"Vector: Point",
+	"Vector: Path",
+	"Vector: Deform",
+	"Vector: Measure",
+	"Raster",
+	"Raster: Effect",
+	"Raster: Adjustment",
+	"Raster: Filter",
+	"Color",
+	"Gradient",
+	"Typography",
+	"String",
+	"String: Regex",
+	"String: JSON",
+	"Math",
+	"Math: Arithmetic",
+	"Math: Logic",
+	"Math: Numeric",
+	"Math: Trig",
+	"Math: Vec2",
+	"Data: List",
+	"Data: Context",
+	"Data: Animation",
+	"Data: Attribute",
+	"Data: Type Assertion",
+	"Data: I/O",
+];
+
+/// Sorts categories into the node catalog's display order, with any unlisted category (such as Debug) after the listed ones.
+pub fn category_sort_key(category: &str) -> (usize, &str) {
+	(CATEGORY_ORDER.iter().position(|listed| *listed == category).unwrap_or(CATEGORY_ORDER.len()), category)
+}
+
 type NodeRegistry = LazyLock<Mutex<HashMap<ProtoNodeIdentifier, Vec<(NodeConstructor, NodeIOTypes)>>>>;
 
 pub static NODE_REGISTRY: NodeRegistry = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -190,9 +248,18 @@ pub type TypeErasedNode<'n> = dyn Node<AnyInput, Output = Any> + 'n;
 pub type TypeErasedRef<'n> = &'n TypeErasedNode<'n>;
 pub type TypeErasedBox<'n> = Box<TypeErasedNode<'n>>;
 
-pub type SharedNodeContainer = std::sync::Arc<NodeContainer>;
+pub type SharedNodeContainer = std::sync::Arc<dyn SharedNode>;
 
 pub type NodeConstructor = fn(Vec<SharedNodeContainer>) -> TypeErasedBox<'static>;
+
+/// A node as the nodes taking its output as an input hold it, evaluated through whatever owns it.
+pub trait SharedNode: WasmNotSend + WasmNotSync {
+	/// Evaluates the node, along with whatever its owner does around that.
+	fn eval(&self, input: &AnyInput) -> Poll<Any>;
+
+	/// The node being shared.
+	fn node(&self) -> &TypeErasedNode<'static>;
+}
 
 #[derive(Clone)]
 pub struct NodeContainer {
@@ -238,10 +305,19 @@ impl std::fmt::Debug for NodeContainer {
 	}
 }
 
+impl SharedNode for NodeContainer {
+	fn eval(&self, input: &AnyInput) -> Poll<Any> {
+		(**self).eval(input)
+	}
+
+	fn node(&self) -> &TypeErasedNode<'static> {
+		&**self
+	}
+}
+
 impl NodeContainer {
-	pub fn new(node: TypeErasedBox<'static>) -> SharedNodeContainer {
-		let node = Box::leak(node);
-		Self { node }.into()
+	pub fn new(node: TypeErasedBox<'static>) -> Self {
+		Self { node: Box::leak(node) }
 	}
 
 	#[cfg(feature = "dealloc_nodes")]
@@ -271,12 +347,12 @@ where
 		self.node.eval(input).map(|output| {
 			*output
 				.downcast::<O>()
-				.unwrap_or_else(|_| panic!("DowncastBothNode wrong output type: expected {} in: \n{}", std::any::type_name::<O>(), self.node.node_name()))
+				.unwrap_or_else(|_| panic!("DowncastBothNode wrong output type: expected {} in: \n{}", std::any::type_name::<O>(), self.node.node().node_name()))
 		})
 	}
 
 	fn serialize(&self) -> Option<std::sync::Arc<dyn std::any::Any + Send + Sync>> {
-		self.node.serialize()
+		self.node.node().serialize()
 	}
 }
 impl<I, O> DowncastBothNode<I, O> {

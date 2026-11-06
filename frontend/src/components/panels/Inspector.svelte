@@ -204,7 +204,7 @@
 
 <LayoutCol class="inspector">
 	<LayoutCol class="sections" classes={{ dragging }} scrollableY={true} bind:this={sectionsCol} on:pointerdown={sectionPointerDown}>
-		<WidgetLayout layout={$inspectorLayout} layoutTarget="Inspector" />
+		<WidgetLayout layout={inspectorLayout} layoutTarget="Inspector" />
 		{#if dragging && insertMarker}
 			<div class="insert-mark" style:top={`${insertMarker.top}px`} style:left={`${insertMarker.left}px`} style:width={`${insertMarker.width}px`}></div>
 		{/if}

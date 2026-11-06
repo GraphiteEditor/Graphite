@@ -8,7 +8,8 @@ use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, Selected
 use super::{CursorMoveError, DocumentHistory};
 use crate::application::{Environment, GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{
-	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
+	ASYMPTOTIC_EFFECT, BLEND_COUNT_PER_LAYER, COLOR_OVERLAY_GRAY, CURVATURE_COMB_DEFAULT_SCALE, CURVATURE_COMB_MAX_SCALE, CURVATURE_COMB_MIN_SCALE, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION,
+	GDD_FILE_EXTENSION, LAYER_INDENT_OFFSET, NODE_CHAIN_WIDTH, SCALE_EFFECT, SCROLLBAR_SPACING,
 };
 use crate::messages::frontend::utility_types::FileFilter;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -22,7 +23,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector};
+use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -36,25 +37,27 @@ use crate::node_graph_executor::NodeGraphExecutor;
 use document_container::AnyContainer;
 use document_graph_storage::Declarations;
 use glam::{DAffine2, DVec2};
-use graph_craft::application_io::resource::ResourceId;
-use graph_craft::application_io::wgpu_available;
+use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceStorage};
 use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graph_craft::list;
 use graphene_std::Cover;
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool_nodes::boolean_intersect;
-use graphene_std::raster::BlendMode;
+use graphene_std::raster::{BlendMode, Color};
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::graphic_types;
 use graphene_std::vector::misc::dvec2_to_point;
-use graphene_std::vector::style::RenderMode;
+use graphene_std::vector::style::{GradientStops, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
+
+/// The document attribute holding its name, shared so renames reach peers.
+pub const DOCUMENT_NAME_ATTRIBUTE: &str = "name";
 
 #[derive(ExtractField)]
 pub struct DocumentMessageContext<'a> {
@@ -173,6 +176,9 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore")]
 	pub(crate) container: Option<AnyContainer>,
+	/// Peer changes not yet applied, held until their declarations are cached.
+	#[serde(skip)]
+	pub(crate) pending_remote: document_format::network::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -236,6 +242,7 @@ impl Default for DocumentMessageHandler {
 			selection_network_path: Vec::new(),
 			history: DocumentHistory::default(),
 			container: None,
+			pending_remote: Default::default(),
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -461,7 +468,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.layer_range_selection_reference = None;
 				self.chain_node_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::DocumentHistoryBackward => {
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
+			}
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
@@ -629,6 +639,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.node_graph_handler.leave_network(&mut self.network_interface, &self.breadcrumb_network_path, responses);
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
+				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
@@ -690,6 +701,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
+				self.network_interface.unload_import_export_ports(&self.breadcrumb_network_path);
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
@@ -1143,6 +1155,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.path = None;
 				self.set_save_state(false);
 				self.set_auto_save_state(false);
+				self.stage_name_attribute();
 
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
@@ -1241,6 +1254,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Save as a `.gdd` container or a plain legacy `.graphite`, per the editor preference.
 				let save_as_gdd = preferences.save_as_gdd;
+				let include_history = preferences.save_with_history;
 				let extension = if save_as_gdd { GDD_FILE_EXTENSION } else { FILE_EXTENSION };
 				let name = format!("{}.{}", self.name.clone(), extension);
 
@@ -1249,7 +1263,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					DocumentMessage::SaveDocumentAs => None,
 					_ => self.path.clone().map(|path| path.with_extension(extension)),
 				};
-				if path.is_some() {
+				if path.is_some() || environment.is_web() {
 					responses.add(DocumentMessage::MarkAsSaved);
 				}
 				let folder = self.path.as_ref().and_then(|path| path.parent()).map(|parent| parent.to_path_buf());
@@ -1276,7 +1290,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							.export_to_bytes(
 								document_format::ExportFormat::Xz,
 								document_format::ExportOptions {
-									include_history: false,
+									include_history,
 									..Default::default()
 								},
 								export_load_handle.as_ref(),
@@ -1579,10 +1593,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					}
 					OverlaysType::Handles => visibility_settings.handles = visible,
+					OverlaysType::PointIndex => visibility_settings.point_index = visible,
+					OverlaysType::PathEnds => visibility_settings.path_ends = visible,
+					OverlaysType::PathIndex => visibility_settings.path_index = visible,
+					OverlaysType::PathDirection => visibility_settings.path_direction = visible,
+					OverlaysType::CurvatureComb => {
+						visibility_settings.curvature_comb = visible;
+						responses.add(PortfolioMessage::UpdateDocumentWidgets);
+					}
 				}
 
 				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::SetCurvatureCombScale { scale } => {
+				if !scale.is_nan() {
+					self.overlays_visibility_settings.curvature_comb_scale = scale.clamp(CURVATURE_COMB_MIN_SCALE, CURVATURE_COMB_MAX_SCALE);
+				}
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
 				self.layer_range_selection_reference = new_layer;
@@ -1600,6 +1629,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.snapping_state.angle_step = degrees.clamp(ANGLE_STEP_MIN, ANGLE_STEP_MAX);
 				}
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			DocumentMessage::MakeNodeUnique { node_id } => {
+				responses.add(DocumentMessage::StartTransaction);
+				responses.add(NodeGraphMessage::MakeUnique { node_id });
+				responses.add(DocumentMessage::EndTransaction);
 			}
 			DocumentMessage::SetToNodeOrLayer { node_id, is_layer } => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -1634,7 +1668,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
-				self.retire_storage_interaction();
+				self.stage_edits_outside_transaction(&resource_storage.resources_mut(), preferences.validate_storage_round_trip);
+				self.end_storage_interaction();
 
 				self.network_interface.start_transaction();
 				self.history.push_undo(self.network_interface.clone());
@@ -1790,21 +1825,22 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.update_transforms(upstream_footprints, local_transforms, document_to_viewport);
 				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
-			DocumentMessage::UpdateClickTargets { click_targets } => {
+			DocumentMessage::UpdateClickTargets { click_targets, group_layers } => {
+				// Ensure that the layer is in the document network to prevent logging an error
+				let is_document_layer = |node_id: &NodeId| self.network_interface.document_network().nodes.contains_key(node_id) && self.network_interface.is_layer(node_id, &[]);
+
 				// TODO: Allow non layer nodes to have click targets
 				let layer_click_targets = click_targets
 					.into_iter()
-					.filter(|(node_id, _)|
-						// Ensure that the layer is in the document network to prevent logging an error
-						self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, click_targets)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, click_targets)
-						})
-					})
+					.filter(|(node_id, _)| is_document_layer(node_id))
+					.map(|(node_id, click_targets)| (LayerNodeIdentifier::new(node_id, &self.network_interface), click_targets))
 					.collect();
-				self.network_interface.update_click_targets(layer_click_targets);
+				let layer_groups = group_layers
+					.into_iter()
+					.filter(is_document_layer)
+					.map(|node_id| LayerNodeIdentifier::new(node_id, &self.network_interface))
+					.collect();
+				self.network_interface.update_click_targets(layer_click_targets, layer_groups);
 			}
 			DocumentMessage::UpdateOutlines { outlines } => {
 				let layer_outlines = outlines
@@ -2151,7 +2187,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 impl DocumentMessageHandler {
 	/// Build a document handler from a `.gdd` working copy.
-	pub fn from_storage(interface: NodeNetworkInterface, storage: document_format::GddV1, declarations: Declarations, name: String, path: Option<std::path::PathBuf>) -> Self {
+	pub fn from_storage(
+		interface: NodeNetworkInterface,
+		storage: document_format::GddV1,
+		declarations: Declarations,
+		byte_store: Arc<dyn ResourceStorage>,
+		name: String,
+		path: Option<std::path::PathBuf>,
+	) -> Self {
 		let mut document = Self {
 			network_interface: interface,
 			name,
@@ -2160,11 +2203,8 @@ impl DocumentMessageHandler {
 		};
 
 		document.apply_stored_document_settings(storage.view_settings());
-		match storage.registry().to_resource_registry() {
-			Ok(resource_registry) => document.resources.registry = resource_registry,
-			Err(error) => log::error!("Opening .gdd: failed to rebuild resource registry: {error}"),
-		}
-		document.history.set_storage(storage, declarations);
+		document.set_storage(storage, declarations, byte_store);
+		document.refresh_resource_registry();
 
 		document
 	}
@@ -2251,13 +2291,11 @@ impl DocumentMessageHandler {
 
 		layer_click_targets.is_some_and(|targets| {
 			targets.iter().all(|target| match target.target_type() {
-				ClickTargetType::Path(path) => {
-					let mut path = path.clone();
+				ClickTargetType::Path(mut path) => {
 					path.apply_affine(Affine::new(layer_transform.to_cols_array()));
 					bezpath_is_inside_bezpath(&path, &viewport_polygon, None, None)
 				}
-				ClickTargetType::FreePoint(point) => {
-					let mut point = *point;
+				ClickTargetType::FreePoint(mut point) => {
 					point.apply_transform(layer_transform);
 					viewport_polygon.contains(dvec2_to_point(point.position))
 				}
@@ -2349,6 +2387,40 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
+		&self.breadcrumb_network_path
+	}
+
+	fn stored_name(&self) -> Option<&str> {
+		let attribute = self.storage()?.registry().attributes.get(DOCUMENT_NAME_ATTRIBUTE).filter(|attribute| !attribute.deleted)?;
+		match &attribute.value {
+			document_graph_storage::Value::Str(name) => Some(name),
+			_ => None,
+		}
+	}
+
+	pub fn stage_name_attribute(&mut self) {
+		if self.stored_name() == Some(self.name.as_str()) {
+			return;
+		}
+		let delta = document_graph_storage::AttributeDelta {
+			key: DOCUMENT_NAME_ATTRIBUTE.to_string(),
+			value: Some(document_graph_storage::Value::Str(self.name.clone())),
+		};
+		let Some(gdd) = self.storage_mut() else { return };
+		if let Err(error) = gdd.stage_ops([document_graph_storage::RegistryDelta::ChangeDocumentAttribute { delta }]) {
+			log::error!("Staging the document name failed: {error}");
+		}
+	}
+
+	pub fn adopt_name_from_storage(&mut self) -> bool {
+		let Some(name) = self.stored_name().filter(|name| *name != self.name).map(str::to_string) else {
+			return false;
+		};
+		self.name = name;
+		true
+	}
+
 	/// Path to the subnetwork that the user's selection is currently scoped to.
 	/// Empty when the selection lives in the root document network.
 	pub fn selection_network_path(&self) -> &[NodeId] {
@@ -2366,13 +2438,13 @@ impl DocumentMessageHandler {
 	}
 
 	/// Attach the `Gdd` working copy once the mount future resolves, with the declarations it references.
-	pub fn set_storage(&mut self, storage: document_format::GddV1, declarations: Declarations) {
+	pub fn set_storage(&mut self, mut storage: document_format::GddV1, declarations: Declarations, byte_store: Arc<dyn ResourceStorage>) {
+		storage.set_byte_store(byte_store);
 		self.history.set_storage(storage, declarations);
 	}
 
-	/// Detach the `Gdd` working copy.
-	pub fn clear_storage(&mut self) {
-		self.history.clear_storage();
+	pub(crate) fn end_storage_interaction(&mut self) {
+		self.history.end_storage_interaction();
 	}
 
 	/// Retire the pending staged hot ops into durable Gdd history as one undo unit.
@@ -2392,6 +2464,7 @@ impl DocumentMessageHandler {
 	/// Draining happens whether or not a working copy is mounted, so the buffer cannot grow across a
 	/// session that never mounts one.
 	pub fn commit_storage_snapshot(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		self.network_interface.settle_definitions();
 		let deltas = self.network_interface.take_deltas();
 		if self.history.storage().is_none() {
 			return;
@@ -2400,8 +2473,17 @@ impl DocumentMessageHandler {
 		let view_settings = self.storage_view_settings();
 		self.history.stage_snapshot(&deltas, &self.network_interface, &self.resources.registry, view_settings, byte_store);
 
-		if validate {
+		// The interface lags the registry until peer changes are applied
+		if validate && self.pending_remote.is_empty() {
 			self.history.verify_round_trip(&self.network_interface, &self.resources.registry);
+		}
+	}
+
+	/// Stages edits made after a transaction finished, such as those queued behind an `AddTransaction`, whose commit runs
+	/// first. They belong to the undo step that just ended, so they must reach storage before it closes.
+	fn stage_edits_outside_transaction(&mut self, byte_store: &dyn graph_craft::application_io::resource::ResourceStorage, validate: bool) {
+		if self.network_interface.transaction_status() == TransactionStatus::Finished && self.network_interface.has_deltas() {
+			self.commit_storage_snapshot(byte_store, validate);
 		}
 	}
 
@@ -2467,6 +2549,93 @@ impl DocumentMessageHandler {
 		}
 	}
 
+	/// Rebuild the resource registry from storage, or keep it on failure. `Resource` inputs resolve through it.
+	fn refresh_resource_registry(&mut self) {
+		let Some(storage) = self.history.storage() else { return };
+
+		match storage.registry().to_resource_registry() {
+			Ok(resource_registry) => self.resources.registry = resource_registry,
+			Err(error) => log::error!("Failed to rebuild the resource registry from storage: {error}"),
+		}
+	}
+
+	pub(crate) fn stage_pending_edits(&mut self, byte_store: &dyn ResourceStorage) {
+		let deltas = self.network_interface.take_deltas();
+		if deltas.is_empty() {
+			return;
+		}
+		self.history.stage_graph(&deltas, &self.network_interface, &self.resources.registry, byte_store);
+	}
+
+	/// Updates the interface with peer changes, in place unless a rebuild is needed. Returns false and keeps what it can't apply.
+	pub(crate) fn apply_remote_changes(&mut self, responses: &mut VecDeque<Message>) -> bool {
+		let changes = std::mem::take(&mut self.pending_remote);
+		if changes.is_empty() {
+			return true;
+		}
+
+		if !changes.rebuilt
+			&& let Some(gdd) = self.history.storage()
+		{
+			let peer = gdd.session().peer();
+			match self.network_interface.reconcile_remote(gdd.registry(), self.history.declarations(), &changes.touched, peer) {
+				Ok(reconciled) => {
+					self.finish_remote_reconcile(reconciled, changes.touched.resources, responses);
+					return true;
+				}
+				Err(ReconcileError::DeclarationMissing(id)) => {
+					log::debug!("Remote changes wait for declaration {id}");
+					self.pending_remote = changes;
+					return false;
+				}
+				Err(error) => log::warn!("Reconciling remote changes failed, rebuilding the interface instead: {error}"),
+			}
+		}
+
+		match self.history.rebuild_interface() {
+			Some(rebuilt) => {
+				self.apply_gdd_cursor_rebuild(rebuilt, false, false, responses);
+				true
+			}
+			None => {
+				self.pending_remote = changes;
+				false
+			}
+		}
+	}
+
+	fn finish_remote_reconcile(&mut self, reconciled: Reconciled, resources_changed: bool, responses: &mut VecDeque<Message>) {
+		for path in self.network_interface.paths_reaching(&reconciled.networks) {
+			self.network_interface.unload_stack_dependents(&path);
+			self.network_interface.unload_import_export_ports(&path);
+			self.network_interface.unload_all_nodes_bounding_box(&path);
+			self.network_interface.unload_outward_wires(&path);
+			self.network_interface.unload_all_nodes_click_targets(&path);
+		}
+		self.network_interface.load_structure();
+
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
+		if resources_changed {
+			self.refresh_resource_registry();
+		}
+
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		responses.add(NodeGraphMessage::SelectedNodesUpdated);
+		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::SendWires);
+	}
+
+	pub(crate) fn cache_declaration_bytes(&mut self, hash: ResourceHash, bytes: &[u8]) -> bool {
+		self.history.cache_declaration_bytes(hash, bytes)
+	}
+
+	pub(crate) fn undecoded_declaration_hashes(&self) -> Vec<ResourceHash> {
+		self.history.undecoded_declaration_hashes()
+	}
+
 	/// Swap in the interface rebuilt from the `Gdd` cursor. Always overwrites the interface.
 	fn apply_gdd_cursor_rebuild(&mut self, mut rebuilt: NodeNetworkInterface, had_oracle: bool, validate: bool, responses: &mut VecDeque<Message>) {
 		rebuilt.copy_all_transient_view_state(&self.network_interface);
@@ -2478,6 +2647,11 @@ impl DocumentMessageHandler {
 		}
 
 		self.network_interface = rebuilt;
+		self.pending_remote = Default::default();
+		if let Some(gdd) = self.history.storage_mut() {
+			gdd.mark_runtime_current();
+		}
+		self.refresh_resource_registry();
 
 		if validate {
 			let current_resources: std::collections::HashSet<_> = self.used_resources(false).iter().copied().collect();
@@ -2568,6 +2742,8 @@ impl DocumentMessageHandler {
 		if !serialized_content.contains("\"grid_visible\":") {
 			document_message_handler.snapping_state.grid_visible = document_message_handler.snapping_state.grid_snapping;
 		}
+
+		document_message_handler.network_interface.move_interface_metadata_into_networks();
 
 		Ok(document_message_handler)
 	}
@@ -2797,14 +2973,45 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn undo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+		// The storage path skips `undo`, which settles a glide before the snapshot moves
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+
+		// The legacy snapshot predates peers' writes, so follow only what storage changed
+		let stored_name = self.stored_name().map(str::to_string);
+		if self.history.undo_in_storage(self.is_in_session()) {
+			self.follow_storage_changes(stored_name, responses);
+			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			return;
+		}
+		// A session's history is shared, so no legacy snapshot may be installed
+		if self.is_in_session() {
+			return;
+		}
+
 		let legacy_applied = if let Some(previous_network) = self.undo(viewport, responses) {
 			self.history.push_redo(previous_network);
+			self.history.note_cursor_undo();
 			true
 		} else {
 			false
 		};
-
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
+	}
+
+	/// Reconciles the interface with storage. The tab takes the stored name only if it changed from `name_before`.
+	fn follow_storage_changes(&mut self, name_before: Option<String>, responses: &mut VecDeque<Message>) {
+		if let Some(gdd) = self.history.storage_mut() {
+			let changes = gdd.take_remote_changes();
+			self.pending_remote.extend(changes);
+		}
+		self.apply_remote_changes(responses);
+		if self.stored_name() != name_before.as_deref() && self.adopt_name_from_storage() {
+			responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+		}
+	}
+
+	pub(crate) fn is_in_session(&self) -> bool {
+		self.storage().is_some_and(|gdd| gdd.role().is_some())
 	}
 
 	/// Installs a history snapshot as the active network interface, carrying over the current view state and structure load, and returns the replaced interface.
@@ -2841,13 +3048,25 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, document_id: DocumentId, viewport: &ViewportMessageHandler, validate: bool, responses: &mut VecDeque<Message>) {
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+
+		let stored_name = self.stored_name().map(str::to_string);
+		if self.history.redo_in_storage() {
+			self.follow_storage_changes(stored_name, responses);
+			responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+			return;
+		}
+		if self.is_in_session() {
+			return;
+		}
+
 		let legacy_applied = if let Some(previous_network) = self.redo(viewport, responses) {
 			self.history.push_undo(previous_network);
+			self.history.forget_undo_note();
 			true
 		} else {
 			false
 		};
-
 		self.drive_storage_undo_redo(document_id, legacy_applied, false, validate, responses);
 	}
 
@@ -3527,8 +3746,10 @@ impl DocumentMessageHandler {
 	fn overlays_options(&self) -> Vec<LayoutGroup> {
 		let settings = &self.overlays_visibility_settings;
 
-		let checkbox = |name: &str, overlays_type: OverlaysType, checked: bool, disabled: bool| {
+		// Without a description, a tooltip would only repeat the label beside the checkbox
+		let checkbox = |name: &str, overlays_type: OverlaysType, checked: bool, disabled: bool, description: &str| {
 			let checkbox_id = CheckboxId::new();
+			let tooltip_label = if description.is_empty() { "" } else { name };
 			vec![
 				CheckboxInput::new(checked)
 					.disabled(disabled)
@@ -3539,31 +3760,62 @@ impl DocumentMessageHandler {
 						}
 						.into()
 					})
+					.tooltip_label(tooltip_label)
+					.tooltip_description(description)
 					.for_label(checkbox_id)
 					.widget_instance(),
-				TextLabel::new(name).disabled(disabled).for_checkbox(checkbox_id).widget_instance(),
+				TextLabel::new(name)
+					.disabled(disabled)
+					.tooltip_label(tooltip_label)
+					.tooltip_description(description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
 			]
 		};
 
-		let left = [
+		let path_ends_description = "
+			Marks where each path starts and ends, and where its path flows join.\n\
+			\n\
+			Chevron: the start, pointing the way the path sets out.\n\
+			Bar: the end, just before its last anchor. On a closed path, this is where it arrives back at its start.\n\
+			Thick tick: an anchor where the path passes from one path flow into the next.
+		"
+		.trim();
+
+		let mut left = vec![
 			vec![TextLabel::new("General").widget_instance()],
-			checkbox("Artboard Name", OverlaysType::ArtboardName, settings.artboard_name, false),
-			checkbox("G/R/S Measurement", OverlaysType::TransformMeasurement, settings.transform_measurement, false),
+			checkbox("Artboard Name", OverlaysType::ArtboardName, settings.artboard_name, false, ""),
+			checkbox("G/R/S Measurement", OverlaysType::TransformMeasurement, settings.transform_measurement, false, ""),
 			vec![TextLabel::new("Pen & Path Tools").widget_instance()],
-			checkbox("Path", OverlaysType::Path, settings.path, false),
-			checkbox("Anchors", OverlaysType::Anchors, settings.anchors, false),
-			checkbox("Handles", OverlaysType::Handles, settings.handles, !settings.anchors),
+			checkbox("Path", OverlaysType::Path, settings.path, false, ""),
+			checkbox("Path Ends", OverlaysType::PathEnds, settings.path_ends, !settings.anchors, path_ends_description),
+			checkbox("Anchors", OverlaysType::Anchors, settings.anchors, false, ""),
+			checkbox("Handles", OverlaysType::Handles, settings.handles, !settings.anchors, ""),
+			checkbox("Point Index", OverlaysType::PointIndex, settings.point_index, !settings.anchors, ""),
+			checkbox("Path Index", OverlaysType::PathIndex, settings.path_index, !settings.anchors, ""),
+			checkbox("Path Direction", OverlaysType::PathDirection, settings.path_direction, !settings.anchors, ""),
+			checkbox("Curvature Comb", OverlaysType::CurvatureComb, settings.curvature_comb, !settings.anchors, ""),
 		];
+		if settings.curvature_comb {
+			left.push(indented_ratio_slider(
+				settings.curvature_comb_scale,
+				[CURVATURE_COMB_MIN_SCALE, CURVATURE_COMB_MAX_SCALE],
+				CURVATURE_COMB_DEFAULT_SCALE,
+				!settings.anchors,
+				|scale| DocumentMessage::SetCurvatureCombScale { scale }.into(),
+			));
+		}
+
 		let right = [
 			vec![TextLabel::new("Select Tool").widget_instance()],
-			checkbox("Quick Measurement", OverlaysType::QuickMeasurement, settings.quick_measurement, false),
-			checkbox("Transform Cage", OverlaysType::TransformCage, settings.transform_cage, false),
-			checkbox("Transform Dial", OverlaysType::CompassRose, settings.compass_rose, false),
-			checkbox("Transform Pivot", OverlaysType::Pivot, settings.pivot, false),
-			checkbox("Transform Origin", OverlaysType::Origin, settings.origin, false),
-			checkbox("Hover Outline", OverlaysType::HoverOutline, settings.hover_outline, false),
-			checkbox("Selection Outline", OverlaysType::SelectionOutline, settings.selection_outline, false),
-			checkbox("Layer Origin", OverlaysType::LayerOriginCross, settings.layer_origin_cross, false),
+			checkbox("Quick Measurement", OverlaysType::QuickMeasurement, settings.quick_measurement, false, ""),
+			checkbox("Transform Cage", OverlaysType::TransformCage, settings.transform_cage, false, ""),
+			checkbox("Transform Dial", OverlaysType::CompassRose, settings.compass_rose, false, ""),
+			checkbox("Transform Pivot", OverlaysType::Pivot, settings.pivot, false, ""),
+			checkbox("Transform Origin", OverlaysType::Origin, settings.origin, false, ""),
+			checkbox("Hover Outline", OverlaysType::HoverOutline, settings.hover_outline, false, ""),
+			checkbox("Selection Outline", OverlaysType::SelectionOutline, settings.selection_outline, false, ""),
+			checkbox("Layer Origin", OverlaysType::LayerOriginCross, settings.layer_origin_cross, false, ""),
 		];
 
 		vec![
@@ -3626,9 +3878,7 @@ impl DocumentMessageHandler {
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			{
-				let disabled = cfg!(target_family = "wasm") && wgpu_available() == Some(false);
-
-				let mut entries = vec![
+				let entries = vec![
 					RadioEntryData::new("Normal")
 						.icon("RenderModeNormal")
 						.tooltip_label("Render Mode: Normal")
@@ -3648,23 +3898,7 @@ impl DocumentMessageHandler {
 						.tooltip_label("Render Mode: SVG Preview")
 						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }.into()),
 				];
-				let mut selected_index = self.render_mode as u32;
-
-				if disabled {
-					for entry in &mut entries {
-						entry.tooltip_description = "
-							*Normal*, *Outline*, and *Pixel Preview* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
-							\n\
-							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
-							"
-						.trim()
-						.into();
-					}
-
-					selected_index = entries.iter().position(|entry| entry.value == "SvgPreview").unwrap() as u32;
-				}
-
-				RadioInput::new(entries).selected_index(Some(selected_index)).disabled(disabled).narrow(true).widget_instance()
+				RadioInput::new(entries).selected_index(Some(self.render_mode as u32)).narrow(true).widget_instance()
 			},
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
@@ -4066,6 +4300,10 @@ impl DocumentMessageHandler {
 		self.resources.collect_garbage(&used_resources);
 	}
 
+	pub fn resource_gc_roots(&self) -> HashSet<ResourceHash> {
+		self.history.resource_gc_roots()
+	}
+
 	pub fn used_resources(&self, include_history: bool) -> Box<[ResourceId]> {
 		let mut resources = HashSet::new();
 		self.network_interface.collect_used_resources(&mut resources);
@@ -4096,6 +4334,34 @@ fn side_by_side(left: &[Vec<WidgetInstance>], right: &[Vec<WidgetInstance>]) -> 
 		.collect()
 }
 
+/// A slider indented to line up with the checkbox labels above it, where even steps scale `value` by equal ratios from `min` to `max`.
+/// Double-clicking it returns to `default`.
+fn indented_ratio_slider(value: f64, [min, max]: [f64; 2], default: f64, disabled: bool, message: impl Fn(f64) -> Message + 'static + Send + Sync) -> Vec<WidgetInstance> {
+	let ratio = max / min;
+	let position = (value / min).ln() / ratio.ln();
+
+	vec![
+		// Indented past the checkbox and its gap to line up with the label text
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		SliderInput::new(GradientStops::default())
+			.range_slider(true)
+			.markers(vec![SliderMarker::new(position, 0.5, Color::WHITE)])
+			.show_midpoints(false)
+			.allow_insert(false)
+			.allow_delete(false)
+			.allow_reorder(false)
+			.disabled(disabled)
+			.on_update(move |update: &SliderInputUpdate| match update {
+				SliderInputUpdate::MoveMarker { index: 0, position } => message(min * ratio.powf(*position)),
+				SliderInputUpdate::ResetMarker { index: 0 } => message(default),
+				_ => Message::NoOp,
+			})
+			.widget_instance(),
+	]
+}
+
 /// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.
 #[derive(Clone)]
 enum XRayTarget {
@@ -4124,9 +4390,8 @@ fn quad_to_kurbo(quad: Quad) -> BezPath {
 
 fn click_targets_to_kurbo<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> BezPath {
 	let segments = click_targets
-		.filter_map(|target| if let ClickTargetType::Path(path) = target.target_type() { Some(path.segments()) } else { None })
-		.flatten()
-		.map(|bezier| Affine::new(transform.to_cols_array()) * bezier);
+		.filter_map(|target| target.path_with_transform())
+		.flat_map(|(path, placement)| path.segments().map(move |bezier| Affine::new((transform * placement).to_cols_array()) * bezier));
 	BezPath::from_path_segments(segments)
 }
 
@@ -4148,17 +4413,17 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&[Arc<ClickTarget>]>, clip: bool, layer: LayerNodeIdentifier, path: BezPath, transform: DAffine2) -> XRayResult {
-		let get_clip = || path.segments();
-
-		let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_path(get_clip, transform)));
+	fn check_layer_area_target(&mut self, clip: bool, layer: LayerNodeIdentifier, path: BezPath) -> XRayResult {
+		let metadata = self.network_interface.document_metadata();
+		let intersects = metadata.any_click_target_hit(layer, &mut |target, transform| target.intersect_path(|| path.segments(), transform));
 		let clicked = intersects;
 		let mut use_children = !clip || intersects;
 
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
+			let click_targets = metadata.click_targets(layer);
+			let clip_path = click_targets_to_kurbo(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), metadata.transform_to_document(layer));
 			let intersection = boolean_intersect(&path, &clip_path);
 			let subtracted = BezPath::from_path_segments(intersection.iter().flat_map(|p| p.segments()));
 			if subtracted.is_empty() {
@@ -4179,22 +4444,22 @@ impl<'a> ClickXRayIter<'a> {
 			return XRayResult { clicked: false, use_children: false };
 		}
 
-		let click_targets = self.network_interface.document_metadata().click_targets(layer);
-		let transform = self.network_interface.document_metadata().transform_to_document(layer);
+		let metadata = self.network_interface.document_metadata();
 		let target = &self.parent_targets.last().expect("In `check_layer()`: there should be a `target`").1;
-		let clip = self.network_interface.document_metadata().is_clip(layer.to_node());
+		let clip = metadata.is_clip(layer.to_node());
 
+		// A group is hit through its own or any descendant's targets, each tested in its own layer's space
 		match target {
 			// Single points are much cheaper than paths so have their own special case
 			XRayTarget::Point(point) => {
-				let intersects = click_targets.is_some_and(|targets| targets.iter().any(|target| target.intersect_point(*point, transform)));
+				let intersects = metadata.any_click_target_hit(layer, &mut |target, transform| target.intersect_point(*point, transform));
 				XRayResult {
 					clicked: intersects,
 					use_children: !clip || intersects,
 				}
 			}
-			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_kurbo(*quad), transform),
-			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
+			XRayTarget::Quad(quad) => self.check_layer_area_target(clip, layer, quad_to_kurbo(*quad)),
+			XRayTarget::Path(path) => self.check_layer_area_target(clip, layer, path.clone()),
 		}
 	}
 }
@@ -4623,6 +4888,7 @@ mod document_message_handler_tests {
 			.executor
 			.submit_node_graph_evaluation(document, document_id, glam::UVec2::ONE, 1., Default::default(), merged, true, DVec2::ZERO)
 			.unwrap();
+		editor.runtime.update();
 		editor.runtime.run().await;
 
 		let frontend_messages = editor.editor.handle_message(Message::Wake);
@@ -5042,5 +5308,21 @@ mod document_message_handler_tests {
 		(state.grid_snapping, state.snapping_enabled) = (true, false);
 		nudge(&mut editor, DVec2::new(NUDGE_AMOUNT, 0.)).await;
 		assert_bounds(&editor, rectangle, [DVec2::new(105., 32.), DVec2::new(165., 76.)]);
+	}
+
+	#[tokio::test]
+	async fn remote_changes_that_neither_reconcile_nor_rebuild_are_kept_for_a_retry() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+
+		let document = editor.active_document_mut();
+		let storage = document.storage().expect("the document has a working copy").clone();
+		document.history.set_storage(storage, Declarations::default());
+		assert!(document.history.rebuild_interface().is_none(), "the registry should not convert without its declarations");
+
+		document.pending_remote.rebuilt = true;
+		document.apply_remote_changes(&mut VecDeque::new());
+		assert!(document.pending_remote.rebuilt, "the changes should be kept when the interface could not be rebuilt");
 	}
 }

@@ -36,13 +36,28 @@ function reorderDocuments(documents: DocumentInfo[], orderedIds: bigint[]): Docu
 // State-based persistence
 // =======================
 
-export async function writePersistedState(state: PersistedState) {
+// A listed document this tab never wrote is another tab's and stays listed. One it wrote and no longer sends was closed.
+export async function writePersistedState(state: PersistedState, writtenDocuments: Set<bigint>) {
 	// Keep state ordered and normalized before writing.
 	state.documents = reorderDocuments(
 		state.documents,
 		state.documents.map((entry) => entry.id),
 	);
-	await databaseSet("state", state);
+	state.documents.forEach((entry) => writtenDocuments.add(entry.id));
+
+	const db = await databaseOpen();
+	await new Promise<void>((resolve, reject) => {
+		const transaction = db.transaction(PERSISTENCE_STORE, "readwrite");
+		const store = transaction.objectStore(PERSISTENCE_STORE);
+		const request = store.get("state");
+		request.onsuccess = () => {
+			const stored: PersistedState | undefined = request.result;
+			const others = (stored?.documents ?? []).filter((entry) => !writtenDocuments.has(entry.id));
+			store.put({ ...state, documents: [...state.documents, ...others] }, "state");
+		};
+		transaction.oncomplete = () => resolve();
+		transaction.onerror = () => reject(transaction.error);
+	});
 }
 
 export async function readPersistedState(editor: EditorWrapper) {

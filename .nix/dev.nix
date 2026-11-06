@@ -22,8 +22,8 @@ let
         pkgs.lld
         pkgs.nodejs
         pkgs.binaryen
-        pkgs.wasm-bindgen-cli_0_2_121
-        pkgs.cargo-about
+        pkgs.wasm-bindgen-cli_0_2_129
+        deps.cargoAbout
 
         pkgs.rustc
         pkgs.cargo
@@ -47,13 +47,17 @@ let
         # Plotting tools
         pkgs.graphviz
       ];
+      libs = [
+        pkgs.vulkan-loader
+      ];
+      env = {
+        VK_ADD_DRIVER_FILES = "${pkgs.mesa}/share/vulkan/icd.d/lvp_icd.${pkgs.stdenv.hostPlatform.uname.processor}.json";
+      };
     }
-    deps.rustGPU
     (lib.optionalAttrs desktop (
       {
         libs = [
           pkgs.wayland
-          pkgs.vulkan-loader
           pkgs.libGL
           pkgs.libxkbcommon
           self.packages.${system}.graphite-cef

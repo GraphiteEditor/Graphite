@@ -64,6 +64,7 @@ impl Default for TextOptions {
 pub enum TextToolMessage {
 	// Standard messages
 	Abort,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 	Overlays { context: OverlayContext },
 
@@ -282,11 +283,10 @@ impl TextTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for TextTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		// On tool deactivation (Abort fires from the dispatcher's tool transition),
-		// reset the displayed fill color so the next activation starts fresh from the current working color.
-		// Guarded on `Ready` so Esc-mid-editing (which also fires Abort) doesn't wipe the user's customized fill option.
-		if matches!(&message, ToolMessage::Text(TextToolMessage::Abort)) && self.fsm_state == TextToolFsmState::Ready {
+		// Switching to another tool resets the fill color so the next activation starts from the working color
+		if matches!(&message, ToolMessage::Text(TextToolMessage::SwitchedToAnotherTool)) {
 			self.options.fill.fill_choice = Some(solid(context.global_tool_data.primary_color));
+			return;
 		}
 
 		if context.fonts.font_catalog.is_empty() {
@@ -424,6 +424,7 @@ impl ToolTransition for TextTool {
 			selection_changed: Some(TextToolMessage::SelectionChanged.into()),
 			graph_changed: None,
 			tool_abort: Some(TextToolMessage::Abort.into()),
+			switched_to_another_tool: Some(TextToolMessage::SwitchedToAnotherTool.into()),
 			working_color_changed: Some(TextToolMessage::WorkingColorChanged.into()),
 			overlay_provider: Some(|context| TextToolMessage::Overlays { context }.into()),
 		}
@@ -652,6 +653,7 @@ impl Fsm for TextToolFsmState {
 		let ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			fonts,
 			viewport,
@@ -1021,7 +1023,7 @@ impl Fsm for TextToolFsmState {
 						..TypesettingConfig::default()
 					},
 					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
-					color: tool_options.fill.active_color(),
+					color: tool_options.fill.new_shape_paint(true, global_tool_data.primary_color).and_then(|paint| paint.as_solid()),
 				};
 				tool_data.new_text(document, editing_text, fonts, responses);
 				TextToolFsmState::Editing

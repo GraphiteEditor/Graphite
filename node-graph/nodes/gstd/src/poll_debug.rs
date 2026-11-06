@@ -1,11 +1,9 @@
+use core_types::Ctx;
 use core_types::list::Item;
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractGenerations, Interrupt, NodeError, OwnedContextImpl, Poll};
 use graphic_types::{Graphic, Vector};
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 
-#[node_macro::node(category("Debug"), placeholder = pending_delay)]
-async fn delay<T: Default + Clone + Send + Sync + 'static>(
+#[node_macro::node(category("Debug"))]
+async fn delay<T: Clone + Send + Sync + 'static>(
 	_: impl Ctx,
 	#[implementations(f64, String, Vector, Graphic)] value: Item<T>,
 	#[default(1.)]
@@ -14,81 +12,19 @@ async fn delay<T: Default + Clone + Send + Sync + 'static>(
 ) -> Item<T> {
 	sleep(*seconds.element()).await;
 	value
-}
-
-fn pending_delay<T: Default>(_value: &Item<T>, _seconds: &Item<f64>) -> Item<T> {
-	Item::default()
-}
-
-#[node_macro::node(category("Debug"))]
-async fn hold<T: Clone + Send + Sync + 'static>(
-	_: impl Ctx,
-	#[implementations(f64, String, Vector, Graphic)] value: Item<T>,
-	#[default(1.)]
-	#[unit(" sec")]
-	seconds: Item<f64>,
-) -> Item<T> {
-	sleep(*seconds.element()).await;
-	value
-}
-
-#[node_macro::node(category("Debug"))]
-fn error<T>(_: impl Ctx, #[implementations(f64, String, Vector, Graphic)] value: Item<T>, #[default(true)] fail: Item<bool>) -> Result<Item<T>, Interrupt> {
-	match *fail.element() {
-		true => Err(NodeError::new("debug error").into()),
-		false => Ok(value),
-	}
-}
-
-#[node_macro::node(category("Debug"))]
-fn fallback<T: Default>(_: impl Ctx, #[implementations(f64, String, Vector, Graphic)] value: Item<T>, #[default(true)] fail: Item<bool>) -> Result<Item<T>, (Item<T>, NodeError)> {
-	match *fail.element() {
-		true => Err((Item::default(), NodeError::new("debug fallback"))),
-		false => Ok(value),
-	}
 }
 
 #[node_macro::node(category("Debug"), name("Panic"))]
 fn unwind<T>(_: impl Ctx, #[implementations(f64, String, Vector, Graphic)] value: Item<T>, fail: Item<bool>) -> Item<T> {
 	if *fail.element() {
-		panic!("debug panic");
+		panic!("panic");
 	}
 	value
-}
-
-#[node_macro::node(category("Debug"))]
-fn evaluation_count<T>(_: impl Ctx, #[implementations(f64, String, Vector, Graphic)] value: Item<T>, #[data] count: Arc<AtomicU64>) -> Item<T> {
-	let count = count.fetch_add(1, Ordering::Relaxed) + 1;
-	log::info!("Debug evaluation count: {count}");
-	value
-}
-
-#[node_macro::node(category("Debug"))]
-fn generations(ctx: impl Ctx + ExtractGenerations, value: Item<String>) -> Item<String> {
-	let generations = ctx
-		.try_generations()
-		.map(|generations| generations.iter().map(|(source, generation)| format!("{:x}={generation}", source.0)).collect::<Vec<_>>().join(", "))
-		.unwrap_or_default();
-	Item::new_from_element(format!("{} [{generations}]", value.element()))
-}
-
-#[node_macro::node(category("Debug"), name("Stand-In"))]
-fn stand_in<T>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs,
-	#[expose]
-	#[implementations(Context -> Item<f64>, Context -> Item<String>, Context -> Item<Vector>, Context -> Item<Graphic>)]
-	content: impl Node<Context<'static>, Output = T>,
-	#[implementations(Item<f64>, Item<String>, Item<Vector>, Item<Graphic>)] placeholder: T,
-) -> Poll<T> {
-	match content.eval(&OwnedContextImpl::from(ctx).into_context()) {
-		Poll::Pending | Poll::Partial(_) => Poll::Partial(placeholder),
-		finished => finished,
-	}
 }
 
 #[cfg(not(target_family = "wasm"))]
 async fn sleep(seconds: f64) {
-	use std::sync::Mutex;
+	use std::sync::{Arc, Mutex};
 	use std::task::{Poll, Waker};
 
 	#[derive(Default)]
@@ -109,7 +45,7 @@ async fn sleep(seconds: f64) {
 	let timer = Timer::default();
 	let state = Arc::clone(&timer.0);
 	std::thread::spawn(move || {
-		std::thread::sleep(std::time::Duration::from_secs_f64(seconds.max(0.)));
+		std::thread::sleep(std::time::Duration::try_from_secs_f64(seconds.max(0.)).unwrap_or(std::time::Duration::MAX));
 		let mut state = state.lock().unwrap();
 		state.0 = true;
 		if let Some(waker) = state.1.take() {

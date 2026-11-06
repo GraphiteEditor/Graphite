@@ -1,3 +1,5 @@
+use crate::Acceleration;
+
 #[cfg(target_os = "linux")]
 pub(crate) mod linux;
 #[cfg(target_os = "macos")]
@@ -5,14 +7,14 @@ pub(crate) mod mac;
 #[cfg(target_os = "windows")]
 pub(crate) mod win;
 
-pub(crate) fn accelerated_paint(disable_gpu_acceleration: bool) -> bool {
+pub(crate) fn accelerated_paint(acceleration: Acceleration) -> bool {
 	#[cfg(feature = "accelerated_paint")]
 	{
-		!disable_gpu_acceleration && should_enable_hardware_acceleration()
+		acceleration == Acceleration::Auto && should_enable_hardware_acceleration()
 	}
 	#[cfg(not(feature = "accelerated_paint"))]
 	{
-		let _ = disable_gpu_acceleration;
+		let _ = acceleration;
 		false
 	}
 }

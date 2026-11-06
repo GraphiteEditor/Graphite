@@ -1,5 +1,4 @@
 use crate::parsing::*;
-use crate::shader_nodes::STD_FEATURE_GATE;
 use convert_case::{Case, Casing};
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
@@ -174,15 +173,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			value => value.regular().expect("a non-node field is a value field").ty.clone(),
 		})
 		.collect();
-	let shader_field_types: Vec<_> = regular_fields
-		.iter()
-		.zip(field_types.iter())
-		.map(|(field, field_type)| match field.ty.regular() {
-			Some(regular) => regular.body_ty().clone(),
-			None => field_type.clone(),
-		})
-		.collect();
-	let has_shader_variant = regular_fields.iter().any(|field| field.ty.regular().is_some_and(|regular| regular.narrowed_body_ty.is_some()));
 
 	// Only regular fields have UI metadata (data fields are internal state)
 	let widget_override: Vec<_> = regular_fields
@@ -197,28 +187,25 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let value_sources: Vec<_> = regular_fields
 		.iter()
-		.map(|field| match field.ty.regular() {
-			Some(RegularParsedField { value_source, .. }) => match value_source {
-				ParsedValueSource::Default(data) => {
-					// Check if the data is a string literal by parsing the token stream
-					let data_str = data.to_string();
-					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
-						quote!(RegistryValueSource::Default(#data))
-					} else {
-						quote!(RegistryValueSource::Default(stringify!(#data)))
-					}
+		.map(|field| match field.ty.value_source() {
+			ParsedValueSource::Default(data) => {
+				// Check if the data is a string literal by parsing the token stream
+				let data_str = data.to_string();
+				if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+					quote!(RegistryValueSource::Default(#data))
+				} else {
+					quote!(RegistryValueSource::Default(stringify!(#data)))
 				}
-				ParsedValueSource::Scope(data) => {
-					if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
-						quote!(RegistryValueSource::Scope(#data))
-					} else {
-						quote!(RegistryValueSource::Scope(#data.as_static_str()))
-					}
+			}
+			ParsedValueSource::Scope(data) => {
+				if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(_), .. }) = data.as_ref() {
+					quote!(RegistryValueSource::Scope(#data))
+				} else {
+					quote!(RegistryValueSource::Scope(#data.as_static_str()))
 				}
-				ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
-				_ => quote!(RegistryValueSource::None),
-			},
-			None => quote!(RegistryValueSource::None),
+			}
+			ParsedValueSource::SourceId => quote!(RegistryValueSource::SourceId),
+			_ => quote!(RegistryValueSource::None),
 		})
 		.collect();
 
@@ -323,12 +310,22 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			quote!(#progression)
 		})
 		.collect();
+	let constant: Vec<_> = regular_fields
+		.iter()
+		.map(|field| {
+			let constant = field.constant;
+			quote!(#constant)
+		})
+		.collect();
 
 	let exposed: Vec<_> = regular_fields
 		.iter()
 		.map(|field| match field.ty.regular() {
 			Some(RegularParsedField { exposed, .. }) => quote!(#exposed),
-			None => quote!(true),
+			None => {
+				let exposed = !field.is_environment();
+				quote!(#exposed)
+			}
 		})
 		.collect();
 
@@ -416,7 +413,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					..
 				}) => {
 					let output_type = if list_content && Some(index) == primary_regular_index {
-						let element_ty = output_element.clone().unwrap_or_else(|| output_type.clone());
+						let element_ty = output_element.as_deref().unwrap_or(output_type).clone();
 						WireWrapper::List.apply(core_types, &element_ty)
 					} else {
 						output_type.clone()
@@ -545,37 +542,39 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		#(#unwrap_args)*
 		#(#min_max_args)*
 	};
-	let cell_ctor = match attributes.no_partial {
+	let cell_ctor = match attributes.flags.no_partial {
 		true => quote!(#core_types::Status::no_partial()),
 		false => quote!(#core_types::Status::new()),
 	};
 
 	let lift = |call: TokenStream2| match tier {
 		NodeOutputTier::Plain | NodeOutputTier::Poll => quote!(Ok(#call)),
-		NodeOutputTier::Interrupt => call,
+		NodeOutputTier::Error => quote!(Ok(#call.map_err(#core_types::NodeError::from)?)),
 		NodeOutputTier::Fallback => quote! {
 			match #call {
 				Ok(value) => Ok(value),
 				Err((value, error)) => {
-					__cell.raise(error);
+					__cell.raise(#core_types::NodeError::from(error));
 					Ok(value)
 				}
 			}
 		},
+		NodeOutputTier::Interrupt => call,
 	};
 
 	let lift_slot = |call: TokenStream2| match tier {
 		NodeOutputTier::Plain | NodeOutputTier::Poll => call,
-		NodeOutputTier::Interrupt => quote!(#call?),
+		NodeOutputTier::Error => quote!(#call.map_err(#core_types::NodeError::from)?),
 		NodeOutputTier::Fallback => quote! {
 			match #call {
 				Ok(value) => value,
 				Err((value, error)) => {
-					__cell.raise(error);
+					__cell.raise(#core_types::NodeError::from(error));
 					value
 				}
 			}
 		},
+		NodeOutputTier::Interrupt => quote!(#call?),
 	};
 
 	let fold = match tier {
@@ -590,6 +589,23 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let kernel_call = lift(quote!(self::#fn_name(__input.clone() #(, &self.#data_field_names)* #(, #regular_field_names)*)));
 
+	let landed = |call: TokenStream2| match tier {
+		NodeOutputTier::Plain => quote!(#core_types::Poll::Final(#call)),
+		NodeOutputTier::Error => quote! {
+			match #call {
+				Ok(value) => #core_types::Poll::Final(value),
+				Err(error) => #core_types::Poll::Error(Box::new(#core_types::NodeError::from(error))),
+			}
+		},
+		NodeOutputTier::Fallback => quote! {
+			match #call {
+				Ok(value) => #core_types::Poll::Final(value),
+				Err((value, error)) => #core_types::Poll::Fallback(Box::new((value, #core_types::NodeError::from(error)))),
+			}
+		},
+		NodeOutputTier::Interrupt | NodeOutputTier::Poll => unreachable!("Validation rejects async nodes returning `Interrupt` or `Poll`"),
+	};
+
 	let eval_impl = if parsed.is_async {
 		let declared_field_names: Vec<_> = fields.iter().filter(|field| !field.is_data_field).map(|field| &field.pat_ident.ident).collect();
 		let placeholder = match &attributes.placeholder {
@@ -597,6 +613,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			None => quote!(None),
 		};
 		let data_clones = data_field_names.iter().map(|name| quote!(let #name = self.#name.clone();));
+		let landed_call = landed(quote!(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await));
 		quote! {
 			type Output = #output;
 			#[inline]
@@ -626,9 +643,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				let __runtime = _runtime.element().clone();
 				let __context = __input.clone();
 				#(#data_clones)*
-				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move {
-					#core_types::Poll::Final(self::#fn_name(__context #(, &#data_field_names)* #(, #regular_field_names)*).await)
-				});
+				let __state = self.slots.resolve(__key, &__runtime, __source, __placeholder, move || async move { #landed_call });
 				__cell.merge(__state)
 			}
 
@@ -651,20 +666,23 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	};
 
-	// The output a framed variant collects into. A map kernel pushes one item per frame slot and a `Destructure` struct appends its
-	// fields to its mapped struct. An expander kernel, returning `List<U>`, has its lists concatenated since nested lists aren't supported.
-	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
+	// The output a framed variant collects into. A map kernel gathers one item per frame slot into a `Vec` that becomes its list at the end,
+	// which needs no `Clone` element, and a `Destructure` struct appends its fields to its mapped struct.
+	// An expander kernel, returning `List<U>`, has its lists concatenated since nested lists aren't supported.
+	let framed_output = || -> (TokenStream2, TokenStream2, TokenStream2, TokenStream2, TokenStream2) {
 		match (parsed.output_element.as_ref(), peel_list(&output)) {
 			(Some(element_ty), _) => (
 				quote!(#core_types::list::List<#element_ty>),
-				quote!(#core_types::list::List::with_capacity(__frame_length)),
+				quote!(std::vec::Vec::with_capacity(__frame_length)),
 				quote!(__output.push(__result);),
+				quote!(__output.into_iter().collect::<#core_types::list::List<#element_ty>>()),
 				quote!(#core_types::list::List::new()),
 			),
 			(None, Some(_)) => (
 				quote!(#output),
 				quote!(#core_types::list::List::new()),
 				quote!(__output.extend(__result);),
+				quote!(__output),
 				quote!(#core_types::list::List::new()),
 			),
 			(None, None) => {
@@ -673,6 +691,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					quote!(#destructure::Mapped),
 					quote!(#destructure::mapped_with_capacity(__frame_length)),
 					quote!(#core_types::registry::Destructure::push_into(__result, &mut __output);),
+					quote!(__output),
 					quote!(#destructure::mapped_with_capacity(0)),
 				)
 			}
@@ -703,13 +722,13 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 		// The frame index is stamped onto each slot's context so lazy connectors can generate uniquely per slot.
 		// A `()` generator frames purely over its param values (no stamp), so its kernel needs no context-extraction bounds.
-		let has_lazy_connectors = regular_fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)));
+		let has_lazy_connectors = regular_fields.iter().any(|field| matches!(&field.ty, ParsedFieldType::Node(_)) && !field.is_environment());
 		let slot_context = match has_lazy_connectors {
 			true => quote!(#core_types::OwnedContextImpl::from(__input.clone()).with_index(__slot_index).into_context()),
 			false => quote!(__input.clone()),
 		};
 
-		let (mapped_output_type, initial_output, collect_result, empty_output) = framed_output();
+		let (mapped_output_type, initial_output, collect_result, finished_output, empty_output) = framed_output();
 
 		let slot_call = lift_slot(quote!(self::#fn_name(__slot_context #(, &self.#data_field_names)* #(, #per_slot_args)*)));
 		quote! {
@@ -733,7 +752,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#collect_result
 					}
 
-					Ok(__output)
+					Ok(#finished_output)
 				};
 				__cell.run(__kernel)
 			}
@@ -775,7 +794,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			})
 			.collect();
 
-		let (list_content_output_type, initial_output, collect_result, empty_output) = framed_output();
+		let (list_content_output_type, initial_output, collect_result, finished_output, empty_output) = framed_output();
 
 		let empty_param_check = (!ranked_names.is_empty()).then(|| {
 			quote! {
@@ -808,7 +827,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 						#collect_result
 					}
 
-					Ok(__output)
+					Ok(#finished_output)
 				};
 				__cell.run(__kernel)
 			}
@@ -833,9 +852,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 	let inspector = &attributes.inspector_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let icon = &attributes.icon.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
-	let memoize_flag = attributes.memoize;
-	let asynchronous_flag = parsed.is_async;
-	let inject_scope_flag = attributes.inject_scope;
+	let NodeFlags {
+		memoize,
+		footprint_invariant,
+		forwards_input,
+		inject_scope,
+		..
+	} = attributes.flags;
+	let asynchronous = parsed.is_async;
+	let version = attributes.version.unwrap_or(1);
 	// A node returning a `Destructure` struct records its fields as output connectors
 	let output_fields = match may_return_destructure_struct(parsed) {
 		true => {
@@ -848,9 +873,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		false => quote!(None),
 	};
 
-	let cfg = crate::shader_nodes::modify_cfg(attributes);
+	let cfg = match &attributes.cfg {
+		Some(cfg) => quote!(#[cfg(#cfg)]),
+		None => quote!(),
+	};
 	let node_input_accessor = generate_node_input_references(parsed, &field_idents, core_types, &identifier, &cfg);
-	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	let mapped_node_impl = match (&mapped_struct_where_clause, &mapped_eval_impl) {
 		(Some(mapped_where_clause), Some(mapped_eval)) => quote! {
@@ -958,32 +985,11 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		}
 	}
 
-	let node_fn = |field_types: &[Type]| {
-		quote! {
-			#(#description_doc_attrs)*
-			#[inline]
-			#[allow(clippy::too_many_arguments)]
-			#vis #async_keyword fn #fn_name <#(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
-		}
-	};
-	// A shader node's fn is emitted twice from the one body: as declared, in f64, for the CPU, and with the f32 parameter
-	// counterparts for the shader build, which cannot represent a 64-bit float. The body casts to f32 only where it meets a Color channel.
-	let node_fn = if has_shader_variant {
-		let cpu_fn = node_fn(&field_types);
-		let shader_fn = node_fn(&shader_field_types);
-		quote! {
-			#[cfg(feature = #STD_FEATURE_GATE)]
-			#cpu_fn
-
-			#[cfg(not(feature = #STD_FEATURE_GATE))]
-			#shader_fn
-		}
-	} else {
-		node_fn(&field_types)
-	};
-
 	Ok(quote! {
-		#node_fn
+		#(#description_doc_attrs)*
+		#[inline]
+		#[allow(clippy::too_many_arguments, clippy::type_complexity)]
+		#vis #async_keyword fn #fn_name <#(#fn_generics,)*> (#input_ident: #input_type #(, #data_field_idents: #data_field_types)* #(, #field_idents: #field_types)*) -> #output_type #where_clause #body
 
 		#cfg
 		#[automatically_derived]
@@ -1051,7 +1057,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 
 			#register_node_impl
 
-			#[cfg_attr(not(target_family = "wasm"), ctor)]
+			#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = gcore::ctor))]
 			fn register_metadata() {
 				let metadata = NodeMetadata {
 					display_name: #display_name,
@@ -1060,9 +1066,14 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 					description: #description,
 					inspector: #inspector,
 					context_features: vec![#(ContextFeature::#context_features,)*],
-					memoize: #memoize_flag,
-					inject_scope: #inject_scope_flag,
-					asynchronous: #asynchronous_flag,
+					flags: gcore::registry::NodeFlags {
+						memoize: #memoize,
+						footprint_invariant: #footprint_invariant,
+						forwards_input: #forwards_input,
+						inject_scope: #inject_scope,
+						asynchronous: #asynchronous,
+					},
+					version: #version,
 					output_fields: #output_fields,
 					fields: vec![
 						#(
@@ -1085,6 +1096,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								unit: #unit_suffix,
 								multiline: #multiline,
 								progression: #progression,
+								constant: #constant,
 							},
 						)*
 					],
@@ -1092,10 +1104,6 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
 			}
 		}
-
-		#shader_entry_point
-
-		#gpu_node
 	})
 }
 
@@ -1124,7 +1132,7 @@ fn generate_node_input_references(parsed: &ParsedNodeFn, field_idents: &[&PatIde
 	let inputs_module_name = format_ident!("{}", parsed.struct_name.to_string().to_case(Case::Snake));
 
 	let mut generated_input_accessor = Vec::new();
-	if !parsed.attributes.skip_impl {
+	if !parsed.attributes.flags.skip_impl {
 		for (input_index, input_ident) in field_idents.iter().enumerate() {
 			// TODO: figure out a better name that doesn't conflict with so many types
 			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
@@ -1193,14 +1201,14 @@ impl RegisterVariant {
 /// connector's `Output = Item<T>`), which marks the node as element-wise.
 fn primary_item_element(parsed: &ParsedNodeFn) -> Option<syn::Type> {
 	// Manually registered nodes control their own variants
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return None;
 	}
 
 	let (_, field) = parsed.primary_input_field()?;
 
 	match &field.ty {
-		ParsedFieldType::Node(NodeParsedField { output_element, .. }) => output_element.clone(),
+		ParsedFieldType::Node(NodeParsedField { output_element, .. }) => output_element.as_deref().cloned(),
 		ParsedFieldType::Item { element, .. } => Some(element.clone()),
 		_ => None,
 	}
@@ -1234,7 +1242,7 @@ fn generates_mapped_variant(parsed: &ParsedNodeFn) -> bool {
 
 /// Whether the node is a `()`-primary generator that frames over its ranked params: a unit primary with at least one ranked (`Item<T>`) param.
 fn is_generator_frame(parsed: &ParsedNodeFn) -> bool {
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return false;
 	}
 
@@ -1288,7 +1296,7 @@ fn generate_register_node_impl(
 	// On Wasm, `ctor` isn't available, so this `extern "C"` fn is invoked from JS to register the same way.
 	// `skip_impl` nodes don't generate a `register_node`, so the shim calls only `register_metadata` for them.
 	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
-	let register_node_call = if parsed.attributes.skip_impl { quote!() } else { quote!(register_node();) };
+	let register_node_call = if parsed.attributes.flags.skip_impl { quote!() } else { quote!(register_node();) };
 	let wasm_shim = quote! {
 		#[cfg(target_family = "wasm")]
 		#[unsafe(no_mangle)]
@@ -1298,7 +1306,7 @@ fn generate_register_node_impl(
 		}
 	};
 
-	if parsed.attributes.skip_impl {
+	if parsed.attributes.flags.skip_impl {
 		return Ok(wasm_shim);
 	}
 
@@ -1421,7 +1429,7 @@ fn generate_register_node_impl(
 		}
 	}
 	Ok(quote! {
-		#[cfg_attr(not(target_family = "wasm"), ctor)]
+		#[cfg_attr(not(target_family = "wasm"), ctor(unsafe, crate_path = gcore::ctor))]
 		fn register_node() {
 			let mut registry = NODE_REGISTRY.lock().unwrap();
 			registry.insert(
@@ -1437,7 +1445,6 @@ fn generate_register_node_impl(
 }
 
 use crate::crate_ident::CrateIdent;
-use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, Lifetime, Type};
 

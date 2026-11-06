@@ -4,6 +4,7 @@
 
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+use std::sync::Arc;
 
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
 use graphene_resource::ResourceFuture;
@@ -89,6 +90,39 @@ impl<L: Layout> Gdd<L> {
 		L: Clone,
 	{
 		ResourceProxy(self.working.clone(), self.layout.clone())
+	}
+
+	/// Hold resource bytes from peers in an external store, so one cache can serve every open document.
+	/// [`read_resource`](Self::read_resource) and [`LoadResource`] still read the working copy, so the embedder reads that store itself.
+	pub fn set_byte_store(&mut self, byte_store: Arc<dyn ResourceStorage>) {
+		self.byte_store = Some(byte_store);
+	}
+
+	/// Whether this document's resource bytes are on hand, in whichever store backs it.
+	#[cfg(feature = "network")]
+	pub(crate) fn holds_resource(&self, hash: &ResourceHash) -> bool {
+		match &self.byte_store {
+			Some(byte_store) => byte_store.contains(hash),
+			None => self.working.exists_non_blocking(&self.layout.resource_path(hash)),
+		}
+	}
+
+	/// Put resource bytes into whichever store backs this document.
+	#[cfg(feature = "network")]
+	pub(crate) fn hold_resource(&self, bytes: &[u8]) -> Result<(), ContainerError> {
+		match &self.byte_store {
+			Some(byte_store) => {
+				byte_store.store(bytes);
+				Ok(())
+			}
+			None => self.working.write_non_blocking(&self.layout.resource_path(&ResourceHash::from(bytes)), bytes),
+		}
+	}
+
+	/// Referenced resources whose bytes are not on hand.
+	#[cfg(feature = "network")]
+	pub(crate) fn unstored_resources(&self) -> Vec<ResourceHash> {
+		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
 	}
 }
 

@@ -38,6 +38,7 @@ graphene-animation = { workspace = true }
 dyn-any = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
+thiserror = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

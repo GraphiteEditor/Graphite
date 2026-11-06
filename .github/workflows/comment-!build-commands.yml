@@ -42,9 +42,10 @@ jobs:
     steps:
       - name: 🔎 Parse command, find branch, and set build flags
         id: pr_info
+        env:
+          # Passed through the environment so the comment text can't inject shell syntax
+          COMMENT: ${{ github.event.comment.body }}
         run: |
-          COMMENT="${{ github.event.comment.body }}"
-
           # Split into space-separated words
           read -ra WORDS <<< "$COMMENT"
 
@@ -112,19 +113,26 @@ jobs:
           echo "ref=$(echo $RESPONSE | jq -r '.head.ref')" >> $GITHUB_OUTPUT
 
       - name: 💬 Edit comment with workflow run link
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             github.rest.issues.updateComment({
               comment_id: ${{ github.event.comment.id }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '${{ github.event.comment.body }} ([Run ID ' + context.runId + '](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
+              body: context.payload.comment.body + ' ([Run ID ' + context.runId + '](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
             });
 
   invoke-build:
     needs: setup
     uses: ./.github/workflows/build.yml
+    # The called workflow's jobs can only narrow these, so this grants the union of what they request
+    permissions:
+      actions: write
+      contents: write
+      deployments: write
+      id-token: write
+      pull-requests: write
     secrets: inherit
     with:
       web: ${{ needs.setup.outputs.web == 'true' }}

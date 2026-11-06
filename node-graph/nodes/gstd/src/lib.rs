@@ -22,6 +22,7 @@ pub use text_nodes;
 pub use transform_nodes;
 pub use vector_nodes;
 pub use vector_types;
+pub use vectorize_nodes;
 
 /// Backward compatibility re-exports
 pub mod vector {
@@ -35,6 +36,7 @@ pub mod vector {
 	pub use vector_types::vector::misc::HandleId;
 	pub use vector_types::vector::{CurveType, Path, VectorGeometry, WorkingVector, no_paths, paths_from_item_attributes, paths_from_list_row_attributes};
 	pub use vector_types::vector::{PointId, SegmentId};
+	pub use vector_types::vector::{curve_type_at, handle_point, segment_id_of, span_endpoints, spans};
 	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap, serialize_hashmap_as_sorted_object};
 
 	// Re-export HandleExt trait and NoHashBuilder

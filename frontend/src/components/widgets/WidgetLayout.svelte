@@ -4,11 +4,13 @@
 	import WidgetTable from "/src/components/widgets/WidgetTable.svelte";
 	import type { Layout, LayoutTarget } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let layout: Layout;
-	export let layoutTarget: LayoutTarget;
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	type Props = {
+		layout: Layout;
+		layoutTarget: LayoutTarget;
+		class?: string;
+		classes?: Record<string, boolean>;
+	};
+	let { layout, layoutTarget, class: className = "", classes = {} }: Props = $props();
 </script>
 
 {#each layout as layoutGroup}

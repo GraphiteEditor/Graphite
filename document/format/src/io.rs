@@ -35,6 +35,15 @@ pub async fn iter<T: DeserializeOwned>(container: &AnyContainer, basename: &str,
 	Ok(codec.iter::<T>(bytes.as_slice()).collect::<Result<Vec<_>, _>>()?)
 }
 
+/// Same as [`iter`] but skips the values that fail to decode.
+pub async fn iter_lenient<T: DeserializeOwned>(container: &AnyContainer, basename: &str, codec: Codec) -> Result<Vec<T>, ReadError> {
+	let bytes = read_bytes(container, basename, codec).await?;
+	let values = codec
+		.iter::<T>(bytes.as_slice())
+		.filter_map(|value| value.inspect_err(|error| log::warn!("Skipping an unreadable entry of {basename}: {error}")).ok());
+	Ok(values.collect())
+}
+
 /// Whether `{basename}.{ext}` exists for the given codec.
 pub async fn exists(container: &AnyContainer, basename: &str, codec: Codec) -> bool {
 	container.exists(&path_for(basename, codec)).await

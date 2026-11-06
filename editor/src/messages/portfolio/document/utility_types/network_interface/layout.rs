@@ -1,4 +1,9 @@
+use super::resolved_types::TypeSource;
 use super::*;
+use graph_craft::{ProtoNodeIdentifier, concrete};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::vector::style::Gradient;
+use graphene_std::{Color, Graphic};
 
 impl NodeNetworkInterface {
 	/// The top left corner of a node in node graph grid coordinates.
@@ -902,7 +907,7 @@ impl NodeNetworkInterface {
 		let layer_output = NodeInput::node(layer.to_node(), 0);
 
 		match post_node_input {
-			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+			NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 				// First child in the stack: wire layer output to the post_node input
 				self.set_input_for_import(&post_node, layer_output, network_path);
 			}
@@ -956,7 +961,6 @@ impl NodeNetworkInterface {
 		}
 
 		// Disconnect layer to move
-		self.stop_previewing(network_path);
 		self.remove_references_from_network(&layer.to_node(), network_path);
 
 		let post_node = self.post_node_with_index(parent, insert_index, network_path);
@@ -1032,7 +1036,7 @@ impl NodeNetworkInterface {
 		if !inserting_into_stack {
 			match post_node_input {
 				// Create a new stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-LAYER_INDENT_OFFSET, STACK_VERTICAL_GAP);
@@ -1058,7 +1062,7 @@ impl NodeNetworkInterface {
 		} else {
 			match post_node_input {
 				// Move to the bottom of the stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, STACK_VERTICAL_GAP + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::primary_output(layer.to_node()), &post_node, network_path);
@@ -1154,6 +1158,41 @@ impl NodeNetworkInterface {
 
 		// Connect the new node to the previous node
 		self.create_wire(&upstream_output, &InputConnector::node_at_index(*node_id, insert_node_input_index), network_path);
+	}
+
+	/// Feeds an unconnected Map node's mapped input with the Read node matching the element type of its content.
+	pub fn connect_read_node_to_map(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		if self.reference(node_id, network_path) != Some(DefinitionIdentifier::ProtoNode(graphene_std::graphic::map::IDENTIFIER)) {
+			return;
+		}
+
+		let mapped_input = InputConnector::node_at_index(*node_id, 1);
+		if !matches!(self.input_from_connector(&mapped_input, network_path), Some(NodeInput::Value { .. })) {
+			return;
+		}
+
+		let Some(content_source) = self.upstream_output_connector(&InputConnector::primary_input(*node_id), network_path) else {
+			return;
+		};
+		let Some(mut read_node_template) = read_node_for_content(&self.output_type(&content_source, network_path))
+			.and_then(resolve_proto_node_type)
+			.map(|definition| definition.default_node_template())
+		else {
+			return;
+		};
+		let Some(map_position) = self.position(node_id, network_path) else {
+			return;
+		};
+
+		let below_content_source = content_source
+			.node_id()
+			.and_then(|source| Some(self.position(&source, network_path)?.y + self.node_height(&source, network_path) as i32 + 1));
+		let read_node_position = IVec2::new(map_position.x - NODE_CHAIN_WIDTH, below_content_source.unwrap_or(map_position.y + 2));
+		read_node_template.node_type_metadata = NodeTypePersistentMetadata::node(read_node_position);
+
+		let read_node_id = NodeId::new();
+		self.insert_node(read_node_id, read_node_template, network_path);
+		self.create_wire(&OutputConnector::primary_output(read_node_id), &mapped_input, network_path);
 	}
 
 	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
@@ -1575,4 +1614,31 @@ impl NodeNetworkInterface {
 		self.remove_orphaned_dots(network_path);
 		self.layer_chain(layer, network_path) == intended_chain
 	}
+}
+
+/// The Read node yielding each element of a Map node's content, unbundling a whole-list `Item<Bundle<T>>` wire to its `T`.
+pub(super) fn read_node_for_content(content_type: &TypeSource) -> Option<ProtoNodeIdentifier> {
+	use graphene_std::context::{read_color, read_gradient, read_graphic, read_number, read_raster, read_vector};
+	use graphene_std::text_nodes::read_string;
+
+	let bundle_element = content_type.compiled_nested_type().and_then(Type::bundle_element_name);
+	let element_type = content_type.compiled_element_type()?;
+
+	[
+		(concrete!(Vector), read_vector::IDENTIFIER),
+		(concrete!(Graphic), read_graphic::IDENTIFIER),
+		(concrete!(Raster<CPU>), read_raster::IDENTIFIER),
+		(concrete!(Color), read_color::IDENTIFIER),
+		(concrete!(Gradient), read_gradient::IDENTIFIER),
+		(concrete!(f64), read_number::IDENTIFIER),
+		(concrete!(String), read_string::IDENTIFIER),
+	]
+	.into_iter()
+	.find_map(|(candidate, read_node)| {
+		let matches = match (bundle_element, &candidate) {
+			(Some(bundle_element), Type::Concrete(descriptor)) => descriptor.name == bundle_element,
+			_ => candidate == *element_type,
+		};
+		matches.then_some(read_node)
+	})
 }

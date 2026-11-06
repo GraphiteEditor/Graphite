@@ -81,7 +81,7 @@ The **Layer menu** lists actions related to the layers within a document:
 | **Boolean ><br />Subtract Front** | <p>Cuts overlapping areas out from the last of the selected vector layers.</p> |
 | **Boolean ><br />Subtract Back** | <p>Cuts overlapping areas out from the first of the selected vector layers.</p> |
 | **Boolean ><br />Intersect** | <p>Cuts away all but the overlapping areas shared by every path of the selected vector layer(s).</p> |
-| **Boolean ><br />Difference** | <p>Cuts away the overlapping areas shared by every path of the selected vector layer(s), leaving only the non-overlapping areas.</p> |
+| **Boolean ><br />Difference** | <p>Cuts away the areas where an even number of paths of the selected vector layer(s) overlap, keeping those where an odd number do.</p> |
 | **Make Path Editable** | <p>Applies a path edit operation (the **Path node**) to the selected vector layer, capturing the geometry after other nondestructive operations to enable its direct modification by the **Path** and **Pen** tools.</p> |
 
 ### Select

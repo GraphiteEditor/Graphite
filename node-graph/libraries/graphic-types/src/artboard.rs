@@ -2,7 +2,6 @@ use crate::graphic::Graphic;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::graphene_hash::CacheHash;
 use core_types::list::List;
-use core_types::render_complexity::RenderComplexity;
 use dyn_any::DynAny;
 use glam::DAffine2;
 
@@ -51,11 +50,5 @@ impl BoundingBox for Artboard {
 
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 		self.0.thumbnail_bounding_box(transform, include_stroke)
-	}
-}
-
-impl RenderComplexity for Artboard {
-	fn render_complexity(&self) -> usize {
-		self.0.render_complexity()
 	}
 }

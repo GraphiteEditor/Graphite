@@ -3,7 +3,7 @@
 //! Dialogs are represented as structs that implement the `DialogLayoutHolder` trait.
 //!
 //! To open a dialog, call the function `send_dialog_to_frontend()` on the dialog struct.
-//! Then dialog can be opened by sending the `FrontendMessage::DisplayDialog` message;
+//! Then dialog can be opened by sending the `DialogMessage::Display` message;
 
 mod dialog_message;
 mod dialog_message_handler;

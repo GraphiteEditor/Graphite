@@ -1,13 +1,24 @@
-import { writable } from "svelte/store";
+import { get, writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { IconName } from "/src/icons";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
 import type { MessageBody } from "/src/subscriptions-router";
-import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type {
+	NodeGraphErrorDiagnostic,
+	BoxSelection,
+	FrontendClickTargets,
+	ContextMenuInformation,
+	FrontendNode,
+	FrontendNodeType,
+	FrontendRemoteCursor,
+	WirePath,
+} from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type NodeGraphStore = ReturnType<typeof createNodeGraphStore>;
 
 export type NodeGraphTransform = { scale: number; x: number; y: number };
+
+export type ThumbnailCanvases = { layersPanelCanvasId: number; nodeGraphCanvasId: number };
 
 type NodeGraphStoreState = {
 	box: BoxSelection | undefined;
@@ -25,7 +36,7 @@ type NodeGraphStoreState = {
 	nodeDescriptions: Map<string, string>;
 	nodeIcons: Map<string, IconName>;
 	nodeTypes: FrontendNodeType[];
-	thumbnails: Map<bigint, string>;
+	thumbnailCanvases: Map<bigint, ThumbnailCanvases>;
 	selected: bigint[];
 	inSelectedNetwork: boolean;
 	reorderImportIndex: number | undefined;
@@ -47,7 +58,7 @@ const initialState: NodeGraphStoreState = {
 	nodeDescriptions: new Map(),
 	nodeIcons: new Map(),
 	nodeTypes: [],
-	thumbnails: new Map(),
+	thumbnailCanvases: new Map(),
 	selected: [],
 	inSelectedNetwork: true,
 	reorderImportIndex: undefined,
@@ -55,6 +66,26 @@ const initialState: NodeGraphStoreState = {
 };
 
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
+
+// Undoes the graph runtime's encoding of thumbnail pixels: pairs of little-endian u32 counts of skipped transparent pixels and kept pixels, each followed by the kept pixels' RGBA bytes
+function decodeTransparentRuns(encoded: Uint8Array, width: number, height: number): ImageData {
+	const pixels = new Uint8ClampedArray(width * height * 4);
+	const view = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength);
+
+	let read = 0;
+	let pixel = 0;
+	while (read + 8 <= encoded.byteLength) {
+		pixel += view.getUint32(read, true);
+		const kept = view.getUint32(read + 4, true);
+		read += 8;
+
+		pixels.set(encoded.subarray(read, read + kept * 4), pixel * 4);
+		read += kept * 4;
+		pixel += kept;
+	}
+
+	return new ImageData(pixels, width, height);
+}
 
 // Store state persisted across HMR to maintain reactive subscriptions in the component tree
 const store: Writable<NodeGraphStoreState> = import.meta.hot?.data?.store || writable<NodeGraphStoreState>(initialState);
@@ -69,12 +100,17 @@ if (import.meta.hot) import.meta.hot.data.transformStore = transformStore;
 const importsExportsStore: Writable<MessageBody<"UpdateImportsExports"> | undefined> = import.meta.hot?.data?.importsExportsStore || writable(undefined);
 if (import.meta.hot) import.meta.hot.data.importsExportsStore = importsExportsStore;
 
+// Kept apart from the node graph state so a thumbnail update doesn't re-render every node
+const thumbnailImagesStore: Writable<Map<bigint, ImageData>> = import.meta.hot?.data?.thumbnailImagesStore || writable(new Map());
+if (import.meta.hot) import.meta.hot.data.thumbnailImagesStore = thumbnailImagesStore;
+
 // Separate visible nodes store so viewport culling changes don't trigger full node re-renders
 const visibleNodesStore: Writable<Set<bigint>> = import.meta.hot?.data?.visibleNodesStore || writable(new Set());
 if (import.meta.hot) import.meta.hot.data.visibleNodesStore = visibleNodesStore;
 
-// Separate wires store so wire path updates (e.g. export connector movement during pan) don't trigger node re-renders
-const wiresStore: Writable<Map<bigint, Map<number, WirePath>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
+// Separate wires store so wire path updates (e.g. export connector movement during pan) don't trigger node re-renders.
+// It only changes when wires are added or removed, since each wire's path is kept in its own store so updating it only re-renders that wire.
+const wiresStore: Writable<Map<bigint, Map<number, Writable<WirePath>>>> = import.meta.hot?.data?.wiresStore || writable(new Map());
 if (import.meta.hot) import.meta.hot.data.wiresStore = wiresStore;
 
 // Separate wire insertion preview store so the wires don't re-render with every node graph update
@@ -85,6 +121,10 @@ if (import.meta.hot) import.meta.hot.data.wireInsertionPreviewStore = wireInsert
 export type GlideOffsets = { nodes: Map<bigint, [number, number]>; imports: [number, number]; exports: [number, number] };
 const glideOffsetsStore: Writable<GlideOffsets> = import.meta.hot?.data?.glideOffsetsStore || writable<GlideOffsets>({ nodes: new Map(), imports: [0, 0], exports: [0, 0] });
 if (import.meta.hot) import.meta.hot.data.glideOffsetsStore = glideOffsetsStore;
+
+// Separate since cursors move every frame and only the overlay draws them
+const remoteCursorsStore: Writable<FrontendRemoteCursor[]> = import.meta.hot?.data?.remoteCursorsStore || writable<FrontendRemoteCursor[]>([]);
+if (import.meta.hot) import.meta.hot.data.remoteCursorsStore = remoteCursorsStore;
 
 export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	destroyNodeGraphStore();
@@ -105,6 +145,10 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 			state.box = data.box;
 			return state;
 		});
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateNodeGraphCursors", (data) => {
+		remoteCursorsStore.set(data.cursors);
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateClickTargets", (data) => {
@@ -209,23 +253,28 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 	});
 
 	subscriptions.subscribeFrontendMessage("UpdateNodeGraphWires", (data) => {
-		if (data.wires.length === 0) return;
+		const wires = get(wiresStore);
+		let wiresChanged = false;
 
-		wiresStore.update((wires) => {
-			data.wires.forEach((wireUpdate) => {
-				let inputMap = wires.get(wireUpdate.id);
+		data.wires.forEach(({ id, inputIndex, wirePathUpdate }) => {
+			let inputMap = wires.get(id);
+			const wire = inputMap?.get(inputIndex);
+
+			if (wirePathUpdate === undefined) {
+				if (inputMap?.delete(inputIndex)) wiresChanged = true;
+			} else if (wire) {
+				wire.set(wirePathUpdate);
+			} else {
 				if (!inputMap) {
 					inputMap = new Map();
-					wires.set(wireUpdate.id, inputMap);
+					wires.set(id, inputMap);
 				}
-				if (wireUpdate.wirePathUpdate !== undefined) {
-					inputMap.set(wireUpdate.inputIndex, wireUpdate.wirePathUpdate);
-				} else {
-					inputMap.delete(wireUpdate.inputIndex);
-				}
-			});
-			return wires;
+				inputMap.set(inputIndex, writable(wirePathUpdate));
+				wiresChanged = true;
+			}
 		});
+
+		if (wiresChanged) wiresStore.set(wires);
 	});
 
 	subscriptions.subscribeFrontendMessage("ClearAllNodeGraphWires", () => {
@@ -243,17 +292,31 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		transformStore.set({ scale: data.scale, x: data.translation[0], y: data.translation[1] });
 	});
 
-	subscriptions.subscribeFrontendMessage("UpdateNodeThumbnail", (data) => {
+	subscriptions.subscribeFrontendMessage("UpdateNodeThumbnailCanvases", (data) => {
+		const { id, ...canvases } = data;
+
+		const current = get(store).thumbnailCanvases.get(id);
+		if (current?.layersPanelCanvasId === canvases.layersPanelCanvasId && current?.nodeGraphCanvasId === canvases.nodeGraphCanvasId) return;
+
 		update((state) => {
-			state.thumbnails.set(data.id, data.value);
+			state.thumbnailCanvases.set(id, canvases);
 			return state;
 		});
 	});
 
+	subscriptions.subscribeFrontendMessage("UpdateNodeThumbnailPixels", (data) => {
+		const image = decodeTransparentRuns(data.pixels, data.width, data.height);
+		thumbnailImagesStore.update((images) => images.set(data.id, image));
+	});
+
 	subscriptions.subscribeFrontendMessage("ClearNodeThumbnails", (data) => {
 		update((state) => {
-			data.ids.forEach((id) => state.thumbnails.delete(id));
+			data.ids.forEach((id) => state.thumbnailCanvases.delete(id));
 			return state;
+		});
+		thumbnailImagesStore.update((images) => {
+			data.ids.forEach((id) => images.delete(id));
+			return images;
 		});
 	});
 
@@ -266,7 +329,7 @@ export function createNodeGraphStore(subscriptions: SubscriptionsRouter) {
 		});
 	});
 
-	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, wiresStore, wireInsertionPreviewStore, glideOffsetsStore };
+	return { subscribe, transformStore, importsExportsStore, visibleNodesStore, thumbnailImagesStore, wiresStore, wireInsertionPreviewStore, glideOffsetsStore, remoteCursorsStore };
 }
 
 export function destroyNodeGraphStore() {
@@ -275,6 +338,7 @@ export function destroyNodeGraphStore() {
 
 	subscriptions.unsubscribeFrontendMessage("SendUIMetadata");
 	subscriptions.unsubscribeFrontendMessage("UpdateBox");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphCursors");
 	subscriptions.unsubscribeFrontendMessage("UpdateClickTargets");
 	subscriptions.unsubscribeFrontendMessage("UpdateContextMenuInformation");
 	subscriptions.unsubscribeFrontendMessage("UpdateImportReorderIndex");
@@ -292,7 +356,8 @@ export function destroyNodeGraphStore() {
 	subscriptions.unsubscribeFrontendMessage("ClearAllNodeGraphWires");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphSelection");
 	subscriptions.unsubscribeFrontendMessage("UpdateNodeGraphTransform");
-	subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnail");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnailCanvases");
+	subscriptions.unsubscribeFrontendMessage("UpdateNodeThumbnailPixels");
 	subscriptions.unsubscribeFrontendMessage("ClearNodeThumbnails");
 	subscriptions.unsubscribeFrontendMessage("UpdateWirePathInProgress");
 }

@@ -170,73 +170,6 @@ fn set_document_attribute(key: &str, value: u32) -> RegistryDelta {
 	}
 }
 
-/// Two peers that each integrate the other's concurrent branch converge to byte-identical history:
-/// the merge commit is parent-set-addressed (same `Rev` on both) and the canonical sort erases the
-/// arrival-order difference. Exercises `Session::merge`, the `Merge` variant, and `canonical_sort`.
-#[test]
-fn merge_converges_to_identical_history() {
-	// Shared base commit, then a concurrent edit on each peer's own clone of that base.
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b.commit_op_for_test(set_document_attribute("compute::b", 2)).expect("B edit");
-
-	// Cross-merge: feed each peer the other's full delta set. The shared base dedups by `Rev`.
-	let deltas_a = session_a.cloned_deltas();
-	let deltas_b = session_b.cloned_deltas();
-	let merge_a = session_a.merge(deltas_b).expect("merge into A failed").expect("A produced a merge");
-	let merge_b = session_b.merge(deltas_a).expect("merge into B failed").expect("B produced a merge");
-
-	assert_eq!(merge_a, merge_b, "same tips must mint the identical parent-set-addressed merge commit");
-
-	let order_a: Vec<crate::Rev> = session_a.history().map(|d| d.id).collect();
-	let order_b: Vec<crate::Rev> = session_b.history().map(|d| d.id).collect();
-	assert_eq!(order_a, order_b, "both peers must converge to byte-identical history order");
-	assert_eq!(session_a.head_rev(), session_b.head_rev(), "both peers land on the same merge head");
-}
-
-/// Resurrection must reach into a merged-in branch: a network added then removed on the other peer's
-/// branch lives only under the merge's secondary parent, so a `SetNetworkExport` targeting it after
-/// the merge can only restore it by traversing all ancestors (not the primary-parent chain).
-#[test]
-fn resurrection_reaches_across_a_merge() {
-	let network_id = NetworkId(7);
-
-	// Shared base, then peer B adds and removes network 7 on its own branch.
-	let mut session_a = Session::with_peer(PeerId(1));
-	session_a.commit_op_for_test(set_document_attribute("compute::base", 0)).expect("base commit");
-	let mut session_b = session_a.clone();
-
-	session_a.commit_op_for_test(set_document_attribute("compute::a", 1)).expect("A edit");
-	session_b
-		.commit_op_for_test(RegistryDelta::AddNetwork {
-			id: network_id,
-			network: Network::default(),
-		})
-		.expect("B AddNetwork");
-	session_b
-		.commit_op_for_test(RegistryDelta::RemoveNetwork {
-			id: network_id,
-			snapshot: Network::default(),
-		})
-		.expect("B RemoveNetwork");
-
-	// A merges B's branch: 7's AddNetwork now lives only under the merge's secondary parent.
-	session_a.merge(session_b.cloned_deltas()).expect("merge failed");
-
-	// A SetNetworkExport on 7 must resurrect it by walking into the merged-in branch. Before the
-	// all-ancestors fix this failed with NetworkNotInHistory (the primary-parent walk missed B's branch).
-	session_a
-		.commit_op_for_test(RegistryDelta::SetNetworkExport {
-			id: network_id,
-			index: 0,
-			export: None,
-		})
-		.expect("resurrection must find the AddNetwork on the merged-in branch");
-}
-
 /// Committing the same NodeNetwork twice must produce zero history entries on the second commit.
 /// Without value-only diffing in compute_deltas, the second commit would emit spurious
 /// ChangeNodeInput / ChangeNodeAttribute ops because self.registry has real timestamps while the
@@ -820,6 +753,39 @@ fn all_referenced_resource_hashes_survives_undo() {
 	assert!(session.all_referenced_resource_hashes().contains(&changed), "the undone hash change keeps its bytes for redo");
 }
 
+/// A hot hash a later hot op overwrote is in no registry, but retiring puts it in history.
+#[test]
+fn all_referenced_resource_hashes_keeps_an_overwritten_hot_hash() {
+	use crate::ResourceId;
+
+	let mut session = Session::with_peer(PeerId(1));
+	let (first, second) = (ResourceHash::from(&b"first"[..]), ResourceHash::from(&b"second"[..]));
+	let id = ResourceId::new();
+	session.stage_embedded_resource(id, first).expect("stage resource");
+	let hot_ops = session.stage_ops([crate::RegistryDelta::SetResourceHash { id, hash: Some(second) }]).expect("stage hash change");
+	assert!(session.all_referenced_resource_hashes().contains(&first), "the overwritten hash is still named while hot");
+
+	session.retire(hot_ops.last().expect("staged").timestamp).expect("retire");
+	assert!(session.all_referenced_resource_hashes().contains(&first), "and from history once retired");
+}
+
+/// A take-back can lose to a host retiring the same ops, so what a taken-back step named stays a root once nothing
+/// else names it.
+#[test]
+fn resource_gc_roots_keep_what_a_taken_back_step_named() {
+	use crate::ResourceId;
+
+	let mut session = Session::with_peer(PeerId(1));
+	let hash = ResourceHash::from(&b"bytes"[..]);
+	session.stage_embedded_resource(ResourceId::new(), hash).expect("stage resource");
+	session.end_interaction().expect("end interaction");
+	session.retract_interaction().expect("retract").expect("a hot step to take back");
+	assert!(!session.all_referenced_resource_hashes().contains(&hash), "nothing names the hash once taken back");
+
+	session.stage_embedded_resource(ResourceId::new(), ResourceHash::from(&b"other"[..])).expect("a fresh edit");
+	assert!(session.resource_gc_roots().contains(&hash));
+}
+
 /// A commit that produces no deltas must not touch the redo stack. Redo is only abandoned by a real
 /// new edit; a no-op commit (here `embed_resource_sources` over an empty id set) leaving it cleared
 /// would silently disable redo after an undo.
@@ -951,7 +917,7 @@ fn add_node_rev_is_independent_of_attribute_insertion_order() {
 }
 
 /// Commit a retired delta and mirror it onto the working registry, which `commit_op_for_test` leaves alone.
-fn commit_retired(session: &mut Session, op: RegistryDelta) {
+pub(super) fn commit_retired(session: &mut Session, op: RegistryDelta) {
 	let before = session.history().count();
 	session.commit_op_for_test(op).expect("commit failed");
 
@@ -965,7 +931,7 @@ fn add_network(id: u64) -> RegistryDelta {
 	RegistryDelta::AddNetwork { id: NetworkId(id), network }
 }
 
-fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
+pub(super) fn change_node_attribute(id: NodeId, key: &str, value: serde_json::Value) -> RegistryDelta {
 	let delta = crate::AttributeDelta {
 		key: key.into(),
 		value: Some(Value::from(value)),
@@ -1488,4 +1454,24 @@ fn an_input_naming_a_node_not_yet_added_renders_dangling() {
 	assert!(document.working_registry.removed_nodes.get(&unseen).is_some_and(|mark| mark.placeholder));
 
 	document.working_registry.to_runtime_with_metadata(&crate::Declarations::new()).expect("converts with a dangling input");
+}
+
+/// Remapped tips can swap order, and a merge's `parent` has to stay the lowest.
+#[test]
+fn rehash_keeps_a_merges_parents_sorted() {
+	for seed in 0..32 {
+		let tip = |value: i32| Delta::new(None, PeerId(1), TimeStamp::default(), RegistryDelta::Other(Value::Int(value.into())), Default::default());
+		let (first, second) = (tip(seed), tip(seed + 1000));
+		let merge = Delta::merge([first.id, second.id], PeerId(1), TimeStamp::default());
+
+		let mut deltas = [first, second, merge];
+		deltas[0].kind = RegistryDelta::Other(Value::Int((seed + 2000).into()));
+		deltas[1].kind = RegistryDelta::Other(Value::Int((seed + 3000).into()));
+		crate::rehash_deltas(&mut deltas);
+
+		let [_, _, merge] = &deltas;
+		let RegistryDelta::Merge { extra_parents } = &merge.kind else { panic!("the merge stays a merge") };
+		assert!(merge.parent.is_some_and(|parent| parent < extra_parents[0]));
+		assert!(merge.has_valid_id());
+	}
 }

@@ -19,7 +19,7 @@ use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
-use rendering::RenderMetadata;
+use rendering::{CanvasImage, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
 use std::str::FromStr;
@@ -578,6 +578,7 @@ tagged_value! {
 	AdjustmentChannel(raster_nodes::adjustments::AdjustmentChannel),
 	HueSaturationRange(raster_nodes::adjustments::HueSaturationRange),
 	GridType(vector::misc::GridType),
+	GridTopology(vector::misc::GridTopology),
 	ArcType(vector::misc::ArcType),
 	RowsOrColumns(vector::misc::RowsOrColumns),
 	#[serde(alias = "MergeByDistanceAlgorithm")]
@@ -627,10 +628,15 @@ impl TaggedValue {
 	}
 
 	pub fn from_primitive_string(string: &str, ty: &Type) -> Option<Self> {
+		fn to_number<T: FromStr>(input: &str) -> Option<T> {
+			// Stringified tokens separate a negative number's minus sign from its digits (e.g. "- 180.")
+			input.split_whitespace().collect::<String>().parse().ok()
+		}
+
 		fn to_dvec2(input: &str) -> Option<DVec2> {
 			let mut split = input.split(',');
-			let x = split.next()?.trim().parse().ok()?;
-			let y = split.next()?.trim().parse().ok()?;
+			let x = to_number(split.next()?)?;
+			let y = to_number(split.next()?)?;
 			Some(DVec2::new(x, y))
 		}
 
@@ -714,8 +720,8 @@ impl TaggedValue {
 				let ty = match () {
 					() if ty == TypeId::of::<()>() => TaggedValue::None,
 					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::Number).ok()?,
-					() if ty == TypeId::of::<i64>() => FromStr::from_str(string).map(TaggedValue::Integer).ok()?,
+					() if ty == TypeId::of::<f64>() => to_number(string).map(TaggedValue::Number)?,
+					() if ty == TypeId::of::<i64>() => to_number(string).map(TaggedValue::Integer)?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::Color)?,
@@ -932,20 +938,14 @@ pub enum RenderOutputType {
 	#[serde(skip)]
 	Texture(graphene_application_io::Texture),
 	#[serde(skip)]
-	Buffer {
-		data: Vec<u8>,
-		width: u32,
-		height: u32,
-	},
+	Buffer { data: Vec<u8>, width: u32, height: u32 },
 	Svg {
 		svg: String,
-		image_data: Vec<(u64, Image<Color>)>,
+		/// The images the SVG draws to canvases, by the canvas ID their placeholders name.
+		image_data: Vec<(u64, CanvasImage)>,
 	},
 	#[cfg(target_family = "wasm")]
-	CanvasFrame {
-		canvas_id: u64,
-		resolution: DVec2,
-	},
+	CanvasFrame { canvas_id: u64, resolution: DVec2 },
 }
 
 impl CacheHash for RenderOutputType {
@@ -1075,6 +1075,20 @@ mod paint_default_parsing {
 			let value = deserialize_tagged_value_with_legacy_migration(&mut deserializer).expect("The legacy payload should deserialize");
 			assert!(value.is_no_paint(), "The legacy payload `{payload}` should migrate to the no-paint choice");
 		}
+	}
+}
+
+#[cfg(test)]
+mod number_default_parsing {
+	use super::*;
+	use core_types::item;
+
+	/// A negative default reaches the parser as stringified tokens, with a space between the minus sign and the digits.
+	#[test]
+	fn negative_number_defaults_parse() {
+		assert_eq!(TaggedValue::from_primitive_string("- 180.", &item!(f64)), Some(TaggedValue::Number(-180.)));
+		assert_eq!(TaggedValue::from_primitive_string("- 3", &item!(i64)), Some(TaggedValue::Integer(-3)));
+		assert_eq!(TaggedValue::from_primitive_string("- 1., 2.", &item!(DVec2)), Some(TaggedValue::DVec2(DVec2::new(-1., 2.))));
 	}
 }
 

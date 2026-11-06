@@ -81,9 +81,20 @@ pub fn tangent_on_bezpath(bezpath: &BezPath, t_value: TValue, segments_length: O
 	dvec2_to_point(pathseg_tangent(segment, t))
 }
 
-/// Computes sample locations along a bezpath, returning parametric `(segment_index, t)` pairs and whether the path was closed.
+/// The failure of [`compute_sample_locations`]: the path would need more samples than the most it places on one subpath.
+#[derive(Debug, thiserror::Error)]
+pub enum SampleCountError {
+	#[error("The separation is too small for this path: it would need more than {limit} points")]
+	SeparationTooSmall { limit: usize },
+	#[error("The quantity is more than the maximum of {limit} points")]
+	QuantityTooLarge { limit: usize },
+}
+
+/// Computes sample locations along a bezpath, returning parametric `(segment_index, t)` pairs and whether the path was closed,
+/// or `None` when there's nothing to sample.
 /// The `bezpath` is used for euclidean-to-parametric conversion, and `segments_length` provides pre-calculated world-space segment lengths.
 /// Callers can evaluate these locations on any bezpath with the same topology (e.g., an untransformed version).
+#[allow(clippy::type_complexity)]
 pub fn compute_sample_locations(
 	bezpath: &BezPath,
 	point_spacing_type: PointSpacingType,
@@ -92,7 +103,7 @@ pub fn compute_sample_locations(
 	stop_offset: f64,
 	adaptive_spacing: bool,
 	segments_length: &[f64],
-) -> Option<(Vec<(usize, f64)>, bool)> {
+) -> Result<Option<(Vec<(usize, f64)>, bool)>, SampleCountError> {
 	let was_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
 
 	// Calculate the total length of the collected segments.
@@ -103,36 +114,44 @@ pub fn compute_sample_locations(
 
 	// Sanity check that the usable length is positive.
 	if used_length <= 0. {
-		return None;
+		return Ok(None);
 	}
 
-	const SAFETY_MAX_COUNT: f64 = 10_000. - 1.;
-
+	const MAX_POINTS: usize = 10_000;
 	// Determine the number of points to generate along the path.
 	let sample_count = match point_spacing_type {
 		PointSpacingType::Separation => {
 			let spacing = amount.min(used_length - f64::EPSILON);
 
-			if adaptive_spacing {
+			let count = if adaptive_spacing {
 				// Calculate point count to evenly distribute points while covering the entire path.
 				// With adaptive spacing, we widen or narrow the points as necessary to ensure the last point is always at the end of the path.
-				(used_length / spacing).round().min(SAFETY_MAX_COUNT)
+				(used_length / spacing).round()
 			} else {
 				// Calculate point count based on exact spacing, which may not cover the entire path.
 				// Without adaptive spacing, we just evenly space the points at the exact specified spacing, usually falling short before the end of the path.
-				let count = (used_length / spacing + f64::EPSILON).floor().min(SAFETY_MAX_COUNT);
-				if count != SAFETY_MAX_COUNT {
-					used_length -= used_length % spacing;
-				}
-				count
+				(used_length / spacing + f64::EPSILON).floor()
+			};
+			if count >= MAX_POINTS as f64 {
+				return Err(SampleCountError::SeparationTooSmall { limit: MAX_POINTS });
 			}
+			if !adaptive_spacing {
+				used_length -= used_length % spacing;
+			}
+			count
 		}
-		PointSpacingType::Quantity => (amount - 1.).floor().clamp(1., SAFETY_MAX_COUNT),
+		PointSpacingType::Quantity => {
+			let count = (amount - 1.).floor();
+			if count >= MAX_POINTS as f64 {
+				return Err(SampleCountError::QuantityTooLarge { limit: MAX_POINTS });
+			}
+			count.max(1.)
+		}
 	};
 
 	// Skip if there are no points to generate.
 	if sample_count < 1. {
-		return None;
+		return Ok(None);
 	}
 
 	// Decide how many loop-iterations: if closed, skip the last duplicate point
@@ -169,7 +188,7 @@ pub fn compute_sample_locations(
 		locations.push((next_segment_index, t));
 	}
 
-	Some((locations, was_closed))
+	Ok(Some((locations, was_closed)))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -277,7 +296,8 @@ pub(crate) fn pathseg_length_centroid_and_length(segment: PathSeg, accuracy: Opt
 /// Finds the parametric `t` value on the given path segment corresponding to a fractional arc-length `distance` (0–1).
 /// Delegates to kurbo's `inv_arclen` which uses the ITP method with incremental arc-length computation.
 pub fn eval_pathseg_euclidean(segment: PathSeg, distance: f64, accuracy: f64) -> f64 {
-	segment.inv_arclen(distance.clamp(0., 1.) * segment.arclen(accuracy), accuracy)
+	let length = segment.arclen(accuracy);
+	segment.inv_arclen(distance.clamp(0., 1.) * length, accuracy.max(length * 1e-14))
 }
 
 /// Converts from a bezpath (composed of multiple segments) to a point along a certain segment represented.
@@ -384,6 +404,10 @@ pub fn poisson_disk_points(bezpath_index: usize, bezpaths: &[(BezPath, Rect)], s
 	let offset = DVec2::new(this_bbox.x0, this_bbox.y0);
 	let width = this_bbox.width();
 	let height = this_bbox.height();
+
+	if width.is_infinite() || height.is_infinite() {
+		return Vec::new();
+	}
 
 	poisson_disk_sample(offset, width, height, separation_disk_diameter, point_in_shape_checker, line_intersect_shape_checker, rng)
 }
@@ -645,7 +669,7 @@ pub fn bezpath_area_centroid_and_area(bezpath: &BezPath, error: Option<f64>, min
 /// The length centroid is the center of mass for the arc length of the solid shape's perimeter.
 /// An infinitely thin wire forming the path's shape would balance at this point.
 ///
-/// It will return `None` if no segment is present.
+/// It will return `None` if no segment has any length.
 /// - `accuracy` is used to approximate the curve.
 /// - `always_closed` is to consider the path as closed always.
 pub fn bezpath_length_centroid_and_length(bezpath: &BezPath, accuracy: Option<f64>, always_closed: bool) -> Option<(DVec2, f64)> {
@@ -654,6 +678,7 @@ pub fn bezpath_length_centroid_and_length(bezpath: &BezPath, accuracy: Option<f6
 	segments
 		.into_iter()
 		.map(|bezier| pathseg_length_centroid_and_length(bezier, accuracy))
+		.filter(|&(_, length)| length != 0.)
 		.map(|(centroid, length)| (centroid * length, length))
 		.reduce(|(centroid_part1, length1), (centroid_part2, length2)| (centroid_part1 + centroid_part2, length1 + length2))
 		.map(|(centroid_part, length)| (centroid_part / length, length))
@@ -697,5 +722,26 @@ mod tests {
 
 		assert_eq!(area, 200. * 100.);
 		assert_eq!(center, glam::DVec2::new(200., 150.));
+	}
+
+	#[test]
+	fn centroid_of_a_huge_curve() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.curve_to((0.55e60, 0.), (1e60, 0.45e60), (1e60, 1e60));
+		bezpath.close_path();
+
+		assert!(super::bezpath_area_centroid_and_area(&bezpath, Some(1e-3), Some(1e-3)).is_some());
+	}
+
+	#[test]
+	fn length_centroid_skips_zero_length_segments() {
+		let mut bezpath = BezPath::new();
+		bezpath.move_to((0., 0.));
+		bezpath.line_to((10., 0.));
+		bezpath.curve_to((10., 0.), (10., 0.), (10., 0.));
+
+		let (centroid, length) = super::bezpath_length_centroid_and_length(&bezpath, None, false).unwrap();
+		assert_eq!((centroid, length), (glam::DVec2::new(5., 0.), 10.));
 	}
 }

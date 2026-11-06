@@ -42,19 +42,21 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const colorPickerStore = getContext<ColorPickerStore>("colorPicker");
 
-	export let widgets: WidgetInstance[];
-	export let direction: "row" | "column";
-	export let layoutTarget: LayoutTarget;
+	type Props = {
+		widgets: WidgetInstance[];
+		direction: "row" | "column";
+		layoutTarget: LayoutTarget;
+		class?: string;
+		classes?: Record<string, boolean>;
+		narrow?: boolean;
+	};
+	let { widgets, direction, layoutTarget, class: className = "", classes = {}, narrow = false }: Props = $props();
 
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
-
-	export let narrow = false;
-
-	$: extraClasses = Object.entries(classes)
-		.flatMap(([className, stateName]) => (stateName ? [className] : []))
-		.join(" ");
+	const extraClasses = $derived(
+		Object.entries(classes)
+			.flatMap(([className, stateName]) => (stateName ? [className] : []))
+			.join(" "),
+	);
 
 	function widgetValueCommit(widgetIndex: number, value: unknown) {
 		editor.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);
@@ -362,11 +364,11 @@
 	{#each widgets as widget, widgetIndex}
 		{@const unwrapped = unwrapWidget(widget)}
 		{#if unwrapped}
-			{@const { component, props, slot } = resolveWidget(unwrapped, widgetIndex)}
+			{@const { component: Component, props, slot } = resolveWidget(unwrapped, widgetIndex)}
 			{#if props !== undefined && slot !== undefined}
-				<svelte:component this={component} {...props}>{slot}</svelte:component>
+				<Component {...props}>{slot}</Component>
 			{:else if props !== undefined}
-				<svelte:component this={component} {...props} />
+				<Component {...props} />
 			{/if}
 		{/if}
 	{/each}

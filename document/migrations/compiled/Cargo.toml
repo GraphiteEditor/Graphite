@@ -1,0 +1,19 @@
+[package]
+name = "migration-compiled"
+description = "Node migrations of Graphite documents that ask the compiler, and the capability giving them access to it"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+publish.workspace = true
+
+[dependencies]
+document-graph-storage = { workspace = true, features = ["conversion"] }
+graph-craft = { workspace = true }
+graphene-std = { workspace = true }
+migration-core = { workspace = true, features = ["typed"] }
+preprocessor = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+migration-runner = { workspace = true, features = ["testing"] }

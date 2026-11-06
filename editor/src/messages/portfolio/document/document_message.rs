@@ -227,6 +227,9 @@ pub enum DocumentMessage {
 		visible: bool,
 		overlays_type: Option<OverlaysType>,
 	},
+	SetCurvatureCombScale {
+		scale: f64,
+	},
 	SetRangeSelectionLayer {
 		new_layer: Option<LayerNodeIdentifier>,
 	},
@@ -238,6 +241,9 @@ pub enum DocumentMessage {
 	},
 	SetSnappingAngleStep {
 		degrees: f64,
+	},
+	MakeNodeUnique {
+		node_id: NodeId,
 	},
 	SetToNodeOrLayer {
 		node_id: NodeId,
@@ -291,6 +297,7 @@ pub enum DocumentMessage {
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
+		group_layers: HashSet<NodeId>,
 	},
 	UpdateOutlines {
 		outlines: HashMap<NodeId, Vec<Arc<ClickTarget>>>,

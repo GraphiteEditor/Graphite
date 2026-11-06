@@ -1,21 +1,15 @@
 use super::misc::dvec2_to_point;
-use super::path::{CurveType, Path, append_segment, curve_types_of};
+use super::path::{CurveType, Path, append_segment, curve_types_of, path_flows};
 use core_types::list::List;
 use glam::DVec2;
-use kurbo::BezPath;
-
-/// One path's part in a contour, crossed against its stored direction when reversed.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ContourPart {
-	pub path: u32,
-	pub reversed: bool,
-}
+use kurbo::{BezPath, PathSeg};
 
 /// Paths stitched end to end into one outline, as [`contours`] describes.
 /// A closed contour arrives back at the point it left from.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Contour {
-	pub parts: Vec<ContourPart>,
+	/// The stored paths it runs along in order, each in its stored direction.
+	pub parts: Vec<u32>,
 	pub closed: bool,
 	pub entry: u32,
 	pub exit: u32,
@@ -85,9 +79,9 @@ impl Welds {
 
 /// Stitches the paths into contours in O(points + references), each seeded by the earliest stored path not yet taken
 /// and running in that path's direction until it arrives back where it set out. A path runs on into the next stored
-/// path when that one sets out from where it ends, and otherwise into the one path welded to its end where exactly two
-/// path ends meet and nothing passes through. Every other meeting is a junction, where paths end. A closed path is
-/// always a contour of its own, and a path that cannot be drawn whole takes no part.
+/// path when that one carries on its path flow, and otherwise into the one path setting out where it ends, if exactly
+/// two path ends meet there and nothing passes through. Every other meeting is a junction, where paths end. A closed
+/// path is always a contour of its own, and a path that cannot be drawn whole takes no part.
 pub fn contours(point_count: usize, paths: &List<Path>) -> Vec<Contour> {
 	contours_with(point_count, paths, &curve_types(paths))
 }
@@ -104,26 +98,20 @@ fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveTyp
 		_ => None,
 	};
 
-	// The points a part is crossed from and to, in the direction the contour runs along it
-	let crossing_ends = |part: ContourPart| ends_of(part.path).map(|(start, end)| if part.reversed { (end, start) } else { (start, end) });
+	// The stored neighbor carrying on this path's flow: onward, the next setting out from the point, and backward, the previous arriving at it
+	let in_flow = |path: u32, point: u32, onward: bool| {
+		let neighbor = if onward { path.checked_add(1)? } else { path.checked_sub(1)? };
+		let (from, to) = ends_of(neighbor)?;
+		let changes_curve_type = curve_types.get(neighbor as usize) != curve_types.get(path as usize);
 
-	// The stored neighbor that carries on from this part at the point: onward, the one setting out from it, and backward, the one arriving at it
-	let consecutive = |part: ContourPart, point: u32, onward: bool| {
-		let step = if onward != part.reversed { 1 } else { -1 };
-		let candidate = ContourPart {
-			path: u32::try_from(part.path as i64 + step).ok()?,
-			reversed: part.reversed,
-		};
-		let (from, to) = crossing_ends(candidate)?;
-
-		(from != to && if onward { from } else { to } == point).then_some(candidate)
+		(from != to && changes_curve_type && if onward { from } else { to } == point).then_some(neighbor)
 	};
 
-	// The one path welded to this part's end at the point, crossed away from it
-	let welded = |part: ContourPart, point: u32, onward: bool| {
-		let (path, arriving) = welds.other_end(point, (part.path, onward != part.reversed))?;
+	// The one path welded to this one at the point, running the same way
+	let welded = |path: u32, point: u32, onward: bool| {
+		let (other, arriving) = welds.other_end(point, (path, onward))?;
 
-		Some(ContourPart { path, reversed: arriving == onward })
+		(arriving != onward).then_some(other)
 	};
 
 	let mut consumed = vec![false; paths.len()];
@@ -136,7 +124,7 @@ fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveTyp
 		let Some((start, end)) = ends_of(seed) else { continue };
 		consumed[seed as usize] = true;
 
-		let mut parts = vec![ContourPart { path: seed, reversed: false }];
+		let mut parts = vec![seed];
 		if start == end {
 			found.push(Contour {
 				parts,
@@ -155,13 +143,13 @@ fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveTyp
 				closed = true;
 				break;
 			}
-			let unconsumed = |part: &ContourPart| !consumed[part.path as usize];
-			let Some(next) = consecutive(last, exit, true).filter(unconsumed).or_else(|| welded(last, exit, true).filter(unconsumed)) else {
+			let unconsumed = |path: &u32| !consumed[*path as usize];
+			let Some(next) = in_flow(last, exit, true).filter(unconsumed).or_else(|| welded(last, exit, true).filter(unconsumed)) else {
 				break;
 			};
-			let Some((_, to)) = crossing_ends(next) else { break };
+			let Some((_, to)) = ends_of(next) else { break };
 
-			consumed[next.path as usize] = true;
+			consumed[next as usize] = true;
 			parts.push(next);
 			(exit, last) = (to, next);
 		}
@@ -170,13 +158,13 @@ fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveTyp
 		let (mut entry, mut first) = (start, parts[0]);
 		let mut before = Vec::new();
 		while !closed {
-			let unconsumed = |part: &ContourPart| !consumed[part.path as usize];
-			let Some(previous) = consecutive(first, entry, false).filter(unconsumed).or_else(|| welded(first, entry, false).filter(unconsumed)) else {
+			let unconsumed = |path: &u32| !consumed[*path as usize];
+			let Some(previous) = in_flow(first, entry, false).filter(unconsumed).or_else(|| welded(first, entry, false).filter(unconsumed)) else {
 				break;
 			};
-			let Some((from, _)) = crossing_ends(previous) else { break };
+			let Some((from, _)) = ends_of(previous) else { break };
 
-			consumed[previous.path as usize] = true;
+			consumed[previous as usize] = true;
 			before.push(previous);
 			(entry, first) = (from, previous);
 			closed = entry == exit;
@@ -195,22 +183,24 @@ fn contours_with(point_count: usize, paths: &List<Path>, curve_types: &[CurveTyp
 	found
 }
 
+/// The segments a contour runs along in order, each beside the stored path it comes from.
+fn contour_segments<'a>(pool: &'a List<DVec2>, paths: &'a List<Path>, curve_types: &'a [CurveType], contour: &'a Contour) -> impl Iterator<Item = (u32, PathSeg)> + 'a {
+	contour.parts.iter().flat_map(move |&part| {
+		let path = paths.element(part as usize);
+		let curve_type = curve_types.get(part as usize).copied().unwrap_or_default();
+		let count = path.map_or(0, |path| path.segment_count(curve_type));
+
+		(0..count).filter_map(move |span| Some((part, path?.segment(pool, curve_type, span)?)))
+	})
+}
+
 /// Emits one contour as a bezpath, or `None` when its entry point is not in the pool.
 fn contour_to_bezpath(pool: &List<DVec2>, paths: &List<Path>, curve_types: &[CurveType], contour: &Contour) -> Option<BezPath> {
 	let mut bezpath = BezPath::new();
 	bezpath.move_to(dvec2_to_point(*pool.element(contour.entry as usize)?));
 
-	for part in &contour.parts {
-		let path = paths.element(part.path as usize)?;
-		let curve_type = *curve_types.get(part.path as usize)?;
-		let count = path.segment_count(curve_type);
-
-		for step in 0..count {
-			let span = if part.reversed { count - 1 - step } else { step };
-			let Some(segment) = path.segment(pool, curve_type, span) else { continue };
-
-			append_segment(&mut bezpath, if part.reversed { segment.reverse() } else { segment });
-		}
+	for (_, segment) in contour_segments(pool, paths, curve_types, contour) {
+		append_segment(&mut bezpath, segment);
 	}
 
 	if contour.closed {
@@ -229,12 +219,70 @@ pub fn contour_bezpaths(pool: &List<DVec2>, paths: &List<Path>) -> Vec<BezPath> 
 		.collect()
 }
 
+/// One contour's segments in the order and direction it runs along them.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OrientedContour {
+	/// The pool point the contour sets out from.
+	pub entry: u32,
+	pub segments: Vec<PathSeg>,
+	/// Where in `segments` the contour crosses from one path flow into another. A closed contour lists 0 when it arrives back at its start from another flow.
+	pub flow_joins: Vec<usize>,
+	pub closed: bool,
+}
+
+/// Every contour as the segments it runs along, in the order [`contours`] finds them, which is also the order Separate Paths splits them into.
+pub fn oriented_contours(pool: &List<DVec2>, paths: &List<Path>) -> Vec<OrientedContour> {
+	let curve_types = curve_types(paths);
+
+	// The path flow each stored path belongs to
+	let mut flow_of_path = vec![0; paths.len()];
+	for (flow, range) in path_flows(paths).into_iter().enumerate() {
+		if let Some(members) = flow_of_path.get_mut(range) {
+			members.fill(flow);
+		}
+	}
+	let flow_of = |path: u32| flow_of_path.get(path as usize).copied().unwrap_or_default();
+
+	contours_with(pool.len(), paths, &curve_types)
+		.iter()
+		.map(|contour| {
+			let mut segments = Vec::new();
+			let mut flow_joins = Vec::new();
+			let mut previous_flow = None;
+			for (path, segment) in contour_segments(pool, paths, &curve_types, contour) {
+				let flow = flow_of(path);
+				if previous_flow.is_some_and(|previous| previous != flow) {
+					flow_joins.push(segments.len());
+				}
+				previous_flow = Some(flow);
+
+				segments.push(segment);
+			}
+
+			if contour.closed
+				&& let (Some(&first), Some(&last)) = (contour.parts.first(), contour.parts.last())
+				&& flow_of(first) != flow_of(last)
+			{
+				flow_joins.insert(0, 0);
+			}
+
+			OrientedContour {
+				entry: contour.entry,
+				segments,
+				flow_joins,
+				closed: contour.closed,
+			}
+		})
+		.collect()
+}
+
 #[cfg(test)]
 mod tests {
-	use super::super::path::pool_and_paths_from_bezpath;
+	use super::super::misc::point_to_dvec2;
+	use super::super::path::{pool_and_paths_from_bezpath, push_path};
 	use super::*;
 	use core_types::list::Item;
-	use kurbo::PathEl;
+	use kurbo::{ParamCurve, PathEl};
 
 	fn bezpath_of(build: impl FnOnce(&mut BezPath)) -> BezPath {
 		let mut bezpath = BezPath::new();
@@ -251,19 +299,25 @@ mod tests {
 		(pool, paths)
 	}
 
+	/// Paths in the given curve types, one path per list of references.
+	fn woven(paths: &[(CurveType, &[u32])]) -> List<Path> {
+		let mut woven = List::new();
+		for &(curve_type, references) in paths {
+			push_path(&mut woven, curve_type, references.iter().copied(), []);
+		}
+
+		woven
+	}
+
 	/// The anchors each contour visits in order, with whether it closed.
 	fn stitched(point_count: usize, paths: &List<Path>) -> Vec<(Vec<u32>, bool)> {
 		contours(point_count, paths)
 			.into_iter()
 			.map(|contour| {
 				let mut anchors = vec![contour.entry];
-				for part in &contour.parts {
-					let path = paths.element(part.path as usize).expect("the part names a path");
-					let mut references: Vec<u32> = path.references().collect();
-					if part.reversed {
-						references.reverse();
-					}
-					anchors.extend(references.into_iter().skip(1));
+				for &part in &contour.parts {
+					let path = paths.element(part as usize).expect("the part names a path");
+					anchors.extend(path.references().skip(1));
 				}
 				if contour.closed {
 					anchors.pop();
@@ -375,29 +429,41 @@ mod tests {
 		assert_eq!(stitched(5, &paths), [(vec![0, 1, 2, 3, 1], false), (vec![4, 1], false)]);
 	}
 
-	// Consecutive paths meeting head to tail are one stroke even through a junction, while the path passing through it stays whole
+	// Paths stored one after another still end at a junction they meet at, since only a path flow carries on through one
 	#[test]
-	fn consecutive_paths_carry_on_through_a_junction() {
-		let (_, paths) = linear(5, &[&[0, 1], &[1, 2, 0], &[3, 1, 4]]);
+	fn stored_neighbors_end_at_a_junction() {
+		let (_, paths) = linear(5, &[&[0, 1], &[1, 2], &[3, 1, 4]]);
 
-		assert_eq!(stitched(5, &paths), [(vec![0, 1, 2], true), (vec![3, 1, 4], false)]);
+		assert_eq!(stitched(5, &paths), [(vec![0, 1], false), (vec![1, 2], false), (vec![3, 1, 4], false)]);
 	}
 
-	// Crossing a stored path backward carries on backward into the path stored before it, here through the junction at point 1
+	// A path flow changing curve type at a junction carries on through it as one contour
 	#[test]
-	fn a_backward_crossing_carries_on_into_the_path_before() {
-		let (_, paths) = linear(8, &[&[5, 2], &[0, 1], &[1, 2], &[7, 1]]);
+	fn a_path_flow_carries_on_through_a_junction() {
+		let paths = woven(&[(CurveType::Linear, &[0, 1]), (CurveType::Quadratic, &[1, 5, 2]), (CurveType::Linear, &[3, 1, 4])]);
 
-		assert_eq!(stitched(8, &paths), [(vec![5, 2, 1, 0], false), (vec![7, 1], false)]);
+		let parts: Vec<Vec<u32>> = contours(6, &paths).into_iter().map(|contour| contour.parts).collect();
+		assert_eq!(parts, [vec![0, 1], vec![2]]);
 	}
 
-	// Two halves both running top to bottom, welded at both ends, render as one outline with the second half crossed backwards
+	// Paths both arriving at an anchor, or both leaving it, stay apart, since joining them would cross one backward
 	#[test]
-	fn heart_halves_stitch_into_one_outline() {
-		let (_, paths) = linear(4, &[&[0, 1, 2], &[0, 3, 2]]);
+	fn paths_running_against_each_other_stay_apart() {
+		let (_, arriving) = linear(3, &[&[0, 1], &[2, 1]]);
+		assert_eq!(stitched(3, &arriving), [(vec![0, 1], false), (vec![2, 1], false)]);
 
-		assert_eq!(stitched(4, &paths), [(vec![0, 1, 2, 3], true)]);
-		assert!(contours(4, &paths)[0].parts[1].reversed);
+		let (_, leaving) = linear(3, &[&[1, 0], &[1, 2]]);
+		assert_eq!(stitched(3, &leaving), [(vec![1, 0], false), (vec![1, 2], false)]);
+	}
+
+	// Two halves running around an outline stitch into it, while two both running top to bottom stay two paths
+	#[test]
+	fn heart_halves_stitch_only_when_running_around_the_outline() {
+		let (_, around) = linear(4, &[&[0, 1, 2], &[2, 3, 0]]);
+		assert_eq!(stitched(4, &around), [(vec![0, 1, 2, 3], true)]);
+
+		let (_, downward) = linear(4, &[&[0, 1, 2], &[0, 3, 2]]);
+		assert_eq!(stitched(4, &downward), [(vec![0, 1, 2], false), (vec![0, 3, 2], false)]);
 	}
 
 	// A walk that stops at a junction still closes when stitching backward from its start arrives at that junction
@@ -408,10 +474,10 @@ mod tests {
 		assert_eq!(stitched(5, &paths), [(vec![2, 0, 1], true), (vec![3, 2, 4], false)]);
 	}
 
-	// A closed path is never stitched onto the path stored before it, even when it sets out from that path's end
+	// A closed path is never stitched onto the path stored before it, even when it carries on that path's flow
 	#[test]
 	fn a_closed_path_is_never_stitched_on() {
-		let (_, paths) = linear(4, &[&[3, 0], &[0, 1, 2, 0]]);
+		let paths = woven(&[(CurveType::Linear, &[3, 0]), (CurveType::Cubic, &[0, 1, 2, 0])]);
 
 		assert_eq!(stitched(4, &paths), [(vec![3, 0], false), (vec![0, 1, 2], true)]);
 	}
@@ -423,5 +489,48 @@ mod tests {
 
 		assert_eq!(stitched(3, &paths), [(vec![1, 2], false)]);
 		assert_eq!(contour_bezpaths(&pool, &paths).len(), 1);
+	}
+
+	// A subpath split across curve types is one path flow, so it runs as one contour with no flow joins
+	#[test]
+	fn one_flow_in_several_curve_types_has_no_joins() {
+		let source = bezpath_of(|bezpath| {
+			bezpath.move_to((0., 0.));
+			bezpath.line_to((10., 0.));
+			bezpath.curve_to((15., 5.), (15., 10.), (10., 15.));
+			bezpath.close_path();
+		});
+		let (pool, paths) = pool_and_paths_from_bezpath(&source);
+
+		let oriented = oriented_contours(&pool, &paths);
+		assert_eq!(oriented.len(), 1);
+		assert_eq!(oriented[0].segments.len(), 3);
+		assert!(oriented[0].closed);
+		assert!(oriented[0].flow_joins.is_empty());
+	}
+
+	// Two halves welded at both ends join at each weld, with the contour running along their segments in order
+	#[test]
+	fn welded_flows_join_where_they_meet() {
+		let (pool, paths) = linear(4, &[&[0, 1, 2], &[2, 3, 0]]);
+
+		let oriented = oriented_contours(&pool, &paths);
+		assert_eq!(oriented.len(), 1);
+		assert_eq!(oriented[0].flow_joins, [0, 2]);
+
+		let starts: Vec<DVec2> = oriented[0].segments.iter().map(|segment| point_to_dvec2(segment.start())).collect();
+		let pool_positions: Vec<DVec2> = [0, 1, 2, 3].iter().map(|&index| *pool.element(index).expect("the point is in the pool")).collect();
+		assert_eq!(starts, pool_positions);
+	}
+
+	// An open contour never joins at its start, only where a welded path carries it on
+	#[test]
+	fn an_open_contour_joins_only_inside() {
+		let (pool, paths) = linear(4, &[&[0, 1, 2], &[3, 0]]);
+
+		let oriented = oriented_contours(&pool, &paths);
+		assert_eq!(oriented.len(), 1);
+		assert!(!oriented[0].closed);
+		assert_eq!(oriented[0].flow_joins, [1]);
 	}
 }

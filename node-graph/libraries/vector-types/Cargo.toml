@@ -38,7 +38,9 @@ log = { workspace = true }
 petgraph = { workspace = true }
 rustc-hash = { workspace = true }
 polycool = { workspace = true }
+robust = { workspace = true }
 tinyvec = { workspace = true }
+thiserror = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

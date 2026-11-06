@@ -118,7 +118,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 				};
 
 				// The reply carries the source it read, so the frontend can drop one that a later keystroke has outdated
-				let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(&source, input.accepts_reducers);
+				let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(&source, input.operator_only);
 				let completions = caret.map(|caret| math_expression_completions(&source, caret, asked));
 				responses.add(FrontendMessage::UpdateMathExpressionAnalysis {
 					widget_id,
@@ -371,9 +371,9 @@ impl LayoutMessageHandler {
 						};
 
 						// The widget is resent as stored, so its tokens and errors must be for its new value rather than its old one
-						let accepts_reducers = math_expression_input.accepts_reducers;
-						let error = math_expression_error(update_value, accepts_reducers);
-						let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(update_value, accepts_reducers);
+						let operator_only = math_expression_input.operator_only;
+						let error = math_expression_error(update_value, operator_only);
+						let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(update_value, operator_only);
 						math_expression_input.tokens = tokens;
 						math_expression_input.tooltips = tooltips;
 						math_expression_input.errors = math_expression_error_ranges(update_value, error.as_ref());

@@ -1,6 +1,6 @@
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use crate::messages::tool::common_functionality::color_selector::{DrawingToolState, apply_line_weight};
+use crate::messages::tool::common_functionality::color_selector::{DrawingToolState, apply_line_weight, has_paintable_selection};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::choice_type::ChoiceTypeStatic;
@@ -45,6 +45,11 @@ pub fn apply_stroke_option(drawing: &mut DrawingToolState, update: StrokeOptions
 		StrokeOptionsUpdate::PaintOrder(order) => apply_paint_order(drawing, order, document, responses),
 		StrokeOptionsUpdate::DashLengths(lengths) => apply_dash_lengths(drawing, lengths, document, responses),
 		StrokeOptionsUpdate::DashOffset(offset) => apply_dash_offset(drawing, offset, document, responses),
+	}
+
+	// With nothing selected, the popover sets the defaults that new shapes get and deselecting returns to
+	if !has_paintable_selection(document) {
+		drawing.store_stroke_defaults();
 	}
 }
 

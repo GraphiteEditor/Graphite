@@ -3,7 +3,6 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
-use graph_craft::application_io::EditorPreferences;
 
 #[derive(ExtractField)]
 pub struct PreferencesDialogMessageContext<'a> {
@@ -331,6 +330,29 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
+			let save_with_history_description = "
+				Include the document's edit history in saved files. Only applies with \"Save as .gdd\" enabled.\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
+			let save_with_history_checkbox_id = CheckboxId::new();
+			let save_with_history = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.save_with_history)
+					.tooltip_label("Save with History")
+					.tooltip_description(save_with_history_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::SaveWithHistory { enabled: checkbox_input.checked }.into())
+					.for_label(save_with_history_checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Save with History")
+					.tooltip_label("Save with History")
+					.tooltip_description(save_with_history_description)
+					.for_checkbox(save_with_history_checkbox_id)
+					.widget_instance(),
+			];
+
 			let validate_description = "
 				Validate every document save, open, and undo by round-tripping it through the .gdd storage format and comparing against the legacy path, logging any mismatch. Useful for debugging the .gdd format during its soak, but the per-edit round-trip has a performance cost.\n\
 				\n\
@@ -354,64 +376,24 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, save_as_gdd, validate_storage_round_trip]);
+			rows.extend_from_slice(&[header, save_as_gdd, save_with_history, validate_storage_round_trip]);
 		}
 
 		// =============
 		// COMPATIBILITY
 		// =============
 		{
-			let wgpu_available = graph_craft::application_io::wgpu_available().unwrap_or(false);
 			let is_desktop = cfg!(not(target_family = "wasm"));
-			if wgpu_available || is_desktop {
+			if is_desktop {
 				let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
 				rows.push(header);
-			}
 
-			if wgpu_available {
-				let render_tile_resolution_description = "
-					Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
-					\n\
-					*Default: 1280 px.*
-					"
-				.trim();
-				let render_tile_resolution_label = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					TextLabel::new("Render Tile Resolution")
-						.tooltip_label("Render Tile Resolution")
-						.tooltip_description(render_tile_resolution_description)
-						.widget_instance(),
-				];
-				let render_tile_resolution = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					NumberInput::new(Some(preferences.max_render_region_size as f64))
-						.tooltip_label("Render Tile Resolution")
-						.tooltip_description(render_tile_resolution_description)
-						.mode_range()
-						.int()
-						.min(256.)
-						.max(4096.)
-						.increment_step(256.)
-						.unit(" px")
-						.on_update(|number_input: &NumberInput| {
-							let size = number_input.value.unwrap_or(EditorPreferences::default().max_render_region_size as f64) as u32;
-							PreferencesMessage::MaxRenderRegionSize { size }.into()
-						})
-						.widget_instance(),
-				];
-
-				rows.extend_from_slice(&[render_tile_resolution_label, render_tile_resolution]);
-			}
-
-			if is_desktop {
 				let ui_acceleration_description = "
 					Use the CPU to draw the Graphite user interface (areas outside of the canvas) instead of the GPU. This does not affect the rendering of artwork in the canvas, which remains hardware accelerated.\n\
 					\n\
 					Disabling UI acceleration may slightly degrade performance, so this should be used as a workaround only if issues are observed with displaying the UI. This setting may become enabled automatically if Graphite launches, detects that it cannot draw the UI normally, and restarts in compatibility mode.\n\
 					\n\
-					*Default: Off.*
+					*Default: On.*
 					"
 				.trim();
 
@@ -422,14 +404,11 @@ impl PreferencesDialogMessageHandler {
 					CheckboxInput::new(preferences.disable_ui_acceleration)
 						.tooltip_label("Disable UI Acceleration")
 						.tooltip_description(ui_acceleration_description)
-						.on_update(|number_input: &CheckboxInput| Message::Batched {
-							messages: Box::new([
-								PreferencesDialogMessage::MayRequireRestart.into(),
-								PreferencesMessage::DisableUIAcceleration {
-									disable_ui_acceleration: number_input.checked,
-								}
-								.into(),
-							]),
+						.on_update(|number_input: &CheckboxInput| {
+							PreferencesMessage::DisableUIAcceleration {
+								disable_ui_acceleration: number_input.checked,
+							}
+							.into()
 						})
 						.for_label(checkbox_id)
 						.widget_instance(),
@@ -448,8 +427,6 @@ impl PreferencesDialogMessageHandler {
 				let vsync_description = "
 					Render frames with vertical synchronization (v-sync) to prevent visual tearing within Graphite and the operating system compositor. This introduces increased input latency which is more noticeable on lower refresh rate displays. Future versions of Graphite will aim to reduce the macOS-specific latency without tearing artifacts.\n\
 					\n\
-					The application will restart for this change to take effect.\n\
-					\n\
 					*Default: Off.*
 					"
 				.trim();
@@ -463,9 +440,7 @@ impl PreferencesDialogMessageHandler {
 					CheckboxInput::new(vsync_checked)
 						.tooltip_label("Enable V-Sync")
 						.tooltip_description(vsync_description)
-						.on_update(|checkbox_input: &CheckboxInput| Message::Batched {
-							messages: Box::new([PreferencesDialogMessage::MayRequireRestart.into(), PreferencesMessage::VSync { vsync: checkbox_input.checked }.into()]),
-						})
+						.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VSync { vsync: checkbox_input.checked }.into())
 						.for_label(checkbox_id)
 						.widget_instance(),
 					TextLabel::new("Enable V-Sync")

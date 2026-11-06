@@ -149,6 +149,6 @@ fn fill_proto_node_metadata(node_template: &mut NodeTemplate, definitions_map: &
 			node_template.locked = definition_template.locked;
 			node_template.pinned = definition_template.pinned;
 		}
-		NodeTemplateImplementation::Extract => {}
+		NodeTemplateImplementation::Definition(_) | NodeTemplateImplementation::Extract => {}
 	}
 }

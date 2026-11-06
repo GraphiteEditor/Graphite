@@ -1,6 +1,6 @@
 use crate::vector::flatten::WorkingVector;
 use crate::vector::misc::UnweldMethod;
-use crate::vector::path::{CurveType, Path, continues_previous_path, curve_types_of, push_paths};
+use crate::vector::path::{CurveType, Path, curve_types_of, path_flows, push_paths};
 use crate::vector::vector_types::largest_point_id;
 use crate::vector::{PointId, SegmentId, Vector};
 use core_types::list::{ATTR_ID, List};
@@ -16,6 +16,8 @@ pub trait WeldExt {
 	fn weld_connected(&mut self, paths: &mut List<Path>, distance: f64);
 	/// Joins any points lying within the distance of each other, measured after the transform.
 	fn weld_all(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64);
+	/// Like [`Self::weld_all`], but only joins points within the same connected piece, so separate pieces that touch stay apart.
+	fn weld_within_pieces(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64);
 	/// Joins the ends of open path flows lying within the distance of each other, measured after the transform, and leaves every other anchor where it is.
 	fn weld_flow_ends(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64);
 	/// Gives every segment, or every path flow, its own copies of the points it shares, by the method chosen.
@@ -31,7 +33,7 @@ impl WeldExt for Vector {
 
 		// TODO: We lose information on the winding order by using an undirected graph. Switch to a directed graph and fix the algorithm to handle that.
 		// Graph containing only short edges, referencing the data graph
-		let mut short_edges = UnGraphMap::new();
+		let mut short_edges = UnGraphMap::<_, _, rustc_hash::FxBuildHasher>::new();
 
 		for segment_id in working.segment_ids.iter().copied() {
 			let length = indices.segment_chord_length(segment_id);
@@ -57,56 +59,58 @@ impl WeldExt for Vector {
 			})
 			.collect::<Vec<_>>();
 
-		// Collect points and segments to delete at the end to avoid invalidating indices
+		// Each collapse set keeps its first point, which every other point in the set merges into
+		let mut collapse_group = FxHashMap::default();
+		let mut kept_points = Vec::with_capacity(collapse.len());
 		let mut points_to_delete = FxHashSet::default();
-		let mut segments_to_delete = FxHashSet::default();
-		for (mut collapse_set, average_pos) in collapse.into_iter().zip(average_position) {
-			// Remove any segments where both endpoints are in the collapse set
-			for segment_index in 0..working.segment_ids.len() {
-				let start = working.point_ids[working.segment_start[segment_index]];
-				let end = working.point_ids[working.segment_end[segment_index]];
-				if collapse_set.contains(&start) && collapse_set.contains(&end) {
-					segments_to_delete.insert(working.segment_ids[segment_index]);
-				}
-			}
-
-			// Delete all points but the first, set its position to the average, and update segments
+		for (group, collapse_set) in collapse.iter().enumerate() {
 			let first_id = collapse_set.iter().copied().next().unwrap();
-			collapse_set.remove(&first_id);
-			let first_offset = indices.point_to_offset[&first_id];
+			kept_points.push((first_id, indices.point_to_offset[&first_id]));
 
-			// Look for segments with endpoints in `collapse_set` and replace them with the point we are collapsing to
-			for segment_index in 0..working.segment_ids.len() {
-				let start_id = working.point_ids[working.segment_start[segment_index]];
-				let end_id = working.point_ids[working.segment_end[segment_index]];
-
-				// Update Bezier handles for moved points
-				if start_id == first_id {
-					let point_position = working.point_positions[working.segment_start[segment_index]];
-					working.segment_handles[segment_index].move_start(average_pos - point_position);
-				}
-				if end_id == first_id {
-					let point_position = working.point_positions[working.segment_end[segment_index]];
-					working.segment_handles[segment_index].move_end(average_pos - point_position);
-				}
-
-				// Replace removed points with the collapsed point
-				if collapse_set.contains(&start_id) {
-					let point_position = working.point_positions[working.segment_start[segment_index]];
-					working.segment_start[segment_index] = first_offset;
-					working.segment_handles[segment_index].move_start(average_pos - point_position);
-				}
-				if collapse_set.contains(&end_id) {
-					let point_position = working.point_positions[working.segment_end[segment_index]];
-					working.segment_end[segment_index] = first_offset;
-					working.segment_handles[segment_index].move_end(average_pos - point_position);
+			for &id in collapse_set {
+				collapse_group.insert(id, group);
+				if id != first_id {
+					points_to_delete.insert(id);
 				}
 			}
+		}
 
-			// Update the position of the collapsed point
+		// Collect segments to delete at the end to avoid invalidating indices
+		let mut segments_to_delete = FxHashSet::default();
+		for segment_index in 0..working.segment_ids.len() {
+			let start_id = working.point_ids[working.segment_start[segment_index]];
+			let end_id = working.point_ids[working.segment_end[segment_index]];
+			let (start_group, end_group) = (collapse_group.get(&start_id).copied(), collapse_group.get(&end_id).copied());
+
+			// Remove any segments where both endpoints are in the same collapse set
+			if start_group.is_some() && start_group == end_group {
+				segments_to_delete.insert(working.segment_ids[segment_index]);
+			}
+
+			// Move the segment's ends in a collapse set, along with their handles, onto the point the set collapses to
+			if let Some(group) = start_group {
+				let point_position = working.point_positions[working.segment_start[segment_index]];
+				working.segment_handles[segment_index].move_start(average_position[group] - point_position);
+
+				let (first_id, first_offset) = kept_points[group];
+				if start_id != first_id {
+					working.segment_start[segment_index] = first_offset;
+				}
+			}
+			if let Some(group) = end_group {
+				let point_position = working.point_positions[working.segment_end[segment_index]];
+				working.segment_handles[segment_index].move_end(average_position[group] - point_position);
+
+				let (first_id, first_offset) = kept_points[group];
+				if end_id != first_id {
+					working.segment_end[segment_index] = first_offset;
+				}
+			}
+		}
+
+		// Update the positions of the collapsed points
+		for (&(_, first_offset), average_pos) in kept_points.iter().zip(average_position) {
 			working.point_positions[first_offset] = average_pos;
-
-			points_to_delete.extend(collapse_set)
 		}
 
 		// Drop the collapsed segments, then the merged-away points, remapping segment endpoints
@@ -140,118 +144,11 @@ impl WeldExt for Vector {
 	}
 
 	fn weld_all(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64) {
-		if !transform.matrix2.determinant().is_normal() {
-			return;
-		}
+		weld_nearby_points(self, paths, transform, distance, false);
+	}
 
-		let mut working = WorkingVector::flatten(self, paths);
-		let point_count = working.point_positions.len();
-
-		// Find min x and y for grid cell normalization
-		let mut min_x = f64::MAX;
-		let mut min_y = f64::MAX;
-
-		// Calculate mins without collecting all positions
-		for &pos in &working.point_positions {
-			let transformed_pos = transform.transform_point2(pos);
-			min_x = min_x.min(transformed_pos.x);
-			min_y = min_y.min(transformed_pos.y);
-		}
-
-		// Create a spatial grid with cell size of 'distance'
-		use std::collections::HashMap;
-		let mut grid: HashMap<(i32, i32), Vec<usize>> = HashMap::new();
-
-		// Add points to grid cells without collecting all positions first
-		for i in 0..point_count {
-			let pos = transform.transform_point2(working.point_positions[i]);
-			let grid_x = ((pos.x - min_x) / distance).floor() as i32;
-			let grid_y = ((pos.y - min_y) / distance).floor() as i32;
-
-			grid.entry((grid_x, grid_y)).or_default().push(i);
-		}
-
-		// Create point index mapping for merged points
-		let mut point_index_map = vec![None; point_count];
-		let mut merged_positions = Vec::new();
-		let mut merged_indices = Vec::new();
-
-		// Process each point
-		for i in 0..point_count {
-			// Skip points that have already been processed
-			if point_index_map[i].is_some() {
-				continue;
-			}
-
-			let pos_i = transform.transform_point2(working.point_positions[i]);
-			let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
-			let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
-
-			let mut group = vec![i];
-
-			// Check only neighboring cells (3x3 grid around current cell)
-			for dx in -1..=1 {
-				for dy in -1..=1 {
-					let neighbor_cell = (grid_x + dx, grid_y + dy);
-
-					if let Some(indices) = grid.get(&neighbor_cell) {
-						for &j in indices {
-							if j > i && point_index_map[j].is_none() {
-								let pos_j = transform.transform_point2(working.point_positions[j]);
-								if pos_i.distance(pos_j) <= distance {
-									group.push(j);
-								}
-							}
-						}
-					}
-				}
-			}
-
-			// Create merged point - calculate positions as needed
-			let merged_position = group
-				.iter()
-				.map(|&idx| transform.transform_point2(working.point_positions[idx]))
-				.fold(DVec2::ZERO, |sum, pos| sum + pos)
-				/ group.len() as f64;
-
-			let merged_position = transform.inverse().transform_point2(merged_position);
-			let merged_index = merged_positions.len();
-
-			merged_positions.push(merged_position);
-			merged_indices.push(working.point_ids[group[0]]);
-
-			// Update mapping for all points in the group
-			for &idx in &group {
-				point_index_map[idx] = Some(merged_index);
-			}
-		}
-
-		// Segments with endpoints that collapsed together drop out, handing on any path they began
-		let keep_segment: Vec<bool> = (0..working.segment_ids.len())
-			.map(|segment_index| point_index_map[working.segment_start[segment_index]] != point_index_map[working.segment_end[segment_index]])
-			.collect();
-		working.carry_path_beginnings(&keep_segment);
-
-		// Build the merged working form from the kept segments
-		let mut merged = WorkingVector {
-			point_ids: merged_indices,
-			point_positions: merged_positions,
-			colinear: working.colinear,
-			..Default::default()
-		};
-
-		for segment_index in (0..working.segment_ids.len()).filter(|&segment_index| keep_segment[segment_index]) {
-			let new_start = point_index_map[working.segment_start[segment_index]].unwrap();
-			let new_end = point_index_map[working.segment_end[segment_index]].unwrap();
-
-			merged.segment_ids.push(working.segment_ids[segment_index]);
-			merged.segment_start.push(new_start);
-			merged.segment_end.push(new_end);
-			merged.segment_handles.push(working.segment_handles[segment_index]);
-			merged.segment_begins_path.push(working.segment_begins_path.get(segment_index).copied().unwrap_or(false));
-		}
-
-		merged.reweave(self, paths);
+	fn weld_within_pieces(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64) {
+		weld_nearby_points(self, paths, transform, distance, true);
 	}
 
 	fn weld_flow_ends(&mut self, paths: &mut List<Path>, transform: DAffine2, distance: f64) {
@@ -486,6 +383,145 @@ impl WeldExt for Vector {
 	}
 }
 
+/// Joins points lying within the distance of each other, measured after the transform, optionally only those in the same connected piece.
+fn weld_nearby_points(vector: &mut Vector, paths: &mut List<Path>, transform: DAffine2, distance: f64, keep_pieces_apart: bool) {
+	if !transform.matrix2.determinant().is_normal() {
+		return;
+	}
+
+	let mut working = WorkingVector::flatten(vector, paths);
+	let point_count = working.point_positions.len();
+	let piece_of_point = keep_pieces_apart.then(|| connected_pieces(&working));
+
+	// Find min x and y for grid cell normalization
+	let mut min_x = f64::MAX;
+	let mut min_y = f64::MAX;
+
+	// Calculate mins without collecting all positions
+	for &pos in &working.point_positions {
+		let transformed_pos = transform.transform_point2(pos);
+		min_x = min_x.min(transformed_pos.x);
+		min_y = min_y.min(transformed_pos.y);
+	}
+
+	// Create a spatial grid with cell size of 'distance'
+	use std::collections::HashMap;
+	let mut grid: HashMap<(i64, i64), Vec<usize>> = HashMap::new();
+
+	// Add points to grid cells without collecting all positions first
+	for i in 0..point_count {
+		let pos = transform.transform_point2(working.point_positions[i]);
+		let grid_x = ((pos.x - min_x) / distance).floor() as i64;
+		let grid_y = ((pos.y - min_y) / distance).floor() as i64;
+
+		grid.entry((grid_x, grid_y)).or_default().push(i);
+	}
+
+	// Create point index mapping for merged points
+	let mut point_index_map = vec![None; point_count];
+	let mut merged_positions = Vec::new();
+	let mut merged_indices = Vec::new();
+
+	// Process each point
+	for i in 0..point_count {
+		// Skip points that have already been processed
+		if point_index_map[i].is_some() {
+			continue;
+		}
+
+		let pos_i = transform.transform_point2(working.point_positions[i]);
+		let grid_x = ((pos_i.x - min_x) / distance).floor() as i64;
+		let grid_y = ((pos_i.y - min_y) / distance).floor() as i64;
+
+		let mut group = vec![i];
+
+		// Check only neighboring cells (3x3 grid around current cell)
+		for dx in -1..=1 {
+			for dy in -1..=1 {
+				// The saturating cast puts infinite points in the grid's edge cells, which have no neighbors beyond
+				let Some(neighbor_cell) = grid_x.checked_add(dx).zip(grid_y.checked_add(dy)) else { continue };
+
+				if let Some(indices) = grid.get(&neighbor_cell) {
+					for &j in indices {
+						let same_piece = piece_of_point.as_ref().is_none_or(|pieces| pieces[i] == pieces[j]);
+						if j > i && point_index_map[j].is_none() && same_piece {
+							let pos_j = transform.transform_point2(working.point_positions[j]);
+							if pos_i.distance(pos_j) <= distance {
+								group.push(j);
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Create merged point - calculate positions as needed
+		let merged_position = group
+			.iter()
+			.map(|&idx| transform.transform_point2(working.point_positions[idx]))
+			.fold(DVec2::ZERO, |sum, pos| sum + pos)
+			/ group.len() as f64;
+
+		let merged_position = transform.inverse().transform_point2(merged_position);
+		let merged_index = merged_positions.len();
+
+		merged_positions.push(merged_position);
+		merged_indices.push(working.point_ids[group[0]]);
+
+		// Update mapping for all points in the group
+		for &idx in &group {
+			point_index_map[idx] = Some(merged_index);
+		}
+	}
+
+	// Segments with endpoints that collapsed together drop out, handing on any path they began
+	let keep_segment: Vec<bool> = (0..working.segment_ids.len())
+		.map(|segment_index| point_index_map[working.segment_start[segment_index]] != point_index_map[working.segment_end[segment_index]])
+		.collect();
+	working.carry_path_beginnings(&keep_segment);
+
+	// Build the merged working form from the kept segments
+	let mut merged = WorkingVector {
+		point_ids: merged_indices,
+		point_positions: merged_positions,
+		colinear: working.colinear,
+		..Default::default()
+	};
+
+	for segment_index in (0..working.segment_ids.len()).filter(|&segment_index| keep_segment[segment_index]) {
+		let new_start = point_index_map[working.segment_start[segment_index]].unwrap();
+		let new_end = point_index_map[working.segment_end[segment_index]].unwrap();
+
+		merged.segment_ids.push(working.segment_ids[segment_index]);
+		merged.segment_start.push(new_start);
+		merged.segment_end.push(new_end);
+		merged.segment_handles.push(working.segment_handles[segment_index]);
+		merged.segment_begins_path.push(working.segment_begins_path.get(segment_index).copied().unwrap_or(false));
+	}
+
+	merged.reweave(vector, paths);
+}
+
+/// The connected piece each working point belongs to, named by one of its points, in O(points + segments).
+fn connected_pieces(working: &WorkingVector) -> Vec<usize> {
+	// Union-find with path halving
+	fn root(parent: &mut [usize], mut point: usize) -> usize {
+		while parent[point] != point {
+			parent[point] = parent[parent[point]];
+			point = parent[point];
+		}
+		point
+	}
+
+	let mut parent: Vec<usize> = (0..working.point_positions.len()).collect();
+	for (&start, &end) in working.segment_start.iter().zip(&working.segment_end) {
+		let (start_root, end_root) = (root(&mut parent, start), root(&mut parent, end));
+		parent[start_root] = end_root;
+	}
+
+	(0..parent.len()).map(|point| root(&mut parent, point)).collect()
+}
+
 /// Rebuilds the paths as one per segment, each taking its own copy of any point an earlier segment used, in O(points + references).
 /// Every anchor becomes an end, which drops what only an anchor between two segments carries, like smoothness.
 fn separate_segments(vector: &mut Vector, paths: &mut List<Path>) {
@@ -534,19 +570,6 @@ fn separate_segments(vector: &mut Vector, paths: &mut List<Path>) {
 
 	*paths = List::new();
 	push_paths(paths, segments);
-}
-
-/// The path flows, each a range of stored paths: a path, with those after it that only carry it on in another curve type.
-fn path_flows(paths: &List<Path>) -> Vec<Range<usize>> {
-	let mut flows: Vec<Range<usize>> = Vec::new();
-	for index in 0..paths.len() {
-		match flows.last_mut() {
-			Some(flow) if continues_previous_path(paths, index) => flow.end = index + 1,
-			_ => flows.push(index..index + 1),
-		}
-	}
-
-	flows
 }
 
 /// The pool points a path flow begins and ends at.
@@ -677,6 +700,19 @@ mod tests {
 		vector.0.iter_attribute_values::<PointId>(ATTR_ID).map(|ids| ids.map(|id| id.inner()).collect()).unwrap_or_default()
 	}
 
+	// A point too far off for the grid of cells to hold sits at its edge, which has no cells beyond it to check
+	#[test]
+	fn weld_all_beside_an_infinite_point() {
+		let mut vector = pool(&[(0., 0.), (0.05, 0.), (f64::INFINITY, 0.)]);
+		let mut paths = List::new();
+		push_path(&mut paths, CurveType::Linear, [0, 1, 2], []);
+
+		vector.weld_all(&mut paths, DAffine2::IDENTITY, 0.1);
+
+		assert_eq!(vector.0.len(), 2);
+		assert!(near(vector.0.element(0), (0.025, 0.)));
+	}
+
 	// Two lines meeting across a small gap join there, while two close points of another path stay apart since only one is an end
 	#[test]
 	fn flow_ends_join_without_touching_other_points() {
@@ -800,6 +836,26 @@ mod tests {
 
 		assert_eq!(references(&paths), [vec![0, 1], vec![2, 3]]);
 		assert!(vector.0.iter_element_values().all(|position| position.is_finite()));
+	}
+
+	// Two triangles touching at a corner stay apart, while the doubled corner within the first still joins
+	#[test]
+	fn welding_within_pieces_keeps_touching_pieces_apart() {
+		let positions = [(0., 0.), (10., 0.), (10.05, 0.), (5., 10.), (10., 0.), (20., 0.), (15., 10.)];
+		let triangles = || {
+			let mut paths = List::new();
+			push_path(&mut paths, CurveType::Linear, [0, 1, 2, 3, 0], []);
+			push_path(&mut paths, CurveType::Linear, [4, 5, 6, 4], []);
+			paths
+		};
+
+		let (mut vector, mut paths) = (pool(&positions), triangles());
+		vector.weld_within_pieces(&mut paths, DAffine2::IDENTITY, 0.1);
+		assert_eq!(references(&paths), [vec![0, 1, 2, 0], vec![3, 4, 5, 3]]);
+
+		let (mut vector, mut paths) = (pool(&positions), triangles());
+		vector.weld_all(&mut paths, DAffine2::IDENTITY, 0.1);
+		assert_eq!(vector.0.len(), 5);
 	}
 
 	// Three ends within the distance of the first meet at their average
@@ -943,7 +999,7 @@ mod tests {
 		let (original, original_paths) = diamond();
 		assert_eq!(references(&paths), references(&original_paths));
 		assert_eq!(vector.0.len(), original.0.len());
-		assert!(contours(vector.0.len(), &paths).iter().all(|contour| contour.closed));
+		assert_eq!(contours(vector.0.len(), &paths), contours(original.0.len(), &original_paths));
 	}
 
 	// A closed path takes one copy of the point it closes on for both of its references to it, so it stays closed

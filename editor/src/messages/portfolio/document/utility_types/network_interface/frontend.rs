@@ -82,8 +82,8 @@ impl NodeNetworkInterface {
 					return None;
 				};
 				// Get the output name from the interior network export name
-				let node_metadata = self.node_metadata(node_id, network_path)?;
-				let output_name = node_metadata.persistent_metadata.output_names.get(*output_index).cloned().unwrap_or_default();
+				let output_names = self.view(network_path).ok()?.output_names(node_id).ok()?;
+				let output_name = output_names.get(*output_index).cloned().unwrap_or_default();
 
 				let output_name = if !output_name.is_empty() { output_name } else { output_type.resolved_type_node_string() };
 				(output_name, self.output_description(node_id, *output_index, network_path))
@@ -162,7 +162,7 @@ impl NodeNetworkInterface {
 			.unwrap_or_default()
 	}
 
-	/// The name a network's export is shown with: its encapsulating node's output name, or else its type, or else its number.
+	/// The name a network's export is shown with: the network's export name, or else its type, or else its number.
 	/// The document network has one export, the canvas.
 	pub fn displayed_export_name(&self, export_index: usize, network_path: &[NodeId]) -> String {
 		if network_path.is_empty() {
@@ -170,8 +170,8 @@ impl NodeNetworkInterface {
 		}
 
 		let export_name = self
-			.encapsulating_node_metadata(network_path)
-			.and_then(|metadata| metadata.persistent_metadata.output_names.get(export_index).cloned())
+			.nested_metadata(network_path)
+			.and_then(|metadata| metadata.persistent_metadata.export_names.get(export_index).cloned())
 			.unwrap_or_default();
 		if !export_name.is_empty() {
 			return export_name;
@@ -181,7 +181,7 @@ impl NodeNetworkInterface {
 		established_type_name(&self.input_type(&InputConnector::Export(export_index), network_path)).unwrap_or_else(|| format!("Export #{export_index}"))
 	}
 
-	/// The description of a network's export, which its encapsulating node stores for the output.
+	/// The description of a network's export, which the network stores alongside its export names.
 	pub fn export_description(&self, export_index: usize, network_path: &[NodeId]) -> String {
 		let Some((encapsulating_node_id, encapsulating_path)) = network_path.split_last() else {
 			return String::new();

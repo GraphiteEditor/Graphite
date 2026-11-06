@@ -1,5 +1,3 @@
-
-
 <a href="https://graphite.art/">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/9366c148-4405-484f-909a-9a3526eb9209">
@@ -83,3 +81,13 @@ Are you a graphics programmer or Rust developer? Graphite aims to be one of the 
 ## License
 
 Graphite's source code is dual-licensed under your choice of either the [MIT license](LICENSE-MIT) or the [Apache License 2.0](LICENSE-APACHE), at your option, unless otherwise noted within the repository. By submitting code for inclusion in the project, you agree to license your contributions under both licenses, and that you have the authority to do so.
+
+## Acknowledgments
+
+We're grateful to these programs and organizations for the grants and services that help make Graphite possible.
+
+[<img width="600" alt="European Commission, NGI Zero, and NLnet Foundation" src="https://github.com/user-attachments/assets/d5b3c623-710a-4809-916b-263e80c28184" />](https://nlnet.nl/commonsfund/)
+
+[<img width="600" alt="Google Summer of Code" src="https://github.com/user-attachments/assets/37284dfe-fccd-4abd-904c-1165ff36da53" />](https://summerofcode.withgoogle.com/)
+
+[<img width="300" alt="CI Powered by Blacksmith" src="https://github.com/user-attachments/assets/72bd48c2-ab21-4aed-b0a5-d440a8662128" />](https://www.blacksmith.sh/)

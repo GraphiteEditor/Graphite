@@ -15,7 +15,7 @@ pub struct DocumentNode {
 	pub implementation: DocumentNodeImplementation,
 	pub visible: bool,
 	pub skip_deduplication: bool,
-	pub context_features: ContextDependencies,
+	pub compile_metadata: Option<NodeCompileMetadata>,
 	pub original_location: OriginalLocation,
 }
 ```

@@ -43,8 +43,11 @@ impl serde::Serialize for EmbeddedResources {
 		use serde::ser::SerializeMap;
 
 		let human_readable = serializer.is_human_readable();
-		let mut map = serializer.serialize_map(Some(self.resources.len()))?;
-		for (hash, resource) in &self.resources {
+		let mut entries: Vec<_> = self.resources.iter().collect();
+		entries.sort_unstable_by_key(|(hash, _)| *hash);
+
+		let mut map = serializer.serialize_map(Some(entries.len()))?;
+		for (hash, resource) in entries {
 			let bytes: &[u8] = resource.as_ref();
 			if human_readable {
 				map.serialize_entry(hash, &BASE64.encode(bytes))?;
@@ -88,5 +91,19 @@ impl<'de> serde::Deserialize<'de> for EmbeddedResources {
 
 		let human_readable = deserializer.is_human_readable();
 		deserializer.deserialize_map(EmbeddedResourcesVisitor { human_readable })
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn equal_embedded_resources_serialize_alike_whatever_their_insertion_order() {
+		let resources: Vec<_> = (0..64).map(|index| Resource::new(format!("resource {index}").into_bytes())).collect();
+		let forward: EmbeddedResources = resources.iter().map(|resource| (ResourceHash::from(resource.as_ref()), resource.clone())).collect();
+		let backward: EmbeddedResources = resources.iter().rev().map(|resource| (ResourceHash::from(resource.as_ref()), resource.clone())).collect();
+
+		assert_eq!(serde_json::to_string(&forward).unwrap(), serde_json::to_string(&backward).unwrap());
 	}
 }

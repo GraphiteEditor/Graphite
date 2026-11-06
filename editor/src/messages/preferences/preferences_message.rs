@@ -30,9 +30,6 @@ pub enum PreferencesMessage {
 	UIScale {
 		scale: f64,
 	},
-	MaxRenderRegionSize {
-		size: u32,
-	},
 	DisableUIAcceleration {
 		disable_ui_acceleration: bool,
 	},
@@ -42,7 +39,16 @@ pub enum PreferencesMessage {
 	SaveAsGdd {
 		enabled: bool,
 	},
+	SaveWithHistory {
+		enabled: bool,
+	},
 	ToggleShowStoragePreferences,
+	UserName {
+		name: String,
+	},
+	ShowRemoteCursors {
+		enabled: bool,
+	},
 	#[cfg(target_os = "macos")]
 	VSync {
 		vsync: bool,

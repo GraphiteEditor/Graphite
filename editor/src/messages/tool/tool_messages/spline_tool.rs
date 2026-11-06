@@ -48,6 +48,7 @@ pub enum SplineToolMessage {
 	CanvasTransformed,
 	Abort,
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 
 	// Tool-specific messages
@@ -161,11 +162,10 @@ impl LayoutHolder for SplineTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
-		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
-		if matches!(&message, ToolMessage::Spline(SplineToolMessage::Abort)) && self.fsm_state == SplineToolFsmState::Ready {
+		// Switching to another tool resets the fill/stroke colors so the next activation starts from the working colors (the swap state persists)
+		if matches!(&message, ToolMessage::Spline(SplineToolMessage::SwitchedToAnotherTool)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+			return;
 		}
 
 		if matches!(&message, ToolMessage::Spline(SplineToolMessage::SelectionChanged)) {
@@ -245,6 +245,7 @@ impl ToolTransition for SplineTool {
 			overlay_provider: Some(|context: OverlayContext| SplineToolMessage::Overlays { context }.into()),
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
+			switched_to_another_tool: Some(SplineToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(SplineToolMessage::SelectionChanged.into()),
 			graph_changed: Some(SplineToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
@@ -337,6 +338,7 @@ impl Fsm for SplineToolFsmState {
 		let ToolActionMessageContext {
 			document,
 			document_id,
+			global_tool_data,
 			input,
 			viewport,
 			shape_editor,
@@ -447,8 +449,8 @@ impl Fsm for SplineToolFsmState {
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.drawing.fill.apply_fill(layer, responses);
-				tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+				tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, responses);
+				tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, responses);
 				tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 				tool_data.current_layer = Some(layer);
 				tool_data.new_layer_viewport_start = Some(viewport_vec);

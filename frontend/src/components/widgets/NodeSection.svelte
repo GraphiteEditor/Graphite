@@ -4,35 +4,38 @@
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import NodeSection from "/src/components/widgets/NodeSection.svelte";
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type { EditorWrapper, LayoutTarget, NodeSection as NodeSectionData } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let widgetData: NodeSectionData;
-	export let layoutTarget: LayoutTarget;
-
-	let className = "";
-	export { className as class };
-	export let classes: Record<string, boolean> = {};
+	type Props = {
+		widgetData: NodeSectionData;
+		layoutTarget: LayoutTarget;
+		class?: string;
+		classes?: Record<string, boolean>;
+	};
+	let { widgetData, layoutTarget, class: className = "", classes = {} }: Props = $props();
 
 	// A node without parameters has nothing to show, so its section stays collapsed with its arrow grayed out, like the Layers panel's
-	$: expandable = widgetData.layout.length > 0;
+	const expandable = $derived(widgetData.layout.length > 0);
 
 	// Whether the section is expanded is owned by the backend (persisted per node), so just reflect it here
-	$: expanded = widgetData.expanded && expandable;
+	const expanded = $derived(widgetData.expanded && expandable);
 
 	// The sections of the chain feeding one of this node's inputs, which follow its own rows and are shown beneath them
-	$: chainSections = widgetData.layout.flatMap((layoutGroup) => ("NodeSection" in layoutGroup && layoutGroup.NodeSection.outputWire ? [layoutGroup.NodeSection] : []));
+	const chainSections = $derived(widgetData.layout.flatMap((layoutGroup) => ("NodeSection" in layoutGroup && layoutGroup.NodeSection.outputWire ? [layoutGroup.NodeSection] : [])));
 
 	// A reorderable section is a Inspector node section the user can drag to reorder (a layer chain's node, or a pinned node)
-	$: reorderable = layoutTarget === "Inspector" && widgetData.draggable;
+	const reorderable = $derived(layoutTarget === "Inspector" && widgetData.draggable);
 
 	const editor = getContext<EditorWrapper>("editor");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
 	// Like the Layers panel's expand arrows, a modifier key applies the toggle recursively to the sections nested within
 	function toggleExpandedWithModifiers(e: MouseEvent) {
+		e.stopPropagation();
 		if (!expandable) return;
 
 		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
@@ -73,7 +76,7 @@
 			{/if}
 		{/each}
 	{:else}
-		<button class="header" class:expanded class:expandable data-inspector-reorder-handle={reorderable ? "" : undefined} on:click|stopPropagation={toggleExpandedWithModifiers}>
+		<button class="header" class:expanded class:expandable data-inspector-reorder-handle={reorderable ? "" : undefined} onclick={toggleExpandedWithModifiers}>
 			<div
 				class="icon-slot"
 				data-tooltip-label={!expandable ? undefined : expanded ? "Collapse (All)" : "Expand (All)"}
@@ -90,6 +93,17 @@
 				<div class="expand-arrow"></div>
 			</div>
 			<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description}>{widgetData.name}</TextLabel>
+			<IconButton
+				icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
+				hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
+				size={24}
+				action={(e) => {
+					editor.toggleNodeVisibilityInspector(widgetData.id);
+					e?.stopPropagation();
+				}}
+				class={widgetData.visible ? "show-only-on-hover" : ""}
+			/>
 			<IconButton
 				icon="Trash"
 				tooltipDescription="Delete this node from the layer chain."
@@ -110,19 +124,8 @@
 				}}
 				class={widgetData.pinned ? "" : "show-only-on-hover"}
 			/>
-			<IconButton
-				icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
-				hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
-				tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
-				size={24}
-				action={(e) => {
-					editor.toggleNodeVisibilityInspector(widgetData.id);
-					e?.stopPropagation();
-				}}
-				class={widgetData.visible ? "show-only-on-hover" : ""}
-			/>
 			{#if reorderable}
-				<div class="drag-grip" data-tooltip-description="Drag to reorder this node." on:click|stopPropagation={() => undefined} role="presentation"></div>
+				<div class="drag-grip" data-tooltip-description="Drag to reorder this node." onclick={(e) => e.stopPropagation()} role="presentation"></div>
 			{/if}
 		</button>
 		{#if expanded}
@@ -131,14 +134,14 @@
 					{#if "Row" in layoutGroup}
 						<WidgetSpan direction="row" widgets={layoutGroup.Row.rowWidgets} {layoutTarget} />
 					{:else if "NodeSection" in layoutGroup && !layoutGroup.NodeSection.outputWire}
-						<svelte:self widgetData={layoutGroup.NodeSection} {layoutTarget} />
+						<NodeSection widgetData={layoutGroup.NodeSection} {layoutTarget} />
 					{/if}
 				{/each}
 			</LayoutCol>
 			{#if chainSections.length > 0}
 				<LayoutCol class="chain-sections" data-section-contents>
 					{#each chainSections as chainSection}
-						<svelte:self widgetData={chainSection} {layoutTarget} />
+						<NodeSection widgetData={chainSection} {layoutTarget} />
 					{/each}
 				</LayoutCol>
 			{/if}
@@ -154,7 +157,9 @@
 		// Between neighboring sections, which the wires joining them cross
 		--section-gap: 8px;
 		flex: 0 0 auto;
+		position: relative;
 		margin: 0 4px;
+		border-radius: 4px;
 
 		+ .node-section {
 			margin-top: var(--section-gap);
@@ -176,23 +181,36 @@
 			}
 		}
 
+		// The outline, as a border (which snaps to device pixels) over the 1px edge the contents leave clear
+		&:not(.node-reference)::before,
+		&.node-reference .text-button::after {
+			content: "";
+			position: absolute;
+			inset: 0;
+			border: 1px solid var(--section-outline);
+			border-radius: inherit;
+			pointer-events: none;
+		}
+
 		// A section showing the chain feeding one of its inputs, which it frames below its rows, with a wire rising from them through its body into that input
 		&.chain-wire {
 			--chain-wire-corner-radius: 4px;
 			--chain-wire-width: 2px;
+			--chain-wire-line: 2px;
 			--chain-section-indent: 8px;
-			// Within the body's border, the wire's centerline rises in line with the indented chain sections' icons
+			// Within the body, inset by the outline, the wire's centerline rises in line with the indented chain sections' icons
 			--chain-wire-x: calc(var(--chain-section-indent) + var(--wire-center) - 1px);
 
 			// Like in the graph, a list's wire is a 1px line, 2px gap, and 1px line
 			&.chain-wire-list {
 				--chain-wire-width: 4px;
+				--chain-wire-line: 1px;
 			}
 
 			// The body continues down into the frame around the chain's sections, the first right beneath its rows
 			> .body {
 				position: relative;
-				border-bottom: none;
+				margin-bottom: 0;
 				border-radius: 0;
 				anchor-scope: --chain-input;
 
@@ -204,34 +222,33 @@
 
 			// The chain's sections, indented on the left and sharing the right edge, with the wire to the body crossing the gap atop the first
 			> .chain-sections {
+				margin: 0 1px 1px;
 				padding: 0 0 calc(var(--chain-section-indent) - 1px) calc(var(--chain-section-indent) - 1px);
 				background: var(--color-3-darkgray);
-				border: 1px solid var(--section-outline);
-				border-top: none;
 				border-radius: 0 0 4px 4px;
 
-				// Over the frame's right border, so the shared edge is one line
+				// Over the outline's right edge, so the shared edge is one line
 				> .node-section {
 					margin-left: 0;
 					margin-right: -1px;
 				}
 
 				// With no gap above the first to cross, the body's wire meets it directly
-				> .node-section:first-child::before {
+				> .node-section:first-child::after {
 					display: none;
 				}
 			}
 
-			// Outer and inner 1px lines, which touch as one solid line unless the wire is a list, rising from the body's bottom and turning at the connector's middle to end at its left
-			> .body::before,
-			> .body::after {
+			// One line, or a list's outer and inner lines, rising from the body's bottom and turning at the connector's middle to end at its left
+			> .body::after,
+			&.chain-wire-list > .body::before {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
 				right: anchor(--chain-input left);
 				bottom: 0;
-				border-left: 1px solid var(--chain-wire-color);
-				border-top: 1px solid var(--chain-wire-color);
+				border-left: var(--chain-wire-line) solid var(--chain-wire-color);
+				border-top: var(--chain-wire-line) solid var(--chain-wire-color);
 				pointer-events: none;
 			}
 
@@ -242,7 +259,7 @@
 			}
 
 			// Inset to stay concentric with the outer line around the corner
-			> .body::before {
+			&.chain-wire-list > .body::before {
 				left: calc(var(--chain-wire-x) + var(--chain-wire-width) / 2 - 1px);
 				top: calc(anchor(--chain-input center) + var(--chain-wire-width) / 2 - 1px);
 				border-top-left-radius: max(0px, var(--chain-wire-corner-radius) - var(--chain-wire-width) + 1px);
@@ -252,14 +269,19 @@
 		// A section in such a chain, with a wire rising across the gap to the section above, in line with the containing section's wire
 		&.output-wire {
 			--output-wire-width: 2px;
-			position: relative;
-
-			&.output-wire-list {
-				--output-wire-width: 4px;
-			}
+			--output-wire-line: 2px;
 
 			// Two 1px lines, like the layer section's wire
-			&::before {
+			&.output-wire-list {
+				--output-wire-width: 4px;
+				--output-wire-line: 1px;
+
+				&::after {
+					border-right: var(--output-wire-line) solid var(--output-wire-color);
+				}
+			}
+
+			&::after {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
@@ -267,8 +289,7 @@
 				top: calc(-1 * var(--section-gap));
 				width: var(--output-wire-width);
 				height: var(--section-gap);
-				border-left: 1px solid var(--output-wire-color);
-				border-right: 1px solid var(--output-wire-color);
+				border-left: var(--output-wire-line) solid var(--output-wire-color);
 				pointer-events: none;
 			}
 		}
@@ -282,10 +303,10 @@
 
 			// As wide as its contents, unlike the Inspector's buttons that share their row, and flush within an outline like the sections'
 			.text-button {
+				position: relative;
 				flex-basis: auto;
 				padding-left: calc(var(--wire-center) - 16px / 2);
 				--button-background-color: none;
-				box-shadow: inset 0 0 0 1px var(--section-outline);
 
 				&:hover:not(.disabled) {
 					--button-background-color: var(--color-5-dullgray);
@@ -297,24 +318,25 @@
 		// Layers taking the wire rising from the section below into their content, indented so it turns in from the left at the middle of their buttons
 		&.content-wire {
 			--content-wire-width: 2px;
+			--content-wire-line: 2px;
 			--content-wire-indent: 20px;
-			position: relative;
 			padding-left: var(--content-wire-indent);
 
 			&.content-wire-list {
 				--content-wire-width: 4px;
+				--content-wire-line: 1px;
 			}
 
-			// Outer and inner 1px lines, rising from the bottom and turning toward the buttons, like the wire into a shown chain's input
-			&::before,
-			&::after {
+			// One line, or a list's outer and inner lines, rising from the bottom and turning toward the buttons, like the wire into a shown chain's input
+			&::after,
+			&.content-wire-list::before {
 				content: "";
 				position: absolute;
 				box-sizing: border-box;
 				right: calc(100% - var(--content-wire-indent));
 				bottom: 0;
-				border-left: 1px solid var(--content-wire-color);
-				border-top: 1px solid var(--content-wire-color);
+				border-left: var(--content-wire-line) solid var(--content-wire-color);
+				border-top: var(--content-wire-line) solid var(--content-wire-color);
 				pointer-events: none;
 			}
 
@@ -324,7 +346,7 @@
 				border-top-left-radius: 4px;
 			}
 
-			&::before {
+			&.content-wire-list::before {
 				left: calc(var(--wire-center) + var(--content-wire-width) / 2 - 1px);
 				top: calc(50% + var(--content-wire-width) / 2 - 1px);
 				border-top-left-radius: max(0px, 4px - var(--content-wire-width) + 1px);
@@ -339,9 +361,12 @@
 					width: var(--content-wire-width);
 					top: calc(-1 * var(--section-gap));
 					bottom: 0;
-					border-left: 1px solid var(--content-wire-color);
-					border-right: 1px solid var(--content-wire-color);
+					border-left: var(--content-wire-line) solid var(--content-wire-color);
 					pointer-events: none;
+				}
+
+				&.content-wire-list .content-wire-continuation {
+					border-right: var(--content-wire-line) solid var(--content-wire-color);
 				}
 
 				&::after {
@@ -362,19 +387,9 @@
 			flex: 0 0 24px;
 			padding: 0;
 			border: 0;
-			border-radius: 4px;
 			background: none;
-			// The section's outline, continuing up around the header without changing its size
-			box-shadow: inset 0 0 0 1px var(--section-outline);
 
 			&.expanded {
-				border-radius: 4px 4px 0 0;
-				// Open at the bottom, where the body's sides carry on
-				box-shadow:
-					inset 1px 0 0 var(--section-outline),
-					inset -1px 0 0 var(--section-outline),
-					inset 0 1px 0 var(--section-outline);
-
 				.expand-arrow::after {
 					transform: rotate(90deg);
 				}
@@ -455,19 +470,16 @@
 		}
 
 		> .body {
+			// Clear of the outline, which its background would otherwise cover
+			margin: 0 1px 1px;
 			padding: 0 7px;
-			padding-top: 1px;
-			margin-top: -1px;
 			background: var(--color-3-darkgray);
-			border: 1px solid var(--section-outline);
-			// No line between it and the header, which shares its outline
-			border-top-color: transparent;
 			border-radius: 0 0 4px 4px;
 			overflow: hidden;
 
 			> .widget-span.row {
 				&:first-child {
-					margin-top: calc(4px - 1px);
+					margin-top: 4px;
 				}
 
 				&:last-child {

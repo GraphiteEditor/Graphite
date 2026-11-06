@@ -5,7 +5,6 @@ use glam::DVec2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::ptr::addr_of;
 use std::sync::Arc;
 use std::time::Duration;
 use vector_types::vector::style::RenderMode;
@@ -36,10 +35,6 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {
 		(**self).load_resource(hash)
 	}
-}
-
-pub trait GetEditorPreferences {
-	fn max_render_region_area(&self) -> u32;
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, CacheHash)]
@@ -82,36 +77,22 @@ impl RenderConfig {
 	}
 }
 
-struct DummyPreferences;
-
-impl GetEditorPreferences for DummyPreferences {
-	fn max_render_region_area(&self) -> u32 {
-		1024 * 1024
-	}
-}
-
 pub struct EditorApi<Io> {
 	/// Gives access to APIs like resources.
 	pub application_io: Option<Arc<Io>>,
-	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
-	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
 }
 
 impl<Io> Eq for EditorApi<Io> {}
 
 impl<Io: Default> Default for EditorApi<Io> {
 	fn default() -> Self {
-		Self {
-			application_io: None,
-			editor_preferences: Box::new(DummyPreferences),
-		}
+		Self { application_io: None }
 	}
 }
 
 impl<Io> Hash for EditorApi<Io> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.application_io.as_ref().map_or(0, |io| io as *const _ as usize).hash(state);
-		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
+		self.application_io.is_some().hash(state);
 	}
 }
 
@@ -123,8 +104,7 @@ impl<Io> CacheHash for EditorApi<Io> {
 
 impl<Io> PartialEq for EditorApi<Io> {
 	fn eq(&self, other: &Self) -> bool {
-		self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
-			&& std::ptr::eq(self.editor_preferences.as_ref() as *const _, other.editor_preferences.as_ref() as *const _)
+		self.application_io.is_some() == other.application_io.is_some()
 	}
 }
 

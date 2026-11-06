@@ -99,7 +99,7 @@ impl MessageHandler<FutureMessage, ()> for FutureMessageHandler {
 				}));
 			}
 			FutureMessage::Drain => {
-				while let Ok(Some(message)) = self.results_receiver.try_next() {
+				while let Ok(message) = self.results_receiver.try_recv() {
 					responses.push_back(message);
 				}
 			}

@@ -33,6 +33,7 @@ base64 = { workspace = true }
 bytemuck = { workspace = true }
 image = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

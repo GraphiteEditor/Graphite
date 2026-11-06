@@ -142,6 +142,8 @@ impl NodeNetworkInterface {
 		self.document_metadata.click_targets.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 		self.document_metadata.outlines.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
 		self.document_metadata.text_frames.retain(|layer, _| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.group_layers.retain(|layer| self.document_metadata.structure.contains_key(layer));
+		self.document_metadata.reset_composed_targets();
 	}
 
 	/// Update the cached transforms of the layers, which a render made with the given view reported
@@ -158,10 +160,11 @@ impl NodeNetworkInterface {
 		self.document_metadata.first_element_source_ids = new;
 	}
 
-	/// Update the cached click targets of the layers
-	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
-		self.document_metadata.mark_changed();
+	/// Update the cached click targets of the layers and the set of group layers
+	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>, new_group_layers: HashSet<LayerNodeIdentifier>) {
 		self.document_metadata.click_targets = new_click_targets;
+		self.document_metadata.group_layers = new_group_layers;
+		self.document_metadata.mark_changed();
 	}
 
 	/// Update the cached source-geometry outline targets of the layers

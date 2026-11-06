@@ -25,13 +25,12 @@ impl PipelineCache {
 		self.pipeline.get_or_init(|| Box::new(P::create(executor)));
 	}
 
-	pub fn run<P: Pipeline>(&self, args: &P::Args<'_>) -> P::Out {
-		let executor = self.executor.get().expect("PipelineCache not initialized");
-		let entry = self.pipeline.get().expect("PipelineCache not initialized");
-		let pipeline = (**entry)
-			.downcast_ref::<P>()
-			.unwrap_or_else(|| panic!("PipelineCache type mismatch: run::<{}>() but init used a different pipeline type", std::any::type_name::<P>(),));
-		pipeline.run(executor, args)
+	pub fn run<P: Pipeline>(&self, args: &P::Args<'_>) -> Result<P::Out, PipelineError> {
+		let (Some(executor), Some(entry)) = (self.executor.get(), self.pipeline.get()) else {
+			return Err(PipelineError::NotInitialized);
+		};
+		let pipeline = (**entry).downcast_ref::<P>().ok_or(PipelineError::TypeMismatch { expected: std::any::type_name::<P>() })?;
+		Ok(pipeline.run(executor, args))
 	}
 }
 
@@ -39,4 +38,12 @@ impl std::fmt::Debug for PipelineCache {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("PipelineCache").field("initialized", &self.pipeline.get().is_some()).finish()
 	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum PipelineError {
+	#[error("The GPU pipeline was not set up")]
+	NotInitialized,
+	#[error("The GPU pipeline cache holds a pipeline other than `{expected}`")]
+	TypeMismatch { expected: &'static str },
 }

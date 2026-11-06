@@ -1,6 +1,8 @@
 #[macro_use]
 extern crate log;
 
+mod value_types;
+
 use graph_craft::Type;
 use graph_craft::application_io::resource::ResourceId;
 use graph_craft::document::value::*;
@@ -23,6 +25,14 @@ fn producer_node_id(ident: &ProtoNodeIdentifier, key: impl Hash) -> NodeId {
 	NodeId(hasher.finish())
 }
 
+fn substitute_network_id(identifier: &ProtoNodeIdentifier, compile_metadata: Option<NodeCompileMetadata>) -> NetworkId {
+	let mut hasher = DefaultHasher::new();
+	"preprocessor substitute".hash(&mut hasher);
+	identifier.hash(&mut hasher);
+	compile_metadata.hash(&mut hasher);
+	NetworkId(hasher.finish())
+}
+
 #[derive(Debug, Clone)]
 struct Substitution {
 	node: DocumentNode,
@@ -33,14 +43,26 @@ struct Substitution {
 pub struct Preprocessor {
 	substitutions: HashMap<ProtoNodeIdentifier, Substitution>,
 	inject_scopes: HashMap<ProtoNodeIdentifier, (DocumentNode, Type)>,
-	context_dependencies: HashMap<ProtoNodeIdentifier, ContextDependencies>,
+	compile_metadata: HashMap<ProtoNodeIdentifier, NodeCompileMetadata>,
 }
 
 impl Preprocessor {
 	pub fn preprocess(&self, network: &mut NodeNetwork, resolve_resource: &dyn Fn(ResourceId) -> Option<ResourceHash>) -> Result<(), PreprocessorError> {
+		network.validate_definitions().map_err(PreprocessorError::Definition)?;
 		self.insert_inject_scopes(network);
+
 		self.replace_inputs_with_producer_nodes(network, resolve_resource)?;
-		self.expand_network(network);
+		for definition in network.definitions.values_mut() {
+			self.replace_inputs_with_producer_nodes(definition, resolve_resource)?;
+		}
+
+		let mut substitutes = HashMap::new();
+		self.expand_network(network, &mut substitutes);
+		for definition in network.definitions.values_mut() {
+			self.expand_network(definition, &mut substitutes);
+		}
+		network.definitions.extend(substitutes);
+
 		Ok(())
 	}
 }
@@ -83,7 +105,7 @@ impl Preprocessor {
 							let id = producer_node_id(&platform_application_io::editor_api::IDENTIFIER, resource_id);
 							let resource_node = DocumentNode {
 								inputs: vec![
-									NodeInput::scope(platform_application_io::editor_api::IDENTIFIER),
+									NodeInput::scope(platform_application_io::application_io::IDENTIFIER),
 									NodeInput::value(TaggedValue::ResourceHash(hash), false),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(platform_application_io::resource::IDENTIFIER),
@@ -117,41 +139,52 @@ impl Preprocessor {
 		Ok(())
 	}
 
-	fn expand_network(&self, network: &mut NodeNetwork) {
+	/// Replaces each proto node that has a substitution with the table entry `substitutes` holds for its identifier and compile metadata.
+	fn expand_network(&self, network: &mut NodeNetwork, substitutes: &mut HashMap<NetworkId, NodeNetwork>) {
 		for node in network.nodes.values_mut() {
-			match &mut node.implementation {
-				DocumentNodeImplementation::Network(node_network) => self.expand_network(node_network),
-				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-					let context_dependencies = node.context_dependencies.take().or_else(|| self.context_dependencies.get(proto_node_identifier).copied());
-
-					if let Some(Substitution { node: new_node, wrapped_node_id }) = self.substitutions.get(proto_node_identifier) {
-						// Reconcile the document node's inputs with what the current node definition expects,
-						// since the saved document may have fewer or more inputs than the current version
-						while node.inputs.len() < new_node.inputs.len() {
-							node.inputs.push(new_node.inputs[node.inputs.len()].clone());
-						}
-						node.inputs.truncate(new_node.inputs.len());
-
-						node.implementation = new_node.implementation.clone();
-
-						// Move context dependencies to the wrapped node because networks are not allowed to have context dependencies so we need to
-						if let DocumentNodeImplementation::Network(network) = &mut node.implementation
-							&& let Some(wrapped_node) = network.nodes.get_mut(wrapped_node_id)
-						{
-							wrapped_node.context_dependencies = context_dependencies;
-						}
-					} else {
-						node.context_dependencies = context_dependencies;
-					}
+			let identifier = match &mut node.implementation {
+				DocumentNodeImplementation::Network(node_network) => {
+					self.expand_network(node_network, substitutes);
+					continue;
 				}
-				DocumentNodeImplementation::Extract => (),
+				DocumentNodeImplementation::ProtoNode(proto_node_identifier) => proto_node_identifier.clone(),
+				DocumentNodeImplementation::Extract | DocumentNodeImplementation::Definition(_) => continue,
+			};
+			let compile_metadata = node.compile_metadata.take().or_else(|| self.compile_metadata.get(&identifier).copied());
+
+			let Some(Substitution { node: new_node, wrapped_node_id }) = self.substitutions.get(&identifier) else {
+				node.compile_metadata = compile_metadata;
+				continue;
+			};
+
+			// Reconcile the document node's inputs with what the current node definition expects,
+			// since the saved document may have fewer or more inputs than the current version
+			while node.inputs.len() < new_node.inputs.len() {
+				node.inputs.push(new_node.inputs[node.inputs.len()].clone());
 			}
+			node.inputs.truncate(new_node.inputs.len());
+
+			let DocumentNodeImplementation::Network(substitute) = &new_node.implementation else {
+				node.implementation = new_node.implementation.clone();
+				continue;
+			};
+
+			// Networks are not allowed to have compile metadata, so each set of compile metadata gets its own entry holding it on the wrapped node
+			let id = substitute_network_id(&identifier, compile_metadata);
+			substitutes.entry(id).or_insert_with(|| {
+				let mut substitute = substitute.clone();
+				if let Some(wrapped_node) = substitute.nodes.get_mut(wrapped_node_id) {
+					wrapped_node.compile_metadata = compile_metadata;
+				}
+				substitute
+			});
+			node.implementation = DocumentNodeImplementation::Definition(id);
 		}
 	}
 
 	pub fn new() -> Self {
 		let mut substitutions = HashMap::new();
-		let mut context_dependencies = HashMap::new();
+		let mut compile_metadata = HashMap::new();
 		let mut inject_scopes = HashMap::new();
 		// We pre initialize the node registry here to avoid a deadlock
 		let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
@@ -161,13 +194,25 @@ impl Preprocessor {
 
 			let NodeMetadata {
 				fields,
-				memoize,
-				inject_scope,
-				asynchronous,
+				flags: NodeFlags {
+					memoize,
+					footprint_invariant,
+					forwards_input,
+					inject_scope,
+					asynchronous,
+				},
 				output_fields,
+				context_features,
 				..
 			} = metadata;
-			context_dependencies.insert(id.clone(), ContextDependencies::from(metadata.context_features.as_slice()));
+			let constant_inputs = fields.iter().enumerate().filter(|(_, field)| field.constant).fold(0, |mask, (index, _)| mask | 1 << index);
+			let node_compile_metadata = NodeCompileMetadata {
+				footprint_invariant: *footprint_invariant,
+				forwards_input: *forwards_input,
+				constant_inputs,
+				..NodeCompileMetadata::from(context_features.as_slice())
+			};
+			compile_metadata.insert(id.clone(), node_compile_metadata);
 
 			let Some(implementations) = node_registry.get(&id) else { continue };
 			let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
@@ -188,6 +233,10 @@ impl Preprocessor {
 			let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
 			let passthrough_node = ops::passthrough::IDENTIFIER;
+			let forwarding = Some(NodeCompileMetadata {
+				forwards_input: true,
+				..Default::default()
+			});
 
 			let mut generated_nodes = 0;
 			let mut nodes: HashMap<_, _, _> = node_io_types
@@ -203,6 +252,7 @@ impl Preprocessor {
 							inputs: vec![NodeInput::import(generic!(X), i)],
 							implementation: DocumentNodeImplementation::ProtoNode(input_adapter_identifier),
 							visible: true,
+							compile_metadata: forwarding,
 							original_location,
 							..Default::default()
 						};
@@ -223,6 +273,7 @@ impl Preprocessor {
 									inputs: vec![NodeInput::import(input.clone(), i)],
 									implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 									visible: true,
+									compile_metadata: forwarding,
 									original_location,
 									..Default::default()
 								}
@@ -231,6 +282,7 @@ impl Preprocessor {
 								inputs: vec![NodeInput::import(generic!(X), i)],
 								implementation: DocumentNodeImplementation::ProtoNode(passthrough_node.clone()),
 								visible: false,
+								compile_metadata: forwarding,
 								..Default::default()
 							},
 						},
@@ -277,6 +329,7 @@ impl Preprocessor {
 					inputs: vec![NodeInput::node(wrapped_node_id, 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER.clone()),
 					visible: true,
+					compile_metadata: forwarding,
 					..Default::default()
 				};
 				nodes.insert(memoize_node_id, memoize_node);
@@ -314,6 +367,7 @@ impl Preprocessor {
 					exports,
 					nodes,
 					scope_injections: Default::default(),
+					definitions: Default::default(),
 					generated: true,
 				}),
 				visible: true,
@@ -341,7 +395,7 @@ impl Preprocessor {
 
 		Self {
 			substitutions,
-			context_dependencies,
+			compile_metadata,
 			inject_scopes,
 		}
 	}
@@ -393,6 +447,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 #[derive(Debug)]
 pub enum PreprocessorError {
 	ResourceNotFound(ResourceId),
+	Definition(DefinitionError),
 }
 
 #[cfg(test)]
@@ -491,7 +546,7 @@ mod destructure_tests {
 	}
 
 	fn assert_execution_result(network: NodeNetwork, expected: TaggedValue) {
-		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed");
+		let proto_network = Compiler {}.compile_single(network).expect("Compilation should succeed").network;
 		let executor = DynamicExecutor::new(proto_network).expect("The executor should type check and build");
 
 		let context: core_types::Context = None;
@@ -514,9 +569,10 @@ mod destructure_tests {
 		// The multi-output node is substituted with a transient generated network: the struct as the hidden primary export,
 		// followed by one export per field, each pulled out of the struct by that field's extractor node
 		let node = network.nodes.get(&NodeId(0)).unwrap();
-		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+		let DocumentNodeImplementation::Definition(generated) = &node.implementation else {
 			panic!("The multi-output node should be substituted with a generated network")
 		};
+		let generated = &network.definitions[generated];
 		assert!(generated.generated, "The substituted network must be marked as generated so it stays out of node paths");
 		assert_eq!(generated.exports.len(), destructure.number_of_outputs());
 
@@ -569,9 +625,10 @@ mod destructure_tests {
 
 		// With a `#[primary]` field there is no hidden primary output, so there's one export per field
 		let node = network.nodes.get(&NodeId(0)).unwrap();
-		let DocumentNodeImplementation::Network(generated) = &node.implementation else {
+		let DocumentNodeImplementation::Definition(generated) = &node.implementation else {
 			panic!("The multi-output node should be substituted with a generated network")
 		};
+		let generated = &network.definitions[generated];
 		assert_eq!(generated.exports.len(), destructure.number_of_outputs());
 		for (field, export) in destructure.fields.iter().zip(&generated.exports) {
 			let NodeInput::Node { node_id: extractor_id, .. } = export else {
@@ -653,6 +710,7 @@ impl std::fmt::Display for PreprocessorError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			PreprocessorError::ResourceNotFound(id) => write!(f, "Resource not found: {id:?}"),
+			PreprocessorError::Definition(error) => write!(f, "{error}"),
 		}
 	}
 }
@@ -735,18 +793,19 @@ mod tests {
 	}
 
 	#[test]
-	fn substitution_moves_context_dependencies_onto_the_wrapped_node() {
+	fn substitution_moves_compile_metadata_onto_the_wrapped_node() {
 		let identifier = graphene_std::path_bool_nodes::boolean_operation::IDENTIFIER;
-		let context_dependencies = ContextDependencies {
+		let compile_metadata = NodeCompileMetadata {
 			extract: ContextFeatures::FOOTPRINT,
 			inject: ContextFeatures::INDEX,
+			..Default::default()
 		};
 		let mut network = NodeNetwork {
 			nodes: [(
 				NodeId(0),
 				DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(identifier.clone()),
-					context_dependencies: Some(context_dependencies),
+					compile_metadata: Some(compile_metadata),
 					..Default::default()
 				},
 			)]
@@ -755,29 +814,55 @@ mod tests {
 			..Default::default()
 		};
 
-		Preprocessor::new().expand_network(&mut network);
+		let mut substitutes = HashMap::new();
+		Preprocessor::new().expand_network(&mut network, &mut substitutes);
 
 		let node = &network.nodes[&NodeId(0)];
-		assert_eq!(
-			node.context_dependencies, None,
-			"The network node replacing the substituted node should not keep its context dependencies"
-		);
-		let DocumentNodeImplementation::Network(substitution) = &node.implementation else {
+		assert_eq!(node.compile_metadata, None, "The network node replacing the substituted node should not keep its compile metadata");
+		let DocumentNodeImplementation::Definition(substitution) = &node.implementation else {
 			panic!("Boolean Operation is memoized, so it should be substituted with a network");
 		};
+		let substitution = &substitutes[substitution];
 
 		let wrapped_node = substitution
 			.nodes
 			.values()
 			.find(|inner| inner.implementation == DocumentNodeImplementation::ProtoNode(identifier.clone()))
 			.expect("The substitution network should contain the wrapped proto node");
-		assert_eq!(wrapped_node.context_dependencies, Some(context_dependencies), "The wrapped proto node should carry the override");
+		assert_eq!(wrapped_node.compile_metadata, Some(compile_metadata), "The wrapped proto node should carry the override");
 
 		let NodeInput::Node { node_id: export_id, .. } = substitution.exports[0] else {
 			panic!("The substitution network should export a node");
 		};
 		let export = &substitution.nodes[&export_id];
 		assert_eq!(export.implementation, DocumentNodeImplementation::ProtoNode(graphene_core::memo::memoize::IDENTIFIER));
-		assert_eq!(export.context_dependencies, None, "The memoize node should not take over the wrapped node's context dependencies");
+		let export_compile_metadata = export.compile_metadata.unwrap_or_default();
+		assert!(export_compile_metadata.forwards_input, "The generated memoize node should forward its input");
+		assert_eq!(
+			export_compile_metadata.extract,
+			ContextFeatures::empty(),
+			"The memoize node should not take over the wrapped node's context features"
+		);
+	}
+
+	#[test]
+	fn node_attributes_reach_the_compile_metadata() {
+		use graphene_std::graphic::{read_attribute_number, write_attribute};
+
+		let preprocessor = Preprocessor::new();
+		let compile_metadata = |identifier: &ProtoNodeIdentifier| preprocessor.compile_metadata.get(identifier).copied().unwrap_or_default();
+
+		for (identifier, name_index) in [
+			(write_attribute::IDENTIFIER, <write_attribute::NameInput as NodeParameter>::INDEX),
+			(read_attribute_number::IDENTIFIER, <read_attribute_number::NameInput as NodeParameter>::INDEX),
+		] {
+			let info = compile_metadata(&identifier);
+			assert!(info.requires_constant_input(name_index), "{identifier:?} should require a constant name");
+			assert_eq!(info.constant_inputs.count_ones(), 1, "{identifier:?} should only require its name to be constant");
+		}
+
+		for identifier in [graphene_core::memo::memoize::IDENTIFIER, graphene_core::memo::monitor::IDENTIFIER, ops::passthrough::IDENTIFIER] {
+			assert!(compile_metadata(&identifier).forwards_input, "{identifier:?} should forward its input");
+		}
 	}
 }

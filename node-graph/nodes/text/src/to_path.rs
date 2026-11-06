@@ -1,5 +1,5 @@
 use super::TypesettingConfig;
-use super::text_context::TextContext;
+use super::text_context::{TextContext, TextToVectorError};
 use core_types::blending::BlendMode;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::{
@@ -10,7 +10,7 @@ use glam::{DAffine2, DVec2};
 use graphene_resource::Resource;
 use vector_types::Vector;
 
-pub fn to_path(text: &str, font: &Resource, typesetting: TypesettingConfig, per_glyph_items: bool) -> List<Vector> {
+pub fn to_path(text: &str, font: &Resource, typesetting: TypesettingConfig, per_glyph_items: bool) -> Result<List<Vector>, TextToVectorError> {
 	TextContext::with_thread_local(|ctx| ctx.to_path(text, font, typesetting, per_glyph_items))
 }
 
@@ -22,33 +22,37 @@ pub fn lines_clipping(text: &str, font: &Resource, typesetting: TypesettingConfi
 	TextContext::with_thread_local(|ctx| ctx.lines_clipping(text, font, typesetting))
 }
 
+/// The item's typography attribute, `None` when it is absent, or an error when it holds a type that text doesn't read.
+fn typography_attribute<T: Clone + 'static>(item: &Item<String>, key: &'static str) -> Result<Option<T>, TextToVectorError> {
+	let Some(value) = item.attributes().get_any(key) else { return Ok(None) };
+	value.downcast_ref::<T>().cloned().map(Some).ok_or(TextToVectorError::MistypedAttribute(key))
+}
+
 /// Shapes a single styled string item into vector geometry, reading its font and typesetting from the item's
 /// attributes (as set by the 'Text' node) and re-applying its transform and blending attributes onto the produced
 /// paths. With `separate_glyphs`, each glyph becomes its own item; otherwise a single compound path is produced.
-pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> List<Vector> {
+pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> Result<List<Vector>, TextToVectorError> {
 	let text = item.element();
 	if text.is_empty() {
-		return List::new();
+		return Ok(List::new());
 	}
 
 	// Use fallback font when none is explicitly attached.
-	let font: Resource = {
-		let font: Resource = item.attribute_cloned_or_default(ATTR_FONT);
-		if font.is_empty() { super::FALLBACK_FONT_RESOURCE.clone() } else { font }
-	};
+	let font = typography_attribute::<Resource>(item, ATTR_FONT)?.filter(|font| !font.is_empty());
+	let font = font.unwrap_or_else(|| super::FALLBACK_FONT_RESOURCE.clone());
 
 	let defaults = TypesettingConfig::default();
 	let typesetting = TypesettingConfig {
-		font_size: item.attribute_cloned_or(ATTR_FONT_SIZE, defaults.font_size),
-		line_height_ratio: item.attribute_cloned_or(ATTR_LINE_HEIGHT, defaults.line_height_ratio),
-		letter_spacing: item.attribute_cloned_or(ATTR_LETTER_SPACING, defaults.letter_spacing),
-		letter_tilt: item.attribute_cloned_or(ATTR_LETTER_TILT, defaults.letter_tilt),
-		max_width: item.attribute::<f64>(ATTR_MAX_WIDTH).copied().filter(|width| *width > 0.),
-		max_height: item.attribute::<f64>(ATTR_MAX_HEIGHT).copied().filter(|height| *height > 0.),
-		align: item.attribute_cloned_or(ATTR_TEXT_ALIGN, defaults.align),
+		font_size: typography_attribute(item, ATTR_FONT_SIZE)?.unwrap_or(defaults.font_size),
+		line_height_ratio: typography_attribute(item, ATTR_LINE_HEIGHT)?.unwrap_or(defaults.line_height_ratio),
+		letter_spacing: typography_attribute(item, ATTR_LETTER_SPACING)?.unwrap_or(defaults.letter_spacing),
+		letter_tilt: typography_attribute(item, ATTR_LETTER_TILT)?.unwrap_or(defaults.letter_tilt),
+		max_width: typography_attribute::<f64>(item, ATTR_MAX_WIDTH)?.filter(|width| *width > 0.),
+		max_height: typography_attribute::<f64>(item, ATTR_MAX_HEIGHT)?.filter(|height| *height > 0.),
+		align: typography_attribute(item, ATTR_TEXT_ALIGN)?.unwrap_or(defaults.align),
 	};
 
-	let vectors = to_path(text, &font, typesetting, separate_glyphs);
+	let vectors = to_path(text, &font, typesetting, separate_glyphs)?;
 	let transform = item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 	let layer_path = item.attribute::<NodeIdPath>(ATTR_EDITOR_LAYER_PATH).cloned();
 	let blend_mode = item.attribute::<BlendMode>(ATTR_BLEND_MODE).copied();
@@ -76,19 +80,19 @@ pub fn shape_text_item(item: &Item<String>, separate_glyphs: bool) -> List<Vecto
 		result.push(produced);
 	}
 
-	result
+	Ok(result)
 }
 
 /// Shapes each string item of a styled `List<String>` into vector geometry, flattening the per-item results.
-pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> List<Vector> {
+pub fn shape_text_list(strings: &List<String>, separate_glyphs: bool) -> Result<List<Vector>, TextToVectorError> {
 	let mut result = List::new();
 
 	for index in 0..strings.len() {
 		let Some(item) = strings.clone_item(index) else { continue };
-		for produced in shape_text_item(&item, separate_glyphs).into_iter() {
+		for produced in shape_text_item(&item, separate_glyphs)?.into_iter() {
 			result.push(produced);
 		}
 	}
 
-	result
+	Ok(result)
 }

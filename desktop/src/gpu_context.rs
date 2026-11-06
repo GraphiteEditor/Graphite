@@ -1,7 +1,9 @@
 use crate::wrapper::{WgpuContext, WgpuContextBuilder, WgpuFeatures};
 
 pub(super) async fn create_wgpu_context() -> WgpuContext {
-	let mut wgpu_context_builder = WgpuContextBuilder::new().with_features(WgpuFeatures::IMMEDIATES);
+	let mut wgpu_context_builder = WgpuContextBuilder::new()
+		.with_features(WgpuFeatures::IMMEDIATES)
+		.with_optional_features(WgpuFeatures::VULKAN_EXTERNAL_MEMORY_DMA_BUF);
 
 	// TODO: make this configurable via cli flags instead
 	if let Some(index) = std::env::var("GRAPHITE_WGPU_ADAPTER").ok().and_then(|s| s.parse().ok()) {

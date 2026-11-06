@@ -12,9 +12,20 @@ pub struct DocumentInfo {
 	#[serde(default)]
 	pub path: Option<PathBuf>,
 	pub is_saved: bool,
+	/// `None` when not shared.
+	#[serde(default)]
+	pub session: Option<SessionStatus>,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints, from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum SessionStatus {
+	Connected,
+	/// The transport is down or the document isn't mounted. It reconnects on mount.
+	Disconnected,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(large_number_types_as_bigints))]
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct PersistedState {
 	pub documents: Vec<DocumentInfo>,
@@ -51,7 +62,7 @@ pub enum RenderStatus {
 	Panic,
 }
 
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum FileType {
 	#[default]
@@ -197,7 +208,7 @@ mod tests {
 
 		for file_type in [FileType::Png, FileType::Jpg, FileType::Webp, FileType::Tiff, FileType::Bmp, FileType::Tga, FileType::Ico] {
 			let encoded = file_type.encode(2, 1, pixels.clone()).unwrap_or_else(|error| panic!("{file_type:?}: {error}"));
-			let decoded = Image::from_encoded(&encoded).unwrap_or_else(|| panic!("{file_type:?} should read back"));
+			let decoded = Image::from_encoded(&encoded).unwrap_or_else(|error| panic!("{file_type:?} should read back: {error}"));
 			assert_eq!((decoded.width, decoded.height), (2, 1), "{file_type:?}");
 
 			// Only JPG lacks transparency, so it lands on white

@@ -2,14 +2,17 @@
 use crate::EDITOR_HAS_CRASHED;
 use crate::EDITOR_WRAPPER;
 use crate::editor_wrapper::EditorWrapper;
-use crate::native_communication::RasterizedImage;
 #[cfg(feature = "editor")]
 use editor::messages::input_mapper::utility_types::keyboard::Key;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::messages::prelude::*;
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 use editor::task::{Spawn, Task};
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use graphene_std::runtime::Instant;
 use js_sys::{Object, Reflect};
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashSet;
 #[cfg(not(feature = "native"))]
@@ -51,7 +54,7 @@ pub(crate) fn wrapper(callback: impl FnOnce(&mut EditorWrapper)) {
 }
 
 #[cfg(not(feature = "native"))]
-pub(crate) async fn run_node_runtime() {
+pub(crate) async fn run_node_runtime(update: bool) {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
@@ -59,6 +62,9 @@ pub(crate) async fn run_node_runtime() {
 
 	let Some(mut runtime) = crate::NODE_RUNTIME.try_lock() else { return };
 	let Some(runtime) = runtime.as_mut() else { return };
+	if update {
+		runtime.update();
+	}
 	runtime.run().await;
 }
 
@@ -79,19 +85,54 @@ pub(crate) fn wake_editor() {
 	});
 }
 
-/// Web runtime wake: queues a run of the node runtime. Used to wake the runtime on async task completion.
+#[cfg(all(not(feature = "native"), target_family = "wasm"))]
+thread_local! {
+	static IDLE_RUN_QUEUED: Cell<bool> = const { Cell::new(false) };
+	static IDLE_PERIOD: RefCell<Option<(web_sys::IdleDeadline, Instant)>> = const { RefCell::new(None) };
+	static IDLE_RUN: Closure<dyn FnMut(web_sys::IdleDeadline)> = Closure::new(|deadline| {
+		IDLE_RUN_QUEUED.set(false);
+		IDLE_PERIOD.set(Some((deadline, Instant::now())));
+		wasm_bindgen_futures::spawn_local(run_node_runtime(false));
+	});
+}
+
+/// Web runtime wake: runs the node runtime in the time left before the next frame, so it can't hold up the browser's painting
+/// Within an idle period it runs again at once if the time the last run took still fits.
 #[cfg(all(not(feature = "native"), target_family = "wasm"))]
 pub(crate) fn wake_runtime() {
-	wasm_bindgen_futures::spawn_local(run_node_runtime());
+	let fits = IDLE_PERIOD.with_borrow_mut(|period| {
+		period.as_mut().is_some_and(|(deadline, run_start)| {
+			let now = Instant::now();
+			let fits = deadline.time_remaining() > (now - *run_start).as_secs_f64() * 1000.;
+			if fits {
+				*run_start = now;
+			}
+			fits
+		})
+	});
+	if fits {
+		wasm_bindgen_futures::spawn_local(run_node_runtime(false));
+		return;
+	}
+
+	let Some(window) = window() else { return };
+	if Reflect::has(&window, &"requestIdleCallback".into()).unwrap_or(false) && !IDLE_RUN_QUEUED.replace(true) {
+		IDLE_RUN.with(|run| {
+			let _ = window.request_idle_callback(run.as_ref().unchecked_ref());
+		});
+	}
 }
 
 thread_local! {
-	// The placeholder IDs of the last rendered artwork's images, each with its canvas on `window.imageCanvases`
-	static SHOWN_IMAGE_IDS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
+	/// The canvases put on `window.imageCanvases` for images, the only ones dropped from it here, since other canvases share it.
+	static IMAGE_CANVAS_IDS: RefCell<HashSet<u64>> = RefCell::new(HashSet::new());
 }
 
-/// Blits each rasterized image to a canvas registered on `window.imageCanvases`
-pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<Item = &'a RasterizedImage>) {
+/// A canvas image's ID, width, height, and RGBA8 pixels.
+pub(crate) type CanvasImagePixels<'a> = (u64, u32, u32, &'a [u8]);
+
+/// Blits each new image to a canvas registered on `window.imageCanvases`, and drops the image canvases no render uses anymore.
+pub(crate) fn render_image_data_to_canvases<'a>(images: impl IntoIterator<Item = CanvasImagePixels<'a>>, canvas_ids_in_use: &[u64]) {
 	let window = match window() {
 		Some(window) => window,
 		None => {
@@ -116,20 +157,20 @@ pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<It
 	};
 	let canvases_obj = Object::from(canvases_obj);
 
-	// Each render gives its images new placeholder IDs, so the canvases of images the previous render showed and this one doesn't are freed
-	let image_data = image_data.into_iter().collect::<Vec<_>>();
-	let shown = image_data.iter().map(|image| image.id).collect::<HashSet<_>>();
-	let previously_shown = SHOWN_IMAGE_IDS.replace(shown.clone());
-	for stale in previously_shown.difference(&shown) {
-		if Reflect::delete_property(&canvases_obj, &JsValue::from_str(&stale.to_string())).is_err() {
-			error!("Failed to free the canvas of image {stale}");
-		}
-	}
+	IMAGE_CANVAS_IDS.with_borrow_mut(|registered| {
+		let in_use: HashSet<u64> = canvas_ids_in_use.iter().copied().collect();
+		registered.retain(|id| {
+			let used = in_use.contains(id);
+			if !used {
+				let _ = Reflect::delete_property(&canvases_obj, &JsValue::from_str(&format!("image-{id}")));
+			}
+			used
+		});
+	});
 
-	for image in image_data {
-		let (placeholder_id, width, height) = (image.id, image.width, image.height);
-		let pixels = image.pixels.as_slice();
-		let canvas_name = placeholder_id.to_string();
+	for (placeholder_id, width, height, pixels) in images {
+		// Matches the renderer's `data-canvas-placeholder` value
+		let canvas_name = format!("image-{placeholder_id}");
 		let js_key = JsValue::from_str(&canvas_name);
 
 		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || width == 0 || height == 0 {
@@ -167,16 +208,10 @@ pub(crate) fn render_image_data_to_canvases<'a>(image_data: impl IntoIterator<It
 
 		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
 			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
+			continue;
 		}
+		IMAGE_CANVAS_IDS.with_borrow_mut(|registered| registered.insert(placeholder_id));
 	}
-}
-
-pub(crate) fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
-	use std::collections::hash_map::DefaultHasher;
-	use std::hash::Hasher;
-	let mut hasher = DefaultHasher::new();
-	t.hash(&mut hasher);
-	hasher.finish()
 }
 
 /// Translate a keyboard key from its JS name to its Rust `Key` enum

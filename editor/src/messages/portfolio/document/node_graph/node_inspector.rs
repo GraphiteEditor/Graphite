@@ -33,7 +33,7 @@ use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
-	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
+	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
 };
 use graphene_std::vector::style::{
 	FillChoice, Gradient, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, GradientStops, StrokeAlign, StrokeCap, StrokeJoin,
@@ -424,6 +424,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				Some(x) if id_is::<AdjustmentChannel>(x) => enum_choice::<AdjustmentChannel>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<HueSaturationRange>(x) => enum_choice::<HueSaturationRange>().for_socket(default_info).disabled(false).inspector_row(),
 				Some(x) if id_is::<GridType>(x) => enum_choice::<GridType>().for_socket(default_info).inspector_row(),
+				Some(x) if id_is::<GridTopology>(x) => enum_choice::<GridTopology>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeCap>(x) => enum_choice::<StrokeCap>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeJoin>(x) => enum_choice::<StrokeJoin>().for_socket(default_info).inspector_row(),
 				Some(x) if id_is::<StrokeAlign>(x) => enum_choice::<StrokeAlign>().for_socket(default_info).inspector_row(),
@@ -480,16 +481,16 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 }
 
 /// A math expression's typeset text field, with a warning icon in the assist area giving the error in its tooltip while the expression fails to parse.
-pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, accepts_reducers: bool) -> Vec<WidgetInstance> {
+pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, operator_only: bool) -> Vec<WidgetInstance> {
 	let Some(TaggedValue::String(expression)) = parameter_widgets_info.input().and_then(|input| input.as_non_exposed_value()) else {
 		return text_widget(parameter_widgets_info);
 	};
-	let error = math_expression_error(expression, accepts_reducers);
-	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, accepts_reducers);
+	let error = math_expression_error(expression, operator_only);
+	let MathExpressionTokens { tokens, tooltips } = math_expression_tokens(expression, operator_only);
 	let input = MathExpressionInput::new(expression.clone())
 		.tokens(tokens)
 		.tooltips(tooltips)
-		.accepts_reducers(accepts_reducers)
+		.operator_only(operator_only)
 		.errors(math_expression_error_ranges(expression, error.as_ref()))
 		.on_update(parameter_widgets_info.update_value(|x: &MathExpressionInput| TaggedValue::String(x.value.clone())))
 		.on_commit(commit_value)
@@ -499,7 +500,7 @@ pub fn math_expression_widget(mut parameter_widgets_info: ParameterWidgetsInfo, 
 	// padded to a checkbox's 16px so the field lines up with the rows around it
 	let icon = match &error {
 		Some(error) => IconLabel::new("Warning")
-			.tooltip_label("Invalid Math Expression")
+			.tooltip_label(if operator_only { "Invalid Operator" } else { "Invalid Math Expression" })
 			.tooltip_description(math_expression_error_description(error)),
 		None => IconLabel::new("Empty12px"),
 	};
@@ -1180,9 +1181,22 @@ pub fn optional_color_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_
 	let label_count = start_widgets(&parameter_widgets_info).len();
 	let exposed = parameter_widgets_info.is_exposed();
 
-	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button.disabled(enabled == Some(false))) else {
+	let LayoutGroup::Row(mut row) = color_widget(parameter_widgets_info, color_button) else {
 		return LayoutGroup::row(Vec::new());
 	};
+
+	if enabled == Some(false) {
+		for widget in &mut row.widgets {
+			let Widget::ColorInput(color_input) = &mut *widget.widget else { continue };
+
+			let set_color = color_input.on_update.callback.clone();
+			let enable = update_value_at_index(|_: &ColorInput| TaggedValue::Bool(true), node_id, bool_input_index);
+			color_input.on_update = WidgetCallback::new(move |input: &ColorInput| Message::Batched {
+				messages: Box::new([set_color(input), enable(input)]),
+			});
+		}
+	}
+
 	if !exposed {
 		row.widgets.splice(label_count..label_count, optional_parameter_assist(enabled, node_id, bool_input_index));
 	}
@@ -1623,15 +1637,33 @@ pub fn query_noise_pattern_state(node_id: NodeId, context: &NodeInspectorContext
 	))
 }
 
-pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodeInspectorContext) -> Result<bool, String> {
-	use graphene_std::vector::assign_colors::*;
-
+fn query_vary_randomize(node_id: NodeId, context: &NodeInspectorContext, randomize: impl NodeParameter) -> Result<bool, String> {
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
-	Ok(match document_node.input(RandomizeInput).and_then(|input| input.as_value()) {
+	Ok(match document_node.input(randomize).and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
+}
+
+/// The seed of a vary node (like Vary Fill Colors), which applies only while its given Randomize parameter is enabled.
+pub fn vary_seed_widget(node_id: NodeId, index: usize, context: &mut NodeInspectorContext, randomize: impl NodeParameter) -> Result<Vec<LayoutGroup>, String> {
+	let randomize_enabled = query_vary_randomize(node_id, context, randomize)?;
+	let seed_row = number_widget(
+		ParameterWidgetsInfo::at_index(node_id, index, true, context),
+		NumberInput::default().min(0.).int().disabled(!randomize_enabled),
+	);
+	Ok(vec![seed_row.into()])
+}
+
+/// The repeat count of a vary node (like Vary Fill Colors), which applies only while its given Randomize parameter is disabled.
+pub fn vary_repeat_every_widget(node_id: NodeId, index: usize, context: &mut NodeInspectorContext, randomize: impl NodeParameter) -> Result<Vec<LayoutGroup>, String> {
+	let randomize_enabled = query_vary_randomize(node_id, context, randomize)?;
+	let repeat_every_row = number_widget(
+		ParameterWidgetsInfo::at_index(node_id, index, true, context),
+		NumberInput::default().min(0.).int().disabled(randomize_enabled),
+	);
+	Ok(vec![repeat_every_row.into()])
 }
 
 /// 2-stop black-to-white gradient track for sliders that map a value to a grayscale axis.
@@ -2619,10 +2651,6 @@ pub(crate) fn selective_color_inspector(node_id: NodeId, context: &mut NodeInspe
 pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::generator_nodes::grid::*;
 
-	let grid_type = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, GridTypeInput, true, context)).inspector_row();
-
-	let mut widgets = vec![grid_type];
-
 	let document_node = match get_document_node(node_id, context) {
 		Ok(document_node) => document_node,
 		Err(err) => {
@@ -2630,33 +2658,44 @@ pub(crate) fn grid_inspector(node_id: NodeId, context: &mut NodeInspectorContext
 			return Vec::new();
 		}
 	};
-	let Some(grid_type_input) = document_node.input(GridTypeInput) else {
+	let Some(lattice_input) = document_node.input(LatticeInput) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	if let Some(&TaggedValue::GridType(grid_type)) = grid_type_input.as_non_exposed_value() {
-		match grid_type {
-			GridType::Rectangular => {
-				let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
-				widgets.push(spacing);
-			}
-			GridType::Isometric => {
-				let spacing = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
-					NumberInput::default().label("H").min(0.).unit(" px"),
-				));
-				let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
-				widgets.extend([spacing, angles]);
-			}
-		}
-	}
+	let grid_type = match lattice_input.as_non_exposed_value() {
+		Some(&TaggedValue::GridType(grid_type)) => Some(grid_type),
+		_ => None,
+	};
 
+	// Staggered only changes some topologies
+	let staggered_applies = match document_node.input(TopologyInput).and_then(|input| input.as_non_exposed_value()) {
+		Some(&TaggedValue::GridTopology(topology)) => topology.supports_staggered(),
+		_ => true,
+	};
+
+	let lattice = enum_choice::<GridType>().for_socket(ParameterWidgetsInfo::new(node_id, LatticeInput, true, context)).inspector_row();
+	let topology = enum_choice::<GridTopology>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, TopologyInput, true, context))
+		.inspector_row();
+	let staggered = bool_widget(ParameterWidgetsInfo::new(node_id, StaggeredInput, true, context), CheckboxInput::default().disabled(!staggered_applies));
 	let columns = number_widget(ParameterWidgetsInfo::new(node_id, ColumnsInput, true, context), NumberInput::default().min(1.));
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput, true, context), NumberInput::default().min(1.));
 
-	let connect_cells = bool_widget(ParameterWidgetsInfo::new(node_id, ConnectCellsInput, true, context), CheckboxInput::default());
+	let mut widgets = vec![lattice, topology, LayoutGroup::row(staggered), LayoutGroup::row(columns), LayoutGroup::row(rows)];
 
-	widgets.extend([LayoutGroup::row(columns), LayoutGroup::row(rows), LayoutGroup::row(connect_cells)]);
+	if let Some(grid_type) = grid_type {
+		if grid_type.is_isometric() {
+			let spacing = LayoutGroup::row(number_widget(
+				ParameterWidgetsInfo::new(node_id, SpacingInput, true, context),
+				NumberInput::default().label("H").min(0.).unit(" px"),
+			));
+			let angles = vec2_widget(ParameterWidgetsInfo::new(node_id, AnglesInput, true, context), "", "", "°", None, false);
+			widgets.extend([spacing, angles]);
+		} else {
+			let spacing = vec2_widget(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context), "W", "H", " px", Some(0.), false);
+			widgets.push(spacing);
+		}
+	}
 
 	widgets
 }
@@ -3903,12 +3942,13 @@ mod tests {
 
 	#[test]
 	fn math_expressions_are_flagged_only_when_they_fail_to_parse() {
-		for (expression, accepts_reducers) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true)] {
-			assert!(math_expression_error(expression, accepts_reducers).is_none(), "`{expression}`");
+		for (expression, operator_only) in [("x * 2", false), ("", false), ("  ", true), ("min", false), ("+", true), ("min", true), (" ≤ ", true)] {
+			assert!(math_expression_error(expression, operator_only).is_none(), "`{expression}`");
 		}
 
 		assert!(math_expression_error("2 +", false).is_some());
-		assert!(math_expression_error("+", false).is_some(), "a lone reducer is an error where the node applies none");
+		assert!(math_expression_error("+", false).is_some(), "a lone operator is an error where the node takes an expression");
+		assert!(math_expression_error("a + b", true).is_some(), "an expression is an error where the node takes a lone operator");
 		assert_eq!(description("sin(I)").as_deref(), Some("A matrix stands where a value is needed"));
 	}
 

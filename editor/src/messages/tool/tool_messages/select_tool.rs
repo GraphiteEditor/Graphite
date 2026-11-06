@@ -2443,7 +2443,8 @@ mod test_select_tool {
 		let drawn_anchors = |editor: &EditorTestUtils| {
 			let metadata = editor.active_document().metadata();
 			let to_viewport = metadata.transform_to_viewport(polygon);
-			let anchors = metadata.layer_outline(polygon).flat_map(crate::messages::tool::common_functionality::snap_session::anchor_positions);
+			let outline: Vec<_> = metadata.layer_outline(polygon).collect();
+			let anchors = outline.iter().flat_map(crate::messages::tool::common_functionality::snap_session::anchor_positions);
 			anchors.map(|anchor| to_viewport.transform_point2(anchor)).collect::<Vec<_>>()
 		};
 
@@ -2662,7 +2663,8 @@ mod test_select_tool {
 		let drawn_anchors = |editor: &EditorTestUtils| {
 			let metadata = editor.active_document().metadata();
 			let to_viewport = metadata.transform_to_viewport(polygon);
-			let anchors = metadata.layer_outline(polygon).flat_map(crate::messages::tool::common_functionality::snap_session::anchor_positions);
+			let outline: Vec<_> = metadata.layer_outline(polygon).collect();
+			let anchors = outline.iter().flat_map(crate::messages::tool::common_functionality::snap_session::anchor_positions);
 			anchors.map(|anchor| to_viewport.transform_point2(anchor)).collect::<Vec<_>>()
 		};
 		let leftmost = drawn_anchors(&editor).into_iter().min_by(|a, b| a.x.total_cmp(&b.x)).expect("the polygon should have anchors");

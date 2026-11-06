@@ -6,7 +6,7 @@ use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::math_expression::MathExpressionCompletions;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, FrontendRemoteCursor, NodeGraphErrorDiagnostic,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
@@ -126,7 +126,7 @@ pub enum FrontendMessage {
 	},
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerSavePreferences {
+	TriggerUpdatePreferences {
 		#[cfg_attr(feature = "wasm", tsify(type = "unknown"))]
 		preferences: PreferencesMessageHandler,
 	},
@@ -140,6 +140,9 @@ pub enum FrontendMessage {
 		url: String,
 	},
 	TriggerClipboardRead,
+	TriggerSessionLinkCopy {
+		token: String,
+	},
 	TriggerClipboardWrite {
 		content: String,
 	},
@@ -189,6 +192,12 @@ pub enum FrontendMessage {
 	UpdateBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
+	},
+	UpdateDocumentCursors {
+		cursors: Vec<FrontendRemoteCursor>,
+	},
+	UpdateNodeGraphCursors {
+		cursors: Vec<FrontendRemoteCursor>,
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
@@ -263,8 +272,11 @@ pub enum FrontendMessage {
 	UpdateRenderStatus {
 		status: RenderStatus,
 	},
+	/// Gives the frontend the canvas images it lacks, and names every canvas the latest render uses so it can drop the rest.
 	UpdateImageData {
 		image_data: Vec<RasterizedImage>,
+		#[serde(rename = "canvasIdsInUse")]
+		canvas_ids_in_use: Vec<u64>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
@@ -331,6 +343,19 @@ pub enum FrontendMessage {
 	},
 	ClearNodeThumbnails {
 		ids: Vec<NodeId>,
+	},
+	UpdateNodeThumbnailPixels {
+		id: NodeId,
+		width: u32,
+		height: u32,
+		pixels: serde_bytes::ByteBuf,
+	},
+	UpdateNodeThumbnailCanvases {
+		id: NodeId,
+		#[serde(rename = "layersPanelCanvasId")]
+		layers_panel_canvas_id: u64,
+		#[serde(rename = "nodeGraphCanvasId")]
+		node_graph_canvas_id: u64,
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]

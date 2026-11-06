@@ -64,6 +64,10 @@ pub mod network {
 	/// Concurrent reorders do not merge, but the pinned set is already shared, and a shared set with
 	/// per-peer ordering would diverge with no way to reconcile.
 	pub const PINNED_ORDER: &str = "ui::pinned_order";
+
+	pub const IMPORT_METADATA: &str = "ui::import_metadata";
+	pub const EXPORT_NAMES: &str = "ui::export_names";
+	pub const EXPORT_DESCRIPTIONS: &str = "ui::export_descriptions";
 }
 
 pub mod delta {

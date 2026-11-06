@@ -219,9 +219,9 @@ pub trait Runtime {
 }
 ```
 
-`Task` is a boxed `'static` future that is `Send` on native targets only. The editor owns an `AsyncRuntime`, which updates the live sources (`retain_sources`) and takes snapshots of the generations (`snapshot`). Nodes get a cloneable `RuntimeHandle` to the same state through the `runtime` scope input, which is always present. Graphs without async nodes never read it.
+`Task` is a boxed `'static` future that is `Send` on native targets only. The editor owns an `AsyncRuntime`, which updates the live sources (`update_sources`) and takes snapshots of the generations (`snapshot`). Nodes get a cloneable `RuntimeHandle` to the same state through the `runtime` scope input, which is always present. Graphs without async nodes never read it.
 
-The host provides the `Spawn` implementation: a tokio runtime on desktop and `spawn_local` on the web. The editor wraps it so that a finished task sets a dirty flag and calls the runtime's wake callback (a channel send on desktop, a queued runtime run on the web).
+The host provides the `Spawn` implementation: a tokio runtime on desktop and `spawn_local` on the web. The editor wraps it so that a finished task sets a dirty flag and calls the runtime's wake callback (a channel send on desktop, an idle callback on the web).
 
 Executor construction, update, and execution are plain functions, and `execute` returns `Poll<TaggedValue>`. The only await left in the editor runtime is the GPU readback for exports and the eyedropper, which can't block on the web. On desktop, the runtime runs on its own thread under `block_on`, and the readback polls the device until the copy is done.
 
@@ -231,9 +231,11 @@ We don't use wakers to notify the graph. A waker resumes a suspended computation
 
 - Generations are read once per evaluation. A task that finishes during an evaluation takes effect in the next one.
 - The dirty flag is checked once per runtime run, so N finished tasks cause one re-render of the last viewport request.
-- On recompile, `retain_sources` removes sources that no longer exist and adds new ones at generation zero. Nodes that were removed drop their slots, which aborts their tasks.
+- Only `update` reads requests and applies network updates, and hosts call it at most once per frame (each animation frame on the web, each redraw on desktop). `run` only evaluates, when a request or a finished task has set the dirty flag, so a graph can settle between updates however often the editor sends them. A newer request replaces an older one of its kind.
+- On the web, a wake asks for a run through `requestIdleCallback`, and within that idle period runs again at once while another run fits. Otherwise, and in browsers without that API, the next animation frame picks up the finished task. Waking any sooner would hold up frames: a microtask blocks painting, and a normal task goes ahead of the frame. On desktop, the graph has its own thread, so a wake runs it at once.
+- On recompile, `update_sources` removes sources that no longer exist and adds new ones at generation zero. Nodes that were removed drop their slots, which aborts their tasks.
 
-The editor maps the top-level `Poll` to an `ExecutionResult`: `Pending`, `Value`, `Fallback(value, errors)`, `Error(errors)`, or `Panic`. A `Pending` result keeps the last frame and its errors on screen. An export treats `Partial` like `Pending`: it is parked and re-run on every dirty wake until the result is final, and the runtime doesn't process other requests until then.
+The editor maps the top-level `Poll` to an `ExecutionResult`: `Pending`, `Value`, `Fallback(value, errors)`, `Error(errors)`, or `Panic`. A `Pending` result keeps the last frame and its errors on screen. An export treats `Partial` like `Pending`: it is parked and re-run on every dirty wake until the result is final. `update` stops reading at an export, so it runs on its own network update and anything sent later waits.
 
 ## Overhead
 

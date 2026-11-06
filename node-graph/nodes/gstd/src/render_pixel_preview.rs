@@ -1,6 +1,6 @@
 use core_types::list::Item;
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, Interrupt, NodeError, OwnedContextImpl};
 use glam::{DAffine2, DVec2, UVec2, Vec2};
 use graph_craft::document::value::{RenderOutput, RenderOutputType};
 use graphic_types::raster_types::Texture;
@@ -11,7 +11,7 @@ use wgpu_executor::{WgpuExecutor, WgpuPipeline, WgpuPipelineCache};
 #[node_macro::node(category(""))]
 fn render_pixel_preview(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
-	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+	#[scope(pixel_preview_pipeline::IDENTIFIER)] pipeline: impl Node<Context<'static>, Output = Item<WgpuPipelineCache>>,
 	data: impl Node<Context<'static>, Output = Item<RenderOutput>> + Send + Sync,
 ) -> Result<Item<RenderOutput>, Interrupt> {
 	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()).cloned() else {
@@ -62,11 +62,15 @@ fn render_pixel_preview(
 	let logical_transform = DAffine2::from_scale(DVec2::splat(1. / physical_scale)) * footprint.transform;
 	let transform = DAffine2::from_translation(-upstream_min) * logical_transform.inverse() * DAffine2::from_scale(logical_resolution);
 
-	let resampled = pipeline.into_element().run::<PixelPreview>(&PixelPreviewArgs {
-		source: source_texture.as_ref(),
-		transform: &transform,
-		size: physical_resolution,
-	});
+	let resampled = pipeline
+		.eval(Context::default())?
+		.into_element()
+		.run::<PixelPreview>(&PixelPreviewArgs {
+			source: source_texture.as_ref(),
+			transform: &transform,
+			size: physical_resolution,
+		})
+		.map_err(NodeError::from)?;
 
 	result.data = RenderOutputType::Texture(resampled);
 
@@ -78,12 +82,10 @@ fn render_pixel_preview(
 #[node_macro::node(category(""), inject_scope)]
 fn pixel_preview_pipeline(
 	_ctx: impl Ctx,
-	#[scope(crate::platform_application_io::try_wgpu_executor::IDENTIFIER)] executor: Item<Option<WgpuExecutor>>,
+	#[scope(crate::platform_application_io::wgpu_executor::IDENTIFIER)] executor: Item<WgpuExecutor>,
 	#[data] pipeline: WgpuPipelineCache,
 ) -> Item<WgpuPipelineCache> {
-	if let Some(executor) = executor.into_element() {
-		executor.pipeline_init::<PixelPreview>(pipeline);
-	}
+	executor.into_element().pipeline_init::<PixelPreview>(pipeline);
 	Item::new_from_element(pipeline.clone())
 }
 

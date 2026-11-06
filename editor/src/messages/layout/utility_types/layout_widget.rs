@@ -24,7 +24,7 @@ impl core::fmt::Display for WidgetId {
 
 macro_rules! define_layout_target {
 	($($(#[$attr:meta])* $variant:ident),* $(,)?) => {
-		#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+		#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 		#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 		#[repr(u8)]
 		pub enum LayoutTarget {
@@ -52,11 +52,15 @@ define_layout_target!(
 	ColorPickerDetails,
 	/// The Data panel visualizes the output data flowing through the selected node in the graph.
 	DataPanel,
-	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// The inspected node's context, at the right of the Data panel's top bar.
+	DataPanelContext,
+	/// The inspected node and the path to the data shown, at the left of the Data panel's top bar.
+	DataPanelPath,
+	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `DialogMessage::Display` message.
 	DialogButtons,
-	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the contents of the dialog's primary column. Must be shown with the `DialogMessage::Display` message.
 	DialogColumn1,
-	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `FrontendMessage::DisplayDialog` message.
+	/// Contains the contents of the dialog's secondary column (often blank). Must be shown with the `DialogMessage::Display` message.
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
@@ -72,6 +76,7 @@ define_layout_target!(
 	NodeGraphControlBar,
 	/// The body of the Inspector containing many collapsable sections.
 	Inspector,
+	SessionPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
 	/// The version information shown in the status bar at the bottom right of the window.
@@ -123,7 +128,7 @@ pub trait DialogLayoutHolder: LayoutHolder {
 		self.send_layout(responses, LayoutTarget::DialogColumn1);
 		self.send_layout_column_2(responses, LayoutTarget::DialogColumn2);
 		self.send_layout_buttons(responses, LayoutTarget::DialogButtons);
-		responses.add(FrontendMessage::DisplayDialog {
+		responses.add(DialogMessage::Display {
 			icon: Self::ICON.into(),
 			title: Self::TITLE.into(),
 		});

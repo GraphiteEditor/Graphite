@@ -1,5 +1,5 @@
+use crate::document::value;
 use crate::document::value::TaggedValue;
-use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
 pub use core_types::registry::*;
 use core_types::*;
@@ -51,10 +51,6 @@ impl core::fmt::Display for ProtoNetwork {
 						write_node(f, network, *id, indent + 1)?;
 					}
 				}
-				ConstructionArgs::Inline(inline) => {
-					f.write_str(&"\t".repeat(indent + 1))?;
-					f.write_fmt(format_args!("Inline construction argument: {inline:?}"))?
-				}
 			}
 			f.write_str(&"\t".repeat(indent))?;
 			f.write_str("}\n")?;
@@ -75,8 +71,6 @@ pub enum ConstructionArgs {
 	/// The bool indicates whether to treat the node as lambda node.
 	// TODO: use a struct for clearer naming.
 	Nodes(Vec<NodeId>),
-	/// Used for GPU computation to work around the limitations of rust-gpu.
-	Inline(InlineRust),
 }
 
 impl Eq for ConstructionArgs {}
@@ -109,7 +103,6 @@ impl CacheHash for ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.cache_hash(state),
-			Self::Inline(inline) => inline.hash(state),
 		}
 	}
 }
@@ -119,7 +112,6 @@ impl ConstructionArgs {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
-			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
@@ -133,7 +125,9 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
-	pub(crate) context_dependencies: ContextDependencies,
+	pub(crate) compile_metadata: NodeCompileMetadata,
+	/// The context features read by this node and everything upstream of it.
+	pub upstream_context_features: ContextFeatures,
 }
 
 impl Default for ProtoNode {
@@ -144,7 +138,8 @@ impl Default for ProtoNode {
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
-			context_dependencies: Default::default(),
+			compile_metadata: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 }
@@ -179,7 +174,8 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
-			context_dependencies: Default::default(),
+			compile_metadata: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 
@@ -280,12 +276,55 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		self.find_context_dependencies(self.output);
+		let (output_dependencies, _) = self.find_context_dependencies(self.output, &mut FxHashMap::default());
+		self.nodes[self.output.0 as usize].1.upstream_context_features = output_dependencies.features;
 
 		// Perform topological sort a second time to integrate the new nodes
 		self.reorder_ids()?;
 
 		Ok(())
+	}
+
+	pub(crate) fn footprint_invariance_violations(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter(|(_, node)| node.compile_metadata.footprint_invariant && node.upstream_context_features.contains(ContextFeatures::FOOTPRINT))
+			.map(|(_, node)| GraphError::new(node, GraphErrorType::FootprintDependentInput))
+			.collect()
+	}
+
+	pub(crate) fn non_constant_inputs(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter(|(_, node)| node.compile_metadata.constant_inputs != 0)
+			.flat_map(|(_, node)| {
+				let inputs = match &node.construction_args {
+					ConstructionArgs::Nodes(inputs) => inputs.as_slice(),
+					_ => &[],
+				};
+				inputs
+					.iter()
+					.enumerate()
+					.filter(|&(index, &input)| node.compile_metadata.requires_constant_input(index) && !self.resolves_to_value(input))
+					.map(|(index, _)| GraphError::new(node, GraphErrorType::NonConstantInput { index }))
+			})
+			.collect()
+	}
+
+	fn resolves_to_value(&self, mut id: NodeId) -> bool {
+		loop {
+			let Some((node_id, node)) = self.nodes.get(id.0 as usize) else { return false };
+			debug_assert_eq!(*node_id, id, "Node IDs must be dense indices");
+
+			match &node.construction_args {
+				ConstructionArgs::Value(_) => return true,
+				ConstructionArgs::Nodes(inputs) if node.compile_metadata.forwards_input => match inputs.first() {
+					Some(&input) => id = input,
+					None => return false,
+				},
+				_ => return false,
+			}
+		}
 	}
 
 	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
@@ -297,6 +336,11 @@ impl ProtoNetwork {
 			p.push(NodeId(10))
 		}
 
+		let features = context_deps.features;
+		let forwarding = NodeCompileMetadata {
+			forwards_input: true,
+			..Default::default()
+		};
 		let memoize_node_id = NodeId(self.nodes.len() as u64);
 
 		self.nodes.push((
@@ -309,6 +353,8 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				compile_metadata: forwarding,
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -339,6 +385,8 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				compile_metadata: forwarding,
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -355,12 +403,22 @@ impl ProtoNetwork {
 		})
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextModification, Option<NodeId>) {
+	fn find_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
+		if let Some(result) = analyzed.get(&id) {
+			return result.clone();
+		}
+
+		let result = self.analyze_context_dependencies(id, analyzed);
+		analyzed.insert(id, result.clone());
+		result
+	}
+
+	fn analyze_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let dependencies = self.nodes[node_index].1.context_dependencies;
+		let dependencies = self.nodes[node_index].1.compile_metadata;
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
 			ConstructionArgs::Nodes(items) => items.clone(),
@@ -374,12 +432,13 @@ impl ProtoNetwork {
 					Some(id),
 				);
 			}
-			ConstructionArgs::Value(_) | ConstructionArgs::Inline(_) => return (dependencies.extract.into(), Some(id)),
+			ConstructionArgs::Value(_) => return (dependencies.extract.into(), Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
-			let branch = self.find_context_dependencies(node);
+			let branch = self.find_context_dependencies(node, analyzed);
+			self.nodes[node.0 as usize].1.upstream_context_features = branch.0.features;
 
 			combined_deps.features |= branch.0.features;
 			combined_deps.sources.extend(&branch.0.sources);
@@ -558,6 +617,10 @@ pub enum GraphErrorType {
 		inputs: String,
 		valid: Vec<NodeIOTypes>,
 	},
+	FootprintDependentInput,
+	NonConstantInput {
+		index: usize,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -601,6 +664,11 @@ impl Debug for GraphErrorType {
 				)
 			}
 			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
+			GraphErrorType::FootprintDependentInput => write!(
+				f,
+				"Warning: an upstream node adapts to the visible canvas area, so this node's output changes when the view is panned or zoomed"
+			),
+			GraphErrorType::NonConstantInput { index } => write!(f, "Input {} must be a fixed value rather than computed by other nodes", index + 1),
 		}
 	}
 }
@@ -801,7 +869,6 @@ impl TypingContext {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, GraphErrors>>()?,
-			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
 		// Get the node input type from the proto node declaration
@@ -1131,6 +1198,175 @@ mod test {
 				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
 			})
 			.collect()
+	}
+
+	#[test]
+	fn shared_nodes_are_wrapped_in_one_nullification() {
+		let node = |name: &'static str, inputs: Vec<NodeId>, extract: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata: NodeCompileMetadata { extract, ..Default::default() },
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(6),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2).into()), vec![])),
+				(NodeId(1), node("reader", vec![NodeId(0)], ContextFeatures::ANIMATION_TIME)),
+				(NodeId(2), node("plain", vec![NodeId(0)], none)),
+				(NodeId(3), node("shared", vec![NodeId(1), NodeId(2)], none)),
+				(NodeId(4), node("first_consumer", vec![NodeId(3)], none)),
+				(NodeId(5), node("second_consumer", vec![NodeId(3)], none)),
+				(NodeId(6), node("output", vec![NodeId(4), NodeId(5)], none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let nullification = graphene_core::context_modification::context_modification::IDENTIFIER;
+		let nullifications: Vec<_> = network.nodes.iter().filter(|(_, node)| node.identifier == nullification).collect();
+		assert_eq!(nullifications.len(), 1, "The plain branch of the shared node should be nullified once");
+
+		let ConstructionArgs::Nodes(inputs) = &nullifications[0].1.construction_args else {
+			panic!("A nullification node should have node inputs")
+		};
+		let ConstructionArgs::Nodes(memoized) = &network.nodes[inputs[0].0 as usize].1.construction_args else {
+			panic!("A memoize node should have node inputs")
+		};
+		assert_eq!(
+			network.nodes[memoized[0].0 as usize].1.identifier.as_str(),
+			"plain",
+			"The nullification should wrap the plain node, not another nullification"
+		);
+	}
+
+	#[test]
+	fn nodes_record_the_context_features_their_output_depends_on() {
+		let node = |name: &'static str, construction_args: ConstructionArgs, extract: ContextFeatures, inject: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			compile_metadata: NodeCompileMetadata {
+				extract,
+				inject,
+				..Default::default()
+			},
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into()), none, none)),
+				(
+					NodeId(1),
+					node("reader", ConstructionArgs::Nodes(vec![NodeId(0)]), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX, none),
+				),
+				(NodeId(2), node("repeat", ConstructionArgs::Nodes(vec![NodeId(1)]), none, ContextFeatures::INDEX)),
+				(NodeId(3), node("wrap", ConstructionArgs::Nodes(vec![NodeId(2)]), none, none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let features_of = |name: &str| network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).unwrap().1.upstream_context_features;
+		assert_eq!(features_of("value"), none);
+		assert_eq!(features_of("reader"), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX);
+		assert_eq!(features_of("repeat"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of("wrap"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of(graphene_core::memo::memoize::IDENTIFIER.as_str()), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(
+			features_of(graphene_core::context_modification::context_modification::IDENTIFIER.as_str()),
+			ContextFeatures::ANIMATION_TIME
+		);
+	}
+
+	#[test]
+	fn footprint_invariant_nodes_warn_only_when_their_inputs_read_the_footprint() {
+		let node = |name: &'static str, inputs: Vec<NodeId>, compile_metadata: NodeCompileMetadata| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata,
+			..Default::default()
+		};
+		let reader = NodeCompileMetadata {
+			extract: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let footprint_injector = NodeCompileMetadata {
+			inject: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let invariant = NodeCompileMetadata {
+			footprint_invariant: true,
+			..Default::default()
+		};
+		let warnings = |with_injector: bool| {
+			let mut nodes = vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2).into()), vec![])),
+				(NodeId(1), node("reader", vec![NodeId(0)], reader)),
+			];
+			if with_injector {
+				nodes.push((NodeId(2), node("injector", vec![NodeId(1)], footprint_injector)));
+			}
+			let output = NodeId(nodes.len() as u64);
+			nodes.push((output, node("invariant", vec![NodeId(output.0 - 1)], invariant)));
+
+			let mut network = ProtoNetwork { inputs: vec![], output, nodes };
+			network.insert_context_nullification_nodes().unwrap();
+			network.footprint_invariance_violations()
+		};
+
+		let violations = warnings(false);
+		assert_eq!(violations.len(), 1);
+		assert_eq!(violations[0].identifier, "invariant");
+		assert!(violations[0].error == GraphErrorType::FootprintDependentInput);
+
+		assert!(warnings(true).is_empty());
+	}
+
+	#[test]
+	fn constant_inputs_must_resolve_to_values_through_forwarding_nodes() {
+		let value = || ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("name".into()).into()), vec![]);
+		let node = |inputs: Vec<NodeId>, compile_metadata: NodeCompileMetadata| ProtoNode {
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata,
+			..Default::default()
+		};
+		let forwarding = NodeCompileMetadata {
+			forwards_input: true,
+			..Default::default()
+		};
+		let consumer = NodeCompileMetadata {
+			constant_inputs: 1 << 1,
+			..Default::default()
+		};
+		let errors = |name_wrapper: NodeCompileMetadata| {
+			let network = ProtoNetwork {
+				inputs: vec![],
+				output: NodeId(5),
+				nodes: vec![
+					(NodeId(0), value()),
+					(NodeId(1), value()),
+					(NodeId(2), node(vec![NodeId(1)], name_wrapper)),
+					(NodeId(3), node(vec![NodeId(2)], forwarding)),
+					(NodeId(4), value()),
+					(NodeId(5), node(vec![NodeId(0), NodeId(3), NodeId(4)], consumer)),
+				],
+			};
+			network.non_constant_inputs()
+		};
+
+		assert!(errors(forwarding).is_empty());
+
+		let computed = errors(NodeCompileMetadata::default());
+		assert_eq!(computed.len(), 1);
+		assert!(computed[0].error == GraphErrorType::NonConstantInput { index: 1 });
 	}
 
 	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {

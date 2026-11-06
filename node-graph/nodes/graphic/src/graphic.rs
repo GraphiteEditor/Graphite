@@ -14,7 +14,7 @@ use vector_types::{Gradient, ReferencePoint};
 
 /// Returns the list with the item at the specified index removed.
 /// If no value exists at that index, the list is returned unchanged.
-#[node_macro::node(category("General"), icon("NodeRemoveAtIndex"), name("Remove at Index"))]
+#[node_macro::node(category("Data: List"), icon("NodeRemoveAtIndex"), name("Remove at Index"))]
 fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The list of data.
@@ -48,7 +48,7 @@ fn remove_at_index<T: graphic_types::graphic::OmitIndex + Clone + Default>(
 
 /// Returns the item at the specified index in a list, keeping its attributes.
 /// If no value exists at that index, the element type's default is returned.
-#[node_macro::node(category("General"), icon("NodeItemAtIndex"), name("Item at Index"))]
+#[node_macro::node(category("Data: List"), icon("NodeItemAtIndex"), name("Item at Index"))]
 fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to take the item from.
@@ -85,8 +85,8 @@ fn item_at_index<T: Clone + Default + Send + Sync + 'static>(
 }
 
 /// Keeps chosen items from a list (those corresponding to `true` values) and discards the others (those corresponding to `false` values) based on the *Keep Pattern* `Bool` list. A short pattern is repeated over the remainder of the filtered list, allowing a pattern like `[true, false]` to keep every other item starting from the first. An empty pattern keeps all items.
-#[node_macro::node(category("General"), icon("NodeFilter"))]
-fn filter<T: Send + Sync + 'static>(
+#[node_macro::node(category("Data: List"), icon("NodeFilter"))]
+fn filter<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to filter.
 	#[implementations(
@@ -118,8 +118,8 @@ fn filter<T: Send + Sync + 'static>(
 }
 
 /// Reverses the order of the items in a list, so the last item comes first and the first comes last.
-#[node_macro::node(category("General"), icon("NodeReverse"))]
-fn reverse<T: Send + Sync + 'static>(
+#[node_macro::node(category("Data: List"), icon("NodeReverse"))]
+fn reverse<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to reverse.
 	#[implementations(
@@ -143,8 +143,8 @@ fn reverse<T: Send + Sync + 'static>(
 }
 
 /// Shifts the items in a list by a number of positions. With wrapping, items pushed off one end reappear at the other. Otherwise they are dropped, shortening the list.
-#[node_macro::node(category("General"), icon("NodeShift"))]
-fn shift<T: Send + Sync + 'static>(
+#[node_macro::node(category("Data: List"), icon("NodeShift"))]
+fn shift<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to shift.
 	#[implementations(
@@ -188,8 +188,8 @@ fn shift<T: Send + Sync + 'static>(
 }
 
 /// Randomly reorders the items in a list. The same seed always produces the same ordering.
-#[node_macro::node(category("General"), icon("NodeShuffle"))]
-fn shuffle<T: Send + Sync + 'static>(
+#[node_macro::node(category("Data: List"), icon("NodeShuffle"))]
+fn shuffle<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list to have its items randomly reordered.
 	#[implementations(
@@ -222,7 +222,7 @@ fn shuffle<T: Send + Sync + 'static>(
 }
 
 /// Generates a list of evenly spaced numbers, starting at a value and progressing by a step (which may be positive, negative, or zero) for a given count.
-#[node_macro::node(category("General"), icon("NodeNumberSequence"), name("Number Sequence"))]
+#[node_macro::node(category("Data: List"), icon("NodeNumberSequence"), name("Number Sequence"))]
 fn number_sequence(
 	_: impl Ctx,
 	_primary: (),
@@ -244,8 +244,8 @@ fn number_sequence(
 // TODO: Return i64 instead of f64 once automatic type conversion is implemented for nodes with generic type inputs, so an integer output doesn't wall these indices off from the generic math nodes.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 /// Counts out the index of each item in a list (0, 1, 2, and so on), producing a list of numbers with one for each item.
-#[node_macro::node(category("General"), icon("NodeListIndices"))]
-fn list_indices(
+#[node_macro::node(category("Data: List"), icon("NodeIndices"))]
+fn indices(
 	_: impl Ctx,
 	/// The list whose items are counted.
 	list: ListDyn,
@@ -260,8 +260,8 @@ fn list_indices(
 /// Extracts a portion of a list, starting at "Start" and ending before "End".
 ///
 /// Negative indices count from the end of the list. If the index of "Start" equals or exceeds "End", the result is an empty list.
-#[node_macro::node(category("General"), icon("NodeListSlice"))]
-fn list_slice<T: Send + Sync + 'static>(
+#[node_macro::node(category("Data: List"), icon("NodeSlice"))]
+fn slice<T: Send + Sync + Clone + 'static>(
 	_: impl Ctx,
 	/// The list of data to take a portion of.
 	#[implementations(
@@ -298,31 +298,31 @@ fn list_slice<T: Send + Sync + 'static>(
 	list.into_iter().skip(start).take(end - start).collect()
 }
 
-/// Pairwise ordering used by the Sort node for element values. Types without a natural
-/// order compare as equal, so the stable sort leaves their items in their original relative positions.
+/// Pairwise ordering used by the Sort node for element values. Types without a natural order give `None`,
+/// so their items can only be sorted by a *Sort Order* list.
 pub trait ElementOrder {
-	fn element_order(&self, _other: &Self) -> Ordering {
-		Ordering::Equal
+	fn element_order(&self, _other: &Self) -> Option<Ordering> {
+		None
 	}
 }
 impl ElementOrder for String {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
 	}
 }
 impl ElementOrder for bool {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
 	}
 }
 impl ElementOrder for f64 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.total_cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.total_cmp(other))
 	}
 }
 impl ElementOrder for i64 {
-	fn element_order(&self, other: &Self) -> Ordering {
-		self.cmp(other)
+	fn element_order(&self, other: &Self) -> Option<Ordering> {
+		Some(self.cmp(other))
 	}
 }
 impl ElementOrder for DVec2 {}
@@ -335,8 +335,14 @@ impl ElementOrder for Color {}
 impl ElementOrder for Gradient {}
 impl ElementOrder for Artboard {}
 
+#[derive(Debug, thiserror::Error)]
+pub enum SortError {
+	#[error("These items have no natural order, so connect a Sort Order list to sort them")]
+	NoNaturalOrder,
+}
+
 /// Reorders a list's items from smallest to largest, either by each item's own value or by a parallel list of sortable values in the *Sort Order* input. The sort is stable, so items with the same sort order retain their relative positions.
-#[node_macro::node(category("General"), icon("NodeSort"))]
+#[node_macro::node(category("Data: List"), icon("NodeSort"))]
 fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The list of data to reorder.
@@ -356,21 +362,29 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 	sort_order: List<U>,
 	/// Reverses the sorted list order, following descending order instead of ascending (numbers largest-to-smallest, strings Z-to-A, etc.).
 	reverse: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, SortError> {
 	let reverse = reverse.into_element();
 
 	// Order by the parallel keys when provided (repeating the last if there are fewer keys than items), otherwise by the element values themselves
 	let keys = sort_order.iter_element_values().as_slice();
 	let elements: Vec<&T> = list.iter_element_values().collect();
 
+	let mut unordered = false;
 	let mut order: Vec<usize> = (0..list.len()).collect();
 	order.sort_by(|&a, &b| {
 		let ordering = match keys {
 			[] => elements[a].element_order(elements[b]),
 			keys => keys[a.min(keys.len() - 1)].element_order(&keys[b.min(keys.len() - 1)]),
 		};
+		let ordering = ordering.unwrap_or_else(|| {
+			unordered = true;
+			Ordering::Equal
+		});
 		if reverse { ordering.reverse() } else { ordering }
 	});
+	if unordered {
+		return Err(SortError::NoNaturalOrder);
+	}
 
 	let mut result = List::new();
 	for index in order {
@@ -379,11 +393,11 @@ fn sort<T: ElementOrder + Clone + Send + Sync + 'static, U: ElementOrder + Send 
 		}
 	}
 
-	result
+	Ok(result)
 }
 
-#[node_macro::node(category("General"), icon("NodeMap"))]
-fn map<Item: AnyHash + Send + Sync + CacheHash>(
+#[node_macro::node(category("Data: List"), icon("NodeMap"))]
+fn map<Item: AnyHash + Send + Sync + CacheHash + Clone>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
 	#[implementations(
 		List<String>,
@@ -431,8 +445,77 @@ fn map<Item: AnyHash + Send + Sync + CacheHash>(
 	Ok(rows)
 }
 
-#[node_macro::node(category("General"), icon("NodeMirror"))]
-fn mirror<T: BoundingBox + Send + Clone>(
+/// Feeds the content through the same steps over and over, each time starting from the previous result. Inside the steps, a **Read** node like **Read String** or **Read Vector** reads the result so far, and **Read Index** reads how many times around it has been.
+#[node_macro::node(category("Routing"), icon("NodeIterate"))]
+fn iterate<T: AnyHash + Send + Sync + CacheHash + Clone>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	/// The starting value, which the steps rework each time around.
+	#[implementations(String, f64, Vector, Graphic, Raster<CPU>, Color, Gradient)]
+	content: Item<T>,
+	/// The steps applied each time around, reading the result so far with a **Read** node.
+	#[expose]
+	#[implementations(
+		Context -> Item<String>,
+		Context -> Item<f64>,
+		Context -> Item<Vector>,
+		Context -> Item<Graphic>,
+		Context -> Item<Raster<CPU>>,
+		Context -> Item<Color>,
+		Context -> Item<Gradient>,
+	)]
+	steps: impl Node<Context<'static>, Output = Item<T>>,
+	/// How many times to apply the steps. Zero passes the content through unchanged.
+	#[default(1)]
+	#[hard(0..)]
+	count: Item<i64>,
+) -> Result<Item<T>, Interrupt> {
+	let count = count.into_element().max(0) as usize;
+
+	let mut result = content;
+	for index in 0..count {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_vararg(Box::new(result)).with_index(index);
+		result = steps.eval(owned_ctx.into_context())?;
+	}
+
+	Ok(result)
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MirrorError {
+	#[error("Text and fills have no bounds to mirror relative to, so set Relative to Bounds to None")]
+	NoBounds,
+}
+
+/// Whether the content holds text, which has no bounds in the graph.
+pub trait HasText {
+	fn has_text(&self) -> bool {
+		false
+	}
+}
+impl HasText for String {
+	fn has_text(&self) -> bool {
+		!self.is_empty()
+	}
+}
+impl HasText for Graphic {
+	fn has_text(&self) -> bool {
+		match self {
+			Graphic::Text(item) => item.element().has_text(),
+			Graphic::TextList(list) => list.iter_element_values().any(HasText::has_text),
+			Graphic::Graphic(item) => item.element().has_text(),
+			Graphic::GraphicList(list) => list.iter_element_values().any(HasText::has_text),
+			_ => false,
+		}
+	}
+}
+impl HasText for Vector {}
+impl HasText for Raster<CPU> {}
+impl HasText for Raster<GPU> {}
+impl HasText for Color {}
+impl HasText for Gradient {}
+
+#[node_macro::node(category("Graphic"), icon("NodeMirror"))]
+fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Graphic,
@@ -451,7 +534,7 @@ fn mirror<T: BoundingBox + Send + Clone>(
 	#[soft(-90..90)]
 	angle: Item<f64>,
 	#[default(true)] keep_original: Item<bool>,
-) -> List<T> {
+) -> Result<List<T>, MirrorError> {
 	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());
 
 	// Normalize the direction vector
@@ -459,12 +542,15 @@ fn mirror<T: BoundingBox + Send + Clone>(
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
 	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return List::new_from_item(content);
+	let mirror_reference_point = match relative_to_bounds {
+		ReferencePoint::None => None,
+		reference_point => match content.bounding_box(DAffine2::IDENTITY, false) {
+			RenderBoundingBox::Rectangle(bounding_box) => reference_point.point_in_bounding_box((bounding_box[0], bounding_box[1]).into()).map(|point| point + normal * offset),
+			// Empty content looks the same mirrored
+			RenderBoundingBox::None if !content.element().has_text() => return Ok(std::iter::repeat_n(content, if keep_original { 2 } else { 1 }).collect()),
+			_ => return Err(MirrorError::NoBounds),
+		},
 	};
-
-	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
-	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
 
 	// Create the reflection matrix
 	let reflection = DAffine2::from_mat2_translation(
@@ -493,7 +579,7 @@ fn mirror<T: BoundingBox + Send + Clone>(
 	mirrored.set_attribute(ATTR_TRANSFORM, reflected_transform * item_transform);
 	result_list.push(mirrored);
 
-	result_list
+	Ok(result_list)
 }
 
 /// Returns the path identifying the subgraph (network) that contains this proto node — i.e. the input `node_path`
@@ -515,7 +601,7 @@ fn path_of_subgraph(_: impl Ctx, node_path: Item<NodeIdPath>) -> Item<NodeIdPath
 /// be derived from the item's own data. If the attribute already exists, its values are replaced; if not, it's added.
 /// The value is type-erased into an `Item<AttributeValueDyn>` by the auto-inserted input adapter, so this node only
 /// monomorphizes over `T` instead of the cartesian product `(T, U)`.
-#[node_macro::node(category("Attributes: Write"), icon("NodeWriteAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeWriteAttribute"))]
 fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	/// The list to set the named attribute on (one value per item).
@@ -539,6 +625,7 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 	)]
 	content: List<T>,
 	/// The attribute name (key) to write or replace.
+	#[constant]
 	name: Item<String>,
 	/// The node that produces the attribute value for each item. Called once per item with the item's index in context.
 	value: impl Node<Context<'static>, Output = Item<AttributeValueDyn>>,
@@ -556,11 +643,12 @@ fn write_attribute<T: AnyHash + Clone + Send + Sync + CacheHash>(
 }
 
 /// Reads a named `Vector` attribute from the input list, outputting each value as an element of a new `Vector[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_vector(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Vector> {
 	let name = name.into_element();
@@ -573,11 +661,12 @@ fn read_attribute_vector(
 }
 
 /// Reads a named `Number` or `Integer` attribute from the input list, outputting each value as an element of a new `Number[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_number(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<f64> {
 	let name = name.into_element();
@@ -591,11 +680,12 @@ fn read_attribute_number(
 }
 
 /// Reads a named `Bool` attribute from the input list, outputting each value as an element of a new `Bool[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_bool(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<bool> {
 	let name = name.into_element();
@@ -608,11 +698,12 @@ fn read_attribute_bool(
 }
 
 /// Reads a named `String` attribute from the input list, outputting each value as an element of a new `String[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_string(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<String> {
 	let name = name.into_element();
@@ -625,11 +716,12 @@ fn read_attribute_string(
 }
 
 /// Reads a named `Transform` attribute from the input list, outputting each value as an element of a new `Transform[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_transform(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<DAffine2> {
 	let name = name.into_element();
@@ -642,11 +734,12 @@ fn read_attribute_transform(
 }
 
 /// Reads a named `Color` attribute from the input list, outputting each value as an element of a new `Color[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_color(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Color> {
 	let name = name.into_element();
@@ -659,11 +752,12 @@ fn read_attribute_color(
 }
 
 /// Reads a named `BlendMode` attribute from the input list, outputting each value as an element of a new `BlendMode[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_blend_mode(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<BlendMode> {
 	let name = name.into_element();
@@ -676,11 +770,12 @@ fn read_attribute_blend_mode(
 }
 
 /// Reads a named `GradientForm` attribute from the input list, outputting each value as an element of a new `GradientForm[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_form(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientForm> {
 	let name = name.into_element();
@@ -693,11 +788,12 @@ fn read_attribute_gradient_form(
 }
 
 /// Reads a named `GradientSpread` attribute from the input list, outputting each value as an element of a new `GradientSpread[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_spread(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientSpread> {
 	let name = name.into_element();
@@ -710,11 +806,12 @@ fn read_attribute_gradient_spread(
 }
 
 /// Reads a named `GradientSpace` attribute from the input list, outputting each value as an element of a new `GradientSpace[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_space(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientSpace> {
 	let name = name.into_element();
@@ -727,11 +824,12 @@ fn read_attribute_gradient_space(
 }
 
 /// Reads a named `GradientInterpolation` attribute from the input list, outputting each value as an element of a new `GradientInterpolation[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_interpolation(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientInterpolation> {
 	let name = name.into_element();
@@ -744,11 +842,12 @@ fn read_attribute_gradient_interpolation(
 }
 
 /// Reads a named `GradientHueDirection` attribute from the input list, outputting each value as an element of a new `GradientHueDirection[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_hue_direction(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<GradientHueDirection> {
 	let name = name.into_element();
@@ -761,11 +860,12 @@ fn read_attribute_gradient_hue_direction(
 }
 
 /// Reads a named `Gradient` attribute from the input list, outputting each value as an element of a new `Gradient[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_gradient_stops(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Gradient> {
 	let name = name.into_element();
@@ -778,11 +878,12 @@ fn read_attribute_gradient_stops(
 }
 
 /// Reads a named `Artboard` attribute from the input list, outputting each value as an element of a new `Artboard[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_artboard(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Artboard> {
 	let name = name.into_element();
@@ -795,11 +896,12 @@ fn read_attribute_artboard(
 }
 
 /// Reads a named `Raster` attribute from the input list, outputting each value as an element of a new `Raster[]`.
-#[node_macro::node(category("Attributes: Read"), icon("NodeReadAttribute"))]
+#[node_macro::node(category("Data: Attribute"), icon("NodeReadAttribute"))]
 fn read_attribute_raster(
 	_: impl Ctx,
 	content: ListDyn,
 	/// The attribute name (key) to read.
+	#[constant]
 	name: Item<String>,
 ) -> List<Raster<CPU>> {
 	let name = name.into_element();
@@ -812,7 +914,7 @@ fn read_attribute_raster(
 }
 
 /// Joins two lists of the same type, extending the base list with the items from the new list.
-#[node_macro::node(category("General"), icon("NodeExtend"))]
+#[node_macro::node(category("Data: List"), icon("NodeExtend"), memoize)]
 fn extend<T: Send + Clone>(
 	_: impl Ctx,
 	/// The list whose items will appear at the start of the extended list.
@@ -889,7 +991,7 @@ fn legacy_layer_extend<T: Send + Clone>(
 
 /// Nests the input graphical content in a wrapper graphic, collecting it all into a single group.
 /// The inverse of this node is 'Flatten Graphic'.
-#[node_macro::node(category("General"), icon("NodeIntoGroup"))]
+#[node_macro::node(category("Graphic"), icon("NodeGroup"))]
 fn into_group<T: Into<Graphic>>(
 	_: impl Ctx,
 	#[implementations(
@@ -911,13 +1013,13 @@ fn into_group<T: Into<Graphic>>(
 
 /// Type-asserts a value to be graphical content, converting each item of other content types into its matching form.
 /// Use the 'Into Group' node instead to collect the content into a single group.
-#[node_macro::node(category("General"), icon("NodeAsGraphic"))]
+#[node_macro::node(category("Data: Type Assertion"), icon("NodeAsGraphic"))]
 fn as_graphic(_: impl Ctx, value: Item<Graphic>) -> Item<Graphic> {
 	value
 }
 
 /// Removes a level of nesting from a `Graphic[]`, or all nesting if "Fully Flatten" is enabled.
-#[node_macro::node(category("General"), icon("NodeFlattenGraphic"))]
+#[node_macro::node(category("Graphic"), icon("NodeUngroup"))]
 fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool>) -> List<Graphic> {
 	let fully_flatten = fully_flatten.into_element();
 
@@ -962,7 +1064,7 @@ fn flatten_graphic(_: impl Ctx, content: List<Graphic>, fully_flatten: Item<bool
 }
 
 /// Converts a `Graphic[]` into a `Vector[]` by deeply flattening any vector content it contains, and discarding any non-vector content.
-#[node_macro::node(category("Vector"), icon("NodeFlattenVector"))]
+#[node_macro::node(category("Graphic"), icon("NodeFlattenVector"))]
 pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	let mut output: List<Vector> = content.clone().into_flattened_list();
 
@@ -993,20 +1095,43 @@ pub fn flatten_vector(_: impl Ctx, content: List<Graphic>) -> List<Vector> {
 	output
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum FlattenRasterError {
+	#[error("GPU rasters such as brush strokes can't be flattened yet, so they were left out")]
+	GpuRasters,
+}
+
+/// Whether the content holds GPU rasters, which flattening to CPU rasters leaves out.
+fn has_gpu_raster(graphic: &Graphic) -> bool {
+	match graphic {
+		Graphic::RasterGPU(_) => true,
+		Graphic::RasterGPUList(list) => !list.is_empty(),
+		Graphic::Graphic(item) => has_gpu_raster(item.element()),
+		Graphic::GraphicList(list) => list.iter_element_values().any(has_gpu_raster),
+		_ => false,
+	}
+}
+
 /// Converts a `Graphic[]` into a `Raster[]` by deeply flattening any raster content it contains, and discarding any non-raster content.
-#[node_macro::node(category("Raster"), icon("NodeFlattenRaster"))]
-fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> List<Raster<CPU>> {
-	content.into_flattened_list()
+#[node_macro::node(category("Graphic"), icon("NodeFlattenRaster"))]
+fn flatten_raster(_: impl Ctx, content: List<Graphic>) -> Result<List<Raster<CPU>>, (List<Raster<CPU>>, FlattenRasterError)> {
+	let has_gpu_rasters = content.iter_element_values().any(has_gpu_raster);
+	let rasters = content.into_flattened_list();
+
+	if has_gpu_rasters {
+		return Err((rasters, FlattenRasterError::GpuRasters));
+	}
+	Ok(rasters)
 }
 
 /// Converts a `Graphic[]` into a `Color[]` by deeply flattening any color content it contains, and discarding any non-color content.
-#[node_macro::node(category("General"), icon("NodeFlattenColor"))]
+#[node_macro::node(category("Graphic"), icon("NodeFlattenColor"))]
 fn flatten_color(_: impl Ctx, content: List<Graphic>) -> List<Color> {
 	content.into_flattened_list()
 }
 
 /// Converts a `Graphic[]` into a `Gradient[]` by deeply flattening any gradient content it contains, and discarding any non-gradient content.
-#[node_macro::node(category("General"), icon("NodeFlattenGradient"))]
+#[node_macro::node(category("Graphic"), icon("NodeFlattenGradient"))]
 fn flatten_gradient(_: impl Ctx, content: List<Graphic>) -> List<Gradient> {
 	content.into_flattened_list()
 }
@@ -1031,6 +1156,36 @@ mod test {
 		elements.into_iter().map(Item::new_from_element).collect()
 	}
 
+	/// Appends the loop index to the string read from the context, the way a Read String node reads it.
+	#[derive(Clone)]
+	struct AppendIndexNode;
+
+	impl<I: Ctx + core_types::ExtractVarArgs + core_types::ExtractIndex> core_types::Node<I> for AppendIndexNode {
+		type Output = Item<String>;
+
+		fn eval(&self, input: &I) -> core_types::Poll<Item<String>> {
+			let so_far = input
+				.vararg(0)
+				.ok()
+				.and_then(|value| (value as &dyn std::any::Any).downcast_ref::<Item<String>>().map(|item| item.element().clone()));
+			let index = input.try_index().and_then(|mut indices| indices.next());
+			core_types::Poll::Final(Item::new_from_element(format!("{}{}", so_far.unwrap_or_default(), index.unwrap_or_default())))
+		}
+	}
+
+	#[test]
+	fn iterate_feeds_each_result_into_the_next_time_around() {
+		let status = core_types::Status::new();
+		let iterated = |count: i64| {
+			let steps = core_types::LazyInput::new(&AppendIndexNode, &status, 1);
+			let start = Item::new_from_element("x".to_string());
+			iterate(OwnedContextImpl::default().into_context(), start, steps, Item::new_from_element(count)).unwrap().into_element()
+		};
+
+		assert_eq!(iterated(0), "x");
+		assert_eq!(iterated(3), "x012");
+	}
+
 	/// Stands in for the embedding adapter a compiled graph inserts ahead of a `List<Graphic>` connector.
 	fn embed_colors(colors: List<Color>) -> List<Graphic> {
 		colors.into_iter().map(|item| Item::new_from_element(Graphic::from(item))).collect()
@@ -1043,50 +1198,75 @@ mod test {
 	#[test]
 	fn sorts_elements_by_their_natural_order() {
 		let list = list_of(["banana".to_string(), "apple".to_string(), "cherry".to_string()]);
-		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(false));
+		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), ["apple", "banana", "cherry"]);
 	}
 
 	#[test]
 	fn sorts_elements_in_reverse() {
 		let list = list_of([3., 1., 2.]);
-		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(true));
+		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(true)).unwrap();
 		assert_eq!(elements(&sorted), [3., 2., 1.]);
 	}
 
 	#[test]
 	fn sort_order_keys_override_element_order() {
 		let list = list_of(["apple".to_string(), "banana".to_string(), "cherry".to_string()]);
-		let sorted = sort((), list, list_of([2., 0., 1.]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of([2., 0., 1.]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), ["banana", "cherry", "apple"]);
 	}
 
 	#[test]
 	fn short_sort_order_repeats_its_last_key() {
 		let list = list_of(["a".to_string(), "b".to_string(), "c".to_string()]);
-		let sorted = sort((), list, list_of([2., 1.]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of([2., 1.]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), ["b", "c", "a"]);
 	}
 
 	#[test]
 	fn long_sort_order_ignores_its_extra_keys() {
 		let list = list_of([1., 2.]);
-		let sorted = sort((), list, list_of([3., 1., 0., 5.]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of([3., 1., 0., 5.]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), [2., 1.]);
 	}
 
 	#[test]
 	fn text_sort_order_keys_order_items_alphabetically() {
 		let list = list_of([1., 2., 3.]);
-		let sorted = sort((), list, list_of(["c".to_string(), "a".to_string(), "b".to_string()]), Item::new_from_element(false));
+		let sorted = sort((), list, list_of(["c".to_string(), "a".to_string(), "b".to_string()]), Item::new_from_element(false)).unwrap();
 		assert_eq!(elements(&sorted), [2., 3., 1.]);
 	}
 
 	#[test]
-	fn unsortable_elements_keep_their_original_order() {
+	fn unsortable_elements_need_sort_order_keys() {
 		let list = list_of([DVec2::new(3., 3.), DVec2::new(1., 1.), DVec2::new(2., 2.)]);
-		let sorted = sort((), list, List::<f64>::new(), Item::new_from_element(false));
-		assert_eq!(elements(&sorted), [DVec2::new(3., 3.), DVec2::new(1., 1.), DVec2::new(2., 2.)]);
+		assert!(matches!(sort((), list.clone(), List::<f64>::new(), Item::new_from_element(false)), Err(SortError::NoNaturalOrder)));
+
+		let sorted = sort((), list, list_of([2., 0., 1.]), Item::new_from_element(false)).unwrap();
+		assert_eq!(elements(&sorted), [DVec2::new(1., 1.), DVec2::new(2., 2.), DVec2::new(3., 3.)]);
+
+		let single = sort((), list_of([DVec2::ONE]), List::<f64>::new(), Item::new_from_element(false)).unwrap();
+		assert_eq!(elements(&single), [DVec2::ONE], "a single item is already in order");
+	}
+
+	fn mirrored<T: BoundingBox + HasText + Send + Clone>(content: T, relative_to_bounds: ReferencePoint) -> Result<List<T>, MirrorError> {
+		mirror((), content.into(), relative_to_bounds.into(), 0.0.into(), 0.0.into(), true.into())
+	}
+
+	#[test]
+	fn mirror_without_bounds_reflects_across_the_origin() {
+		let text = mirrored("text".to_string(), ReferencePoint::None).unwrap();
+		assert_eq!(text.len(), 2);
+		assert_eq!(text.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM, 1), DAffine2::from_scale(DVec2::new(-1., 1.)));
+
+		assert!(matches!(mirrored("text".to_string(), ReferencePoint::Center), Err(MirrorError::NoBounds)));
+		assert!(matches!(mirrored(Color::RED, ReferencePoint::Center), Err(MirrorError::NoBounds)));
+	}
+
+	#[test]
+	fn mirroring_empty_content_keeps_the_original_and_the_copy() {
+		assert_eq!(mirrored(Vector::default(), ReferencePoint::Center).unwrap().len(), 2);
+		assert_eq!(mirrored(String::new(), ReferencePoint::Center).unwrap().len(), 2);
 	}
 
 	#[test]
@@ -1135,29 +1315,29 @@ mod test {
 	}
 
 	#[test]
-	fn list_indices_counts_each_item() {
-		let indices = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(0_i64));
-		assert_eq!(elements(&indices), [0., 1., 2.]);
+	fn indices_counts_each_item() {
+		let from_zero = indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(0_i64));
+		assert_eq!(elements(&from_zero), [0., 1., 2.]);
 
-		let from_one = list_indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(1_i64));
+		let from_one = indices((), ListDyn::from(list_of(["a".to_string(), "b".to_string(), "c".to_string()])), Item::new_from_element(1_i64));
 		assert_eq!(elements(&from_one), [1., 2., 3.]);
 	}
 
 	#[test]
-	fn list_slice_takes_the_portion_between_start_and_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(1_i64), Item::new_from_element(3_i64));
+	fn slice_takes_the_portion_between_start_and_end() {
+		let portion = slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(1_i64), Item::new_from_element(3_i64));
 		assert_eq!(elements(&portion), [2., 3.]);
 	}
 
 	#[test]
-	fn list_slice_resolves_negative_indices_from_the_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(-2_i64), Item::new_from_element(0_i64));
+	fn slice_resolves_negative_indices_from_the_end() {
+		let portion = slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(-2_i64), Item::new_from_element(0_i64));
 		assert_eq!(elements(&portion), [4., 5.], "an end of zero reaches through the end of the list");
 	}
 
 	#[test]
-	fn list_slice_yields_nothing_when_start_reaches_end() {
-		let portion = list_slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3_i64), Item::new_from_element(3_i64));
+	fn slice_yields_nothing_when_start_reaches_end() {
+		let portion = slice((), list_of([1., 2., 3., 4., 5.]), Item::new_from_element(3_i64), Item::new_from_element(3_i64));
 		assert!(elements(&portion).is_empty());
 	}
 

@@ -117,9 +117,9 @@ impl std::fmt::Display for NodeError {
 	}
 }
 
-impl Error for NodeError {
-	fn source(&self) -> Option<&(dyn Error + 'static)> {
-		self.error.source()
+impl<E: Error + Send + Sync + 'static> From<E> for NodeError {
+	fn from(error: E) -> Self {
+		Self::new(error)
 	}
 }
 
@@ -225,7 +225,10 @@ impl Status {
 			}
 			Poll::Fallback(boxed) => {
 				let (value, error) = *boxed;
-				self.fail(error);
+				match error.trace.is_empty() {
+					true => self.raise(error),
+					false => self.fail(error),
+				}
 				self.finish(value)
 			}
 			Poll::Pending => self.bail(Interrupt::Pending),
@@ -373,8 +376,8 @@ mod tests {
 		let parse_error = "x".parse::<u32>().unwrap_err();
 		let Poll::Error(error) = add(Poll::error(parse_error), Poll::Final(2)) else { unreachable!() };
 		assert_eq!(error.trace(), [0]);
-		let error: Box<dyn Error + Send + Sync> = error;
 		assert_eq!(error.to_string(), "invalid digit found in string");
+		assert!(error.error().is::<std::num::ParseIntError>());
 	}
 
 	#[test]
@@ -395,6 +398,27 @@ mod tests {
 	}
 
 	#[test]
+	fn a_merged_own_fallback_carries_the_input_error_upstream() {
+		let cell = Status::new();
+		cell.record(0, Poll::fallback(1, "input")).unwrap();
+		let Poll::Fallback(boxed) = cell.merge(Poll::fallback(2, "own")) else { unreachable!() };
+		let (value, error) = *boxed;
+		assert_eq!(value, 2);
+		assert_eq!(error.to_string(), "own");
+		let [upstream] = error.upstream() else { unreachable!() };
+		assert_eq!(upstream.to_string(), "input");
+
+		let cell = Status::new();
+		let mut passed_on = NodeError::new("passed on");
+		passed_on.track(1);
+		cell.record(0, Poll::fallback(1, "input")).unwrap();
+		let Poll::Fallback(boxed) = cell.merge(Poll::Fallback(Box::new((2, passed_on)))) else {
+			unreachable!()
+		};
+		assert_eq!(boxed.1.to_string(), "input", "an input's fallback is passed on, not raised");
+	}
+
+	#[test]
 	fn a_failing_node_carries_the_input_error_upstream() {
 		let Poll::Error(error) = Status::new().run(|cell| -> Result<u32, Interrupt> {
 			cell.record(0, Poll::fallback(1, "input"))?;
@@ -411,6 +435,13 @@ mod tests {
 			unreachable!()
 		};
 		assert!(error.upstream().is_empty(), "an input's error is passed on, not raised");
+	}
+
+	#[test]
+	fn a_std_error_converts_into_a_node_error() {
+		let error = NodeError::from("x".parse::<u32>().unwrap_err());
+		assert_eq!(error.to_string(), "invalid digit found in string");
+		assert!(error.trace().is_empty());
 	}
 
 	#[test]
