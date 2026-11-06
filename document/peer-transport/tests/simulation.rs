@@ -10,19 +10,27 @@ use document_graph_storage::{
 };
 use peer_transport::mock::{MockEndpoint, MockNetwork};
 use peer_transport::{BlobRecord, Event, Replica, Role, SyncTarget, TargetError, TransportPeerId};
+use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::thread::LocalKey;
 
-static TOTAL_NODES: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_WIRED: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_EXPORTS: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_INPUT_ATTRIBUTES: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_SOURCES: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_COLLECTED: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_REDONE_RETRACTIONS: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_BLOBS: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_BLOB_DELTAS: AtomicUsize = AtomicUsize::new(0);
-static TOTAL_BLOB_FETCHES: AtomicUsize = AtomicUsize::new(0);
+// Per thread, since each test runs its corpus on its own thread
+thread_local! {
+	static TOTAL_NODES: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_WIRED: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_EXPORTS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_INPUT_ATTRIBUTES: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_SOURCES: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_COLLECTED: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_REDONE_RETRACTIONS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_BLOBS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_BLOB_DELTAS: Cell<usize> = const { Cell::new(0) };
+	static TOTAL_BLOB_FETCHES: Cell<usize> = const { Cell::new(0) };
+}
+
+fn count(counter: &'static LocalKey<Cell<usize>>, amount: usize) {
+	counter.set(counter.get() + amount);
+}
 
 /// A peer's document plus a byte store, since bare `Session` has no-op resource defaults.
 struct SimTarget {
@@ -88,7 +96,7 @@ impl SimTarget {
 			self.blob_records.insert(hash, record.clone());
 			records.push(BlobRecord { hash, record });
 		}
-		TOTAL_BLOBS.fetch_add(records.len(), Ordering::Relaxed);
+		count(&TOTAL_BLOBS, records.len());
 		records
 	}
 }
@@ -220,7 +228,7 @@ impl SyncTarget for SimTarget {
 	fn store_resource(&mut self, hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
 		let blob = BlobHash(hash);
 		if self.session.names_blob(blob) {
-			TOTAL_BLOB_FETCHES.fetch_add(1, Ordering::Relaxed);
+			count(&TOTAL_BLOB_FETCHES, 1);
 			let record = self.blob_record(bytes, None);
 			self.blobs.insert(blob, bytes.to_vec());
 			self.blob_records.insert(blob, record);
@@ -252,7 +260,7 @@ impl SyncTarget for SimTarget {
 						if !self.blobs.contains_key(&base) {
 							return true;
 						}
-						TOTAL_BLOB_DELTAS.fetch_add(1, Ordering::Relaxed);
+						count(&TOTAL_BLOB_DELTAS, 1);
 						&rest[32..]
 					}
 					Some((_, rest)) => rest,
@@ -413,7 +421,7 @@ impl Peer {
 			return;
 		}
 		self.end_interaction();
-		TOTAL_REDONE_RETRACTIONS.fetch_add(1, Ordering::Relaxed);
+		count(&TOTAL_REDONE_RETRACTIONS, 1);
 	}
 
 	/// Drop every held byte outside the GC root set. `needed` is what present peers name and lack.
@@ -424,7 +432,7 @@ impl Peer {
 		self.target.collected_while_needed.extend(dropped);
 		let before = self.target.resources.len();
 		self.target.resources.retain(|hash, _| roots.contains(hash));
-		TOTAL_COLLECTED.fetch_add(before - self.target.resources.len(), Ordering::Relaxed);
+		count(&TOTAL_COLLECTED, before - self.target.resources.len());
 	}
 
 	/// Every hash this peer's registry, history, hot log or retracted steps name, gathered independently of the GC
@@ -1048,22 +1056,22 @@ fn assert_converged(seed: u64, peers: &[Peer]) {
 fn peers_converge_under_random_interleavings() {
 	run_corpus(Workload::Mixed, 5000);
 	// The generator's ops are guarded on registry state, so a change can quietly stop producing them.
-	assert!(TOTAL_NODES.load(Ordering::Relaxed) > 0, "the corpus produced no nodes");
-	assert!(TOTAL_WIRED.load(Ordering::Relaxed) > 0, "the corpus produced no node-to-node inputs");
-	assert!(TOTAL_EXPORTS.load(Ordering::Relaxed) > 0, "the corpus set no network exports");
-	assert!(TOTAL_INPUT_ATTRIBUTES.load(Ordering::Relaxed) > 0, "the corpus wrote no input-slot attributes");
-	assert!(TOTAL_SOURCES.load(Ordering::Relaxed) > 0, "the corpus never stacked a second source on a resource");
-	assert!(TOTAL_COLLECTED.load(Ordering::Relaxed) > 0, "garbage collection never dropped a resource");
-	assert!(TOTAL_REDONE_RETRACTIONS.load(Ordering::Relaxed) > 0, "the corpus never redid a step taken back");
-	assert!(TOTAL_BLOBS.load(Ordering::Relaxed) > 0, "the corpus staged no blobs");
+	assert!(TOTAL_NODES.get() > 0, "the corpus produced no nodes");
+	assert!(TOTAL_WIRED.get() > 0, "the corpus produced no node-to-node inputs");
+	assert!(TOTAL_EXPORTS.get() > 0, "the corpus set no network exports");
+	assert!(TOTAL_INPUT_ATTRIBUTES.get() > 0, "the corpus wrote no input-slot attributes");
+	assert!(TOTAL_SOURCES.get() > 0, "the corpus never stacked a second source on a resource");
+	assert!(TOTAL_COLLECTED.get() > 0, "garbage collection never dropped a resource");
+	assert!(TOTAL_REDONE_RETRACTIONS.get() > 0, "the corpus never redid a step taken back");
+	assert!(TOTAL_BLOBS.get() > 0, "the corpus staged no blobs");
 }
 
 /// Mostly strokes. Blobs chain, reach peers as deltas and are fetched in full by peers that lack a base.
 #[test]
 fn blobs_reach_every_peer_under_strokes() {
-	run_corpus(Workload::Strokes, 2000);
-	assert!(TOTAL_BLOB_DELTAS.load(Ordering::Relaxed) > 0, "no blob arrived as a delta against one already held");
-	assert!(TOTAL_BLOB_FETCHES.load(Ordering::Relaxed) > 0, "no blob was fetched in full for a missing base");
+	run_corpus(Workload::Strokes, 10_000);
+	assert!(TOTAL_BLOB_DELTAS.get() > 0, "no blob arrived as a delta against one already held");
+	assert!(TOTAL_BLOB_FETCHES.get() > 0, "no blob was fetched in full for a missing base");
 }
 
 /// Run `SIM_SEEDS` seeds (or `default_seeds`) and check that each one converges.
@@ -1090,13 +1098,13 @@ fn run_corpus(workload: Workload, default_seeds: u64) {
 
 fn count_coverage(registry: &Registry) {
 	let inputs = || registry.node_instances.values().flat_map(|node| node.inputs());
-	TOTAL_NODES.fetch_add(registry.node_instances.len(), Ordering::Relaxed);
-	TOTAL_WIRED.fetch_add(inputs().filter(|slot| matches!(slot.input, NodeInput::Node { .. })).count(), Ordering::Relaxed);
-	TOTAL_INPUT_ATTRIBUTES.fetch_add(inputs().filter(|slot| !slot.attributes.is_empty()).count(), Ordering::Relaxed);
+	count(&TOTAL_NODES, registry.node_instances.len());
+	count(&TOTAL_WIRED, inputs().filter(|slot| matches!(slot.input, NodeInput::Node { .. })).count());
+	count(&TOTAL_INPUT_ATTRIBUTES, inputs().filter(|slot| !slot.attributes.is_empty()).count());
 	let exports = registry.networks.values().flat_map(|network| &network.exports).filter(|slot| slot.target.is_some()).count();
-	TOTAL_EXPORTS.fetch_add(exports, Ordering::Relaxed);
+	count(&TOTAL_EXPORTS, exports);
 	// A second source can only come from `AddSource`.
-	TOTAL_SOURCES.fetch_add(registry.resources.values().filter(|entry| entry.sources.len() > 1).count(), Ordering::Relaxed);
+	count(&TOTAL_SOURCES, registry.resources.values().filter(|entry| entry.sources.len() > 1).count());
 }
 
 /// A rejoining guest keeps its `PeerId` but restarts its broadcast sequence, which the room must follow

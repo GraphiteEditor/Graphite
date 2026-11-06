@@ -138,7 +138,7 @@ impl Session {
 	/// It depends only on the network structure, not on resources or declarations.
 	#[cfg(any(feature = "conversion", test))]
 	pub fn network_ids<M: NodeMetadataSource>(&self, network: &graph_craft::document::NodeNetwork, metadata: &M) -> Result<HashMap<graph_craft::document::NetworkLocation, NetworkId>, CommitError> {
-		let conversion = Registry::convert_from_runtime(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
+		let conversion = Registry::convert_from_runtime_inline(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
 		Ok(conversion.network_ids)
 	}
 

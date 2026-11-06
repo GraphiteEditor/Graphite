@@ -72,7 +72,7 @@ impl RegistryDelta {
 				new_input.move_into_blob(bytes);
 				return;
 			}
-			RegistryDelta::AddNode { node, .. } => &mut node.inputs,
+			RegistryDelta::AddNode { node, .. } | RegistryDelta::RemoveNode { snapshot: node, .. } => &mut node.inputs,
 			RegistryDelta::SetNodeInputs { inputs, .. } => inputs,
 			_ => return,
 		};

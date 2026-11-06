@@ -168,13 +168,26 @@ pub fn decode_declaration(bytes: &[u8]) -> Result<ProtoNode, String> {
 impl Registry {
 	/// Convenience wrapper returning only the registry (declaration bytes discarded). For callers
 	/// that don't persist a byte store — e.g. the graph-only `TryFrom` and value-comparison tests.
+	/// Large values stay inline, so the registry converts back without blob bytes.
 	pub fn from_runtime_with_metadata<M: NodeMetadataSource>(node_network: &NodeNetwork, metadata: &M, resources: &graphene_resource::ResourceRegistry, peer: PeerId) -> Result<Self, ConversionError> {
-		Ok(Self::convert_from_runtime(node_network, metadata, resources, peer)?.registry)
+		Ok(Self::convert_from_runtime_inline(node_network, metadata, resources, peer)?.registry)
 	}
 
 	/// Full conversion: returns the registry and the extracted declaration bytes for the caller to
 	/// persist. See [`RuntimeConversion`].
 	pub fn convert_from_runtime<M: NodeMetadataSource>(
+		node_network: &NodeNetwork,
+		metadata: &M,
+		resources: &graphene_resource::ResourceRegistry,
+		peer: PeerId,
+	) -> Result<RuntimeConversion, ConversionError> {
+		let mut conversion = Self::convert_from_runtime_inline(node_network, metadata, resources, peer)?;
+		conversion.registry.move_values_into_blobs(&mut conversion.blob_bytes);
+		Ok(conversion)
+	}
+
+	/// [`convert_from_runtime`](Self::convert_from_runtime) without moving large values into blobs.
+	pub(crate) fn convert_from_runtime_inline<M: NodeMetadataSource>(
 		node_network: &NodeNetwork,
 		metadata: &M,
 		resources: &graphene_resource::ResourceRegistry,
@@ -215,14 +228,11 @@ impl Registry {
 		let referenced = collect_referenced_resources(node_network, &reachable);
 		convert_resources(resources, &referenced, peer, &mut registry)?;
 
-		let mut blob_bytes = BlobBytes::new();
-		registry.move_values_into_blobs(&mut blob_bytes);
-
 		Ok(RuntimeConversion {
 			registry,
 			declaration_bytes: ctx.declaration_bytes,
 			declarations: ctx.declarations,
-			blob_bytes,
+			blob_bytes: BlobBytes::new(),
 			network_ids: ctx.network_ids,
 		})
 	}

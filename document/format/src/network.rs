@@ -399,8 +399,12 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn absorb_blob_records(&mut self, records: Vec<BlobRecord>) -> Result<(), TargetError> {
 		let held = self.blobs.absorb(records.into_iter().map(|BlobRecord { hash, record }| (hash, record)).collect());
-		for (hash, record) in held {
-			self.working.write_non_blocking(&self.layout.blob_path(&hash), &record)?;
+		for (index, (hash, record)) in held.iter().enumerate() {
+			if let Err(error) = self.working.write_non_blocking(&self.layout.blob_path(hash), record) {
+				// Forget the unwritten blobs so that they are asked for again
+				held[index..].iter().for_each(|(hash, _)| self.blobs.forget(hash));
+				return Err(error.into());
+			}
 		}
 		Ok(())
 	}

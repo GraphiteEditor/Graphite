@@ -717,9 +717,7 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 	}
 	peer.stage_computed_ops(constructed.ops).expect("the peer applies the batch");
 
-	mirror
-		.reconcile_remote(peer.registry(), &declarations, &document_graph_storage::blob::BlobBytes::new(), &touched, PEER)
-		.expect("reconcile");
+	mirror.reconcile_remote(peer.registry(), &declarations, &baseline.blob_bytes, &touched, PEER).expect("reconcile");
 
 	let edited = &editor.active_document().network_interface;
 	assert!(

@@ -16,11 +16,12 @@ use crate::layout::Layout;
 const FULL: u8 = 0;
 const DELTA: u8 = 1;
 
-/// The decoded bytes and the stored record of every blob the document names.
+/// The decoded bytes of every blob the document names.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct BlobStore {
 	pub(crate) bytes: BlobBytes,
-	records: HashMap<BlobHash, Vec<u8>>,
+	/// The records of blobs stored as deltas. Other blobs are stored in full.
+	delta_records: HashMap<BlobHash, Vec<u8>>,
 }
 
 impl BlobStore {
@@ -32,12 +33,15 @@ impl BlobStore {
 		}
 
 		let record = match base.and_then(|base| Some((base, self.bytes.get(&base)?))) {
-			Some((base, base_bytes)) => delta_record(base, base_bytes, &bytes),
+			Some((base, base_bytes)) => {
+				let record = delta_record(base, base_bytes, &bytes);
+				self.delta_records.insert(hash, record.clone());
+				record
+			}
 			None => full_record(&bytes),
 		};
 
 		self.bytes.insert(hash, bytes);
-		self.records.insert(hash, record.clone());
 		Some(record)
 	}
 
@@ -62,16 +66,18 @@ impl BlobStore {
 	/// The record of every held blob in hash order. A base comes before the blobs that use it.
 	#[cfg(feature = "network")]
 	pub(crate) fn records(&self) -> Vec<(BlobHash, Vec<u8>)> {
-		let mut hashes: Vec<_> = self.records.keys().copied().collect();
+		let mut hashes: Vec<_> = self.bytes.keys().copied().collect();
 		hashes.sort_unstable();
 
 		let mut listed = HashSet::new();
 		let mut records = Vec::new();
 		for hash in hashes {
-			let unlisted_base = |hash: &BlobHash| record_base(self.records.get(hash)?).filter(|base| !listed.contains(base) && self.records.contains_key(base));
+			let unlisted_base = |hash: &BlobHash| record_base(self.delta_records.get(hash)?).filter(|base| !listed.contains(base) && self.bytes.contains_key(base));
 			for hash in chain_to(hash, unlisted_base) {
-				if listed.insert(hash) {
-					records.push((hash, self.records[&hash].clone()));
+				if listed.insert(hash)
+					&& let Some(record) = self.delta_records.get(&hash).cloned().or_else(|| self.full_record(&hash))
+				{
+					records.push((hash, record));
 				}
 			}
 		}
@@ -124,7 +130,7 @@ impl BlobStore {
 	/// Drop a blob whose record never got written.
 	pub(crate) fn forget(&mut self, hash: &BlobHash) {
 		self.bytes.remove(hash);
-		self.records.remove(hash);
+		self.delta_records.remove(hash);
 	}
 
 	/// Read and decode the record of `hash` and the records of its bases. Each blob is checked against its hash.
@@ -173,7 +179,9 @@ impl BlobStore {
 		}
 
 		self.bytes.insert(hash, bytes);
-		self.records.insert(hash, record);
+		if record.first() == Some(&DELTA) {
+			self.delta_records.insert(hash, record);
+		}
 		Ok(())
 	}
 }

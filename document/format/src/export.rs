@@ -263,9 +263,8 @@ impl<L: Layout> Gdd<L> {
 		match &flat {
 			Some(flat) => {
 				for hash in flat.registry().blob_hashes() {
-					if let Some(record) = self.blobs.full_record(&hash) {
-						entries.insert(self.layout.blob_path(&hash), Some(Resource::new_unchecked(record, hash.into())));
-					}
+					let record = self.blobs.full_record(&hash).ok_or(Error::MissingResource(hash.into()))?;
+					entries.insert(self.layout.blob_path(&hash), Some(Resource::new_unchecked(record, hash.into())));
 				}
 			}
 			None if has_directory(self.layout.blobs_dir()) => {
