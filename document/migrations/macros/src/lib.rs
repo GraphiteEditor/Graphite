@@ -36,7 +36,7 @@ pub fn rename(input: TokenStream) -> TokenStream {
 
 /// Registers a format step converting the listed stored roots through their `Upgrade` impls:
 /// `format_migration!(1 => 2, registry: v1::Registry, delta: v1::Delta);`. Roots left out keep their payloads.
-/// `document: function` adds a pass over the whole converted document, for changes needing state across records.
+/// `document: function` adds a pass over the whole converted document. Use it when a change needs state across records.
 #[proc_macro]
 pub fn format_migration(input: TokenStream) -> TokenStream {
 	let step = parse_macro_input!(input as format::FormatStep);

@@ -55,7 +55,7 @@ impl Fixture {
 		apply_migration(migration, &self.registry, &self.table, host, &mut MigrationBlobs::default())
 	}
 
-	/// Migrate a registry whose inputs name the blobs in `blobs`.
+	/// Migrate a registry whose inputs name blobs from `blobs`.
 	pub fn migrate_blobs(&self, migration: &dyn NodeMigration, blobs: &mut MigrationBlobs) -> Result<Registry, RunnerError> {
 		apply_migration(migration, &self.registry, &self.table, None, blobs)
 	}

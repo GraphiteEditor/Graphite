@@ -1,5 +1,5 @@
-//! Node migrations read and write values, not the blobs a document stores large ones in, so each run sees a state with its blobs decoded
-//! and its output moves large values back into blobs. A value the run left alone encodes to the blob it came from, so it diffs as unchanged.
+//! Node migrations work on values, not blobs. Each run sees its blobs decoded, and its output moves large values back into blobs.
+//! An unchanged value encodes to the same blob, so it does not show up in the diff.
 
 use crate::RunnerError;
 use document_graph_storage::blob::{BlobBytes, NewBlobs, decode_blob};
@@ -8,12 +8,12 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::sync::LazyLock;
 
-/// The blobs a document stores, and those migrations moved new values into.
+/// The blobs of a document, plus the new blobs that migrations create.
 pub struct MigrationBlobs<'a> {
 	stored: &'a BlobBytes,
-	/// Blobs no stored one already holds.
+	/// New blobs that are not stored yet.
 	added: BlobBytes,
-	/// For each added blob, the blob its input slot held before the migration, as the base a store can encode it against.
+	/// The base of each added blob. The base is the blob its input slot held before the migration.
 	bases: HashMap<BlobHash, BlobHash>,
 }
 
@@ -26,7 +26,7 @@ impl Default for MigrationBlobs<'static> {
 }
 
 impl<'a> MigrationBlobs<'a> {
-	/// Resolve through the blobs a document `stored`.
+	/// Resolve values from the `stored` blobs of a document.
 	pub fn new(stored: &'a BlobBytes) -> Self {
 		Self {
 			stored,
@@ -35,16 +35,16 @@ impl<'a> MigrationBlobs<'a> {
 		}
 	}
 
-	/// The blobs migrations added.
+	/// The blobs that migrations added.
 	pub fn into_added(self) -> NewBlobs {
 		NewBlobs { bytes: self.added, bases: self.bases }
 	}
 
-	/// `registry` with the blobs in the inputs of `nodes`, or of every node for `None`, decoded back into values.
+	/// `registry` with the blobs in the inputs of `nodes` decoded back into values. `None` decodes every node.
 	pub(crate) fn resolve<'r>(&self, registry: &'r Registry, nodes: Option<&[NodeId]>) -> Result<Cow<'r, Registry>, RunnerError> {
-		let ids: Vec<NodeId> = match nodes {
-			Some(nodes) => nodes.to_vec(),
-			None => registry.node_instances.keys().copied().collect(),
+		let ids: Cow<[NodeId]> = match nodes {
+			Some(nodes) => Cow::Borrowed(nodes),
+			None => Cow::Owned(registry.node_instances.keys().copied().collect()),
 		};
 		let holds_blob = |id: &NodeId| registry.node_instances.get(id).is_some_and(|node| node.inputs().iter().any(|slot| slot.input.blob().is_some()));
 		if !ids.iter().any(holds_blob) {
@@ -52,8 +52,8 @@ impl<'a> MigrationBlobs<'a> {
 		}
 
 		let mut resolved = registry.clone();
-		for id in ids {
-			let Some(node) = resolved.node_instances.get_mut(&id) else { continue };
+		for id in ids.iter() {
+			let Some(node) = resolved.node_instances.get_mut(id) else { continue };
 			for slot in node.inputs_mut() {
 				let NodeInput::Value { value, .. } = &mut slot.input else { continue };
 				let Value::Blob(hash) = *value else { continue };
@@ -66,7 +66,7 @@ impl<'a> MigrationBlobs<'a> {
 		Ok(Cow::Owned(resolved))
 	}
 
-	/// Move the large values of `migrated` back into blobs, basing each new one on the blob its slot held in `source`.
+	/// Move the large values of `migrated` back into blobs. A new blob is based on the blob its slot held in `source`.
 	pub(crate) fn store(&mut self, migrated: &mut Registry, source: &Registry) {
 		let mut bytes = BlobBytes::new();
 		migrated.move_values_into_blobs(&mut bytes);
@@ -75,11 +75,7 @@ impl<'a> MigrationBlobs<'a> {
 			return;
 		}
 
-		for (hash, base) in migrated.blob_bases_since(source) {
-			if bytes.contains_key(&hash) {
-				self.bases.insert(hash, base);
-			}
-		}
+		self.bases.extend(migrated.blob_bases_since(source).into_iter().filter(|(hash, _)| bytes.contains_key(hash)));
 		self.added.extend(bytes);
 	}
 }

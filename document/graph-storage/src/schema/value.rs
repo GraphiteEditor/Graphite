@@ -14,7 +14,7 @@ pub enum Value {
 	Str(String),
 	Array(Vec<Value>),
 	Object(Vec<(String, Value)>),
-	/// A large node input value, stored as a blob under the hash of its postcard bytes. See [`crate::blob`].
+	/// A large node input value that is stored as a blob. See [`crate::blob`].
 	Blob(BlobHash),
 }
 
@@ -113,12 +113,12 @@ impl<'de> Deserialize<'de> for Value {
 }
 
 impl Value {
-	/// The key of the single-entry object a [`Value::Blob`] is written as in human-readable formats. The key is reserved:
-	/// an object holding only it with a hash string reads back as a blob.
-	pub const BLOB_KEY: &str = "$blob";
+	/// In human-readable formats a [`Value::Blob`] is written as an object with only this key. The key is reserved.
+	/// Such an object with a hash string is read back as a blob.
+	pub(crate) const BLOB_KEY: &str = "$blob";
 
-	/// An object, unless it is the single-entry form a [`Value::Blob`] takes in human-readable formats.
-	pub fn from_object(object: Vec<(String, Value)>) -> Self {
+	/// An object, or a [`Value::Blob`] if the object has the form of one.
+	pub(crate) fn from_object(object: Vec<(String, Value)>) -> Self {
 		if let [(key, Value::Str(hex))] = object.as_slice()
 			&& key == Self::BLOB_KEY
 			&& let Ok(hash) = ResourceHash::try_from(hex.as_str())

@@ -119,7 +119,7 @@ pub struct RuntimeConversion {
 	pub registry: Registry,
 	pub declaration_bytes: DeclarationBytes,
 	pub declarations: crate::Declarations,
-	/// The bytes of the large input values the registry holds as blobs, for the caller to store.
+	/// The bytes of the blobs that the registry names. The caller stores them.
 	pub blob_bytes: BlobBytes,
 	/// The storage `NetworkId` of each runtime network location, to key per-network view state in `session.json`.
 	pub network_ids: HashMap<NetworkLocation, NetworkId>,

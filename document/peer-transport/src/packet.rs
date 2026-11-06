@@ -82,7 +82,7 @@ pub struct SyncPayload {
 	pub document_id: Option<u64>,
 	#[serde(default)]
 	pub metadata: HistoryMetadata,
-	/// Every blob the synced state names, each after its base.
+	/// Every blob that the synced state names. A base comes before the blobs that use it.
 	#[serde(default)]
 	pub blobs: Vec<BlobRecord>,
 }
@@ -99,7 +99,7 @@ pub struct Broadcast {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BroadcastBody {
-	/// Carries the records of the blobs the ops name, so a peer can resolve them on arrival.
+	/// The records of new blobs that the ops name.
 	HotOps {
 		ops: Vec<HotOp>,
 		blobs: Vec<BlobRecord>,
@@ -117,7 +117,7 @@ pub enum BroadcastBody {
 	HeadMove(HeadMove),
 }
 
-/// A blob's stored record: its value in full, or a delta against a base the receiver usually holds already. Opaque to the transport.
+/// The stored record of a blob. It holds the value in full or as a delta against a base. The transport does not read it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct BlobRecord {
 	pub hash: BlobHash,

@@ -247,18 +247,19 @@ impl<L: Layout> Gdd<L> {
 			}
 		}
 
-		// Every resource and blob record in path order, whether its bytes sit in the working copy or come from the byte store,
-		// so where they sat does not change the archive. `None` marks bytes the working copy already holds.
+		// Every resource and blob record in path order. The archive is the same wherever the bytes are stored.
+		// `None` marks bytes the working copy already holds.
 		let mut entries: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
 		let directories = self.working.list_dirs("").await?;
-		if directories.iter().any(|name| name == self.layout.resources_dir()) {
+		let has_directory = |directory: &str| directories.iter().any(|name| name == directory);
+		if has_directory(self.layout.resources_dir()) {
 			entries.extend(self.working.list(self.layout.resources_dir()).await?.into_iter().map(|path| (path, None)));
 		}
 		for (hash, resource) in embedded_bytes {
 			entries.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));
 		}
 
-		// A copy without history carries only the current values, each in full since the blobs it was based on stay behind
+		// A copy without history has no older blobs to use as bases, so each blob is written in full
 		match &flat {
 			Some(flat) => {
 				for hash in flat.registry().blob_hashes() {
@@ -267,7 +268,7 @@ impl<L: Layout> Gdd<L> {
 					}
 				}
 			}
-			None if directories.iter().any(|name| name == self.layout.blobs_dir()) => {
+			None if has_directory(self.layout.blobs_dir()) => {
 				entries.extend(self.working.list(self.layout.blobs_dir()).await?.into_iter().map(|path| (path, None)));
 			}
 			None => {}

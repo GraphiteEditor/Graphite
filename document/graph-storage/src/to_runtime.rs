@@ -117,7 +117,7 @@ impl<'a> ConversionContext<'a> {
 		}
 	}
 
-	/// The value blob `hash` holds.
+	/// The value stored in blob `hash`.
 	fn resolve_blob(&self, hash: BlobHash) -> Result<Value, ConversionError> {
 		let bytes = self.blobs.get(&hash).ok_or(ConversionError::BlobNotFound(hash))?;
 		decode_blob(bytes).map_err(|error| ConversionError::DeserializationError(format!("Blob {hash}: {error}")))

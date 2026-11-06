@@ -372,7 +372,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 		Ok(())
 	}
 
-	/// Includes blobs this peer holds no record for, which it asks for in full like resources.
+	/// Also includes missing blobs. They are fetched in full like resources.
 	fn missing_resources(&self) -> HashSet<ResourceHash> {
 		let missing_blobs = self.session.all_blob_hashes().into_iter().filter(|hash| !self.blobs.bytes.contains_key(hash));
 		self.unstored_resources().into_iter().chain(missing_blobs.map(ResourceHash::from)).collect()
@@ -384,7 +384,7 @@ impl<L: Layout> SyncTarget for Gdd<L> {
 
 	fn store_resource(&mut self, hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
 		let blob = BlobHash(hash);
-		if self.session.all_blob_hashes().contains(&blob) {
+		if self.session.names_blob(blob) {
 			let bytes = BlobBytes::from([(blob, bytes.to_vec())]);
 			self.keep_blobs(NewBlobs { bytes, ..Default::default() })?;
 			return Ok(());

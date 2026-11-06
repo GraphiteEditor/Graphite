@@ -1,5 +1,5 @@
-//! Large node input values move out of the registry, history, and hot log into blobs, leaving a [`Value::Blob`]
-//! naming their bytes. A blob's bytes are the value's postcard encoding, so its hash identifies the value.
+//! Large node input values are stored as blobs outside the registry, history and hot log. The input keeps a
+//! [`Value::Blob`] with the hash. Blob bytes are the postcard encoding of the value, so equal values share one blob.
 
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -12,7 +12,7 @@ pub const BLOB_THRESHOLD: usize = 1024;
 /// Blob bytes by hash.
 pub type BlobBytes = HashMap<BlobHash, Vec<u8>>;
 
-/// Blobs about to be stored, with the base each can be encoded against.
+/// Blobs to store, with the base blob that each one can be encoded against.
 #[derive(Clone, Debug, Default)]
 pub struct NewBlobs {
 	pub bytes: BlobBytes,
@@ -32,7 +32,7 @@ impl fmt::Display for BlobHash {
 	}
 }
 
-/// Blob bytes are content addressed like resource bytes, so a peer can fetch a blob through the resource path.
+/// Blobs are content addressed like resources, so a peer can fetch a blob through the resource path.
 impl From<BlobHash> for ResourceHash {
 	fn from(hash: BlobHash) -> Self {
 		hash.0
@@ -45,7 +45,7 @@ pub fn decode_blob(bytes: &[u8]) -> Result<Value, postcard::Error> {
 }
 
 impl NodeInput {
-	/// Replace a value of at least [`BLOB_THRESHOLD`] encoded bytes with the blob of those bytes, collecting them into `bytes`.
+	/// Replace a value of at least [`BLOB_THRESHOLD`] encoded bytes with a blob. The blob bytes are added to `bytes`.
 	pub fn move_into_blob(&mut self, bytes: &mut BlobBytes) {
 		let NodeInput::Value { value, .. } = self else { return };
 		if matches!(value, Value::Blob(_)) {
@@ -68,12 +68,18 @@ impl RegistryDelta {
 	/// Move the large values this op writes into blobs. See [`NodeInput::move_into_blob`].
 	pub fn move_values_into_blobs(&mut self, bytes: &mut BlobBytes) {
 		let slots = match self {
-			RegistryDelta::ChangeNodeInput { new_input, .. } => return new_input.move_into_blob(bytes),
+			RegistryDelta::ChangeNodeInput { new_input, .. } => {
+				new_input.move_into_blob(bytes);
+				return;
+			}
 			RegistryDelta::AddNode { node, .. } => &mut node.inputs,
 			RegistryDelta::SetNodeInputs { inputs, .. } => inputs,
 			_ => return,
 		};
-		slots.iter_mut().for_each(|slot| slot.input.move_into_blob(bytes));
+
+		for slot in slots {
+			slot.input.move_into_blob(bytes);
+		}
 	}
 }
 
@@ -85,14 +91,14 @@ impl Registry {
 		}
 	}
 
-	/// Every blob the live nodes and the tombstones of removed ones name.
+	/// Every blob that live nodes and tombstones of removed nodes name.
 	pub fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
 		let live = self.node_instances.values();
 		let removed = self.removed_nodes.values().map(|tombstone| &tombstone.content);
 		live.chain(removed).flat_map(|node| node.inputs()).filter_map(|slot| slot.input.blob())
 	}
 
-	/// The base each blob written by `ops` encodes against: the blob its slot held before, earlier in `ops` or in `self`.
+	/// The base of each blob that `ops` write. The base is the blob that the same input slot held before.
 	pub fn blob_bases(&self, ops: &[RegistryDelta]) -> HashMap<BlobHash, BlobHash> {
 		let mut latest: HashMap<(NodeId, usize), BlobHash> = HashMap::new();
 		let mut written = HashSet::new();
@@ -101,10 +107,9 @@ impl Registry {
 		let mut write = |id: NodeId, index: usize, input: &NodeInput| {
 			let Some(hash) = input.blob() else { return };
 
-			// Only a blob's first write takes a base, which keeps bases acyclic
-			let previous = latest.get(&(id, index)).copied().or_else(|| self.node_instances.get(&id)?.inputs().get(index)?.input.blob());
+			// Only the first write of a blob takes a base. This keeps bases acyclic
 			if written.insert(hash)
-				&& let Some(previous) = previous
+				&& let Some(previous) = latest.get(&(id, index)).copied().or_else(|| self.input_blob(id, index))
 				&& previous != hash
 			{
 				bases.insert(hash, previous);
@@ -123,7 +128,7 @@ impl Registry {
 		bases
 	}
 
-	/// [`blob_bases`](Self::blob_bases) for the blobs `self` holds where `previous` held another in the same slot, in node ID order.
+	/// Like [`blob_bases`](Self::blob_bases), but compares the slots of `self` with the same slots in `previous`.
 	pub fn blob_bases_since(&self, previous: &Registry) -> HashMap<BlobHash, BlobHash> {
 		let mut nodes: Vec<_> = self.node_instances.iter().collect();
 		nodes.sort_unstable_by_key(|(id, _)| **id);
@@ -134,14 +139,19 @@ impl Registry {
 			for (index, slot) in node.inputs().iter().enumerate() {
 				if let Some(hash) = slot.input.blob()
 					&& written.insert(hash)
-					&& let Some(base) = previous.node_instances.get(id).and_then(|node| node.inputs().get(index)?.input.blob())
+					&& let Some(base) = previous.input_blob(*id, index)
 					&& base != hash
 				{
 					bases.insert(hash, base);
 				}
 			}
 		}
+
 		bases
+	}
+
+	fn input_blob(&self, id: NodeId, index: usize) -> Option<BlobHash> {
+		self.node_instances.get(&id)?.inputs().get(index)?.input.blob()
 	}
 }
 

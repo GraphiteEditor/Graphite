@@ -326,7 +326,7 @@ impl Replica {
 		self.requested_resources.iter().copied()
 	}
 
-	/// Broadcast staged `ops`, with the records of the new blobs they name.
+	/// Broadcast staged `ops` together with the records of their new blobs.
 	pub fn broadcast_hot_ops(&mut self, ops: &[HotOp], blobs: Vec<BlobRecord>) -> Result<(), PacketError> {
 		if ops.is_empty() {
 			return Ok(());
@@ -880,7 +880,7 @@ impl Replica {
 			// A failure is logged rather than abandoning the bookkeeping and the rest of the queue.
 			let applied = match broadcast.body {
 				BroadcastBody::HotOps { ops, blobs } => {
-					// A blob whose base isn't held here is asked for like a missing resource
+					// A blob with a missing base is fetched like a missing resource
 					self.resources_stale = true;
 					target
 						.absorb_blob_records(blobs)

@@ -79,8 +79,8 @@ impl Delta {
 		self.id == self.recomputed_id()
 	}
 
-	/// The blobs the op writes or its priors restore.
-	pub fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+	/// The blobs that the op writes or that its priors restore.
+	pub(crate) fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
 		let prior_slots = self.reverse.iter().flat_map(|prior| match prior {
 			Prior::Node { node, .. }
 			| Prior::RemovedNode {
@@ -112,7 +112,7 @@ impl RegistryDelta {
 		}
 	}
 
-	/// The blobs in the input values the op writes.
+	/// The blobs in the input values that the op writes.
 	pub(crate) fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
 		let (input, slots): (Option<&NodeInput>, &[InputSlot]) = match self {
 			RegistryDelta::ChangeNodeInput { new_input, .. } => (Some(new_input), &[]),

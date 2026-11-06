@@ -107,7 +107,7 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) migrated: bool,
 	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
 	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
-	/// Decoded bytes of every blob the document names.
+	/// Every blob the document names.
 	pub(crate) blobs: BlobStore,
 	#[cfg(feature = "network")]
 	pub(crate) network: Option<peer_transport::Replica>,
@@ -359,7 +359,7 @@ impl<L: Layout> Gdd<L> {
 		if let Some(blobs) = migrated_blobs {
 			gdd.keep_blobs_durably(blobs).await?;
 		}
-		// Before node migrations, which read the values blobs hold
+		// Node migrations read values stored in blobs, so load them first
 		gdd.load_blobs().await;
 
 		#[cfg(feature = "migrations")]

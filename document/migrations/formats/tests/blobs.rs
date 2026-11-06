@@ -1,4 +1,4 @@
-//! The step into version 4 moves large node input values into blobs that match what the live staging path would make.
+//! The step to version 4 moves large node input values into the same blobs that live staging makes.
 
 use document_graph_storage::blob::{BLOB_THRESHOLD, BlobBytes, decode_blob};
 use document_graph_storage::{Delta, HotOp, Implementation, Network, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, Registry, RegistryDelta, ResourceId, Session, UserId, Value};
@@ -20,7 +20,7 @@ fn postcard_payload(value: &impl serde::Serialize) -> Payload {
 
 #[test]
 fn version_four_moves_large_values_into_blobs_based_on_their_slot() {
-	// A version 3 document is a live one without blobs, since `Value::Blob` is the only change
+	// `Value::Blob` is the only change in version 4, so a version 3 document is a live one without blobs
 	let id = NodeId(1);
 	let mut session = Session::with_identity(PeerId(1), UserId(1));
 	let mut node = Node::new(ROOT_NETWORK, Implementation::ProtoNode(ResourceId::from(1)), 1);
@@ -60,7 +60,7 @@ fn version_four_moves_large_values_into_blobs_based_on_their_slot() {
 	document.hot_log = document.hot_log.iter().map(|record| step.migrate_hot_op(record).unwrap()).collect();
 	step.migrate_document(&mut document).unwrap();
 
-	// The live path hashes the same bytes, so a migrated blob and a freshly staged one are the same blob
+	// Both paths hash the same bytes, so the migrated blob equals the staged one
 	let staged_blob = |input: NodeInput| {
 		let mut input = input;
 		input.move_into_blob(&mut BlobBytes::new());

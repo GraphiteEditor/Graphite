@@ -60,7 +60,7 @@ impl MigrationHost for CompilerHost {
 		}
 
 		// A state that doesn't convert answers nothing, so each migration asking takes its fallback.
-		// Node migrations run on states whose blobs are already resolved, so none are passed.
+		// Node migrations only see states with resolved blobs, so no blobs are needed.
 		let (mut inlined, nodes, _) = state.to_runtime_with_full_metadata(&declarations, &BlobBytes::new()).ok()?;
 		inlined.inline_definitions().ok()?;
 

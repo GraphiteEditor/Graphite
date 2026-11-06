@@ -121,7 +121,7 @@ fn the_user_cannot_change_while_connected() {
 	assert_eq!(host.session().user(), UserId(1));
 }
 
-/// Edits to a large input reach a peer as deltas against what it already holds, and a peer joining later gets every blob with its sync.
+/// Edits to a large input reach a peer as deltas. A peer that joins later gets every blob with its sync.
 #[test]
 fn blobs_reach_peers_as_deltas_and_with_a_sync() {
 	use document_container::AsyncContainer;
@@ -184,7 +184,7 @@ fn blobs_reach_peers_as_deltas_and_with_a_sync() {
 	assert!(record.as_slice().len() < 100, "the delta is small, got {} bytes", record.as_slice().len());
 }
 
-/// A record whose base isn't held is dropped, and the blob is asked for in full like any missing resource.
+/// A record whose base is missing is dropped. The blob is then fetched in full like a missing resource.
 #[test]
 fn a_blob_without_its_base_is_asked_for_in_full() {
 	use document_graph_storage::blob::BLOB_THRESHOLD;
@@ -214,10 +214,10 @@ fn a_blob_without_its_base_is_asked_for_in_full() {
 			.expect("edit"),
 	);
 	let latest = author.registry().node_instances[&id].inputs()[0].input.blob().expect("the input is a blob");
-	// Blobs are fetched through the resource path, keyed by the same hash
+	// Blobs are fetched through the resource path with the same hash
 	let resource = ResourceHash::from(latest);
 
-	// Only the edit's delta record arrives, not the full record it is based on
+	// Only the delta record of the edit arrives, without the full record of its base
 	let mut reader = document(2);
 	let records = author.blob_records().into_iter().filter(|record| record.hash == latest).collect();
 	reader.apply_remote_hot_ops(hot_ops).expect("apply");

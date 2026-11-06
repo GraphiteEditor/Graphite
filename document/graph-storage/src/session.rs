@@ -100,7 +100,7 @@ impl Session {
 	/// pushed onto the hot log. The caller persists the returned hot frames and then calls `retire`
 	/// to promote them into durable history.
 	///
-	/// Large values stay inline, so this is for tests. `Gdd::stage_runtime_snapshot` stages a runtime diff through blobs.
+	/// Only for tests because it does not store the blob bytes. `Gdd::stage_runtime_snapshot` does.
 	#[cfg(test)]
 	pub fn stage_from_runtime<M: NodeMetadataSource>(
 		&mut self,
@@ -109,20 +109,25 @@ impl Session {
 		resources: &graphene_resource::ResourceRegistry,
 	) -> Result<(Vec<HotOp>, from_runtime::RuntimeConversion), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
-		let rendered;
-		let base = match &self.runtime_base {
-			Some(base) => base,
-			None => {
-				rendered = self.document.working_registry.as_rendered();
-				&rendered
-			}
-		};
-		let ops = crate::delta::compute_deltas(base, &conversion.registry);
+		let ops = self.runtime_diff(&conversion.registry);
+		let hot_ops = self.stage_runtime_diff(ops, conversion.registry.clone())?;
+		Ok((hot_ops, conversion))
+	}
 
+	/// The ops from the last staged runtime state to `registry`, a fresh conversion of the runtime network.
+	pub fn runtime_diff(&self, registry: &Registry) -> Vec<RegistryDelta> {
+		match &self.runtime_base {
+			Some(base) => crate::delta::compute_deltas(base, registry),
+			None => crate::delta::compute_deltas(&self.document.working_registry.as_rendered(), registry),
+		}
+	}
+
+	/// Stage the [`runtime_diff`](Self::runtime_diff) ops of `registry` and keep `registry` as the last runtime state.
+	pub fn stage_runtime_diff(&mut self, ops: Vec<RegistryDelta>, registry: Registry) -> Result<Vec<HotOp>, CrdtError> {
 		// Lenient since a peer's concurrent write may have reshaped what the diff names.
 		let hot_ops = self.stage_ops_with(ops.into_iter().map(|op| (op, Attributes::new())), ApplyMode::Idempotent)?;
-		self.runtime_base = Some(conversion.registry.clone());
-		Ok((hot_ops, conversion))
+		self.runtime_base = Some(registry);
+		Ok(hot_ops)
 	}
 
 	pub fn mark_runtime_current(&mut self) {
@@ -188,7 +193,8 @@ impl Session {
 		Ok(revs)
 	}
 
-	/// Stages ops computed outside the session, such as a runtime diff or an incremental projection, as hot ops.
+	/// Stages ops computed outside the session (an incremental runtime projection) as hot ops, the
+	/// same way `stage_from_runtime` stages a diff's ops.
 	pub fn stage_computed_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
 		self.stage_ops(ops)
 	}
@@ -1068,12 +1074,20 @@ impl Session {
 		hashes
 	}
 
-	/// Every blob the current registry, its tombstones, history, or hot log names, so any state the cursor reaches can be resolved.
+	/// Every blob that the registry, its tombstones, the history or the hot log names.
 	pub fn all_blob_hashes(&self) -> HashSet<BlobHash> {
-		let mut hashes: HashSet<BlobHash> = self.document.working_registry.blob_hashes().collect();
-		hashes.extend(self.document.history.iter().flat_map(Delta::blob_hashes));
-		hashes.extend(self.document.hot_log.iter().flat_map(|hot_op| hot_op.op.blob_hashes()));
-		hashes
+		self.blob_hashes().collect()
+	}
+
+	/// Whether the registry, its tombstones, the history or the hot log names `hash`.
+	pub fn names_blob(&self, hash: BlobHash) -> bool {
+		self.blob_hashes().any(|named| named == hash)
+	}
+
+	fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let history = self.document.history.iter().flat_map(Delta::blob_hashes);
+		let hot_log = self.document.hot_log.iter().flat_map(|hot_op| hot_op.op.blob_hashes());
+		self.document.working_registry.blob_hashes().chain(history).chain(hot_log)
 	}
 
 	/// Every referenced resource hash plus what the ops this peer took back named. Garbage collection must keep these.

@@ -65,7 +65,7 @@ impl Node {
 }
 
 impl NodeInput {
-	/// The hash a value input's bytes are stored under, when it holds a [`Value::Blob`].
+	/// The blob hash of a value input that holds a [`Value::Blob`].
 	pub fn blob(&self) -> Option<BlobHash> {
 		match self {
 			NodeInput::Value { value: Value::Blob(hash), .. } => Some(*hash),

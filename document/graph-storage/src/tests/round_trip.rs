@@ -862,7 +862,7 @@ fn an_unreached_table_entry_is_not_stored() {
 	assert_eq!(registry.networks.keys().copied().collect::<Vec<_>>(), vec![crate::ROOT_NETWORK]);
 }
 
-/// A large input value is stored as a blob and resolved from the blob bytes on the way back.
+/// A large input value is stored as a blob and read back from the blob bytes.
 #[test]
 fn large_input_value_round_trips_through_a_blob() {
 	use graph_craft::document::value::TaggedValue;

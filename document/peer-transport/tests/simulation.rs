@@ -28,7 +28,7 @@ static TOTAL_BLOB_FETCHES: AtomicUsize = AtomicUsize::new(0);
 struct SimTarget {
 	session: Session,
 	resources: HashMap<ResourceHash, Vec<u8>>,
-	/// Blob bytes, and the record each arrived or was staged as. See [`SimTarget::blob_record`].
+	/// Blob bytes and the record of each blob. See [`SimTarget::blob_record`].
 	blobs: BlobBytes,
 	blob_records: HashMap<BlobHash, Vec<u8>>,
 	/// History as of the last `flush`.
@@ -61,8 +61,8 @@ impl SimTarget {
 		self.session.history().map(|delta| delta.id).collect()
 	}
 
-	/// A stand-in for a stored blob record: the bytes, after the base they need when it is held. A receiver must hold the base
-	/// to take a record naming one, as with a real delta, which `document-format` tests on its own.
+	/// A stand-in for a blob record. It holds the base hash if the base is held, then the bytes. Like a real delta,
+	/// a receiver can only take it when it holds the base. `document-format` tests real deltas.
 	fn blob_record(&self, bytes: &[u8], base: Option<BlobHash>) -> Vec<u8> {
 		let mut record = Vec::new();
 		match base.filter(|base| self.blobs.contains_key(base)) {
@@ -76,7 +76,7 @@ impl SimTarget {
 		record
 	}
 
-	/// Hold staged blobs, returning the records peers receive with the ops.
+	/// Hold staged blobs and return the records that peers receive with the ops.
 	fn hold_blobs(&mut self, blobs: BlobBytes, bases: &HashMap<BlobHash, BlobHash>) -> Vec<BlobRecord> {
 		let mut blobs: Vec<_> = blobs.into_iter().filter(|(hash, _)| !self.blobs.contains_key(hash)).collect();
 		blobs.sort_unstable_by_key(|(hash, _)| *hash);
@@ -219,7 +219,7 @@ impl SyncTarget for SimTarget {
 
 	fn store_resource(&mut self, hash: ResourceHash, bytes: &[u8]) -> Result<(), TargetError> {
 		let blob = BlobHash(hash);
-		if self.session.all_blob_hashes().contains(&blob) {
+		if self.session.names_blob(blob) {
 			TOTAL_BLOB_FETCHES.fetch_add(1, Ordering::Relaxed);
 			let record = self.blob_record(bytes, None);
 			self.blobs.insert(blob, bytes.to_vec());
@@ -263,7 +263,7 @@ impl SyncTarget for SimTarget {
 				self.blob_records.insert(*hash, record.clone());
 				false
 			});
-			// What stays waits on a base this peer lacks, and is asked for in full as a missing resource
+			// The remaining records need a base this peer lacks. They are fetched in full as missing resources
 			if pending.is_empty() || pending.len() == waiting {
 				return Ok(());
 			}
@@ -334,7 +334,7 @@ impl Peer {
 		self.stage_ops(vec![op]).expect("stage");
 	}
 
-	/// Stage `ops` with their large values moved into blobs, broadcasting the blobs' records with them.
+	/// Stage `ops`, move their large values into blobs and broadcast the blob records with them.
 	fn stage_ops(&mut self, mut ops: Vec<RegistryDelta>) -> Result<(), document_graph_storage::CrdtError> {
 		let mut blobs = BlobBytes::new();
 		ops.iter_mut().for_each(|op| op.move_values_into_blobs(&mut blobs));
@@ -379,7 +379,7 @@ impl Peer {
 		}
 	}
 
-	/// Edit one input of a live node a few times in a row, as drawing does, so its blobs chain on each other.
+	/// Edit one input of a live node a few times in a row, like drawing does. Each new blob is based on the one before.
 	fn stroke(&mut self, network: &mut MockNetwork) {
 		let live_nodes: Vec<NodeId> = sorted(self.session().registry().node_instances.keys().copied());
 		let Some(&id) = pick(network, &live_nodes) else { return };
@@ -511,12 +511,12 @@ fn random_value(network: &mut MockNetwork) -> Value {
 	Value::from(serde_json::json!(network.random_below(100)))
 }
 
-/// A value large enough to become a blob, from a pool small enough that peers sometimes stage the same one concurrently.
+/// A value large enough to become a blob. The pool is small, so peers sometimes stage the same value at once.
 fn large_value(network: &mut MockNetwork) -> Value {
 	Value::Str(format!("{}{}", "x".repeat(BLOB_THRESHOLD), network.random_below(64)))
 }
 
-/// A literal input value, a third of the time a [`large_value`].
+/// A literal input value. One in three is a [`large_value`].
 fn random_input_value(network: &mut MockNetwork) -> Value {
 	match network.random_below(3) {
 		0 => large_value(network),
@@ -561,7 +561,7 @@ fn random_node_op(network: &mut MockNetwork, session: &Session) -> Option<Regist
 			})
 		}
 		2 => registry.node_instances.get(&node_id).map(|node| RegistryDelta::RemoveNode { id: node_id, snapshot: node.clone() }),
-		// Repeated edits to one slot chain its blobs, so most arrive as deltas against the one before
+		// Repeated edits to one slot chain its blobs, so most of them arrive as deltas
 		5 => {
 			let id = *pick(network, &live_nodes)?;
 			let index = network.random_below(2) as u32;
@@ -754,11 +754,11 @@ fn quiesce(network: &mut MockNetwork, peers: &mut [Peer]) -> usize {
 	panic!("the room never went idle");
 }
 
-/// What a run mostly does.
+/// The main kind of step in a run.
 #[derive(Clone, Copy)]
 enum Workload {
 	Mixed,
-	/// Half the steps are strokes, as live drawing makes.
+	/// Half the steps are strokes, like live drawing.
 	Strokes,
 }
 
@@ -1058,7 +1058,7 @@ fn peers_converge_under_random_interleavings() {
 	assert!(TOTAL_BLOBS.load(Ordering::Relaxed) > 0, "the corpus staged no blobs");
 }
 
-/// Mostly strokes, so blobs chain on each other, reach peers as deltas, and are fetched in full by a peer lacking a base.
+/// Mostly strokes. Blobs chain, reach peers as deltas and are fetched in full by peers that lack a base.
 #[test]
 fn blobs_reach_every_peer_under_strokes() {
 	run_corpus(Workload::Strokes, 2000);
@@ -1066,8 +1066,8 @@ fn blobs_reach_every_peer_under_strokes() {
 	assert!(TOTAL_BLOB_FETCHES.load(Ordering::Relaxed) > 0, "no blob was fetched in full for a missing base");
 }
 
-/// Run `SIM_SEEDS` seeds, or `default_seeds`, checking each converges. `SIM_KEEP_GOING` runs every seed and lists the failures,
-/// to tell one bug from several.
+/// Run `SIM_SEEDS` seeds (or `default_seeds`) and check that each one converges.
+/// `SIM_KEEP_GOING` runs every seed and lists all failures. This tells one bug from several.
 fn run_corpus(workload: Workload, default_seeds: u64) {
 	let seeds = std::env::var("SIM_SEEDS").ok().and_then(|value| value.parse::<u64>().ok()).unwrap_or(default_seeds);
 	let keep_going = std::env::var_os("SIM_KEEP_GOING").is_some();

@@ -29,9 +29,9 @@ pub struct DocumentPayloads {
 	pub history: Vec<Payload>,
 	pub hot_log: Vec<Payload>,
 	pub session: Option<Payload>,
-	/// Blob bytes by hash that steps moved values into, for the load path to store.
+	/// Blobs that steps moved values into. The load path stores them.
 	pub blobs: HashMap<ResourceHash, Vec<u8>>,
-	/// For each blob in `blobs`, the blob a store can encode it against.
+	/// The base blob of each blob in `blobs`.
 	pub blob_bases: HashMap<ResourceHash, ResourceHash>,
 }
 
@@ -62,7 +62,7 @@ pub trait FormatMigration: Send + Sync {
 	fn migrate_session(&self, session: &Payload) -> Result<Payload, MigrationError> {
 		Ok(session.clone())
 	}
-	/// Transform the whole document once its records are converted, for a change needing state across records.
+	/// Transform the whole document after its records are converted. Use this when a change needs state across records.
 	fn migrate_document(&self, _document: &mut DocumentPayloads) -> Result<(), MigrationError> {
 		Ok(())
 	}

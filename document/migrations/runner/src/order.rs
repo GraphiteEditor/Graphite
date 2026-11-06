@@ -76,8 +76,8 @@ pub fn order_migrations(migrations: &[&'static dyn NodeMigration]) -> Result<Vec
 
 /// Rewrite `history` through every migration whose source declaration it references, in dependency order. A migration is pending
 /// even when no live node uses its source, since a removed node keeps its old shape in history and undo can bring it back. `kept` names the
-/// states a cursor rests on, which even a migration only running at interaction boundaries has to keep. `blobs` resolves the
-/// blobs migrations read and collects the ones they add.
+/// states a cursor rests on, which even a migration only running at interaction boundaries has to keep. `blobs` resolves
+/// the blobs that migrations read and collects the blobs they add.
 pub fn migrate_history(
 	migrations: &[&'static dyn NodeMigration],
 	history: Vec<Delta>,

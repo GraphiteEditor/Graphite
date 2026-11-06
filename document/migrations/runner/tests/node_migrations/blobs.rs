@@ -1,4 +1,4 @@
-//! Migrations read the values a document stores in blobs, and the large values they write go back into blobs.
+//! Migrations read values that are stored in blobs. The large values they write go back into blobs.
 
 use document_graph_storage::blob::{BLOB_THRESHOLD, BlobBytes};
 use document_graph_storage::{BlobHash, NodeInput, Value};
@@ -13,7 +13,7 @@ pub fn append_to_text(node: &Node, inputs: &mut Inputs) {
 	inputs.set(0, literal(format!("{text}!")));
 }
 
-/// A large literal stored as a blob, with the bytes the document keeps for it.
+/// A large literal stored as a blob, together with its blob bytes.
 fn blob_literal(text: &str, blobs: &mut BlobBytes) -> (NodeInput, BlobHash) {
 	let mut input = literal(text.to_string());
 	input.move_into_blob(blobs);

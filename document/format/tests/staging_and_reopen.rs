@@ -147,8 +147,8 @@ fn a_user_change_survives_a_reopen() {
 	});
 }
 
-/// Large input values are staged as blobs, an edited one as a delta against its predecessor. A reopen and an archive
-/// round trip both find them again, for the current state and an undone one.
+/// Large input values are staged as blobs. An edit is stored as a delta against the previous value.
+/// Both the current state and an undone one survive a reopen and an archive round trip.
 #[test]
 fn blobs_resolve_after_a_reopen_and_an_archive_round_trip() {
 	use document_container::AsyncContainer;
@@ -167,7 +167,7 @@ fn blobs_resolve_after_a_reopen_and_an_archive_round_trip() {
 		let store = HashMapResourceStorage::new();
 		gdd.commit_from_runtime(&network, &NoMetadata, &ResourceRegistry::new(), &store).unwrap();
 
-		// An op built outside a conversion carries the value inline until staging moves it into a blob
+		// This op is not from a conversion, so the value stays inline until staging moves it into a blob
 		let id = *gdd.registry().node_instances.keys().next().unwrap();
 		let value = Value::from(serde_json::to_value(&edited).unwrap());
 		let new_input = NodeInput::Value { value, exposed: false };

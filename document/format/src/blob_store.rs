@@ -1,9 +1,9 @@
-//! The working copy's blob records, one `blobs/<hash>` file each. A record holds the blob's bytes in full, or a copy
-//! delta against the blob its node input held before. Values change in a few places per edit, so consecutive versions
-//! of one input share nearly all of their bytes, which a delta stores once. Chains are unbounded, which costs nothing
-//! while loading decodes every blob anyway. Records stay uncompressed, so an archive codec can compress across them.
+//! Blob records in the working copy, one `blobs/<hash>` file each.
 //!
-//! A record starts with its kind byte. A delta record follows it with its base's 32 hash bytes. The payload makes up the rest.
+//! A record holds a blob in full or as a copy delta against an older blob of the same node input. Most edits change only a
+//! few bytes of a value, so a delta is small. Records are not compressed. This lets an archive codec compress across them.
+//!
+//! Record layout is a kind byte, then the 32 base hash bytes for a delta, then the payload.
 
 use std::collections::{HashMap, HashSet};
 
@@ -16,7 +16,7 @@ use crate::layout::Layout;
 const FULL: u8 = 0;
 const DELTA: u8 = 1;
 
-/// The decoded bytes of every blob the document names, with the record each is stored as.
+/// The decoded bytes and the stored record of every blob the document names.
 #[derive(Clone, Debug, Default)]
 pub(crate) struct BlobStore {
 	pub(crate) bytes: BlobBytes,
@@ -24,15 +24,15 @@ pub(crate) struct BlobStore {
 }
 
 impl BlobStore {
-	/// Hold a new blob, returning the record to write for it, which is a delta against `base` when that is held.
-	/// A blob already held returns `None`.
+	/// Hold a new blob and return the record to write for it. The record is a delta when `base` is held.
+	/// Returns `None` for a blob that is already held.
 	pub(crate) fn insert(&mut self, hash: BlobHash, bytes: Vec<u8>, base: Option<BlobHash>) -> Option<Vec<u8>> {
 		if self.bytes.contains_key(&hash) {
 			return None;
 		}
 
 		let record = match base.and_then(|base| Some((base, self.bytes.get(&base)?))) {
-			Some((base, base_bytes)) => delta_record(&base, base_bytes, &bytes),
+			Some((base, base_bytes)) => delta_record(base, base_bytes, &bytes),
 			None => full_record(&bytes),
 		};
 
@@ -41,7 +41,7 @@ impl BlobStore {
 		Some(record)
 	}
 
-	/// [`insert`](Self::insert) every blob in hash order, each base ahead of the blobs encoded against it.
+	/// [`insert`](Self::insert) every blob in hash order. A base goes in before the blobs that use it.
 	pub(crate) fn insert_all(&mut self, blobs: NewBlobs) -> Vec<(BlobHash, Vec<u8>)> {
 		let NewBlobs { bytes: mut blobs, bases } = blobs;
 		let mut hashes: Vec<_> = blobs.keys().copied().collect();
@@ -59,7 +59,7 @@ impl BlobStore {
 		records
 	}
 
-	/// The record of every held blob, in hash order but each after its base.
+	/// The record of every held blob in hash order. A base comes before the blobs that use it.
 	#[cfg(feature = "network")]
 	pub(crate) fn records(&self) -> Vec<(BlobHash, Vec<u8>)> {
 		let mut hashes: Vec<_> = self.records.keys().copied().collect();
@@ -78,14 +78,14 @@ impl BlobStore {
 		records
 	}
 
-	/// Hold the blobs of records from elsewhere, checking each against its hash, and return those held for writing.
-	/// A record whose base isn't held here, or that is malformed, is skipped.
+	/// Hold the blobs of records from a peer and return the records to write.
+	/// Skips a record that is malformed, fails its hash check or needs a base that is not held.
 	#[cfg(feature = "network")]
 	pub(crate) fn absorb(&mut self, records: Vec<(BlobHash, Vec<u8>)>) -> Vec<(BlobHash, Vec<u8>)> {
 		let mut pending = records;
 		let mut held = Vec::new();
 
-		// Repeat while a pass holds more, since a record can arrive ahead of its base
+		// A record can arrive before its base, so repeat until a pass holds nothing new
 		loop {
 			let waiting = pending.len();
 			pending.retain(|(hash, record)| {
@@ -93,10 +93,10 @@ impl BlobStore {
 					return false;
 				}
 				let bytes = match decode_record(record) {
-					Some(Record::Full(bytes)) => bytes,
+					Some(Record::Full(bytes)) => bytes.to_vec(),
 					Some(Record::Delta { base, delta }) => {
 						let Some(base_bytes) = self.bytes.get(&base) else { return true };
-						let Some(bytes) = apply_copy_delta(base_bytes, &delta) else { return false };
+						let Some(bytes) = apply_copy_delta(base_bytes, delta) else { return false };
 						bytes
 					}
 					None => return false,
@@ -116,7 +116,7 @@ impl BlobStore {
 		held
 	}
 
-	/// A record holding the held blob `hash` in full, standing on no base.
+	/// A full record of the held blob `hash`.
 	pub(crate) fn full_record(&self, hash: &BlobHash) -> Option<Vec<u8>> {
 		Some(full_record(self.bytes.get(hash)?))
 	}
@@ -127,9 +127,13 @@ impl BlobStore {
 		self.records.remove(hash);
 	}
 
-	/// Read and decode the record of `hash` and those of the bases it stands on, checking each blob against its hash.
+	/// Read and decode the record of `hash` and the records of its bases. Each blob is checked against its hash.
 	pub(crate) async fn load(&mut self, hash: BlobHash, working: &AnyContainer, layout: &impl Layout) -> Result<(), String> {
-		// Walk down the chain to a blob already held or a full record, then apply the deltas on the way back up
+		if self.bytes.contains_key(&hash) {
+			return Ok(());
+		}
+
+		// Follow the bases down to a held blob or a full record, then apply the deltas in reverse
 		let mut deltas = Vec::new();
 		let mut visited = HashSet::new();
 		let mut current = hash;
@@ -145,11 +149,12 @@ impl BlobStore {
 			let record = record.as_slice().to_vec();
 			match decode_record(&record).ok_or_else(|| format!("Blob {current} has a malformed record"))? {
 				Record::Full(bytes) => {
+					let bytes = bytes.to_vec();
 					self.hold_checked(current, bytes.clone(), record)?;
 					break bytes;
 				}
 				Record::Delta { base, delta } => {
-					deltas.push((current, delta, record));
+					deltas.push((current, delta.to_vec(), record));
 					current = base;
 				}
 			}
@@ -173,7 +178,7 @@ impl BlobStore {
 	}
 }
 
-/// `hash` and the bases below it that `base_of` names, deepest first. Bounded in case bases ever form a cycle.
+/// `hash` and the chain of bases that `base_of` returns, deepest base first. Stops if the chain loops.
 fn chain_to(hash: BlobHash, base_of: impl Fn(&BlobHash) -> Option<BlobHash>) -> Vec<BlobHash> {
 	let mut chain = vec![hash];
 	let mut visited = HashSet::from([hash]);
@@ -186,15 +191,21 @@ fn chain_to(hash: BlobHash, base_of: impl Fn(&BlobHash) -> Option<BlobHash>) -> 
 	chain
 }
 
-/// The base a delta record names.
-fn record_base(record: &[u8]) -> Option<BlobHash> {
+/// The base hash and the payload of a delta record.
+fn split_delta_record(record: &[u8]) -> Option<(BlobHash, &[u8])> {
 	let (&DELTA, rest) = record.split_first()? else { return None };
-	Some(BlobHash(ResourceHash::from(<[u8; 32]>::try_from(rest.get(..32)?).ok()?)))
+	let (base, delta) = rest.split_first_chunk::<32>()?;
+	Some((BlobHash(ResourceHash::from(*base)), delta))
 }
 
-enum Record {
-	Full(Vec<u8>),
-	Delta { base: BlobHash, delta: Vec<u8> },
+/// The base hash of a delta record.
+fn record_base(record: &[u8]) -> Option<BlobHash> {
+	split_delta_record(record).map(|(base, _)| base)
+}
+
+enum Record<'a> {
+	Full(&'a [u8]),
+	Delta { base: BlobHash, delta: &'a [u8] },
 }
 
 fn full_record(bytes: &[u8]) -> Vec<u8> {
@@ -203,32 +214,28 @@ fn full_record(bytes: &[u8]) -> Vec<u8> {
 	record
 }
 
-fn delta_record(base: &BlobHash, base_bytes: &[u8], bytes: &[u8]) -> Vec<u8> {
+fn delta_record(base: BlobHash, base_bytes: &[u8], bytes: &[u8]) -> Vec<u8> {
 	let mut record = vec![DELTA];
 	record.extend_from_slice(&<[u8; 32]>::from(&base.0));
 	record.extend(copy_delta(base_bytes, bytes));
 	record
 }
 
-fn decode_record(record: &[u8]) -> Option<Record> {
-	let (&kind, rest) = record.split_first()?;
-	match kind {
-		FULL => Some(Record::Full(rest.to_vec())),
-		DELTA => Some(Record::Delta {
-			base: record_base(record)?,
-			delta: rest.get(32..)?.to_vec(),
-		}),
+fn decode_record(record: &[u8]) -> Option<Record<'_>> {
+	match *record.first()? {
+		FULL => Some(Record::Full(&record[1..])),
+		DELTA => split_delta_record(record).map(|(base, delta)| Record::Delta { base, delta }),
 		_ => None,
 	}
 }
 
-// A copy delta rebuilds the target from runs copied out of the base and literal runs it carries itself.
-// It indexes the base's aligned blocks and matches them anywhere in the target, like git's delta encoding.
+// A copy delta is a list of COPY and INSERT operations. COPY takes a byte range from the base. INSERT carries new bytes.
+// Like git's delta encoding, it indexes aligned blocks of the base and finds them at any offset in the target.
 const COPY_BLOCK: usize = 16;
 const COPY: u8 = 0;
 const INSERT: u8 = 1;
 
-/// O(base + target) expected: one index entry per base block, one lookup per unmatched target byte.
+/// Expected O(base + target) time. Each base block is indexed once and each unmatched target byte is looked up once.
 fn copy_delta(base: &[u8], target: &[u8]) -> Vec<u8> {
 	let block_key = |bytes: &[u8]| -> u128 {
 		let mut key = [0; COPY_BLOCK];
@@ -236,7 +243,7 @@ fn copy_delta(base: &[u8], target: &[u8]) -> Vec<u8> {
 		u128::from_le_bytes(key)
 	};
 
-	let mut index: HashMap<u128, usize> = HashMap::new();
+	let mut index = HashMap::new();
 	for offset in (0..base.len().saturating_sub(COPY_BLOCK - 1)).step_by(COPY_BLOCK) {
 		index.entry(block_key(&base[offset..])).or_insert(offset);
 	}
@@ -250,7 +257,7 @@ fn copy_delta(base: &[u8], target: &[u8]) -> Vec<u8> {
 			continue;
 		};
 
-		// Base blocks are aligned but target matches are not, so extend backward into the pending literal too
+		// A match can start before the aligned block, so also extend it backward into the pending literal
 		let backward = base[..base_offset].iter().rev().zip(target[literal_start..position].iter().rev()).take_while(|(a, b)| a == b).count();
 		let forward = base[base_offset..].iter().zip(&target[position..]).take_while(|(a, b)| a == b).count();
 
@@ -308,7 +315,7 @@ fn push_varint(output: &mut Vec<u8>, mut value: usize) {
 }
 
 fn read_varint(delta: &mut &[u8]) -> Option<usize> {
-	let mut value: usize = 0;
+	let mut value = 0;
 	for shift in (0..usize::BITS).step_by(7) {
 		let (&byte, rest) = delta.split_first()?;
 		*delta = rest;
@@ -359,7 +366,7 @@ mod tests {
 			panic!("a delta record")
 		};
 		assert_eq!(decoded_base, base_hash);
-		assert_eq!(apply_copy_delta(&base, &delta).unwrap(), changed);
+		assert_eq!(apply_copy_delta(&base, delta).unwrap(), changed);
 	}
 
 	#[test]

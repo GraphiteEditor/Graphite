@@ -73,7 +73,7 @@ pub(crate) fn apply_migration(
 		return Ok(source.clone());
 	}
 
-	// A migration reading past its anchors, itself or through the compiler, needs every value decoded
+	// A migration that reads beyond its anchors needs every value decoded
 	let reads_beyond_anchors = migration.footprint().reads_network() || migration.asks_compiler();
 	let resolved = blobs.resolve(source, (!reads_beyond_anchors).then_some(anchors.as_slice()))?;
 

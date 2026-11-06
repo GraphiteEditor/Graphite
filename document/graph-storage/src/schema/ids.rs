@@ -13,7 +13,7 @@ pub struct NodeId(pub u64);
 #[serde(transparent)]
 pub struct NetworkId(pub u64);
 
-/// Content-addressed identity for a blob, the stored bytes of a large node input value. See `blob`.
+/// The content hash of a blob, which stores a large node input value.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct BlobHash(pub ResourceHash);

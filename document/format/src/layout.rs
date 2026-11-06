@@ -16,9 +16,9 @@ pub trait Layout: Send + Sync {
 	fn metadata_basename(&self) -> &str;
 	fn resources_dir(&self) -> &str;
 	fn resource_path(&self, hash: &ResourceHash) -> String;
-	/// The directory of blob records. See `blob_store`.
+	/// The directory of blob records.
 	fn blobs_dir(&self) -> &str;
-	/// The record of one blob.
+	/// The path of one blob record.
 	fn blob_path(&self, hash: &BlobHash) -> String;
 	/// The embedded legacy `.graphite` document, stored verbatim during the dual-write soak so the
 	/// new format can be validated against (and recovered from) the old one. Dropped once `.gdd`
