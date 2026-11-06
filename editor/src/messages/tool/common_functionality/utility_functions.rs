@@ -18,6 +18,16 @@ use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, Vector
 use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
+/// Names the open interaction after what a tool did to `count` layers, such as "Moved 2 layers".
+pub fn name_layer_action(verb: &str, count: usize) -> DocumentMessage {
+	let action = match count {
+		0 => verb.to_string(),
+		1 => format!("{verb} a layer"),
+		count => format!("{verb} {count} layers"),
+	};
+	DocumentMessage::NameInteraction { action }
+}
+
 pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
 	closest_point(document, goal, tolerance, layers, |_| false)
 }

@@ -24,6 +24,8 @@ pub struct Session {
 	/// What the ops this peer took back named. A retirement racing the take-back may still name them, and this peer may
 	/// hold the only copy, so they stay garbage collection roots for the life of the session.
 	taken_back_resources: HashSet<ResourceHash>,
+	/// What this peer's open interaction is doing, for its closing marker to carry.
+	action: Option<String>,
 }
 
 impl Session {
@@ -47,6 +49,7 @@ impl Session {
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 			taken_back_resources: HashSet::new(),
+			action: None,
 		}
 	}
 
@@ -343,6 +346,7 @@ impl Session {
 			remote_tips: HashMap::new(),
 			runtime_base: None,
 			taken_back_resources: HashSet::new(),
+			action: None,
 		}
 	}
 
@@ -637,6 +641,7 @@ impl Session {
 	/// Closes this peer's open interaction with a flagged [`RegistryDelta::Meta`] op. Returns the staged ops, a
 	/// re-registration possibly before the marker; empty when nothing is open.
 	pub fn end_interaction(&mut self) -> Result<Vec<HotOp>, CrdtError> {
+		let action = self.action.take();
 		let peer = self.document.peer;
 		let open = self
 			.document
@@ -650,7 +655,15 @@ impl Session {
 		}
 		let mut closing = Attributes::new();
 		closing.set(crate::attr::delta::INTERACTION_END, Value::Bool(true), TimeStamp::ORIGIN);
+		if let Some(action) = action {
+			closing.set(crate::attr::delta::ACTION, Value::Str(action), TimeStamp::ORIGIN);
+		}
 		self.stage_ops_with([(RegistryDelta::Meta, closing)], ApplyMode::Strict)
+	}
+
+	/// Names this peer's open interaction, replacing an earlier name. Closing it takes the name along.
+	pub fn name_interaction(&mut self, action: &str) {
+		self.action = Some(action.to_string());
 	}
 
 	/// Every author's closed interactions in the hot log, the earliest closed first.
@@ -849,9 +862,14 @@ impl Session {
 	/// Retire one closed interaction, coarsened, marking its last delta as the interaction's end. Every op is retired,
 	/// the ones coarsening drops included. Returns the new revs.
 	pub fn retire_interaction(&mut self, interaction: &ClosedInteraction) -> Result<Vec<Rev>, CrdtError> {
+		let marker = interaction.ops.last().and_then(|&id| self.document.hot_log.iter().find(|hot_op| hot_op.id() == id));
+		let action = marker.and_then(|hot_op| hot_op.attributes.get(crate::attr::delta::ACTION)).cloned();
 		let revs = self.retire_hot_ops_with(&interaction.ops, true)?;
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
+			if let Some(action) = action {
+				self.document.history.annotate(last, crate::attr::delta::ACTION, action.value, action.timestamp);
+			}
 		}
 		Ok(revs)
 	}
