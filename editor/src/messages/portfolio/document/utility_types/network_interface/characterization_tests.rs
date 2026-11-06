@@ -4,6 +4,7 @@ use super::{
 };
 use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
@@ -3546,4 +3547,107 @@ async fn cannot_preview_node_without_outputs() {
 	// Attempting to toggle preview on a node without outputs should not enable previewing
 	network_interface.toggle_preview(custom_node, &[]);
 	assert_eq!(network_interface.previewing(&[]), Previewing::No);
+}
+
+fn map_definition() -> DefinitionIdentifier {
+	DefinitionIdentifier::ProtoNode(graphene_std::graphic::map::IDENTIFIER)
+}
+
+async fn layer_with_chain_and_unwired_map(editor: &mut EditorTestUtils) -> (NodeId, NodeId, NodeId) {
+	let (layer, near, ..) = layer_with_chain(editor).await;
+	editor
+		.active_document_mut()
+		.network_interface
+		.create_wire(&OutputConnector::primary_output(layer), &InputConnector::Export(0), &[]);
+	editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;
+
+	let map = editor.create_node_by_name_at(map_definition(), 0, 30).await;
+	(layer, near, map)
+}
+
+async fn drop_map_onto_chain(editor: &mut EditorTestUtils, layer: NodeId, map: NodeId) {
+	editor
+		.handle_message(NodeGraphMessage::InsertNodeBetween {
+			node_id: map,
+			input_connector: InputConnector::layer_secondary_input(layer),
+			insert_node_input_index: 0,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn dropping_a_map_node_onto_a_wire_feeds_it_the_matching_read_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, near, map) = layer_with_chain_and_unwired_map(&mut editor).await;
+
+	drop_map_onto_chain(&mut editor, layer, map).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	let Some(NodeInput::Node { node_id: read_node, .. }) = network_interface.input_from_connector(&InputConnector::node_at_index(map, 1), &[]).cloned() else {
+		panic!("The Map node's mapped input should be fed by a new node");
+	};
+	assert_eq!(
+		network_interface.reference(&read_node, &[]),
+		Some(DefinitionIdentifier::ProtoNode(graphene_std::context::read_vector::IDENTIFIER))
+	);
+
+	let map_position = network_interface.position(&map, &[]).unwrap();
+	let near_position = network_interface.position(&near, &[]).unwrap();
+	let near_bottom = near_position.y + network_interface.node_height(&near, &[]) as i32;
+	let read_node_position = network_interface.position(&read_node, &[]).unwrap();
+	assert_eq!(read_node_position.x, map_position.x - crate::consts::NODE_CHAIN_WIDTH);
+	assert!(
+		read_node_position.y > near_bottom,
+		"The Read node should sit below the Map node's content source rather than overlap it"
+	);
+	assert_invariants(&editor, "after dropping a Map node onto a wire");
+}
+
+#[test]
+fn map_content_types_resolve_to_the_read_node_of_their_element() {
+	use super::layout::read_node_for_content;
+	use super::resolved_types::TypeSource;
+	use graph_craft::{item, list};
+	use graphene_std::context::{read_graphic, read_number, read_vector};
+	use graphene_std::list::Bundle;
+	use graphene_std::text_nodes::read_string;
+	use graphene_std::{Graphic, Vector};
+
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(Vector))), Some(read_vector::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Graphic))), Some(read_graphic::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(f64))), Some(read_number::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::TaggedValue(list!(String))), Some(read_string::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Bundle<Vector>))), Some(read_vector::IDENTIFIER));
+
+	assert_eq!(
+		read_node_for_content(&TypeSource::Compiled(list!(i64))),
+		None,
+		"Read Number yields f64, which a Map over integers can't take"
+	);
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(bool))), None);
+	assert_eq!(read_node_for_content(&TypeSource::Unknown), None);
+}
+
+#[tokio::test]
+async fn dropping_a_map_node_onto_a_wire_keeps_its_wired_mapped_input() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let (layer, _, map) = layer_with_chain_and_unwired_map(&mut editor).await;
+
+	let mapped_source = NodeId::new();
+	let read_vector = resolve_proto_node_type(graphene_std::context::read_vector::IDENTIFIER).unwrap().default_node_template();
+	let network_interface = &mut editor.active_document_mut().network_interface;
+	network_interface.insert_node(mapped_source, read_vector, &[]);
+	network_interface.create_wire(&OutputConnector::primary_output(mapped_source), &InputConnector::node_at_index(map, 1), &[]);
+	let node_count = editor.active_document().network_interface.document_network().nodes.len();
+
+	drop_map_onto_chain(&mut editor, layer, map).await;
+
+	let network_interface = &editor.active_document().network_interface;
+	assert_eq!(
+		network_interface.input_from_connector(&InputConnector::node_at_index(map, 1), &[]),
+		Some(&NodeInput::node(mapped_source, 0))
+	);
+	assert_eq!(network_interface.document_network().nodes.len(), node_count);
 }
