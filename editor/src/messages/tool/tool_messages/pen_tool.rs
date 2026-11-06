@@ -1976,6 +1976,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::NameInteraction { action: "Drew a path segment".into() });
 				tool_data.handle_mode = HandleMode::Free;
 
 				// Get the closest point and the segment it is on
@@ -2015,6 +2016,7 @@ impl Fsm for PenToolFsmState {
 
 				// Each segment placement is its own history step, spanning from this click through the release that finalizes it
 				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::NameInteraction { action: "Drew a path segment".into() });
 
 				// Merge two layers if the point is connected to the end point of another path
 

@@ -55,6 +55,14 @@ impl Delta {
 		self.attributes.get(attr::delta::INTERACTION_END).is_some_and(|marker| marker.value == Value::Bool(true))
 	}
 
+	/// What the user did in the interaction this delta ends, if it was named.
+	pub fn action(&self) -> Option<&str> {
+		match &self.attributes.get(attr::delta::ACTION)?.value {
+			Value::Str(action) => Some(action),
+			_ => None,
+		}
+	}
+
 	/// Take over `original`'s annotations and retirement time, for a delta that replaces it in rewritten history.
 	pub fn carry_annotations(&mut self, original: &Delta) {
 		self.attributes = original.attributes.clone();
