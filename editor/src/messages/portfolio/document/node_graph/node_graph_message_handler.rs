@@ -650,6 +650,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				insert_node_input_index,
 			} => {
 				network_interface.insert_node_between(&node_id, &input_connector, insert_node_input_index, selection_network_path);
+				network_interface.connect_read_node_to_map(&node_id, selection_network_path);
 			}
 			NodeGraphMessage::InsertDotOnWire { node_id, input_connector, x, y } => {
 				network_interface.insert_dot_on_wire(node_id, &input_connector, IVec2::new(x, y), selection_network_path);

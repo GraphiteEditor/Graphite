@@ -1,4 +1,8 @@
 use super::*;
+use graph_craft::{ProtoNodeIdentifier, concrete};
+use graphene_std::raster_types::{CPU, Raster};
+use graphene_std::vector::style::Gradient;
+use graphene_std::{Color, Graphic};
 
 impl NodeNetworkInterface {
 	/// The top left corner of a node in node graph grid coordinates.
@@ -1155,6 +1159,44 @@ impl NodeNetworkInterface {
 		self.create_wire(&upstream_output, &InputConnector::node_at_index(*node_id, insert_node_input_index), network_path);
 	}
 
+	/// Feeds an unconnected Map node's mapped input with the Read node matching the element type of its content.
+	pub fn connect_read_node_to_map(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		if self.reference(node_id, network_path) != Some(DefinitionIdentifier::ProtoNode(graphene_std::graphic::map::IDENTIFIER)) {
+			return;
+		}
+
+		let mapped_input = InputConnector::node_at_index(*node_id, 1);
+		if !matches!(self.input_from_connector(&mapped_input, network_path), Some(NodeInput::Value { .. })) {
+			return;
+		}
+
+		let Some(content_source) = self.upstream_output_connector(&InputConnector::primary_input(*node_id), network_path) else {
+			return;
+		};
+		let Some(element_type) = self.output_type(&content_source, network_path).compiled_element_type().cloned() else {
+			return;
+		};
+		let Some(mut read_node_template) = read_node_for_element(&element_type)
+			.and_then(resolve_proto_node_type)
+			.map(|definition| definition.default_node_template())
+		else {
+			return;
+		};
+		let Some(map_position) = self.position(node_id, network_path) else {
+			return;
+		};
+
+		let below_content_source = content_source
+			.node_id()
+			.and_then(|source| Some(self.position(&source, network_path)?.y + self.node_height(&source, network_path) as i32 + 1));
+		let read_node_position = IVec2::new(map_position.x - NODE_CHAIN_WIDTH, below_content_source.unwrap_or(map_position.y + 2));
+		read_node_template.node_type_metadata = NodeTypePersistentMetadata::node(read_node_position);
+
+		let read_node_id = NodeId::new();
+		self.insert_node(read_node_id, read_node_template, network_path);
+		self.create_wire(&OutputConnector::primary_output(read_node_id), &mapped_input, network_path);
+	}
+
 	/// Inserts the freshly-created `node_id` onto the wire feeding `input_connector`: the previous upstream becomes the
 	/// new node's primary (index 0) input, and the new node feeds `input_connector`.
 	///
@@ -1574,4 +1616,22 @@ impl NodeNetworkInterface {
 		self.remove_orphaned_dots(network_path);
 		self.layer_chain(layer, network_path) == intended_chain
 	}
+}
+
+fn read_node_for_element(element_type: &Type) -> Option<ProtoNodeIdentifier> {
+	use graphene_std::context::{read_color, read_gradient, read_graphic, read_number, read_raster, read_vector};
+	use graphene_std::text_nodes::read_string;
+
+	[
+		(concrete!(Vector), read_vector::IDENTIFIER),
+		(concrete!(Graphic), read_graphic::IDENTIFIER),
+		(concrete!(Raster<CPU>), read_raster::IDENTIFIER),
+		(concrete!(Color), read_color::IDENTIFIER),
+		(concrete!(Gradient), read_gradient::IDENTIFIER),
+		(concrete!(f64), read_number::IDENTIFIER),
+		(concrete!(i64), read_number::IDENTIFIER),
+		(concrete!(String), read_string::IDENTIFIER),
+	]
+	.into_iter()
+	.find_map(|(ty, read_node)| (ty == *element_type).then_some(read_node))
 }
