@@ -7,6 +7,7 @@ use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceRe
 use super::utility_types::network_interface::NodeNetworkInterface;
 use super::utility_types::network_interface::editor_delta::{EditorDelta, StagingError, construct_batch};
 use super::utility_types::network_interface::storage_metadata::{StorageMetadataView, build_interface_from_storage, collect_network_view_settings};
+use crate::messages::portfolio::history::utility_types::LineChange;
 
 /// Per-document undo/redo state: the legacy snapshot stacks plus the `Gdd` working-copy cursor that is
 /// becoming the authoritative history. Owns the dual-stack bookkeeping push/pop/clear and the cursor's stage/retire/move/verify
@@ -233,6 +234,26 @@ impl DocumentHistory {
 	pub fn redo_retired_step(&mut self, rev: document_graph_storage::Rev) -> bool {
 		let Some(storage) = self.storage.as_mut() else { return false };
 		storage.redo_retired_step(rev).inspect_err(|error| log::error!("Redoing the dropped step failed: {error}")).is_ok()
+	}
+
+	/// Returns whether storage made the change.
+	pub fn change_line(&mut self, rev: document_graph_storage::Rev, change: LineChange) -> bool {
+		let Some(storage) = self.storage.as_mut().filter(|storage| storage.can_change_line()) else {
+			return false;
+		};
+		let result = match change {
+			LineChange::MoveHead => storage.move_head(rev),
+			LineChange::Remove => storage.drop_step(rev),
+			LineChange::Restore => storage.redo_retired_step(rev),
+		};
+		result.inspect_err(|error| log::error!("Changing the history line with {change:?} failed: {error}")).is_ok()
+	}
+
+	/// Forgets the legacy snapshots once the head has moved off their line.
+	pub fn clear_legacy(&mut self) {
+		self.legacy_undo_stack.clear();
+		self.legacy_redo_stack.clear();
+		self.undo_notes.clear();
 	}
 
 	pub fn retire_storage_interaction(&mut self) {

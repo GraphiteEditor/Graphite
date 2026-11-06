@@ -515,7 +515,7 @@ fn load_resource_future(document_id: DocumentId, to: TransportPeerId, hash: Reso
 	future.into()
 }
 
-fn now_ms() -> f64 {
+pub(crate) fn now_ms() -> f64 {
 	#[cfg(target_arch = "wasm32")]
 	{
 		js_sys::Date::now()
