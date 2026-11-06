@@ -365,7 +365,7 @@ impl ThumbnailContent {
 	}
 }
 
-/// Renders what each of these document layers adds as one SVG framed to their combined bounds, or `None` if they render nothing.
+/// Renders what each of these document layers adds, painted in the given order, as one SVG framed to their combined bounds, or `None` if they render nothing.
 pub fn layers_svg(layers: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<String> {
 	let contents: Vec<ThumbnailContent> = layers
 		.iter()
@@ -382,11 +382,15 @@ pub fn layers_svg(layers: &[NodeId], network: &NodeNetwork, executor: &DynamicEx
 
 	let render_params = RenderParams {
 		footprint: Footprint::from_bounds(bounds, RenderQuality::Full),
+		thumbnail: true,
 		..Default::default()
 	};
 	let mut render = SvgRender::new();
 	for content in &contents {
 		content.graphic().render_svg(&mut render, &render_params);
+	}
+	if render.svg.is_empty() {
+		return None;
 	}
 	render.format_svg(bounds[0], bounds[1]);
 

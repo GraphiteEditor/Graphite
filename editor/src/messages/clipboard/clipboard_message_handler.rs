@@ -623,6 +623,21 @@ mod test {
 
 	/// - create rect, shape and ellipse
 	/// - copy
+	#[cfg_attr(miri, ignore)]
+	#[tokio::test]
+	async fn copied_svg_paints_the_layers_from_the_bottom_up() {
+		let mut editor = create_editor_with_three_layers().await;
+		let layers = editor.active_document().metadata().all_layers().map(|layer| layer.to_node()).collect();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: layers }).await;
+
+		let (svg, _) = copy_layers_and_svg_to_clipboard(&mut editor).await;
+		let svg = svg.expect("the copied layers should render an SVG");
+		// The rectangle, polygon, and ellipse are told apart by where their outlines start
+		let position = |path_start: &str| svg.find(path_start).unwrap_or_else(|| panic!("{path_start} should be in the SVG: {svg}"));
+		let (rectangle, polygon, ellipse) = (position(r#"d="M-100,-100 "#), position(r#"d="M-645,-400 "#), position(r#"d="M0,-400 C"#));
+		assert!(rectangle < polygon && polygon < ellipse, "The first drawn layer should be painted first: {svg}");
+	}
+
 	/// - paste
 	/// - assert that ellipse was copied
 	#[tokio::test]

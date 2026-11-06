@@ -1150,7 +1150,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestSvgTextCopy { graphite_json } => {
 				if let Some(active_document) = self.active_document() {
-					let selected_nodes: Vec<NodeId> = active_document.network_interface.shallowest_unique_layers(&[]).map(|layer| layer.to_node()).collect();
+					// Bottom layer first, since SVG paints later elements on top
+					let selected_nodes: Vec<NodeId> = active_document
+						.network_interface
+						.shallowest_unique_layers_sorted(&[])
+						.iter()
+						.rev()
+						.map(|layer| layer.to_node())
+						.collect();
 					self.executor.copy_svg_clipboard(graphite_json, selected_nodes);
 				} else {
 					self.executor.copy_svg_clipboard(graphite_json, Vec::new());
