@@ -237,7 +237,7 @@ impl DocumentHistory {
 
 		storage
 			.registry()
-			.to_runtime_with_full_metadata(&self.declarations)
+			.to_runtime_with_full_metadata(&self.declarations, storage.blobs())
 			.map_err(|error| error.to_string())
 			.and_then(|(network, node_entries, network_entries)| build_interface_from_storage(network, node_entries, network_entries).map_err(|error| error.to_string()))
 			.map_err(|error| {
@@ -295,7 +295,7 @@ impl DocumentHistory {
 			panic!("storage round-trip: timestamp order inconsistent between stored and target");
 		}
 
-		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(declarations) {
+		let (round_tripped, _entries) = match stored.to_runtime_with_metadata(declarations, storage.blobs()) {
 			Ok(result) => result,
 			Err(error) => {
 				log::error!("storage round-trip: to_runtime failed: {error}");

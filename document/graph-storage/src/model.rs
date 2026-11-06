@@ -1,5 +1,5 @@
 use crate::registry::attributes_value_equal;
-use crate::{Attributes, Implementation, InputSlot, Network, NetworkId, Node, NodeInput, TimeStamp, Value};
+use crate::{Attributes, Implementation, InputSlot, Network, NetworkId, Node, NodeInput, ResourceHash, TimeStamp, Value};
 
 impl Node {
 	pub fn implementation(&self) -> &Implementation {
@@ -61,6 +61,16 @@ impl Node {
 	#[cfg(test)]
 	pub(crate) fn dummy() -> Self {
 		Self::new(crate::ROOT_NETWORK, Implementation::ProtoNode(crate::ResourceId::new()), 0)
+	}
+}
+
+impl NodeInput {
+	/// The hash a value input's bytes are stored under, when it holds a [`Value::Blob`].
+	pub fn blob(&self) -> Option<ResourceHash> {
+		match self {
+			NodeInput::Value { value: Value::Blob(hash), .. } => Some(*hash),
+			_ => None,
+		}
 	}
 }
 

@@ -9,6 +9,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId 
 use serde::Serialize;
 
 use crate::attr::*;
+use crate::blob::BlobBytes;
 use crate::metadata_source::{NoMetadata, NodeMetadataSource};
 use crate::{
 	ExportSlot, Implementation, InputSlot, Network, NetworkId, Node, NodeId, NodeInput, PeerId, ProtoNode, ROOT_NETWORK, Registry, ResourceHash, ResourceId, TimeStamp, Value, ValueError, from_value,
@@ -118,6 +119,8 @@ pub struct RuntimeConversion {
 	pub registry: Registry,
 	pub declaration_bytes: DeclarationBytes,
 	pub declarations: crate::Declarations,
+	/// The bytes of the large input values the registry holds as blobs, for the caller's byte store.
+	pub blob_bytes: BlobBytes,
 	/// The storage `NetworkId` of each runtime network location, to key per-network view state in `session.json`.
 	pub network_ids: HashMap<NetworkLocation, NetworkId>,
 }
@@ -212,10 +215,14 @@ impl Registry {
 		let referenced = collect_referenced_resources(node_network, &reachable);
 		convert_resources(resources, &referenced, peer, &mut registry)?;
 
+		let mut blob_bytes = BlobBytes::new();
+		registry.move_values_into_blobs(&mut blob_bytes);
+
 		Ok(RuntimeConversion {
 			registry,
 			declaration_bytes: ctx.declaration_bytes,
 			declarations: ctx.declarations,
+			blob_bytes,
 			network_ids: ctx.network_ids,
 		})
 	}

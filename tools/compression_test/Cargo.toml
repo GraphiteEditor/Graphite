@@ -11,12 +11,16 @@ readme.workspace = true
 publish.workspace = true
 
 [dependencies]
-document-format.workspace = true
+document-format = { workspace = true, features = ["migrations"] }
 document-container.workspace = true
 document-graph-storage.workspace = true
+migration-formats.workspace = true
 postcard.workspace = true
 lz4_flex = { version = "0.14.0", features = ["alloc"] }
 futures.workspace = true
+blake3.workspace = true
+fastcdc = "3"
+flate2 = { version = "1.1", default-features = false, features = ["zlib-rs"] }
 zstd = "0.13"
 zstd-safe = "7"
 

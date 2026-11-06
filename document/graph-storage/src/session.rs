@@ -352,7 +352,7 @@ impl Session {
 			return Ok(None);
 		}
 		let (touched, taken) = self.document.retract_hot_ops(&ids);
-		self.taken_back_resources.extend(taken.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
+		self.taken_back_resources.extend(taken.iter().flat_map(|hot_op| hot_op.op.resource_hashes()));
 		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
 		Ok(Some(Retraction { ids, touched, ops }))
 	}
@@ -1004,11 +1004,22 @@ impl Session {
 	/// interaction's `AddResource` from the working registry, so a redoable (or re-undoable) interaction's
 	/// resources no longer appear in `registry().resources` even though redo still needs them. Resource GC
 	/// must keep this whole set alive, not just the current head's, or undo then redo loses declaration
-	/// bytes. Walks current resources plus each delta's `AddResource`/`RemoveResource` snapshot and `SetResourceHash`.
+	/// bytes. Walks current resources and blob inputs, plus every hash a delta, its priors, or a hot op names.
 	pub fn all_referenced_resource_hashes(&self) -> HashSet<ResourceHash> {
-		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
+		let registry = &self.document.working_registry;
+		let mut hashes: HashSet<ResourceHash> = registry.resources.values().filter_map(|entry| entry.hash).collect();
+		hashes.extend(registry.node_instances.values().flat_map(|node| node.inputs()).filter_map(|slot| slot.input.blob()));
 		hashes.extend(self.document.history.resource_hashes());
-		hashes.extend(self.document.hot_log.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
+		hashes.extend(self.document.hot_log.iter().flat_map(|hot_op| hot_op.op.resource_hashes()));
+		hashes
+	}
+
+	/// Every blob the current registry, history, or hot log names, so any state the cursor reaches can be resolved.
+	pub fn all_blob_hashes(&self) -> HashSet<ResourceHash> {
+		let registry = &self.document.working_registry;
+		let mut hashes: HashSet<ResourceHash> = registry.node_instances.values().flat_map(|node| node.inputs()).filter_map(|slot| slot.input.blob()).collect();
+		hashes.extend(self.document.history.iter().flat_map(Delta::blob_hashes));
+		hashes.extend(self.document.hot_log.iter().flat_map(|hot_op| hot_op.op.blob_hashes()));
 		hashes
 	}
 

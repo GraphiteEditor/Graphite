@@ -1,3 +1,4 @@
+use graphene_resource::ResourceHash;
 use serde::de::{self, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::fmt;
@@ -12,6 +13,8 @@ pub enum Value {
 	Str(String),
 	Array(Vec<Value>),
 	Object(Vec<(String, Value)>),
+	/// A large node input value whose serialized bytes live in the resource store under this hash.
+	Blob(ResourceHash),
 }
 
 // Using `Serializer::is_human_readable` to determine whether to serialize tagged.
@@ -29,6 +32,7 @@ impl Serialize for Value {
 			Value::Str(string) => serializer.serialize_str(string),
 			Value::Array(array) => serializer.collect_seq(array),
 			Value::Object(object) => serializer.collect_map(object.iter().map(|(key, value)| (key, value))),
+			Value::Blob(hash) => serializer.collect_map(std::iter::once((Value::BLOB_KEY, hash))),
 		}
 	}
 }
@@ -97,12 +101,28 @@ impl<'de> Deserialize<'de> for Value {
 					}
 					dedup
 				});
-				Ok(Value::Object(object))
+				Ok(Value::from_object(object))
 			}
 			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("a valid Value")
 			}
 		}
 		deserializer.deserialize_any(Untagged)
+	}
+}
+
+impl Value {
+	/// The key of the single-entry object a [`Value::Blob`] is written as in human-readable formats.
+	pub const BLOB_KEY: &str = "$blob";
+
+	/// An object, unless it is the single-entry form a [`Value::Blob`] takes in human-readable formats.
+	pub fn from_object(object: Vec<(String, Value)>) -> Self {
+		if let [(key, Value::Str(hex))] = object.as_slice()
+			&& key == Self::BLOB_KEY
+			&& let Ok(hash) = ResourceHash::try_from(hex.as_str())
+		{
+			return Value::Blob(hash);
+		}
+		Value::Object(object)
 	}
 }

@@ -61,7 +61,7 @@ pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocume
 	let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
 	let gdd = open_gdd(&archive).await?;
 	let declarations = gdd.declarations(&gdd).await;
-	let (network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations)?;
+	let (network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations, gdd.blobs())?;
 	let names = with_names.then(|| {
 		let references: HashMap<_, _> = networks.into_iter().filter_map(|network| Some((network.network, network.reference?))).collect();
 		let display_names: HashMap<_, _> = nodes.into_iter().filter_map(|node| Some(((node.network, node.local_id), node.display_name?))).collect();

@@ -4,8 +4,9 @@
 use std::collections::{BTreeSet, HashMap};
 
 use document_container::AsyncContainer;
+use document_graph_storage::blob::BlobBytes;
 use document_graph_storage::{Declarations, Delta, EncodedDeclaration, HistoryMetadata, PeerId, Registry, ResourceEntry, ResourceId, Rev, Session, Subject, TimeStamp};
-use graphene_resource::LoadResource;
+use graphene_resource::{LoadResource, ResourceHash};
 use migration_core::{Declaration, DeclarationResolver, MigrationHost, NodeMigration, Payload, PayloadCodec};
 use migration_runner::{DocumentPayloads, HistoryOutcome, RunnerError, holds, migrate_history, migrate_registry, references, registry_at, run_format_migrations};
 
@@ -15,8 +16,14 @@ use crate::load::StoredRecords;
 use crate::manifest::{PayloadCodecs, SUPPORTED_FORMAT_VERSION};
 use crate::{Codec, Gdd};
 
+/// Blobs format steps moved values into, with the base each can be encoded against.
+pub(crate) struct MigratedBlobs {
+	pub bytes: BlobBytes,
+	pub bases: HashMap<ResourceHash, ResourceHash>,
+}
+
 /// Bring `records` from `format_version` to [`SUPPORTED_FORMAT_VERSION`]. `None` when they already are.
-pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs, format_version: u32) -> Result<Option<HistoryOutcome>, Error> {
+pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs, format_version: u32) -> Result<Option<(HistoryOutcome, MigratedBlobs)>, Error> {
 	if format_version >= SUPPORTED_FORMAT_VERSION {
 		return Ok(None);
 	}
@@ -28,6 +35,7 @@ pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs,
 		history: records.history.iter().flatten().map(|record| payload(record, codecs.history)).collect(),
 		hot_log: records.hot_log.iter().map(|record| payload(record, codecs.hot_log)).collect(),
 		session: records.session.as_ref().map(|record| payload(record, codecs.session)),
+		..Default::default()
 	};
 	let outcome = run_format_migrations(&migration_core::registered_format_migrations(), &mut payloads, SUPPORTED_FORMAT_VERSION)?;
 	log::info!("Migrated the document format from version {format_version} to {SUPPORTED_FORMAT_VERSION}");
@@ -40,7 +48,11 @@ pub(crate) fn migrate_format(records: &mut StoredRecords, codecs: PayloadCodecs,
 	records.hot_log = payloads.hot_log.into_iter().map(|payload| payload.bytes).collect();
 	records.session = payloads.session.map(|payload| payload.bytes);
 
-	Ok(Some(outcome))
+	let blobs = MigratedBlobs {
+		bytes: payloads.blobs,
+		bases: payloads.blob_bases,
+	};
+	Ok(Some((outcome, blobs)))
 }
 
 /// The facts in `metadata` with their revs mapped by `remap`, which drops the facts of a rev it has no answer for.

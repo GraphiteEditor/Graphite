@@ -234,12 +234,14 @@ impl<L: Layout> Gdd<L> {
 			}
 		}
 
-		// Every resource in path order, whether its bytes sit in the working copy or come from the byte store, so where
-		// they sat does not change the archive. `None` marks bytes the working copy already holds.
+		// Every resource and blob record in path order, whether its bytes sit in the working copy or come from the byte store,
+		// so where they sat does not change the archive. `None` marks bytes the working copy already holds.
 		let mut resources: std::collections::BTreeMap<String, Option<Resource>> = std::collections::BTreeMap::new();
-		let resources_dir = self.layout.resources_dir();
-		if self.working.list_dirs("").await?.iter().any(|d| d == resources_dir) {
-			resources.extend(self.working.list(resources_dir).await?.into_iter().map(|path| (path, None)));
+		let directories = self.working.list_dirs("").await?;
+		for directory in [self.layout.resources_dir(), self.layout.blobs_dir()] {
+			if directories.iter().any(|d| d == directory) {
+				resources.extend(self.working.list(directory).await?.into_iter().map(|path| (path, None)));
+			}
 		}
 		for (hash, resource) in embedded_bytes {
 			resources.entry(self.layout.resource_path(&hash)).or_insert(Some(resource));

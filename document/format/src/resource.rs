@@ -2,11 +2,13 @@
 //! fonts, embedded WASM, and proto-node declarations. Registration goes through the session as an
 //! `AddResource` delta; the bytes live in the working copy's `resources/<hash>` directory.
 
+use std::collections::HashMap;
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
 use std::sync::Arc;
 
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
+use document_graph_storage::blob::BlobBytes;
 use graphene_resource::ResourceFuture;
 use graphene_resource::{LoadResource, Resource, ResourceHash, ResourceStorage};
 
@@ -123,6 +125,45 @@ impl<L: Layout> Gdd<L> {
 	#[cfg(feature = "network")]
 	pub(crate) fn unstored_resources(&self) -> Vec<ResourceHash> {
 		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
+	}
+
+	/// The bytes of every blob the registry, history, or hot log names, for [`Registry::to_runtime_with_metadata`](document_graph_storage::Registry::to_runtime_with_metadata).
+	pub fn blobs(&self) -> &BlobBytes {
+		&self.blobs.bytes
+	}
+
+	/// Write the records of staged blobs ahead of the hot frames naming them, each a delta against its entry in `bases` where it has one.
+	pub(crate) fn keep_blobs(&mut self, mut blobs: BlobBytes, bases: &HashMap<ResourceHash, ResourceHash>) -> Result<(), ContainerError> {
+		// In hash order, so the same staging writes the same records
+		let mut hashes: Vec<_> = blobs.keys().copied().collect();
+		hashes.sort_unstable();
+
+		for hash in hashes {
+			// A base still waiting in `blobs` goes first, or its dependent would find nothing to encode against
+			let mut chain = vec![hash];
+			while let Some(base) = chain.last().and_then(|hash| bases.get(hash))
+				&& blobs.contains_key(base)
+				&& chain.len() <= blobs.len()
+			{
+				chain.push(*base);
+			}
+
+			for hash in chain.into_iter().rev() {
+				let Some(bytes) = blobs.remove(&hash) else { continue };
+				let Some(record) = self.blobs.insert(hash, bytes, bases.get(&hash).copied()) else { continue };
+				self.working.write_non_blocking(&self.layout.blob_path(&hash), &record)?;
+			}
+		}
+		Ok(())
+	}
+
+	/// Decode the record of every blob the document names, so `to_runtime` can resolve any state the cursor reaches.
+	pub(crate) async fn load_blobs(&mut self) {
+		for hash in self.session.all_blob_hashes() {
+			if let Err(error) = self.blobs.load(hash, &self.working, &self.layout).await {
+				log::error!("{error}");
+			}
+		}
 	}
 }
 

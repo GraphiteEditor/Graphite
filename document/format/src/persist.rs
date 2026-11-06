@@ -6,6 +6,7 @@
 use document_container::{AnyContainer, AsyncContainer};
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
+use document_graph_storage::blob::BlobBytes;
 use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, Sorted, Subject, TimeStamp, UserId, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
@@ -105,8 +106,9 @@ impl<L: Layout> Gdd<L> {
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
 	) -> Result<document_graph_storage::Declarations, Error> {
-		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
-		self.persist_staged(&hot_ops)?;
+		let mut conversion = document_graph_storage::Registry::convert_from_runtime(network, metadata, resources, self.session.peer()).map_err(document_graph_storage::CommitError::from)?;
+		let ops = document_graph_storage::delta::compute_deltas(self.registry(), &conversion.registry);
+		self.stage_with_blobs(ops, std::mem::take(&mut conversion.blob_bytes))?;
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
@@ -136,9 +138,19 @@ impl<L: Layout> Gdd<L> {
 		Ok(hot_ops)
 	}
 
-	/// Stage raw registry ops as hot ops, without the runtime diff.
+	/// Stage raw registry ops as hot ops, without the runtime diff. Large input values they write become blobs.
 	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, Error> {
-		let hot_ops = self.session.stage_computed_ops(ops.into_iter().collect())?;
+		self.stage_with_blobs(ops.into_iter().collect(), BlobBytes::new())
+	}
+
+	/// Stage `ops` with the large values they write moved into blobs, whose records go out ahead of the hot frames.
+	/// `blobs` holds the bytes of blobs the ops already name.
+	fn stage_with_blobs(&mut self, mut ops: Vec<RegistryDelta>, mut blobs: BlobBytes) -> Result<Vec<HotOp>, Error> {
+		ops.iter_mut().for_each(|op| op.move_values_into_blobs(&mut blobs));
+		let bases = self.registry().blob_bases(&ops);
+
+		let hot_ops = self.session.stage_computed_ops(ops)?;
+		self.keep_blobs(blobs, &bases)?;
 		self.persist_staged(&hot_ops)?;
 		Ok(hot_ops)
 	}

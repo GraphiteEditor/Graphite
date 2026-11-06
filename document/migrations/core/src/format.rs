@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+
+use graphene_resource::ResourceHash;
+
 use crate::{MigrationError, Payload};
 
 /// How stored history survives a format step.
@@ -13,6 +17,22 @@ pub enum HistoryPolicy {
 	Rewrite,
 	/// No faithful rewrite exists; the document becomes a state-only snapshot.
 	Truncate,
+}
+
+/// The serialized payloads of one document, as handed over by the load path before typed
+/// deserialization. History records are unframed: one [`Payload`] per retired delta, in stored
+/// (topological) order. A working copy that only has history has no registry.
+#[derive(Clone, Debug, Default)]
+pub struct DocumentPayloads {
+	pub format_version: u32,
+	pub registry: Option<Payload>,
+	pub history: Vec<Payload>,
+	pub hot_log: Vec<Payload>,
+	pub session: Option<Payload>,
+	/// Blob bytes by hash that steps moved values into, for the load path to store.
+	pub blobs: HashMap<ResourceHash, Vec<u8>>,
+	/// For each blob in `blobs`, the blob a store can encode it against.
+	pub blob_bases: HashMap<ResourceHash, ResourceHash>,
 }
 
 /// One whole-document format step, migrating version `migrates_from()` to `migrates_from() + 1`.
@@ -41,6 +61,11 @@ pub trait FormatMigration: Send + Sync {
 	/// Transform the per-peer session payload.
 	fn migrate_session(&self, session: &Payload) -> Result<Payload, MigrationError> {
 		Ok(session.clone())
+	}
+	/// Transform the whole document after its records converted, for a change that needs state across records.
+	/// It may rewrite history records only under [`HistoryPolicy::Rewrite`].
+	fn migrate_document(&self, _document: &mut DocumentPayloads) -> Result<(), MigrationError> {
+		Ok(())
 	}
 }
 

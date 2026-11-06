@@ -315,7 +315,7 @@ impl Peer {
 	fn names(&self) -> HashSet<ResourceHash> {
 		let session = self.session();
 		let ops = session.history().map(|delta| &delta.kind).chain(session.hot_log().iter().map(|hot_op| &hot_op.op));
-		let mut names: HashSet<ResourceHash> = ops.chain(self.retracted.iter().flatten()).filter_map(RegistryDelta::resource_hash).collect();
+		let mut names: HashSet<ResourceHash> = ops.chain(self.retracted.iter().flatten()).flat_map(RegistryDelta::resource_hashes).collect();
 		names.extend(session.registry().resources.values().filter_map(|entry| entry.hash));
 		names
 	}

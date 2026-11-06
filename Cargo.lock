@@ -1154,11 +1154,15 @@ dependencies = [
 name = "compression_test"
 version = "0.0.0"
 dependencies = [
+ "blake3",
  "document-container",
  "document-format",
  "document-graph-storage",
+ "fastcdc",
+ "flate2",
  "futures",
  "lz4_flex",
+ "migration-formats",
  "postcard",
  "zstd",
  "zstd-safe",
@@ -1761,6 +1765,7 @@ dependencies = [
  "core-types",
  "document-container",
  "document-graph-storage",
+ "flate2",
  "futures",
  "graph-craft",
  "graphene-resource",
@@ -2103,6 +2108,12 @@ dependencies = [
  "regex-automata 0.4.14",
  "regex-syntax 0.8.6",
 ]
+
+[[package]]
+name = "fastcdc"
+version = "3.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf51ceb43e96afbfe4dd5c6f6082af5dfd60e220820b8123792d61963f2ce6bc"
 
 [[package]]
 name = "fastnoise-lite"
@@ -4413,6 +4424,7 @@ dependencies = [
  "blake3",
  "ctor",
  "document-graph-storage",
+ "graphene-resource",
  "migration-macros",
  "postcard",
  "serde",

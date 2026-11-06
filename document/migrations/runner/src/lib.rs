@@ -11,7 +11,8 @@ use document_graph_storage::{CrdtError, NodeId, Rev};
 use migration_core::{Declaration, InputConnector, MigrationError};
 
 pub use document_graph_storage::rehash_deltas;
-pub use format::{DocumentPayloads, HistoryOutcome, run_format_migrations};
+pub use format::{HistoryOutcome, run_format_migrations};
+pub use migration_core::DocumentPayloads;
 pub use node::{DeclarationTable, RewrittenHistory, holds, registry_at};
 pub use order::{migrate_history, migrate_registry, order_migrations, references};
 

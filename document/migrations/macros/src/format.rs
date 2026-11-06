@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{format_ident, quote};
 use syn::parse::{Parse, ParseStream};
-use syn::{Error, Ident, LitInt, Token, Type};
+use syn::{Error, Ident, LitInt, Path, Token, Type};
 
 /// The stored roots a format step can convert, by the `FormatMigration` method converting each.
 const ROOTS: &[(&str, &str)] = &[
@@ -11,11 +11,13 @@ const ROOTS: &[(&str, &str)] = &[
 	("session", "migrate_session"),
 ];
 
-/// `1 => 2, registry: v1::Registry, delta: v1::Delta`: the version step and the frozen type of each root it converts.
+/// `1 => 2, registry: v1::Registry, delta: v1::Delta`: the version step and the frozen type of each root it converts. An entry
+/// `document: function` names a `fn(&mut DocumentPayloads) -> Result<(), MigrationError>` run on the converted document.
 pub(crate) struct FormatStep {
 	pub from: u32,
 	pub to: u32,
 	roots: Vec<(Ident, Type)>,
+	document: Option<Path>,
 }
 
 impl Parse for FormatStep {
@@ -34,8 +36,18 @@ impl Parse for FormatStep {
 		}
 
 		let mut roots: Vec<(Ident, Type)> = Vec::new();
+		let mut document = None;
 		while input.parse::<Option<Token![,]>>()?.is_some() && !input.is_empty() {
 			let root: Ident = input.parse()?;
+			if root == "document" {
+				if document.is_some() {
+					return Err(Error::new(root.span(), "the document function is already named"));
+				}
+				input.parse::<Token![:]>()?;
+				document = Some(input.parse()?);
+				continue;
+			}
+
 			if !ROOTS.iter().any(|(name, _)| root == name) {
 				let names: Vec<&str> = ROOTS.iter().map(|(name, _)| *name).collect();
 				return Err(Error::new(root.span(), format!("the stored roots are {}", names.join(", "))));
@@ -48,7 +60,7 @@ impl Parse for FormatStep {
 			roots.push((root, input.parse()?));
 		}
 
-		Ok(Self { from, to, roots })
+		Ok(Self { from, to, roots, document })
 	}
 }
 
@@ -75,6 +87,14 @@ pub(crate) fn expand(core: &TokenStream2, step: &FormatStep) -> TokenStream2 {
 		}
 	});
 
+	let document = step.document.as_ref().map(|function| {
+		quote! {
+			fn migrate_document(&self, document: &mut #core::DocumentPayloads) -> ::core::result::Result<(), #core::MigrationError> {
+				#function(document)
+			}
+		}
+	});
+
 	quote! {
 		struct FormatStep;
 
@@ -84,6 +104,7 @@ pub(crate) fn expand(core: &TokenStream2, step: &FormatStep) -> TokenStream2 {
 			}
 			#history_policy
 			#(#methods)*
+			#document
 		}
 	}
 }

@@ -7,8 +7,12 @@ use document_format::{Codec, Gdd, GddV1Layout};
 use document_graph_storage::{Delta, NodeInput, RegistryDelta};
 use lz4_flex::frame::{BlockMode, FrameEncoder, FrameInfo};
 
+mod cdc;
+mod models;
+
 fn main() {
-	let document_path = Path::new("value-diff-test.gdd");
+	let document_path = std::env::args().nth(1).unwrap_or_else(|| "value-diff-test.gdd".to_string());
+	let document_path = Path::new(&document_path);
 	let archive = std::fs::read(document_path).unwrap();
 	let memory = MemoryBackend::new();
 	let container = AnyContainer::Memory(memory);
@@ -168,6 +172,20 @@ fn main() {
 		std::io::copy(&mut lz4_flex::frame::FrameDecoder::new(lz4_all.as_slice()), &mut out).unwrap();
 		out.len()
 	});
+
+	let hot_log = gdd.session().hot_log();
+	let mut hot_kinds: HashMap<String, (usize, usize)> = HashMap::new();
+	for hot_op in hot_log {
+		let name = format!("{:?}", hot_op.op).split([' ', '(', '{']).next().unwrap_or_default().to_string();
+		let entry = hot_kinds.entry(name).or_default();
+		entry.0 += 1;
+		entry.1 += postcard::to_allocvec(hot_op).unwrap().len();
+	}
+	println!();
+	println!("hot log: {} ops {hot_kinds:?}", hot_log.len());
+	println!("hot sequence range: {:?} .. {:?}", hot_log.first().map(|op| op.sequence), hot_log.last().map(|op| op.sequence));
+
+	models::compare(&gdd, &deltas);
 }
 
 trait WriteAndFinish {
