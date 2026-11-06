@@ -243,6 +243,10 @@ const COPY_BLOCK: usize = 16;
 const COPY: u8 = 0;
 const INSERT: u8 = 1;
 
+/// A delta that decodes to more bytes is rejected. A small delta from a peer could otherwise copy the same base range
+/// until it fills memory. This matches the peer transport's packet limit, so no larger blob could be sent in full.
+const MAX_BLOB_BYTES: usize = 256 * 1024 * 1024;
+
 /// Expected O(base + target) time. Each base block is indexed once and each unmatched target byte is looked up once.
 fn copy_delta(base: &[u8], target: &[u8]) -> Vec<u8> {
 	let block_key = |bytes: &[u8]| -> u128 {
@@ -290,6 +294,9 @@ fn apply_copy_delta(base: &[u8], mut delta: &[u8]) -> Option<Vec<u8>> {
 			COPY => {
 				let offset = read_varint(&mut delta)?;
 				let length = read_varint(&mut delta)?;
+				if output.len().checked_add(length)? > MAX_BLOB_BYTES {
+					return None;
+				}
 				output.extend_from_slice(base.get(offset..offset.checked_add(length)?)?);
 			}
 			INSERT => {
@@ -382,6 +389,15 @@ mod tests {
 		assert!(apply_copy_delta(b"short", &[COPY, 0, 10]).is_none());
 		assert!(apply_copy_delta(b"", &[INSERT, 5, 1]).is_none());
 		assert!(apply_copy_delta(b"", &[9]).is_none());
+
+		let base = vec![0; 1024 * 1024];
+		let mut expanding = Vec::new();
+		for _ in 0..=MAX_BLOB_BYTES / base.len() {
+			expanding.push(COPY);
+			push_varint(&mut expanding, 0);
+			push_varint(&mut expanding, base.len());
+		}
+		assert!(apply_copy_delta(&base, &expanding).is_none(), "a delta past the size limit is rejected");
 		assert!(decode_record(&[DELTA, 1, 2]).is_none());
 	}
 }
