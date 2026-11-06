@@ -2,6 +2,7 @@
 	import { getContext, onDestroy } from "svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
+	import HistoryShot from "/src/components/views/HistoryShot.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "/src/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
@@ -11,6 +12,7 @@
 
 	const editor = getContext<EditorWrapper>("editor");
 	const history = getContext<HistoryStore>("history");
+	const thumbnails = history.thumbnails;
 
 	// Relative times age while the panel stays open
 	let now = Date.now();
@@ -92,7 +94,7 @@
 		{/each}
 		{#each $history.rows as row (row.id)}
 			<div class="row" class:head={row.head && !pendingHead} class:undone={row.undone} class:abandoned={row.abandoned}>
-				{#if row.deltas > 1}
+				{#if row.deltas > 1 || row.thumbnail?.before}
 					<button
 						class="expand"
 						class:expanded={row.expanded}
@@ -103,6 +105,7 @@
 					<span class="gutter"></span>
 				{/if}
 				<span class="rail"><span class="dot" style:background={$history.collaborating || !row.mine ? row.color : undefined}></span></span>
+				{#if row.thumbnail}<HistoryShot shot={row.thumbnail.after} url={$thumbnails[row.thumbnail.after.id]} />{/if}
 				<div class="text">
 					{#if renamingId === row.id}
 						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
@@ -173,6 +176,15 @@
 				{#if row.abandoned}<span class="marker">Branch</span>{/if}
 			</div>
 			{#if row.expanded}
+				{#if row.thumbnail?.before}
+					<div class="row comparison" class:undone={row.undone}>
+						<span class="gutter"></span>
+						<span class="rail"></span>
+						<HistoryShot shot={row.thumbnail.before} url={$thumbnails[row.thumbnail.before.id]} large={true} />
+						<span class="arrow">→</span>
+						<HistoryShot shot={row.thumbnail.after} url={$thumbnails[row.thumbnail.after.id]} large={true} />
+					</div>
+				{/if}
 				{#each row.details as delta (delta.id)}
 					<div class="row delta" class:undone={row.undone}>
 						<span class="gutter"></span>
@@ -233,6 +245,15 @@
 			&.delta {
 				min-height: 24px;
 				font-size: 11px;
+			}
+
+			&.comparison {
+				padding-top: 4px;
+				padding-bottom: 4px;
+
+				.arrow {
+					color: var(--color-8-uppergray);
+				}
 			}
 
 			.actions {

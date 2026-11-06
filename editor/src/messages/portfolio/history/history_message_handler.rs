@@ -1,17 +1,21 @@
-use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, LineChange};
+use super::utility_types::{
+	DocumentCapture, HistoryBranch, HistoryDeltaRow, HistoryOutline, HistoryPanelState, HistoryProgressRow, HistoryRow, HistoryShot, HistoryThumbnail, LineChange, OutlineChange,
+};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::portfolio::sync::now_ms;
 use crate::messages::prelude::*;
+use crate::node_graph_executor::NodeGraphExecutor;
 use document_format::GddV1;
 use document_graph_storage::attr::{delta as delta_attr, network as network_attr, node as node_attr, session as session_attr};
 use document_graph_storage::{
 	AttributeDelta, Declarations, Delta, HistoryMetadata, HotOp, HotOpId, Implementation, Node, NodeId, PeerId, Registry, RegistryDelta, Rev, Session, Subject, UserId, Value, rev_attr,
 };
+use glam::DVec2;
 use graph_craft::ProtoNodeIdentifier;
 use peer_transport::RemotePeer;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 #[derive(ExtractField)]
@@ -19,6 +23,7 @@ pub struct HistoryMessageContext<'a> {
 	pub documents: &'a mut HashMap<DocumentId, DocumentMessageHandler>,
 	pub active_document_id: Option<DocumentId>,
 	pub panel_open: bool,
+	pub executor: &'a NodeGraphExecutor,
 }
 
 /// Sends the History panel the active document's history and turns its actions into head moves.
@@ -29,6 +34,25 @@ pub struct HistoryMessageHandler {
 	limit: usize,
 	following: Option<Rev>,
 	last_sent: Option<u64>,
+	/// Each document's steps as they looked once done, captured while the panel was open.
+	captures: HashMap<DocumentId, HashMap<Rev, Capture>>,
+	requested: Option<(DocumentId, Rev)>,
+}
+
+/// What a captured step showed, without its image, which the frontend keeps.
+#[derive(Debug)]
+struct Capture {
+	frame: [DVec2; 2],
+	layers: BTreeMap<graph_craft::document::NodeId, LayerShot>,
+}
+
+#[derive(Debug, PartialEq)]
+struct LayerShot {
+	bounds: Option<[DVec2; 2]>,
+	/// Changes with what the layer itself shows.
+	source: Option<graph_craft::document::NodeId>,
+	/// A group or artboard, which changes with its children and is only shown coming and going.
+	container: bool,
 }
 
 /// How many interactions each request adds.
@@ -51,9 +75,11 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 			}
 			HistoryMessage::Tick => {
 				if context.panel_open {
+					self.request_capture(&context);
 					self.send(&context, responses);
 				}
 			}
+			HistoryMessage::Captured { document_id, rev, capture } => self.receive_capture(document_id, rev, *capture, &context, responses),
 			HistoryMessage::Expand { id, expanded } => {
 				if let Some(rev) = parse_rev(&id) {
 					match expanded {
@@ -108,6 +134,54 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 }
 
 impl HistoryMessageHandler {
+	/// Asks for the head to be captured once its step is settled, since a capture shows the document as it renders now.
+	fn request_capture(&mut self, context: &HistoryMessageContext) {
+		let Some(document_id) = context.active_document_id else { return };
+		let Some(session) = active_storage(context).map(GddV1::session) else { return };
+		let Some(head) = session.head_rev().filter(|_| session.hot_log().is_empty()) else { return };
+		let captured = self.captures.get(&document_id).is_some_and(|captures| captures.contains_key(&head));
+		if captured || self.requested == Some((document_id, head)) {
+			return;
+		}
+		if context.executor.submit_document_capture(document_id, head) {
+			self.requested = Some((document_id, head));
+		}
+	}
+
+	/// Keeps a capture that still shows its step, with where each layer was, and gives the frontend its image.
+	fn receive_capture(&mut self, document_id: DocumentId, rev: Rev, capture: DocumentCapture, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
+		if self.requested == Some((document_id, rev)) {
+			self.requested = None;
+		}
+		let Some(document) = context.documents.get(&document_id) else { return };
+		let settled = document
+			.storage()
+			.map(GddV1::session)
+			.is_some_and(|session| session.head_rev() == Some(rev) && session.hot_log().is_empty());
+		if !settled {
+			return;
+		}
+
+		let metadata = document.metadata();
+		let layers = metadata
+			.all_layers()
+			.map(|layer| {
+				let node = layer.to_node();
+				let shot = LayerShot {
+					bounds: metadata.bounding_box_document(layer),
+					source: capture.layer_sources.get(&node).copied(),
+					container: layer.has_children(metadata) || document.network_interface.is_artboard(&node, &[]),
+				};
+				(node, shot)
+			})
+			.collect();
+		self.captures.entry(document_id).or_default().insert(rev, Capture { frame: capture.frame, layers });
+		responses.add(FrontendMessage::UpdateHistoryThumbnail {
+			id: rev.to_string(),
+			svg: capture.svg,
+		});
+	}
+
 	fn send(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
 		let document = context.active_document_id.and_then(|id| context.documents.get(&id));
 		let gdd = document.and_then(|document| document.storage());
@@ -115,14 +189,15 @@ impl HistoryMessageHandler {
 			self.following = None;
 		}
 		let limit = self.limit.max(PAGE);
-		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following);
+		let captures = context.active_document_id.and_then(|id| self.captures.get(&id));
+		let fingerprint = fingerprint(context.active_document_id, gdd, limit, &self.expanded, self.following, captures.map_or(0, HashMap::len));
 		if self.last_sent == Some(fingerprint) {
 			return;
 		}
 		self.last_sent = Some(fingerprint);
 		let state = document
 			.zip(gdd)
-			.map(|(document, gdd)| panel_state(gdd, document.declarations(), limit, &self.expanded, self.following))
+			.map(|(document, gdd)| panel_state(gdd, document.declarations(), captures, limit, &self.expanded, self.following))
 			.unwrap_or_default();
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
 	}
@@ -163,9 +238,9 @@ fn place(session: &Session, rev: Rev) -> Option<Place> {
 }
 
 /// A hash of the panel's inputs, cheap enough for every frame.
-fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> u64 {
+fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>, captures: usize) -> u64 {
 	let mut hasher = std::collections::hash_map::DefaultHasher::new();
-	(document_id, limit, expanded, following).hash(&mut hasher);
+	(document_id, limit, expanded, following, captures).hash(&mut hasher);
 	if let Some(gdd) = gdd {
 		let session = gdd.session();
 		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), session.pending_action()).hash(&mut hasher);
@@ -179,7 +254,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usiz
 	hasher.finish()
 }
 
-fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
+fn panel_state(gdd: &GddV1, declarations: &Declarations, captures: Option<&HashMap<Rev, Capture>>, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
 	let session = gdd.session();
 	let names = Names {
 		registry: gdd.registry(),
@@ -216,6 +291,7 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded:
 		head,
 		people: &people,
 		names: &names,
+		captures,
 		expanded,
 		session,
 		metadata: gdd.metadata(),
@@ -304,6 +380,7 @@ struct View<'a> {
 	head: Option<Rev>,
 	people: &'a People<'a>,
 	names: &'a Names<'a>,
+	captures: Option<&'a HashMap<Rev, Capture>>,
 	expanded: &'a BTreeSet<Rev>,
 	session: &'a Session,
 	metadata: &'a HistoryMetadata,
@@ -355,7 +432,26 @@ impl View<'_> {
 			head: Some(closing.id) == self.head,
 			expanded: is_expanded,
 			details,
+			thumbnail: self.thumbnail(group),
 		}
+	}
+
+	/// The step as captured, compared with the capture of the step before it when there is one.
+	fn thumbnail(&self, group: &[&Delta]) -> Option<HistoryThumbnail> {
+		let captures = self.captures?;
+		let after = captures.get(&group[0].id)?;
+		let before_rev = group.last()?.parent;
+		let Some((before_rev, before)) = before_rev.and_then(|rev| Some((rev, captures.get(&rev)?))) else {
+			return Some(HistoryThumbnail {
+				after: shot(group[0].id, after, Vec::new()),
+				before: None,
+			});
+		};
+		let (removed, added) = compare(before, after);
+		Some(HistoryThumbnail {
+			after: shot(group[0].id, after, added),
+			before: Some(shot(before_rev, before, removed)),
+		})
 	}
 
 	fn branch(&self, first: Rev) -> HistoryBranch {
@@ -374,6 +470,49 @@ impl View<'_> {
 		let named = self.metadata.rev_label(closing.id).or_else(|| closing.action());
 		named.map(str::to_string).unwrap_or_else(|| self.names.summarize(group.iter().map(|delta| &delta.kind)))
 	}
+}
+
+fn shot(rev: Rev, capture: &Capture, outlines: Vec<HistoryOutline>) -> HistoryShot {
+	let [min, max] = capture.frame;
+	HistoryShot {
+		id: rev.to_string(),
+		frame: [min.x, min.y, max.x - min.x, max.y - min.y],
+		outlines,
+	}
+}
+
+/// Outlines what went or changed on the earlier capture, and what came or changed on the later one. A container is
+/// outlined only coming or going, since its children's outlines show what changed within it.
+fn compare(before: &Capture, after: &Capture) -> (Vec<HistoryOutline>, Vec<HistoryOutline>) {
+	let mut on_before = Vec::new();
+	let mut on_after = Vec::new();
+	for (layer, now) in &after.layers {
+		match before.layers.get(layer) {
+			None => on_after.extend(outline(OutlineChange::Added, now.bounds)),
+			Some(then) if !now.container && then != now => {
+				on_before.extend(outline(OutlineChange::Changed, then.bounds));
+				on_after.extend(outline(OutlineChange::Changed, now.bounds));
+			}
+			Some(_) => {}
+		}
+	}
+	for (layer, then) in &before.layers {
+		if !after.layers.contains_key(layer) {
+			on_before.extend(outline(OutlineChange::Removed, then.bounds));
+		}
+	}
+	(on_before, on_after)
+}
+
+fn outline(change: OutlineChange, bounds: Option<[DVec2; 2]>) -> Option<HistoryOutline> {
+	let [min, max] = bounds?;
+	Some(HistoryOutline {
+		change,
+		x: min.x,
+		y: min.y,
+		width: max.x - min.x,
+		height: max.y - min.y,
+	})
 }
 
 fn progress_row(people: &People, names: &Names, peer: PeerId, ops: &[&RegistryDelta], open: bool, action: Option<String>) -> HistoryProgressRow {
@@ -615,7 +754,7 @@ mod tests {
 		gdd.undo().expect("undo");
 		gdd.undo().expect("undo");
 
-		assert_eq!(panel_state(&gdd, &Declarations::new(), PAGE, &BTreeSet::new(), None).rows.len(), 3);
+		assert_eq!(panel_state(&gdd, &Declarations::new(), None, PAGE, &BTreeSet::new(), None).rows.len(), 3);
 	}
 
 	#[test]
@@ -661,6 +800,68 @@ mod tests {
 		assert_eq!(names.summarize([&description, &output_names, &description, &moved]), "Moved a node in the graph");
 	}
 
+	#[test]
+	fn a_comparison_outlines_what_came_went_and_changed() {
+		use graph_craft::document::NodeId as LayerId;
+
+		let layer = |x: f64, source: u64, container: bool| LayerShot {
+			bounds: Some([DVec2::splat(x), DVec2::splat(x + 1.)]),
+			source: Some(LayerId(source)),
+			container,
+		};
+		let capture = |layers: Vec<(u64, LayerShot)>| Capture {
+			frame: [DVec2::ZERO, DVec2::ONE],
+			layers: layers.into_iter().map(|(id, shot)| (LayerId(id), shot)).collect(),
+		};
+		let before = capture(vec![(1, layer(0., 1, false)), (2, layer(5., 2, false)), (3, layer(9., 3, false)), (4, layer(0., 4, true))]);
+		let after = capture(vec![(1, layer(0., 1, false)), (2, layer(6., 2, false)), (4, layer(0., 5, true)), (5, layer(3., 6, false))]);
+
+		let (on_before, on_after) = compare(&before, &after);
+		let changes = |outlines: Vec<HistoryOutline>| outlines.into_iter().map(|outline| (outline.change, outline.x)).collect::<Vec<_>>();
+		assert_eq!(
+			changes(on_before),
+			[(OutlineChange::Changed, 5.), (OutlineChange::Removed, 9.)],
+			"the moved layer's old place and the removed one"
+		);
+		assert_eq!(
+			changes(on_after),
+			[(OutlineChange::Changed, 6.), (OutlineChange::Added, 3.)],
+			"a container changes with its children and is not outlined"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_settled_step_is_captured_once_the_runtime_has_run() {
+		use crate::test_utils::test_prelude::*;
+		use glam::UVec2;
+		use graphene_std::application_io::TimingInformation;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 10., 10.).await;
+		let gdd = editor.active_document_mut().storage_mut().expect("every document has a working copy");
+		gdd.retire_pending_interaction().expect("retire");
+		let head = gdd.session().head_rev().expect("the rectangle is a step");
+
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+		assert!(portfolio.executor.submit_document_capture(document_id, head), "the runtime holds this document's graph");
+		editor.runtime.update();
+		editor.runtime.run().await;
+
+		let responses = editor.dispatch(Message::Wake);
+		let image = responses.iter().find_map(|message| match message {
+			FrontendMessage::UpdateHistoryThumbnail { id, svg } if *id == head.to_string() => Some(svg),
+			_ => None,
+		});
+		assert!(image.is_some_and(|svg| svg.contains("<path")), "the head's capture should reach the frontend");
+	}
+
 	#[tokio::test]
 	async fn a_tool_names_its_step() {
 		use crate::test_utils::test_prelude::*;
@@ -687,7 +888,7 @@ mod tests {
 
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let state = panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert_eq!(labels, ["Drew a rectangle", "Drew a rectangle"], "the open draw and the closed one waiting to retire");
 	}
@@ -704,7 +905,7 @@ mod tests {
 
 		let document = editor.active_document();
 		let gdd = document.storage().expect("every document has a working copy");
-		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let state = panel_state(gdd, document.declarations(), None, PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert_eq!(labels, ["Deleted a layer", "Drew a rectangle"]);
 	}

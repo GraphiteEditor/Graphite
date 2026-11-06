@@ -5,12 +5,35 @@ use crate::messages::prelude::*;
 pub enum HistoryMessage {
 	Refresh,
 	Tick,
-	Expand { id: String, expanded: bool },
+	Expand {
+		id: String,
+		expanded: bool,
+	},
 	LoadMore,
-	GoBack { id: String },
-	RemoveStep { id: String },
-	BringBack { id: String },
-	Follow { id: Option<String> },
-	Rename { id: String, label: String },
-	Tag { id: String, tag: String, on: bool },
+	GoBack {
+		id: String,
+	},
+	RemoveStep {
+		id: String,
+	},
+	BringBack {
+		id: String,
+	},
+	Follow {
+		id: Option<String>,
+	},
+	Rename {
+		id: String,
+		label: String,
+	},
+	Tag {
+		id: String,
+		tag: String,
+		on: bool,
+	},
+	Captured {
+		document_id: DocumentId,
+		rev: document_graph_storage::Rev,
+		capture: Box<super::utility_types::DocumentCapture>,
+	},
 }
