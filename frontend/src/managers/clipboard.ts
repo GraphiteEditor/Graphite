@@ -12,6 +12,11 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	subscriptionsRouter = subscriptions;
 	editorWrapper = editor;
 
+	subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
+		// If the Clipboard API is supported in the browser, copy text to the clipboard
+		navigator.clipboard?.writeText?.(data.content);
+	});
+
 	subscriptions.subscribeFrontendMessage("TriggerSessionLinkCopy", (data) => {
 		const url = new URL(window.location.href);
 		url.hash = "";
@@ -32,16 +37,18 @@ export function createClipboardManager(subscriptions: SubscriptionsRouter, edito
 	});
 
 	subscriptions.subscribeFrontendMessage("TriggerClipboardSvgAndJsonWrite", (data) => {
+		const writeText = () => navigator.clipboard?.writeText?.(data.graphiteJson);
+
 		// Adopted from https://developer.mozilla.org/en-US/docs/Web/API/ClipboardItem#browser_compatibility
-		if (ClipboardItem.supports("image/svg+xml") && data.svg_string !== undefined) {
-			navigator.clipboard?.write?.([
-				new ClipboardItem({
-					"image/svg+xml": data.svg_string,
-					"text/plain": data.graphite_json,
-				}),
-			]);
+		const svgSupported = typeof ClipboardItem !== "undefined" && ClipboardItem.supports?.("image/svg+xml");
+		if (svgSupported && data.svgString !== undefined && navigator.clipboard?.write) {
+			const item = new ClipboardItem({
+				"image/svg+xml": data.svgString,
+				"text/plain": data.graphiteJson,
+			});
+			navigator.clipboard.write([item]).catch(writeText);
 		} else {
-			navigator.clipboard?.writeText?.(data.graphite_json);
+			writeText();
 		}
 	});
 }
@@ -50,6 +57,7 @@ export function destroyClipboardManager() {
 	const subscriptions = subscriptionsRouter;
 	if (!subscriptions) return;
 
+	subscriptions.unsubscribeFrontendMessage("TriggerClipboardWrite");
 	subscriptions.unsubscribeFrontendMessage("TriggerClipboardSvgAndJsonWrite");
 	subscriptions.unsubscribeFrontendMessage("TriggerSessionLinkCopy");
 	subscriptions.unsubscribeFrontendMessage("TriggerSelectionRead");

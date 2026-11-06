@@ -72,8 +72,8 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 					let graphite_json = format!("{CLIPBOARD_PREFIX}{graphite}");
 					responses.add(PortfolioMessage::RequestSvgTextCopy { graphite_json });
 				}
-				ClipboardContent::Text(graphite_json) => {
-					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string: None, graphite_json });
+				ClipboardContent::Text(content) => {
+					responses.add(FrontendMessage::TriggerClipboardWrite { content });
 				}
 			},
 
@@ -600,23 +600,15 @@ mod test {
 	}
 
 	/// Copies the layer selection and returns the written clipboard payload.
-	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> (Option<String>, String) {
-		editor.eval_graph().await.expect("graph should render");
+	async fn copy_layers_to_clipboard(editor: &mut EditorTestUtils) -> String {
+		copy_layers_and_svg_to_clipboard(editor).await.1
+	}
 
-		// Avoiding another graph execution in the same runtime pass as the clipboard
-		// request by not using EditorTestUtils here.
-		editor.editor.handle_message(ClipboardMessage::CopyLayers);
-		editor.runtime.run().await;
-
-		let mut messages = VecDeque::new();
-		editor.editor.poll_node_graph_evaluation(&mut messages).expect("clipboard copy should complete");
-		messages
-			.into_iter()
-			.flat_map(|message| editor.editor.handle_message(message))
-			.find_map(|message| match message {
-				FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json } => Some((svg_string, graphite_json)),
-				_ => None,
-			})
+	/// Copies the layer selection and returns the SVG and the payload written to the clipboard.
+	async fn copy_layers_and_svg_to_clipboard(editor: &mut EditorTestUtils) -> (Option<String>, String) {
+		editor
+			.copy_to_clipboard(ClipboardMessage::CopyLayers)
+			.await
 			.expect("copying layers should write a payload to the clipboard")
 	}
 
@@ -638,7 +630,7 @@ mod test {
 		let mut editor = create_editor_with_three_layers().await;
 
 		let layers_before_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
-		let (svg_string, clipboard) = copy_layers_to_clipboard(&mut editor).await;
+		let (svg_string, clipboard) = copy_layers_and_svg_to_clipboard(&mut editor).await;
 		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
@@ -672,7 +664,7 @@ mod test {
 		let shape_id = editor.active_document().metadata().all_layers().nth(1).unwrap();
 
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![shape_id.to_node()] }).await;
-		let (svg_string, clipboard) = copy_layers_to_clipboard(&mut editor).await;
+		let (svg_string, clipboard) = copy_layers_and_svg_to_clipboard(&mut editor).await;
 		paste_from_clipboard(&mut editor, &clipboard).await;
 
 		let layers_after_copy = editor.active_document().metadata().all_layers().collect::<Vec<_>>();
@@ -715,7 +707,7 @@ mod test {
 				nodes: vec![rect_id.to_node(), ellipse_id.to_node()],
 			})
 			.await;
-		let (svg_string, clipboard) = copy_layers_to_clipboard(&mut editor).await;
+		let (svg_string, clipboard) = copy_layers_and_svg_to_clipboard(&mut editor).await;
 		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
 		editor.draw_rect(0., 800., 12., 200.).await;
 		paste_from_clipboard(&mut editor, &clipboard).await;

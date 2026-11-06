@@ -10,8 +10,8 @@ pub(crate) enum AppEvent {
 	ViewportTexture(Option<Texture>),
 	ClipboardRead,
 	ClipboardWrite {
-		svg_string: Option<String>,
-		graphite_json: String,
+		content: String,
+		svg: Option<String>,
 	},
 	Exit,
 	UiCrashed,

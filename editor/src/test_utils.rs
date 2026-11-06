@@ -117,6 +117,23 @@ impl EditorTestUtils {
 		Err(TestGraphError::Other(format!("eval_graph_until_finished exceeded {MAX_ITERATIONS} graph executions; stopping")))
 	}
 
+	/// Handles a message that copies to the clipboard, returning the SVG and the payload written once the runtime has rendered the SVG.
+	pub async fn copy_to_clipboard(&mut self, message: impl Into<Message>) -> Option<(Option<String>, String)> {
+		if let Err(e) = self.eval_graph_until_finished().await {
+			panic!("Failed to evaluate graph: {e}");
+		}
+
+		let mut frontend_messages = self.dispatch(message);
+		self.runtime.update();
+		self.runtime.run().await;
+		frontend_messages.extend(self.dispatch(Message::Wake));
+
+		frontend_messages.into_iter().find_map(|message| match message {
+			FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json } => Some((svg_string, graphite_json)),
+			_ => None,
+		})
+	}
+
 	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
 		let frontend_messages_from_msg = self.dispatch(message);
 

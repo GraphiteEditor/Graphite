@@ -380,8 +380,8 @@ impl App {
 			DesktopFrontendMessage::ClipboardRead => {
 				self.app_event_scheduler.schedule(AppEvent::ClipboardRead);
 			}
-			DesktopFrontendMessage::ClipboardWrite { svg_string, graphite_json } => {
-				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { svg_string, graphite_json });
+			DesktopFrontendMessage::ClipboardWrite { content, svg } => {
+				self.app_event_scheduler.schedule(AppEvent::ClipboardWrite { content, svg });
 			}
 			DesktopFrontendMessage::PointerLock => {
 				self.input_state.lock_pointer();
@@ -519,10 +519,11 @@ impl App {
 					}
 				}
 			}
-			AppEvent::ClipboardWrite { svg_string, graphite_json } => {
-				let mut builder = DataTransferSendBuilder::new((svg_string.clone(), graphite_json)).with_type(TypeHint::Plaintext, |(_, graphite_json), _| Some(graphite_json.clone()));
-				if svg_string.is_some() {
-					builder = builder.with_type(TypeHint::Image { extension_hint: Some("svg") }, |(svg, _), _| svg.as_ref().map(|x| x.as_bytes().to_vec()));
+			AppEvent::ClipboardWrite { content, svg } => {
+				let has_svg = svg.is_some();
+				let mut builder = DataTransferSendBuilder::new((content, svg)).with_type(TypeHint::Plaintext, |(content, _), _| Some(content.clone()));
+				if has_svg {
+					builder = builder.with_type(TypeHint::Image { extension_hint: Some("svg") }, |(_, svg), _| svg.as_ref().map(|svg| svg.as_bytes().to_vec()));
 				}
 				let send_data = builder.build();
 				if let Err(e) = event_loop.set_clipboard(send_data) {

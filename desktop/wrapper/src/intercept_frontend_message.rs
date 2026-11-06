@@ -96,13 +96,20 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardRead => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardRead);
 		}
+		FrontendMessage::TriggerClipboardWrite { content } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content, svg: None });
+		}
 		FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json } => {
-			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { svg_string, graphite_json });
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite {
+				content: graphite_json,
+				svg: svg_string,
+			});
 		}
 		// No web origin here, so use the hosted editor
 		FrontendMessage::TriggerSessionLinkCopy { token } => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite {
 				content: format!("https://editor.graphite.rs/?session={token}"),
+				svg: None,
 			});
 		}
 		FrontendMessage::WindowPointerLock => {

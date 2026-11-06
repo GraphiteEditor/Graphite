@@ -143,8 +143,13 @@ pub enum FrontendMessage {
 	TriggerSessionLinkCopy {
 		token: String,
 	},
+	TriggerClipboardWrite {
+		content: String,
+	},
 	TriggerClipboardSvgAndJsonWrite {
+		#[serde(rename = "svgString")]
 		svg_string: Option<String>,
+		#[serde(rename = "graphiteJson")]
 		graphite_json: String,
 	},
 	TriggerSelectionRead {

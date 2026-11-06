@@ -344,22 +344,53 @@ impl ThumbnailContent {
 		}
 	}
 
-	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
-	fn bounds(&self) -> [DVec2; 2] {
-		let bounds = match self {
+	/// The area the content covers once rendered.
+	fn content_bounds(&self) -> RenderBoundingBox {
+		match self {
 			// Text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content
 			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_bounding_box(graphics, DAffine2::IDENTITY),
 			// The clipping rectangles rather than the content, since the renderer clips content to them
 			Self::Artboards(artboards) => artboard_clip_bounds(artboards),
 			Self::Text(text) => graphene_std::renderer::text_list_bounding_box(text, DAffine2::IDENTITY),
-		};
+		}
+	}
 
-		let bounds = match bounds {
+	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
+	fn bounds(&self) -> [DVec2; 2] {
+		let bounds = match self.content_bounds() {
 			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
 			_ => [DVec2::ZERO, DVec2::ONE],
 		};
 		expand_to_thumbnail_aspect(bounds)
 	}
+}
+
+/// Renders what each of these document layers adds as one SVG framed to their combined bounds, or `None` if they render nothing.
+pub fn layers_svg(layers: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<String> {
+	let contents: Vec<ThumbnailContent> = layers
+		.iter()
+		.filter_map(|&layer| ThumbnailContent::evaluate(executor, thumbnail_source(&[layer], network, executor)?))
+		.collect();
+
+	let bounds = contents
+		.iter()
+		.filter_map(|content| match content.content_bounds() {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => Some(bounds),
+			_ => None,
+		})
+		.reduce(|[min, max], [other_min, other_max]| [min.min(other_min), max.max(other_max)])?;
+
+	let render_params = RenderParams {
+		footprint: Footprint::from_bounds(bounds, RenderQuality::Full),
+		..Default::default()
+	};
+	let mut render = SvgRender::new();
+	for content in &contents {
+		content.graphic().render_svg(&mut render, &render_params);
+	}
+	render.format_svg(bounds[0], bounds[1]);
+
+	Some(render.svg.to_svg_string())
 }
 
 /// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
