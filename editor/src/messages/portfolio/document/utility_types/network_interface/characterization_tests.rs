@@ -3604,6 +3604,31 @@ async fn dropping_a_map_node_onto_a_wire_feeds_it_the_matching_read_node() {
 	assert_invariants(&editor, "after dropping a Map node onto a wire");
 }
 
+#[test]
+fn map_content_types_resolve_to_the_read_node_of_their_element() {
+	use super::layout::read_node_for_content;
+	use super::resolved_types::TypeSource;
+	use graph_craft::{item, list};
+	use graphene_std::context::{read_graphic, read_number, read_vector};
+	use graphene_std::list::Bundle;
+	use graphene_std::text_nodes::read_string;
+	use graphene_std::{Graphic, Vector};
+
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(Vector))), Some(read_vector::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Graphic))), Some(read_graphic::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(f64))), Some(read_number::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::TaggedValue(list!(String))), Some(read_string::IDENTIFIER));
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(item!(Bundle<Vector>))), Some(read_vector::IDENTIFIER));
+
+	assert_eq!(
+		read_node_for_content(&TypeSource::Compiled(list!(i64))),
+		None,
+		"Read Number yields f64, which a Map over integers can't take"
+	);
+	assert_eq!(read_node_for_content(&TypeSource::Compiled(list!(bool))), None);
+	assert_eq!(read_node_for_content(&TypeSource::Unknown), None);
+}
+
 #[tokio::test]
 async fn dropping_a_map_node_onto_a_wire_keeps_its_wired_mapped_input() {
 	let mut editor = EditorTestUtils::create();

@@ -1,3 +1,4 @@
+use super::resolved_types::TypeSource;
 use super::*;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::raster_types::{CPU, Raster};
@@ -1173,10 +1174,7 @@ impl NodeNetworkInterface {
 		let Some(content_source) = self.upstream_output_connector(&InputConnector::primary_input(*node_id), network_path) else {
 			return;
 		};
-		let Some(element_type) = self.output_type(&content_source, network_path).compiled_element_type().cloned() else {
-			return;
-		};
-		let Some(mut read_node_template) = read_node_for_element(&element_type)
+		let Some(mut read_node_template) = read_node_for_content(&self.output_type(&content_source, network_path))
 			.and_then(resolve_proto_node_type)
 			.map(|definition| definition.default_node_template())
 		else {
@@ -1618,9 +1616,13 @@ impl NodeNetworkInterface {
 	}
 }
 
-fn read_node_for_element(element_type: &Type) -> Option<ProtoNodeIdentifier> {
+/// The Read node yielding each element of a Map node's content, unbundling a whole-list `Item<Bundle<T>>` wire to its `T`.
+pub(super) fn read_node_for_content(content_type: &TypeSource) -> Option<ProtoNodeIdentifier> {
 	use graphene_std::context::{read_color, read_gradient, read_graphic, read_number, read_raster, read_vector};
 	use graphene_std::text_nodes::read_string;
+
+	let bundle_element = content_type.compiled_nested_type().and_then(Type::bundle_element_name);
+	let element_type = content_type.compiled_element_type()?;
 
 	[
 		(concrete!(Vector), read_vector::IDENTIFIER),
@@ -1629,9 +1631,14 @@ fn read_node_for_element(element_type: &Type) -> Option<ProtoNodeIdentifier> {
 		(concrete!(Color), read_color::IDENTIFIER),
 		(concrete!(Gradient), read_gradient::IDENTIFIER),
 		(concrete!(f64), read_number::IDENTIFIER),
-		(concrete!(i64), read_number::IDENTIFIER),
 		(concrete!(String), read_string::IDENTIFIER),
 	]
 	.into_iter()
-	.find_map(|(ty, read_node)| (ty == *element_type).then_some(read_node))
+	.find_map(|(candidate, read_node)| {
+		let matches = match (bundle_element, &candidate) {
+			(Some(bundle_element), Type::Concrete(descriptor)) => descriptor.name == bundle_element,
+			_ => candidate == *element_type,
+		};
+		matches.then_some(read_node)
+	})
 }
