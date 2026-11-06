@@ -4653,6 +4653,31 @@ mod document_message_handler_tests {
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
 
+	#[tokio::test]
+	async fn deleting_the_bottom_layer_leaves_the_layer_above_it_the_empty_stack_value() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.draw_rect(200., 0., 300., 100.).await;
+
+		let [top, bottom] = editor.active_document().metadata().all_layers().collect::<Vec<_>>()[..] else {
+			panic!("there should be two layers")
+		};
+		let stack_bottom = |editor: &EditorTestUtils, layer: LayerNodeIdentifier| {
+			editor
+				.active_document()
+				.network_interface
+				.input_from_connector(&InputConnector::node_at_index(layer.to_node(), 0), &[])
+				.cloned()
+		};
+		let empty_stack = stack_bottom(&editor, bottom);
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![bottom.to_node()] }).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+
+		assert_eq!(stack_bottom(&editor, top), empty_stack);
+	}
+
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
 		let document = DocumentMessageHandler {
