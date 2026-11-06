@@ -1197,6 +1197,32 @@ mod test_text_tool {
 	}
 
 	#[tokio::test]
+	async fn a_word_longer_than_the_max_width_breaks_to_stay_within_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		provide_fonts(&mut editor).await;
+
+		let layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
+		let typesetting = TypesettingConfig {
+			max_width: Some(100.),
+			..Default::default()
+		};
+		editor
+			.handle_message(GraphOperationMessage::NewTextLayer {
+				id: layer.to_node(),
+				text: "Supercalifragilisticexpialidocious".into(),
+				font: Font::default(),
+				typesetting,
+				parent: LayerNodeIdentifier::ROOT_PARENT,
+				insert_index: 0,
+			})
+			.await;
+
+		let [min, max] = editor.active_document().metadata().bounding_box_document(layer).expect("the text should have bounds");
+		assert!(max.x - min.x <= 100. + 1e-6, "the text is {} wide, wider than its max width of 100", max.x - min.x);
+	}
+
+	#[tokio::test]
 	async fn a_text_box_stretched_by_its_right_edge_to_near_the_edge_of_a_rectangle_lands_on_it() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
