@@ -15,10 +15,9 @@ publish.workspace = true
 workspace = true
 
 [features]
-default = ["std"]
-std = []
 derive = ["graphene-hash-derive"]
 
 [dependencies]
 graphene-hash-derive = { path = "derive", optional = true }
 glam = { workspace = true }
+kurbo = { workspace = true }

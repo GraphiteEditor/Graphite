@@ -40,11 +40,20 @@ pub struct ChainNodeCopy {
 }
 
 impl ChainNodeCopy {
-	/// The copied node with each of its wired inputs taking its fallback value, placed offset from its original, for pasting outside any flow.
-	pub fn into_loose_template(self) -> NodeTemplate {
+	/// Whether the copied node is a redirect dot, which comes along only to bend a wire between the other copies.
+	pub fn is_redirect_dot(&self) -> bool {
+		let passthrough = matches!(&self.template.implementation, NodeTemplateImplementation::ProtoNode(identifier) if *identifier == graphene_std::ops::passthrough::IDENTIFIER);
+		passthrough && matches!(self.template.node_type_metadata, NodeTypePersistentMetadata::Node(_))
+	}
+
+	/// The copied node, placed offset from its original, for pasting outside any flow along with the copies of the nodes in `pasted`.
+	/// Its inputs stay wired to those copies, and each of its other wired inputs takes its fallback value.
+	pub fn into_loose_template(self, pasted: &HashSet<NodeId>) -> NodeTemplate {
 		let mut template = self.template;
 		for (index, fallback_value) in self.fallback_values {
-			if let Some(input) = template.inputs.get_mut(index) {
+			if let Some(input) = template.inputs.get_mut(index)
+				&& !input.as_node().is_some_and(|node_id| pasted.contains(&node_id))
+			{
 				*input = fallback_value;
 			}
 		}
@@ -262,10 +271,49 @@ impl OutputConnector {
 	}
 }
 
+/// Which side of a redirect dot an edit took a wire from, since each side leaves the dot orphaned only once it has no wire left there.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum DotSide {
+	/// The wire feeding the dot.
+	Incoming,
+	/// One of the wires the dot feeds.
+	Outgoing,
+}
+
+/// The corners of the click target for a connector on a node or layer's left or right side, or an import or export.
+/// It fills its row's height and reaches further away from the node than into it, leaving the node body grabbable.
+pub(crate) fn side_port_bounds(center: DVec2, is_input: bool) -> [DVec2; 2] {
+	const INWARD_REACH: f64 = 8.;
+	const OUTWARD_REACH: f64 = 12.;
+	const HALF_HEIGHT: f64 = 12.;
+
+	// Inputs face left and outputs face right
+	let (left_reach, right_reach) = if is_input { (OUTWARD_REACH, INWARD_REACH) } else { (INWARD_REACH, OUTWARD_REACH) };
+	[center - DVec2::new(left_reach, HALF_HEIGHT), center + DVec2::new(right_reach, HALF_HEIGHT)]
+}
+
+/// The corners of the click target for a layer's top output or bottom input, which reaches only 8 px toward the connector it faces in a stack.
+fn stack_port_bounds(center: DVec2) -> [DVec2; 2] {
+	const HALF_SIZE: DVec2 = DVec2::new(12., 8.);
+
+	[center - HALF_SIZE, center + HALF_SIZE]
+}
+
+pub(crate) fn port_click_target([corner1, corner2]: [DVec2; 2]) -> ClickTarget {
+	const CORNER_RADIUS: f64 = 4.;
+
+	let path = rounded_rectangle_path(corner1, corner2, [CORNER_RADIUS; 4]);
+	ClickTarget::new_with_path(path, 0.)
+}
+
 #[derive(Debug, Clone)]
 pub struct Ports {
 	pub(crate) input_ports: Vec<(usize, ClickTarget)>,
 	pub(crate) output_ports: Vec<(usize, ClickTarget)>,
+	/// Where a wire attaches to an input port with a click target not centered on that point.
+	pub(crate) input_anchors: Vec<(usize, DVec2)>,
+	/// Where a wire attaches to an output port with a click target not centered on that point.
+	pub(crate) output_anchors: Vec<(usize, DVec2)>,
 }
 
 impl Default for Ports {
@@ -279,6 +327,8 @@ impl Ports {
 		Ports {
 			input_ports: Vec::new(),
 			output_ports: Vec::new(),
+			input_anchors: Vec::new(),
+			output_anchors: Vec::new(),
 		}
 	}
 
@@ -298,8 +348,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_input_port_at_center(&mut self, input_index: usize, center: DVec2) {
-		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_input_port(input_index, ClickTarget::new_with_path(path, 0.));
+		self.insert_custom_input_port(input_index, port_click_target(side_port_bounds(center, true)));
+		self.input_anchors.push((input_index, center));
 	}
 
 	pub(crate) fn insert_custom_input_port(&mut self, input_index: usize, click_target: ClickTarget) {
@@ -307,8 +357,8 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_output_port_at_center(&mut self, output_index: usize, center: DVec2) {
-		let path = ellipse_path(center - DVec2::new(8., 8.), center + DVec2::new(8., 8.));
-		self.insert_custom_output_port(output_index, ClickTarget::new_with_path(path, 0.));
+		self.insert_custom_output_port(output_index, port_click_target(side_port_bounds(center, false)));
+		self.output_anchors.push((output_index, center));
 	}
 
 	pub(crate) fn insert_custom_output_port(&mut self, output_index: usize, click_target: ClickTarget) {
@@ -328,18 +378,19 @@ impl Ports {
 	}
 
 	pub(crate) fn insert_layer_input(&mut self, input_index: usize, node_top_left: DVec2) {
-		let center = if input_index == 0 {
-			node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.)
+		// The primary input sits beneath the layer's thumbnail, and the secondary input on its left side
+		if input_index == 0 {
+			let center = node_top_left + DVec2::new(2. * 24., 24. * 2. + 8.);
+			self.insert_custom_input_port(input_index, port_click_target(stack_port_bounds(center)));
 		} else {
-			node_top_left + DVec2::new(0., 24. * 1.)
-		};
-		self.insert_input_port_at_center(input_index, center);
+			self.insert_input_port_at_center(input_index, node_top_left + DVec2::new(0., 24. * 1.));
+		}
 	}
 
 	pub(crate) fn insert_layer_output(&mut self, node_top_left: DVec2) {
-		// The center of the click target is always 24 px down from the top left corner of the node
+		// The center of the click target is 8 px above the layer, over its thumbnail
 		let center = node_top_left + DVec2::new(2. * 24., -8.);
-		self.insert_output_port_at_center(0, center);
+		self.insert_custom_output_port(0, port_click_target(stack_port_bounds(center)));
 	}
 
 	pub fn clicked_input_port_from_point(&self, point: DVec2) -> Option<usize> {
@@ -350,13 +401,34 @@ impl Ports {
 		self.output_ports.iter().find_map(|(port, click_target)| click_target.intersect_point_no_stroke(point).then_some(*port))
 	}
 
+	/// Adds the input and output of a redirect dot. Its wires both attach at its center, but they're grabbed from the gutters on either side of its body.
+	pub(crate) fn insert_dot_ports(&mut self, center: DVec2) {
+		const GUTTER_OFFSET: f64 = 10.;
+		const GUTTER_RADIUS: f64 = 5.;
+
+		let gutter = |x_offset: f64| {
+			let gutter_center = center + DVec2::new(x_offset, 0.);
+			ClickTarget::new_with_path(ellipse_path(gutter_center - DVec2::splat(GUTTER_RADIUS), gutter_center + DVec2::splat(GUTTER_RADIUS)), 0.)
+		};
+		self.insert_custom_input_port(0, gutter(-GUTTER_OFFSET));
+		self.insert_custom_output_port(0, gutter(GUTTER_OFFSET));
+		self.input_anchors.push((0, center));
+		self.output_anchors.push((0, center));
+	}
+
 	pub fn input_port_position(&self, index: usize) -> Option<DVec2> {
+		if let Some((_, anchor)) = self.input_anchors.iter().find(|(port_index, _)| *port_index == index) {
+			return Some(*anchor);
+		}
 		self.input_ports
 			.iter()
 			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
 	}
 
 	pub fn output_port_position(&self, index: usize) -> Option<DVec2> {
+		if let Some((_, anchor)) = self.output_anchors.iter().find(|(port_index, _)| *port_index == index) {
+			return Some(*anchor);
+		}
 		self.output_ports
 			.iter()
 			.find_map(|(port_index, click_target)| if *port_index == index { click_target.bounding_box_center() } else { None })
@@ -378,13 +450,94 @@ impl RootNode {
 	}
 }
 
-#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize, serde::Deserialize)]
+/// Which node the node graph renders in place of the network's export, as per-peer view state that leaves the export untouched.
+#[derive(PartialEq, Debug, Clone, Copy, Hash, Default, serde::Serialize)]
 pub enum Previewing {
-	/// If there is a node to restore the connection to the export for, then it is stored in the option.
-	/// Otherwise, nothing gets restored and the primary export is disconnected.
-	Yes { root_node_to_restore: Option<RootNode> },
+	Yes {
+		previewed: RootNode,
+	},
+	// TODO: Eventually remove this document upgrade code
+	/// Written by versions that previewed by rewiring the export, and converted to `Yes` when the document is opened.
+	LegacyRewired {
+		root_node_to_restore: Option<RootNode>,
+	},
 	#[default]
 	No,
+}
+
+impl Previewing {
+	pub fn previewed(&self) -> Option<RootNode> {
+		match self {
+			Previewing::Yes { previewed } => Some(*previewed),
+			_ => None,
+		}
+	}
+
+	pub fn previews(&self, node_id: NodeId) -> bool {
+		self.previewed().is_some_and(|previewed| previewed.node_id == node_id)
+	}
+}
+
+// TODO: Eventually remove this document upgrade code, restoring the derived `Deserialize`
+impl<'de> serde::Deserialize<'de> for Previewing {
+	/// Also accepts the shape written by versions that previewed by rewiring the export.
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(serde::Deserialize)]
+		enum Stored {
+			Yes(YesFields),
+			LegacyRewired { root_node_to_restore: Option<RootNode> },
+			No,
+		}
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum YesFields {
+			Current { previewed: RootNode },
+			Rewired { root_node_to_restore: Option<RootNode> },
+		}
+
+		Ok(match Stored::deserialize(deserializer)? {
+			Stored::Yes(YesFields::Current { previewed }) => Previewing::Yes { previewed },
+			Stored::Yes(YesFields::Rewired { root_node_to_restore }) | Stored::LegacyRewired { root_node_to_restore } => Previewing::LegacyRewired { root_node_to_restore },
+			Stored::No => Previewing::No,
+		})
+	}
+}
+
+/// Whether two networks' metadata match, ignoring view state and storage identities.
+pub(crate) fn same_content(first: &NodeNetworkPersistentMetadata, second: &NodeNetworkPersistentMetadata) -> bool {
+	let content = |metadata: &NodeNetworkPersistentMetadata| {
+		let mut content = metadata.clone();
+		clear_view_state(&mut content);
+		content
+	};
+	content(first) == content(second)
+}
+
+fn clear_view_state(metadata: &mut NodeNetworkPersistentMetadata) {
+	metadata.previewing = Previewing::No;
+	metadata.navigation_metadata = NavigationMetadata::default();
+	metadata.selection_undo_history.clear();
+	metadata.selection_redo_history.clear();
+	for node in metadata.node_metadata.values_mut() {
+		node.persistent_metadata.storage_id = None;
+	}
+
+	let nested_networks = metadata
+		.node_metadata
+		.values_mut()
+		.filter_map(|node_metadata| node_metadata.persistent_metadata.network_metadata.as_mut());
+	for nested in nested_networks.chain(metadata.definitions.values_mut()) {
+		clear_view_state(&mut nested.persistent_metadata);
+	}
+}
+
+/// A definitions table entry carried by a copy, so a paste into a document that lacks it can add it.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct CopiedDefinition {
+	pub id: NetworkId,
+	pub network: NodeNetwork,
+	pub metadata: NodeNetworkMetadata,
 }
 
 /// All fields in NetworkMetadata should automatically be updated by using the network interface API. If a field is none then it should be calculated based on the network state.
@@ -411,27 +564,110 @@ impl PartialEq for NodeNetworkMetadata {
 }
 
 impl NodeNetworkMetadata {
-	pub fn nested_metadata(&self, nested_path: &[NodeId]) -> Option<&Self> {
-		let mut network_metadata = Some(self);
-
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network| network.persistent_metadata.node_metadata.get(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_ref());
+	pub fn nested_metadata(&self, location: NetworkLocation) -> Option<&Self> {
+		match location {
+			Some(id) => self.persistent_metadata.definitions.get(&id),
+			None => Some(self),
 		}
-		network_metadata
 	}
 
-	/// Get the mutable nested network given by the path of node ids
-	pub fn nested_metadata_mut(&mut self, nested_path: &[NodeId]) -> Option<&mut Self> {
-		let mut network_metadata = Some(self);
-
-		for segment in nested_path {
-			network_metadata = network_metadata
-				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
-				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
+	pub fn nested_metadata_mut(&mut self, location: NetworkLocation) -> Option<&mut Self> {
+		match location {
+			Some(id) => self.persistent_metadata.definitions.get_mut(&id),
+			None => Some(self),
 		}
-		network_metadata
+	}
+
+	pub fn move_interface_metadata_into_networks(&mut self, document_network: &NodeNetwork) {
+		let mut instance_interfaces = Vec::new();
+		move_interface_metadata(document_network, self, &mut instance_interfaces);
+		for (id, definition_metadata) in &mut self.persistent_metadata.definitions {
+			if let Some(definition) = document_network.definitions.get(id) {
+				move_interface_metadata(definition, definition_metadata, &mut instance_interfaces);
+			}
+		}
+
+		for (id, interface) in instance_interfaces {
+			if let Some(definition_metadata) = self.persistent_metadata.definitions.get_mut(&id) {
+				fill_empty_interface(&mut definition_metadata.persistent_metadata, interface);
+			}
+		}
+	}
+
+	/// Moves the metadata of each network that [`NodeNetwork::lift_nested_networks`] lifted into the definitions table.
+	pub fn lift_nested_metadata(&mut self, lifted: &[LiftedNetwork]) {
+		for entry in lifted {
+			let network_metadata = self
+				.nested_metadata_mut(entry.containing)
+				.and_then(|containing| containing.persistent_metadata.node_metadata.get_mut(&entry.node_id))
+				.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.take())
+				.unwrap_or_default();
+			self.persistent_metadata.definitions.insert(entry.id, network_metadata);
+		}
+	}
+
+	/// Drops the metadata of every table entry that `document_network` no longer has. Call it after pruning that table.
+	pub fn retain_definitions_of(&mut self, document_network: &NodeNetwork) {
+		self.persistent_metadata.definitions.retain(|id, _| document_network.definitions.contains_key(id));
+	}
+
+	pub fn node_metadata_with_definition_mut(
+		&mut self,
+		location: NetworkLocation,
+		node_id: &NodeId,
+		instantiated: Option<NetworkId>,
+	) -> Option<(&mut DocumentNodeMetadata, Option<&mut NodeNetworkPersistentMetadata>)> {
+		let NodeNetworkPersistentMetadata { node_metadata, definitions, .. } = &mut self.persistent_metadata;
+		let (nodes, definition) = match (location, instantiated) {
+			(None, None) => (node_metadata, None),
+			(None, Some(instantiated)) => (node_metadata, Some(definitions.get_mut(&instantiated)?)),
+			(Some(containing), None) => (&mut definitions.get_mut(&containing)?.persistent_metadata.node_metadata, None),
+			(Some(containing), Some(instantiated)) if containing != instantiated => {
+				let [containing, instantiated] = definitions.get_disjoint_mut([&containing, &instantiated]);
+				(&mut containing?.persistent_metadata.node_metadata, Some(instantiated?))
+			}
+			(Some(_), Some(_)) => return None,
+		};
+
+		Some((nodes.get_mut(node_id)?, definition.map(|definition| &mut definition.persistent_metadata)))
+	}
+}
+
+type InterfaceMetadata = (Vec<InputMetadata>, Vec<String>, Vec<String>);
+
+fn move_interface_metadata(network: &NodeNetwork, metadata: &mut NodeNetworkMetadata, instance_interfaces: &mut Vec<(NetworkId, InterfaceMetadata)>) {
+	for (node_id, node) in &network.nodes {
+		let Some(node_metadata) = metadata.persistent_metadata.node_metadata.get_mut(node_id) else {
+			continue;
+		};
+		let DocumentNodePersistentMetadata {
+			input_metadata,
+			output_names,
+			output_descriptions,
+			network_metadata,
+			..
+		} = &mut node_metadata.persistent_metadata;
+		let mut take_interface = || (std::mem::take(input_metadata), std::mem::take(output_names), std::mem::take(output_descriptions));
+
+		match &node.implementation {
+			DocumentNodeImplementation::Network(nested) => {
+				let Some(nested_metadata) = network_metadata else { continue };
+				fill_empty_interface(&mut nested_metadata.persistent_metadata, take_interface());
+				move_interface_metadata(nested, nested_metadata, instance_interfaces);
+			}
+			DocumentNodeImplementation::Definition(id) => instance_interfaces.push((*id, take_interface())),
+			DocumentNodeImplementation::ProtoNode(_) | DocumentNodeImplementation::Extract => {}
+		}
+	}
+}
+
+fn fill_empty_interface(network_metadata: &mut NodeNetworkPersistentMetadata, (import_metadata, export_names, export_descriptions): InterfaceMetadata) {
+	if network_metadata.import_metadata.is_empty() {
+		network_metadata.import_metadata = import_metadata;
+	}
+	if network_metadata.export_names.is_empty() {
+		network_metadata.export_names = export_names;
+		network_metadata.export_descriptions = export_descriptions;
 	}
 }
 
@@ -446,7 +682,7 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Node metadata must exist for every document node in the network
 	#[serde(serialize_with = "graphene_std::vector::serialize_hashmap", deserialize_with = "graphene_std::vector::deserialize_hashmap")]
 	pub node_metadata: HashMap<NodeId, DocumentNodeMetadata>,
-	/// The display order of pinned nodes in the Properties panel (shown when nothing is selected in this network), keyed by node ID.
+	/// The display order of pinned nodes in the Inspector (shown when nothing is selected in this network), keyed by node ID.
 	#[serde(default)]
 	pub pinned_node_order: Vec<NodeId>,
 	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
@@ -460,6 +696,14 @@ pub struct NodeNetworkPersistentMetadata {
 	/// Stack of selection snapshots for future history states.
 	#[serde(skip)]
 	pub selection_redo_history: VecDeque<SelectedNodes>,
+	#[serde(default, skip_serializing_if = "HashMap::is_empty")]
+	pub definitions: HashMap<NetworkId, NodeNetworkMetadata>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub import_metadata: Vec<InputMetadata>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub export_names: Vec<String>,
+	#[serde(default, skip_serializing_if = "Vec::is_empty")]
+	pub export_descriptions: Vec<String>,
 }
 
 /// A lazily computed cache slot whose load and read paths work through &self, with interior mutability guarding the stored value.
@@ -523,25 +767,93 @@ pub struct NodeNetworkTransientMetadata {
 	pub(crate) stack_dependents: TransientCache<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub(crate) all_nodes_bounding_box: TransientCache<[DVec2; 2]>,
+	/// Cache for what the imports and exports keep their distance from, unloaded along with `all_nodes_bounding_box`.
+	pub(crate) import_export_clearance: TransientCache<ImportExportClearance>,
 	/// Cache for all outward wire connections
 	pub(crate) outward_wires: TransientCache<HashMap<OutputConnector, Vec<InputConnector>>>,
 	/// All export connector click targets
 	pub(crate) import_export_ports: TransientCache<Ports>,
-	/// Click targets for adding, removing, and moving import/export ports
-	pub(crate) modify_import_export: TransientCache<ModifyImportExportClickTarget>,
 
 	/// Cached wire SVG paths per input connector, where an entry's presence means that wire is loaded.
 	pub(crate) wires: std::cell::RefCell<HashMap<InputConnector, WirePathUpdate>>,
 	/// Drag-session state: how far each unowned stack dependent has been pushed vertically from its resting position. Cleared when the drag ends.
 	pub(crate) drag_offsets: std::cell::RefCell<HashMap<NodeId, i32>>,
+	/// How far whatever is gliding into the place it just moved to is drawn from that place, which hit tests account for.
+	pub(crate) glide_offsets: std::cell::RefCell<GlideOffsets>,
 }
 
-#[derive(Debug, Clone)]
-pub struct ModifyImportExportClickTarget {
-	// Subtract icon that appears when hovering over an import/export
-	pub remove_imports_exports: Ports,
-	// Grip drag icon that appears when hovering over an import/export
-	pub reorder_imports_exports: Ports,
+/// How far the nodes, imports, and exports gliding into the grid cells they just moved to are drawn from those cells, in node graph space.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GlideOffsets {
+	pub nodes: HashMap<NodeId, DVec2>,
+	pub imports: DVec2,
+	pub exports: DVec2,
+}
+
+impl GlideOffsets {
+	pub fn is_empty(&self) -> bool {
+		self.nodes.is_empty() && self.imports == DVec2::ZERO && self.exports == DVec2::ZERO
+	}
+
+	pub fn node(&self, node_id: &NodeId) -> DVec2 {
+		self.nodes.get(node_id).copied().unwrap_or_default()
+	}
+
+	pub fn input(&self, input: &InputConnector) -> DVec2 {
+		match input {
+			InputConnector::Node { node_id, .. } => self.node(node_id),
+			InputConnector::Export(_) => self.exports,
+		}
+	}
+
+	pub fn output(&self, output: &OutputConnector) -> DVec2 {
+		match output {
+			OutputConnector::Node { node_id, .. } => self.node(node_id),
+			OutputConnector::Import(_) => self.imports,
+		}
+	}
+
+	/// Shrinks every offset to the given fraction of itself, settling those left too small to see.
+	pub fn shrink(&mut self, remaining_fraction: f64) {
+		const SMALLEST_VISIBLE_OFFSET: f64 = 0.5;
+
+		let shrink = |offset: &mut DVec2| {
+			*offset *= remaining_fraction;
+			if offset.length() < SMALLEST_VISIBLE_OFFSET {
+				*offset = DVec2::ZERO;
+			}
+		};
+		self.nodes.values_mut().for_each(shrink);
+		self.nodes.retain(|_, offset| *offset != DVec2::ZERO);
+		shrink(&mut self.imports);
+		shrink(&mut self.exports);
+	}
+}
+
+/// What the imports and exports keep their distance from horizontally, in node graph space. They keep a few grid cells from the sides of a node,
+/// but just one from a redirect dot, which only bends a wire, so the dots are measured apart from the other nodes.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct ImportExportClearance {
+	/// The leftmost and rightmost sides of the nodes other than redirect dots.
+	pub node_sides: Option<[f64; 2]>,
+	/// The leftmost and rightmost centers of the redirect dots.
+	pub dot_centers: Option<[f64; 2]>,
+}
+
+impl ImportExportClearance {
+	/// The furthest right the imports can sit: `node_gap` (a negative distance) from the leftmost node's side rounded to the grid, or a grid cell left of the leftmost dot.
+	pub fn import_limit(&self, node_gap: f64) -> f64 {
+		let beside_nodes = self.node_sides.map(|[left, _]| (left / GRID_SIZE as f64 + 0.5).floor() * GRID_SIZE as f64 + node_gap);
+		let beside_dots = self.dot_centers.map(|[left, _]| left - GRID_SIZE as f64);
+		beside_nodes.into_iter().chain(beside_dots).reduce(f64::min).unwrap_or(node_gap)
+	}
+
+	/// The furthest left the exports can sit: `node_gap` from the rightmost node's side rounded to the grid, or a grid cell right of the rightmost dot.
+	pub fn export_limit(&self, node_gap: f64) -> f64 {
+		let beside_nodes = self.node_sides.map(|[_, right]| (right / GRID_SIZE as f64 + 0.5).floor() * GRID_SIZE as f64 + node_gap);
+		let beside_dots = self.dot_centers.map(|[_, right]| right + GRID_SIZE as f64);
+		beside_nodes.into_iter().chain(beside_dots).reduce(f64::max).unwrap_or(node_gap)
+	}
 }
 
 #[derive(Debug, Clone)]
@@ -630,7 +942,7 @@ pub enum WidgetOverride {
 	Custom(String),
 }
 
-// TODO: Custom deserialization/serialization to ensure number of properties row matches number of node inputs
+// TODO: Custom deserialization/serialization to ensure number of input metadata rows matches number of node inputs
 #[derive(Debug, Clone, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct InputPersistentMetadata {
 	/// A general datastore than can store key value pairs of any types for any input
@@ -661,40 +973,40 @@ impl InputPersistentMetadata {
 			WidgetOverride::Hidden => {
 				self.widget_override = Some("hidden".to_string());
 			}
-			WidgetOverride::String(string_properties) => {
-				self.input_data.insert("string_properties".to_string(), Value::String(string_properties));
+			WidgetOverride::String(string_inspector) => {
+				self.input_data.insert("string_inspector".to_string(), Value::String(string_inspector));
 				self.widget_override = Some("string".to_string());
 			}
-			WidgetOverride::Number(mut number_properties) => {
-				if let Some(unit) = number_properties.unit.take() {
+			WidgetOverride::Number(mut number_inspector) => {
+				if let Some(unit) = number_inspector.unit.take() {
 					self.input_data.insert("unit".to_string(), json!(unit));
 				}
-				if let Some(min) = number_properties.min.take() {
+				if let Some(min) = number_inspector.min.take() {
 					self.input_data.insert("min".to_string(), json!(min));
 				}
-				if let Some(max) = number_properties.max.take() {
+				if let Some(max) = number_inspector.max.take() {
 					self.input_data.insert("max".to_string(), json!(max));
 				}
-				if let Some(step) = number_properties.step.take() {
+				if let Some(step) = number_inspector.step.take() {
 					self.input_data.insert("step".to_string(), json!(step));
 				}
-				if let Some(range_min) = number_properties.range_min.take() {
+				if let Some(range_min) = number_inspector.range_min.take() {
 					self.input_data.insert("range_min".to_string(), json!(range_min));
 				}
-				if let Some(range_max) = number_properties.range_max.take() {
+				if let Some(range_max) = number_inspector.range_max.take() {
 					self.input_data.insert("range_max".to_string(), json!(range_max));
 				}
-				self.input_data.insert("mode".to_string(), json!(number_properties.mode));
-				self.input_data.insert("is_integer".to_string(), Value::Bool(number_properties.is_integer));
-				self.input_data.insert("blank_assist".to_string(), Value::Bool(number_properties.blank_assist));
+				self.input_data.insert("mode".to_string(), json!(number_inspector.mode));
+				self.input_data.insert("is_integer".to_string(), Value::Bool(number_inspector.is_integer));
+				self.input_data.insert("blank_assist".to_string(), Value::Bool(number_inspector.blank_assist));
 				self.widget_override = Some("number".to_string());
 			}
-			WidgetOverride::Vec2(vec2_properties) => {
-				self.input_data.insert("x".to_string(), json!(vec2_properties.x));
-				self.input_data.insert("y".to_string(), json!(vec2_properties.y));
-				self.input_data.insert("unit".to_string(), json!(vec2_properties.unit));
-				self.input_data.insert("is_integer".to_string(), Value::Bool(vec2_properties.is_integer));
-				if let Some(min) = vec2_properties.min {
+			WidgetOverride::Vec2(vec2_inspector) => {
+				self.input_data.insert("x".to_string(), json!(vec2_inspector.x));
+				self.input_data.insert("y".to_string(), json!(vec2_inspector.y));
+				self.input_data.insert("unit".to_string(), json!(vec2_inspector.unit));
+				self.input_data.insert("is_integer".to_string(), Value::Bool(vec2_inspector.is_integer));
+				if let Some(min) = vec2_inspector.min {
 					self.input_data.insert("min".to_string(), json!(min));
 				}
 				self.widget_override = Some("vec2".to_string());
@@ -724,14 +1036,17 @@ pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
 	#[serde(default)]
 	pub display_name: String,
-	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.
+	/// Stores metadata to override the widgets in the Inspector for each input. These can either be generated automatically based on the type, or with a custom function.
 	/// Must match the length of node inputs
 	pub input_metadata: Vec<InputMetadata>,
 	pub output_names: Vec<String>,
+	/// Indexed like `output_names`, where a missing or empty entry means the output has no description.
+	#[serde(default)]
+	pub output_descriptions: Vec<String>,
 	/// Represents the lock icon for locking/unlocking the node in the graph UI. When locked, a node cannot be moved in the graph UI.
 	#[serde(default)]
 	pub locked: bool,
-	/// Indicates that the node will be shown in the Properties panel when it would otherwise be empty, letting a user easily edit its properties by just deselecting everything.
+	/// Indicates that the node will be shown in the Inspector when it would otherwise be empty, letting a user easily edit its inputs by just deselecting everything.
 	#[serde(default)]
 	pub pinned: bool,
 	/// Metadata that is specific to either nodes or layers, which are chosen states for displaying as a left-to-right node or bottom-to-top layer.
@@ -920,6 +1235,13 @@ pub enum TransactionStatus {
 	Finished,
 }
 
+/// The open transaction's bookkeeping from [`NodeNetworkInterface::transaction_checkpoint`], to put back once the writes made after it are undone.
+#[derive(Clone, Debug)]
+pub struct TransactionCheckpoint {
+	pub(super) status: TransactionStatus,
+	pub(super) edited_nodes: HashSet<NodeId>,
+}
+
 /// How [`NodeNetworkInterface::is_sole_dependent`] should treat a downstream connector it encounters.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum SoleDependentStep {
@@ -938,14 +1260,14 @@ pub(crate) fn visit_network_resources(network: &NodeNetwork, visit: &mut impl Fn
 	for node in network.nodes.values() {
 		visit_node_resources(node, visit);
 	}
+	for definition in network.definitions.values() {
+		visit_network_resources(definition, visit);
+	}
 }
 
 pub(crate) fn visit_node_resources(node: &DocumentNode, visit: &mut impl FnMut(ResourceId)) {
 	for input in &node.inputs {
 		visit_input_resource(input, visit);
-	}
-	if let DocumentNodeImplementation::Network(nested) = &node.implementation {
-		visit_network_resources(nested, visit);
 	}
 }
 
@@ -962,7 +1284,7 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn resource_visits_reach_nested_networks_and_exports() {
+	fn resource_visits_reach_definitions_and_exports() {
 		let shared = ResourceId::from(1);
 		let uses = |id: ResourceId| NodeInput::value(TaggedValue::Resource(id), false);
 		let node = |inputs: Vec<NodeInput>| DocumentNode { inputs, ..Default::default() };
@@ -977,13 +1299,14 @@ mod tests {
 				(
 					NodeId(3),
 					DocumentNode {
-						implementation: DocumentNodeImplementation::Network(inner),
+						implementation: DocumentNodeImplementation::Definition(NetworkId(4)),
 						..Default::default()
 					},
 				),
 			]
 			.into_iter()
 			.collect(),
+			definitions: [(NetworkId(4), inner)].into_iter().collect(),
 			..Default::default()
 		};
 
@@ -994,7 +1317,38 @@ mod tests {
 	}
 
 	#[test]
-	fn port_click_targets_are_clickable_at_their_center() {
+	fn resource_visits_reach_each_definition_once() {
+		let definition = NetworkId(1);
+		let used = ResourceId::from(1);
+		let instance = || DocumentNode {
+			implementation: DocumentNodeImplementation::Definition(definition),
+			..Default::default()
+		};
+		let body = NodeNetwork {
+			nodes: [(
+				NodeId(0),
+				DocumentNode {
+					inputs: vec![NodeInput::value(TaggedValue::Resource(used), false)],
+					..Default::default()
+				},
+			)]
+			.into_iter()
+			.collect(),
+			..Default::default()
+		};
+		let network = NodeNetwork {
+			nodes: [(NodeId(1), instance()), (NodeId(2), instance())].into_iter().collect(),
+			definitions: [(definition, body)].into_iter().collect(),
+			..Default::default()
+		};
+
+		let mut visits = Vec::new();
+		visit_network_resources(&network, &mut |id| visits.push(id));
+		assert_eq!(visits, vec![used]);
+	}
+
+	#[test]
+	fn port_click_targets_reach_around_the_connector_where_wires_attach() {
 		let center = DVec2::new(100., 50.);
 		let mut ports = Ports::new();
 		ports.insert_input_port_at_center(0, center);
@@ -1002,9 +1356,14 @@ mod tests {
 
 		assert_eq!(ports.clicked_input_port_from_point(center), Some(0));
 		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(5., 5.)), Some(0));
-		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(20., 0.)), None);
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(0., 11.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(-11., 0.)), Some(0));
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(10., 0.)), None);
+		assert_eq!(ports.clicked_input_port_from_point(center + DVec2::new(0., 13.)), None);
 
 		assert_eq!(ports.clicked_output_port_from_point(center + DVec2::new(200., 0.)), Some(0));
 		assert_eq!(ports.clicked_output_port_from_point(center), None);
+
+		assert_eq!(ports.input_port_position(0), Some(center), "wires should attach at the connector's center, not the click target's");
 	}
 }

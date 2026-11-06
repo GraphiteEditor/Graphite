@@ -102,8 +102,6 @@
 
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
-			// TODO: Close any other floating menus that may already be open, which can happen using tab navigation and Enter/Space Bar to open
-
 			// Close floating menu if pointer strays far enough away
 			window.addEventListener("pointermove", pointerMoveHandler);
 			// Close floating menu if esc is pressed
@@ -375,8 +373,8 @@
 	}
 
 	function pointerMoveHandler(e: PointerEvent) {
-		// This element and the element being hovered over
-		const target = e.target instanceof HTMLElement ? e.target : undefined;
+		// The element being hovered over, which may be an icon's SVG
+		const target = e.target instanceof Element ? e.target : undefined;
 
 		// Get the spawner element (that which is clicked to spawn this floating menu)
 		// Assumes the spawner is a sibling of this FloatingMenu component
@@ -392,8 +390,6 @@
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
 		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
-			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
-			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 			dispatch("open", false);
 		}
 

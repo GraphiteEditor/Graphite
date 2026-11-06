@@ -12,7 +12,7 @@ Useful containers that control the flow of content held within.
 
 ## Panels: `panels/`
 
-The dockable tabbed regions like the Document, Properties, Layers, Data, and Welcome panels.
+The dockable tabbed regions like the Document, Inspector, Layers, Data, and Welcome panels.
 
 ## Views: `views/`
 

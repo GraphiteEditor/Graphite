@@ -33,7 +33,6 @@
 			data-tooltip-label={entry.tooltipLabel}
 			data-tooltip-description={entry.tooltipDescription}
 			data-tooltip-shortcut={entry.tooltipShortcut?.shortcut ? JSON.stringify(entry.tooltipShortcut.shortcut) : undefined}
-			tabindex={index === selectedIndex ? -1 : 0}
 			{disabled}
 		>
 			{#if entry.icon}

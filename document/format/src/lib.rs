@@ -10,35 +10,42 @@
 // gated off wasm to avoid unused-import warnings.
 #[cfg(not(target_family = "wasm"))]
 use std::path::Path;
+use std::sync::Arc;
 
 #[cfg(not(target_family = "wasm"))]
 use document_container::backends::folder::FolderBackend;
 use document_container::{AnyContainer, AsyncContainer, ByteHolder};
+#[cfg(feature = "migrations")]
+use document_graph_storage::Rev;
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource};
-use document_graph_storage::{Delta, HotOp, PeerId, Registry, Session, UserId};
+use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Session, Sorted, UserId};
 #[cfg(feature = "conversion")]
 use graphene_resource::LoadResource;
-use graphene_resource::ResourceHash;
+use graphene_resource::{ResourceHash, ResourceStorage};
 
 pub mod codec;
 pub mod error;
 pub mod export;
 pub mod io;
 pub mod layout;
+mod load;
 pub mod manifest;
+#[cfg(feature = "migrations")]
+mod migrate;
+#[cfg(feature = "network")]
+pub mod network;
 pub mod persist;
 pub mod resource;
-pub mod session_state;
 
 pub use codec::{Codec, CodecError};
+pub use document_graph_storage::SessionState;
 pub use error::Error;
 pub use export::{ExportFormat, ExportOptions};
 pub use io::ReadError;
 pub use layout::{GddV1Layout, Layout};
 pub use manifest::{Manifest, PayloadCodecs};
 pub use resource::ResourceProxy;
-pub use session_state::SessionState;
 
 /// The default [`Layout`], so callers write `GddV1` for the common `Gdd<GddV1Layout>` handle.
 pub type GddV1 = Gdd<GddV1Layout>;
@@ -52,6 +59,17 @@ pub const MANIFEST_CODEC: Codec = Codec::Json;
 /// want a diffable on-disk representation. Recorded in the manifest at create time and read back on
 /// open (see [`manifest::PayloadCodecs`]), so the persist path never probes the filesystem.
 pub const DEFAULT_SESSION_CODEC: Codec = Codec::Json;
+/// One fact per line, so recording one only appends.
+pub const METADATA_CODEC: Codec = Codec::JsonLines;
+
+/// The facts as lines of the metadata file.
+pub(crate) fn encode_facts<'a>(facts: impl IntoIterator<Item = &'a MetadataFact>) -> Result<Vec<u8>, Error> {
+	let mut buffer = Vec::new();
+	for fact in facts {
+		METADATA_CODEC.append(&mut buffer, fact)?;
+	}
+	Ok(buffer)
+}
 pub const DEFAULT_REGISTRY_CODEC: Codec = Codec::Postcard;
 pub const DEFAULT_HISTORY_CODEC: Codec = Codec::PostcardFrames;
 pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
@@ -65,8 +83,7 @@ pub const DEFAULT_HOT_LOG_CODEC: Codec = Codec::PostcardFrames;
 /// read.
 /// `Clone` shares the working-copy container (`AnyContainer` is a handle) so a cloned handle reads and writes
 /// the *same* on-disk/OPFS working copy — including any writes still queued on the OPFS backend. The
-/// `Session` is cloned (a snapshot copy); the container is shared.
-#[derive(Clone)]
+/// `Session` is cloned as a snapshot copy. A clone is not connected to the room.
 pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) session: Session,
 	pub(crate) working: AnyContainer,
@@ -75,12 +92,100 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	/// per-payload codecs so the persist path never probes the filesystem, keeping it fully read-free
 	/// and synchronous.
 	pub(crate) manifest: Manifest,
+	/// See [`HistoryMetadata`].
+	pub(crate) metadata: HistoryMetadata,
+	pub(crate) wall_clock_ms: Option<f64>,
 	/// Per-peer view settings (PTZ, rulers, etc.), persisted in `session.json` not the registry, so
 	/// they stay out of the CRDT/history. Opaque to the storage layer; the editor owns the keys/values.
 	pub(crate) view_settings: std::collections::BTreeMap<String, document_graph_storage::Value>,
 	/// Per-network view settings (node-graph nav + previewing), keyed by stable [`NetworkId`]. Same per-peer
 	/// `session.json` treatment as [`view_settings`](Self::view_settings), but scoped per network.
 	pub(crate) network_view_settings: std::collections::BTreeMap<document_graph_storage::NetworkId, std::collections::BTreeMap<String, document_graph_storage::Value>>,
+	pub(crate) migrated: bool,
+	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
+	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	#[cfg(feature = "network")]
+	pub(crate) network: Option<peer_transport::Replica>,
+	#[cfg(feature = "network")]
+	pub(crate) pending_persist: PendingPersist,
+	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
+	#[cfg(feature = "network")]
+	pub(crate) remote_changes: network::RemoteChanges,
+	/// The step a guest asked the host to undo, with the head it asked under. A repeat waits until the head moves.
+	#[cfg(feature = "network")]
+	pub(crate) undo_requested: Option<(document_graph_storage::Rev, Option<document_graph_storage::Rev>)>,
+	pub(crate) interactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
+	pub(crate) own_last_staged_ms: Option<f64>,
+	pub(crate) own_staged_since_tick: bool,
+	/// Whether the document belongs in its room, persisted so a reopen reconnects.
+	pub(crate) shared: bool,
+}
+
+/// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per file.
+#[cfg(feature = "network")]
+#[derive(Debug, Default, Clone, Copy)]
+pub(crate) struct PendingPersist {
+	pub(crate) history: bool,
+	pub(crate) hot_log: bool,
+	pub(crate) snapshot: bool,
+}
+
+/// What [`Gdd::open_in_with`] passes on to node migrations.
+#[derive(Default)]
+struct MigrationInputs<'a> {
+	#[cfg(feature = "migrations")]
+	byte_store: Option<&'a dyn graphene_resource::LoadResource>,
+	#[cfg(feature = "migrations")]
+	host: Option<&'a dyn migration_core::MigrationHost>,
+	#[cfg(not(feature = "migrations"))]
+	_lifetime: std::marker::PhantomData<&'a ()>,
+}
+
+impl<L: Layout + Clone> Clone for Gdd<L> {
+	fn clone(&self) -> Self {
+		Self {
+			view_settings: self.view_settings.clone(),
+			network_view_settings: self.network_view_settings.clone(),
+			wall_clock_ms: self.wall_clock_ms,
+			byte_store: self.byte_store.clone(),
+			migrated: self.migrated,
+			shared: self.shared,
+			interactions_seen: self.interactions_seen.clone(),
+			own_last_staged_ms: self.own_last_staged_ms,
+			own_staged_since_tick: self.own_staged_since_tick,
+			..Self::assemble(self.session.clone(), self.working.clone(), self.layout.clone(), self.manifest.clone(), self.metadata.clone())
+		}
+	}
+}
+
+impl<L: Layout> Gdd<L> {
+	/// A handle with no view settings, not shared, and no live state.
+	fn assemble(session: Session, working: AnyContainer, layout: L, manifest: Manifest, metadata: HistoryMetadata) -> Self {
+		Self {
+			session,
+			working,
+			layout,
+			manifest,
+			metadata,
+			wall_clock_ms: None,
+			view_settings: Default::default(),
+			network_view_settings: Default::default(),
+			byte_store: None,
+			migrated: false,
+			#[cfg(feature = "network")]
+			network: None,
+			#[cfg(feature = "network")]
+			pending_persist: PendingPersist::default(),
+			#[cfg(feature = "network")]
+			remote_changes: network::RemoteChanges::default(),
+			#[cfg(feature = "network")]
+			undo_requested: None,
+			interactions_seen: Default::default(),
+			own_last_staged_ms: None,
+			own_staged_since_tick: false,
+			shared: false,
+		}
+	}
 }
 
 /// Native folder-backed convenience constructors. On wasm the editor builds an OPFS-backed
@@ -98,10 +203,10 @@ impl<L: Layout + Default> Gdd<L> {
 
 	/// Create a fresh, empty working copy at `path` bound to `peer`. Writes a default manifest
 	/// and session state; the caller fills in editor metadata via [`Gdd::update_manifest`].
-	pub fn create(path: &Path, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create(path: &Path, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let working = AnyContainer::Folder(FolderBackend::create(path)?);
 		let layout = L::default();
-		Self::create_in(working, layout, peer, document_uuid, editor_version, stdlib_version)
+		Self::create_in(working, layout, peer, user, document_uuid, editor_version, stdlib_version)
 	}
 }
 
@@ -118,12 +223,45 @@ impl<L: Layout> Gdd<L> {
 		Self::open_in(working, layout).await
 	}
 
+	/// [`open_from_archive`](Self::open_from_archive), offering migrations what [`open_in_with`](Self::open_in_with) describes.
+	#[cfg(all(feature = "migrations", any(feature = "zip", feature = "xz")))]
+	pub async fn open_from_archive_with(
+		bytes: &[u8],
+		mut working: AnyContainer,
+		layout: L,
+		byte_store: Option<&dyn graphene_resource::LoadResource>,
+		host: Option<&dyn migration_core::MigrationHost>,
+	) -> Result<Self, Error> {
+		document_container::archive::open_auto(bytes, &mut working)?;
+
+		Self::open_in_with(working, layout, byte_store, host).await
+	}
+
+	/// Reads the manifest without opening the copy, which may be another writer's.
+	pub async fn read_manifest(working: &AnyContainer, layout: &L) -> Result<Manifest, Error> {
+		Ok(io::read_single(working, layout.manifest_basename(), MANIFEST_CODEC).await?)
+	}
+
 	/// Backend-agnostic open. Splits out so tests can supply a [`document_container::backends::memory::MemoryBackend`].
 	///
 	/// # Errors
 	/// [`Error::MissingManifest`] if the container holds no manifest, [`Error::WrongFormat`] / [`Error::UnsupportedVersion`]
 	/// if it fails validation, plus the usual [`Error::Read`] / [`Error::Codec`] / [`Error::Crdt`] if a payload is malformed.
 	pub async fn open_in(working: AnyContainer, layout: L) -> Result<Self, Error> {
+		Self::open_stored(working, layout, MigrationInputs::default()).await
+	}
+
+	/// [`open_in`](Self::open_in), offering migrations what only the caller has. `host` gives them the compiler, and without one, those asking for it
+	/// settle on their fallback for good. `byte_store` holds declarations the container doesn't, such as the editor's global cache.
+	#[cfg(feature = "migrations")]
+	pub async fn open_in_with(working: AnyContainer, layout: L, byte_store: Option<&dyn graphene_resource::LoadResource>, host: Option<&dyn migration_core::MigrationHost>) -> Result<Self, Error> {
+		Self::open_stored(working, layout, MigrationInputs { byte_store, host }).await
+	}
+
+	#[cfg_attr(not(feature = "migrations"), expect(unused_variables, reason = "only node migrations use what the caller offers"))]
+	async fn open_stored(working: AnyContainer, layout: L, inputs: MigrationInputs<'_>) -> Result<Self, Error> {
+		persist::finish_staged_rewrite(&working, &layout).await?;
+
 		let manifest: Manifest = match io::read_single(&working, layout.manifest_basename(), MANIFEST_CODEC).await {
 			Ok(manifest) => manifest,
 			Err(io::ReadError::NotFound { .. }) => return Err(Error::MissingManifest),
@@ -132,72 +270,129 @@ impl<L: Layout> Gdd<L> {
 		validate_manifest(&manifest)?;
 		let codecs = manifest.codecs;
 
-		let session_state: SessionState = match io::exists(&working, layout.session_basename(), codecs.session).await {
-			true => io::read_single(&working, layout.session_basename(), codecs.session).await?,
-			false => SessionState::default(),
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the stored records"))]
+		let mut records = load::StoredRecords::read(&working, &layout, codecs).await?;
+		#[cfg(feature = "migrations")]
+		let format_outcome = migrate::migrate_format(&mut records, codecs, manifest.format_version)?;
+		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the decoded payloads"))]
+		let mut payloads = records.decode(codecs)?;
+		#[cfg(feature = "migrations")]
+		let mut rehashed = std::collections::HashMap::new();
+		#[cfg(feature = "migrations")]
+		match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => {
+				// Records changed, so their content-addressed revs did too
+				let revs = migration_runner::rehash_deltas(payloads.history.as_deref_mut().unwrap_or_default());
+				rehashed = revs.clone();
+				let remap = |rev: Rev| revs.get(&rev).copied().unwrap_or(rev);
+				let state = &mut payloads.session;
+				state.head_rev = state.head_rev.map(remap);
+				state.last_broadcast_rev = state.last_broadcast_rev.map(remap);
+				state.redo_stack.iter_mut().for_each(|rev| *rev = remap(*rev));
+			}
+			Some(migration_runner::HistoryOutcome::Truncated) => {
+				let state = &mut payloads.session;
+				state.head_rev = None;
+				state.last_broadcast_rev = None;
+				state.redo_stack.clear();
+			}
+			Some(migration_runner::HistoryOutcome::Untouched) | None => {}
+		}
+		let load::DecodedPayloads {
+			registry,
+			history,
+			hot_log,
+			session: mut session_state,
+		} = payloads;
+		let metadata = match io::exists(&working, layout.metadata_basename(), METADATA_CODEC).await {
+			true => HistoryMetadata::fold(io::iter_lenient(&working, layout.metadata_basename(), METADATA_CODEC).await?),
+			false => HistoryMetadata::default(),
+		};
+		#[cfg(feature = "migrations")]
+		let metadata = match format_outcome {
+			Some(migration_runner::HistoryOutcome::Rewritten) => migrate::remap_metadata(&metadata, |rev| Some(rehashed.get(&rev).copied().unwrap_or(rev))),
+			Some(migration_runner::HistoryOutcome::Truncated) => migrate::remap_metadata(&metadata, |_| None),
+			_ => metadata,
 		};
 
-		let has_registry = io::exists(&working, layout.registry_basename(), codecs.registry).await;
-		let has_history = io::exists(&working, layout.history_basename(), codecs.history).await;
+		// The history a registry-only document gets here has to be stored before the first edit, which would otherwise append to nothing
+		let bootstrapped = registry.is_some() && history.is_none();
 
 		let peer = session_state.peer_id;
 		let user = session_state.user_id;
-		let mut session = match (has_registry, has_history) {
-			(true, true) => {
-				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				let history = load_history(&working, &layout, codecs.history).await?;
-				Session::load(peer, user, registry, history, session_state.head_rev, session_state.redo_stack, session_state.next_node_counter)
-			}
-			(true, false) => {
-				// Registry-only export: synthesize a history that reproduces this state.
-				let registry: Registry = io::read_single(&working, layout.registry_basename(), codecs.registry).await?;
-				Session::bootstrap_from_registry(peer, user, registry)?
-			}
-			(false, _) => Session::replay_from_history(peer, user, load_history(&working, &layout, codecs.history).await?, session_state.next_node_counter)?,
+		let mut session = match (registry, history) {
+			(Some(registry), Some(history)) => Session::load(
+				peer,
+				user,
+				registry,
+				history,
+				session_state.head_rev,
+				std::mem::take(&mut session_state.redo_stack),
+				session_state.next_node_counter,
+			),
+			// Registry-only export: synthesize a history that reproduces this state
+			(Some(registry), None) => Session::bootstrap_from_registry(peer, user, registry)?,
+			(None, history) => Session::replay_from_history(peer, user, history.unwrap_or_default(), session_state.next_node_counter)?,
 		};
 
-		// Restore the published frontier (silent/published undo boundary) regardless of which load arm ran.
-		if let Some(rev) = session_state.last_broadcast_rev {
-			session.publish_up_to(rev);
+		// Before the hot log replays, so a retired op in it is dropped rather than staged again.
+		restore_cursor(&mut session, &session_state);
+		for hot_op in hot_log {
+			session.replay_hot_op(hot_op)?;
 		}
 
-		replay_hot_log(&working, &layout, codecs.hot_log, &mut session).await?;
-
-		Ok(Self {
-			session,
-			working,
-			layout,
-			manifest,
+		let mut gdd = Self {
 			view_settings: session_state.view_settings,
 			network_view_settings: session_state.network_view_settings,
-		})
+			shared: session_state.shared,
+			..Self::assemble(session, working, layout, manifest, metadata)
+		};
+
+		#[cfg(feature = "migrations")]
+		{
+			let migrated_nodes = gdd.migrate_nodes(inputs.byte_store, inputs.host).await?;
+			gdd.migrated = format_outcome.is_some() || migrated_nodes;
+			if gdd.migrated {
+				gdd.manifest.format_version = gdd.manifest.format_version.max(manifest::SUPPORTED_FORMAT_VERSION);
+			}
+		}
+
+		if bootstrapped || gdd.migrated {
+			gdd.persist_all().await?;
+		}
+
+		Ok(gdd)
 	}
 
 	/// Backend-agnostic create. Records the working-copy default codecs (see `DEFAULT_*_CODEC`) in
 	/// the manifest and writes each payload with its recorded codec.
-	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
+	pub fn create_in(working: AnyContainer, layout: L, peer: PeerId, user: UserId, document_uuid: u64, editor_version: String, stdlib_version: String) -> Result<Self, Error> {
 		let manifest = Manifest::new(document_uuid, editor_version, stdlib_version);
 		let codecs = manifest.codecs;
 		io::write_single(&working, layout.manifest_basename(), MANIFEST_CODEC, &manifest)?;
 		let session_state = SessionState {
 			peer_id: peer,
-			user_id: UserId(peer.0),
+			user_id: user,
 			..Default::default()
 		};
-		io::write_single(&working, layout.session_basename(), codecs.session, &session_state)?;
+		io::write_single(&working, layout.session_basename(), codecs.session, &Sorted(&session_state))?;
 
-		let session = Session::with_peer(peer);
-		io::write_single(&working, layout.registry_basename(), codecs.registry, session.registry())?;
+		let session = Session::with_identity(peer, user);
+		io::write_single(&working, layout.registry_basename(), codecs.registry, &Sorted(session.registry()))?;
 
-		Ok(Self {
-			session,
-			working,
-			layout,
-			manifest,
-			view_settings: std::collections::BTreeMap::new(),
-			network_view_settings: std::collections::BTreeMap::new(),
-		})
+		Ok(Self::assemble(session, working, layout, manifest, HistoryMetadata::default()))
 	}
+}
+
+/// Carry the persisted cursor onto a freshly loaded session, whichever way it was loaded.
+pub(crate) fn restore_cursor(session: &mut Session, state: &SessionState) {
+	if let Some(rev) = state.last_broadcast_rev {
+		session.publish_up_to(rev);
+	}
+	session.restore_hot_sequence(state.last_hot_sequence);
+	session.restore_clock_counter(state.clock_counter);
+	session.restore_next_node_counter(state.next_node_counter);
+	session.absorb_retired_marks(&state.retired_marks);
 }
 
 fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {
@@ -212,23 +407,6 @@ fn validate_manifest(manifest: &Manifest) -> Result<(), Error> {
 			found: manifest.format_version,
 			max_supported: manifest::SUPPORTED_FORMAT_VERSION,
 		});
-	}
-	Ok(())
-}
-
-async fn load_history<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec) -> Result<Vec<Delta>, Error> {
-	if !io::exists(working, layout.history_basename(), codec).await {
-		return Ok(Vec::new());
-	}
-	Ok(io::iter::<Delta>(working, layout.history_basename(), codec).await?)
-}
-
-async fn replay_hot_log<L: Layout>(working: &AnyContainer, layout: &L, codec: Codec, session: &mut Session) -> Result<(), Error> {
-	if !io::exists(working, layout.hot_log_basename(), codec).await {
-		return Ok(());
-	}
-	for hot_op in io::iter::<HotOp>(working, layout.hot_log_basename(), codec).await? {
-		session.replay_hot_op(hot_op)?;
 	}
 	Ok(())
 }
@@ -256,6 +434,11 @@ impl<L: Layout> Gdd<L> {
 		&self.manifest
 	}
 
+	/// Whether opening ran a format step or node migration, and so rewrote the working copy.
+	pub fn migrated(&self) -> bool {
+		self.migrated
+	}
+
 	pub fn layout(&self) -> &L {
 		&self.layout
 	}
@@ -272,14 +455,13 @@ impl<L: Layout> Gdd<L> {
 		&self.network_view_settings
 	}
 
-	/// Resolve each runtime `network_path` to its stable [`NetworkId`](document_graph_storage::NetworkId), so the
-	/// editor can key per-network, per-peer view state by a stable id. See [`Session::network_ids`].
+	/// The stable [`NetworkId`](document_graph_storage::NetworkId) of each runtime network location, to key per-network view state. See [`Session::network_ids`].
 	#[cfg(feature = "conversion")]
 	pub fn network_ids<M: NodeMetadataSource>(
 		&self,
 		network: &graph_craft::document::NodeNetwork,
 		metadata: &M,
-	) -> Result<std::collections::HashMap<Vec<core_types::uuid::NodeId>, document_graph_storage::NetworkId>, CommitError> {
+	) -> Result<std::collections::HashMap<graph_craft::document::NetworkLocation, document_graph_storage::NetworkId>, CommitError> {
 		self.session.network_ids(network, metadata)
 	}
 
@@ -288,6 +470,10 @@ impl<L: Layout> Gdd<L> {
 	/// undo has dropped them from the current registry.
 	pub fn all_referenced_resource_hashes(&self) -> std::collections::HashSet<ResourceHash> {
 		self.session.all_referenced_resource_hashes()
+	}
+
+	pub fn resource_gc_roots(&self) -> std::collections::HashSet<ResourceHash> {
+		self.session.resource_gc_roots()
 	}
 
 	/// Drop the session and return the working-copy container + layout.

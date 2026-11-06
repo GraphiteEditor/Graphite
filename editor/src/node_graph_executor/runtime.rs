@@ -1,31 +1,34 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
-use glam::{DAffine2, DVec2, UVec2};
+use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
+use crate::task::{Spawn, Spawner, Task};
+use glam::{DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
-use graph_craft::concrete;
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
-use graph_craft::graphene_compiler::Compiler;
+use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
 use graph_craft::proto::GraphErrors;
-use graphene_std::application_io::{ApplicationIo, ExportFormat, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig, Texture};
-use graphene_std::bounds::RenderBoundingBox;
+use graphene_hash::CacheHash;
+use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::list::{Item, List};
 use graphene_std::memo::IORecord;
-use graphene_std::ops::Convert;
+use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
-use graphene_std::renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, SvgSegment};
-use graphene_std::transform::RenderQuality;
-use graphene_std::vector::Vector;
+use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::{Artboard, Context, Graphic};
-use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
+use graphene_std::vector::{Vector, VectorGeometry, paths_from_list_row_attributes};
+use graphene_std::{Context, ContextFeatures, ContextOverrides, NodeError, OwnedContextImpl, Poll};
+use interpreted_executor::dynamic_executor::{DynamicExecutor, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
-use spin::Mutex;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender};
+use thumbnails::Thumbnails;
+
+mod thumbnails;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
 /// Some of these fields are put into a [`PlatformEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -36,25 +39,31 @@ pub struct NodeRuntime {
 	#[cfg(not(test))]
 	executor: DynamicExecutor,
 	receiver: Receiver<GraphRuntimeRequest>,
-	sender: InternalNodeGraphUpdateSender,
-	editor_preferences: EditorPreferences,
+	sender: Sender<NodeGraphUpdate>,
+	editor_wake: Wake,
+	dirty: Arc<AtomicBool>,
+	pending: Option<ExecutionRequest>,
+	pending_export: Option<ExecutionRequest>,
+	pending_eyedropper: Option<ExecutionRequest>,
+	pending_thumbnails: Option<DocumentId>,
+	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
-	update_thumbnails: bool,
+	async_runtime: Option<AsyncRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
-	monitor_nodes: Vec<Vec<NodeId>>,
+	node_graph_warnings: GraphErrors,
+	monitor_nodes: Vec<(Vec<NodeId>, NodeId)>,
+	thumbnails: Thumbnails,
 
-	/// Which node is inspected and which monitor node is used (if any) for the current execution.
+	/// The node the Data panel inspects.
 	inspect_state: Option<InspectState>,
 
 	preprocessor: preprocessor::Preprocessor,
 
-	// TODO: Remove, it doesn't need to be persisted anymore
-	/// The current renders of the thumbnails for layer nodes.
-	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
-	vector_modify: HashMap<NodeId, Vector>,
+	vector_modify: HashMap<NodeId, VectorGeometry>,
+	vector_evaluations: HashMap<NodeId, (NodeId, u64)>,
 
 	/// Cached surface for Wasm viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu", feature = "wasm"))]
@@ -69,18 +78,34 @@ pub struct NodeRuntime {
 pub enum GraphRuntimeRequest {
 	GraphUpdate(GraphUpdate),
 	ExecutionRequest(ExecutionRequest),
-	EditorPreferencesUpdate(EditorPreferences),
-	CopySvgTextClipboard(String, Vec<NodeId>),
+	ThumbnailsInView {
+		layers: HashSet<NodeId>,
+		document_id: DocumentId,
+	},
+	/// The full path from the root network to the node the Data panel inspects, or empty for none.
+	Inspect(Vec<NodeId>),
+	InspectContextOverrides(ContextOverrides),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
 pub struct GraphUpdate {
 	pub(super) network: NodeNetwork,
 	pub(super) resources: ResourceRegistry,
-	/// Full path from the root network to the node that should be temporarily inspected during execution.
-	/// The last element is the inspect target; preceding elements identify the nested subnetwork it lives in,
-	/// so the runtime can splice its monitor node alongside the target instead of only at the top level.
+	/// Full path from the root network to the node the Data panel inspects.
 	pub(super) node_to_inspect: Vec<NodeId>,
+	/// The node each network renders in place of its export, paired with that network's path.
+	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
+	/// Full path from the root network to every layer, which are the nodes with thumbnails.
+	pub(super) layers: Vec<Vec<NodeId>>,
+}
+
+/// Replaces each network's primary export with its previewed node.
+pub(crate) fn apply_previews(network: &mut NodeNetwork, previewed: &[(Vec<NodeId>, RootNode)]) {
+	for (network_path, previewed) in previewed {
+		let Some(nested) = network.nested_network_mut(network_path) else { continue };
+		let Some(export) = nested.exports.first_mut() else { continue };
+		*export = NodeInput::node(previewed.node_id, previewed.output_index);
+	}
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -94,51 +119,23 @@ pub struct ExportConfig {
 	pub artboard_count: usize,
 }
 
-#[derive(Clone)]
-struct InternalNodeGraphUpdateSender(Sender<NodeGraphUpdate>);
-
-impl InternalNodeGraphUpdateSender {
-	fn send_compilation_response(&self, response: CompilationResponse) {
-		self.0.send(NodeGraphUpdate::CompilationResponse(response)).expect("Failed to send response")
-	}
-
-	fn send_execution_response(&self, response: ExecutionResponse) {
-		self.0.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response")
-	}
-
-	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
-		self.0.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response")
-	}
-
-	fn send_svg_text_clipboard(&self, svg_string: Option<String>, graphite_json: String) {
-		self.0.send(NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json }).expect("Failed to send response")
-	}
-}
-
-impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		self.0.send(NodeGraphUpdate::NodeGraphUpdateMessage(message)).expect("Failed to send response")
-	}
-}
-
-// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
-pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
-
 impl NodeRuntime {
-	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
+	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>, editor_wake: Wake) -> Self {
 		Self {
 			executor: DynamicExecutor::default(),
 			receiver,
-			sender: InternalNodeGraphUpdateSender(sender.clone()),
-			editor_preferences: EditorPreferences::default(),
+			sender,
+			editor_wake,
+			dirty: Default::default(),
+			pending: None,
+			pending_export: None,
+			pending_eyedropper: None,
+			pending_thumbnails: None,
 			old_graph: None,
 			resources: ResourceRegistry::default(),
-			update_thumbnails: true,
+			async_runtime: None,
 
 			editor_api: PlatformEditorApi {
-				editor_preferences: Box::new(EditorPreferences::default()),
-				node_graph_message_sender: Box::new(InternalNodeGraphUpdateSender(sender)),
-
 				#[cfg(not(test))]
 				application_io: None,
 
@@ -148,12 +145,14 @@ impl NodeRuntime {
 			.into(),
 
 			node_graph_errors: Vec::new(),
+			node_graph_warnings: Vec::new(),
 			monitor_nodes: Vec::new(),
+			thumbnails: Thumbnails::new(),
 
 			preprocessor: preprocessor::Preprocessor::new(),
 
-			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
+			vector_evaluations: Default::default(),
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_canvas_cache: CanvasSurfaceHandle::new(),
@@ -162,228 +161,251 @@ impl NodeRuntime {
 		}
 	}
 
-	pub async fn run(&mut self) -> Option<Texture> {
-		let mut preferences = None;
+	pub fn update(&mut self) {
+		if self.pending_export.is_some() {
+			return;
+		}
+
 		let mut graph = None;
-		let mut eyedropper = None;
-		let mut execution = None;
-		let mut svg_clipboard = None;
 		for request in self.receiver.try_iter() {
 			match request {
-				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
-				GraphRuntimeRequest::ExecutionRequest(ref execution_request) => {
-					if execution_request.render_config.for_eyedropper {
-						eyedropper = Some(request);
-
-						continue;
-					}
-
-					let for_export = execution_request.render_config.for_export;
-
-					execution = Some(request);
-
-					// If we get an export request we always execute it immedeatly otherwise it could get deduplicated
-					if for_export {
-						break;
+				GraphRuntimeRequest::GraphUpdate(update) => graph = Some(update),
+				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_eyedropper => self.pending_eyedropper = Some(request),
+				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_export => {
+					self.pending_export = Some(request);
+					self.dirty.store(true, Ordering::Release);
+					break;
+				}
+				GraphRuntimeRequest::ExecutionRequest(request) => {
+					self.pending = Some(request);
+					self.dirty.store(true, Ordering::Release);
+				}
+				GraphRuntimeRequest::ThumbnailsInView { layers, document_id } => {
+					self.thumbnails.set_in_view(layers);
+					self.pending_thumbnails = Some(document_id);
+				}
+				// A graph update applied after this loop would otherwise inspect what was selected before
+				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
+					Some(update) => update.node_to_inspect = node_to_inspect,
+					None => self.inspect_state = InspectState::new(node_to_inspect),
+				},
+				GraphRuntimeRequest::InspectContextOverrides(overrides) => {
+					if let Some(inspect_state) = &mut self.inspect_state {
+						inspect_state.overrides = overrides;
+						inspect_state.overrides_changed = true;
 					}
 				}
-				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
-				GraphRuntimeRequest::CopySvgTextClipboard(..) => svg_clipboard = Some(request),
 			}
 		}
 
-		// Eydropper should use the same time and pointer to not invalidate the cache
-		if let Some(GraphRuntimeRequest::ExecutionRequest(eyedropper)) = &mut eyedropper
-			&& let Some(GraphRuntimeRequest::ExecutionRequest(execution)) = &execution
-		{
-			eyedropper.render_config.time = execution.render_config.time;
-			eyedropper.render_config.pointer = execution.render_config.pointer;
-		}
-
-		let requests = [preferences, graph, eyedropper, svg_clipboard, execution].into_iter().flatten();
-		let mut return_texture = None;
-		for request in requests {
-			match request {
-				GraphRuntimeRequest::EditorPreferencesUpdate(preferences) => {
-					self.editor_preferences = preferences.clone();
-					self.editor_api = PlatformEditorApi {
-						application_io: self.editor_api.application_io.clone(),
-						node_graph_message_sender: Box::new(self.sender.clone()),
-						editor_preferences: Box::new(preferences),
-					}
-					.into();
-					if let Some(graph) = self.old_graph.clone() {
-						// We ignore this result as compilation errors should have been reported in an earlier iteration
-						let _ = self.update_network(graph).await;
-					}
-				}
-				GraphRuntimeRequest::GraphUpdate(graph_update) => self.graph_update(graph_update).await,
-				GraphRuntimeRequest::ExecutionRequest(request) => self.execution_request(request, &mut return_texture).await,
-				GraphRuntimeRequest::CopySvgTextClipboard(text_string_clipboard, selected_node_ids) => self.copy_svg_text_clipboard(text_string_clipboard, selected_node_ids),
-			}
-		}
-		return_texture
-	}
-
-	async fn graph_update(&mut self, graph_update: GraphUpdate) {
-		let GraphUpdate {
+		let Some(GraphUpdate {
 			mut network,
 			resources,
 			node_to_inspect,
-		} = graph_update;
+			previewed,
+			layers,
+		}) = graph
+		else {
+			return;
+		};
 
-		// Insert the monitor node to manage the inspection
-		self.inspect_state = InspectState::monitor_inspect_node(&mut network, &node_to_inspect);
+		apply_previews(&mut network, &previewed);
 
-		self.old_graph = Some(network.clone());
+		match &mut self.inspect_state {
+			Some(inspect_state) if inspect_state.inspect_node_path == node_to_inspect => inspect_state.last_evaluation = None,
+			_ => self.inspect_state = InspectState::new(node_to_inspect),
+		}
+
 		self.resources = resources;
 
 		self.node_graph_errors.clear();
-		let result = self.update_network(network).await;
+		self.node_graph_warnings.clear();
+		let result = self.update_network(network.clone());
+		if result.is_ok() {
+			self.thumbnails.update_sources(&layers, &network, &self.executor);
+			self.old_graph = Some(network);
+		}
 		let node_graph_errors = self.node_graph_errors.clone();
+		let node_graph_warnings = self.node_graph_warnings.clone();
 
-		self.update_thumbnails = true;
-
-		self.sender.send_compilation_response(CompilationResponse { result, node_graph_errors });
+		self.sender
+			.send(NodeGraphUpdate::CompilationResponse(CompilationResponse {
+				result,
+				node_graph_errors,
+				node_graph_warnings,
+			}))
+			.expect("Failed to send response");
 	}
 
-	async fn execution_request(&mut self, request: ExecutionRequest, return_texture: &mut Option<Texture>) {
-		let ExecutionRequest { execution_id, mut render_config, .. } = request;
+	pub async fn run(&mut self) -> Option<Texture> {
+		let dirty = self.dirty.swap(false, Ordering::Acquire);
+		let mut texture = None;
 
-		// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
+		if let Some(export) = self.pending_export {
+			if dirty {
+				self.run_export(export).await;
+			}
+		} else {
+			let viewport = if dirty { self.pending } else { None };
+
+			if let Some(document_id) = self.pending_thumbnails.take()
+				&& viewport.is_none()
+			{
+				let mut responses = VecDeque::new();
+				self.thumbnails.render_stale(&self.executor, &self.editor_api, &mut responses).await;
+				if !responses.is_empty() {
+					self.sender.send(NodeGraphUpdate::Thumbnails { responses, document_id }).expect("Failed to send response");
+				}
+			}
+
+			if let Some(inspect_state) = &mut self.inspect_state
+				&& std::mem::take(&mut inspect_state.overrides_changed)
+				&& viewport.is_none()
+			{
+				let inspect_result = inspect_state.access(&self.executor, self.old_graph.as_ref());
+				self.sender.send(NodeGraphUpdate::InspectResult(Box::new(inspect_result))).expect("Failed to send response");
+			}
+
+			if let Some(eyedropper) = self.pending_eyedropper.take() {
+				self.run_eyedropper(eyedropper).await;
+			}
+
+			if let Some(viewport) = viewport {
+				texture = self.run_viewport(viewport).await;
+			}
+		}
+
+		(self.editor_wake)();
+		texture
+	}
+
+	async fn run_viewport(&mut self, request: ExecutionRequest) -> Option<Texture> {
+		self.thumbnails.set_scale(request.render_config.scale);
+
+		let mut result = self.evaluate(request)?;
+
+		let texture = if let Some(data) = result.render_output()
+			&& let RenderOutputType::Texture(texture) = data
+		{
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			{
+				self.current_viewport_texture = Some(texture.clone());
+
+				let application_io = self.editor_api.application_io.as_ref().unwrap();
+				let executor = application_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
+				self.wasm_canvas_cache.present(texture, executor);
+
+				*data = RenderOutputType::CanvasFrame {
+					canvas_id: self.wasm_canvas_cache.id(),
+					resolution: request.render_config.viewport.resolution.as_dvec2() / request.render_config.scale,
+				};
+				None
+			}
+			#[cfg(not(all(target_family = "wasm", feature = "gpu")))]
+			{
+				Some(texture.clone())
+			}
+		} else {
+			None
+		};
+
+		self.respond(request.execution_id, result).await;
+		texture
+	}
+
+	async fn run_export(&mut self, request: ExecutionRequest) {
+		let result = self.evaluate(request);
+		if matches!(result, Some(ExecutionResult::Pending)) {
+			return;
+		}
+
+		self.pending_export = None;
+		let Some(mut result) = result else { return };
+		self.dirty.store(true, Ordering::Release);
+
+		if let Some(data) = result.render_output()
+			&& let RenderOutputType::Texture(texture) = data
+		{
+			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
+			*data = RenderOutputType::Buffer { data: buffer, width, height };
+		}
+		self.respond(request.execution_id, result).await;
+	}
+
+	async fn run_eyedropper(&mut self, mut request: ExecutionRequest) {
+		// Eyedropper should use the same time and pointer to not invalidate the cache
+		if let Some(viewport) = self.pending {
+			request.render_config.time = viewport.render_config.time;
+			request.render_config.pointer = viewport.render_config.pointer;
+		}
+
+		if let Some(mut result) = self.evaluate(request)
+			&& let Some(RenderOutputType::Texture(texture)) = result.render_output()
+		{
+			let raster = self.read_back(texture.clone()).await;
+			self.sender.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response");
+		}
+	}
+
+	fn evaluate(&mut self, request: ExecutionRequest) -> Option<ExecutionResult> {
+		let ExecutionRequest { execution_id, mut render_config } = request;
+
+		// Render via the SVG pipeline even though raster was requested if SVG Preview render mode is active or there's no GPU
 		if render_config.export_format == ExportFormat::Raster && (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none()) {
 			render_config.export_format = ExportFormat::Svg;
 		}
 
-		let result = self.execute_network(render_config).await;
-		let mut responses = VecDeque::new();
-		// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-		if !render_config.for_eyedropper {
-			self.process_monitor_nodes(&mut responses, self.update_thumbnails);
-		}
-		self.update_thumbnails = false;
-
-		// Resolve the result from the inspection by accessing the monitor node
-		let inspect_result = self.inspect_state.as_ref().and_then(|state| state.access(&self.executor));
-
-		let (result, texture) = match result {
-			Ok(TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Texture(texture),
-				metadata,
-			})) if render_config.for_export => {
-				let executor = self
-					.editor_api
-					.application_io
-					.as_ref()
-					.unwrap()
-					.gpu_executor()
-					.expect("GPU executor should be available when we receive a texture");
-
-				let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
-
-				let (data, width, height) = raster_cpu.to_flat_u8();
-
-				(
-					Ok(TaggedValue::RenderOutput(RenderOutput {
-						data: RenderOutputType::Buffer { data, width, height },
-						metadata,
-					})),
-					None,
-				)
+		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
+		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
+			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
+			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
+			Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
+			Ok(Ok(Poll::Fallback(boxed))) => {
+				let (value, error) = *boxed;
+				ExecutionResult::Fallback(value, self.resolve_errors(&error))
 			}
-			Ok(TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Texture(texture),
-				metadata: _,
-			})) if render_config.for_eyedropper => {
-				let executor = self
-					.editor_api
-					.application_io
-					.as_ref()
-					.unwrap()
-					.gpu_executor()
-					.expect("GPU executor should be available when we receive a texture");
-
-				let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor).await;
-
-				self.sender.send_eyedropper_preview(raster_cpu);
-				return;
+			Ok(Ok(Poll::Error(error))) => ExecutionResult::Error(self.resolve_errors(&error)),
+			Ok(Err(error)) => ExecutionResult::Error(EvaluationErrors(Box::new([(Arc::clone(NodeError::new(error).error()), NodeErrorTrace::default())]))),
+			Err(payload) => {
+				let response = ExecutionResponse {
+					execution_id,
+					result: ExecutionResult::Panic(payload),
+					responses: VecDeque::new(),
+					dropped_thumbnails: Vec::new(),
+					vector_modify: HashMap::new(),
+					inspect_result: None,
+				};
+				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
+				return None;
 			}
-			// Eyedropper render that didn't produce a texture (e.g., SVG fallback when GPU is unavailable); discard it
-			_ if render_config.for_eyedropper => {
-				return;
-			}
-			#[cfg(all(target_family = "wasm", feature = "gpu"))]
-			Ok(TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Texture(texture),
-				metadata,
-			})) if !render_config.for_export => {
-				self.current_viewport_texture = Some(texture.clone());
-
-				let app_io = self.editor_api.application_io.as_ref().unwrap();
-				let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
-
-				self.wasm_canvas_cache.present(&texture, executor);
-
-				let logical_resolution = render_config.viewport.resolution.as_dvec2() / render_config.scale;
-				(
-					Ok(TaggedValue::RenderOutput(RenderOutput {
-						data: RenderOutputType::CanvasFrame {
-							canvas_id: self.wasm_canvas_cache.id(),
-							resolution: logical_resolution,
-						},
-						metadata,
-					})),
-					None,
-				)
-			}
-			Ok(TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Texture(texture),
-				metadata,
-			})) => (
-				Ok(TaggedValue::RenderOutput(RenderOutput {
-					data: RenderOutputType::Texture(texture.clone()),
-					metadata,
-				})),
-				Some(texture),
-			),
-			r => (r, None),
 		};
+		Some(result)
+	}
 
-		self.sender.send_execution_response(ExecutionResponse {
+	async fn respond(&mut self, execution_id: u64, result: ExecutionResult) {
+		let mut responses = VecDeque::new();
+		let dropped_thumbnails = self.process_monitor_nodes(&mut responses).await;
+		let inspect_result = self.inspect_state.as_mut().map(|state| state.access(&self.executor, self.old_graph.as_ref()));
+
+		let response = ExecutionResponse {
 			execution_id,
 			result,
 			responses,
+			dropped_thumbnails,
 			vector_modify: self.vector_modify.clone(),
 			inspect_result,
-		});
-		*return_texture = texture;
-	}
-
-	fn copy_svg_text_clipboard(&self, text_string_clipboard: String, selected_node_ids: Vec<NodeId>) {
-		let combined_graphics = self.collect_graphics(&selected_node_ids);
-
-		if combined_graphics.is_empty() {
-			self.sender.send_svg_text_clipboard(None, text_string_clipboard);
-			return;
-		}
-
-		let bounds = graphene_std::renderer::graphic_list_bounding_box(&combined_graphics, DAffine2::IDENTITY);
-		let final_bounds = match bounds {
-			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
-			_ => [DVec2::ZERO, DVec2::ONE],
 		};
-
-		let footprint = Footprint::from_bounds(final_bounds, RenderQuality::Full);
-		let render_params = RenderParams { footprint, ..Default::default() };
-		let mut render = SvgRender::new();
-		combined_graphics.render_svg(&mut render, &render_params);
-		render.format_svg(final_bounds[0], final_bounds[1]);
-
-		self.sender.send_svg_text_clipboard(Some(render.svg.to_svg_string()), text_string_clipboard);
+		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 	}
 
-	async fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
+	async fn read_back(&self, texture: Texture) -> Raster<CPU> {
+		let application_io = self.editor_api.application_io.as_ref().unwrap();
+		let executor = application_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
+		Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await
+	}
+
+	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
@@ -393,285 +415,194 @@ impl NodeRuntime {
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
 		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network) {
-			Ok(network) => network,
-			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
+		let CompiledNetwork { network: proto_network, warnings } = match c.compile_single(scoped_network) {
+			Ok(compiled_network) => compiled_network,
+			Err(CompileError::Graph(errors)) => {
+				let message = format!("{errors:?}");
+				self.node_graph_errors = errors;
+				return Err((ResolvedDocumentNodeTypesDelta::default(), message));
+			}
+			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
+		self.node_graph_warnings = warnings;
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
 			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
-			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
-			.collect::<Vec<_>>();
+			.map(|(id, node)| (node.original_location.path.clone().unwrap_or_default(), *id))
+			.collect();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|(types, e)| {
+		let result = self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
-		})
+		});
+		self.async_runtime().update_sources(self.executor.sources());
+		result
 	}
 
-	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
-		use graph_craft::graphene_compiler::Executor;
-
-		match self.executor.input_type() {
-			Some(t) if t == concrete!(Context) => (&self.executor).execute(render_config.into_context()).await.map_err(|e| e.to_string()),
-			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
-			Some(t) => Err(format!("Invalid input type {t:?}")),
-			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
+	fn resolve_errors(&self, error: &NodeError) -> EvaluationErrors {
+		let source_map = self.executor.tree().source_map();
+		let paths = |node: NodeId| -> NodePaths {
+			let mut paths: Vec<_> = source_map.iter().filter(|(_, (id, _))| *id == node).map(|(path, _)| path.clone()).collect();
+			paths.sort_unstable();
+			paths.into()
+		};
+		let mut errors = Vec::new();
+		let output = self.executor.output();
+		let mut pending = vec![(vec![paths(output)], output, error)];
+		while let Some((mut trace, node, error)) = pending.pop() {
+			let passed = self.executor.trace_error(node, error);
+			let origin = passed.last().copied().unwrap_or(node);
+			trace.extend(passed.into_iter().map(&paths));
+			pending.extend(error.upstream().iter().rev().map(|upstream| (trace.clone(), origin, upstream)));
+			errors.push((Arc::clone(error.error()), trace.into()));
 		}
+		EvaluationErrors(errors.into())
 	}
 
-	/// Updates state data
-	pub fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>, update_thumbnails: bool) {
-		// TODO: Consider optimizing this since it's currently O(m*n^2), with a sort it could be made O(m * n*log(n))
-		self.thumbnail_renders.retain(|id, _| self.monitor_nodes.iter().any(|monitor_node_path| monitor_node_path.contains(id)));
+	/// Updates state data, giving back the layers whose thumbnails were dropped because they no longer have content to show.
+	async fn process_monitor_nodes(&mut self, responses: &mut VecDeque<FrontendMessage>) -> Vec<NodeId> {
+		let dropped_thumbnails = self.thumbnails.drop_sourceless();
 
-		for monitor_node_path in &self.monitor_nodes {
-			// Skip the inspect monitor node
-			if self.is_insepect_monitor_node(monitor_node_path) {
-				continue;
-			}
-
-			// The monitor nodes are located within a document node, and are thus children in that network, so this gets the parent document node's ID
-			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+		for (monitor_node_path, _) in &self.monitor_nodes {
+			let Some(parent_network_node_id) = monitor_parent_node(monitor_node_path) else {
 				warn!("Monitor node has invalid node id");
 				continue;
 			};
 
-			// Extract the monitor node's stored `Graphic` data
-			let Ok(introspected_data) = self.executor.introspect(monitor_node_path) else {
-				// TODO: Fix the root of the issue causing the spam of this warning (this at least temporarily disables it in release builds)
-				#[cfg(debug_assertions)]
-				warn!("Failed to introspect monitor node {}", self.executor.introspect(monitor_node_path).unwrap_err());
+			if !records_vector(&self.executor, monitor_node_path) {
 				continue;
-			};
-
-			// Graphic list: thumbnail (text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content)
-			if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>() {
-				if update_thumbnails {
-					let bounds = graphene_std::renderer::graphic_list_bounding_box(&io.output, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
-				}
 			}
-			// Artboard thumbnail bounds come from the clipping rectangles, not the content union, since the renderer
-			// clips content to those rectangles so anything outside isn't visible
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Artboard>>>() {
-				if update_thumbnails {
-					let bounds = artboard_clip_bounds(&io.output);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
-				}
-			}
-			// Vector list: vector modifications
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Vector>>>() {
-				// Insert the vector modify
-				self.vector_modify.insert(parent_network_node_id, io.output.element(0).cloned().unwrap_or_default());
-			}
-			// String list: thumbnail (bounds need text layout, which the `BoundingBox` trait can't do for a bare `String`)
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<String>>>() {
-				if update_thumbnails {
-					let bounds = graphene_std::renderer::text_list_bounding_box(&io.output, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &io.output, bounds, responses)
-				}
-			}
-			// Rank-0 wires record single items; each arm mirrors its list counterpart through a singleton raise
-			else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Graphic>>>() {
-				if update_thumbnails {
-					let singleton = List::new_from_item(io.output.clone());
-					let bounds = graphene_std::renderer::graphic_list_bounding_box(&singleton, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
-				}
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Artboard>>>() {
-				if update_thumbnails {
-					let singleton = List::new_from_item(io.output.clone());
-					let bounds = artboard_clip_bounds(&singleton);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
-				}
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<Vector>>>() {
-				self.vector_modify.insert(parent_network_node_id, io.output.element().clone());
-			} else if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<String>>>() {
-				if update_thumbnails {
-					let singleton = List::new_from_item(io.output.clone());
-					let bounds = graphene_std::renderer::text_list_bounding_box(&singleton, DAffine2::IDENTITY);
-					Self::render_thumbnail(&mut self.thumbnail_renders, parent_network_node_id, &singleton, bounds, responses)
-				}
-			}
-			// Other
-			else {
-				log::warn!("Failed to downcast monitor node output {parent_network_node_id:?}");
-			}
-		}
-	}
-
-	/// If this is `Graphic` data, regenerate click targets and thumbnails for the layers in the graph, modifying the state and updating the UI.
-	fn render_thumbnail(
-		thumbnail_renders: &mut HashMap<NodeId, Vec<SvgSegment>>,
-		parent_network_node_id: NodeId,
-		graphic: &impl Render,
-		bounds: RenderBoundingBox,
-		responses: &mut VecDeque<FrontendMessage>,
-	) {
-		// Skip thumbnails if the layer is too complex (for performance)
-		if graphic.render_complexity() > 1000 {
-			let old = thumbnail_renders.insert(parent_network_node_id, Vec::new());
-			if old.is_none_or(|v| !v.is_empty()) {
-				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-					id: parent_network_node_id,
-					value: "<svg viewBox=\"0 0 10 10\" data-tooltip-description=\"Dense thumbnail omitted for performance.\"><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>"
-						.to_string(),
-				});
-			}
-			return;
-		}
-
-		// Fall back to a 1×1 rectangle if no caller offered finite bounds, then aspect-correct to the panel's 3:2 ratio
-		let raw_bounds = match bounds {
-			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
-			_ => [DVec2::ZERO, DVec2::ONE],
-		};
-		let bounds = expand_to_thumbnail_aspect(raw_bounds);
-		let new_thumbnail_svg = {
-			let footprint = Footprint::from_bounds(bounds, RenderQuality::Full);
-
-			// Render the thumbnail from a `Graphic` into an SVG string
-			let render_params = RenderParams {
-				footprint,
-				thumbnail: true,
-				..Default::default()
-			};
-			let mut render = SvgRender::new();
-			graphic.render_svg(&mut render, &render_params);
-
-			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-			render.format_svg(bounds[0], bounds[1]);
-
-			render.svg
-		};
-
-		// Update frontend thumbnail
-		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
-		if old_thumbnail_svg != &new_thumbnail_svg {
-			responses.push_back(FrontendMessage::UpdateNodeThumbnail {
-				id: parent_network_node_id,
-				value: new_thumbnail_svg.to_svg_string(),
-			});
-			*old_thumbnail_svg = new_thumbnail_svg;
-		}
-	}
-
-	fn collect_graphics(&self, selected_node_ids: &[NodeId]) -> List<Graphic> {
-		let mut combined_graphics = List::<Graphic>::new();
-		for monitor_node_path in &self.monitor_nodes {
-			// Skip inspect monitor node if active
-			if self.is_insepect_monitor_node(monitor_node_path) {
+			let tree = self.executor.tree();
+			let Ok(content_node) = tree.input_node(monitor_node_path, 0) else { continue };
+			let Ok(Some(context)) = tree.last_context(content_node) else { continue };
+			let context_hash = context_hash(&context);
+			if self.vector_evaluations.get(&parent_network_node_id) == Some(&(content_node, context_hash)) {
 				continue;
 			}
 
-			let Some(parent_network_node_id) = monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied() else {
+			let Some(output) = tree.evaluate(content_node, &context).ok().and_then(evaluated_output) else {
 				continue;
 			};
-
-			if selected_node_ids.contains(&parent_network_node_id) {
-				// Introspect using the full monitor node path
-				if let Ok(introspected_data) = self.executor.introspect(monitor_node_path)
-					&& let Some(io) = introspected_data.downcast_ref::<IORecord<Context, List<Graphic>>>()
-				{
-					combined_graphics.extend(io.output.clone());
-				} else {
-					warn!("No graphic type is matched while extracting svg");
-				}
-			}
+			let geometry = if let Some(list) = output.downcast_ref::<List<Vector>>() {
+				VectorGeometry::new(list.element(0).cloned().unwrap_or_default(), paths_from_list_row_attributes(list, 0).cloned().unwrap_or_default())
+			} else if let Some(item) = output.downcast_ref::<Item<Vector>>() {
+				VectorGeometry::from_item(item)
+			} else {
+				continue;
+			};
+			self.vector_modify.insert(parent_network_node_id, geometry);
+			self.vector_evaluations.insert(parent_network_node_id, (content_node, context_hash));
 		}
-		combined_graphics
-	}
 
-	fn is_insepect_monitor_node(&self, monitor_node_path: &[NodeId]) -> bool {
-		self.inspect_state.as_ref().is_some_and(|state| monitor_node_path.last().copied() == Some(state.monitor_node))
-	}
-}
+		self.thumbnails.render_stale(&self.executor, &self.editor_api, responses).await;
 
-/// Returns the union of the artboards' clipping rectangles, used as the thumbnail bounds for an artboard layer so the
-/// framing matches what's actually visible after clipping rather than the unclipped content extents.
-fn artboard_clip_bounds(artboards: &List<Artboard>) -> RenderBoundingBox {
-	let mut combined: Option<[DVec2; 2]> = None;
-	for index in 0..artboards.len() {
-		let location: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_LOCATION, index);
-		let dimensions: DVec2 = artboards.attribute_cloned_or_default(graphene_std::ATTR_DIMENSIONS, index);
-		let bounds = [location, location + dimensions];
-		combined = Some(match combined {
-			Some(existing) => [existing[0].min(bounds[0]), existing[1].max(bounds[1])],
-			None => bounds,
-		});
-	}
-	match combined {
-		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
-		None => RenderBoundingBox::None,
+		dropped_thumbnails
 	}
 }
 
-/// Expands an AABB outward (centered) to match the Layers panel thumbnail's 3:2 aspect ratio, padding the smaller axis
-/// so the input's extent is always preserved.
-fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
-	const THUMBNAIL_ASPECT_RATIO: f64 = 1.5;
-
-	let size = bounds[1] - bounds[0];
-	let center = (bounds[0] + bounds[1]) / 2.;
-	let (width, height) = if size.x >= size.y * THUMBNAIL_ASPECT_RATIO {
-		(size.x, size.x / THUMBNAIL_ASPECT_RATIO)
-	} else {
-		(size.y * THUMBNAIL_ASPECT_RATIO, size.y)
-	};
-	let half = DVec2::new(width, height) / 2.;
-	[center - half, center + half]
-}
-
-pub async fn introspect_node(path: &[NodeId]) -> Result<Arc<dyn std::any::Any + Send + Sync + 'static>, IntrospectError> {
-	let runtime = NODE_RUNTIME.lock();
-	if let Some(ref mut runtime) = runtime.as_ref() {
-		return runtime.executor.introspect(path);
+impl ExecutionResult {
+	fn render_output(&mut self) -> Option<&mut RenderOutputType> {
+		let (Self::Value(value) | Self::Fallback(value, _)) = self else { return None };
+		let TaggedValue::RenderOutput(RenderOutput { data, .. }) = value else { return None };
+		Some(data)
 	}
-	Err(IntrospectError::RuntimeNotReady)
 }
 
-pub async fn run_node_graph() -> (bool, Option<Texture>) {
-	let Some(mut runtime) = NODE_RUNTIME.try_lock() else { return (false, None) };
-	if let Some(ref mut runtime) = runtime.as_mut() {
-		return (true, runtime.run().await);
-	}
-	(false, None)
+/// The layer a monitor node belongs to, since monitor nodes sit within the network of the document node they monitor.
+fn monitor_parent_node(monitor_node_path: &[NodeId]) -> Option<NodeId> {
+	monitor_node_path.len().checked_sub(2).and_then(|index| monitor_node_path.get(index)).copied()
 }
 
-pub fn replace_node_runtime(runtime: NodeRuntime) -> Option<NodeRuntime> {
-	let mut node_runtime = NODE_RUNTIME.lock();
-	node_runtime.replace(runtime)
+fn records_vector(executor: &DynamicExecutor, monitor_node_path: &[NodeId]) -> bool {
+	// TODO: Tell this from the monitor node's type once the types the borrow tree records can be compared with concrete ones
+	executor
+		.introspect(monitor_node_path)
+		.is_ok_and(|data| data.is::<IORecord<Context, List<Vector>>>() || data.is::<IORecord<Context, Item<Vector>>>())
 }
-pub(crate) fn replace_application_io(application_io: PlatformApplicationIo) {
-	let mut node_runtime = NODE_RUNTIME.lock();
-	if let Some(node_runtime) = &mut *node_runtime {
-		node_runtime.replace_application_io(application_io);
+
+fn context_features(context: &OwnedContextImpl) -> InspectedContext {
+	use graphene_std::{ExtractAnimationTime, ExtractFootprint, ExtractIndex, ExtractPointerPosition, ExtractPosition, ExtractRealTime, ExtractVarArgs};
+
+	InspectedContext {
+		features: ContextOverrides {
+			footprint: context.try_footprint().copied(),
+			real_time: context.try_real_time(),
+			animation_time: context.try_animation_time(),
+			pointer_position: context.try_pointer_position(),
+			index: context.try_index().map(|index| index.collect()),
+		},
+		positions: context.try_position().map(|positions| positions.collect()).unwrap_or_default(),
+		variables: context.varargs_len().unwrap_or_default(),
+		..Default::default()
 	}
+}
+
+fn evaluated_output(poll: Poll<graphene_std::registry::Any>) -> Option<graphene_std::registry::Any> {
+	match poll {
+		Poll::Final(output) | Poll::Partial(output) => Some(output),
+		Poll::Fallback(boxed) => Some(boxed.0),
+		Poll::Pending | Poll::Error(_) => None,
+	}
+}
+
+fn context_hash(context: &Context) -> u64 {
+	let mut hasher = std::hash::DefaultHasher::new();
+	context.cache_hash(&mut hasher);
+	std::hash::Hasher::finish(&hasher)
 }
 
 impl NodeRuntime {
 	pub(crate) fn replace_application_io(&mut self, application_io: PlatformApplicationIo) {
 		self.editor_api = PlatformEditorApi {
 			application_io: Some(application_io.into()),
-			node_graph_message_sender: Box::new(self.sender.clone()),
-			editor_preferences: Box::new(self.editor_preferences.clone()),
 		}
 		.into();
 	}
+
+	pub(crate) fn replace_task_executor(&mut self, spawner: Spawner, wake: Wake) {
+		let spawn = NodeTaskExecutor {
+			spawner,
+			dirty: self.dirty.clone(),
+			wake,
+		};
+		self.async_runtime = Some(AsyncRuntime::new(Arc::new(spawn)));
+	}
+
+	fn async_runtime(&self) -> &AsyncRuntime {
+		self.async_runtime.as_ref().expect("the task executor is installed before the first graph update")
+	}
 }
 
-/// Which node is inspected and which monitor node is used (if any) for the current execution
-#[derive(Debug, Clone)]
-struct InspectState {
-	inspect_node: NodeId,
-	monitor_node: NodeId,
-	/// Path of the subnetwork the monitor was inserted into (i.e., the parent of `inspect_node`).
-	/// Used to construct the full node path when introspecting the monitor's value.
-	monitor_parent_path: Vec<NodeId>,
+struct NodeTaskExecutor {
+	spawner: Spawner,
+	dirty: Arc<AtomicBool>,
+	wake: Wake,
 }
+
+impl Spawn for NodeTaskExecutor {
+	fn spawn(&self, task: Task) {
+		let dirty = self.dirty.clone();
+		let wake = self.wake.clone();
+		self.spawner.spawn(Box::pin(async move {
+			task.await;
+			dirty.store(true, Ordering::Release);
+			wake();
+		}));
+	}
+}
+
+/// The node the Data panel inspects, which is evaluated again from the context it was last evaluated with.
+struct InspectState {
+	inspect_node_path: Vec<NodeId>,
+	overrides: ContextOverrides,
+	last_evaluation: Option<(NodeId, u64, Option<InspectedData>)>,
+	overrides_changed: bool,
+}
+
+type InspectedData = Arc<dyn std::any::Any + Send + Sync + 'static>;
+
 /// The resulting value from the temporary inspected during execution
 #[derive(Clone, Debug, Default)]
 pub struct InspectResult {
@@ -680,6 +611,18 @@ pub struct InspectResult {
 	/// The parent slice (`split_last().1`) is the network the node lives in, which downstream consumers
 	/// (e.g. the Data panel) need when looking the node up via `network_interface.is_layer(...)` etc.
 	pub inspect_node_path: Vec<NodeId>,
+	pub context: InspectedContext,
+}
+
+/// The features of the context an inspected node was evaluated with, after the overrides replaced some of them.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InspectedContext {
+	pub features: ContextOverrides,
+	/// The positions the context carries, from the outermost level in.
+	pub positions: Vec<DVec2>,
+	pub variables: usize,
+	pub overrides: ContextOverrides,
+	pub dependencies: ContextFeatures,
 }
 
 impl InspectResult {
@@ -696,77 +639,276 @@ impl PartialEq for InspectResult {
 }
 
 impl InspectState {
-	/// Insert the monitor node alongside the inspect node identified by `inspect_path` (full path from root, last element is the target).
-	/// Returns `None` if the path is empty, doesn't resolve to a node inside a reachable subnetwork, or the target has no
-	/// flatten-safe primary output to monitor (e.g. an empty merged subnetwork), which would otherwise leave the monitor's
-	/// input dangling once the subnetwork is flattened away.
-	pub fn monitor_inspect_node(network: &mut NodeNetwork, inspect_path: &[NodeId]) -> Option<Self> {
-		let (inspect_node, parent_path) = inspect_path.split_last()?;
-		let inspect_node = *inspect_node;
-		let target_network = navigate_to_network_mut(network, parent_path)?;
-
-		// A subnetwork's primary output only survives flattening if its first export is a node
-		let monitorable = match &target_network.nodes.get(&inspect_node)?.implementation {
-			DocumentNodeImplementation::Network(inner) => matches!(inner.exports.first(), Some(NodeInput::Node { .. })),
-			_ => true,
-		};
-		if !monitorable {
-			return None;
-		}
-
-		let monitor_id = NodeId::new();
-
-		// It is necessary to replace the inputs before inserting the monitor node to avoid changing the input of the new monitor node
-		for input in target_network.nodes.values_mut().flat_map(|node| node.inputs.iter_mut()).chain(&mut target_network.exports) {
-			let NodeInput::Node { node_id, output_index, .. } = input else { continue };
-			// We only care about the primary output of our inspect node
-			if *output_index != 0 || *node_id != inspect_node {
-				continue;
-			}
-
-			*node_id = monitor_id;
-		}
-
-		let monitor_node = DocumentNode {
-			inputs: vec![NodeInput::node(inspect_node, 0)], // Connect to the primary output of the inspect node
-			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-			call_argument: graph_craft::generic!(T),
-			skip_deduplication: true,
-			..Default::default()
-		};
-		target_network.nodes.insert(monitor_id, monitor_node);
-
-		Some(Self {
-			inspect_node,
-			monitor_node: monitor_id,
-			monitor_parent_path: parent_path.to_vec(),
+	fn new(inspect_node_path: Vec<NodeId>) -> Option<Self> {
+		(!inspect_node_path.is_empty()).then_some(Self {
+			inspect_node_path,
+			overrides: ContextOverrides::default(),
+			last_evaluation: None,
+			overrides_changed: false,
 		})
 	}
-	/// Resolve the result from the inspection by accessing the monitor node
-	fn access(&self, executor: &DynamicExecutor) -> Option<InspectResult> {
-		// The executor's source map indexes by full path from root, so prepend the subnetwork path to the monitor ID.
-		let mut monitor_path = self.monitor_parent_path.clone();
-		monitor_path.push(self.monitor_node);
-		let introspected_data = executor.introspect(&monitor_path).inspect_err(|e| warn!("Failed to introspect monitor node {e}")).ok();
-		// TODO: Consider displaying the error instead of ignoring it
 
-		let mut inspect_node_path = self.monitor_parent_path.clone();
-		inspect_node_path.push(self.inspect_node);
-		Some(InspectResult { inspect_node_path, introspected_data })
+	fn access(&mut self, executor: &DynamicExecutor, network: Option<&NodeNetwork>) -> InspectResult {
+		let node = network.and_then(|network| executor.tree().output_node(network, &self.inspect_node_path));
+		let context = node.and_then(|node| executor.tree().last_context(node).ok().flatten()).map(|context| self.with_overrides(context));
+
+		let introspected_data = node.zip(context.clone()).and_then(|(node, context)| self.evaluate(executor, node, context));
+		let features = context.as_ref().and_then(|context| context.as_deref()).map(context_features).unwrap_or_default();
+		let context = InspectedContext {
+			overrides: self.overrides.clone(),
+			dependencies: node.map(|node| executor.tree().context_features(node)).unwrap_or_default(),
+			..features
+		};
+
+		InspectResult {
+			introspected_data,
+			inspect_node_path: self.inspect_node_path.clone(),
+			context,
+		}
+	}
+
+	fn with_overrides(&self, context: Context<'static>) -> Context<'static> {
+		if self.overrides.is_empty() {
+			return context;
+		}
+		let context = context
+			.as_deref()
+			.map(|context| context.with_overrides(&self.overrides))
+			.unwrap_or_else(|| OwnedContextImpl::empty().with_overrides(&self.overrides));
+		Some(Arc::new(context))
+	}
+
+	/// Evaluates the node with the context, reusing the last result if neither changed.
+	fn evaluate(&mut self, executor: &DynamicExecutor, node: NodeId, context: Context<'static>) -> Option<Arc<dyn std::any::Any + Send + Sync + 'static>> {
+		let context_hash = context_hash(&context);
+		if let Some((last_node, last_context_hash, data)) = &self.last_evaluation
+			&& (*last_node, *last_context_hash) == (node, context_hash)
+		{
+			return data.clone();
+		}
+
+		let output = evaluated_output(executor.tree().evaluate(node, &context).ok()?)?;
+		// Output the Data panel can't show is remembered too, so it isn't evaluated again for nothing
+		let data = crate::messages::portfolio::document::data_panel::shareable_inspect_output(output);
+		self.last_evaluation = Some((node, context_hash, data.clone()));
+		data
 	}
 }
 
-/// Walks `network` down through `path`, returning a mutable reference to the nested `NodeNetwork`
-/// at the end. Each path element must name a `DocumentNode` whose implementation is `Network(...)`.
-/// Returns `None` if any step is missing or doesn't refer to a subnetwork.
-fn navigate_to_network_mut<'a>(network: &'a mut NodeNetwork, path: &[NodeId]) -> Option<&'a mut NodeNetwork> {
-	let mut current = network;
-	for node_id in path {
-		let node = current.nodes.get_mut(node_id)?;
-		current = match &mut node.implementation {
-			DocumentNodeImplementation::Network(nested) => nested,
-			_ => return None,
-		};
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::test_utils::EditorTestUtils;
+	use graph_craft::document::DocumentNode;
+	use graphene_std::SourceId;
+	use graphene_std::runtime::Runtime;
+
+	const SOURCE: SourceId = SourceId(1);
+
+	async fn editor() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		// We use the svg pipeline for these tests since we don't read back the result for editor tests anyway
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.runtime.async_runtime().update_sources(&[SOURCE]);
+		editor
 	}
-	Some(current)
+
+	/// Sends a network update and a request to evaluate it, as the editor does for a change to the graph.
+	fn send_update(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+	}
+
+	/// Sends a network update and a request to export it, as the editor does for an export.
+	fn send_export(editor: &mut EditorTestUtils) {
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
+		let document = documents.get_mut(&document_id).unwrap();
+		let export_config = ExportConfig {
+			name: "export".to_string(),
+			file_type: FileType::Svg,
+			scale_factor: 1.,
+			bounds: ExportBounds::AllArtwork,
+			..Default::default()
+		};
+		executor.submit_document_export(document, document_id, export_config).unwrap();
+	}
+
+	/// Whether the runtime evaluated the graph since this was last called.
+	fn evaluated(editor: &mut EditorTestUtils) -> bool {
+		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::UpdateDocumentArtwork { .. }))
+	}
+
+	/// Whether the runtime finished an export since this was last called.
+	fn exported(editor: &mut EditorTestUtils) -> bool {
+		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::TriggerSaveFile { .. }))
+	}
+
+	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations.
+	fn vectorize_layer(editor: &mut EditorTestUtils) {
+		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
+		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
+
+		let layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let mut create = |node_type| {
+			let node_id = NodeId::new();
+			editor.dispatch(NodeGraphMessage::CreateNodeFromContextMenu {
+				node_id: Some(node_id),
+				node_type,
+				xy: None,
+				add_transaction: true,
+			});
+			node_id
+		};
+		let noise = create(DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER));
+		let vectorize = create(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER));
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(noise),
+			input_connector: InputConnector::node_at_index(vectorize, 0),
+		});
+		editor.dispatch(NodeGraphMessage::CreateWire {
+			output_connector: OutputConnector::primary_output(vectorize),
+			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
+		});
+	}
+
+	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.
+	fn last_request(editor: &EditorTestUtils) -> Option<u64> {
+		editor.runtime.pending.map(|request| request.execution_id)
+	}
+
+	#[tokio::test]
+	async fn only_update_reads_the_channel() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+
+		editor.runtime.run().await;
+		assert!(!evaluated(&mut editor), "run read the request");
+
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+	}
+
+	#[tokio::test]
+	async fn an_export_goes_ahead_of_what_was_sent_after_it() {
+		let mut editor = editor().await;
+		let last = last_request(&editor);
+		send_export(&mut editor);
+		send_update(&mut editor);
+
+		editor.runtime.update();
+		assert!(editor.runtime.pending_export.is_some());
+		assert_eq!(last_request(&editor), last, "the request sent after the export was read ahead of it");
+
+		editor.runtime.run().await;
+		assert!(exported(&mut editor));
+
+		editor.runtime.update();
+		assert_ne!(last_request(&editor), last);
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor), "the request sent after the export was lost");
+	}
+
+	#[tokio::test]
+	async fn a_parked_export_holds_back_everything_sent_after_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		editor.draw_rect(0., 0., 512., 512.).await;
+		vectorize_layer(&mut editor);
+
+		send_export(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(editor.runtime.pending_export.is_some(), "the export took a single evaluation");
+
+		let last = last_request(&editor);
+		send_update(&mut editor);
+		let mut runs = 0;
+		while editor.runtime.pending_export.is_some() {
+			editor.runtime.update();
+			assert_eq!(last_request(&editor), last, "a request got ahead of the parked export");
+			editor.runtime.run().await;
+			runs += 1;
+			assert!(runs < 100_000, "the export never finished");
+		}
+		assert!(exported(&mut editor));
+
+		editor.runtime.update();
+		assert_ne!(last_request(&editor), last);
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor), "the request sent after the export was lost");
+	}
+
+	#[tokio::test]
+	async fn a_graph_settles_while_network_updates_keep_arriving() {
+		let mut editor = editor().await;
+		send_update(&mut editor);
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+
+		let last = last_request(&editor);
+		for _ in 0..3 {
+			send_update(&mut editor);
+			editor.runtime.async_runtime().spawn(SOURCE, Box::pin(async {}));
+			editor.runtime.run().await;
+			assert!(evaluated(&mut editor), "the finished task didn't evaluate the graph again");
+			assert_eq!(last_request(&editor), last, "run read the request");
+		}
+
+		editor.runtime.update();
+		assert_ne!(last_request(&editor), last);
+		assert!(editor.runtime.receiver.try_recv().is_err(), "update left a request in the channel");
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+	}
+
+	#[tokio::test]
+	async fn several_network_updates_evaluate_once() {
+		let mut editor = editor().await;
+		for _ in 0..3 {
+			send_update(&mut editor);
+		}
+
+		editor.runtime.update();
+		editor.runtime.run().await;
+		assert!(evaluated(&mut editor));
+
+		editor.runtime.run().await;
+		assert!(!evaluated(&mut editor), "the requests of the older network updates evaluated again");
+	}
+
+	#[test]
+	fn a_preview_replaces_the_export_of_the_graph_being_compiled() {
+		let previewed_node = NodeId(1);
+		let exported_node = NodeId(2);
+		let mut network = NodeNetwork {
+			exports: vec![NodeInput::node(exported_node, 0)],
+			nodes: [(previewed_node, DocumentNode::default()), (exported_node, DocumentNode::default())].into_iter().collect(),
+			..Default::default()
+		};
+
+		apply_previews(
+			&mut network,
+			&[(
+				Vec::new(),
+				RootNode {
+					node_id: previewed_node,
+					output_index: 0,
+				},
+			)],
+		);
+
+		assert_eq!(network.exports.first().and_then(|export| export.as_node()), Some(previewed_node));
+	}
 }

@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, HIDE_HANDLE_DISTANCE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::pointer::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -13,15 +13,17 @@ use crate::messages::tool::common_functionality::color_selector::{
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, merge_layers};
 use crate::messages::tool::common_functionality::resize::translation_transform_set;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use crate::messages::tool::common_functionality::snap_session::{FeatureMap, Locus, Moving, PointOptions, SnapSession, SnapView, snapping_hints};
 use crate::messages::tool::common_functionality::stroke_options::{StrokeOptionsUpdate, apply_stroke_option, create_stroke_options_popover_widget};
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, closest_point, is_almost_colinear, should_extend};
+use crate::messages::tool::utility_types::DocumentToolData;
+use glam::DMat2;
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::vector::misc::pathseg_points;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::style::FillChoice;
-use graphene_std::vector::{NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
+use graphene_std::vector::{PointId, SegmentId, VectorGeometry, VectorModificationType};
 use kurbo::{BezPath, CubicBez, PathSeg};
 
 #[derive(Default, ExtractField)]
@@ -52,6 +54,7 @@ pub enum PenToolMessage {
 	// Standard messages
 	Abort,
 	SelectionChanged,
+	SwitchedToAnotherTool,
 	WorkingColorChanged,
 	Overlays {
 		context: OverlayContext,
@@ -246,11 +249,16 @@ impl LayoutHolder for PenTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		// On tool deactivation (Abort fires from the dispatcher's tool transition), reset the displayed fill/stroke colors so
-		// the next activation starts fresh from the current working colors. The global swap state persists across tool switches.
-		// Guarded on `Ready` so Esc-mid-drawing (which also fires Abort) doesn't wipe the user's customized fill/stroke options.
-		if matches!(&message, ToolMessage::Pen(PenToolMessage::Abort)) && self.fsm_state == PenToolFsmState::Ready {
+		// Switching to another tool resets the fill/stroke colors so the next activation starts from the working colors (the swap state persists)
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::SwitchedToAnotherTool)) {
 			reset_colors_on_deactivation(&mut self.options.drawing, context.global_tool_data);
+			return;
+		}
+
+		if matches!(&message, ToolMessage::Pen(PenToolMessage::Abort)) && self.fsm_state == PenToolFsmState::Ready {
+			// Escape with nothing under way puts back to sleep whatever resting the pointer had woken
+			context.snap_session.sleep_all();
+			responses.add(OverlaysMessage::Draw);
 		}
 
 		if matches!(&message, ToolMessage::Pen(PenToolMessage::SelectionChanged))
@@ -306,7 +314,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				PointerMove,
 				FinalPosition
 			),
-			PenToolFsmState::DraggingHandle(_) | PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
+			// Only a handle drag has handles to swap, so elsewhere Tab is left to the Select/Path toggle
+			PenToolFsmState::DraggingHandle(_) => actions!(PenToolMessageDiscriminant;
 				DragStart,
 				DragStop,
 				PointerMove,
@@ -316,6 +325,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PenT
 				GRS,
 				SwapHandles
 			),
+			PenToolFsmState::PlacingAnchor => actions!(PenToolMessageDiscriminant;
+				DragStart,
+				DragStop,
+				PointerMove,
+				Confirm,
+				Abort,
+				RemovePreviousHandle,
+				GRS
+			),
 		}
 	}
 }
@@ -324,6 +342,7 @@ impl ToolTransition for PenTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(PenToolMessage::Abort.into()),
+			switched_to_another_tool: Some(PenToolMessage::SwitchedToAnotherTool.into()),
 			selection_changed: Some(PenToolMessage::SelectionChanged.into()),
 			graph_changed: Some(PenToolMessage::SelectionChanged.into()),
 			working_color_changed: Some(PenToolMessage::WorkingColorChanged.into()),
@@ -346,6 +365,20 @@ struct LastPoint {
 	pos: DVec2,
 	in_segment: Option<SegmentId>,
 	handle_start: DVec2,
+}
+
+/// The drawing as it stood before a press began placing its next segment, which cancelling that press's drag goes back to.
+#[derive(Clone, Debug)]
+struct DrawingBeforePress {
+	latest_points: Vec<LastPoint>,
+	point_index: usize,
+	handle_end: Option<DVec2>,
+	angle: f64,
+	path_closed: bool,
+	prior_segment_layer: Option<LayerNodeIdentifier>,
+	prior_segment_endpoint: Option<PointId>,
+	prior_segment: Option<SegmentId>,
+	prior_segments: Option<Vec<SegmentId>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -400,7 +433,6 @@ enum TargetHandle {
 
 #[derive(Clone, Debug, Default)]
 struct PenToolData {
-	snap_manager: SnapManager,
 	latest_points: Vec<LastPoint>,
 	point_index: usize,
 	handle_end: Option<DVec2>,
@@ -417,6 +449,8 @@ struct PenToolData {
 	merging_from: Option<DAffine2>,
 	/// The release, confirmation, and latest pointer move that arrive during that wait.
 	held_input: Vec<PenToolMessage>,
+	/// Kept from a press after the drawing's first, until its drag ends, so cancelling the drag cancels only its segment.
+	before_press: Option<DrawingBeforePress>,
 
 	previous_handle_start_pos: DVec2,
 	previous_handle_end_pos: Option<DVec2>,
@@ -424,6 +458,8 @@ struct PenToolData {
 	colinear: bool,
 	alt_pressed: bool,
 	space_pressed: bool,
+	/// The dragged handle, its anchor, and any opposite handle, which Space slides together from where they were in document space.
+	anchor_slide: Vec<FeatureMap>,
 	/// Tracks whether to switch from `HandleMode::ColinearEquidistant` to `HandleMode::Free`
 	/// after releasing Ctrl, specifically when Ctrl was held before the handle was dragged from the anchor.
 	switch_to_free_on_ctrl_release: bool,
@@ -450,8 +486,6 @@ struct PenToolData {
 	handle_type: TargetHandle,
 	handle_start_offset: Option<DVec2>,
 	handle_end_offset: Option<DVec2>,
-
-	snap_cache: SnapCache,
 }
 
 impl PenToolData {
@@ -469,7 +503,7 @@ impl PenToolData {
 		self.latest_points.push(point);
 	}
 
-	fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
+	fn cleanup(&mut self, snap_session: &mut SnapSession, responses: &mut VecDeque<Message>) {
 		self.handle_end = None;
 		self.latest_points.clear();
 		self.point_index = 0;
@@ -477,7 +511,68 @@ impl PenToolData {
 		self.suppress_snap_angle = false;
 		self.merging_from = None;
 		self.held_input.clear();
-		self.snap_manager.cleanup(responses);
+		self.before_press = None;
+
+		snap_session.end_gesture();
+		responses.add(OverlaysMessage::Draw);
+	}
+
+	fn remember_before_press(&mut self) {
+		self.before_press = Some(DrawingBeforePress {
+			latest_points: self.latest_points.clone(),
+			point_index: self.point_index,
+			handle_end: self.handle_end,
+			angle: self.angle,
+			path_closed: self.path_closed,
+			prior_segment_layer: self.prior_segment_layer,
+			prior_segment_endpoint: self.prior_segment_endpoint,
+			prior_segment: self.prior_segment,
+			prior_segments: self.prior_segments.clone(),
+		});
+	}
+
+	/// Puts the drawing back as it was before the press that began the cancelled drag, returning false if the drag is the drawing's first.
+	fn restore_before_press(&mut self) -> bool {
+		let Some(before) = self.before_press.take() else { return false };
+
+		self.latest_points = before.latest_points;
+		self.point_index = before.point_index;
+		self.handle_end = before.handle_end;
+		self.angle = before.angle;
+		self.path_closed = before.path_closed;
+		self.prior_segment_layer = before.prior_segment_layer;
+		self.prior_segment_endpoint = before.prior_segment_endpoint;
+		self.prior_segment = before.prior_segment;
+		self.prior_segments = before.prior_segments;
+
+		self.handle_swapped = false;
+		self.handle_end_offset = None;
+		self.handle_start_offset = None;
+
+		true
+	}
+
+	/// Snaps the next stretch of drawing to everything but what follows the pointer, which is the anchor the handles are pulled from once it is in the path.
+	fn begin_snapping_gesture(&mut self, snap_session: &mut SnapSession, view: SnapView, layer: Option<LayerNodeIdentifier>) {
+		self.anchor_slide.clear();
+
+		let mut moving = Moving::default();
+		if let Some(layer) = layer {
+			moving.edited.push(layer);
+
+			if self.handle_end.is_none()
+				&& let Some(point) = self.latest_point()
+			{
+				moving.anchors.push((layer, point.id));
+			}
+			if self.path_closed
+				&& let Some(point) = self.prior_segment_endpoint
+			{
+				moving.anchors.push((self.prior_segment_layer.unwrap_or(layer), point));
+			}
+		}
+
+		snap_session.begin_gesture_following_edits(view, moving);
 	}
 
 	/// Reads the modifier key states, applying the post-undo/redo angle-lock and angle-snap suppression.
@@ -502,7 +597,7 @@ impl PenToolData {
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
-	fn check_end_handle_type(&self, vector: &Vector) -> TargetHandle {
+	fn check_end_handle_type(&self, vector: &VectorGeometry) -> TargetHandle {
 		match (self.handle_end, self.prior_segment_endpoint, self.prior_segment, self.path_closed) {
 			(Some(_), _, _, false) => TargetHandle::PreviewInHandle,
 			(None, Some(point), Some(segment), false) | (Some(_), Some(point), Some(segment), true) => {
@@ -516,7 +611,7 @@ impl PenToolData {
 		}
 	}
 
-	fn check_grs_end_handle(&self, vector: &Vector) -> TargetHandle {
+	fn check_grs_end_handle(&self, vector: &VectorGeometry) -> TargetHandle {
 		let Some(point) = self.latest_point().map(|point| point.id) else { return TargetHandle::None };
 		let Some(segment) = self.prior_segment else { return TargetHandle::None };
 
@@ -527,7 +622,7 @@ impl PenToolData {
 		}
 	}
 
-	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector: &Vector) -> TargetHandle {
+	fn get_opposite_handle_type(&self, handle_type: TargetHandle, vector: &VectorGeometry) -> TargetHandle {
 		match handle_type {
 			TargetHandle::FuturePreviewOutHandle => self.check_end_handle_type(vector),
 			TargetHandle::PreviewInHandle => match (self.path_closed, self.prior_segment_endpoint, self.prior_segment) {
@@ -567,22 +662,28 @@ impl PenToolData {
 			}
 			TargetHandle::PriorInHandle(segment) => {
 				let relative_position = delta - anchor_pos;
-				let modification_type = VectorModificationType::SetEndHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::end(segment),
+					relative_position,
+				};
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 			TargetHandle::PriorOutHandle(segment) => {
 				let relative_position = delta - anchor_pos;
-				let modification_type = VectorModificationType::SetPrimaryHandle { segment, relative_position };
+				let modification_type = VectorModificationType::SetHandlePosition {
+					handle: HandleId::primary(segment),
+					relative_position,
+				};
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
 			}
 			TargetHandle::None => {}
 		}
 	}
 
-	fn target_handle_position(&self, handle_type: TargetHandle, vector: &Vector) -> Option<DVec2> {
+	fn target_handle_position(&self, handle_type: TargetHandle, vector: &VectorGeometry) -> Option<DVec2> {
 		match handle_type {
-			TargetHandle::PriorOutHandle(segment) => ManipulatorPointId::PrimaryHandle(segment).get_position(vector),
-			TargetHandle::PriorInHandle(segment) => ManipulatorPointId::EndHandle(segment).get_position(vector),
+			TargetHandle::PriorOutHandle(segment) => vector.position_of(ManipulatorPointId::PrimaryHandle(segment)),
+			TargetHandle::PriorInHandle(segment) => vector.position_of(ManipulatorPointId::EndHandle(segment)),
 			TargetHandle::PreviewInHandle => self.handle_end,
 			TargetHandle::FuturePreviewOutHandle => Some(self.next_handle_start),
 			TargetHandle::None => None,
@@ -605,6 +706,30 @@ impl PenToolData {
 			_ => {}
 		}
 		responses.add(OverlaysMessage::Draw);
+	}
+
+	/// Takes back the drawing's first anchor if the drawing ends before a segment is drawn from it, along with its layer if that anchor is all the layer holds.
+	fn remove_lone_initial_anchor(&self, document: &DocumentMessageHandler, layer: Option<LayerNodeIdentifier>, responses: &mut VecDeque<Message>) {
+		// A drawing begun from an anchor already in the layer leaves that anchor be
+		let begun_from_existing_anchor = self.prior_segment_endpoint.is_some() && self.prior_segment_layer == layer;
+		if self.point_index != 0 || begun_from_existing_anchor {
+			return;
+		}
+
+		let Some(layer) = layer else { return };
+		let Some(id) = self.latest_point().map(|point| point.id) else { return };
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+
+		if vector.anchor_points().count() == 1 {
+			responses.add(NodeGraphMessage::DeleteNodes {
+				node_ids: vec![layer.to_node()],
+				delete_children: true,
+			});
+			responses.add(NodeGraphMessage::RunDocumentGraph);
+		} else {
+			let modification_type = VectorModificationType::RemovePoint { id };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+		}
 	}
 
 	/// Selects the handle which is currently dragged by the user.
@@ -634,7 +759,7 @@ impl PenToolData {
 			let into_merged = self.merging_from.map_or(DAffine2::IDENTITY, |previous| layer_to_document.inverse() * previous);
 
 			for point in &mut self.latest_points {
-				let Some(pos) = vector.point_domain.position_from_id(point.id) else { continue };
+				let Some(pos) = vector.position_from_id(point.id) else { continue };
 				point.handle_start = pos + into_merged.transform_vector2(point.handle_start - point.pos);
 				point.pos = pos;
 			}
@@ -642,7 +767,7 @@ impl PenToolData {
 	}
 
 	/// Re-anchors the in-progress preview segment on the current anchor after undo or redo moved it, using the re-evaluated layer transform.
-	fn resume_preview_from_current_anchor(&mut self, snap_data: SnapData, transform: DAffine2, vector: &Vector, responses: &mut VecDeque<Message>) {
+	fn resume_preview_from_current_anchor(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, vector: &VectorGeometry, responses: &mut VecDeque<Message>) {
 		// The segments meeting the current anchor are the ones whose handles the overlays show and the angle lock references
 		let connected_segments: Vec<SegmentId> = self
 			.latest_point()
@@ -662,14 +787,13 @@ impl PenToolData {
 		self.modifiers.lock_angle = false;
 		self.modifiers.snap_angle = false;
 
-		let mouse = snap_data.input.mouse.position;
-		self.place_anchor(snap_data, transform, mouse, responses);
+		let mouse = view.input.mouse.position;
+		self.place_anchor(snap_session, view, transform, mouse, responses);
 	}
 
 	/// If the user places the anchor on top of the previous anchor, it becomes sharp and the outgoing handle may be dragged.
-	fn bend_from_previous_point(&mut self, snap_data: SnapData, transform: DAffine2, layer: LayerNodeIdentifier, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>) {
+	fn bend_from_previous_point(&mut self, document: &DocumentMessageHandler, transform: DAffine2, layer: LayerNodeIdentifier, shape_editor: &mut ShapeState, responses: &mut VecDeque<Message>) {
 		self.g1_continuous = true;
-		let document = snap_data.document;
 		self.next_handle_start = self.next_point;
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 		self.update_handle_type(TargetHandle::FuturePreviewOutHandle);
@@ -684,7 +808,7 @@ impl PenToolData {
 			self.handle_end = None;
 			self.handle_mode = HandleMode::Free;
 
-			self.store_clicked_endpoint(document, &transform, snap_data.input, snap_data.viewport);
+			self.store_clicked_endpoint(document, transform.transform_point2(self.next_point));
 
 			if self.modifiers.lock_angle {
 				self.set_lock_angle(&vector, id, self.prior_segment);
@@ -703,7 +827,7 @@ impl PenToolData {
 		}
 
 		// Closing path
-		let closing_path_on_point = self.close_path_on_point(snap_data, &vector, document, id, &transform);
+		let closing_path_on_point = self.close_path_on_point(&vector, document, id, &transform);
 		if !closing_path_on_point {
 			// Attempt to find nearest segment and close path on segment by creating an anchor point on it
 			let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
@@ -720,8 +844,6 @@ impl PenToolData {
 				self.prior_segments = None;
 				self.prior_segment = None;
 
-				// Should also update the SnapCache here?
-
 				self.handle_mode = HandleMode::Free;
 				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
 					self.set_lock_angle(&vector, prior_endpoint, self.prior_segment);
@@ -731,9 +853,9 @@ impl PenToolData {
 		}
 	}
 
-	fn close_path_on_point(&mut self, snap_data: SnapData, vector: &Vector, document: &DocumentMessageHandler, id: PointId, transform: &DAffine2) -> bool {
+	fn close_path_on_point(&mut self, vector: &VectorGeometry, document: &DocumentMessageHandler, id: PointId, transform: &DAffine2) -> bool {
 		for id in vector.anchor_points().filter(|&point| point != id) {
-			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(pos) = vector.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 
@@ -742,7 +864,7 @@ impl PenToolData {
 				self.handle_end_offset = None;
 				self.path_closed = true;
 				self.next_handle_start = self.next_point;
-				self.store_clicked_endpoint(document, transform, snap_data.input, snap_data.viewport);
+				self.store_clicked_endpoint(document, transform.transform_point2(self.next_point));
 				self.handle_mode = HandleMode::Free;
 				if let (true, Some(prior_endpoint)) = (self.modifiers.lock_angle, self.prior_segment_endpoint) {
 					self.set_lock_angle(vector, prior_endpoint, self.prior_segment);
@@ -755,29 +877,30 @@ impl PenToolData {
 	}
 
 	/// Finishes the drag by placing the handle or segment, then closes the history step that the click opened.
-	fn finish_placing_handle(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let state = self.place_handle_or_segment(snap_data, transform, responses);
+	fn finish_placing_handle(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		self.before_press = None;
+		let state = self.place_handle_or_segment(snap_session, view, transform, responses);
 		responses.add(DocumentMessage::EndTransaction);
 		state
 	}
 
 	/// The first drag of a path only records the initial anchor's outgoing handle, and every later drag inserts a segment.
-	fn place_handle_or_segment(&mut self, snap_data: SnapData, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let document = snap_data.document;
+	fn place_handle_or_segment(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		let document = view.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
-		let mouse = snap_data.input.mouse.position;
+		let mouse = view.input.mouse.position;
 		self.handle_swapped = false;
 		self.handle_end_offset = None;
 		self.handle_start_offset = None;
 		let Some(handle_end) = self.handle_end else {
 			self.handle_end = Some(next_handle_start);
-			self.place_anchor(snap_data, transform, mouse, responses);
+			self.place_anchor(snap_session, view, transform, mouse, responses);
 			self.latest_point_mut()?.handle_start = next_handle_start;
 			return None;
 		};
 		let next_point = self.next_point;
-		self.place_anchor(snap_data, transform, mouse, responses);
+		self.place_anchor(snap_session, view, transform, mouse, responses);
 		let handles = [handle_start - self.latest_point()?.pos, handle_end - next_point].map(Some);
 
 		// Get close path
@@ -789,7 +912,7 @@ impl PenToolData {
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
 		for id in vector.anchor_points().filter(|&point| point != start) {
-			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
+			let Some(pos) = vector.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 			if transformed_distance_between_squared < snap_point_tolerance_squared {
@@ -813,12 +936,12 @@ impl PenToolData {
 			&& let Some((handles, handle1_pos)) = match self.get_opposite_handle_type(TargetHandle::PreviewInHandle, &vector) {
 				TargetHandle::PriorOutHandle(segment) => {
 					let handles = [HandleId::end(id), HandleId::primary(segment)];
-					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector);
+					let handle1_pos = vector.position_of(handles[1].to_manipulator_point());
 					handle1_pos.map(|pos| (handles, pos))
 				}
 				TargetHandle::PriorInHandle(segment) => {
 					let handles = [HandleId::end(id), HandleId::end(segment)];
-					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector);
+					let handle1_pos = vector.position_of(handles[1].to_manipulator_point());
 					handle1_pos.map(|pos| (handles, pos))
 				}
 				_ => None,
@@ -828,7 +951,6 @@ impl PenToolData {
 				layer,
 				modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
 			});
-			self.cleanup(responses);
 		}
 
 		self.prior_segment = Some(id);
@@ -846,7 +968,7 @@ impl PenToolData {
 				[HandleId::primary(last_segment), HandleId::primary(id)]
 			};
 
-			if let Some(h1) = handles[0].to_manipulator_point().get_position(&vector) {
+			if let Some(h1) = vector.position_of(handles[0].to_manipulator_point()) {
 				let colinear = is_almost_colinear(last_point.pos, h1, last_point.handle_start);
 				responses.add(GraphOperationMessage::Vector {
 					layer,
@@ -867,71 +989,29 @@ impl PenToolData {
 		Some(if close_subpath { PenToolFsmState::Ready } else { PenToolFsmState::PlacingAnchor })
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	/// Calculates snap position delta while moving anchor and its handles.
-	fn space_anchor_handle_snap(
-		&mut self,
-		viewport_to_document: &DAffine2,
-		transform: &DAffine2,
-		snap_data: &SnapData<'_>,
-		mouse: &DVec2,
-		vector: &Vector,
-		input: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
-	) -> Option<DVec2> {
+	/// Snaps the slide of the anchor and its handles while Space is held, and returns how far they move in layer space.
+	fn space_anchor_handle_snap(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, mouse: DVec2, vector: &VectorGeometry) -> Option<DVec2> {
 		let reference_handle = if self.path_closed { TargetHandle::PreviewInHandle } else { TargetHandle::FuturePreviewOutHandle };
-		let end_handle = self.get_opposite_handle_type(reference_handle, vector);
-		let end_handle_pos = self.target_handle_position(end_handle, vector);
-		let ref_pos = self.target_handle_position(reference_handle, vector)?;
-		let snap = &mut self.snap_manager;
-		let snap_data = SnapData::new_snap_cache(snap_data.document, input, viewport, &self.snap_cache);
+		let reference_position = transform.transform_point2(self.target_handle_position(reference_handle, vector)?);
 
-		let handle_start_offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
-		let document_pos = viewport_to_document.transform_point2(*mouse + handle_start_offset);
+		// Measuring the slide from where it began keeps an engaged snap held from one move to the next
+		if self.anchor_slide.is_empty() {
+			let opposite_handle = self.get_opposite_handle_type(reference_handle, vector);
+			let opposite_position = match opposite_handle {
+				TargetHandle::None | TargetHandle::FuturePreviewOutHandle => None,
+				_ => self.target_handle_position(opposite_handle, vector).map(|position| transform.transform_point2(position)),
+			};
 
-		let anchor_offset = transform.transform_point2(self.next_point - ref_pos);
-
-		let handle_start = SnapCandidatePoint::handle(document_pos);
-		let anchor = SnapCandidatePoint::handle(document_pos + anchor_offset);
-
-		let snapped_near_handle_start = snap.free_snap(&snap_data, &handle_start, SnapTypeConfiguration::default());
-		let snapped_anchor = snap.free_snap(&snap_data, &anchor, SnapTypeConfiguration::default());
-
-		let handle_snap_option = end_handle_pos.and_then(|handle| match end_handle {
-			TargetHandle::None => None,
-			TargetHandle::FuturePreviewOutHandle => None,
-			_ => {
-				let handle_offset = transform.transform_point2(handle - ref_pos);
-				let handle_snap = SnapCandidatePoint::handle(document_pos + handle_offset);
-				Some((handle, handle_snap))
-			}
-		});
-
-		let mut delta: DVec2;
-		let best_snapped = if snapped_near_handle_start.other_snap_better(&snapped_anchor) {
-			delta = snapped_anchor.snapped_point_document - transform.transform_point2(self.next_point);
-			snapped_anchor
-		} else {
-			delta = snapped_near_handle_start.snapped_point_document - transform.transform_point2(ref_pos);
-			snapped_near_handle_start
-		};
-
-		let Some((handle, handle_snap)) = handle_snap_option else {
-			snap.update_indicator(best_snapped);
-			return Some(transform.inverse().transform_vector2(delta));
-		};
-
-		let snapped_handle = snap.free_snap(&snap_data, &handle_snap, SnapTypeConfiguration::default());
-
-		if best_snapped.other_snap_better(&snapped_handle) {
-			delta = snapped_handle.snapped_point_document - transform.transform_point2(handle);
-			snap.update_indicator(snapped_handle);
-		} else {
-			snap.update_indicator(best_snapped);
+			let starts = [Some(reference_position), Some(transform.transform_point2(self.next_point)), opposite_position];
+			self.anchor_slide = starts.into_iter().flatten().map(FeatureMap::sliding_from).collect();
 		}
 
-		// Transform delta back to original coordinate space
-		Some(transform.inverse().transform_vector2(delta))
+		let lead = *self.anchor_slide.first()?;
+		let viewport_to_document = view.document.metadata().document_to_viewport.inverse();
+		let pointer = viewport_to_document.transform_point2(mouse + self.handle_start_offset.unwrap_or(DVec2::ZERO));
+		let slide = snap_session.snap_features(view, &self.anchor_slide, 0, lead.parameters_for(pointer)?, PointOptions::default());
+
+		Some(transform.inverse().transform_vector2(lead.position(slide) - reference_position))
 	}
 
 	/// Calculates the offset from the mouse when swapping handles, and swaps the handles.
@@ -1012,7 +1092,7 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle(self.handle_mode))
 	}
 
-	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector: &Vector) {
+	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector: &VectorGeometry) {
 		if self.handle_end.is_none()
 			&& let Some(latest_pt) = self.latest_point_mut()
 		{
@@ -1040,19 +1120,17 @@ impl PenToolData {
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
 	fn drag_handle(
 		&mut self,
-		snap_data: SnapData,
+		snap_session: &mut SnapSession,
+		view: SnapView,
 		transform: DAffine2,
 		mouse: DVec2,
 		responses: &mut VecDeque<Message>,
 		layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		viewport: &ViewportMessageHandler,
 	) -> Option<PenToolFsmState> {
 		let colinear = (self.handle_mode == HandleMode::ColinearEquidistant && self.modifiers.break_handle) || (self.handle_mode == HandleMode::ColinearLocked && !self.modifiers.break_handle);
-		let document = snap_data.document;
+		let document = view.document;
 		let Some(layer) = layer else { return Some(PenToolFsmState::DraggingHandle(self.handle_mode)) };
 		let vector = document.network_interface.compute_modified_vector(layer)?;
 		let viewport_to_document = document.metadata().document_to_viewport.inverse();
@@ -1060,7 +1138,7 @@ impl PenToolData {
 
 		// Handles pressing Space to drag anchor and its handles
 		if self.modifiers.move_anchor_with_handles {
-			let Some(delta) = self.space_anchor_handle_snap(&viewport_to_document, &transform, &snap_data, &mouse, &vector, input, viewport) else {
+			let Some(delta) = self.space_anchor_handle_snap(snap_session, view, transform, mouse, &vector) else {
 				return Some(PenToolFsmState::DraggingHandle(self.handle_mode));
 			};
 
@@ -1089,11 +1167,11 @@ impl PenToolData {
 			TargetHandle::FuturePreviewOutHandle => {
 				let offset = self.handle_start_offset.unwrap_or(DVec2::ZERO);
 				mouse_pos += offset;
-				self.next_handle_start = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_pos, Some(self.next_point), false);
+				self.next_handle_start = self.compute_snapped_angle(snap_session, view, transform, colinear, mouse_pos, Some(self.next_point), false);
 			}
 			_ => {
 				mouse_pos += self.handle_end_offset.unwrap_or(DVec2::ZERO);
-				let mouse_pos = self.compute_snapped_angle(snap_data.clone(), transform, colinear, mouse_pos, Some(self.next_point), false);
+				let mouse_pos = self.compute_snapped_angle(snap_session, view, transform, colinear, mouse_pos, Some(self.next_point), false);
 				self.update_target_handle_pos(self.handle_type, self.next_point, responses, mouse_pos, layer);
 			}
 		}
@@ -1140,7 +1218,7 @@ impl PenToolData {
 	}
 
 	/// Makes the opposite handle equidistant or locks its length.
-	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector: &Vector) {
+	fn adjust_handle_length(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, vector: &VectorGeometry) {
 		let opposite_handle_type = self.get_opposite_handle_type(self.handle_type, vector);
 		match self.handle_mode {
 			HandleMode::ColinearEquidistant => {
@@ -1177,7 +1255,7 @@ impl PenToolData {
 		}
 	}
 
-	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector: &Vector) {
+	fn apply_colinear_constraint(&mut self, responses: &mut VecDeque<Message>, layer: LayerNodeIdentifier, anchor_pos: DVec2, vector: &VectorGeometry) {
 		let Some(handle) = self.target_handle_position(self.handle_type, vector) else { return };
 
 		if (anchor_pos - handle).length() < 1e-6 && self.modifiers.lock_angle {
@@ -1197,11 +1275,11 @@ impl PenToolData {
 		self.update_target_handle_pos(opposite_handle, self.next_point, responses, new_handle_position, layer);
 	}
 
-	fn place_anchor(&mut self, snap_data: SnapData, transform: DAffine2, mouse: DVec2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
-		let document = snap_data.document;
+	fn place_anchor(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, mouse: DVec2, responses: &mut VecDeque<Message>) -> Option<PenToolFsmState> {
+		let document = view.document;
 
 		let relative = if self.path_closed { None } else { self.latest_point().map(|point| point.pos) };
-		self.next_point = self.compute_snapped_angle(snap_data, transform, false, mouse, relative, true);
+		self.next_point = self.compute_snapped_angle(snap_session, view, transform, false, mouse, relative, true);
 
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
@@ -1211,7 +1289,7 @@ impl PenToolData {
 		if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
 			let transform = document.metadata().document_to_viewport * transform;
 			for point in vector.anchor_points() {
-				let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
+				let Some(pos) = vector.position_from_id(point) else { continue };
 				let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 				let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
 				if transformed_distance_between_squared < snap_point_tolerance_squared {
@@ -1229,78 +1307,52 @@ impl PenToolData {
 		Some(PenToolFsmState::PlacingAnchor)
 	}
 
-	/// Snap the angle of the line from relative to position if the key is pressed.
-	fn compute_snapped_angle(&mut self, snap_data: SnapData, transform: DAffine2, colinear: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
+	/// Snaps a point placed from `relative`, keeping the line between them at a stepped or locked angle while the modifier keys ask for it.
+	#[allow(clippy::too_many_arguments)]
+	fn compute_snapped_angle(&mut self, snap_session: &mut SnapSession, view: SnapView, transform: DAffine2, colinear: bool, mouse: DVec2, relative: Option<DVec2>, neighbor: bool) -> DVec2 {
 		let ModifierState { snap_angle, lock_angle, .. } = self.modifiers;
-		let document = snap_data.document;
-		let mut document_pos = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
-		let snap = &mut self.snap_manager;
+		let pointer = view.document.metadata().document_to_viewport.inverse().transform_point2(mouse);
+		let relative = relative.map(|relative| transform.transform_point2(relative));
 
-		let neighbors = relative.filter(|_| neighbor).map_or(Vec::new(), |neighbor| vec![neighbor]);
-
-		let config = SnapTypeConfiguration::default();
-		if let Some(relative) = relative
-			.map(|layer| transform.transform_point2(layer))
-			.filter(|&relative| (snap_angle || lock_angle) && (relative - document_pos).length_squared() > f64::EPSILON * 100.)
-		{
-			let resolution = LINE_ROTATE_SNAP_ANGLE.to_radians();
-
-			let angle = if lock_angle {
-				self.angle
-			} else if let Some(angle) = DVec2::X.try_angle_to(relative - document_pos)
-				&& !lock_angle
-			{
-				(angle / resolution).round() * resolution
-			} else {
-				self.angle
-			};
-			document_pos = relative - (relative - document_pos).project_onto_normalized(DVec2::from_angle(angle));
-
-			let constraint = SnapConstraint::Line {
-				origin: relative,
-				direction: document_pos - relative,
-			};
-			let near_point = SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone());
-			let far_point = SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors);
-			if colinear {
-				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
-				let snapped_far = snap.constrained_snap(&snap_data, &far_point, constraint, config);
-				document_pos = if snapped_far.other_snap_better(&snapped) {
-					snapped.snapped_point_document
-				} else {
-					2. * relative - snapped_far.snapped_point_document
+		let required = relative
+			.filter(|&relative| (snap_angle || lock_angle) && (relative - pointer).length_squared() > f64::EPSILON * 100.)
+			.and_then(|relative| {
+				let step = view.document.snapping_state.angle_step_radians();
+				let angle = match DVec2::X.try_angle_to(relative - pointer) {
+					Some(angle) if !lock_angle => (angle / step).round() * step,
+					_ => self.angle,
 				};
-				snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
-			} else {
-				let snapped = snap.constrained_snap(&snap_data, &near_point, constraint, config);
-				document_pos = snapped.snapped_point_document;
-				snap.update_indicator(snapped);
-			}
-		} else if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)).filter(|_| colinear) {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors.clone()), config);
-			let snapped_far = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(2. * relative - document_pos, neighbors), config);
-			document_pos = if snapped_far.other_snap_better(&snapped) {
-				snapped.snapped_point_document
-			} else {
-				2. * relative - snapped_far.snapped_point_document
-			};
-			snap.update_indicator(if snapped_far.other_snap_better(&snapped) { snapped } else { snapped_far });
-		} else {
-			let snapped = snap.free_snap(&snap_data, &SnapCandidatePoint::handle_neighbors(document_pos, neighbors), config);
-			document_pos = snapped.snapped_point_document;
-			snap.update_indicator(snapped);
-		}
+				Locus::line(relative, DVec2::from_angle(angle))
+			});
+		let options = PointOptions {
+			previous: relative.filter(|_| neighbor),
+			required,
+			..Default::default()
+		};
 
-		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer))
-			&& let Some(angle) = DVec2::X.try_angle_to(relative - document_pos)
-			&& (relative - document_pos).length_squared() > f64::EPSILON * 100.
+		let document_position = match relative.filter(|_| colinear) {
+			// The opposite handle mirrors this one through the anchor, and either may be the one to snap
+			Some(anchor) => {
+				let mirrored = FeatureMap {
+					matrix: DMat2::from_diagonal(DVec2::splat(-1.)),
+					offset: anchor * 2.,
+				};
+				snap_session.snap_features(view, &[FeatureMap::IDENTITY, mirrored], 0, pointer, options)
+			}
+			None => snap_session.snap_point(view, pointer, options),
+		};
+
+		if let Some(relative) = relative
+			&& let Some(angle) = DVec2::X.try_angle_to(relative - document_position)
+			&& (relative - document_position).length_squared() > f64::EPSILON * 100.
 		{
 			self.angle = angle;
 		}
 
-		transform.inverse().transform_point2(document_pos)
+		transform.inverse().transform_point2(document_position)
 	}
 
+	/// Starts a path at the viewport position the press snapped to, and returns the layer it is drawn in.
 	#[allow(clippy::too_many_arguments)]
 	fn create_initial_point(
 		&mut self,
@@ -1309,24 +1361,35 @@ impl PenToolData {
 		viewport: &ViewportMessageHandler,
 		responses: &mut VecDeque<Message>,
 		tool_options: &PenOptions,
+		global_tool_data: &DocumentToolData,
 		append: bool,
 		shape_editor: &mut ShapeState,
-	) {
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-		let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+		start: DVec2,
+	) -> LayerNodeIdentifier {
 		self.handle_type = TargetHandle::FuturePreviewOutHandle;
 
 		let selected_nodes = document.network_interface.selected_nodes();
 		self.handle_end = None;
 
+		// The selected paths can be extended, along with the paths inside a selected group
+		let metadata = document.metadata();
+		let inside_selected_groups = selected_nodes
+			.selected_layers_except_artboards(&document.network_interface)
+			.flat_map(|layer| layer.descendants(metadata));
+		let extendable = selected_nodes.selected_layers(metadata).chain(inside_selected_groups);
+
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-		let extension_choice = should_extend(document, viewport_vec, tolerance, selected_nodes.selected_layers(document.metadata()));
+		let extension_choice = should_extend(document, start, tolerance, extendable);
 		if let Some((layer, point, position)) = extension_choice {
+			// A path inside a selected group becomes the selection, so the drawing goes on in it rather than in the group
+			if !selected_nodes.selected_layers(metadata).any(|selected| selected == layer) {
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
+			}
+
 			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
-			return;
-		} else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport_vec, tolerance) {
+			return layer;
+		} else if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, start, tolerance) {
 			let (point, segments) = closest_segment.adjusted_insert(responses);
 			let layer = closest_segment.layer();
 			let position = closest_segment.closest_point_document();
@@ -1336,12 +1399,13 @@ impl PenToolData {
 			self.prior_segment_layer = Some(layer);
 			self.prior_segments = Some(segments.to_vec());
 
+			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
-			return;
+			return layer;
 		}
 
 		if append {
-			if let Some((layer, point, _)) = closest_point(document, viewport_vec, tolerance, document.metadata().all_layers(), |_| false) {
+			if let Some((layer, point, _)) = closest_point(document, start, tolerance, document.metadata().all_layers(), |_| false) {
 				let vector = document.network_interface.compute_modified_vector(layer).unwrap();
 				let segment = vector.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
 
@@ -1354,12 +1418,12 @@ impl PenToolData {
 			let existing_layer = selected_layers_except_artboards.next().filter(|_| selected_layers_except_artboards.next().is_none());
 			if let Some(layer) = existing_layer {
 				// Add point to existing layer
-				responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport: viewport_vec });
-				return;
+				responses.add(PenToolMessage::AddPointLayerPosition { layer, viewport: start });
+				return layer;
 			}
 		}
 
-		if let Some((layer, point, _position)) = closest_point(document, viewport_vec, tolerance, document.metadata().all_layers(), |_| false) {
+		if let Some((layer, point, _position)) = closest_point(document, start, tolerance, document.metadata().all_layers(), |_| false) {
 			let vector = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
 			self.handle_mode = HandleMode::Free;
@@ -1376,8 +1440,8 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.drawing.fill.apply_fill(layer, responses);
-		tool_options.drawing.apply_stroke_to_new_layer(layer, responses);
+		tool_options.drawing.apply_fill_to_new_layer(layer, global_tool_data, responses);
+		tool_options.drawing.apply_stroke_to_new_layer(layer, global_tool_data, responses);
 		tool_options.drawing.apply_stroke_order_to_new_layer(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
@@ -1398,7 +1462,7 @@ impl PenToolData {
 		// Defer the transform setup and point insertion until after the layer is created
 		responses.add(DeferMessage::AfterGraphRun {
 			messages: vec![
-				translation_transform_set(document, layer, viewport_vec),
+				translation_transform_set(document, layer, start),
 				GraphOperationMessage::Vector {
 					layer,
 					modification_type: VectorModificationType::InsertPoint { id, position: DVec2::ZERO },
@@ -1407,11 +1471,13 @@ impl PenToolData {
 			],
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
+
+		layer
 	}
 
 	/// Perform extension of an existing path
 	fn extend_existing_path(&mut self, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, point: PointId, position: DVec2) {
-		let vector: Option<Vector> = document.network_interface.compute_modified_vector(layer);
+		let vector: Option<VectorGeometry> = document.network_interface.compute_modified_vector(layer);
 		let (handle_start, in_segment) = if let Some(vector) = &vector {
 			vector
 				.segment_iter()
@@ -1462,43 +1528,25 @@ impl PenToolData {
 		}
 	}
 
-	// Stores the segment and point ID of the clicked endpoint
-	fn store_clicked_endpoint(&mut self, document: &DocumentMessageHandler, transform: &DAffine2, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) {
-		let mut manipulators = HashMap::with_hasher(NoHashBuilder);
-		let mut unselected = Vec::new();
-		let mut layer_manipulators = HashSet::with_hasher(NoHashBuilder);
-
-		let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-		let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-
+	// Stores the segment and point ID of the endpoint clicked at a viewport position
+	fn store_clicked_endpoint(&mut self, document: &DocumentMessageHandler, clicked: DVec2) {
 		let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
 		self.prior_segment = None;
 		self.prior_segment_endpoint = None;
 		self.prior_segment_layer = None;
 		self.prior_segments = None;
 
-		if let Some((layer, point, _position)) = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false) {
+		if let Some((layer, point, _position)) = closest_point(document, clicked, tolerance, document.metadata().all_layers(), |_| false) {
 			self.prior_segment_endpoint = Some(point);
 			self.prior_segment_layer = Some(layer);
 			let vector = document.network_interface.compute_modified_vector(layer).unwrap();
 			let segment = vector.all_connected(point).collect::<Vec<_>>().first().map(|s| s.segment);
 			self.prior_segment = segment;
-			layer_manipulators.insert(point);
-			for (&id, &position) in vector.point_domain.ids().iter().zip(vector.point_domain.positions()) {
-				if id == point {
-					continue;
-				}
-				unselected.push(SnapCandidatePoint::handle(transform.transform_point2(position)))
-			}
-			manipulators.insert(layer, layer_manipulators);
-			self.snap_cache = SnapCache { manipulators, unselected }
 		}
 	}
 
-	fn set_lock_angle(&mut self, vector: &Vector, anchor: PointId, segment: Option<SegmentId>) {
-		let anchor_position = vector.point_domain.position_from_id(anchor);
+	fn set_lock_angle(&mut self, vector: &VectorGeometry, anchor: PointId, segment: Option<SegmentId>) {
+		let anchor_position = vector.position_from_id(anchor);
 
 		let Some((anchor_position, segment)) = anchor_position.zip(segment) else {
 			self.handle_mode = HandleMode::Free;
@@ -1559,11 +1607,15 @@ impl Fsm for PenToolFsmState {
 	) -> Self {
 		let ToolActionMessageContext {
 			document,
+			document_id,
+			global_tool_data,
 			input,
 			shape_editor,
+			snap_session,
 			viewport,
 			..
 		} = tool_action_data;
+		let view = SnapView::new(document, *document_id, input);
 		let selected_nodes = document.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(tool_data.current_layer);
@@ -1642,7 +1694,7 @@ impl Fsm for PenToolFsmState {
 				let Some(vector) = vector else { return PenToolFsmState::GRSHandle };
 
 				// Keep the preview segment's endpoint tracking the cursor while the outgoing handle is transformed by the GRS operation
-				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+				tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses);
 
 				if let Some(latest_pt) = tool_data.latest_point_mut() {
 					let layer_space_to_viewport = document.metadata().transform_to_viewport(layer);
@@ -1738,18 +1790,16 @@ impl Fsm for PenToolFsmState {
 				// Check if there is an anchor within threshold
 				// If not check if there is a closest segment within threshold, if yes then draw overlay
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let press_position = snap_session.shown_position().map_or(input.mouse.position, |position| document_to_viewport.transform_point2(position));
 
-				let close_to_point = closest_point(document, viewport_vec, tolerance, document.metadata().all_layers(), |_| false).is_some();
-				if !close_to_point && let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport_vec, tolerance) {
+				let close_to_point = closest_point(document, press_position, tolerance, document.metadata().all_layers(), |_| false).is_some();
+				if !close_to_point && let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, press_position, tolerance) {
 					let pos = closest_segment.closest_point_to_viewport();
 					let perp = closest_segment.calculate_perp(document);
 					overlay_context.manipulator_anchor(pos, true, None);
 					overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 				}
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}
 			(_, PenToolMessage::Overlays { context: mut overlay_context }) => {
@@ -1864,11 +1914,8 @@ impl Fsm for PenToolFsmState {
 
 				if self == PenToolFsmState::PlacingAnchor {
 					let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-					let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
-					let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false).is_some();
-					if !close_to_point && let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+					let close_to_point = closest_point(document, next_anchor, tolerance, document.metadata().all_layers(), |_| false).is_some();
+					if !close_to_point && let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, next_anchor, tolerance) {
 						let pos = closest_segment.closest_point_to_viewport();
 						let perp = closest_segment.calculate_perp(document);
 						overlay_context.manipulator_anchor(pos, true, None);
@@ -1887,7 +1934,7 @@ impl Fsm for PenToolFsmState {
 						&& let Some(mut vector) = document.network_interface.compute_modified_vector(layer)
 					{
 						let closest_point = vector.anchor_points().filter(|&id| id != start).find(|&id| {
-							vector.point_domain.position_from_id(id).is_some_and(|pos| {
+							vector.position_from_id(id).is_some_and(|pos| {
 								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
 							})
@@ -1905,10 +1952,8 @@ impl Fsm for PenToolFsmState {
 							for path in closed_paths {
 								let segments = path.edges.iter().filter_map(|edge| {
 									vector
-										.segment_domain
-										.iter()
-										.find(|(id, _, _, _)| id == &edge.id)
-										.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+										.segment_with_pool_endpoints(edge.id)
+										.map(|(segment, start, end)| if start == edge.start { (segment, start, end) } else { (segment.reverse(), end, start) })
 								});
 								if let Some(bezpath) = vector.bezpath_from_segments_ignore_discontinuities(segments) {
 									fill_region.extend(bezpath.elements().iter().copied());
@@ -1920,9 +1965,6 @@ impl Fsm for PenToolFsmState {
 						}
 					}
 				}
-
-				// Draw the overlays that visualize current snapping
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
 				self
 			}
@@ -1939,14 +1981,23 @@ impl Fsm for PenToolFsmState {
 				// Get the closest point and the segment it is on
 				let append = input.keyboard.key(append_to_selected);
 
-				tool_data.store_clicked_endpoint(document, &transform, input, viewport);
-				tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor);
+				// The path starts on whatever the pointer was shown snapping to before the press
+				let document_to_viewport = document.metadata().document_to_viewport;
+				let pointer = document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let start = document_to_viewport.transform_point2(snap_session.snap_press(view, pointer));
+
+				tool_data.store_clicked_endpoint(document, start);
+				let drawn_layer = tool_data.create_initial_point(document, input, viewport, responses, tool_options, global_tool_data, append, shape_editor, start);
+				tool_data.begin_snapping_gesture(snap_session, view, Some(drawn_layer));
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle(tool_data.handle_mode)
 			}
 			(_, PenToolMessage::AddPointLayerPosition { layer, viewport }) => {
 				tool_data.add_point_layer_position(document, responses, layer, viewport);
+
+				// The handle is pulled from the anchor just added, which snapping must now leave alone
+				tool_data.begin_snapping_gesture(snap_session, view, Some(layer));
 
 				self
 			}
@@ -1955,12 +2006,12 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { .. }) => {
-				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
-				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+				tool_data.remember_before_press();
 
 				// The anchor goes where its preview is shown for where the pointer is pressed
-				tool_data.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses);
+				tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses);
+				snap_session.land_press(view, transform.transform_point2(tool_data.next_point));
+				let next_anchor = (document.metadata().document_to_viewport * transform).transform_point2(tool_data.next_point);
 
 				// Each segment placement is its own history step, spanning from this click through the release that finalizes it
 				responses.add(DocumentMessage::StartTransaction);
@@ -1972,7 +2023,7 @@ impl Fsm for PenToolFsmState {
 				let layers = LayerNodeIdentifier::ROOT_PARENT
 					.descendants(document.metadata())
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
-				if let Some((other_layer, _, _)) = should_extend(document, viewport_vec, crate::consts::SNAP_POINT_TOLERANCE, layers) {
+				if let Some((other_layer, _, _)) = should_extend(document, next_anchor, crate::consts::SNAP_POINT_TOLERANCE, layers) {
 					let selected_nodes = document.network_interface.selected_nodes();
 					let mut selected_layers = selected_nodes.selected_layers(document.metadata());
 					if let Some(current_layer) = selected_layers
@@ -2005,10 +2056,11 @@ impl Fsm for PenToolFsmState {
 
 				if let Some(layer) = layer {
 					tool_data.handle_mode = HandleMode::ColinearLocked;
-					tool_data.bend_from_previous_point(SnapData::new(document, input, viewport), transform, layer, shape_editor, responses);
+					tool_data.bend_from_previous_point(document, transform, layer, shape_editor, responses);
 
 					let pressed = (document.metadata().document_to_viewport * transform).transform_point2(tool_data.next_point);
-					tool_data.place_anchor(SnapData::new(document, input, viewport), transform, pressed, responses);
+					tool_data.place_anchor(snap_session, view, transform, pressed, responses);
+					tool_data.begin_snapping_gesture(snap_session, view, Some(layer));
 				}
 
 				// The input held back during the wait follows the press
@@ -2029,7 +2081,7 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				let vector = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer));
-				let anchor_exists = |point: &LastPoint| vector.as_ref().is_some_and(|vector| vector.point_domain.position_from_id(point.id).is_some());
+				let anchor_exists = |point: &LastPoint| vector.as_ref().is_some_and(|vector| vector.position_from_id(point.id).is_some());
 
 				// Rewind past the anchors the reverted path no longer contains, remembering them so redo can advance back through them
 				while tool_data.point_index > 0 && !tool_data.latest_point().is_some_and(anchor_exists) {
@@ -2039,14 +2091,14 @@ impl Fsm for PenToolFsmState {
 				// Undoing the initial anchor removed the whole in-progress path, so the drawing is over
 				let initial_anchor_remains = tool_data.latest_point().is_some_and(anchor_exists);
 				let Some(vector) = vector.filter(|_| initial_anchor_remains) else {
-					tool_data.cleanup(responses);
+					tool_data.cleanup(snap_session, responses);
 					tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 					responses.add(OverlaysMessage::Draw);
 
 					return PenToolFsmState::Ready;
 				};
 
-				tool_data.resume_preview_from_current_anchor(SnapData::new(document, input, viewport), transform, &vector, responses);
+				tool_data.resume_preview_from_current_anchor(snap_session, view, transform, &vector, responses);
 				self
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Redo) => {
@@ -2055,7 +2107,7 @@ impl Fsm for PenToolFsmState {
 				};
 
 				// Advance only through the remembered anchors the re-applied step actually brought back
-				let anchor_exists = |point: &LastPoint| vector.point_domain.position_from_id(point.id).is_some();
+				let anchor_exists = |point: &LastPoint| vector.position_from_id(point.id).is_some();
 				let mut advanced = false;
 				while tool_data.latest_points.get(tool_data.point_index + 1).is_some_and(anchor_exists) {
 					tool_data.point_index += 1;
@@ -2063,7 +2115,7 @@ impl Fsm for PenToolFsmState {
 				}
 
 				if advanced {
-					tool_data.resume_preview_from_current_anchor(SnapData::new(document, input, viewport), transform, &vector, responses);
+					tool_data.resume_preview_from_current_anchor(snap_session, view, transform, &vector, responses);
 				}
 				self
 			}
@@ -2080,9 +2132,16 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
-				tool_data
-					.finish_placing_handle(SnapData::new(document, input, viewport), transform, responses)
-					.unwrap_or(PenToolFsmState::PlacingAnchor)
+				let state = tool_data.finish_placing_handle(snap_session, view, transform, responses).unwrap_or(PenToolFsmState::PlacingAnchor);
+
+				// A closed path is finished, and an open one goes on with the anchor just placed to snap to
+				if state == PenToolFsmState::Ready {
+					tool_data.cleanup(snap_session, responses);
+				} else {
+					tool_data.begin_snapping_gesture(snap_session, view, layer);
+				}
+
+				state
 			}
 			(
 				PenToolFsmState::DraggingHandle(_),
@@ -2096,7 +2155,6 @@ impl Fsm for PenToolFsmState {
 			) => {
 				tool_data.modifiers = tool_data.read_modifiers(input, snap_angle, break_handle, lock_angle, colinear, move_anchor_with_handles);
 
-				let snap_data = SnapData::new(document, input, viewport);
 				if tool_data.modifiers.colinear && !tool_data.toggle_colinear_debounce {
 					tool_data.handle_mode = match tool_data.handle_mode {
 						HandleMode::Free => {
@@ -2133,6 +2191,7 @@ impl Fsm for PenToolFsmState {
 
 				if !tool_data.modifiers.move_anchor_with_handles {
 					tool_data.space_pressed = false;
+					tool_data.anchor_slide.clear();
 				}
 
 				if !tool_data.modifiers.colinear {
@@ -2144,7 +2203,7 @@ impl Fsm for PenToolFsmState {
 				}
 
 				// Don't end the path if the handle can't be resolved this frame
-				let state = tool_data.drag_handle(snap_data, transform, input.mouse.position, responses, layer, input, viewport).unwrap_or(self);
+				let state = tool_data.drag_handle(snap_session, view, transform, input.mouse.position, responses, layer).unwrap_or(self);
 
 				if tool_data.handle_swapped {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
@@ -2187,9 +2246,7 @@ impl Fsm for PenToolFsmState {
 				tool_data.alt_pressed = false;
 				tool_data.modifiers = tool_data.read_modifiers(input, snap_angle, break_handle, lock_angle, colinear, move_anchor_with_handles);
 				// Don't end the path if the anchor can't be resolved this frame
-				let state = tool_data
-					.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
-					.unwrap_or(self);
+				let state = tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses).unwrap_or(self);
 
 				// Auto-panning
 				let messages = [
@@ -2215,6 +2272,11 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::SwapHandles) => {
+				// Holding Tab swaps once, not again with each repeat of the held key
+				if input.key_repeat {
+					return self;
+				}
+
 				if !tool_data.handle_swapped {
 					tool_data.handle_swapped = true
 				}
@@ -2233,7 +2295,11 @@ impl Fsm for PenToolFsmState {
 				},
 			) => {
 				tool_data.modifiers = tool_data.read_modifiers(input, snap_angle, break_handle, lock_angle, colinear, move_anchor_with_handles);
-				tool_data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
+
+				// Show where a press would start the path
+				let pointer = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				snap_session.snap_point(view, pointer, PointOptions::default());
+
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -2288,22 +2354,22 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Confirm) => {
 				// Confirm to end path
 				if let Some((vector, layer)) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)).zip(layer) {
-					let single_point_in_layer = vector.point_domain.ids().len() == 1;
-					tool_data.finish_placing_handle(SnapData::new(document, input, viewport), transform, responses);
-					let latest_points = tool_data.point_index == 0;
+					let single_point_in_layer = vector.anchor_points().count() == 1;
 
-					if latest_points && single_point_in_layer {
+					// A drag that places no segment leaves the drawing as only its initial anchor
+					let lone_initial_anchor = tool_data.latest_point().map(|point| point.id).filter(|_| tool_data.point_index == 0 && tool_data.handle_end.is_none());
+					tool_data.finish_placing_handle(snap_session, view, transform, responses);
+
+					if lone_initial_anchor.is_some() && single_point_in_layer {
 						responses.add(NodeGraphMessage::DeleteNodes {
 							node_ids: vec![layer.to_node()],
 							delete_children: true,
 						});
 						responses.add(NodeGraphMessage::RunDocumentGraph);
-					} else if (latest_points && tool_data.prior_segment_endpoint.is_none())
-						|| (tool_data.prior_segment_endpoint.is_some() && tool_data.prior_segment_layer != Some(layer) && latest_points)
+					} else if let Some(id) = lone_initial_anchor
+						&& (tool_data.prior_segment_endpoint.is_none() || tool_data.prior_segment_layer != Some(layer))
 					{
-						let vector_modification = VectorModificationType::RemovePoint {
-							id: tool_data.latest_point().unwrap().id,
-						};
+						let vector_modification = VectorModificationType::RemovePoint { id };
 						responses.add(GraphOperationMessage::Vector {
 							layer,
 							modification_type: vector_modification,
@@ -2313,7 +2379,7 @@ impl Fsm for PenToolFsmState {
 						responses.add(DocumentMessage::EndTransaction);
 					}
 				}
-				tool_data.cleanup(responses);
+				tool_data.cleanup(snap_session, responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				responses.add(OverlaysMessage::Draw);
@@ -2322,42 +2388,31 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::Confirm) => {
 				responses.add(DocumentMessage::EndTransaction);
-				tool_data.cleanup(responses);
+				tool_data.remove_lone_initial_anchor(document, layer, responses);
+				tool_data.cleanup(snap_session, responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
 				PenToolFsmState::Ready
 			}
 			(PenToolFsmState::DraggingHandle(..), PenToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
-				if tool_data.handle_end.is_none() {
-					tool_data.cleanup(responses);
-					tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
-
-					PenToolFsmState::Ready
-				} else {
-					tool_data
-						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
-						.unwrap_or(PenToolFsmState::Ready)
-				}
-			}
-			(PenToolFsmState::PlacingAnchor, PenToolMessage::Abort) => {
-				let should_delete_layer = if let Some(vector) = layer.and_then(|layer| document.network_interface.compute_modified_vector(layer)) {
-					vector.point_domain.ids().len() == 1
-				} else {
-					false
-				};
-
-				responses.add(DocumentMessage::AbortTransaction);
-				tool_data.cleanup(responses);
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
-				if should_delete_layer {
-					responses.add(NodeGraphMessage::DeleteNodes {
-						node_ids: vec![layer.unwrap().to_node()],
-						delete_children: true,
-					});
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+				// Cancelling the drawing's first drag cancels the drawing
+				if !tool_data.restore_before_press() {
+					tool_data.cleanup(snap_session, responses);
+					return PenToolFsmState::Ready;
 				}
+
+				// Cancelling a later drag cancels only its segment, so drawing goes on from the previous anchor
+				tool_data.begin_snapping_gesture(snap_session, view, layer);
+				tool_data.place_anchor(snap_session, view, transform, input.mouse.position, responses).unwrap_or(PenToolFsmState::Ready)
+			}
+			(PenToolFsmState::PlacingAnchor, PenToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.remove_lone_initial_anchor(document, layer, responses);
+				tool_data.cleanup(snap_session, responses);
+				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 				responses.add(OverlaysMessage::Draw);
 
 				PenToolFsmState::Ready
@@ -2369,11 +2424,14 @@ impl Fsm for PenToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![HintGroup(vec![
-				HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
-				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
-				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
-			])]),
+			PenToolFsmState::Ready | PenToolFsmState::GRSHandle => HintData(vec![
+				HintGroup(vec![
+					HintInfo::mouse(MouseMotion::Lmb, "Draw Path"),
+					// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
+					HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
+				]),
+				snapping_hints(),
+			]),
 			PenToolFsmState::PlacingAnchor => HintData(vec![
 				HintGroup(vec![
 					HintInfo::mouse(MouseMotion::Rmb, ""),
@@ -2387,6 +2445,7 @@ impl Fsm for PenToolFsmState {
 					HintInfo::mouse(MouseMotion::LmbDrag, "Bend Prev. Point").prepend_slash(),
 					HintInfo::keys([Key::Control], "Lock Angle").prepend_plus(),
 				]),
+				snapping_hints(),
 			]),
 			PenToolFsmState::DraggingHandle(mode) => {
 				let mut dragging_hint_data = HintData(Vec::new());
@@ -2422,6 +2481,7 @@ impl Fsm for PenToolFsmState {
 
 				dragging_hint_data.0.push(HintGroup(toggle_group));
 				dragging_hint_data.0.push(HintGroup(hold_group));
+				dragging_hint_data.0.push(snapping_hints());
 				dragging_hint_data
 			}
 		};
@@ -2438,13 +2498,30 @@ impl Fsm for PenToolFsmState {
 mod test_pen_tool {
 	use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 	use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+	use crate::messages::tool::common_functionality::snap_session::WAKE_DWELL_ON_APPROACH;
+	use crate::test_utils::EditorTestUtils;
 	use crate::test_utils::test_prelude::*;
-	use glam::DAffine2;
-	use graphene_std::vector::misc::ManipulatorPointId;
-	use graphene_std::vector::{SegmentId, Vector};
+	use glam::{DAffine2, DVec2};
+	use graphene_std::vector::misc::{BooleanOperation, HandleId, ManipulatorPointId};
+	use graphene_std::vector::{SegmentId, VectorGeometry};
+
+	fn assert_expected_anchors(editor: &EditorTestUtils, expected_anchors: &[DVec2]) {
+		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
+		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
+		let mut viewport_points: Vec<DVec2> = vector.anchor_positions().into_iter().map(|pos| layer_to_viewport.transform_point2(pos)).collect();
+
+		for (expected_index, &expected_position) in expected_anchors.iter().enumerate() {
+			let Some(viewport_index) = viewport_points.iter().position(|viewport| viewport.distance_squared(expected_position) < 1e-10) else {
+				panic!("The expected anchor index {expected_index} and position {expected_position} was not found in the actual anchors {viewport_points:?}");
+			};
+			viewport_points.remove(viewport_index);
+		}
+		assert!(viewport_points.is_empty(), "Viewport point(s) were not matched: {viewport_points:?}");
+	}
 
 	/// The single Pen-drawn path layer and its vector, or `None` once the layer has been undone away.
-	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, Vector)> {
+	fn drawn_path(editor: &EditorTestUtils) -> Option<(LayerNodeIdentifier, VectorGeometry)> {
 		let document = editor.active_document();
 		let path_identifier = DefinitionIdentifier::Network("Path".into());
 		let mut path_layers = document
@@ -2460,8 +2537,8 @@ mod test_pen_tool {
 
 	fn assert_path_shape(editor: &EditorTestUtils, points: usize, segments: usize) {
 		let (_, vector) = drawn_path(editor).expect("Expected a drawn path");
-		assert_eq!(vector.point_domain.ids().len(), points, "Unexpected point count");
-		assert_eq!(vector.segment_domain.ids().len(), segments, "Unexpected segment count");
+		assert_eq!(vector.anchor_points().count(), points, "Unexpected point count");
+		assert_eq!(vector.segment_ids().len(), segments, "Unexpected segment count");
 	}
 
 	/// Asserts the path's anchors sit at the given viewport positions, in placement order, and that each segment joins consecutive anchors.
@@ -2469,17 +2546,17 @@ mod test_pen_tool {
 		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 
-		let anchor_ids = vector.point_domain.ids();
+		let anchor_ids = vector.anchor_points().collect::<Vec<_>>();
 		assert_eq!(anchor_ids.len(), expected.len(), "Unexpected point count");
 		for (index, (&id, &expected_position)) in anchor_ids.iter().zip(expected).enumerate() {
-			let position = layer_to_viewport.transform_point2(vector.point_domain.position_from_id(id).unwrap());
+			let position = layer_to_viewport.transform_point2(vector.position_from_id(id).unwrap());
 			assert!(
 				position.distance(expected_position) < 1e-6,
 				"Anchor {index} is at {position:?} but was expected at {expected_position:?}"
 			);
 		}
 
-		let segment_ids = vector.segment_domain.ids();
+		let segment_ids = vector.segment_ids();
 		assert_eq!(segment_ids.len(), expected.len().saturating_sub(1), "Unexpected segment count");
 		for (index, &segment) in segment_ids.iter().enumerate() {
 			assert_eq!(vector.segment_start_from_id(segment), Some(anchor_ids[index]), "Segment {index} does not start at anchor {index}");
@@ -2503,6 +2580,312 @@ mod test_pen_tool {
 	const B: DVec2 = DVec2::new(200., 100.);
 	const C: DVec2 = DVec2::new(200., 200.);
 	const D: DVec2 = DVec2::new(100., 200.);
+
+	async fn create_a_rectangle() -> EditorTestUtils {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+
+		editor.select_primary_color(Color::RED).await;
+		// Draw a rectangle not at the origin (so will end up with a non-identity transform)
+		editor.draw_rect(A.x, A.y, C.x, C.y).await;
+
+		editor
+	}
+
+	/// Using the path tool to merge layers (by setting the endpoint to an anchor of another layer) should produce only expected anchor positions.
+	#[tokio::test]
+	async fn merging_layers_simple() {
+		let mut editor = create_a_rectangle().await;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle
+		click_pen(&mut editor, B).await;
+
+		// Validate that these anchors are the only ones that exist
+		let expected_anchors = [A, B, C, D, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_two_pen_paths() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create First Pen path
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, C).await;
+
+		// Abort the first pen process
+		editor.handle_message(ToolMessage::Pen(PenToolMessage::Abort)).await;
+
+		// Create a second pen stroke
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+
+		// Validate that these anchors are the only ones that exist
+		let expected_anchors = [A, B, C];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_group_with_offset() {
+		let mut editor = create_a_rectangle().await;
+
+		// Group rectangle
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle (offset by the group transform)
+		click_pen(&mut editor, B + offset).await;
+
+		let expected_anchors = [A + offset, B + offset, C + offset, D + offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_different_groups_with_offsets() {
+		let mut editor = create_a_rectangle().await;
+
+		// Group rectangle into Group 1
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset1 = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group1,
+				transform: DAffine2::from_translation(offset1),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Nest Group 1 inside Group 2 with a different offset
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+
+		let group2 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset2 = DVec2::new(30., -20.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: group2,
+				transform: DAffine2::from_translation(offset2),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		let total_offset = offset1 + offset2;
+
+		// Start the pen somewhere random
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		// Connect to the top right of the rectangle (offset by the nested group transforms)
+		click_pen(&mut editor, B + total_offset).await;
+
+		let expected_anchors = [A + total_offset, B + total_offset, C + total_offset, D + total_offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_artboard_with_offset() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let offset = DVec2::new(60., 70.);
+		editor.drag_tool(ToolType::Artboard, 0., 0., 500., 500., ModifierKeys::empty()).await;
+		let artboard = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard,
+				transform: DAffine2::from_translation(offset),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x + offset.x, A.y + offset.y, C.x + offset.x, C.y + offset.y).await;
+
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		click_pen(&mut editor, B + offset).await;
+
+		let expected_anchors = [A + offset, B + offset, C + offset, D + offset, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_in_artboards_with_different_offsets() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Create first artboard with offset
+		editor.drag_tool(ToolType::Artboard, 0., 0., 400., 400., ModifierKeys::empty()).await;
+		let artboard1 = editor.active_document().metadata().all_layers().next().unwrap();
+		let offset1 = DVec2::new(50., 60.);
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard1,
+				transform: DAffine2::from_translation(offset1),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Draw rectangle in first artboard
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x + offset1.x, A.y + offset1.y, C.x + offset1.x, C.y + offset1.y).await;
+
+		// Create second artboard with different offset
+		let offset2 = DVec2::new(-30., 40.);
+		let artboard2_origin = DVec2::new(600., 600.);
+		editor
+			.drag_tool(
+				ToolType::Artboard,
+				artboard2_origin.x,
+				artboard2_origin.y,
+				artboard2_origin.x + 400.,
+				artboard2_origin.y + 400.,
+				ModifierKeys::empty(),
+			)
+			.await;
+		let artboard2 = editor.active_document().metadata().all_layers().next().unwrap();
+		editor
+			.handle_message(GraphOperationMessage::TransformSet {
+				layer: artboard2,
+				transform: DAffine2::from_translation(offset2),
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			})
+			.await;
+
+		// Start pen in second artboard
+		let pen_start = artboard2_origin + offset2 + DVec2::new(50., 50.);
+		click_pen(&mut editor, pen_start).await;
+
+		// Connect to anchor B of the rectangle in the first artboard
+		click_pen(&mut editor, B + offset1).await;
+
+		let expected_anchors = [A + offset1, B + offset1, C + offset1, D + offset1, pen_start];
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	async fn test_boolean_operation(operation: BooleanOperation) {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_primary_color(Color::RED).await;
+		editor.draw_rect(A.x, A.y, C.x, C.y).await;
+		editor.draw_rect(150., 150., 250., 250.).await;
+
+		// Select both rectangles and create boolean operation layer
+		let layers: Vec<_> = editor.active_document().metadata().all_layers().collect();
+		editor
+			.handle_message(NodeGraphMessage::SelectedNodesSet {
+				nodes: layers.iter().map(|l| l.to_node()).collect(),
+			})
+			.await;
+
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::BooleanOperation(operation),
+			})
+			.await;
+
+		let bool_layer = editor.active_document().metadata().all_layers().next().unwrap();
+		let bool_vector = editor.active_document().network_interface.compute_modified_vector(bool_layer).expect("Boolean layer vector");
+		let bool_to_viewport = editor.active_document().metadata().transform_to_viewport(bool_layer);
+		let mut expected_anchors: Vec<DVec2> = bool_vector.anchor_positions().into_iter().map(|pos| bool_to_viewport.transform_point2(pos)).collect();
+
+		// Connect pen to one of the anchors of the boolean operation
+		let connect_anchor = expected_anchors[0];
+		let pen_start = DVec2::new(999., 999.);
+		click_pen(&mut editor, pen_start).await;
+		click_pen(&mut editor, connect_anchor).await;
+
+		expected_anchors.push(pen_start);
+		assert_expected_anchors(&editor, &expected_anchors);
+	}
+
+	#[tokio::test]
+	async fn merging_layers_with_different_boolean_outputs() {
+		for operation in [BooleanOperation::Union, BooleanOperation::SubtractFront, BooleanOperation::Intersect, BooleanOperation::Difference] {
+			test_boolean_operation(operation).await;
+		}
+	}
+
+	#[tokio::test]
+	async fn enter_or_esc_after_a_single_click_leaves_no_layer() {
+		for key in [Key::Enter, Key::Escape] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+
+			click_pen(&mut editor, A).await;
+			editor.press(key, ModifierKeys::empty()).await;
+
+			assert!(drawn_path(&editor).is_none(), "{key:?} should take back the lone anchor and its layer");
+		}
+	}
+
+	#[tokio::test]
+	async fn enter_or_esc_after_a_shift_click_takes_back_its_lone_anchor() {
+		for key in [Key::Enter, Key::Escape] {
+			let mut editor = EditorTestUtils::create();
+			editor.new_document().await;
+			click_pen(&mut editor, A).await;
+			click_pen(&mut editor, B).await;
+			editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+			// Shift adds the click to the selected path as an anchor of its own
+			editor.click_tool(ToolType::Pen, MouseKeys::LEFT, D, ModifierKeys::SHIFT).await;
+			editor.press(key, ModifierKeys::empty()).await;
+
+			assert_path_shape(&editor, 2, 1);
+		}
+	}
+
+	#[tokio::test]
+	async fn tab_while_pulling_out_a_handle_keeps_the_pen_tool() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		editor.move_mouse(B.x, B.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(B.x, B.y, ModifierKeys::empty()).await;
+		editor.move_mouse(B.x + 60., B.y + 40., ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.press(Key::Tab, ModifierKeys::empty()).await;
+
+		let active_tool = editor.editor.dispatcher.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
+		assert_eq!(active_tool, ToolType::Pen, "Tab mid-drag should swap the handles without leaving the Pen tool");
+	}
 
 	#[tokio::test]
 	async fn each_segment_and_the_closing_click_are_their_own_history_steps() {
@@ -2677,11 +3060,163 @@ mod test_pen_tool {
 		assert_anchors(&editor, &[A, B, off_the_line]);
 	}
 
+	/// Leaves nothing selected, so the Pen starts a path of its own rather than adding to the shape drawn last.
+	async fn deselect_all(editor: &mut EditorTestUtils) {
+		editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+	}
+
 	/// The path's anchors in viewport space, in placement order.
 	fn anchor_positions(editor: &EditorTestUtils) -> Vec<DVec2> {
 		let (layer, vector) = drawn_path(editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
-		vector.point_domain.positions().iter().map(|&position| layer_to_viewport.transform_point2(position)).collect()
+		vector.anchor_positions().into_iter().map(|position| layer_to_viewport.transform_point2(position)).collect()
+	}
+
+	#[tokio::test]
+	async fn a_path_drawn_with_fill_unticked_gets_no_fill() {
+		use crate::messages::tool::common_functionality::graph_modification_utils::get_fill_id;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(300., 300., 400., 400.).await;
+		deselect_all(&mut editor).await;
+		editor.select_tool(ToolType::Pen).await;
+		editor
+			.handle_message(PenToolMessage::UpdateOptions {
+				options: super::PenOptionsUpdate::FillEnabled(false),
+			})
+			.await;
+
+		// Clicking without reselecting the tool, since that would sync the options afresh
+		for point in [A, DVec2::new(150., 200.), B] {
+			editor.move_mouse(point.x, point.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+			editor.left_mousedown(point.x, point.y, ModifierKeys::empty()).await;
+			editor.left_mouseup(point.x, point.y, ModifierKeys::empty()).await;
+		}
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let (layer, _) = drawn_path(&editor).expect("Expected a drawn path");
+		assert!(get_fill_id(layer, &editor.active_document().network_interface).is_none(), "the path should have no Fill node");
+	}
+
+	async fn set_space_held(editor: &mut EditorTestUtils, held: bool) {
+		let (key, modifier_keys, key_repeat) = (Key::Space, ModifierKeys::empty(), false);
+		let message = if held {
+			InputPreprocessorMessage::KeyDown { key, modifier_keys, key_repeat }
+		} else {
+			InputPreprocessorMessage::KeyUp { key, modifier_keys, key_repeat }
+		};
+		editor.handle_message(message).await;
+	}
+
+	#[tokio::test]
+	async fn an_anchor_placed_near_a_corner_lands_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(100., 200., 300., 400.).await;
+		deselect_all(&mut editor).await;
+
+		click_pen(&mut editor, DVec2::new(304., 397.)).await;
+		assert_anchors(&editor, &[DVec2::new(300., 400.)]);
+	}
+
+	#[tokio::test]
+	async fn a_path_starts_where_its_press_was_shown_after_resting_there_wakes_a_nearer_snap() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Snapping is off while drawing so the corner stays six pixels left of the other rectangle's side
+		editor.active_document_mut().snapping_state.snapping_enabled = false;
+		editor.draw_rect(206., 160., 300., 300.).await;
+		editor.draw_rect(100., 100., 200., 200.).await;
+		editor.active_document_mut().snapping_state.snapping_enabled = true;
+		deselect_all(&mut editor).await;
+		editor.select_tool(ToolType::Pen).await;
+
+		// The pointer rests on the side beside the corner, where a press is shown starting on the corner, for long enough to wake it
+		let (corner, pointer) = (DVec2::new(200., 200.), DVec2::new(206., 200.));
+		editor.handle_message(InputPreprocessorMessage::CurrentTime { timestamp: 1000 }).await;
+		editor.move_mouse(pointer.x, pointer.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor
+			.handle_message(InputPreprocessorMessage::CurrentTime {
+				timestamp: 1000 + WAKE_DWELL_ON_APPROACH,
+			})
+			.await;
+		editor.handle_message(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame)).await;
+
+		let document_to_viewport = editor.active_document().metadata().document_to_viewport;
+		let snap_session = &editor.editor.dispatcher.message_handlers.tool_message_handler.snap_session;
+		let shown = snap_session.shown_position().map(|position| document_to_viewport.transform_point2(position));
+		assert!(shown.is_some_and(|shown| shown.abs_diff_eq(corner, 1e-6)), "the press is shown at {shown:?} rather than on the corner");
+		assert!(!snap_session.wants_ticks(), "resting on the corner should have woken it");
+
+		// The woken corner's level line crosses the side right under the pointer, but the path starts where the press was shown
+		editor.left_mousedown(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		editor.left_mouseup(pointer.x, pointer.y, ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[corner]);
+	}
+
+	#[tokio::test]
+	async fn a_segment_drawn_to_the_side_of_an_ellipse_ends_where_it_touches_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_ellipse(300., 200., 500., 320.).await;
+		deselect_all(&mut editor).await;
+		let (center, radii) = (DVec2::new(400., 260.), DVec2::new(100., 60.));
+
+		// Where a line from the first anchor would touch a true ellipse, which the drawn one comes within a small fraction of a pixel of
+		let start = DVec2::new(60., 40.);
+		let toward = (center - start) / radii;
+		let angle = toward.to_angle() + (-1. / toward.length()).acos();
+		let touch = center + DVec2::from_angle(angle) * radii;
+
+		click_pen(&mut editor, start).await;
+		click_pen(&mut editor, touch + DVec2::new(3., -2.)).await;
+
+		let anchors = anchor_positions(&editor);
+		let [first, end] = anchors.as_slice() else { panic!("Expected two anchors, found {anchors:?}") };
+		assert!(first.distance(start) < 1e-6, "the segment starts at {first}");
+		assert!(end.distance(touch) < 0.5, "the segment ends at {end} and not at {touch}");
+
+		// The segment runs square to the way the ellipse faces there, to within a tenth of a degree
+		let facing = ((*end - center) / (radii * radii)).normalize();
+		assert!((*end - start).normalize().dot(facing).abs() < 2e-3);
+	}
+
+	#[tokio::test]
+	async fn a_segment_held_to_an_angle_step_still_stops_where_it_meets_an_edge() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(200., 100., 300., 300.).await;
+		deselect_all(&mut editor).await;
+
+		// The pointer strays from 30 degrees below level, and the segment keeps to that angle and ends on the rectangle's side
+		let start = DVec2::new(50., 150.);
+		click_pen(&mut editor, start).await;
+		editor.click_tool(ToolType::Pen, MouseKeys::LEFT, DVec2::new(204., 232.), ModifierKeys::SHIFT).await;
+
+		let meeting = DVec2::new(200., start.y + 150. * 30_f64.to_radians().tan());
+		assert_anchors(&editor, &[start, meeting]);
+	}
+
+	#[tokio::test]
+	async fn clicking_near_the_first_anchor_closes_the_path_on_it() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		click_pen(&mut editor, A + DVec2::new(3., -2.)).await;
+		assert_path_shape(&editor, 3, 3);
+
+		// The last segment runs from C back to A rather than to a new anchor beside it
+		let (_, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let anchors: Vec<_> = vector.anchor_points().collect();
+		let closing = vector.segment_ids()[2];
+		assert_eq!(vector.segment_start_from_id(closing), Some(anchors[2]));
+		assert_eq!(vector.segment_end_from_id(closing), Some(anchors[0]));
+		assert!(anchor_positions(&editor)[0].distance(A) < 1e-6);
 	}
 
 	/// Draws a path from A to B, begins another at D, and brings the pointer to where a click would end it on the first one's last anchor.
@@ -2769,16 +3304,13 @@ mod test_pen_tool {
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 
 		let handles = vector
-			.segment_domain
-			.ids()
-			.iter()
-			.flat_map(|&segment| [ManipulatorPointId::PrimaryHandle(segment), ManipulatorPointId::EndHandle(segment)])
-			.filter_map(|handle| handle.get_position(&vector));
+			.segment_ids()
+			.into_iter()
+			.flat_map(|segment| [ManipulatorPointId::PrimaryHandle(segment), ManipulatorPointId::EndHandle(segment)])
+			.filter_map(|handle| vector.position_of(handle));
 		let mut positions: Vec<DVec2> = vector
-			.point_domain
-			.positions()
-			.iter()
-			.copied()
+			.anchor_positions()
+			.into_iter()
 			.chain(handles)
 			.map(|position| layer_to_viewport.transform_point2(position))
 			.collect();
@@ -2855,7 +3387,7 @@ mod test_pen_tool {
 
 		let document = editor.active_document();
 		let vector = document.network_interface.compute_modified_vector(layer).expect("The second path should have a vector");
-		let first = document.metadata().transform_to_viewport(layer).transform_point2(vector.point_domain.positions()[0]);
+		let first = document.metadata().transform_to_viewport(layer).transform_point2(vector.anchor_positions()[0]);
 
 		// Its next anchor has a handle dragged out of it
 		let (anchor, handle) = (DVec2::new(260., 240.), DVec2::new(300., 270.));
@@ -2876,18 +3408,305 @@ mod test_pen_tool {
 		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
 		let layer_to_viewport = editor.active_document().metadata().transform_to_viewport(layer);
 		let leaves_the_anchor = |&segment: &SegmentId| {
-			let start = vector.segment_start_from_id(segment).and_then(|point| vector.point_domain.position_from_id(point));
+			let start = vector.segment_start_from_id(segment).and_then(|point| vector.position_from_id(point));
 			start.is_some_and(|start| layer_to_viewport.transform_point2(start).distance(anchor) < 1e-6)
 		};
 		let joining = vector
-			.segment_domain
-			.ids()
+			.segment_ids()
 			.iter()
 			.copied()
 			.find(|segment| leaves_the_anchor(segment))
 			.expect("A segment should leave the anchor");
-		let leaving = ManipulatorPointId::PrimaryHandle(joining).get_position(&vector).expect("The joining segment should have a handle");
+		let leaving = vector.position_of(ManipulatorPointId::PrimaryHandle(joining)).expect("The joining segment should have a handle");
 		let leaving = layer_to_viewport.transform_point2(leaving);
 		assert!(leaving.distance(handle) < 1e-6, "the joining segment's handle is at {leaving}");
+	}
+
+	#[tokio::test]
+	async fn an_anchor_moved_with_space_lands_on_a_corner_and_carries_its_handles_along() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(400., 300., 500., 380.).await;
+		deselect_all(&mut editor).await;
+		click_pen(&mut editor, A).await;
+
+		// The next anchor is pressed and its handle dragged out, which the opposite handle mirrors
+		let (anchor, handle) = (DVec2::new(250., 100.), DVec2::new(320., 130.));
+		editor.move_mouse(anchor.x, anchor.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(anchor.x, anchor.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		// Holding Space slides all three until the anchor comes a few pixels from the corner
+		set_space_held(&mut editor, true).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		let released = handle + DVec2::new(153., 198.);
+		editor.move_mouse(released.x, released.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(released.x, released.y, ModifierKeys::empty()).await;
+		set_space_held(&mut editor, false).await;
+
+		let corner = DVec2::new(400., 300.);
+		assert_anchors(&editor, &[A, corner]);
+
+		// The incoming handle stays opposite the outgoing one, which was dragged out from the anchor before it moved
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let segment = vector.segment_ids()[0];
+		let incoming = vector.position_of(ManipulatorPointId::EndHandle(segment)).expect("The segment should have an incoming handle");
+		let incoming = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(incoming);
+		assert!(incoming.distance(corner + anchor - handle) < 1e-6, "the incoming handle is at {incoming}");
+	}
+
+	#[tokio::test]
+	async fn a_handle_grabbed_with_g_follows_the_pointer_when_zoomed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }).await;
+		let zoom = editor.active_document().metadata().document_to_viewport.matrix2.x_axis.length();
+		assert!((zoom - 1.).abs() > 0.1, "the view should be zoomed, not at {zoom}");
+
+		// The second anchor's outgoing handle is dragged out, then grabbed and moved by as much as the pointer
+		let (start, anchor, handle) = (DVec2::new(100., 300.), DVec2::new(250., 220.), DVec2::new(330., 230.));
+		click_pen(&mut editor, start).await;
+		editor.move_mouse(anchor.x, anchor.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(anchor.x, anchor.y, ModifierKeys::empty()).await;
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.left_mouseup(handle.x, handle.y, ModifierKeys::empty()).await;
+
+		let (grip, travel) = (DVec2::new(500., 150.), DVec2::new(40., 70.));
+		editor.move_mouse(grip.x, grip.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.press(Key::KeyG, ModifierKeys::empty()).await;
+		editor.move_mouse(grip.x + travel.x, grip.y + travel.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		// The next segment starts with the moved handle
+		click_pen(&mut editor, DVec2::new(450., 400.)).await;
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let segment = vector.segment_ids()[1];
+		let outgoing = vector.position_of(ManipulatorPointId::PrimaryHandle(segment)).expect("The segment should have an outgoing handle");
+		let outgoing = editor.active_document().metadata().transform_to_viewport(layer).transform_point2(outgoing);
+		assert!(outgoing.distance(handle + travel) < 1e-6, "the handle is at {outgoing} rather than {}", handle + travel);
+	}
+
+	/// Presses at a point and drags to another, leaving the button held.
+	async fn press_and_drag(editor: &mut EditorTestUtils, from: DVec2, to: DVec2) {
+		editor.move_mouse(from.x, from.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(from.x, from.y, ModifierKeys::empty()).await;
+		editor.move_mouse(to.x, to.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+	}
+
+	#[tokio::test]
+	async fn enter_while_pressing_the_first_anchor_closes_the_path() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		press_and_drag(&mut editor, A, A + DVec2::new(20., 30.)).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		editor.left_mouseup(A.x + 20., A.y + 30., ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 3, 3);
+
+		// The drawing has ended, so the next click starts a path of its own
+		deselect_all(&mut editor).await;
+		click_pen(&mut editor, D + DVec2::new(200., 0.)).await;
+		let document = editor.active_document();
+		assert_eq!(
+			document.metadata().all_layers().filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[])).count(),
+			2
+		);
+	}
+
+	#[tokio::test]
+	async fn enter_while_closing_an_extended_path_keeps_every_anchor() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		// Starting on the open end extends the selected path, which Enter then closes on its other end
+		click_pen(&mut editor, C).await;
+		press_and_drag(&mut editor, A, A + DVec2::new(20., 30.)).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		editor.left_mouseup(A.x + 20., A.y + 30., ModifierKeys::empty()).await;
+		assert_path_shape(&editor, 3, 3);
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_closing_drag_cancels_only_the_closing_segment() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		press_and_drag(&mut editor, A, A + DVec2::new(20., 30.)).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(A.x + 20., A.y + 30., ModifierKeys::empty()).await;
+		assert_anchors(&editor, &[A, B, C]);
+
+		// Drawing goes on from C, and undo still rewinds through every anchor placed before the cancelled segment
+		click_pen(&mut editor, D).await;
+		assert_anchors(&editor, &[A, B, C, D]);
+		undo(&mut editor).await;
+		assert_anchors(&editor, &[A, B, C]);
+		click_pen(&mut editor, D + DVec2::new(50., 0.)).await;
+		assert_anchors(&editor, &[A, B, C, D + DVec2::new(50., 0.)]);
+	}
+
+	#[tokio::test]
+	async fn escape_during_a_bend_of_the_previous_anchor_cancels_only_the_bend() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		press_and_drag(&mut editor, B, B + DVec2::new(60., 40.)).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+		editor.left_mouseup(B.x + 60., B.y + 40., ModifierKeys::empty()).await;
+
+		// Drawing goes on from B, with its outgoing handle where the cancelled bend left it
+		click_pen(&mut editor, C).await;
+		assert_anchors(&editor, &[A, B, C]);
+		let (layer, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let segment = vector.segment_ids()[1];
+		let outgoing = vector
+			.position_of(ManipulatorPointId::PrimaryHandle(segment))
+			.map(|handle| editor.active_document().metadata().transform_to_viewport(layer).transform_point2(handle));
+		assert!(outgoing.is_none_or(|outgoing| outgoing.distance(B) < 1e-6), "B's outgoing handle is at {outgoing:?}");
+	}
+
+	#[tokio::test]
+	async fn closing_right_after_a_smooth_anchor_keeps_its_handles_colinear() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		press_and_drag(&mut editor, C, C + DVec2::new(40., 0.)).await;
+		editor.left_mouseup(C.x + 40., C.y, ModifierKeys::empty()).await;
+		click_pen(&mut editor, A).await;
+		assert_path_shape(&editor, 3, 3);
+
+		// C's incoming handle ends the segment from B, and its outgoing handle starts the closing segment
+		let (_, vector) = drawn_path(&editor).expect("Expected a drawn path");
+		let [_, into_c, closing] = vector.segment_ids()[..] else { panic!("Expected three segments") };
+		let pair = [HandleId::end(into_c), HandleId::primary(closing)];
+		let colinear_pairs = vector.colinear_pairs();
+		assert!(
+			colinear_pairs.iter().any(|handles| *handles == pair || *handles == [pair[1], pair[0]]),
+			"C's handles aren't colinear: {colinear_pairs:?}"
+		);
+	}
+
+	#[tokio::test]
+	async fn a_path_inside_a_selected_group_is_extended_and_closed_in_place() {
+		use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		click_pen(&mut editor, C).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+		editor
+			.handle_message(DocumentMessage::GroupSelectedLayers {
+				group_folder_type: GroupFolderType::Layer,
+			})
+			.await;
+		let (path, _) = drawn_path(&editor).expect("Expected a drawn path");
+		let group = path.parent(editor.active_document().metadata());
+
+		// With the group selected, pressing the path's last anchor extends it, and pressing its first closes it
+		click_pen(&mut editor, C).await;
+		click_pen(&mut editor, A).await;
+		assert_path_shape(&editor, 3, 3);
+		let (closed, _) = drawn_path(&editor).expect("Expected a drawn path");
+		assert_eq!(closed, path, "the path should be extended rather than merged into a new layer");
+		assert_eq!(closed.parent(editor.active_document().metadata()), group, "the path should stay in its group");
+	}
+
+	#[tokio::test]
+	async fn drawing_from_a_segment_with_two_paths_selected_continues_that_path() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		// Two straight paths, the second drawn last, then both selected
+		let mut layers = Vec::new();
+		for offset in [DVec2::ZERO, DVec2::new(0., 300.)] {
+			editor.handle_message(DocumentMessage::DeselectAllLayers).await;
+			click_pen(&mut editor, A + offset).await;
+			click_pen(&mut editor, B + offset).await;
+			editor.press(Key::Enter, ModifierKeys::empty()).await;
+			layers.push(editor.get_selected_layer().await.expect("the drawn path should be selected"));
+		}
+		let nodes = layers.iter().map(|layer| layer.to_node()).collect();
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes }).await;
+
+		// Pressing the first path's segment starts drawing from a point inserted there, and the next press extends it
+		let on_segment = (A + B) / 2.;
+		let next = on_segment + DVec2::new(0., 80.);
+		click_pen(&mut editor, on_segment).await;
+		click_pen(&mut editor, next).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let vector = document.network_interface.compute_modified_vector(layers[0]).expect("the first path should have a vector");
+		let to_viewport = document.metadata().transform_to_viewport(layers[0]);
+		let joined = vector.segment_iter().any(|(_, _, start, end)| {
+			let [start, end] = [start, end].map(|point| vector.position_from_id(point).map(|position| to_viewport.transform_point2(position)));
+			let near = |position: Option<DVec2>, target: DVec2| position.is_some_and(|position| position.distance(target) < 1e-6);
+			(near(start, on_segment) && near(end, next)) || (near(start, next) && near(end, on_segment))
+		});
+		assert!(joined, "the first path should have a segment from the inserted point to the next anchor");
+	}
+
+	#[tokio::test]
+	async fn space_held_mid_drag_moves_the_anchor_from_where_it_was_pressed() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		click_pen(&mut editor, A).await;
+
+		// Pressing the second anchor and dragging out its handle, then holding Space and moving on
+		editor.move_mouse(B.x, B.y, ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(B.x, B.y, ModifierKeys::empty()).await;
+		let handle = B + DVec2::new(60., 0.);
+		editor.move_mouse(handle.x, handle.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.key_down(Key::Space, ModifierKeys::empty()).await;
+		let travel = DVec2::new(0., 50.);
+		editor.move_mouse(handle.x + travel.x, handle.y + travel.y, ModifierKeys::empty(), MouseKeys::LEFT).await;
+		editor.key_up(Key::Space, ModifierKeys::empty()).await;
+		editor.left_mouseup(handle.x + travel.x, handle.y + travel.y, ModifierKeys::empty()).await;
+		editor.press(Key::Enter, ModifierKeys::empty()).await;
+
+		assert_anchors(&editor, &[A, B + travel]);
+	}
+
+	#[tokio::test]
+	async fn the_transform_sits_before_the_fill_and_stroke_so_resizing_keeps_the_stroke_weight() {
+		use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+		use graph_craft::ProtoNodeIdentifier;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		click_pen(&mut editor, A).await;
+		click_pen(&mut editor, B).await;
+		editor.press(Key::Escape, ModifierKeys::empty()).await;
+
+		let (layer, _) = drawn_path(&editor).expect("Expected a drawn path");
+		let network_interface = &editor.active_document().network_interface;
+		let chain = network_interface
+			.upstream_flow_back_from_nodes(vec![layer.to_node()], &[], FlowType::HorizontalFlow)
+			.filter_map(|node_id| network_interface.reference(&node_id, &[]))
+			.collect::<Vec<_>>();
+		let position = |identifier: ProtoNodeIdentifier| chain.iter().position(|reference| *reference == DefinitionIdentifier::ProtoNode(identifier.clone()));
+
+		let transform = position(graphene_std::transform_nodes::transform::IDENTIFIER).expect("The path should have a Transform node");
+		let fill = position(graphene_std::vector_nodes::fill::IDENTIFIER).expect("The path should have a Fill node");
+		let stroke = position(graphene_std::vector_nodes::stroke::IDENTIFIER).expect("The path should have a Stroke node");
+		assert!(transform > fill && transform > stroke, "the Transform should be upstream of the Fill and Stroke in {chain:?}");
 	}
 }

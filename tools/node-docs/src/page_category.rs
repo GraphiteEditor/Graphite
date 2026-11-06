@@ -29,6 +29,7 @@ fn write_frontmatter(page: &mut std::fs::File, category: &str, order: usize) {
 		[extra]
 		order = {order}
 		css = [\"/page/user-manual/node-category.css\"]
+		development_notice = true
 		+++
 		"
 	);

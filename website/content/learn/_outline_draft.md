@@ -19,8 +19,8 @@ order = 0
 			- Editing layers
 			- Selection and multi-selection
 			- Rearranging the hierarchy
-	- # Properties panel
-		- Node properties
+	- # Inspector
+		- Node inspector
 		- Parameters
 			- Expose button
 			- Name
@@ -43,7 +43,7 @@ order = 0
 
 		## Overlaid node graph editing
 
-		Opening the overlaid node graph shows the structure of nodes and layers that compose the document artwork. It's a more detailed view of what the [Layers](../layers-panel) and [Properties](../properties-panel) panels show.
+		Opening the overlaid node graph shows the structure of nodes and layers that compose the document artwork. It's a more detailed view of what the [Layers](../layers-panel) and [Inspector](../inspector) panels show.
 
 		**Nodes** are the entities with left-to-right input **connectors**.
 

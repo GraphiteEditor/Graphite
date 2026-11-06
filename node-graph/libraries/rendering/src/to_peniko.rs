@@ -1,6 +1,6 @@
 use core_types::BlendMode;
 use core_types::color::SRGBA8;
-use vello::peniko;
+use vello_gpu::peniko;
 
 pub trait BlendModeExt {
 	fn to_peniko(&self) -> peniko::Mix;

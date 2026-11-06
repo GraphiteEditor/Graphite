@@ -2,10 +2,13 @@
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
 	import type { LayoutTarget, WidgetTable } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let widgetData: WidgetTable;
-	export let layoutTarget: LayoutTarget;
+	type Props = {
+		widgetData: WidgetTable;
+		layoutTarget: LayoutTarget;
+	};
+	let { widgetData, layoutTarget }: Props = $props();
 
-	$: columns = widgetData.tableWidgets.length > 0 ? widgetData.tableWidgets[0].length : 0;
+	const columns = $derived(widgetData.tableWidgets.length > 0 ? widgetData.tableWidgets[0].length : 0);
 </script>
 
 <table class:unstyled={widgetData.unstyled}>

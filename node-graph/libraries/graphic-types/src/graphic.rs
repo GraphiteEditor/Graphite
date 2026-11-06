@@ -6,13 +6,13 @@ use core_types::list::{ATTR_APPEARANCE, ATTR_PAINT, Item, ItemAttributeValues, L
 use core_types::math::quad::Quad;
 use core_types::none;
 use core_types::ops::FromAnchorPosition;
-use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Transform;
 use core_types::{ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_GRADIENT_SPREAD, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, Color};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use raster_types::{CPU, GPU, Raster};
 pub use vector_types::Vector;
+use vector_types::vector::{Path, paths_from_item_attributes, paths_from_list_row_attributes};
 use vector_types::{Gradient, GradientSpread};
 
 /// The possible forms of graphical content that can be rendered by the Render node (to targets like SVG and raster) or another render boundary node.
@@ -52,11 +52,6 @@ impl From<List<Graphic>> for Graphic {
 }
 
 // Vector
-impl From<Vector> for Graphic {
-	fn from(vector: Vector) -> Self {
-		Graphic::Vector(Box::new(Item::new_from_element(vector)))
-	}
-}
 impl From<Item<Vector>> for Graphic {
 	fn from(vector: Item<Vector>) -> Self {
 		Graphic::Vector(Box::new(vector))
@@ -185,7 +180,7 @@ pub fn is_lone_anonymous_leaf(content: &List<Graphic>) -> bool {
 
 /// Deeply flattens a `List<Graphic>`, collecting only elements matching a specific variant (extracted by `extract_variant`)
 /// and discarding all other non-matching content. Recursion through `Graphic::GraphicList` sub-`List`s composes transforms and opacity.
-fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
+fn flatten_graphic_list<T: Clone>(content: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) -> List<T> {
 	// Its list is already the flat answer, so hand it back rather than rebuilding it item by item
 	if is_lone_anonymous_leaf(&content) {
 		let Some(item) = content.into_iter().next() else { return List::new() };
@@ -193,7 +188,7 @@ fn flatten_graphic_list<T>(content: List<Graphic>, extract_variant: fn(Graphic) 
 		return extract_variant(item.into_element()).unwrap_or_default();
 	}
 
-	fn flatten_recursive<T>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
+	fn flatten_recursive<T: Clone>(output: &mut List<T>, current_graphic_list: List<Graphic>, extract_variant: fn(Graphic) -> Option<List<T>>) {
 		for current_graphic_item in current_graphic_list.into_iter() {
 			// Whether the parent carries each composed attribute: a structural fact (attribute presence), never a value comparison.
 			// Flattening composes a parent attribute onto its children only when the parent has it,
@@ -771,9 +766,9 @@ fn every_item_has_full_opacity<T>(list: &List<T>) -> bool {
 }
 
 /// Bounding box of one vector, inflated by its appearance's stroke when `include_stroke` is true.
-/// Stroke parameters live on the item attribute, out of reach of the element-level impl.
-fn vector_bounding_box(vector: &Vector, composed_transform: DAffine2, appearance: Option<&Appearance>, include_stroke: bool) -> Option<[DVec2; 2]> {
-	let mut bounds = vector.bounding_box_with_transform(composed_transform)?;
+/// Paths and stroke parameters live on the holder's attributes, out of reach of the element-level impl.
+fn vector_bounding_box(vector: &Vector, paths: Option<&List<Path>>, composed_transform: DAffine2, appearance: Option<&Appearance>, include_stroke: bool) -> Option<[DVec2; 2]> {
+	let mut bounds = vector.bounding_box_with_transform(paths?, composed_transform)?;
 
 	// The full line width (not half) accounts for different styles of stroke caps
 	if include_stroke && let Some(stroke) = appearance.and_then(|appearance| appearance.first_coverage_of(Cover::Stroke)).map(Coverage::stroke_params) {
@@ -789,7 +784,13 @@ fn vector_bounding_box(vector: &Vector, composed_transform: DAffine2, appearance
 pub fn vector_item_bounding_box(item: &Item<Vector>, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox {
 	let composed_transform = transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM);
 
-	match vector_bounding_box(item.element(), composed_transform, item.attribute::<Appearance>(ATTR_APPEARANCE), include_stroke) {
+	match vector_bounding_box(
+		item.element(),
+		paths_from_item_attributes(item),
+		composed_transform,
+		item.attribute::<Appearance>(ATTR_APPEARANCE),
+		include_stroke,
+	) {
 		Some(bounds) => RenderBoundingBox::Rectangle(bounds),
 		None => RenderBoundingBox::None,
 	}
@@ -804,7 +805,7 @@ pub fn vector_list_bounding_box(list: &List<Vector>, transform: DAffine2, includ
 		let item_transform: DAffine2 = list.attribute_cloned_or_default(ATTR_TRANSFORM, index);
 		let appearance = list.attribute::<Appearance>(ATTR_APPEARANCE, index);
 
-		let Some(bounds) = vector_bounding_box(element, transform * item_transform, appearance, include_stroke) else {
+		let Some(bounds) = vector_bounding_box(element, paths_from_list_row_attributes(list, index), transform * item_transform, appearance, include_stroke) else {
 			continue;
 		};
 
@@ -860,29 +861,6 @@ impl BoundingBox for Graphic {
 			Graphic::GradientList(gradient) => gradient.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::TextList(list) => list.thumbnail_bounding_box(transform, include_stroke),
 			Graphic::StrokeList(list) => list.thumbnail_bounding_box(transform, include_stroke),
-		}
-	}
-}
-
-impl RenderComplexity for Graphic {
-	fn render_complexity(&self) -> usize {
-		match self {
-			Self::None(_) | Self::NoneList(_) => 0,
-			Self::Graphic(item) => item.render_complexity(),
-			Self::Vector(item) => item.render_complexity(),
-			Self::RasterCPU(item) => item.render_complexity(),
-			Self::RasterGPU(item) => item.render_complexity(),
-			Self::Color(item) => item.render_complexity(),
-			Self::Gradient(item) => item.render_complexity(),
-			Self::Text(item) => item.render_complexity(),
-			Self::GraphicList(list) => list.render_complexity(),
-			Self::VectorList(list) => list.render_complexity(),
-			Self::RasterCPUList(list) => list.render_complexity(),
-			Self::RasterGPUList(list) => list.render_complexity(),
-			Self::ColorList(list) => list.render_complexity(),
-			Self::GradientList(list) => list.render_complexity(),
-			Self::TextList(list) => list.render_complexity(),
-			Self::StrokeList(list) => list.render_complexity(),
 		}
 	}
 }

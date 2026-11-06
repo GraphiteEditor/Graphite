@@ -38,6 +38,7 @@ rand = { workspace = true }
 rustc-hash = { workspace = true }
 log = { workspace = true }
 qrcodegen = { workspace = true }
+thiserror = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

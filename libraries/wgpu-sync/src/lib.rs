@@ -168,6 +168,12 @@ impl Surface {
 	pub fn get_capabilities(&self, adapter: &wgpu::Adapter) -> wgpu::SurfaceCapabilities {
 		self.raw.get_capabilities(adapter)
 	}
+
+	/// The unsynchronized surface, for uses that don't touch the swapchain like [`wgpu::RequestAdapterOptions::compatible_surface`], since swapchain use can panic if it races [`Surface::configure`].
+	#[cfg(target_family = "wasm")]
+	pub fn raw(&self) -> &wgpu::Surface<'static> {
+		&self.raw
+	}
 }
 
 #[derive(Debug)]
@@ -188,7 +194,7 @@ pub struct SurfaceTextureGuard<'a> {
 
 impl SurfaceTextureGuard<'_> {
 	pub fn present(self) {
-		self.raw.present();
+		self.queue.present(self.raw);
 	}
 }
 

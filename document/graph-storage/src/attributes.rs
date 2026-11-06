@@ -1,5 +1,4 @@
-use crate::{AttributeDelta, TimeStamp, Value, ValueError, from_value, to_value};
-use serde::{Deserialize, Serialize};
+use crate::{AttributeDelta, AttributeValue, Attributes, TimeStamp, Value, ValueError, from_value, to_value};
 use std::collections::{BTreeMap, btree_map};
 
 /// Attribute keys. Glob-import (`use crate::attr::*`) at conversion sites.
@@ -7,16 +6,6 @@ use std::collections::{BTreeMap, btree_map};
 /// `ui::*` keys are namespaced per CRDT design so each value gets its own LWW timestamp. Per-input
 /// keys live on `Node.inputs_attributes[i]`; per-network keys live on `Network.attributes`.
 pub mod attr;
-
-/// An attribute value and when it was last set. A deleted key stays as a stamped tombstone, which readers see as absent.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct AttributeValue {
-	pub value: Value,
-	pub timestamp: TimeStamp,
-	// No skipping: the registry is positional on disk.
-	#[serde(default)]
-	pub deleted: bool,
-}
 
 impl AttributeValue {
 	pub fn new(value: Value, timestamp: TimeStamp) -> Self {
@@ -31,15 +20,6 @@ impl AttributeValue {
 			deleted: true,
 		}
 	}
-}
-
-/// Attribute keys and their values, each last-writer-wins on its own timestamp. A key the map lacks is deleted as of
-/// its floor, when the map was last written whole.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Attributes {
-	entries: BTreeMap<String, AttributeValue>,
-	#[serde(default)]
-	floor: TimeStamp,
 }
 
 impl Attributes {
@@ -102,10 +82,10 @@ impl Attributes {
 
 	/// Lands a single-key write if it is newer than the key's value, or than the floor for a key the map lacks. A
 	/// deletion leaves a tombstone.
-	pub(crate) fn apply_delta(&mut self, delta: AttributeDelta, timestamp: TimeStamp, force: bool) {
+	pub(crate) fn apply_delta(&mut self, delta: AttributeDelta, timestamp: TimeStamp) {
 		let AttributeDelta { key, value } = delta;
 		let decided = self.get(&key).map_or(self.floor, |existing| existing.timestamp);
-		if !force && timestamp <= decided {
+		if timestamp <= decided {
 			return;
 		}
 		let entry = match value {

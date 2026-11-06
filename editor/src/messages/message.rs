@@ -47,6 +47,7 @@ pub enum Message {
 	Viewport(ViewportMessage),
 
 	// Messages
+	Wake,
 	Batched {
 		messages: Box<[Message]>,
 	},

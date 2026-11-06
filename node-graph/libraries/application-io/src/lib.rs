@@ -1,11 +1,10 @@
 use core_types::transform::Footprint;
-use core_types::{Context, OwnedContextImpl};
+use core_types::{Context, Generations, OwnedContextImpl};
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::DVec2;
 use graphene_hash::CacheHash;
 use std::fmt::Debug;
 use std::hash::{Hash, Hasher};
-use std::ptr::addr_of;
 use std::sync::Arc;
 use std::time::Duration;
 use vector_types::vector::style::RenderMode;
@@ -36,24 +35,6 @@ impl<T: ApplicationIo> ApplicationIo for &T {
 	fn load_resource(&self, hash: resource::ResourceHash) -> resource::ResourceFuture<'_> {
 		(**self).load_resource(hash)
 	}
-}
-
-#[derive(Debug, Clone)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum NodeGraphUpdateMessage {}
-
-pub trait NodeGraphUpdateSender {
-	fn send(&self, message: NodeGraphUpdateMessage);
-}
-
-impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		self.lock().as_mut().unwrap().send(message)
-	}
-}
-
-pub trait GetEditorPreferences {
-	fn max_render_region_area(&self) -> u32;
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, CacheHash)]
@@ -90,49 +71,28 @@ impl RenderConfig {
 	pub fn into_context(self) -> Context<'static> {
 		OwnedContextImpl::default().with_vararg(Box::new(self)).into_context()
 	}
-}
 
-struct Logger;
-
-impl NodeGraphUpdateSender for Logger {
-	fn send(&self, message: NodeGraphUpdateMessage) {
-		log::warn!("dispatching message with fallback node graph update sender {message:?}");
-	}
-}
-
-struct DummyPreferences;
-
-impl GetEditorPreferences for DummyPreferences {
-	fn max_render_region_area(&self) -> u32 {
-		1024 * 1024
+	pub fn into_context_with_generations(self, generations: Generations) -> Context<'static> {
+		OwnedContextImpl::default().with_vararg(Box::new(self)).with_generations(generations).into_context()
 	}
 }
 
 pub struct EditorApi<Io> {
 	/// Gives access to APIs like resources.
 	pub application_io: Option<Arc<Io>>,
-	pub node_graph_message_sender: Box<dyn NodeGraphUpdateSender + Send + Sync>,
-	/// Editor preferences made available to the graph through the `PlatformEditorApi`.
-	pub editor_preferences: Box<dyn GetEditorPreferences + Send + Sync>,
 }
 
 impl<Io> Eq for EditorApi<Io> {}
 
 impl<Io: Default> Default for EditorApi<Io> {
 	fn default() -> Self {
-		Self {
-			application_io: None,
-			node_graph_message_sender: Box::new(Logger),
-			editor_preferences: Box::new(DummyPreferences),
-		}
+		Self { application_io: None }
 	}
 }
 
 impl<Io> Hash for EditorApi<Io> {
 	fn hash<H: Hasher>(&self, state: &mut H) {
-		self.application_io.as_ref().map_or(0, |io| io as *const _ as usize).hash(state);
-		(self.node_graph_message_sender.as_ref() as *const dyn NodeGraphUpdateSender).hash(state);
-		(self.editor_preferences.as_ref() as *const dyn GetEditorPreferences).hash(state);
+		self.application_io.is_some().hash(state);
 	}
 }
 
@@ -144,9 +104,7 @@ impl<Io> CacheHash for EditorApi<Io> {
 
 impl<Io> PartialEq for EditorApi<Io> {
 	fn eq(&self, other: &Self) -> bool {
-		self.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize) == other.application_io.as_ref().map_or(0, |io| addr_of!(io) as usize)
-			&& std::ptr::eq(self.node_graph_message_sender.as_ref() as *const _, other.node_graph_message_sender.as_ref() as *const _)
-			&& std::ptr::eq(self.editor_preferences.as_ref() as *const _, other.editor_preferences.as_ref() as *const _)
+		self.application_io.is_some() == other.application_io.is_some()
 	}
 }
 

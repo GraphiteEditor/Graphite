@@ -92,8 +92,6 @@
 		label {
 			display: flex;
 			height: 16px;
-			// Provides rounded corners for the :focus outline
-			border-radius: 2px;
 
 			.checkbox-box {
 				flex: 0 0 auto;

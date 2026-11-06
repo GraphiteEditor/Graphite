@@ -13,10 +13,10 @@ fn update_executor(c: &mut Criterion) {
 				|| {
 					let (_, proto_network) = setup_network(name);
 					let empty = ProtoNetwork::default();
-					let executor = futures::executor::block_on(DynamicExecutor::new(empty)).unwrap();
+					let executor = DynamicExecutor::new(empty).unwrap();
 					(executor, proto_network)
 				},
-				|(mut executor, network)| futures::executor::block_on(executor.update(std::hint::black_box(network))),
+				|(mut executor, network)| executor.update(std::hint::black_box(network)),
 				criterion::BatchSize::SmallInput,
 			)
 		});

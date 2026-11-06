@@ -1,7 +1,7 @@
 //! Starting, reaching, and stopping the session host, which owns the browser so separate invocations can act on the same editor one after another.
 
-use graphite_editor_control_protocol::{ClientMessage, Command, CommandResult, HostMessage, PROTOCOL_VERSION};
-use interprocess::local_socket::{RecvHalf, SendHalf, Stream, prelude::*};
+use control_protocol::{ClientMessage, Command, CommandResult, HostMessage, PROTOCOL_VERSION};
+use interprocess::local_socket::{Stream, prelude::*};
 use serde::{Deserialize, Serialize};
 use std::io::BufReader;
 use std::path::PathBuf;
@@ -36,8 +36,7 @@ enum OpenFailure {
 }
 
 pub struct Connection {
-	receiver: BufReader<RecvHalf>,
-	sender: SendHalf,
+	stream: BufReader<Stream>,
 	next_id: u64,
 }
 
@@ -45,10 +44,8 @@ impl Connection {
 	fn open(record: &SessionRecord) -> Result<Self, OpenFailure> {
 		let name = socket::name(&record.session_id).map_err(|_| OpenFailure::Unreachable)?;
 		let stream = Stream::connect(name).map_err(|_| OpenFailure::Unreachable)?;
-		let (receiver, sender) = stream.split();
 		let mut connection = Self {
-			receiver: BufReader::new(receiver),
-			sender,
+			stream: BufReader::new(stream),
 			next_id: 1,
 		};
 
@@ -94,11 +91,11 @@ impl Connection {
 	}
 
 	fn send(&mut self, message: &ClientMessage) -> Result<(), String> {
-		socket::write_message(&mut self.sender, message)
+		socket::write_message(&mut self.stream.get_ref(), message)
 	}
 
 	fn receive(&mut self) -> Result<Option<HostMessage>, String> {
-		socket::read_message(&mut self.receiver)
+		socket::read_message(&mut self.stream)
 	}
 }
 

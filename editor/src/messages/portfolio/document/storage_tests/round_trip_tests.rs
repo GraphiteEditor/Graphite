@@ -4,13 +4,15 @@
 //! postcard codecs, hot-op retirement, file layout, replay-on-open) that the debug-only
 //! `verify_storage_round_trip` only checks in-process without an actual save/reopen.
 
+use crate::messages::resource_storage::ResourcesHandle;
 use document_container::AnyContainer;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
-use document_graph_storage::{NodeMetadataSource, PeerId, to_value};
+use document_graph_storage::{NodeMetadataSource, PeerId, UserId, to_value};
 use graph_craft::application_io::resource::HashMapResourceStorage;
+use std::sync::Arc;
 
-use super::test_support::{RoundTrip, node_paths, round_trip_through_gdd};
+use super::test_support::{RoundTrip, node_locations, node_paths, round_trip_through_gdd};
 use crate::messages::portfolio::document::document_message_handler::DocumentMessageHandler;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
@@ -32,17 +34,18 @@ fn assert_documents_match(original: &NodeNetworkInterface, round_trip: &RoundTri
 		"compute graph drifted through the storage round-trip"
 	);
 
-	for (network_path, local_id) in node_paths(original) {
-		let at = format!("node {local_id:?} in network {network_path:?}");
-		assert_eq!(rebuilt_view.position(&network_path, local_id), original_view.position(&network_path, local_id), "position: {at}");
-		assert_eq!(rebuilt_view.is_layer(&network_path, local_id), original_view.is_layer(&network_path, local_id), "is_layer: {at}");
+	for (network, local_id) in node_locations(original) {
+		let at = format!("node {local_id:?} in network {network:?}");
+		let network_path = network;
+		assert_eq!(rebuilt_view.position(network_path, local_id), original_view.position(network_path, local_id), "position: {at}");
+		assert_eq!(rebuilt_view.is_layer(network_path, local_id), original_view.is_layer(network_path, local_id), "is_layer: {at}");
 		assert_eq!(
-			rebuilt_view.display_name(&network_path, local_id),
-			original_view.display_name(&network_path, local_id),
+			rebuilt_view.display_name(network_path, local_id),
+			original_view.display_name(network_path, local_id),
 			"display_name: {at}"
 		);
-		assert_eq!(rebuilt_view.locked(&network_path, local_id), original_view.locked(&network_path, local_id), "locked: {at}");
-		assert_eq!(rebuilt_view.pinned(&network_path, local_id), original_view.pinned(&network_path, local_id), "pinned: {at}");
+		assert_eq!(rebuilt_view.locked(network_path, local_id), original_view.locked(network_path, local_id), "locked: {at}");
+		assert_eq!(rebuilt_view.pinned(network_path, local_id), original_view.pinned(network_path, local_id), "pinned: {at}");
 	}
 }
 
@@ -93,6 +96,7 @@ async fn round_trip_grouped_into_nested_network() {
 			group_folder_type: GroupFolderType::Layer,
 		})
 		.await;
+	editor.active_document_mut().network_interface.settle_definitions();
 
 	let document = editor.active_document();
 	let round_trip = round_trip_through_gdd(document).await;
@@ -156,9 +160,9 @@ async fn edit_after_open_commits_cleanly() {
 
 	// Persist the document into a fresh Gdd and reopen it, then build a runtime document from the
 	// reopened registry: the editor's .gdd-open path.
-	let byte_store = HashMapResourceStorage::new();
+	let byte_store = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
 	let source = editor.active_document();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let source_network = source.network_interface.document_network().clone();
 	let source_view = StorageMetadataView::new(&source.network_interface);
 	gdd.commit_from_runtime(&source_network, &source_view, &source.resources.registry, &byte_store)
@@ -174,7 +178,7 @@ async fn edit_after_open_commits_cleanly() {
 	{
 		let document = editor.active_document_mut();
 		document.network_interface = rebuilt;
-		document.set_storage(reopened, declarations);
+		document.set_storage(reopened, declarations, byte_store.storage());
 		document.finalize_storage_load();
 	}
 
@@ -208,7 +212,7 @@ async fn edit_after_open_commits_cleanly() {
 #[tokio::test]
 async fn gdd_undo_redo_walks_interactions() {
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	// Commit the active document's current runtime state as one interaction.
 	async fn commit_interaction(gdd: &mut GddV1, document: &DocumentMessageHandler, byte_store: &HashMapResourceStorage) {
@@ -259,7 +263,7 @@ async fn gdd_undo_redo_walks_interactions() {
 #[tokio::test]
 async fn reopen_after_undo_restores_consistent_registry() {
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	async fn commit_interaction(gdd: &mut GddV1, document: &DocumentMessageHandler, byte_store: &HashMapResourceStorage) {
 		let network = document.network_interface.document_network().clone();
@@ -381,7 +385,7 @@ async fn gdd_archive_round_trips_view_settings() {
 	use document_graph_storage::attr::session::doc;
 
 	let byte_store = HashMapResourceStorage::new();
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 
 	// Stage a distinctive PTZ into the working copy's `view_settings`, as `commit_storage_snapshot` does.
 	let mut ptz = crate::messages::portfolio::document::utility_types::misc::PTZ::default();
@@ -429,7 +433,7 @@ async fn per_network_navigation_round_trips_via_session_not_registry() {
 	let expected_pan = editor.active_document().network_interface.node_graph_ptz(&[]).unwrap().pan;
 
 	// Commit the document into a fresh `Gdd`, collecting the per-network view state the editor persists.
-	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
+	let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0xABCD, "test".into(), "test".into()).expect("create_in");
 	let document = editor.active_document();
 	let network = document.network_interface.document_network().clone();
 	let view = StorageMetadataView::new(&document.network_interface);
@@ -660,12 +664,46 @@ fn assert_cursor_matches_runtime(document: &DocumentMessageHandler, at: &str) {
 	}
 }
 
+#[tokio::test]
+async fn pasted_image_resource_survives_inserting_a_node() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	editor.handle_message(paste_named_image()).await;
+	editor.create_node_by_name(DefinitionIdentifier::ProtoNode(graphene_std::vectorize_nodes::vectorize::IDENTIFIER)).await;
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	let document = editor.active_document();
+	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
+}
+
+#[tokio::test]
+async fn pasted_image_resource_survives_storage_mounting_after_the_paste() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+
+	editor.handle_message(paste_named_image()).await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+
+	let document = editor.active_document();
+	let stored: std::collections::BTreeSet<_> = document.storage().expect("storage mounted").registry().resources.keys().copied().collect();
+	let used: std::collections::BTreeSet<_> = document.used_resources(false).iter().copied().collect();
+	assert!(used.is_subset(&stored), "storage lost a resource the network references: used={used:?} stored={stored:?}");
+}
+
 /// Mount a fresh in-memory `Gdd` onto the active document so `commit_storage_snapshot` (the real
 /// autosave path) runs against it. Returns the byte store the document's resources resolve through.
-fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> HashMapResourceStorage {
-	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), 0x5EED, "test".into(), "test".into()).expect("create_in");
-	editor.active_document_mut().set_storage(gdd, Default::default());
-	HashMapResourceStorage::new()
+fn mount_in_memory_storage(editor: &mut EditorTestUtils) -> ResourcesHandle {
+	let gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 0x5EED, "test".into(), "test".into()).expect("create_in");
+	let byte_store = ResourcesHandle::new(Arc::new(HashMapResourceStorage::new()));
+	editor.active_document_mut().set_storage(gdd, Default::default(), byte_store.storage());
+	byte_store
 }
 
 /// Open a real demo artwork, mount storage, edit it, and trigger autosave. The autosave runs
@@ -699,8 +737,8 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 	let after_edit = editor.active_document().network_interface.document_network().clone();
 	assert_ne!(before_edit, after_edit, "drawing a rectangle should change the document network");
 
-	// Second autosave: again verifies the round-trip, and the edit must produce new retired history.
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().retire_storage_interaction();
 	let history_after_edit = editor.active_document().storage().unwrap().session().history().count();
 	assert!(
 		history_after_edit > history_after_open,
@@ -714,6 +752,57 @@ async fn demo_artwork_edit_autosaves_and_round_trips() {
 
 	// Autosaving the undone state still round-trips cleanly (no drift panic).
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+}
+
+/// Manual edits ride a saved document as a folded `VectorModification`, so opening the artworks carrying the most
+/// of them is what proves the stored format still reads and applies. Their Path nodes sit on pen-drawn layers, so
+/// each layer's geometry, curves included, comes from its stored modification alone.
+#[tokio::test]
+async fn demo_artwork_vector_modifications_still_apply() {
+	use graph_craft::document::value::TaggedValue;
+
+	for name in ["red-dress", "isometric-fountain", "valley-of-spires"] {
+		let mut editor = EditorTestUtils::create();
+
+		let data = std::fs::read(format!("../demo-artwork/{name}.graphite")).expect("read demo artwork");
+		editor
+			.handle_message(IngestMessage::Ingest {
+				data,
+				action: IngestAction::Open,
+				mime_type: String::new(),
+				path: Some(format!("{name}.graphite").into()),
+			})
+			.await;
+
+		let document = editor.active_document();
+		let network = &document.network_interface;
+		let path_definition = DefinitionIdentifier::Network("Path".into());
+		let mut path_layers = 0;
+		let mut any_curve = false;
+
+		for layer in document.metadata().all_layers() {
+			let Some(path_node) = NodeGraphLayer::new(layer, network).upstream_visible_node_id_from_name_in_layer(&path_definition) else {
+				continue;
+			};
+			path_layers += 1;
+
+			let stored = network.document_network().nodes.get(&path_node).and_then(|node| node.inputs.get(1)).and_then(|input| input.as_value());
+			let Some(TaggedValue::VectorModification(modification)) = stored else {
+				panic!("{name} layer {layer:?} has a Path node without a stored modification");
+			};
+			assert!(!modification.is_empty(), "{name} layer {layer:?} stored a modification that changes nothing");
+
+			let upstream = document.metadata().vector_modify.get(&path_node).expect("the graph run should capture what reaches the Path node");
+			assert!(upstream.anchor_points().next().is_none(), "{name} layer {layer:?} has geometry upstream of its Path node");
+
+			let geometry = network.compute_modified_vector(layer).expect("a layer with a Path node should have a vector");
+			assert!(geometry.anchor_points().next().is_some(), "{name} layer {layer:?} surfaced no anchors from its stored modification");
+			any_curve |= geometry.segment_iter().any(|(_, segment, ..)| !matches!(segment, kurbo::PathSeg::Line(_)));
+		}
+
+		assert!(path_layers > 0, "{name} has no layers edited through a Path node");
+		assert!(any_curve, "{name} drew no curves from its stored modifications");
+	}
 }
 
 /// The document's single Fill node, as `(network_path, node_id)`.
@@ -882,4 +971,41 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 		matches!(transform, Some(TaggedValue::DAffine2(_))),
 		"the transform input should shift down intact, but became {transform:?}"
 	);
+}
+
+#[tokio::test]
+async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	let byte_store = mount_in_memory_storage(&mut editor);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	editor.active_document_mut().retire_storage_interaction();
+	let history_base = editor.active_document().storage().unwrap().session().history().count();
+	let before_edit = editor.active_document().network_interface.document_network().clone();
+
+	editor.draw_rect(64., 64., 192., 192.).await;
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	let after_edit = editor.active_document().network_interface.document_network().clone();
+	assert_ne!(after_edit, before_edit);
+	assert!(!editor.active_document().storage().unwrap().session().hot_log().is_empty(), "the step is hot");
+
+	editor.handle_message(DocumentMessage::Undo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &before_edit, "undo restores the pre-edit network");
+	let storage = editor.active_document().storage().unwrap();
+	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
+	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
+	// The step held for redo keeps its declaration bytes from collection
+	let storage = editor.active_document().storage().unwrap();
+	assert!(
+		!editor.active_document().resource_gc_roots().is_subset(&storage.all_referenced_resource_hashes()),
+		"the retracted step names its declaration resource"
+	);
+
+	editor.handle_message(DocumentMessage::Redo).await;
+	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo restores the edit");
+	let storage = editor.active_document().storage().unwrap();
+	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
+	assert_eq!(storage.session().history().count(), history_base);
+	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 }

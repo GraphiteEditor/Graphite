@@ -1,11 +1,10 @@
-use rand::Rng;
+use rand::RngExt;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, SyncSender};
+use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -22,14 +21,15 @@ use crate::input::InputState;
 use crate::persist;
 use crate::preferences;
 use crate::render::{RenderError, RenderState};
-use crate::ui::{InputEvent, UiCommand, UiInstance};
+use crate::spawner::TokioSpawner;
+use crate::ui::{Acceleration, InputEvent, UiCommand, UiConfig, UiInstance};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction, Preferences};
-use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, IngestAction};
+use crate::wrapper::{DesktopWrapper, FolderStore, MmapResourceStorage, WgpuContext, WgpuExecutor, serialize_frontend_messages};
 
 pub(crate) struct App {
 	render_state: Option<RenderState>,
-	wgpu_context: WgpuContext,
+	wgpu_executor: WgpuExecutor,
 	window: Option<Window>,
 	window_scale: f64,
 	window_size: PhysicalSize<u32>,
@@ -39,19 +39,17 @@ pub(crate) struct App {
 	pending_dnd_fetch: Option<AsyncRequestSerial>,
 	pending_clipboard_fetch: Option<AsyncRequestSerial>,
 	input_state: InputState,
-	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
+	runtime_command_sender: Sender<RuntimeCommand>,
 	ui: UiInstance,
+	ui_initialized: Option<Instant>,
 	ui_frame_received: bool,
-	start_render_sender: SyncSender<()>,
-	web_communication_initialized: bool,
-	web_communication_startup_buffer: Vec<Vec<u8>>,
-	preferences: Preferences,
+	ui_startup_buffer: Vec<Vec<u8>>,
+	preferences: preferences::DesktopPreferences,
 	launch_documents: Option<Vec<PathBuf>>,
-	startup_time: Option<Instant>,
-	exiting: Arc<AtomicBool>,
+	exiting: bool,
 	exit_reason: ExitReason,
 }
 
@@ -65,7 +63,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
-		preferences: Preferences,
+		preferences: preferences::DesktopPreferences,
 		launch_documents: Vec<PathBuf>,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
@@ -75,41 +73,60 @@ impl App {
 		})
 		.expect("Error setting Ctrl-C handler");
 
-		let exiting = Arc::new(AtomicBool::new(false));
+		let (runtime_command_sender, start_render_receiver) = std::sync::mpsc::channel();
+
+		let async_runtime = tokio::runtime::Builder::new_multi_thread()
+			.thread_name("graphite-async")
+			.enable_all()
+			.build()
+			.expect("failed to construct tokio runtime");
+
+		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
+
+		let wake_scheduler = app_event_scheduler.clone();
+		let editor_wake = move || {
+			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
+		};
+		let runtime_wake_sender = runtime_command_sender.clone();
+		let runtime_wake = move || {
+			let _ = runtime_wake_sender.send(RuntimeCommand::Run);
+		};
+		let wgpu_executor = WgpuExecutor::with_context(wgpu_context).expect("Failed to create WgpuExecutor");
+		let (desktop_wrapper, mut node_runtime) = DesktopWrapper::new(
+			rand::rng().random(),
+			Arc::new(resource_storage),
+			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
+			wgpu_executor.clone(),
+			TokioSpawner::new(async_runtime.handle().clone()),
+			editor_wake,
+			runtime_wake,
+		);
 
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
-		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
-		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
-			let runtime = tokio::runtime::Runtime::new().unwrap();
+			let mut update = false;
 			loop {
-				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
-				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
-				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
-				if exiting_clone.load(Ordering::Relaxed) {
-					break;
+				if update {
+					node_runtime.update();
+				}
+				let texture = async_runtime.block_on(node_runtime.run());
+				rendering_app_event_scheduler.schedule(AppEvent::ViewportTexture(texture));
+
+				let first = start_render_receiver.recv_timeout(Duration::from_millis(100)).unwrap_or(RuntimeCommand::Update);
+				update = false;
+				for reason in std::iter::once(first).chain(start_render_receiver.try_iter()) {
+					match reason {
+						RuntimeCommand::Update => update = true,
+						RuntimeCommand::Run => {}
+						RuntimeCommand::Exit => return,
+					}
 				}
 			}
 		});
 
-		let resource_storage = MmapResourceStorage::new(dirs::app_resources_dir()).expect("Failed to initialize on-disk resource storage");
-
-		// Wake the winit event loop when an editor future completes.
-		let wake_scheduler = app_event_scheduler.clone();
-		let wake = Arc::new(move || {
-			wake_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::Wake));
-		});
-		let desktop_wrapper = DesktopWrapper::new(
-			rand::rng().random(),
-			Arc::new(resource_storage),
-			Arc::new(FolderStore::new(dirs::app_autosave_documents_dir())),
-			wgpu_context.clone(),
-			wake,
-		);
-
 		Self {
 			render_state: None,
-			wgpu_context,
+			wgpu_executor,
 			window: None,
 			window_scale: 1.,
 			window_size: PhysicalSize { width: 0, height: 0 },
@@ -119,19 +136,17 @@ impl App {
 			pending_dnd_fetch: None,
 			pending_clipboard_fetch: None,
 			input_state: InputState::new(),
-			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper,
 			ui,
 			ui_frame_received: false,
-			start_render_sender,
-			web_communication_initialized: false,
-			web_communication_startup_buffer: Vec::new(),
+			runtime_command_sender,
+			ui_initialized: None,
+			ui_startup_buffer: Vec::new(),
 			preferences,
 			launch_documents: Some(launch_documents),
-			startup_time: None,
-			exiting,
+			exiting: false,
 			exit_reason: ExitReason::Shutdown,
 		}
 	}
@@ -142,14 +157,30 @@ impl App {
 	}
 
 	fn exit(&mut self, reason: Option<ExitReason>) {
-		if self.exiting.swap(true, Ordering::Relaxed) {
+		if std::mem::replace(&mut self.exiting, true) {
 			return;
 		}
-		let _ = self.start_render_sender.send(());
+		let _ = self.runtime_command_sender.send(RuntimeCommand::Exit);
 		if let Some(reason) = reason {
 			self.exit_reason = reason;
 		}
 		self.app_event_scheduler.schedule(AppEvent::Exit);
+	}
+
+	fn restart_ui(&mut self) {
+		let acceleration = self.preferences.acceleration;
+		if let Err(error) = self.ui.restart(UiConfig { acceleration }) {
+			tracing::error!("Failed to restart the UI: {error}");
+			self.exit(Some(ExitReason::Shutdown));
+			return;
+		}
+		self.ui_initialized = None;
+
+		self.window_size = PhysicalSize { width: 0, height: 0 };
+		self.window_scale = 1.;
+		self.window_maximized = false;
+		self.window_fullscreen = false;
+		self.resize();
 	}
 
 	fn resize(&mut self) {
@@ -172,7 +203,7 @@ impl App {
 		}
 
 		let size = window.surface_size();
-		let scale = window.scale_factor() * self.ui_scale;
+		let scale = window.scale_factor() * self.preferences.ui_scale;
 		let is_new_size = size != self.window_size;
 		let is_new_scale = scale != self.window_scale;
 
@@ -295,13 +326,9 @@ impl App {
 			DesktopFrontendMessage::WindowUpdateDirectInput { enabled } => {
 				self.input_state.set_direct_input(enabled);
 			}
-			DesktopFrontendMessage::UpdateUIScale { scale } => {
-				self.ui_scale = scale;
-				self.resize();
-			}
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
 				if let Some(render_state) = &mut self.render_state {
-					render_state.set_overlays_scene(scene);
+					render_state.set_overlays_scene(*scene);
 				}
 				if let Some(window) = &self.window {
 					window.request_redraw();
@@ -313,8 +340,26 @@ impl App {
 			DesktopFrontendMessage::PersistenceReadState => {
 				responses.push(DesktopWrapperMessage::LoadPersistedState { state: persist::read_state() });
 			}
-			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+			DesktopFrontendMessage::PersistenceUpdatePreferences { preferences } => {
+				let old_preferences = self.preferences.clone();
+				self.preferences = preferences::DesktopPreferences::from(&preferences);
+
 				preferences::write(preferences);
+
+				if old_preferences.present_mode != self.preferences.present_mode
+					&& let Some(render_state) = &mut self.render_state
+				{
+					render_state.set_present_mode(self.preferences.present_mode);
+				}
+
+				if old_preferences.ui_scale != self.preferences.ui_scale {
+					self.resize();
+				}
+
+				if old_preferences.acceleration != self.preferences.acceleration {
+					tracing::info!("UI acceleration preference changed, restarting UI");
+					self.restart_ui();
+				}
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
 				let preferences = preferences::read();
@@ -323,7 +368,6 @@ impl App {
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
 				let Some(launch_documents) = std::mem::take(&mut self.launch_documents) else {
-					tracing::error!("OpenLaunchDocuments should only be sent once");
 					return;
 				};
 				self.app_event_scheduler.schedule(AppEvent::OpenFiles(launch_documents));
@@ -420,35 +464,32 @@ impl App {
 	}
 
 	fn send_or_queue_web_message(&mut self, message: Vec<u8>) {
-		if self.web_communication_initialized {
+		if self.ui_initialized.is_some() {
 			self.ui.send(UiCommand::Message(message));
 		} else {
-			self.web_communication_startup_buffer.push(message);
+			self.ui_startup_buffer.push(message);
 		}
 	}
 
 	fn user_event(&mut self, event_loop: &dyn ActiveEventLoop, event: AppEvent) {
 		match event {
 			AppEvent::WebCommunicationInitialized => {
-				self.web_communication_initialized = true;
-				for message in self.web_communication_startup_buffer.drain(..) {
+				self.ui_initialized = Some(Instant::now());
+				self.ui_frame_received = false;
+				for message in self.ui_startup_buffer.drain(..) {
 					self.ui.send(UiCommand::Message(message));
 				}
 			}
 			AppEvent::DesktopWrapperMessage(message) => self.dispatch_desktop_wrapper_message(message),
-			AppEvent::NodeGraphExecutionResult(result) => match result {
-				NodeGraphExecutionResult::HasRun(texture) => {
-					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
-					if let Some(texture) = texture
-						&& let Some(render_state) = self.render_state.as_mut()
-						&& let Some(window) = self.window.as_ref()
-					{
-						render_state.bind_viewport_texture(texture);
-						window.request_redraw();
-					}
+			AppEvent::ViewportTexture(texture) => {
+				if let Some(texture) = texture
+					&& let Some(render_state) = self.render_state.as_mut()
+					&& let Some(window) = self.window.as_ref()
+				{
+					render_state.bind_viewport_texture(texture);
+					window.request_redraw();
 				}
-				NodeGraphExecutionResult::NotRun => {}
-			},
+			}
 			AppEvent::UiUpdate(texture) => {
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);
@@ -497,6 +538,10 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			AppEvent::UiCrashed if self.ui_initialized.is_some() => {
+				tracing::error!("UI process crashed, restarting it.");
+				self.restart_ui();
+			}
 			AppEvent::UiCrashed => {
 				tracing::error!("UI process crashed, exiting.");
 				self.exit(Some(ExitReason::Shutdown));
@@ -540,12 +585,10 @@ impl ApplicationHandler for App {
 		let window = Window::new(event_loop, self.app_event_scheduler.clone());
 		self.window = Some(window);
 
-		#[cfg(not(target_os = "macos"))]
-		let present_mode = None;
-		#[cfg(target_os = "macos")]
-		let present_mode = if !self.preferences.vsync { Some(wgpu::PresentMode::Immediate) } else { None };
-
-		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone(), present_mode);
+		let mut render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_executor.clone());
+		if self.preferences.present_mode.is_some() {
+			render_state.set_present_mode(self.preferences.present_mode);
+		}
 		self.render_state = Some(render_state);
 
 		if let Some(window) = &self.window.as_ref() {
@@ -553,8 +596,6 @@ impl ApplicationHandler for App {
 		}
 
 		self.resize();
-
-		self.startup_time = Some(Instant::now());
 	}
 
 	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -613,17 +654,18 @@ impl ApplicationHandler for App {
 						}
 						Err(other) => tracing::error!("Render error: {:?}", other),
 					}
-					let _ = self.start_render_sender.try_send(());
+					let _ = self.runtime_command_sender.send(RuntimeCommand::Update);
 				}
 
 				if !self.ui_frame_received
-					&& !self.preferences.disable_ui_acceleration
-					&& self.web_communication_initialized
-					&& let Some(startup_time) = self.startup_time
-					&& startup_time.elapsed() > Duration::from_secs(3)
+					&& self.preferences.acceleration != Acceleration::Disabled
+					&& let Some(initialized) = self.ui_initialized
+					&& initialized.elapsed() > Duration::from_secs(3)
 				{
-					tracing::error!("UI acceleration not working, exiting.");
-					self.exit(Some(ExitReason::UiAccelerationFailure));
+					tracing::error!("UI acceleration not working, disabling it.");
+					let mut preferences = preferences::read();
+					preferences.disable_ui_acceleration = true;
+					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::LoadPreferences { preferences });
 				}
 			}
 			WindowEvent::DragEntered { id, .. } => {
@@ -722,8 +764,13 @@ impl ApplicationHandler for App {
 	}
 }
 
+enum RuntimeCommand {
+	Update,
+	Run,
+	Exit,
+}
+
 pub(crate) enum ExitReason {
 	Shutdown,
 	Restart,
-	UiAccelerationFailure,
 }

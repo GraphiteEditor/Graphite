@@ -28,6 +28,7 @@ fn write_frontmatter(page: &mut std::fs::File) {
 		[extra]
 		order = 3
 		css = [\"/page/user-manual/node-catalog.css\"]
+		development_notice = true
 		+++
 		"
 	);

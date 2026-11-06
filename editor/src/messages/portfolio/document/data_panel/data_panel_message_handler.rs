@@ -1,10 +1,10 @@
-use super::VectorTableTab;
 use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget};
 use crate::messages::portfolio::document::data_panel::{DataPanelMessage, PathStep};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::format_rounded;
 use crate::messages::tool::tool_messages::tool_prelude::*;
+use crate::node_graph_executor::InspectedContext;
 use glam::{Affine2, DAffine2, Vec2};
 use graph_craft::document::NodeId;
 use graphene_std::animation::RealTimeMode;
@@ -12,9 +12,8 @@ use graphene_std::blending::BlendMode;
 use graphene_std::color::SRGBA8;
 use graphene_std::core_types::misc::format_f64;
 use graphene_std::gradient::Gradient;
-use graphene_std::list::{Item, List, NodeIdPath};
+use graphene_std::list::{INTERNAL_ATTRIBUTE_PREFIX, Item, List, NodeIdPath};
 use graphene_std::math::float_noise::round_away_float_noise;
-use graphene_std::memo::IORecord;
 use graphene_std::raster::{
 	AdjustmentChannel, CellularDistanceFunction, CellularReturnType, DesaturateMethod, DomainWarpType, FractalType, HueSaturationRange, NoiseType, RedGreenBlue, RelativeAbsolute,
 	SelectiveColorChoice, TonalRange,
@@ -23,16 +22,18 @@ use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::text::TextAlign;
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
+use graphene_std::transform::Footprint;
 use graphene_std::transform::{ReferencePoint, ScaleType};
 use graphene_std::vector::misc::{
-	ArcType, BezierHandles, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridType, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns,
-	SpiralType,
+	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
+	WeldMethod,
 };
 use graphene_std::vector::style::{
 	DashPattern, FillChoice, GradientForm, GradientHueDirection, GradientInterpolation, GradientRamp, GradientSettings, GradientSpace, GradientSpread, StrokeAlign, StrokeCap, StrokeJoin,
 };
-use graphene_std::vector::{QRCodeErrorCorrectionLevel, Vector};
-use graphene_std::{Appearance, Artboard, Color, Context, Cover, Coverage, Graphic};
+use graphene_std::vector::{CurveType, Path, PointId, QRCodeErrorCorrectionLevel, SegmentId, Vector};
+use graphene_std::{Appearance, Artboard, Color, ContextFeatures, ContextOverrides, Cover, Coverage, Graphic};
+use kurbo::BezPath;
 use std::any::Any;
 use std::sync::Arc;
 
@@ -50,8 +51,8 @@ pub struct DataPanelMessageHandler {
 	/// Empty when nothing is being introspected.
 	introspected_node_path: Vec<NodeId>,
 	introspected_data: Option<Arc<dyn Any + Send + Sync>>,
+	context: InspectedContext,
 	element_path: Vec<PathStep>,
-	active_vector_table_tab: VectorTableTab,
 }
 
 #[message_handler_data]
@@ -61,13 +62,14 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 			DataPanelMessage::UpdateLayout { mut inspect_result } => {
 				self.introspected_data = inspect_result.take_data();
 				self.introspected_node_path = inspect_result.inspect_node_path;
+				self.context = inspect_result.context;
 				self.update_layout(responses, context);
 			}
 			DataPanelMessage::ClearLayout => {
 				self.introspected_node_path.clear();
 				self.introspected_data = None;
+				self.context = InspectedContext::default();
 				self.element_path.clear();
-				self.active_vector_table_tab = VectorTableTab::default();
 				self.update_layout(responses, context);
 			}
 			DataPanelMessage::Refresh => {
@@ -85,10 +87,8 @@ impl MessageHandler<DataPanelMessage, DataPanelMessageContext<'_>> for DataPanel
 				self.element_path.truncate(len);
 				self.update_layout(responses, context);
 			}
-
-			DataPanelMessage::ViewVectorTableTab { tab } => {
-				self.active_vector_table_tab = tab;
-				self.update_layout(responses, context);
+			DataPanelMessage::SetContextOverrides { overrides } => {
+				responses.add(PortfolioMessage::SubmitInspectContextOverrides { overrides });
 			}
 		}
 	}
@@ -114,11 +114,10 @@ impl DataPanelMessageHandler {
 			node_lookup_network_path: Vec::new(),
 			gradient_settings: GradientSettings::default(),
 			breadcrumbs: Vec::new(),
-			vector_table_tab: self.active_vector_table_tab,
 		};
 
 		// Main data visualization
-		let mut layout = Layout(
+		let layout = Layout(
 			self.introspected_data
 				.as_ref()
 				.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data).unwrap_or_else(|| label("Visualization of this data type is not yet supported")))
@@ -147,15 +146,208 @@ impl DataPanelMessageHandler {
 			widgets.push(breadcrumb);
 		}
 
-		if !widgets.is_empty() {
-			layout.0.insert(0, LayoutGroup::row(widgets));
-		}
+		let path_layout = Layout(if widgets.is_empty() { Vec::new() } else { vec![LayoutGroup::row(widgets)] });
 
+		let context_widgets = context_widgets(&self.context);
+		let context_layout = Layout(if context_widgets.is_empty() { Vec::new() } else { vec![LayoutGroup::row(context_widgets)] });
+
+		responses.add(LayoutMessage::SendLayout {
+			layout: path_layout,
+			layout_target: LayoutTarget::DataPanelPath,
+		});
+		responses.add(LayoutMessage::SendLayout {
+			layout: context_layout,
+			layout_target: LayoutTarget::DataPanelContext,
+		});
 		responses.add(LayoutMessage::SendLayout {
 			layout,
 			layout_target: LayoutTarget::DataPanel,
 		});
 	}
+}
+
+/// The inspected node's context, as inputs for overriding the features its output depends on.
+fn context_widgets(context: &InspectedContext) -> Vec<WidgetInstance> {
+	let InspectedContext {
+		features,
+		positions,
+		variables,
+		overrides,
+		dependencies,
+	} = context;
+	let current = EditableContext::new(features, overrides);
+	let label = |name: &str, overridden: bool| TextLabel::new(name).bold(true).italic(overridden).widget_instance();
+	let mut groups: Vec<Vec<WidgetInstance>> = Vec::new();
+
+	if dependencies.contains(ContextFeatures::FOOTPRINT) {
+		let (scale, angle, translation) = current.footprint.transform.to_scale_angle_translation();
+		let resolution = current.footprint.resolution;
+		groups.push(vec![
+			label("Footprint", overrides.footprint.is_some()),
+			current
+				.input(translation.x, |context, x| edit_transform(context, |_, _, translation| translation.x = x))
+				.label("X")
+				.widget_instance(),
+			current
+				.input(translation.y, |context, y| edit_transform(context, |_, _, translation| translation.y = y))
+				.label("Y")
+				.widget_instance(),
+			current
+				.input(scale.x, |context, value| edit_transform(context, |scale, _, _| *scale = DVec2::splat(value)))
+				.label("Scale")
+				.widget_instance(),
+			current
+				.input(angle.to_degrees(), |context, degrees| edit_transform(context, |_, angle, _| *angle = degrees.to_radians()))
+				.label("Angle")
+				.unit("°")
+				.widget_instance(),
+			current
+				.input(resolution.x as f64, |context, width| context.footprint.resolution.x = width.max(0.) as u32)
+				.label("W")
+				.int()
+				.unit(" px")
+				.widget_instance(),
+			current
+				.input(resolution.y as f64, |context, height| context.footprint.resolution.y = height.max(0.) as u32)
+				.label("H")
+				.int()
+				.unit(" px")
+				.widget_instance(),
+		]);
+	}
+
+	if dependencies.contains(ContextFeatures::REAL_TIME) {
+		let time_input = current.input(current.real_time, |context, time| context.real_time = time).unit(" s");
+		groups.push(vec![label("Real Time", overrides.real_time.is_some()), time_input.widget_instance()]);
+	}
+
+	if dependencies.contains(ContextFeatures::ANIMATION_TIME) {
+		let time_input = current.input(current.animation_time, |context, time| context.animation_time = time).unit(" s");
+		groups.push(vec![label("Animation Time", overrides.animation_time.is_some()), time_input.widget_instance()]);
+	}
+
+	if dependencies.contains(ContextFeatures::POINTER_POSITION) {
+		let pointer = current.pointer_position;
+		groups.push(vec![
+			label("Pointer", overrides.pointer_position.is_some()),
+			current.input(pointer.x, |context, x| context.pointer_position.x = x).label("X").widget_instance(),
+			current.input(pointer.y, |context, y| context.pointer_position.y = y).label("Y").widget_instance(),
+		]);
+	}
+
+	if dependencies.contains(ContextFeatures::INDEX) {
+		let mut group = vec![label("Index", overrides.index.is_some())];
+		for (level, &value) in current.index.iter().enumerate() {
+			let level_input = current.input(value as f64, move |context, value| {
+				if let Some(index) = context.index.get_mut(level) {
+					*index = value.max(0.) as usize;
+				}
+			});
+			group.push(level_input.int().min(0.).sizing(WidgetSizing::fixed(48)).widget_instance());
+		}
+		groups.push(group);
+	}
+
+	if dependencies.contains(ContextFeatures::POSITION) && !positions.is_empty() {
+		let positions = positions
+			.iter()
+			.map(|position| format!("({}, {})", format_f64(position.x), format_f64(position.y)))
+			.collect::<Vec<_>>()
+			.join(", ");
+		groups.push(vec![label("Position", false), TextLabel::new(positions).widget_instance()]);
+	}
+
+	if dependencies.contains(ContextFeatures::VARARGS) && *variables > 0 {
+		groups.push(vec![label("Variables", false), TextLabel::new(variables.to_string()).widget_instance()]);
+	}
+
+	if !overrides.is_empty() {
+		groups.push(vec![
+			TextButton::new("Reset")
+				.icon("Reset")
+				.tooltip_description("Evaluate the node with the context it was evaluated with in the graph.")
+				.on_update(|_| {
+					DataPanelMessage::SetContextOverrides {
+						overrides: ContextOverrides::default(),
+					}
+					.into()
+				})
+				.widget_instance(),
+		]);
+	}
+
+	let mut widgets = Vec::new();
+	for (i, group) in groups.into_iter().enumerate() {
+		if i > 0 {
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		}
+		for (j, widget) in group.into_iter().enumerate() {
+			if j > 0 {
+				widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+			}
+			widgets.push(widget);
+		}
+	}
+	widgets
+}
+
+/// The features of a context the Data panel can edit, with defaults for those it lacks.
+#[derive(Clone, PartialEq)]
+struct EditableContext {
+	footprint: Footprint,
+	real_time: f64,
+	animation_time: f64,
+	pointer_position: DVec2,
+	index: Vec<usize>,
+	overrides: ContextOverrides,
+}
+
+impl EditableContext {
+	fn new(features: &ContextOverrides, overrides: &ContextOverrides) -> Self {
+		Self {
+			footprint: features.footprint.unwrap_or(Footprint::DEFAULT),
+			real_time: features.real_time.unwrap_or_default(),
+			animation_time: features.animation_time.unwrap_or_default(),
+			pointer_position: features.pointer_position.unwrap_or_default(),
+			index: features.index.clone().filter(|index| !index.is_empty()).unwrap_or_else(|| vec![0]),
+			overrides: overrides.clone(),
+		}
+	}
+
+	/// An input that overrides the features its edit changes, on top of the existing overrides.
+	fn input(&self, value: f64, edit: impl Fn(&mut Self, f64) + Send + Sync + 'static) -> NumberInput {
+		let current = self.clone();
+
+		NumberInput::new(Some(value))
+			.increment_behavior(NumberInputIncrementBehavior::None)
+			.sizing(WidgetSizing::fixed(88))
+			.on_update(move |number_input: &NumberInput| {
+				let Some(value) = number_input.value else { return Message::NoOp };
+				let mut edited = current.clone();
+				edit(&mut edited, value);
+				DataPanelMessage::SetContextOverrides {
+					overrides: current.overrides_after_edit(edited),
+				}
+				.into()
+			})
+	}
+
+	fn overrides_after_edit(&self, edited: Self) -> ContextOverrides {
+		let overrides = &self.overrides;
+		ContextOverrides {
+			footprint: (overrides.footprint.is_some() || edited.footprint != self.footprint).then_some(edited.footprint),
+			real_time: (overrides.real_time.is_some() || edited.real_time != self.real_time).then_some(edited.real_time),
+			animation_time: (overrides.animation_time.is_some() || edited.animation_time != self.animation_time).then_some(edited.animation_time),
+			pointer_position: (overrides.pointer_position.is_some() || edited.pointer_position != self.pointer_position).then_some(edited.pointer_position),
+			index: (overrides.index.is_some() || edited.index != self.index).then_some(edited.index),
+		}
+	}
+}
+
+fn edit_transform(context: &mut EditableContext, edit: impl FnOnce(&mut DVec2, &mut f64, &mut DVec2)) {
+	let (mut scale, mut angle, mut translation) = context.footprint.transform.to_scale_angle_translation();
+	edit(&mut scale, &mut angle, &mut translation);
+	context.footprint.transform = DAffine2::from_scale_angle_translation(scale, angle, translation);
 }
 
 struct LayoutData<'a> {
@@ -172,137 +364,170 @@ struct LayoutData<'a> {
 	/// rather than in the stop list itself. The enclosing `Item`/`List` sets it to the owning row's attributes.
 	gradient_settings: GradientSettings,
 	breadcrumbs: Vec<String>,
-	vector_table_tab: VectorTableTab,
+}
+
+/// Calls the macro with its arguments followed by the list of every value type the Data panel can show.
+macro_rules! inspectable_types {
+	($callback:ident $(, $argument:expr)*) => {
+		$callback!($($argument,)* [
+			List<Artboard>,
+			List<Graphic>,
+			List<Vector>,
+			List<Raster<CPU>>,
+			List<Raster<GPU>>,
+			List<Color>,
+			List<Gradient>,
+			List<String>,
+			List<f64>,
+			List<i64>,
+			List<bool>,
+			List<DVec2>,
+			List<DAffine2>,
+			List<BlendMode>,
+			List<GradientForm>,
+			List<GradientSpread>,
+			List<GradientSpace>,
+			List<GradientHueDirection>,
+			List<GradientInterpolation>,
+			List<DashPattern>,
+			List<BoxCorners>,
+			List<TransferCurve>,
+			List<StrokeJoin>,
+			List<StrokeAlign>,
+			List<StrokeCap>,
+			List<WeldMethod>,
+			List<UnweldMethod>,
+			List<ExtrudeJoiningAlgorithm>,
+			List<PointSpacingType>,
+			List<StringCapitalization>,
+			List<TextDenomination>,
+			List<DesaturateMethod>,
+			List<RedGreenBlue>,
+			List<RelativeAbsolute>,
+			List<SelectiveColorChoice>,
+			List<TonalRange>,
+			List<AdjustmentChannel>,
+			List<HueSaturationRange>,
+			List<ScaleType>,
+			List<ReferencePoint>,
+			List<CentroidType>,
+			List<BooleanOperation>,
+			List<NoiseType>,
+			List<FractalType>,
+			List<CellularDistanceFunction>,
+			List<CellularReturnType>,
+			List<DomainWarpType>,
+			List<RealTimeMode>,
+			List<GridType>,
+			List<GridTopology>,
+			List<ArcType>,
+			List<SpiralType>,
+			List<TextAlign>,
+			List<QRCodeErrorCorrectionLevel>,
+			List<InterpolationDistribution>,
+			List<RowsOrColumns>,
+			Item<Artboard>,
+			Item<Graphic>,
+			Item<Vector>,
+			Item<Raster<CPU>>,
+			Item<Raster<GPU>>,
+			Item<Color>,
+			Item<Gradient>,
+			Item<String>,
+			Item<f64>,
+			Item<i64>,
+			Item<bool>,
+			Item<DVec2>,
+			Item<DAffine2>,
+			Item<BlendMode>,
+			Item<GradientForm>,
+			Item<GradientSpread>,
+			Item<GradientSpace>,
+			Item<GradientHueDirection>,
+			Item<GradientInterpolation>,
+			Item<DashPattern>,
+			Item<BoxCorners>,
+			Item<TransferCurve>,
+			Item<StrokeJoin>,
+			Item<StrokeAlign>,
+			Item<StrokeCap>,
+			Item<WeldMethod>,
+			Item<UnweldMethod>,
+			Item<ExtrudeJoiningAlgorithm>,
+			Item<PointSpacingType>,
+			Item<StringCapitalization>,
+			Item<TextDenomination>,
+			Item<DesaturateMethod>,
+			Item<RedGreenBlue>,
+			Item<RelativeAbsolute>,
+			Item<SelectiveColorChoice>,
+			Item<TonalRange>,
+			Item<AdjustmentChannel>,
+			Item<HueSaturationRange>,
+			Item<ScaleType>,
+			Item<ReferencePoint>,
+			Item<CentroidType>,
+			Item<BooleanOperation>,
+			Item<NoiseType>,
+			Item<FractalType>,
+			Item<CellularDistanceFunction>,
+			Item<CellularReturnType>,
+			Item<DomainWarpType>,
+			Item<RealTimeMode>,
+			Item<GridType>,
+			Item<GridTopology>,
+			Item<ArcType>,
+			Item<SpiralType>,
+			Item<TextAlign>,
+			Item<QRCodeErrorCorrectionLevel>,
+			Item<InterpolationDistribution>,
+			Item<RowsOrColumns>,
+		])
+	};
 }
 
 macro_rules! generate_layout_downcast {
 	($introspected_data:expr, $data:expr, [ $($ty:ty),* $(,)? ]) => {
 		if false { None }
 		$(
-			else if let Some(io) = $introspected_data.downcast_ref::<IORecord<Context, $ty>>() {
-				Some(io.output.layout_with_breadcrumb($data))
+			else if let Some(value) = $introspected_data.downcast_ref::<$ty>() {
+				Some(value.layout_with_breadcrumb($data))
 			}
 		)*
 		else { None }
 	}
 }
+
+macro_rules! shareable_downcast {
+	($output:expr, [ $($ty:ty),* $(,)? ]) => {{
+		let output = $output;
+		$(
+			let output = match output.downcast::<$ty>() {
+				Ok(value) => return Some(Arc::new(*value)),
+				Err(output) => output,
+			};
+		)*
+		drop(output);
+		None
+	}};
+}
+
+/// The type-erased output of an evaluated node as a shareable value, if the Data panel can show its type.
+pub fn shareable_inspect_output(output: graphene_std::core_types::registry::Any) -> Option<Arc<dyn Any + Send + Sync + 'static>> {
+	let output = match output.downcast::<Item<NodeIdPath>>() {
+		Ok(path) => return Some(Arc::new(*path)),
+		Err(output) => output,
+	};
+	inspectable_types!(shareable_downcast, output)
+}
 // TODO: We simply try all these types sequentially. Find a better strategy.
 fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'static>, data: &mut LayoutData) -> Option<Vec<LayoutGroup>> {
 	// `Item<NodeIdPath>` is interpreted as a path (e.g. the value produced by `path_of_subgraph`), shown as a
 	// `List` where each item's NodeId resolves against the prefix made up of the items above it.
-	if let Some(io) = introspected_data.downcast_ref::<IORecord<Context, Item<NodeIdPath>>>() {
-		return Some(table_node_id_path_layout_with_breadcrumb(&io.output.element().0, data));
+	if let Some(path) = introspected_data.downcast_ref::<Item<NodeIdPath>>() {
+		return Some(table_node_id_path_layout_with_breadcrumb(&path.element().0, data));
 	}
-	generate_layout_downcast!(introspected_data, data, [
-		List<Artboard>,
-		List<Graphic>,
-		List<Vector>,
-		List<Raster<CPU>>,
-		List<Raster<GPU>>,
-		List<Color>,
-		List<Gradient>,
-		List<String>,
-		List<f64>,
-		List<i64>,
-		List<bool>,
-		List<DVec2>,
-		List<DAffine2>,
-		List<BlendMode>,
-		List<GradientForm>,
-		List<GradientSpread>,
-		List<GradientSpace>,
-		List<GradientHueDirection>,
-		List<GradientInterpolation>,
-		List<DashPattern>,
-		List<BoxCorners>,
-		List<TransferCurve>,
-		List<StrokeJoin>,
-		List<StrokeAlign>,
-		List<StrokeCap>,
-		List<MergeByDistanceAlgorithm>,
-		List<ExtrudeJoiningAlgorithm>,
-		List<PointSpacingType>,
-		List<StringCapitalization>,
-		List<TextDenomination>,
-		List<DesaturateMethod>,
-		List<RedGreenBlue>,
-		List<RelativeAbsolute>,
-		List<SelectiveColorChoice>,
-		List<TonalRange>,
-		List<AdjustmentChannel>,
-		List<HueSaturationRange>,
-		List<ScaleType>,
-		List<ReferencePoint>,
-		List<CentroidType>,
-		List<BooleanOperation>,
-		List<NoiseType>,
-		List<FractalType>,
-		List<CellularDistanceFunction>,
-		List<CellularReturnType>,
-		List<DomainWarpType>,
-		List<RealTimeMode>,
-		List<GridType>,
-		List<ArcType>,
-		List<SpiralType>,
-		List<TextAlign>,
-		List<QRCodeErrorCorrectionLevel>,
-		List<InterpolationDistribution>,
-		List<RowsOrColumns>,
-		Item<Artboard>,
-		Item<Graphic>,
-		Item<Vector>,
-		Item<Raster<CPU>>,
-		Item<Raster<GPU>>,
-		Item<Color>,
-		Item<Gradient>,
-		Item<String>,
-		Item<f64>,
-		Item<i64>,
-		Item<bool>,
-		Item<DVec2>,
-		Item<DAffine2>,
-		Item<BlendMode>,
-		Item<GradientForm>,
-		Item<GradientSpread>,
-		Item<GradientSpace>,
-		Item<GradientHueDirection>,
-		Item<GradientInterpolation>,
-		Item<DashPattern>,
-		Item<BoxCorners>,
-		Item<TransferCurve>,
-		Item<StrokeJoin>,
-		Item<StrokeAlign>,
-		Item<StrokeCap>,
-		Item<MergeByDistanceAlgorithm>,
-		Item<ExtrudeJoiningAlgorithm>,
-		Item<PointSpacingType>,
-		Item<StringCapitalization>,
-		Item<TextDenomination>,
-		Item<DesaturateMethod>,
-		Item<RedGreenBlue>,
-		Item<RelativeAbsolute>,
-		Item<SelectiveColorChoice>,
-		Item<TonalRange>,
-		Item<AdjustmentChannel>,
-		Item<HueSaturationRange>,
-		Item<ScaleType>,
-		Item<ReferencePoint>,
-		Item<CentroidType>,
-		Item<BooleanOperation>,
-		Item<NoiseType>,
-		Item<FractalType>,
-		Item<CellularDistanceFunction>,
-		Item<CellularReturnType>,
-		Item<DomainWarpType>,
-		Item<RealTimeMode>,
-		Item<GridType>,
-		Item<ArcType>,
-		Item<SpiralType>,
-		Item<TextAlign>,
-		Item<QRCodeErrorCorrectionLevel>,
-		Item<InterpolationDistribution>,
-		Item<RowsOrColumns>,
-	])
+	inspectable_types!(generate_layout_downcast, introspected_data, data)
 }
 
 fn column_headings(value: &[&str]) -> Vec<WidgetInstance> {
@@ -435,7 +660,7 @@ impl<T: TableItemLayout> TableItemLayout for List<T> {
 			}
 		}
 
-		let attribute_keys: Vec<String> = self.attribute_keys().map(str::to_string).collect();
+		let attribute_keys: Vec<String> = self.attribute_keys().filter(|key| !key.starts_with(INTERNAL_ATTRIBUTE_PREFIX)).map(str::to_string).collect();
 
 		let mut rows = (0..self.len())
 			.map(|index| {
@@ -655,70 +880,42 @@ impl TableItemLayout for Graphic {
 	}
 }
 
+// The pool is a plain point list with its IDs riding its attributes, so the generic list layout shows it as-is
 impl TableItemLayout for Vector {
 	fn type_name() -> &'static str {
 		"Vector"
 	}
 	fn identifier(&self) -> String {
-		format!(
-			"Vector ({} point{}, {} segment{})",
-			self.point_domain.ids().len(),
-			if self.point_domain.ids().len() == 1 { "" } else { "s" },
-			self.segment_domain.ids().len(),
-			if self.segment_domain.ids().len() == 1 { "" } else { "s" }
-		)
+		self.0.identifier()
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let table_tab_entries = [VectorTableTab::Points, VectorTableTab::Segments, VectorTableTab::Handles]
-			.into_iter()
-			.map(|tab| {
-				RadioEntryData::new(format!("{tab:?}"))
-					.label(format!("{tab:?}"))
-					.on_update(move |_| DataPanelMessage::ViewVectorTableTab { tab }.into())
-			})
-			.collect();
-		let table_tabs = vec![RadioInput::new(table_tab_entries).selected_index(Some(data.vector_table_tab as u32)).widget_instance()];
+		self.0.value_page(data)
+	}
+}
 
-		let mut table_rows = Vec::new();
-		match data.vector_table_tab {
-			VectorTableTab::Handles => {
-				table_rows.push(column_headings(&["", "colinear_manipulators[0]", "colinear_manipulators[1]"]));
-				table_rows.extend(self.colinear_manipulators.iter().enumerate().map(|(index, [a, b])| {
-					vec![
-						TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{a}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("{b}")).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Points => {
-				table_rows.push(column_headings(&["", "position"]));
-				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format_dvec2(position)).narrow(true).widget_instance(),
-					]
-				}));
-			}
-			VectorTableTab::Segments => {
-				table_rows.push(column_headings(&["", "start_point", "end_point", "handles"]));
-				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
-					let handles = match handles {
-						BezierHandles::Linear => "Linear".to_string(),
-						BezierHandles::Quadratic { handle } => format!("Quadratic — {}", format_dvec2(handle)),
-						BezierHandles::Cubic { handle_start, handle_end } => format!("Cubic — start: {}, end: {}", format_dvec2(handle_start), format_dvec2(handle_end)),
-					};
-					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
-						TextLabel::new(format!("Point {start}")).narrow(true).widget_instance(),
-						TextLabel::new(format!("Point {end}")).narrow(true).widget_instance(),
-						TextLabel::new(handles).narrow(true).widget_instance(),
-					]
-				}));
-			}
-		}
+// A path is its list of point references, with segment IDs and smooth flags riding its attributes
+impl TableItemLayout for Path {
+	fn type_name() -> &'static str {
+		"Path"
+	}
+	fn identifier(&self) -> String {
+		self.0.identifier()
+	}
+	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		self.0.value_page(data)
+	}
+}
 
-		vec![LayoutGroup::row(table_tabs), LayoutGroup::table(table_rows, false)]
+// Only the click target attribute holds a bezpath, so it's named for what it does
+impl TableItemLayout for BezPath {
+	fn type_name() -> &'static str {
+		"Click Target"
+	}
+	fn identifier(&self) -> String {
+		Self::type_name().to_string()
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).narrow(true).widget_instance()]
 	}
 }
 
@@ -737,18 +934,7 @@ impl TableItemLayout for Raster<CPU> {
 			return vec![LayoutGroup::row(widgets)];
 		}
 
-		let base64_string = raster.base64_string.clone().unwrap_or_else(|| {
-			use base64::Engine;
-
-			let output = raster.to_png();
-			let preamble = "data:image/png;base64,";
-			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
-			base64_string.push_str(preamble);
-			base64::engine::general_purpose::STANDARD.encode_string(output, &mut base64_string);
-			base64_string
-		});
-
-		let widgets = vec![ImageLabel::new(base64_string).widget_instance()];
+		let widgets = vec![ImageLabel::new(self.png_data_url().to_string()).widget_instance()];
 		vec![LayoutGroup::row(widgets)]
 	}
 }
@@ -1019,7 +1205,8 @@ impl_table_item_layout_for_choice_enum!(
 	StrokeJoin,
 	StrokeAlign,
 	StrokeCap,
-	MergeByDistanceAlgorithm,
+	WeldMethod,
+	UnweldMethod,
 	ExtrudeJoiningAlgorithm,
 	PointSpacingType,
 	StringCapitalization,
@@ -1041,6 +1228,7 @@ impl_table_item_layout_for_choice_enum!(
 	DomainWarpType,
 	RealTimeMode,
 	GridType,
+	GridTopology,
 	ArcType,
 	SpiralType,
 	TextAlign,
@@ -1082,7 +1270,7 @@ pub fn node_reference_button(
 	network_path: &[NodeId],
 	selection_network_path: &[NodeId],
 	select: impl Fn() -> Message + Send + Sync + 'static,
-) -> WidgetInstance {
+) -> TextButton {
 	let is_layer = network_interface.is_layer(&node_id, network_path);
 	let icon = network_interface.node_icon(&node_id, network_path);
 	let name = network_interface.display_name(&node_id, network_path);
@@ -1101,7 +1289,6 @@ pub fn node_reference_button(
 			(true, false, _) => "",
 		})
 		.on_update(move |_| select())
-		.widget_instance()
 }
 
 impl TableItemLayout for NodeId {
@@ -1135,7 +1322,7 @@ impl TableItemLayout for NodeId {
 				NodeGraphMessage::SelectedNodesSet { nodes: vec![node_id] }.into(),
 			]),
 		};
-		vec![node_reference_button(node_id, network_interface, &network_path, data.selection_network_path, select)]
+		vec![node_reference_button(node_id, network_interface, &network_path, data.selection_network_path, select).widget_instance()]
 	}
 	fn value_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![LayoutGroup::row(self.value_widgets(PathStep::Element(0), data))]
@@ -1151,6 +1338,7 @@ macro_rules! known_item_types {
 			List<Artboard>,
 			List<Graphic>,
 			List<Vector>,
+			List<Path>,
 			List<Raster<CPU>>,
 			List<Raster<GPU>>,
 			List<Color>,
@@ -1170,6 +1358,8 @@ macro_rules! known_item_types {
 			bool,
 			String,
 			Vector,
+			Path,
+			BezPath,
 			Raster<CPU>,
 			Raster<GPU>,
 			Graphic,
@@ -1189,7 +1379,8 @@ macro_rules! known_item_types {
 			StrokeJoin,
 			StrokeAlign,
 			StrokeCap,
-			MergeByDistanceAlgorithm,
+			WeldMethod,
+			UnweldMethod,
 			ExtrudeJoiningAlgorithm,
 			PointSpacingType,
 			StringCapitalization,
@@ -1212,6 +1403,7 @@ macro_rules! known_item_types {
 			DomainWarpType,
 			RealTimeMode,
 			GridType,
+			GridTopology,
 			ArcType,
 			SpiralType,
 			TextAlign,
@@ -1228,6 +1420,15 @@ fn display_value_override(any: &dyn Any) -> Option<String> {
 		return Some(format_dvec2(*value));
 	}
 	if let Some(value) = any.downcast_ref::<BlendMode>() {
+		return Some(value.to_string());
+	}
+	if let Some(value) = any.downcast_ref::<PointId>() {
+		return Some(if *value == PointId::UNNAMED { String::new() } else { value.inner().to_string() });
+	}
+	if let Some(value) = any.downcast_ref::<SegmentId>() {
+		return Some(if *value == SegmentId::ZERO { String::new() } else { value.inner().to_string() });
+	}
+	if let Some(value) = any.downcast_ref::<CurveType>() {
 		return Some(value.to_string());
 	}
 	None

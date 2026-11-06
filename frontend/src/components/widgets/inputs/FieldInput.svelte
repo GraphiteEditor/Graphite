@@ -142,6 +142,7 @@
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Enter" && dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Escape" && cancel()}
+			on:keydown
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element
@@ -161,6 +162,7 @@
 			on:change={() => dispatch("textChanged")}
 			on:keydown={(e) => (macKeyboardLayout ? e.metaKey : e.ctrlKey) && e.key === "Enter" && dispatch("textChanged")}
 			on:keydown={(e) => e.key === "Escape" && cancel()}
+			on:keydown
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 			data-input-element

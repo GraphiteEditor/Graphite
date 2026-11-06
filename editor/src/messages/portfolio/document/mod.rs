@@ -7,10 +7,10 @@ pub(crate) mod storage_tests;
 
 pub mod data_panel;
 pub mod graph_operation;
+pub mod inspector;
 pub mod navigation;
 pub mod node_graph;
 pub mod overlays;
-pub mod properties_panel;
 pub mod resource;
 pub mod utility_types;
 

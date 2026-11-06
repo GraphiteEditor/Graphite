@@ -22,7 +22,6 @@
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
 		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
-		tabindex="-1"
 	>
 		{#if !exposed}
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8">

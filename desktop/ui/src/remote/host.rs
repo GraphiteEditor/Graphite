@@ -81,12 +81,7 @@ pub(crate) fn run() {
 	let outcome = context.run(move |handle| control_loop(&control_receiver, &handle, sequence.as_ref()));
 
 	match outcome {
-		ControlOutcome::Shutdown => {
-			tracing::debug!("Shut down CEF host");
-			if let Ok(sender) = event_sender.lock() {
-				let _ = sender.send(EventMessage::ShutdownComplete);
-			}
-		}
+		ControlOutcome::Shutdown => tracing::debug!("Shut down CEF host"),
 		ControlOutcome::Disconnected => std::process::exit(0),
 	}
 }

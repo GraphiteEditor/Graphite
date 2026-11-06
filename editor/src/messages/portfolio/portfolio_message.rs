@@ -1,5 +1,6 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::persistent_state::PersistentStateMessage;
+use super::sync::SyncMessage;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType, PersistedState};
 use crate::messages::prelude::*;
 use document_container::AnyContainer;
@@ -20,6 +21,8 @@ pub enum PortfolioMessage {
 	Ingest(IngestMessage),
 	#[child]
 	PersistentState(PersistentStateMessage),
+	#[child]
+	Sync(SyncMessage),
 	#[child]
 	Workspace(WorkspaceMessage),
 
@@ -47,7 +50,6 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 	},
 	DestroyAllDocuments,
-	EditorPreferences,
 	GarbageCollectResources,
 	ResolveResources,
 	ResolveDocumentResources {
@@ -56,9 +58,19 @@ pub enum PortfolioMessage {
 	LoadPersistedState {
 		state: PersistedState,
 	},
+	/// `document_ids` are the stored documents this tab now holds, and `held` the ones another tab has open.
 	StoredDocumentsListed {
 		document_ids: Option<Vec<DocumentId>>,
+		held: Vec<DocumentId>,
 	},
+	OpenDocumentCopy {
+		source: DocumentId,
+		document_name: String,
+	},
+	JoinStoredSession {
+		source: DocumentId,
+	},
+	CollectResources,
 	StoredDocumentLoaded {
 		document_id: DocumentId,
 		#[serde(skip, default)]
@@ -74,6 +86,11 @@ pub enum PortfolioMessage {
 	NewDocumentWithName {
 		name: String,
 	},
+	/// Creates the document under a given id, so the sender can recognize it on mount.
+	NewDocumentWithId {
+		name: String,
+		document_id: DocumentId,
+	},
 	OpenLegacyDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -83,6 +100,7 @@ pub enum PortfolioMessage {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
 		content: Vec<u8>,
+		fresh_identity: bool,
 	},
 	DocumentFileLoaded {
 		document_id: DocumentId,
@@ -98,7 +116,6 @@ pub enum PortfolioMessage {
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		declarations: document_graph_storage::Declarations,
 	},
-	StorageUpdated,
 	StorageAttached {
 		document_id: DocumentId,
 		#[serde(skip, default)]
@@ -149,6 +166,11 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	SubmitEyedropperPreviewRender,
+	PollNodeGraphEvaluation,
+	SubmitThumbnailsInView,
+	SubmitInspectContextOverrides {
+		overrides: graphene_std::ContextOverrides,
+	},
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,

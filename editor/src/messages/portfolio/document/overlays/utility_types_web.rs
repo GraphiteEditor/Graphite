@@ -1,9 +1,9 @@
 use super::utility_functions::{hex_to_rgba_u8, overlay_canvas_context};
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
-	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS,
-	SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, CURVATURE_COMB_DEFAULT_SCALE,
+	DOWEL_PIN_RADIUS, GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE,
+	SEGMENT_SELECTED_THICKNESS, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
@@ -15,7 +15,7 @@ use glam::{DAffine2, DVec2};
 use graphene_std::math::quad::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::{PointId, SegmentId, Vector};
+use graphene_std::vector::{PointId, SegmentId, VectorGeometry};
 use kurbo::{self, Affine, BezPath, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
 use wasm_bindgen::{JsCast, JsValue};
@@ -51,6 +51,11 @@ pub enum OverlaysType {
 	Path,
 	Anchors,
 	Handles,
+	PointIndex,
+	PathEnds,
+	PathIndex,
+	PathDirection,
+	CurvatureComb,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -71,6 +76,13 @@ pub struct OverlaysVisibilitySettings {
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub point_index: bool,
+	pub path_ends: bool,
+	pub path_index: bool,
+	pub path_direction: bool,
+	pub curvature_comb: bool,
+	/// How far the curvature comb's teeth reach, as the curvature times this scale in square document pixels.
+	pub curvature_comb_scale: f64,
 }
 
 impl Default for OverlaysVisibilitySettings {
@@ -90,6 +102,12 @@ impl Default for OverlaysVisibilitySettings {
 			path: true,
 			anchors: true,
 			handles: true,
+			point_index: false,
+			path_ends: true,
+			path_index: false,
+			path_direction: false,
+			curvature_comb: false,
+			curvature_comb_scale: CURVATURE_COMB_DEFAULT_SCALE,
 		}
 	}
 }
@@ -149,6 +167,26 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn point_index(&self) -> bool {
+		self.all && self.anchors && self.point_index
+	}
+
+	pub fn path_ends(&self) -> bool {
+		self.all && self.anchors && self.path_ends
+	}
+
+	pub fn path_index(&self) -> bool {
+		self.all && self.anchors && self.path_index
+	}
+
+	pub fn path_direction(&self) -> bool {
+		self.all && self.anchors && self.path_direction
+	}
+
+	pub fn curvature_comb(&self) -> bool {
+		self.all && self.anchors && self.curvature_comb
 	}
 }
 
@@ -640,17 +678,17 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = 1.;
+	/// Fills a square dot about `size` pixels across at each position, all in one fill, with their edges on whole physical pixels so they stay crisp.
+	pub fn dots(&mut self, positions: &[DVec2], size: f64, color: Option<&str>) {
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
-
-		let position = self.snap_to_physical_pixel_center(position);
-		let corner = position - DVec2::splat(size) / 2.;
 
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
-		self.render_context.rect(corner.x, corner.y, size, size);
+		for &position in positions {
+			let (corner, size) = self.physical_pixel_square(position, size);
+			self.render_context.rect(corner.x, corner.y, size, size);
+		}
 		self.render_context.set_fill_style_str(color_fill);
 		self.render_context.fill();
 
@@ -854,7 +892,7 @@ impl OverlayContext {
 	}
 
 	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	pub fn outline_vector(&mut self, vector: &VectorGeometry, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -969,7 +1007,7 @@ impl OverlayContext {
 
 		target_types.for_each(|target_type| match target_type.borrow() {
 			ClickTargetType::FreePoint(point) => {
-				self.manipulator_anchor(transform.transform_point2(point.position), false, None);
+				self.manipulator_anchor(transform.transform_point2(point.position), false, color);
 			}
 			ClickTargetType::Path(bezpath) => combined.extend(bezpath.elements().iter().copied()),
 		});
@@ -982,6 +1020,15 @@ impl OverlayContext {
 			self.render_context.set_line_width(1.);
 			self.render_context.stroke();
 		}
+	}
+
+	/// Strokes the path with a 1px line, leaving any open subpaths open.
+	pub fn stroke_path(&mut self, bezpath: &BezPath, transform: DAffine2, color: &str) {
+		self.push_path(bezpath, transform);
+
+		self.render_context.set_stroke_style_str(color);
+		self.render_context.set_line_width(1.);
+		self.render_context.stroke();
 	}
 
 	/// Fills the area inside the path. Assumes `color` is in gamma space.
@@ -1043,7 +1090,7 @@ impl OverlayContext {
 		};
 		let y = match pivot[1] {
 			Pivot::Start => padding + metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent(),
-			Pivot::Middle => (metrics.font_bounding_box_ascent() + metrics.font_bounding_box_descent()) / 2.,
+			Pivot::Middle => (metrics.font_bounding_box_ascent() - metrics.font_bounding_box_descent()) / 2.,
 			Pivot::End => -padding,
 		};
 
@@ -1110,6 +1157,16 @@ impl OverlayContext {
 			return p.round() - DVec2::splat(0.5);
 		}
 		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)
+	}
+
+	/// The corner and side of a square about `size` pixels across centered near `position`, with its edges on whole physical pixels.
+	fn physical_pixel_square(&self, position: DVec2, size: f64) -> (DVec2, f64) {
+		let scale = self.viewport.scale();
+		let scale = if scale.is_finite() && scale > 0. { scale } else { 1. };
+
+		let physical_size = (size * scale).round().max(1.);
+		let physical_corner = (position * scale - physical_size / 2.).round();
+		(physical_corner / scale, physical_size / scale)
 	}
 }
 

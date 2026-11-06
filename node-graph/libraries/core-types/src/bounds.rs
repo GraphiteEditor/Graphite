@@ -1,4 +1,5 @@
 use crate::Color;
+use crate::list::{Item, List};
 use glam::{DAffine2, DVec2};
 
 #[derive(Clone, Copy, Default, Debug, PartialEq)]
@@ -20,6 +21,33 @@ pub trait BoundingBox {
 	/// Types with no meaningful contribution (e.g., `Color`) return `Infinite` from both; the runtime substitutes a
 	/// small fallback rectangle at the end if no finite bounds remain after combining.
 	fn thumbnail_bounding_box(&self, transform: DAffine2, include_stroke: bool) -> RenderBoundingBox;
+
+	/// The bounds of an item's element, for the thumbnail when `thumbnail` is set. A type with geometry that
+	/// partly rides its item's attributes overrides this to read them, and the rest defer to the element alone.
+	fn bounding_box_in_item(item: &Item<Self>, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox
+	where
+		Self: Sized,
+	{
+		let element = item.element();
+		if thumbnail {
+			element.thumbnail_bounding_box(transform, include_stroke)
+		} else {
+			element.bounding_box(transform, include_stroke)
+		}
+	}
+
+	/// As [`Self::bounding_box_in_item`], for the element at one index of a list.
+	fn bounding_box_in_list(list: &List<Self>, index: usize, transform: DAffine2, include_stroke: bool, thumbnail: bool) -> RenderBoundingBox
+	where
+		Self: Sized,
+	{
+		let Some(element) = list.element(index) else { return RenderBoundingBox::None };
+		if thumbnail {
+			element.thumbnail_bounding_box(transform, include_stroke)
+		} else {
+			element.bounding_box(transform, include_stroke)
+		}
+	}
 }
 
 macro_rules! none_impl {

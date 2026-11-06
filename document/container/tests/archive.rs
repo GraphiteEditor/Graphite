@@ -2,7 +2,6 @@
 
 use document_container::Container;
 use document_container::archive::{Archive, ArchiveWriter};
-use document_container::backends::folder::FolderBackend;
 use document_container::backends::memory::MemoryBackend;
 
 fn entries() -> Vec<(&'static str, &'static [u8])> {
@@ -45,6 +44,7 @@ fn zip_round_trip() {
 #[test]
 fn zip_deserialize_streams_into_folder_backend() {
 	use document_container::archive::Zip;
+	use document_container::backends::folder::FolderBackend;
 	use std::io::Cursor;
 
 	let mut buffer = Cursor::new(Vec::new());

@@ -11,6 +11,5 @@ pub enum FutureMessage {
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		future: MessageFuture,
 	},
-	/// Sent by a wake callback to nudge an idle event loop into a dispatch tick.
-	Wake,
+	Drain,
 }

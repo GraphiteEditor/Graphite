@@ -74,7 +74,7 @@ impl MessageHandler<FontsMessage, FontsMessageContext<'_>> for FontsMessageHandl
 				self.font_catalog = Arc::new(catalog);
 				responses.add(PortfolioMessage::ResolveResources);
 				responses.add(ToolMessage::RefreshToolOptions);
-				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(InspectorMessage::Refresh);
 			}
 			FontsMessage::ResourceResolved { font, hash } => {
 				let font = self.normalize(font);

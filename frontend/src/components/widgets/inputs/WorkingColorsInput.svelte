@@ -36,7 +36,7 @@
 
 <LayoutCol class="working-colors-button">
 	<LayoutRow class="primary swatch">
-		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={sRgba8ToRgbaCSS(primary)} data-floating-menu-spawner data-block-hover-transfer tabindex="0"></button>
+		<button on:click={clickPrimarySwatch} class:open={primaryOpen} style:--swatch-color={sRgba8ToRgbaCSS(primary)} data-floating-menu-spawner data-block-hover-transfer></button>
 		<ColorPicker
 			open={primaryOpen}
 			on:open={({ detail }) => (primaryOpen = detail)}
@@ -49,7 +49,7 @@
 		/>
 	</LayoutRow>
 	<LayoutRow class="secondary swatch">
-		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={sRgba8ToRgbaCSS(secondary)} data-floating-menu-spawner data-block-hover-transfer tabindex="0"></button>
+		<button on:click={clickSecondarySwatch} class:open={secondaryOpen} style:--swatch-color={sRgba8ToRgbaCSS(secondary)} data-floating-menu-spawner data-block-hover-transfer></button>
 		<ColorPicker
 			open={secondaryOpen}
 			on:open={({ detail }) => (secondaryOpen = detail)}

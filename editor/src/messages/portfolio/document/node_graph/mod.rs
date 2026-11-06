@@ -1,7 +1,7 @@
 pub mod document_node_definitions;
 mod node_graph_message;
 mod node_graph_message_handler;
-pub mod node_properties;
+pub mod node_inspector;
 pub mod utility_types;
 
 #[doc(inline)]

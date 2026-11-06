@@ -31,7 +31,7 @@ impl BrowserProcessClientImpl {
 			load_handler: LoadHandler::new(LoadHandlerImpl::new(delegate.clone())),
 			render_handler: RenderHandler::new(RenderHandlerImpl::new(delegate.clone(), frames)),
 			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(delegate.clone())),
-			request_handler: RequestHandler::new(RequestHandlerImpl::new()),
+			request_handler: RequestHandler::new(RequestHandlerImpl::new(delegate.clone())),
 		}
 	}
 }

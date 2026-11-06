@@ -18,7 +18,7 @@ use std::f64::consts::{PI, TAU};
 ///
 /// In the future we'll probably also add a pattern fill.
 #[repr(C)]
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify), tsify(from_wasm_abi))]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FillChoice<C = Color> {

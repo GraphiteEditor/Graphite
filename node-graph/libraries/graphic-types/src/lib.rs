@@ -22,9 +22,12 @@ pub mod migrations {
 	// TODO: Eventually remove this document upgrade code
 	pub mod legacy {
 		use core_types::Color;
+		use core_types::list::List;
 		use dyn_any::DynAny;
 		use glam::{DAffine2, DVec2};
-		use vector_types::vector::{PointDomain, SegmentDomain, misc::HandleId, style::Stroke};
+		use vector_types::vector::misc::{BezierHandles, HandleId};
+		use vector_types::vector::style::Stroke;
+		use vector_types::vector::{Path, PointId, SegmentId, vector_from_legacy_parts};
 		use vector_types::{GradientRamp, Vector, vector};
 
 		#[derive(Default, Debug, Clone, PartialEq, graphene_hash::CacheHash, DynAny, serde::Serialize, serde::Deserialize)]
@@ -102,6 +105,49 @@ pub mod migrations {
 			pub stroke: Option<Stroke>,
 		}
 
+		/// The legacy point storage shape, kept only so old documents still deserialize.
+		#[derive(Default, serde::Deserialize)]
+		#[cfg_attr(test, derive(serde::Serialize))]
+		pub(super) struct LegacyPointDomain {
+			pub id: Vec<PointId>,
+			#[serde(alias = "positions")]
+			pub position: Vec<DVec2>,
+		}
+
+		/// The legacy segment storage shape, kept only so old documents still deserialize.
+		#[derive(Default, serde::Deserialize)]
+		#[cfg_attr(test, derive(serde::Serialize))]
+		pub(super) struct LegacySegmentDomain {
+			#[serde(alias = "ids")]
+			pub id: Vec<SegmentId>,
+			pub start_point: Vec<usize>,
+			pub end_point: Vec<usize>,
+			pub handles: Vec<BezierHandles>,
+		}
+
+		/// The legacy `Vector` struct shape, converted into pool storage at load.
+		#[derive(Default, serde::Deserialize)]
+		#[cfg_attr(test, derive(serde::Serialize))]
+		pub(super) struct LegacyVector {
+			pub colinear_manipulators: Vec<[HandleId; 2]>,
+			pub point_domain: LegacyPointDomain,
+			pub segment_domain: LegacySegmentDomain,
+		}
+
+		impl LegacyVector {
+			pub(super) fn into_parts(self) -> (Vector, List<Path>, std::collections::HashSet<SegmentId>) {
+				vector_from_legacy_parts(
+					self.point_domain.id,
+					self.point_domain.position,
+					self.segment_domain.id,
+					self.segment_domain.start_point,
+					self.segment_domain.end_point,
+					self.segment_domain.handles,
+					self.colinear_manipulators,
+				)
+			}
+		}
+
 		/// Old documents stored a `Vector` flattened with list attributes (`transform`, `alpha_blending`, `upstream_graphic_group`); only the geometry fields are recovered.
 		#[derive(serde::Deserialize)]
 		#[cfg_attr(test, derive(Default, serde::Serialize))]
@@ -109,41 +155,46 @@ pub mod migrations {
 			#[allow(dead_code)]
 			pub style: PathStyle,
 			pub colinear_manipulators: Vec<[HandleId; 2]>,
-			pub point_domain: PointDomain,
-			pub segment_domain: SegmentDomain,
+			pub point_domain: LegacyPointDomain,
+			pub segment_domain: LegacySegmentDomain,
 		}
 
 		#[derive(serde::Deserialize)]
 		pub(super) struct Table {
 			#[serde(alias = "instances", alias = "instance")]
-			pub element: Vec<Vector>,
+			pub element: Vec<LegacyVector>,
 		}
 	}
 
 	// TODO: Eventually remove this document upgrade code
-	/// Returns the first `Vector` recovered from any of the legacy on-disk shapes (the legacy `VectorData` flat struct, a single `Vector`, or any of the historical `List<Vector>` variants).
-	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Vector>, D::Error> {
+	/// Returns the first vector recovered from any of the legacy on-disk shapes (the legacy `VectorData` flat struct, a legacy `Vector` struct, or any of the historical list variants).
+	#[allow(clippy::type_complexity)]
+	pub fn migrate_to_optional_vector<'de, D: serde::Deserializer<'de>>(
+		deserializer: D,
+	) -> Result<Option<(Vector, core_types::list::List<vector_types::vector::Path>, std::collections::HashSet<vector_types::vector::SegmentId>)>, D::Error> {
 		use serde::Deserialize;
 
 		#[derive(serde::Deserialize)]
 		#[serde(untagged)]
 		#[allow(clippy::large_enum_variant)]
 		enum VectorFormat {
-			// Old vector data must be tried first. Serde would otherwise ignore its `style` field and
-			// deserialize the missing optional `stroke` field as `None` in the current `Vector`.
+			// The old flat shape that also held a style. Both this and the legacy `Vector` arm recover the same geometry from it.
 			OldVectorData(legacy::VectorData),
-			Vector(Vector),
+			Vector(legacy::LegacyVector),
 			List(legacy::Table),
 		}
 
 		Ok(match VectorFormat::deserialize(deserializer)? {
-			VectorFormat::OldVectorData(old) => Some(Vector {
-				colinear_manipulators: old.colinear_manipulators,
-				point_domain: old.point_domain,
-				segment_domain: old.segment_domain,
-			}),
-			VectorFormat::Vector(vector) => Some(vector),
-			VectorFormat::List(list) => list.element.into_iter().next(),
+			VectorFormat::OldVectorData(old) => {
+				let vector = legacy::LegacyVector {
+					colinear_manipulators: old.colinear_manipulators,
+					point_domain: old.point_domain,
+					segment_domain: old.segment_domain,
+				};
+				Some(vector.into_parts())
+			}
+			VectorFormat::Vector(vector) => Some(vector.into_parts()),
+			VectorFormat::List(list) => list.element.into_iter().next().map(legacy::LegacyVector::into_parts),
 		})
 	}
 
@@ -187,15 +238,15 @@ pub mod migrations {
 		use super::*;
 		use vector_types::vector::style::Stroke;
 
-		/// The legacy `style` payload (including its stroke) must still parse so the untagged format
-		/// disambiguation succeeds, even though the geometry is all that survives.
+		/// The legacy `style` payload is discarded, leaving only the geometry.
 		#[test]
 		fn recovers_geometry_from_old_vector_data_with_style() {
-			use core_types::ops::FromAnchorPosition;
-
 			let old_vector = legacy::VectorData {
 				style: legacy::PathStyle { stroke: Some(Stroke::new(12.)) },
-				point_domain: Vector::from_anchor_position(glam::DVec2::new(3., 4.)).point_domain,
+				point_domain: legacy::LegacyPointDomain {
+					id: vec![vector_types::vector::PointId::ZERO],
+					position: vec![glam::DVec2::new(3., 4.)],
+				},
 				..Default::default()
 			};
 
@@ -209,25 +260,97 @@ pub mod migrations {
 				.unwrap()
 				.insert("fill".into(), serde_json::to_value(legacy::LegacyFill::default()).unwrap());
 
-			let migrated = migrate_to_optional_vector(value).unwrap().expect("the legacy shape should parse into a vector");
+			let (migrated, _paths, _) = migrate_to_optional_vector(value).unwrap().expect("the legacy shape should parse into a vector");
 
 			assert_eq!(
-				migrated.point_domain.positions(),
+				migrated.positions().collect::<Vec<_>>(),
 				[glam::DVec2::new(3., 4.)],
 				"the legacy geometry should survive alongside the discarded style"
 			);
 		}
 
 		#[test]
-		fn recovers_geometry_from_current_vector_data() {
-			use core_types::ops::FromAnchorPosition;
-
-			let vector = Vector::from_anchor_position(glam::DVec2::new(3., 4.));
+		fn recovers_geometry_from_legacy_vector_struct() {
+			let vector = legacy::LegacyVector {
+				point_domain: legacy::LegacyPointDomain {
+					id: vec![vector_types::vector::PointId::ZERO],
+					position: vec![glam::DVec2::new(3., 4.)],
+				},
+				..Default::default()
+			};
 
 			let value = serde_json::to_value(&vector).unwrap();
-			let migrated = migrate_to_optional_vector(value).unwrap().unwrap();
+			let (migrated, _paths, _) = migrate_to_optional_vector(value).unwrap().unwrap();
 
-			assert_eq!(migrated.point_domain.positions(), [glam::DVec2::new(3., 4.)]);
+			assert_eq!(migrated.positions().collect::<Vec<_>>(), [glam::DVec2::new(3., 4.)]);
+		}
+
+		/// The oldest documents named these fields in the plural.
+		#[test]
+		fn recovers_geometry_from_plural_field_names() {
+			let value = serde_json::json!({
+				"colinear_manipulators": [],
+				"point_domain": { "id": [1, 2], "positions": [[3., 4.], [5., 6.]] },
+				"segment_domain": { "ids": [7], "start_point": [0], "end_point": [1], "handles": ["Linear"] },
+			});
+
+			let (migrated, paths, _) = migrate_to_optional_vector(value).unwrap().expect("the plural field names should parse");
+
+			assert_eq!(migrated.positions().collect::<Vec<_>>(), [glam::DVec2::new(3., 4.), glam::DVec2::new(5., 6.)]);
+			assert_eq!(paths.len(), 1);
+		}
+
+		/// A closed triangle keeps its IDs, its handles, and the smooth pairs at its anchors, beside a free point.
+		#[test]
+		fn keeps_ids_handles_smooth_pairs_and_free_points() {
+			use glam::DVec2;
+			use vector_types::kurbo::{CubicBez, Line, PathSeg, QuadBez};
+			use vector_types::vector::misc::HandleType;
+
+			let handle = |ty: &str, segment: u64| serde_json::json!({ "ty": ty, "segment": segment });
+			let value = serde_json::json!({
+				"colinear_manipulators": [[handle("End", 101), handle("Primary", 102)], [handle("End", 103), handle("Primary", 101)]],
+				"point_domain": { "id": [10, 20, 30, 40], "position": [[0., 0.], [10., 0.], [10., 10.], [99., 99.]] },
+				"segment_domain": {
+					"id": [101, 102, 103],
+					"start_point": [0, 1, 2],
+					"end_point": [1, 2, 0],
+					"handles": [{ "Cubic": { "handle_start": [2., -1.], "handle_end": [8., -1.] } }, { "Quadratic": { "handle": [12., 5.] } }, "Linear"],
+				},
+			});
+
+			let (vector, paths, _) = migrate_to_optional_vector(value).unwrap().expect("the legacy vector should parse");
+
+			// Looked up by ID, since storage order is free to differ from the legacy order
+			let mut anchors: Vec<(u64, DVec2)> = vector
+				.anchor_points(&paths)
+				.filter_map(|point| Some((point.inner(), vector.position(vector.index_of_point_id(point)? as usize)?)))
+				.collect();
+			anchors.sort_by_key(|&(id, _)| id);
+			assert_eq!(anchors, [(10, DVec2::new(0., 0.)), (20, DVec2::new(10., 0.)), (30, DVec2::new(10., 10.)), (40, DVec2::new(99., 99.))]);
+
+			let mut segments: Vec<(u64, PathSeg, u64, u64)> = vector.segment_iter(&paths).map(|(id, segment, start, end)| (id.inner(), segment, start.inner(), end.inner())).collect();
+			segments.sort_by_key(|&(id, ..)| id);
+			assert_eq!(
+				segments,
+				[
+					(101, PathSeg::Cubic(CubicBez::new((0., 0.), (2., -1.), (8., -1.), (10., 0.))), 10, 20),
+					(102, PathSeg::Quad(QuadBez::new((10., 0.), (12., 5.), (10., 10.))), 20, 30),
+					(103, PathSeg::Line(Line::new((10., 10.), (0., 0.))), 30, 10),
+				]
+			);
+
+			let mut smooth_pairs: Vec<[(bool, u64); 2]> = vector
+				.colinear_pairs(&paths)
+				.into_iter()
+				.map(|pair| {
+					let mut sides = pair.map(|handle| (handle.ty == HandleType::Primary, handle.segment.inner()));
+					sides.sort();
+					sides
+				})
+				.collect();
+			smooth_pairs.sort();
+			assert_eq!(smooth_pairs, [[(false, 101), (true, 102)], [(false, 103), (true, 101)]]);
 		}
 	}
 }

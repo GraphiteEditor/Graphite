@@ -21,6 +21,14 @@ pub struct LayerStructureEntry {
 	/// Whether any descendant layer in the graph is selected, including through collapsed subtrees not listed in `children`.
 	#[serde(rename = "descendantSelected")]
 	pub descendant_selected: bool,
+	pub selected: bool,
+	/// Whether the layer itself is visible, which the frontend passes down to its children's rows as inherited visibility.
+	pub visible: bool,
+	/// Whether the layer itself is unlocked, which the frontend passes down to its children's rows as an inherited lock.
+	pub unlocked: bool,
+	/// The rows listing the layer's chain nodes beneath its own row, one per node while its chain is expanded and otherwise none.
+	#[serde(rename = "chainRows")]
+	pub chain_rows: u32,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

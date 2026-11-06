@@ -7,7 +7,7 @@ use std::marker::PhantomData;
 pub use core_types::ops::TypeNode;
 
 /// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
-#[node_macro::node(category("General"), icon("NodePassthrough"), skip_impl)]
+#[node_macro::node(category("Routing"), icon("NodePassthrough"), skip_impl, forwards_input, version(2))]
 fn passthrough<'i, T: 'i + Send>(_: impl Ctx, content: T) -> T {
 	content
 }
@@ -67,7 +67,7 @@ fn into_item<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: Item<
 
 /// The `List` counterpart of `into_item`, converting every element to a different element type it can produce.
 #[node_macro::node(category("_Adapters"), skip_impl)]
-fn into_list<'i, T: 'i + Send + Into<E>, E: 'i + Send>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+fn into_list<'i, T: 'i + Send + Clone + Into<E>, E: 'i + Send>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
 	value
 		.into_iter()
 		.map(|item| {
@@ -86,28 +86,28 @@ fn embed_item<'i, T: 'i + Send, E: 'i + Send + From<Item<T>>>(_: impl Ctx, value
 
 /// The `List` counterpart of `embed_item`, each item moving whole inside its own embedding element.
 #[node_macro::node(category("_Adapters"), skip_impl)]
-fn embed_list<'i, T: 'i + Send, E: 'i + Send + From<Item<T>>>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+fn embed_list<'i, T: 'i + Send + Clone, E: 'i + Send + From<Item<T>>>(_: impl Ctx, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
 	value.into_iter().map(|item| Item::new_from_element(E::from(item))).collect()
 }
 
 /// The [`Convert`]-based counterpart of `into_item`, casting an `Item` wire's element to a connector's numeric element type.
 #[node_macro::node(category("_Adapters"), skip_impl)]
-async fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
+fn convert_item<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: Item<T>, _element_ty: PhantomData<E>) -> Item<E> {
 	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
 	let (value, attributes) = value.into_parts();
 
-	Item::from_parts(value.convert(footprint, ()).await, attributes)
+	Item::from_parts(value.convert(footprint, ()), attributes)
 }
 
 /// The `List` counterpart of `convert_item`, casting every element to the connector's numeric element type.
 #[node_macro::node(category("_Adapters"), skip_impl)]
-async fn convert_list<'i, T: 'i + Send + Convert<E, ()>, E: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
+fn convert_list<'i, T: 'i + Send + Clone + Convert<E, ()>, E: 'i + Send + Clone>(ctx: impl Ctx + ExtractFootprint, value: List<T>, _element_ty: PhantomData<E>) -> List<E> {
 	let footprint = *ctx.try_footprint().unwrap_or(&Footprint::DEFAULT);
 
 	let mut result = List::default();
 	for item in value.into_iter() {
 		let (value, attributes) = item.into_parts();
-		result.push(Item::from_parts(value.convert(footprint, ()).await, attributes));
+		result.push(Item::from_parts(value.convert(footprint, ()), attributes));
 	}
 
 	result

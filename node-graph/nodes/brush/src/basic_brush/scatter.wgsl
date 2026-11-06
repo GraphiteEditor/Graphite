@@ -13,6 +13,10 @@ struct Uniforms {
 	kernel_scale: f32,
 	kernel_exponent: f32,
 	kernel_section_scale: f32,
+	// WebGL2 needs uniform structs to span a multiple of 16 bytes
+	_pad_1: f32,
+	_pad_2: f32,
+	_pad_3: f32,
 };
 
 @group(0) @binding(0)

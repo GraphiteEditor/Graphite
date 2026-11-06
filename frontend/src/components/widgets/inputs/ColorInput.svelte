@@ -45,7 +45,7 @@
 	{tooltipDescription}
 	{tooltipShortcut}
 >
-	<button style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
+	<button style:--outline-amount={outlineFactor} on:click={() => (open = true)} data-floating-menu-spawner>
 		{#if swatchSamples.length > 0}
 			<svg class="swatch" xmlns="http://www.w3.org/2000/svg">
 				<linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">

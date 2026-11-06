@@ -30,7 +30,9 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 var t_source: texture_2d<f32>;
 
 struct Params {
-	matrix: mat2x2<f32>,
+	// Columns of the matrix, since WebGL2 lays out a uniform `mat2x2` with a 16-byte column stride
+	x_axis: vec2<f32>,
+	y_axis: vec2<f32>,
 	translation: vec2<f32>,
 	_pad: vec2<f32>,
 };
@@ -41,7 +43,7 @@ var<uniform> params: Params;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	let position = params.matrix * in.tex_coords + params.translation;
+	let position = mat2x2<f32>(params.x_axis, params.y_axis) * in.tex_coords + params.translation;
 	let texel = vec2<i32>(floor(position));
 	let texture_size = vec2<i32>(textureDimensions(t_source));
 	if (texel.x >= 0 && texel.x < texture_size.x && texel.y >= 0 && texel.y < texture_size.y) {

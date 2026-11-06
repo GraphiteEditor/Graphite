@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::ToolType;
-use graph_craft::application_io::EditorPreferences;
 
 #[derive(ExtractField)]
 pub struct PreferencesMessageContext<'a> {
@@ -21,40 +20,31 @@ pub struct PreferencesMessageHandler {
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
-	pub max_render_region_size: u32,
 	pub disable_ui_acceleration: bool,
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
+	pub save_with_history: bool,
 	pub show_storage_preferences: bool,
+	/// This person's id across documents. A decimal string, since the browser's JSON loses 64-bit precision.
+	#[serde(with = "u64_as_string")]
+	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
+	pub user_id: u64,
+	pub user_name: String,
+	pub show_remote_cursors: bool,
 	#[cfg(target_os = "macos")]
 	pub vsync: bool,
 }
 
 impl PreferencesMessageHandler {
 	pub fn preferences_requiring_restart(&self, other: &Self) -> Vec<String> {
-		let mut requiring_restart = Vec::new();
-		if self.disable_ui_acceleration != other.disable_ui_acceleration {
-			requiring_restart.push("Disable UI Acceleration");
-		}
-		#[cfg(target_os = "macos")]
-		if self.vsync != other.vsync {
-			requiring_restart.push("Enable V-Sync");
-		}
-		requiring_restart.into_iter().map(String::from).collect()
+		let requiring_restart: Vec<String> = Vec::new();
+		let _ = other;
+
+		requiring_restart
 	}
 
 	pub fn get_selection_mode(&self) -> SelectionMode {
 		self.selection_mode
-	}
-
-	pub fn editor_preferences(&self) -> EditorPreferences {
-		EditorPreferences {
-			max_render_region_size: self.max_render_region_size,
-		}
-	}
-
-	pub fn supports_wgpu(&self) -> bool {
-		graph_craft::application_io::wgpu_available().unwrap_or_default()
 	}
 }
 
@@ -67,14 +57,27 @@ impl Default for PreferencesMessageHandler {
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
-			max_render_region_size: EditorPreferences::default().max_render_region_size,
-			disable_ui_acceleration: cfg!(target_os = "linux"), // TODO: Set this back to false once we have ui acceleration working more reliably on linux
+			disable_ui_acceleration: true, // TODO: Set this back to false once we have ui acceleration working more reliably
 			validate_storage_round_trip: false,
 			save_as_gdd: false,
+			save_with_history: false,
 			show_storage_preferences: false,
+			user_id: crate::application::generate_uuid(),
+			user_name: String::new(),
+			show_remote_cursors: true,
 			#[cfg(target_os = "macos")]
 			vsync: false,
 		}
+	}
+}
+
+impl PreferencesMessageHandler {
+	pub fn from_stored(stored: Option<&str>) -> Self {
+		let Some(stored) = stored else { return Self::default() };
+		serde_json::from_str(stored).unwrap_or_else(|error| {
+			log::error!("Failed to deserialize preferences: {error}");
+			Self::default()
+		})
 	}
 }
 
@@ -87,17 +90,24 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
 				*self = preferences;
+				if self.user_id == 0 {
+					self.user_id = crate::application::generate_uuid();
+				}
 
-				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 				responses.add(ToolMessage::RefreshToolShelf);
-				responses.add(PortfolioMessage::StorageUpdated);
 			}
 			PreferencesMessage::ResetToDefaults => {
-				responses.add(PreferencesMessage::Load { preferences: Self::default() });
+				// The identity isn't a setting, and documents would record the cleared name
+				let preferences = Self {
+					user_id: self.user_id,
+					user_name: self.user_name.clone(),
+					..Self::default()
+				};
+				responses.add(PreferencesMessage::Load { preferences });
 				responses.add(DialogMessage::RequestPreferencesDialog);
 			}
 
@@ -132,11 +142,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
-			PreferencesMessage::MaxRenderRegionSize { size } => {
-				self.max_render_region_size = size;
-				responses.add(PortfolioMessage::EditorPreferences);
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-			}
 			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
 				self.disable_ui_acceleration = disable_ui_acceleration;
 			}
@@ -145,11 +150,22 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::SaveAsGdd { enabled } => {
 				self.save_as_gdd = enabled;
-				responses.add(PortfolioMessage::StorageUpdated);
+			}
+			PreferencesMessage::SaveWithHistory { enabled } => {
+				self.save_with_history = enabled;
 			}
 			PreferencesMessage::ToggleShowStoragePreferences => {
 				self.show_storage_preferences = !self.show_storage_preferences;
 				responses.add(MenuBarMessage::SendLayout);
+			}
+			PreferencesMessage::UserName { name } => {
+				self.user_name = name.trim().to_string();
+				responses.add(SyncMessage::RefreshPanel);
+			}
+			PreferencesMessage::ShowRemoteCursors { enabled } => {
+				self.show_remote_cursors = enabled;
+				responses.add(SyncMessage::RefreshPanel);
+				responses.add(OverlaysMessage::Draw);
 			}
 			#[cfg(target_os = "macos")]
 			PreferencesMessage::VSync { vsync } => {
@@ -157,9 +173,95 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 		}
 
-		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
+		responses.add(FrontendMessage::TriggerUpdatePreferences { preferences: self.clone() });
 	}
 
 	advertise_actions!(PreferencesMessageDiscriminant;
 	);
+}
+
+/// A `u64` written as a decimal string, read from a string or a number.
+mod u64_as_string {
+	use serde::{Deserialize, Deserializer, Serializer};
+
+	pub fn serialize<S: Serializer>(value: &u64, serializer: S) -> Result<S::Ok, S::Error> {
+		serializer.serialize_str(&value.to_string())
+	}
+
+	pub fn deserialize<'de, D: Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+		#[derive(Deserialize)]
+		#[serde(untagged)]
+		enum Stored {
+			Text(String),
+			Number(u64),
+		}
+		match Stored::deserialize(deserializer)? {
+			Stored::Text(text) => text.parse().map_err(serde::de::Error::custom),
+			Stored::Number(number) => Ok(number),
+		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn a_first_launch_without_stored_preferences_has_a_user_id() {
+		assert_ne!(PreferencesMessageHandler::default().user_id, 0);
+		let stored: PreferencesMessageHandler = serde_json::from_str("{}").unwrap();
+		assert_ne!(stored.user_id, 0);
+	}
+
+	#[test]
+	fn missing_or_unreadable_stored_preferences_load_as_defaults_and_are_persisted() {
+		for stored in [None, Some("not json")] {
+			let mut preferences = PreferencesMessageHandler::default();
+			let loaded = PreferencesMessageHandler::from_stored(stored);
+			assert_ne!(loaded.user_id, 0);
+
+			let mut responses = VecDeque::new();
+			let tool_message_handler = ToolMessageHandler::default();
+			let context = PreferencesMessageContext {
+				tool_message_handler: &tool_message_handler,
+			};
+			preferences.process_message(PreferencesMessage::Load { preferences: loaded.clone() }, &mut responses, context);
+			let persisted = responses.iter().find_map(|message| match message {
+				Message::Frontend(FrontendMessage::TriggerUpdatePreferences { preferences }) => Some(preferences),
+				_ => None,
+			});
+			assert_eq!(persisted.map(|persisted| persisted.user_id), Some(loaded.user_id));
+		}
+	}
+
+	#[test]
+	fn resetting_the_preferences_keeps_the_user_id() {
+		let mut preferences = PreferencesMessageHandler::default();
+		let tool_message_handler = ToolMessageHandler::default();
+		let mut responses = VecDeque::new();
+		preferences.process_message(
+			PreferencesMessage::ResetToDefaults,
+			&mut responses,
+			PreferencesMessageContext {
+				tool_message_handler: &tool_message_handler,
+			},
+		);
+		let reset = responses.iter().find_map(|message| match message {
+			Message::Preferences(PreferencesMessage::Load { preferences }) => Some(preferences),
+			_ => None,
+		});
+		assert_eq!(reset.map(|reset| reset.user_id), Some(preferences.user_id));
+	}
+
+	#[test]
+	fn the_user_id_round_trips_as_a_string() {
+		let preferences = PreferencesMessageHandler {
+			user_id: u64::MAX,
+			..Default::default()
+		};
+		let json = serde_json::to_value(&preferences).unwrap();
+		assert_eq!(json["user_id"], serde_json::Value::from(u64::MAX.to_string()));
+		let read: PreferencesMessageHandler = serde_json::from_value(json).unwrap();
+		assert_eq!(read.user_id, u64::MAX);
+	}
 }

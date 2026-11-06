@@ -502,6 +502,13 @@
 		initialValueBeforeDragging = value;
 		initialExactBeforeDragging = exact;
 		if (exact !== undefined) steppingDigit = useShownDigit();
+
+		// A press and the repeats while it's held are one history step, as a drag is (exact mode's owner keeps its own history)
+		if (exact === undefined && (incrementBehavior === "Add" || incrementBehavior === "Multiply")) {
+			dispatch("startHistoryTransaction");
+			transactionInProgress = true;
+		}
+
 		let afterInitialDelay = false;
 		sendAction();
 		repeatTimeout = setTimeout(sendAction, PRESS_REPEAT_DELAY_MS);
@@ -513,6 +520,7 @@
 		steppingDigit = undefined;
 		clearTimeout(repeatTimeout);
 		removeEventListener("keydown", incrementPressAbort);
+		commitTransactionIfInProgress();
 	}
 
 	function incrementPressAbort(e: KeyboardEvent | MouseEvent) {
@@ -531,6 +539,7 @@
 		if (initialExact) updateExact(initialExact, initialExactBeforeDragging);
 		else updateValue(initialValueBeforeDragging);
 		removeEventListener("keydown", incrementPressAbort);
+		commitTransactionIfInProgress();
 	}
 
 	// =======================================
@@ -1001,7 +1010,6 @@
 				on:mousedown={incrementPressAbort}
 				on:pointerup={onIncrementPointerUp}
 				on:pointerleave={onIncrementPointerUp}
-				tabindex="-1"
 			></button>
 			<button
 				class="arrow right"
@@ -1009,13 +1017,11 @@
 				on:mousedown={incrementPressAbort}
 				on:pointerup={onIncrementPointerUp}
 				on:pointerleave={onIncrementPointerUp}
-				tabindex="-1"
 			></button>
 		{/if}
 		{#if mode === "Range"}
 			<input
 				type="range"
-				tabindex="-1"
 				class="slider"
 				class:hidden={rangeSliderClickDragState === "Deciding"}
 				{disabled}
@@ -1153,8 +1159,6 @@
 				border: none;
 				border-radius: 2px;
 				background: rgb(from var(--color-1-nearblack) r g b / 0.5);
-				// An outline can appear when pressing the arrow button with left click then hitting Escape, so this stops that from showing
-				outline: none;
 				// TODO: This is a quick, imperfect way to make the arrow buttons appear like they're behind the text (without messing with the element click targets if we used z-index).
 				// TODO: But it doesn't preserve the exact hover color due to the blending. Improve this by using a separate element for displaying the arrow and listening for pointer events.
 				mix-blend-mode: screen;

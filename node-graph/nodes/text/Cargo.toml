@@ -32,8 +32,8 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 parley = { workspace = true }
 skrifa = { workspace = true }
-log = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
 convert_case = { workspace = true }
 titlecase = { workspace = true }
 fancy-regex = { workspace = true }

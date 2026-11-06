@@ -14,22 +14,25 @@ jobs:
   profile:
     runs-on: ubuntu-latest
     continue-on-error: true
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
 
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Cache on Cargo.lock file
           cache-on-failure: true
 
       - name: Install gungraun-runner and valgrind
-        uses: gungraun/setup-gungraun@v1
+        uses: gungraun/setup-gungraun@62591572561bb2f4ed2ae300b8a8bea99ea8ddaf # v1.1.3
 
       - name: Checkout master branch
         run: |
@@ -51,7 +54,7 @@ jobs:
 
       - name: Cache benchmark baselines
         id: cache-benchmark-baselines
-        uses: actions/cache@v5
+        uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5.1.0
         with:
           path: target/gungraun
           key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-gungraun-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
@@ -85,7 +88,7 @@ jobs:
       - name: Make old comments collapsed by default
         # Only run if we have write permissions (not a fork)
         if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -111,7 +114,7 @@ jobs:
 
       - name: Analyze profiling changes
         id: analyze
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           script: |
             const fs = require('fs');
@@ -177,7 +180,7 @@ jobs:
 
       - name: Comment PR
         if: github.event.pull_request.head.repo.full_name == github.repository
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
           script: |
@@ -327,10 +330,12 @@ jobs:
 
       - name: Fail on significant regressions
         if: steps.analyze.outputs.has-regressions == 'true'
-        uses: actions/github-script@v8
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8.0.0
+        env:
+          REGRESSION_DETAILS: ${{ steps.analyze.outputs.regression-details }}
         with:
           script: |
-            const regressionDetails = JSON.parse('${{ steps.analyze.outputs.regression-details }}');
+            const regressionDetails = JSON.parse(process.env.REGRESSION_DETAILS);
             const firstRegression = regressionDetails[0];
 
             core.setFailed(`Significant performance regression detected: ${firstRegression.module_path} ${firstRegression.id} increased by ${firstRegression.absoluteChange.toLocaleString()} instructions (${firstRegression.diffPct.toFixed(2)}%)`);

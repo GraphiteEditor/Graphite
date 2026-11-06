@@ -8,8 +8,9 @@
 	import type { FullscreenStore } from "/src/stores/fullscreen";
 	import type { TooltipStore } from "/src/stores/tooltip";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
+	import { createLayout } from "/src/utility-functions/layout-state.svelte";
 	import { patchLayout } from "/src/utility-functions/widgets";
-	import type { EditorWrapper, Layout } from "/wrapper/pkg/graphite_wasm_wrapper";
+	import type { EditorWrapper } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 	const keyboardLockApiSupported = navigator.keyboard !== undefined && "lock" in navigator.keyboard;
 
@@ -19,7 +20,7 @@
 	const fullscreen = getContext<FullscreenStore>("fullscreen");
 	const tooltip = getContext<TooltipStore>("tooltip");
 
-	let menuBarLayout: Layout = [];
+	const menuBarLayout = createLayout();
 
 	$: showFullscreenButton = $appWindow.platform === "Web" || $fullscreen.windowFullscreen || (import.meta.env.MODE === "native" && $appWindow.fullscreen);
 	$: isFullscreen = import.meta.env.MODE === "native" ? $appWindow.fullscreen : $fullscreen.windowFullscreen;
@@ -29,7 +30,6 @@
 	onMount(() => {
 		subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
 			patchLayout(menuBarLayout, data);
-			menuBarLayout = menuBarLayout;
 		});
 	});
 

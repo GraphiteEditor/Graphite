@@ -1,5 +1,5 @@
+use crate::document::value;
 use crate::document::value::TaggedValue;
-use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
 pub use core_types::registry::*;
 use core_types::*;
@@ -51,10 +51,6 @@ impl core::fmt::Display for ProtoNetwork {
 						write_node(f, network, *id, indent + 1)?;
 					}
 				}
-				ConstructionArgs::Inline(inline) => {
-					f.write_str(&"\t".repeat(indent + 1))?;
-					f.write_fmt(format_args!("Inline construction argument: {inline:?}"))?
-				}
 			}
 			f.write_str(&"\t".repeat(indent))?;
 			f.write_str("}\n")?;
@@ -75,8 +71,6 @@ pub enum ConstructionArgs {
 	/// The bool indicates whether to treat the node as lambda node.
 	// TODO: use a struct for clearer naming.
 	Nodes(Vec<NodeId>),
-	/// Used for GPU computation to work around the limitations of rust-gpu.
-	Inline(InlineRust),
 }
 
 impl Eq for ConstructionArgs {}
@@ -109,7 +103,6 @@ impl CacheHash for ConstructionArgs {
 				}
 			}
 			Self::Value(value) => value.cache_hash(state),
-			Self::Inline(inline) => inline.hash(state),
 		}
 	}
 }
@@ -119,7 +112,6 @@ impl ConstructionArgs {
 		match self {
 			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
 			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
-			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
@@ -133,7 +125,9 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
-	pub(crate) context_features: ContextDependencies,
+	pub(crate) compile_metadata: NodeCompileMetadata,
+	/// The context features read by this node and everything upstream of it.
+	pub upstream_context_features: ContextFeatures,
 }
 
 impl Default for ProtoNode {
@@ -144,7 +138,8 @@ impl Default for ProtoNode {
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
-			context_features: Default::default(),
+			compile_metadata: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 }
@@ -179,7 +174,8 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
-			context_features: Default::default(),
+			compile_metadata: Default::default(),
+			upstream_context_features: ContextFeatures::empty(),
 		}
 	}
 
@@ -280,7 +276,8 @@ impl ProtoNetwork {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		self.find_context_dependencies(self.output);
+		let (output_dependencies, _) = self.find_context_dependencies(self.output, &mut FxHashMap::default());
+		self.nodes[self.output.0 as usize].1.upstream_context_features = output_dependencies.features;
 
 		// Perform topological sort a second time to integrate the new nodes
 		self.reorder_ids()?;
@@ -288,7 +285,49 @@ impl ProtoNetwork {
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
+	pub(crate) fn footprint_invariance_violations(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter(|(_, node)| node.compile_metadata.footprint_invariant && node.upstream_context_features.contains(ContextFeatures::FOOTPRINT))
+			.map(|(_, node)| GraphError::new(node, GraphErrorType::FootprintDependentInput))
+			.collect()
+	}
+
+	pub(crate) fn non_constant_inputs(&self) -> GraphErrors {
+		self.nodes
+			.iter()
+			.filter(|(_, node)| node.compile_metadata.constant_inputs != 0)
+			.flat_map(|(_, node)| {
+				let inputs = match &node.construction_args {
+					ConstructionArgs::Nodes(inputs) => inputs.as_slice(),
+					_ => &[],
+				};
+				inputs
+					.iter()
+					.enumerate()
+					.filter(|&(index, &input)| node.compile_metadata.requires_constant_input(index) && !self.resolves_to_value(input))
+					.map(|(index, _)| GraphError::new(node, GraphErrorType::NonConstantInput { index }))
+			})
+			.collect()
+	}
+
+	fn resolves_to_value(&self, mut id: NodeId) -> bool {
+		loop {
+			let Some((node_id, node)) = self.nodes.get(id.0 as usize) else { return false };
+			debug_assert_eq!(*node_id, id, "Node IDs must be dense indices");
+
+			match &node.construction_args {
+				ConstructionArgs::Value(_) => return true,
+				ConstructionArgs::Nodes(inputs) if node.compile_metadata.forwards_input => match inputs.first() {
+					Some(&input) => id = input,
+					None => return false,
+				},
+				_ => return false,
+			}
+		}
+	}
+
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextModification) -> NodeId {
 		let (_, node) = &self.nodes[node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
 
@@ -297,6 +336,11 @@ impl ProtoNetwork {
 			p.push(NodeId(10))
 		}
 
+		let features = context_deps.features;
+		let forwarding = NodeCompileMetadata {
+			forwards_input: true,
+			..Default::default()
+		};
 		let memoize_node_id = NodeId(self.nodes.len() as u64);
 
 		self.nodes.push((
@@ -309,6 +353,8 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				compile_metadata: forwarding,
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
@@ -318,7 +364,7 @@ impl ProtoNetwork {
 		self.nodes.push((
 			nullification_value_node_id,
 			ProtoNode {
-				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextModification(context_deps))),
 				call_argument: concrete!(Context),
 				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
@@ -339,66 +385,99 @@ impl ProtoNetwork {
 					path: path.clone(),
 					..Default::default()
 				},
+				compile_metadata: forwarding,
+				upstream_context_features: features,
 				..Default::default()
 			},
 		));
 		nullification_node_id
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+	pub fn source_ids(&self) -> impl Iterator<Item = &SourceId> {
+		self.nodes.iter().filter_map(|(_, node)| match &node.construction_args {
+			ConstructionArgs::Value(value) => match &**value {
+				TaggedValue::SourceId(source) => Some(source),
+				_ => None,
+			},
+			_ => None,
+		})
+	}
+
+	fn find_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
+		if let Some(result) = analyzed.get(&id) {
+			return result.clone();
+		}
+
+		let result = self.analyze_context_dependencies(id, analyzed);
+		analyzed.insert(id, result.clone());
+		result
+	}
+
+	fn analyze_context_dependencies(&mut self, id: NodeId, analyzed: &mut FxHashMap<NodeId, (ContextModification, Option<NodeId>)>) -> (ContextModification, Option<NodeId>) {
 		let mut branch_dependencies = Vec::new();
-		let mut combined_deps = ContextFeatures::default();
+		let mut combined_deps = ContextModification::default();
 		let node_index = id.0 as usize;
 
-		let context_features = self.nodes[node_index].1.context_features;
+		let dependencies = self.nodes[node_index].1.compile_metadata;
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
-			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
+			ConstructionArgs::Value(value) if let TaggedValue::SourceId(source) = **value => {
+				return (
+					ContextModification {
+						features: dependencies.extract,
+						sources: [source].into(),
+					},
+					Some(id),
+				);
+			}
+			ConstructionArgs::Value(_) => return (dependencies.extract.into(), Some(id)),
 		};
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
-			let branch = self.find_context_dependencies(node);
+			let branch = self.find_context_dependencies(node, analyzed);
+			self.nodes[node.0 as usize].1.upstream_context_features = branch.0.features;
 
+			combined_deps.features |= branch.0.features;
+			combined_deps.sources.extend(&branch.0.sources);
 			branch_dependencies.push(branch);
-			combined_deps |= branch.0;
 		}
-		let mut new_deps = combined_deps;
-
-		// Remove requirements which this node provides
-		new_deps &= !context_features.inject;
-		// Add requirements we have
-		new_deps |= context_features.extract;
+		// Remove requirements which this node provides and add requirements we have
+		let features = (combined_deps.features & !dependencies.inject) | dependencies.extract;
 
 		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
-		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+		let we_introduces_new_deps = !combined_deps.features.contains(features);
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
 		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies) {
 			if let Some(new_id) = new_id {
 				*child_node = new_id;
-			} else if we_introduce_new_deps || deps != combined_deps {
+			} else if we_introduces_new_deps || deps != combined_deps {
 				*child_node = self.insert_context_nullification_node(*child_node, deps);
 			}
 		}
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
 
 		// Which dependencies do we supply (and don't need ourselves)?
-		let net_injections = context_features.inject.difference(context_features.extract);
+		let net_injections = dependencies.inject.difference(dependencies.extract);
 
 		// Which dependencies still need to be met after this node?
-		let remaining_deps_from_children = combined_deps.difference(net_injections);
+		let remaining_deps_from_children = combined_deps.features.difference(net_injections);
 
 		// Do we satisfy any existing dependencies?
-		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+		let we_supply_existing_deps = !combined_deps.features.difference(remaining_deps_from_children).is_empty();
+
+		let new_deps = ContextModification {
+			features,
+			sources: combined_deps.sources,
+		};
 
 		let mut new_id = None;
 		if we_supply_existing_deps {
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+			new_id = Some(self.insert_context_nullification_node(id, new_deps.clone()));
 		}
 
 		(new_deps, new_id)
@@ -538,6 +617,10 @@ pub enum GraphErrorType {
 		inputs: String,
 		valid: Vec<NodeIOTypes>,
 	},
+	FootprintDependentInput,
+	NonConstantInput {
+		index: usize,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -581,6 +664,11 @@ impl Debug for GraphErrorType {
 				)
 			}
 			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
+			GraphErrorType::FootprintDependentInput => write!(
+				f,
+				"Warning: an upstream node adapts to the visible canvas area, so this node's output changes when the view is panned or zoomed"
+			),
+			GraphErrorType::NonConstantInput { index } => write!(f, "Input {} must be a fixed value rather than computed by other nodes", index + 1),
 		}
 	}
 }
@@ -619,6 +707,36 @@ pub struct TypingContext {
 	promotions: HashMap<NodeId, Vec<(usize, Promotion)>>,
 }
 
+/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
+/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
+fn valid_type(from: &Type, to: &Type) -> bool {
+	match (from, to) {
+		// Direct comparison of two concrete types.
+		(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
+		// Direct comparison of two function types.
+		// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
+		// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
+		// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
+		// This allows us to supply anything to a function that is satisfied with `()`.
+		// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
+		// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
+		// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
+		// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
+		// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
+		// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
+		// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
+		(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
+		// Ranked wrappers of the same rank are compared element-wise
+		(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
+		(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
+		// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
+		// TODO: Add proper generic counting which is not based on the name
+		(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
+		// Reject unknown type relationships.
+		_ => false,
+	}
+}
+
 /// A rank adapter which type resolution marks for insertion between a wire and a connector whose ranks differ,
 /// carrying the element type the adapter is registered under.
 #[derive(Debug, Clone, PartialEq)]
@@ -631,7 +749,44 @@ pub enum Promotion {
 	Unbundle(Type),
 }
 
+/// Builds a [`Promotion`] variant from its element type.
+type PromotionVariant = fn(Type) -> Promotion;
+
 impl Promotion {
+	/// The promotion that lets a wire of the `from` value type feed a connector of the `to` value type of a different rank, if there is one.
+	pub fn between(from: &Type, to: &Type) -> Option<Self> {
+		Self::variant_between(from, to).map(|(variant, element)| variant(element.clone()))
+	}
+
+	/// Whether a promotion lets a wire of the `from` value type feed a connector of the `to` value type, without building it.
+	pub fn exists_between(from: &Type, to: &Type) -> bool {
+		Self::variant_between(from, to).is_some()
+	}
+
+	/// The variant and element type of the promotion between two value types. Every rank relation is matched structurally,
+	/// and only the `Bundle` layer inside an `Item` cell remains name-encoded.
+	fn variant_between<'a>(from: &'a Type, to: &'a Type) -> Option<(PromotionVariant, &'a Type)> {
+		fn concrete_name(ty: &Type) -> Option<&str> {
+			match ty {
+				Type::Concrete(descriptor) => Some(&descriptor.name),
+				_ => None,
+			}
+		}
+
+		match (from, to) {
+			// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
+			(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some((Self::ItemToList, element)),
+
+			// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
+			(Type::List(element), Type::Item(_)) if to.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some((Self::Bundle, element)),
+
+			// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
+			(Type::Item(_), Type::List(element)) if from.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some((Self::Unbundle, element)),
+
+			_ => None,
+		}
+	}
+
 	/// The registry identifier of the adapter node monomorphized for this promotion's element type.
 	pub fn adapter_identifier(&self) -> ProtoNodeIdentifier {
 		let (adapter_name, element) = match self {
@@ -700,7 +855,7 @@ impl TypingContext {
 			// If the node has a value input we can infer the return type from it
 			ConstructionArgs::Value(ref v) => {
 				// TODO: This should return a reference to the value
-				let types = NodeIOTypes::new(concrete!(Context), Type::Future(Box::new(v.ty())), vec![]);
+				let types = NodeIOTypes::new(concrete!(Context), v.ty(), vec![]);
 				self.inferred.insert(node_id, types.clone());
 				return Ok(types);
 			}
@@ -714,7 +869,6 @@ impl TypingContext {
 						.map(|node| node.ty())
 				})
 				.collect::<Result<Vec<Type>, GraphErrors>>()?,
-			ConstructionArgs::Inline(ref inline) => vec![inline.ty.clone()],
 		};
 
 		// Get the node input type from the proto node declaration
@@ -726,38 +880,6 @@ impl TypingContext {
 			Type::Fn(_, b) if matches!(b.as_ref(), Type::Generic(_)))
 		}) {
 			return Err(vec![GraphError::new(node, GraphErrorType::UnexpectedGenerics { index, inputs })]);
-		}
-
-		/// Checks if a proposed input to a particular (primary or secondary) input connector is valid for its type signature.
-		/// `from` indicates the value given to a input, `to` indicates the input's allowed type as specified by its type signature.
-		fn valid_type(from: &Type, to: &Type) -> bool {
-			match (from, to) {
-				// Direct comparison of two concrete types.
-				(Type::Concrete(type1), Type::Concrete(type2)) => type1 == type2,
-				// Check inner type for futures
-				(Type::Future(type1), Type::Future(type2)) => valid_type(type1, type2),
-				// Direct comparison of two function types.
-				// Note: in the presence of subtyping, functions are considered on a "greater than or equal to" basis of its function type's generality.
-				// That means we compare their types with a contravariant relationship, which means that a more general type signature may be substituted for a more specific type signature.
-				// For example, we allow `T -> V` to be substituted with `T' -> V` or `() -> V` where T' and () are more specific than T.
-				// This allows us to supply anything to a function that is satisfied with `()`.
-				// In other words, we are implementing these two relations, where the >= operator means that the left side is more general than the right side:
-				// - `T >= T' ⇒ (T' -> V) >= (T -> V)` (functions are contravariant in their input types)
-				// - `V >= V' ⇒ (T -> V) >= (T -> V')` (functions are covariant in their output types)
-				// While these two relations aren't a truth about the universe, they are a design decision that we are employing in our language design that is also common in other languages.
-				// For example, Rust implements these same relations as it describes here: <https://doc.rust-lang.org/nomicon/subtyping.html>
-				// Graphite doesn't have subtyping currently, but it used to have it, and may do so again, so we make sure to compare types in this way to make things easier.
-				// More details explained here: <https://github.com/GraphiteEditor/Graphite/issues/1741>
-				(Type::Fn(in1, out1), Type::Fn(in2, out2)) => valid_type(out2, out1) && valid_type(in1, in2),
-				// Ranked wrappers of the same rank are compared element-wise
-				(Type::Item(element1), Type::Item(element2)) => valid_type(element1, element2),
-				(Type::List(element1), Type::List(element2)) => valid_type(element1, element2),
-				// If either the proposed input or the allowed input are generic, we allow the substitution (meaning this is a valid subtype).
-				// TODO: Add proper generic counting which is not based on the name
-				(Type::Generic(_), _) | (_, Type::Generic(_)) => true,
-				// Reject unknown type relationships.
-				_ => false,
-			}
 		}
 
 		// List of all implementations that match the input types
@@ -789,16 +911,8 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
-				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter.
-				// Every rank relation is matched structurally; only the `Bundle` layer inside an `Item` cell remains name-encoded.
+				// Retry allowing a wire whose rank differs from its connector, satisfied at construction time by an inserted promotion adapter
 				fn promotable_adapter(from: &Type, to: &Type) -> Option<Promotion> {
-					fn concrete_name(ty: &Type) -> Option<&str> {
-						match ty {
-							Type::Concrete(descriptor) => Some(&descriptor.name),
-							_ => None,
-						}
-					}
-
 					let (Type::Fn(from_input, from_output), Type::Fn(to_input, to_output)) = (from, to) else {
 						return None;
 					};
@@ -806,23 +920,7 @@ impl TypingContext {
 						return None;
 					}
 
-					let from_value = from_output.nested_type();
-					let to_value = to_output.nested_type();
-
-					match (from_value, to_value) {
-						// An `Item<X>` wire may feed a `List<X>` connector via a singleton raise
-						(Type::Item(from_element), Type::List(element)) if valid_type(from_element, element) => Some(Promotion::ItemToList((**element).clone())),
-
-						// A `List<X>` wire may feed an `Item<Bundle<X>>` connector by bundling the whole list into one opaque cell
-						(Type::List(element), Type::Item(_)) if to_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => Some(Promotion::Bundle((**element).clone())),
-
-						// An `Item<Bundle<X>>` wire may feed a `List<X>` connector by unbundling it back into the whole list
-						(Type::Item(_), Type::List(element)) if from_value.bundle_element_name().is_some_and(|name| Some(name) == concrete_name(element)) => {
-							Some(Promotion::Unbundle((**element).clone()))
-						}
-
-						_ => None,
-					}
+					Promotion::between(from_output.nested_type(), to_output.nested_type())
 				}
 
 				let mut promotable_matches = impls
@@ -1043,6 +1141,258 @@ mod test {
 			ids,
 			vec![NodeId(7074930193456627328), NodeId(651950451264872860), NodeId(15983493604836528424), NodeId(2458326405488235061)]
 		);
+	}
+
+	#[test]
+	fn retain_filter_placement_on_source_free_branch() {
+		let mut network = source_branch_network(&[SourceId(1)], &[]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		let filters = nullification_filters(&network);
+		assert_eq!(filters.len(), 1);
+		let (filter_id, wrapped, retained) = &filters[0];
+		assert_eq!(wrapped, "source_b");
+		assert!(retained.is_empty());
+
+		let (source_a_id, _) = find_node(&network, "source_a");
+		let (_, join) = find_node(&network, "join");
+		let ConstructionArgs::Nodes(join_args) = &join.construction_args else { unreachable!() };
+		assert_eq!(join_args, &vec![source_a_id, *filter_id]);
+	}
+
+	#[test]
+	fn diverging_source_sets_filter_each_branch() {
+		let mut network = source_branch_network(&[SourceId(1)], &[SourceId(2)]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		let mut filters = nullification_filters(&network);
+		filters.sort_by(|(_, a, _), (_, b, _)| a.cmp(b));
+		let summary: Vec<_> = filters.iter().map(|(_, wrapped, retained)| (wrapped.as_str(), retained.as_slice())).collect();
+		assert_eq!(summary, vec![("source_a", &[SourceId(1)][..]), ("source_b", &[SourceId(2)][..])]);
+	}
+
+	#[test]
+	fn matching_source_sets_insert_no_filter() {
+		let mut network = source_branch_network(&[SourceId(1)], &[SourceId(1)]);
+		network.insert_context_nullification_nodes().unwrap();
+
+		assert!(nullification_filters(&network).is_empty());
+		assert_eq!(network.source_ids().copied().collect::<Vec<_>>(), vec![SourceId(1), SourceId(1)]);
+	}
+
+	fn find_node<'a>(network: &'a ProtoNetwork, name: &str) -> (NodeId, &'a ProtoNode) {
+		network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).map(|(id, node)| (*id, node)).unwrap()
+	}
+
+	fn nullification_filters(network: &ProtoNetwork) -> Vec<(NodeId, String, Vec<SourceId>)> {
+		let node = |id: NodeId| &network.nodes[id.0 as usize].1;
+		network
+			.nodes
+			.iter()
+			.filter(|(_, candidate)| candidate.identifier == graphene_core::context_modification::context_modification::IDENTIFIER)
+			.map(|(id, candidate)| {
+				let ConstructionArgs::Nodes(args) = &candidate.construction_args else { unreachable!() };
+				let ConstructionArgs::Nodes(memoized) = &node(args[0]).construction_args else { unreachable!() };
+				let ConstructionArgs::Value(value) = &node(args[1]).construction_args else { unreachable!() };
+				let TaggedValue::ContextModification(modification) = &**value else { unreachable!() };
+				(*id, node(memoized[0]).identifier.as_str().to_string(), modification.sources.iter().copied().collect())
+			})
+			.collect()
+	}
+
+	#[test]
+	fn shared_nodes_are_wrapped_in_one_nullification() {
+		let node = |name: &'static str, inputs: Vec<NodeId>, extract: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata: NodeCompileMetadata { extract, ..Default::default() },
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(6),
+			nodes: vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2).into()), vec![])),
+				(NodeId(1), node("reader", vec![NodeId(0)], ContextFeatures::ANIMATION_TIME)),
+				(NodeId(2), node("plain", vec![NodeId(0)], none)),
+				(NodeId(3), node("shared", vec![NodeId(1), NodeId(2)], none)),
+				(NodeId(4), node("first_consumer", vec![NodeId(3)], none)),
+				(NodeId(5), node("second_consumer", vec![NodeId(3)], none)),
+				(NodeId(6), node("output", vec![NodeId(4), NodeId(5)], none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let nullification = graphene_core::context_modification::context_modification::IDENTIFIER;
+		let nullifications: Vec<_> = network.nodes.iter().filter(|(_, node)| node.identifier == nullification).collect();
+		assert_eq!(nullifications.len(), 1, "The plain branch of the shared node should be nullified once");
+
+		let ConstructionArgs::Nodes(inputs) = &nullifications[0].1.construction_args else {
+			panic!("A nullification node should have node inputs")
+		};
+		let ConstructionArgs::Nodes(memoized) = &network.nodes[inputs[0].0 as usize].1.construction_args else {
+			panic!("A memoize node should have node inputs")
+		};
+		assert_eq!(
+			network.nodes[memoized[0].0 as usize].1.identifier.as_str(),
+			"plain",
+			"The nullification should wrap the plain node, not another nullification"
+		);
+	}
+
+	#[test]
+	fn nodes_record_the_context_features_their_output_depends_on() {
+		let node = |name: &'static str, construction_args: ConstructionArgs, extract: ContextFeatures, inject: ContextFeatures| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			compile_metadata: NodeCompileMetadata {
+				extract,
+				inject,
+				..Default::default()
+			},
+			..Default::default()
+		};
+		let none = ContextFeatures::empty();
+
+		let mut network = ProtoNetwork {
+			inputs: vec![],
+			output: NodeId(3),
+			nodes: vec![
+				(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into()), none, none)),
+				(
+					NodeId(1),
+					node("reader", ConstructionArgs::Nodes(vec![NodeId(0)]), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX, none),
+				),
+				(NodeId(2), node("repeat", ConstructionArgs::Nodes(vec![NodeId(1)]), none, ContextFeatures::INDEX)),
+				(NodeId(3), node("wrap", ConstructionArgs::Nodes(vec![NodeId(2)]), none, none)),
+			],
+		};
+		network.insert_context_nullification_nodes().unwrap();
+
+		let features_of = |name: &str| network.nodes.iter().find(|(_, node)| node.identifier.as_str() == name).unwrap().1.upstream_context_features;
+		assert_eq!(features_of("value"), none);
+		assert_eq!(features_of("reader"), ContextFeatures::ANIMATION_TIME | ContextFeatures::INDEX);
+		assert_eq!(features_of("repeat"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of("wrap"), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(features_of(graphene_core::memo::memoize::IDENTIFIER.as_str()), ContextFeatures::ANIMATION_TIME);
+		assert_eq!(
+			features_of(graphene_core::context_modification::context_modification::IDENTIFIER.as_str()),
+			ContextFeatures::ANIMATION_TIME
+		);
+	}
+
+	#[test]
+	fn footprint_invariant_nodes_warn_only_when_their_inputs_read_the_footprint() {
+		let node = |name: &'static str, inputs: Vec<NodeId>, compile_metadata: NodeCompileMetadata| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata,
+			..Default::default()
+		};
+		let reader = NodeCompileMetadata {
+			extract: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let footprint_injector = NodeCompileMetadata {
+			inject: ContextFeatures::FOOTPRINT,
+			..Default::default()
+		};
+		let invariant = NodeCompileMetadata {
+			footprint_invariant: true,
+			..Default::default()
+		};
+		let warnings = |with_injector: bool| {
+			let mut nodes = vec![
+				(NodeId(0), ProtoNode::value(ConstructionArgs::Value(TaggedValue::Integer(2).into()), vec![])),
+				(NodeId(1), node("reader", vec![NodeId(0)], reader)),
+			];
+			if with_injector {
+				nodes.push((NodeId(2), node("injector", vec![NodeId(1)], footprint_injector)));
+			}
+			let output = NodeId(nodes.len() as u64);
+			nodes.push((output, node("invariant", vec![NodeId(output.0 - 1)], invariant)));
+
+			let mut network = ProtoNetwork { inputs: vec![], output, nodes };
+			network.insert_context_nullification_nodes().unwrap();
+			network.footprint_invariance_violations()
+		};
+
+		let violations = warnings(false);
+		assert_eq!(violations.len(), 1);
+		assert_eq!(violations[0].identifier, "invariant");
+		assert!(violations[0].error == GraphErrorType::FootprintDependentInput);
+
+		assert!(warnings(true).is_empty());
+	}
+
+	#[test]
+	fn constant_inputs_must_resolve_to_values_through_forwarding_nodes() {
+		let value = || ProtoNode::value(ConstructionArgs::Value(TaggedValue::String("name".into()).into()), vec![]);
+		let node = |inputs: Vec<NodeId>, compile_metadata: NodeCompileMetadata| ProtoNode {
+			construction_args: ConstructionArgs::Nodes(inputs),
+			compile_metadata,
+			..Default::default()
+		};
+		let forwarding = NodeCompileMetadata {
+			forwards_input: true,
+			..Default::default()
+		};
+		let consumer = NodeCompileMetadata {
+			constant_inputs: 1 << 1,
+			..Default::default()
+		};
+		let errors = |name_wrapper: NodeCompileMetadata| {
+			let network = ProtoNetwork {
+				inputs: vec![],
+				output: NodeId(5),
+				nodes: vec![
+					(NodeId(0), value()),
+					(NodeId(1), value()),
+					(NodeId(2), node(vec![NodeId(1)], name_wrapper)),
+					(NodeId(3), node(vec![NodeId(2)], forwarding)),
+					(NodeId(4), value()),
+					(NodeId(5), node(vec![NodeId(0), NodeId(3), NodeId(4)], consumer)),
+				],
+			};
+			network.non_constant_inputs()
+		};
+
+		assert!(errors(forwarding).is_empty());
+
+		let computed = errors(NodeCompileMetadata::default());
+		assert_eq!(computed.len(), 1);
+		assert!(computed[0].error == GraphErrorType::NonConstantInput { index: 1 });
+	}
+
+	fn source_branch_network(branch_a_sources: &[SourceId], branch_b_sources: &[SourceId]) -> ProtoNetwork {
+		let node = |name: &'static str, construction_args: ConstructionArgs| ProtoNode {
+			identifier: ProtoNodeIdentifier::new(name),
+			call_argument: concrete!(()),
+			construction_args,
+			..Default::default()
+		};
+		let mut nodes = vec![(NodeId(0), node("value", ConstructionArgs::Value(TaggedValue::Integer(2).into())))];
+		let mut branch = |name: &'static str, sources: &[SourceId]| {
+			let mut inputs = vec![NodeId(0)];
+			for &source in sources {
+				inputs.push(NodeId(nodes.len() as u64));
+				nodes.push((NodeId(nodes.len() as u64), node("source_id", ConstructionArgs::Value(TaggedValue::SourceId(source).into()))));
+			}
+			let id = NodeId(nodes.len() as u64);
+			nodes.push((id, node(name, ConstructionArgs::Nodes(inputs))));
+			id
+		};
+		let branch_a = branch("source_a", branch_a_sources);
+		let branch_b = branch("source_b", branch_b_sources);
+
+		let output = NodeId(nodes.len() as u64);
+		nodes.push((output, node("join", ConstructionArgs::Nodes(vec![branch_a, branch_b]))));
+		ProtoNetwork { inputs: vec![], output, nodes }
 	}
 
 	fn test_network() -> ProtoNetwork {

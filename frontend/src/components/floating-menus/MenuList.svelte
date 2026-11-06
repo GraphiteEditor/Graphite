@@ -1,9 +1,10 @@
 <svelte:options accessors={true} />
 
 <script lang="ts">
-	import { createEventDispatcher, tick, onDestroy, onMount } from "svelte";
+	import { createEventDispatcher, tick, onDestroy } from "svelte";
+	import { get } from "svelte/store";
 	import MenuList from "/src/components/floating-menus/MenuList.svelte";
-	import FloatingMenu from "/src/components/layout/FloatingMenu.svelte";
+	import FloatingMenu, { preventEscapeClosingParentFloatingMenu } from "/src/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import TextInput from "/src/components/widgets/inputs/TextInput.svelte";
@@ -11,19 +12,33 @@
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
+	import { menuBarKeyboardLeads, menuOpenedByArrowKeys } from "/src/stores/dropdown-menus";
 	import { targetIsTextField } from "/src/utility-functions/input";
 	import type { MenuListEntry, MenuDirection } from "/wrapper/pkg/graphite_wasm_wrapper";
+
+	// What a menu tells the menu it's nested in about a key that needs more than this menu to handle
+	type KeyOutcome = "Handled" | "Unhandled" | "CloseSubmenu" | "NextMenu" | "PreviousMenu";
+	type Point = { x: number; y: number };
+
+	const ENTRY_HEIGHT = 20;
+	// How long the pointer must rest on an entry it crossed while heading into the open submenu before that entry takes over
+	const SUBMENU_AIM_DELAY_MS = 300;
+	// How far beyond the open submenu's top and bottom the pointer may aim and still be heading into it
+	const SUBMENU_AIM_TOLERANCE = 20;
+	// How many recent pointer positions give the direction it's moving in, which a single step is too small to show
+	const POINTER_TRAIL_LENGTH = 4;
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
 	let searchTextInput: TextInput | undefined;
+	// Only the open submenu exists, so it's the only one referenced
+	let openChild: MenuList | undefined;
 
 	const dispatch = createEventDispatcher<{
 		open: boolean;
 		activeEntry: MenuListEntry;
 		selectedEntryValuePath: string[];
-		hoverInEntry: MenuListEntry;
-		hoverOutEntry: undefined;
+		preview: MenuListEntry;
 		naturalWidth: number;
 	}>();
 
@@ -36,39 +51,52 @@
 	export let minWidth = 0;
 	export let drawIcon = false;
 	export let monospace = false;
-	export let interactive = false;
 	export let scrollableY = false;
 	export let virtualScrolling = false;
 	// Whether to measure the menu's width for its spawner to size itself by
 	export let measuresNaturalWidth = false;
 	// Whether the highlight moves to each new active entry given while the menu is open
 	export let highlightFollowsActiveEntry = false;
+	// Whether the menu holds a value, as a dropdown does, which its highlight shows and the arrow keys change
+	export let holdsValue = false;
+	// Whether ← and → in the top level open the neighboring menus that hovering also moves between, as in the menu bar
+	export let arrowKeysOpenNeighborMenus = false;
+	// Set by the menu this one is nested in
+	export let submenu = false;
 
-	// Keep the child references outside of the entries array so as to avoid infinite recursion.
-	let childReferences: MenuList[][] = [];
 	let openChildValue: string | undefined = undefined;
 	let search = "";
 	let reactiveEntries = entries;
+	// The entry chosen by the arrow keys, or the value of a menu holding one, drawn in white
 	let highlighted: MenuListEntry | undefined = activeEntry;
+	// The entry under the pointer, drawn in gray
+	let hovered: MenuListEntry | undefined = undefined;
+	// Whether the pointer moved onto an entry since the arrow keys last moved the highlight, so the keys pick up from where it points
+	let pointerLed = false;
+	// The value a menu holding one opened with, which the arrow keys may change before it closes
+	let valueWhenOpened: MenuListEntry | undefined = undefined;
+	let lastPreviewedValue: string | undefined = undefined;
 	let lastActiveEntry: { value: string | undefined; entriesHash: bigint } = { value: activeEntry?.value, entriesHash };
+	let wasOpen = false;
+	let pointerTrail: Point[] = [];
+	let aimTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
+	// Whether the wheel scrolled the menu since the last key press, so the entries it scrolls under the resting pointer take the hover
+	let wheelScrolled = false;
 	let virtualScrollingEntriesStart = 0;
-	let keydownListenerAdded = false;
-	let destroyed = false;
 	let maxMenuWidth = 0;
 	let resizeObserver: ResizeObserver | undefined = undefined;
 	// eslint-disable-next-line svelte/prefer-svelte-reactivity -- `loadedFonts` reactivity is driven by `loadedFontsGeneration`, not the Set itself
 	let loadedFonts = new Set<string>();
 	let loadedFontsGeneration = 0;
 
-	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
-	$: watchEntries(entries);
 	$: watchEntriesHash(entriesHash);
 	$: watchRemeasureWidth(reactiveEntries, drawIcon, self, measuresNaturalWidth, search);
-	$: watchHighlightedWithSearch(filteredEntries, open);
+	$: watchFilteredEntries(filteredEntries, open);
 	$: watchActiveEntry(activeEntry, entriesHash);
+	$: watchPreviewedEntry(holdsValue && open ? (pointerLed && hovered) || highlighted : undefined);
 
-	$: virtualScrollingEntryHeight = virtualScrolling ? 20 : 0;
+	$: virtualScrollingEntryHeight = virtualScrolling ? ENTRY_HEIGHT : 0;
 	$: filteredEntries = reactiveEntries.map((section) => section.filter((entry) => inSearch(search, entry)));
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
 	// Virtual scrolling calculations
@@ -76,39 +104,83 @@
 	$: virtualScrollingStartIndex = filteredEntries.length === 0 ? 0 : Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
 	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 
-	// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
-	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
-	onMount(async () => {
-		await tick();
-		if (!destroyed && open && !inNestedMenuList() && !keydownListenerAdded) {
-			addEventListener("keydown", keydown);
-			keydownListenerAdded = true;
-		}
-	});
 	onDestroy(() => {
-		removeEventListener("keydown", keydown);
+		listenWhileOpen(false);
 		resizeObserver?.disconnect();
-		// Set the destroyed status in the closure kept by the awaited `tick()` in `onMount` in case that delayed run occurs after the component is destroyed
-		destroyed = true;
+		clearTimeout(aimTimeout);
 	});
 
-	function inNestedMenuList(): boolean {
-		const div = self?.div();
-		if (!(div instanceof HTMLDivElement)) return false;
-		return Boolean(div.closest("[data-floating-menu-content]"));
+	function watchOpen(open: boolean) {
+		if (open === wasOpen) return;
+		wasOpen = open;
+
+		// Closing a menu holding a value keeps whichever value the arrow keys moved it to, unless Escape put back the one it opened with
+		if (!open && holdsValue && highlighted && highlighted.value !== valueWhenOpened?.value) dispatch("activeEntry", highlighted);
+
+		// The top-level menu handles the keys and the pointer for its submenus
+		if (!submenu) listenWhileOpen(open);
+
+		// For virtual scrolling menus, observe width changes so the menu only grows and never shrinks while open
+		if (open && virtualScrolling) {
+			startMenuWidthObserver();
+		} else if (resizeObserver) {
+			resizeObserver.disconnect();
+			resizeObserver = undefined;
+			maxMenuWidth = 0;
+		}
+
+		clearTimeout(aimTimeout);
+		pointerTrail = [];
+		highlighted = activeEntry;
+		hovered = undefined;
+		pointerLed = false;
+		valueWhenOpened = activeEntry;
+		lastPreviewedValue = activeEntry?.value;
+		openChildValue = undefined;
+		search = "";
+
+		if (arrowKeysOpenNeighborMenus) menuBarKeyboardLeads.set(false);
+
+		// Opened by the arrow keys from a neighboring menu, it starts on its first entry like the menu it took over from
+		if (open && !submenu && get(menuOpenedByArrowKeys)) {
+			menuOpenedByArrowKeys.set(false);
+			highlighted = selectableEntries()[0];
+		}
+
+		dispatch("open", open);
 	}
 
-	// Required to keep the highlighted item centered and to find a new highlighted item if necessary
-	async function watchHighlightedWithSearch(filteredEntries: MenuListEntry[][], open: boolean) {
-		if (highlighted && open) {
-			// Allows the scrollable area to expand if necessary
-			await tick();
-
-			const flattened = filteredEntries.flat();
-			const highlightedFound = flattened.map((entry) => entry.value).includes(highlighted.value);
-			const newHighlighted = highlightedFound ? highlighted : flattened[0];
-			setHighlighted(newHighlighted);
+	function listenWhileOpen(listening: boolean) {
+		// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
+		// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
+		if (listening) {
+			addEventListener("keydown", keydown);
+			addEventListener("pointermove", onPointerMove);
+			addEventListener("wheel", onWheel, { capture: true, passive: true });
+			addEventListener("scroll", onScrollWhileOpen, true);
+		} else {
+			removeEventListener("keydown", keydown);
+			removeEventListener("pointermove", onPointerMove);
+			removeEventListener("wheel", onWheel, { capture: true });
+			removeEventListener("scroll", onScrollWhileOpen, true);
 		}
+	}
+
+	// Keeps the highlight on an entry the search still shows, or gives it to the first result for Enter to pick, and keeps it in view
+	async function watchFilteredEntries(filteredEntries: MenuListEntry[][], open: boolean) {
+		if (!open) return;
+
+		const shown = filteredEntries.flat();
+		const isShown = (entry: MenuListEntry | undefined) => entry !== undefined && shown.some((candidate) => candidate.value === entry.value);
+
+		if (search && !isShown(highlighted)) highlighted = shown.find((entry) => !entry.disabled);
+		if (hovered && !isShown(hovered)) hovered = undefined;
+		if (openChildValue !== undefined && !shown.some((entry) => entry.value === openChildValue)) openChildValue = undefined;
+
+		// Allows the scrollable area to expand if necessary
+		await tick();
+
+		if (highlighted) setHighlighted(highlighted);
 	}
 
 	// An active entry given while the menu is open takes the highlight and is scrolled into view, unless it's the same one among the same
@@ -120,81 +192,19 @@
 		if (!highlightFollowsActiveEntry || !open || !activeEntry || repeated) return;
 
 		highlighted = activeEntry;
+		pointerLed = false;
 		// Once its row is drawn, unless the highlight has moved on by then
 		tick().then(() => {
 			if (open && highlighted?.value === activeEntry.value) setHighlighted(activeEntry);
 		});
 	}
 
-	// Detect when the user types, which creates a search box
-	async function startSearch(e: KeyboardEvent) {
-		// Only accept single-character symbol inputs other than space
-		if (e.key.length !== 1 || e.key === " ") return;
-		// Nor a shortcut's key, though AltGr, which also reports Ctrl, types characters
-		if ((e.ctrlKey || e.metaKey) && !e.getModifierState("AltGraph")) {
-			// The browser's own action for it, like saving the page, stays held back, except a text field's editing shortcuts
-			if (!targetIsTextField(e.target || undefined)) e.preventDefault();
-			return;
-		}
+	// A menu holding a value previews the entry under the pointer, or else the one the arrow keys moved to, before either is committed
+	function watchPreviewedEntry(entry: MenuListEntry | undefined) {
+		if (!entry || entry.value === lastPreviewedValue) return;
 
-		// Stop shortcuts being activated
-		e.stopPropagation();
-		e.preventDefault();
-
-		// Forward the input's first character to the search box, which after that point the user will continue typing into directly
-		search = e.key;
-
-		// Must wait until the DOM elements have been created (after the if condition becomes true) before the search box exists
-		await tick();
-
-		// Get the search box element
-		const searchElement = searchTextInput?.element();
-		if (!searchTextInput || !searchElement) return;
-
-		// Focus the search box and move the cursor to the end
-		searchTextInput.focus();
-		searchElement.setSelectionRange(search.length, search.length);
-
-		// Continue listening for keyboard navigation even when the search box is focused
-		// searchElement.onkeydown = (e) => {
-		// 	if (["Enter", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-		// 		keydown(e, false);
-		// 	}
-		// };
-	}
-
-	function inSearch(search: string, entry: MenuListEntry): boolean {
-		return !search || entry.label.toLowerCase().includes(search.toLowerCase());
-	}
-
-	function watchOpen(open: boolean) {
-		if (open && !inNestedMenuList() && !keydownListenerAdded) {
-			addEventListener("keydown", keydown);
-			keydownListenerAdded = true;
-		} else if (!open && !inNestedMenuList() && keydownListenerAdded) {
-			removeEventListener("keydown", keydown);
-			keydownListenerAdded = false;
-		}
-
-		// For virtual scrolling menus, observe width changes so the menu only grows and never shrinks while open
-		if (open && virtualScrolling) {
-			startMenuWidthObserver();
-		} else if (resizeObserver) {
-			resizeObserver.disconnect();
-			resizeObserver = undefined;
-			maxMenuWidth = 0;
-		}
-
-		highlighted = activeEntry;
-		dispatch("open", open);
-
-		search = "";
-	}
-
-	function watchEntries(entries: MenuListEntry[][]) {
-		entries.forEach((_, index) => {
-			if (!childReferences[index]) childReferences[index] = [];
-		});
+		lastPreviewedValue = entry.value;
+		dispatch("preview", entry);
 	}
 
 	function watchEntriesHash(_: bigint) {
@@ -218,8 +228,8 @@
 		// Guard against the menu having closed during the tick
 		if (!open) return;
 
-		const floatingMenuContentDiv = self?.div()?.querySelector("[data-floating-menu-content]");
-		if (!(floatingMenuContentDiv instanceof HTMLElement)) return;
+		const floatingMenuContentDiv = contentElement();
+		if (!floatingMenuContentDiv) return;
 
 		maxMenuWidth = 0;
 
@@ -234,67 +244,33 @@
 		resizeObserver.observe(floatingMenuContentDiv);
 	}
 
-	function onScroll(e: Event) {
+	function onVirtualScroll(e: Event) {
 		if (!virtualScrollingEntryHeight) return;
 		virtualScrollingEntriesStart = e.target instanceof HTMLElement ? e.target.scrollTop : 0;
 	}
 
-	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {
-		const index = filteredEntries.flat().findIndex((entry) => entry.value === menuListEntry.value);
-
-		if (index !== -1) {
-			return childReferences.flat().filter((x) => x)[index];
-		} else {
-			// eslint-disable-next-line no-console
-			console.error("MenuListEntry not found in filteredEntries:", menuListEntry);
-			return undefined;
-		}
+	function contentElement(): HTMLElement | undefined {
+		const content = self?.div()?.querySelector("[data-floating-menu-content]");
+		return content instanceof HTMLElement ? content : undefined;
 	}
 
-	function onEntryClick(menuListEntry: MenuListEntry) {
-		// Close the containing menu
-		let childReference = getChildReference(menuListEntry);
-		if (childReference) {
-			openChildValue = undefined;
-			reactiveEntries = reactiveEntries;
-		}
-		dispatch("open", false);
-		open = false;
-		reactiveEntries = reactiveEntries;
-
-		// Notify the parent about the clicked entry as the new active entry
-		dispatch("activeEntry", menuListEntry);
-		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
+	function inSearch(search: string, entry: MenuListEntry): boolean {
+		return !search || entry.label.toLowerCase().includes(search.toLowerCase());
 	}
 
-	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
-		if (!menuListEntry.children?.length) {
-			dispatch("hoverInEntry", menuListEntry);
-			return;
-		}
-
-		let childReference = getChildReference(menuListEntry);
-		if (childReference) {
-			openChildValue = menuListEntry.value;
-			reactiveEntries = reactiveEntries;
-		} else {
-			dispatch("open", true);
-		}
+	function selectableEntries(): MenuListEntry[] {
+		return filteredEntries.flat().filter((entry) => !entry.disabled);
 	}
 
-	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
-		if (!menuListEntry.children?.length) {
-			dispatch("hoverOutEntry");
-			return;
-		}
+	function openChildEntry(): MenuListEntry | undefined {
+		if (openChildValue === undefined) return undefined;
+		return filteredEntries.flat().find((entry) => entry.value === openChildValue);
+	}
 
-		let childReference = getChildReference(menuListEntry);
-		if (childReference) {
-			openChildValue = undefined;
-			reactiveEntries = reactiveEntries;
-		} else {
-			dispatch("open", false);
-		}
+	// The submenu that's open, once it exists, rather than one still on its way out
+	function currentChild(): MenuList | undefined {
+		if (openChildValue === undefined || openChild?.parentsValuePath.at(-1) !== openChildValue) return undefined;
+		return openChild;
 	}
 
 	function includeSeparator(entries: MenuListEntry[][], section: MenuListEntry[], sectionIndex: number, search: string): boolean {
@@ -314,147 +290,367 @@
 		return section.filter((entry) => inSearch(search, entry)).slice(virtualScrollingStartIndex, virtualScrollingEndIndex);
 	}
 
-	function openSubmenu(highlightedEntry: MenuListEntry): boolean {
-		let childReference = getChildReference(highlightedEntry);
-		// No submenu to open
-		if (!childReference || !highlightedEntry.children?.length) return false;
+	// Pointer input
 
-		openChildValue = highlightedEntry.value;
-		// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
-		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `childReference.open` property.
-		highlighted = highlighted;
+	function onPointerMove(e: PointerEvent) {
+		const position = { x: e.clientX, y: e.clientY };
+		pointerTrail = [...pointerTrail, position].slice(-POINTER_TRAIL_LENGTH);
 
-		// Highlight first item
-		childReference.setHighlighted(highlightedEntry.children[0][0]);
+		// Entries passing under the resting pointer, as when the arrow keys scroll the menu, leave the hover where the pointer last put it
+		if (e.movementX === 0 && e.movementY === 0) return;
 
-		// Submenu was opened
-		return true;
+		if (arrowKeysOpenNeighborMenus) menuBarKeyboardLeads.set(false);
+		hoverAtPointer(e.target || undefined, pointerTrail[0], position);
 	}
 
-	/// Handles keyboard navigation for the menu.
-	// Returns a boolean indicating whether the entire menu stack should be dismissed.
-	export function keydown(e: KeyboardEvent, submenu = false): boolean {
-		const menuOpen = open;
-		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
-		const openChild = (openChildValue !== undefined && flatEntries.findIndex((entry) => entry.value === openChildValue)) || -1;
+	function onWheel(e: WheelEvent) {
+		if (!(e.target instanceof Node) || !self?.div()?.contains(e.target)) return;
 
-		// Allow opening menu with space or enter
-		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
-			open = true;
-			highlighted = activeEntry;
-
-			// Keep the menu stack open
-			return false;
-		}
-
-		// If a submenu is open, have it handle this instead
-		if (menuOpen && openChild >= 0) {
-			const childMenuListEntry = flatEntries[openChild];
-			const childMenu = getChildReference(childMenuListEntry);
-
-			// Redirect the keyboard navigation to a submenu if one is open
-			const shouldCloseStack = childMenu?.keydown(e, true) || false;
-
-			// Highlight the menu item in the parent list that corresponds with the open submenu
-			if (highlighted && e.key !== "Escape") setHighlighted(childMenuListEntry);
-
-			// Handle the child closing the entire menu stack
-			if (shouldCloseStack) open = false;
-
-			// Keep the menu stack open
-			return shouldCloseStack;
-		}
-
-		// Navigate to the next and previous entries with arrow keys
-		if ((menuOpen || interactive) && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
-			let newIndex = e.key === "ArrowUp" ? flatEntries.length - 1 : 0;
-			if (highlighted) {
-				const index = flatEntries.map((entry) => entry.value).indexOf(highlighted.value);
-				newIndex = index + (e.key === "ArrowUp" ? -1 : 1);
-
-				// Interactive dropdowns should lock at the end whereas other dropdowns should loop
-				if (interactive) newIndex = Math.min(flatEntries.length - 1, Math.max(0, newIndex));
-				else newIndex = (newIndex + flatEntries.length) % flatEntries.length;
-			}
-
-			const newEntry = flatEntries[newIndex];
-			setHighlighted(newEntry);
-
-			e.preventDefault();
-
-			// Keep the menu stack open
-			return false;
-		}
-
-		// Close menu with escape key
-		if (menuOpen && e.key === "Escape") {
-			open = false;
-
-			// Reset active to before open
-			setHighlighted(activeEntry);
-
-			// Keep the menu stack open
-			return false;
-		}
-
-		// Click on a highlighted entry with the enter key
-		if (menuOpen && highlighted && e.key === "Enter") {
-			pickHighlighted();
-
-			// Stop the event from triggering a press on a new dialog
-			e.preventDefault();
-
-			// Enter should close the entire menu stack
-			return true;
-		}
-
-		// Open a submenu with the right arrow key, space, or enter
-		if (menuOpen && highlighted && (e.key === "ArrowRight" || e.key === " " || e.key === "Enter")) {
-			// Right arrow opens a submenu
-			const openable = openSubmenu(highlighted);
-
-			// Prevent the right arrow from moving the search text cursor if we are opening a submenu
-			if (openable) e.preventDefault();
-
-			// Keep the menu stack open
-			return false;
-		}
-
-		// Close a submenu with the left arrow key
-		if (menuOpen && e.key === "ArrowLeft") {
-			// Left arrow closes a submenu
-			if (submenu) {
-				open = false;
-
-				e.preventDefault();
-			}
-
-			// Keep the menu stack open
-			return false;
-		}
-
-		// Start a search with any other key
-		if (menuOpen && search === "") {
-			startSearch(e);
-
-			// Keep the menu stack open
-			return false;
-		}
-
-		// If nothing happened, keep the menu stack open
-		return false;
+		pointerTrail = [{ x: e.clientX, y: e.clientY }];
+		wheelScrolled = true;
 	}
 
-	// Picks the highlighted entry as clicking it would, returning whether there was one to pick
+	// The entries the wheel scrolls under the resting pointer take the hover, as moving the pointer onto them would
+	function onScrollWhileOpen(e: Event) {
+		const position = pointerTrail.at(-1);
+		if (!wheelScrolled || !position || !(e.target instanceof Node) || !self?.div()?.contains(e.target)) return;
+
+		hoverAtPointer(document.elementFromPoint(position.x, position.y) || undefined, position, position);
+	}
+
+	function hoverAtPointer(target: EventTarget | undefined, from: Point, to: Point) {
+		const element = target instanceof Element ? target : undefined;
+
+		// The pointer moving within the menu takes over from the arrow keys, whose highlight in a menu of actions would otherwise misstate what Enter picks
+		if (pointerOver(element, from, to) && !holdsValue) clearHighlights();
+	}
+
+	/// Updates this menu, then its open submenu, for the pointer having moved between two points onto the given element, returning whether it moved within either.
+	export function pointerOver(target: Element | undefined, from: Point, to: Point): boolean {
+		const content = contentElement();
+		const inThisMenu = content !== undefined && target?.closest("[data-floating-menu-content]") === content;
+		const row = inThisMenu ? target?.closest("[data-menu-list-row]") : undefined;
+		const entry = row && content?.contains(row) ? filteredEntries.flat().find((candidate) => candidate.value === row.getAttribute("data-menu-list-row")) : undefined;
+		const pickable = entry && !entry.disabled ? entry : undefined;
+
+		clearTimeout(aimTimeout);
+
+		if (!inThisMenu) {
+			hovered = undefined;
+
+			// A highlight following the active entry, like a list of suggestions has, goes back to it once the pointer leaves
+			if (highlightFollowsActiveEntry && !highlighted) highlighted = activeEntry;
+		} else if (pickable && openChildValue !== undefined && pickable.value !== openChildValue && headingIntoSubmenu(from, to)) {
+			// Crossing other entries on the way into the open submenu leaves it open, unless the pointer rests on one
+			pointerLed = true;
+			aimTimeout = setTimeout(() => hoverEntry(pickable), SUBMENU_AIM_DELAY_MS);
+		} else if (pickable) {
+			hoverEntry(pickable);
+		} else if (hovered) {
+			// Elsewhere in the menu, like on a separator, a disabled entry, or the padding, the hover stays on the entry the pointer came from
+			pointerLed = true;
+		}
+
+		const movedHere = inThisMenu && hovered !== undefined;
+		const movedInSubmenu = currentChild()?.pointerOver(target, from, to) || false;
+		return movedHere || movedInSubmenu;
+	}
+
+	function hoverEntry(entry: MenuListEntry) {
+		// Reassigning it redraws every row, so it's left alone while the pointer stays on the same one
+		if (hovered?.value !== entry.value) hovered = entry;
+		pointerLed = true;
+
+		// The submenu of the entry under the pointer opens without the keyboard moving into it, and any other closes
+		openChildValue = entry.children?.length ? entry.value : undefined;
+	}
+
+	// Whether the pointer moved toward the open submenu, within the triangle from where it was to the corners of the submenu's facing side
+	function headingIntoSubmenu(from: Point, to: Point): boolean {
+		const bounds = currentChild()?.contentBounds();
+		if (!bounds) return false;
+
+		let edge;
+		if (to.x < bounds.left) edge = bounds.left;
+		else if (to.x > bounds.right) edge = bounds.right;
+		else return false;
+		if (Math.abs(edge - to.x) >= Math.abs(edge - from.x)) return false;
+
+		const top = { x: edge, y: bounds.top - SUBMENU_AIM_TOLERANCE };
+		const bottom = { x: edge, y: bounds.bottom + SUBMENU_AIM_TOLERANCE };
+		const side = (a: Point, b: Point) => (b.x - a.x) * (to.y - a.y) - (b.y - a.y) * (to.x - a.x);
+		const sides = [side(from, top), side(top, bottom), side(bottom, from)];
+		return sides.every((value) => value >= 0) || sides.every((value) => value <= 0);
+	}
+
+	export function contentBounds(): DOMRect | undefined {
+		return contentElement()?.getBoundingClientRect();
+	}
+
+	export function clearHighlights() {
+		highlighted = undefined;
+		currentChild()?.clearHighlights();
+	}
+
+	function onEntryClick(e: MouseEvent, entry: MenuListEntry) {
+		// A click in a submenu also reaches the entry it's nested in, which isn't the one clicked
+		if (!(e.target instanceof Element) || e.target.closest("[data-menu-list-row]") !== e.currentTarget) return;
+		if (entry.disabled) return;
+
+		// An entry with a submenu opens it, as hovering already will have, rather than being picked
+		if (entry.children?.length) {
+			openChildValue = entry.value;
+			return;
+		}
+
+		pick(entry);
+	}
+
+	function pick(entry: MenuListEntry) {
+		// Nothing is left to commit as the menu closes
+		if (holdsValue) {
+			highlighted = entry;
+			valueWhenOpened = entry;
+		}
+
+		dispatch("activeEntry", entry);
+		dispatch("selectedEntryValuePath", [...parentsValuePath, entry.value]);
+
+		if (!submenu) open = false;
+	}
+
+	function onSubmenuPick(valuePath: string[]) {
+		dispatch("selectedEntryValuePath", valuePath);
+
+		if (!submenu) open = false;
+	}
+
+	// Keyboard input
+
+	/// Handles a key pressed while this top-level menu is open, in whichever of its submenus the keyboard is in.
+	export function keydown(e: KeyboardEvent) {
+		wheelScrolled = false;
+
+		const outcome = routeKey(e);
+		if (arrowKeysOpenNeighborMenus && outcome !== "Unhandled") menuBarKeyboardLeads.set(true);
+
+		if ((outcome === "NextMenu" || outcome === "PreviousMenu") && arrowKeysOpenNeighborMenus) {
+			e.preventDefault();
+			openNeighborMenu(outcome === "NextMenu" ? 1 : -1);
+		}
+	}
+
+	/// Handles a key in the open submenu if the keyboard or pointer has moved into it, or else in this menu.
+	export function routeKey(e: KeyboardEvent): KeyOutcome {
+		// The keys take over from an entry the pointer was about to hover
+		clearTimeout(aimTimeout);
+
+		const child = currentChild();
+		if (child?.hasPosition()) {
+			const outcome = child.routeKey(e);
+			if (outcome !== "CloseSubmenu") return outcome;
+
+			// Back in this menu, on the entry whose submenu closed
+			const entry = openChildEntry();
+			openChildValue = undefined;
+			highlightFromKeys(entry);
+			focusSearch();
+			return "Handled";
+		}
+
+		return handleKey(e);
+	}
+
+	/// Whether the arrow keys, the pointer, or a search have moved into this menu, so it takes the keys rather than the menu it's nested in.
+	export function hasPosition(): boolean {
+		return Boolean(highlighted || hovered || search);
+	}
+
+	/// Moves the keyboard into this menu at its first entry.
+	export function highlightFirstEntry() {
+		highlightFromKeys(selectableEntries()[0]);
+	}
+
+	/// Picks the highlighted entry, or the one under the pointer if it moved there since, as clicking it would, returning whether there was one.
 	export function pickHighlighted(): boolean {
-		if (!open || !highlighted) return false;
+		const entry = keyboardStart();
+		if (!open || !entry || entry.disabled) return false;
 
-		if (!highlighted.children?.length) onEntryClick(highlighted);
-		else openSubmenu(highlighted);
+		if (entry.children?.length) enterSubmenu(entry);
+		else pick(entry);
 		return true;
 	}
 
-	export function setHighlighted(newHighlight: MenuListEntry | undefined) {
+	// The entry the keys act on and move from: the one under the pointer if it moved there since the keys were last used, or else the highlight
+	function keyboardStart(): MenuListEntry | undefined {
+		if (pointerLed && hovered) return hovered;
+		return highlighted || hovered || openChildEntry();
+	}
+
+	function handleKey(e: KeyboardEvent): KeyOutcome {
+		const searchFocused = Boolean(search) && searchTextInput?.element() === document.activeElement;
+		const start = keyboardStart();
+		const startOpensSubmenu = Boolean(start && !start.disabled && start.children?.length);
+
+		// With a modifier held, keys don't navigate, though AltGr may still type a character
+		if ((e.ctrlKey || e.metaKey || e.altKey) && !e.getModifierState("AltGraph")) return typeIntoSearch(e, searchFocused);
+
+		if (e.key === "ArrowDown" || e.key === "ArrowUp") return moveHighlight(e, e.key === "ArrowDown" ? 1 : -1, true);
+		if (e.key === "Tab") return moveHighlight(e, e.shiftKey ? -1 : 1, true);
+		if (e.key === "PageDown" || e.key === "PageUp") return moveHighlight(e, (e.key === "PageDown" ? 1 : -1) * pageEntryCount(), false);
+		if ((e.key === "Home" || e.key === "End") && !searchFocused) return moveHighlight(e, e.key === "End" ? Infinity : -Infinity, false);
+
+		if (e.key === "ArrowRight") {
+			if (start && startOpensSubmenu) return enterSubmenu(start, e);
+			if (searchFocused) return "Unhandled";
+			return "NextMenu";
+		}
+
+		if (e.key === "ArrowLeft") {
+			if (searchFocused) return "Unhandled";
+			e.preventDefault();
+			return submenu ? "CloseSubmenu" : "PreviousMenu";
+		}
+
+		if (e.key === "Escape") {
+			e.preventDefault();
+			if (submenu) return "CloseSubmenu";
+
+			// A menu holding a value goes back to the one it opened with, and a floating menu it's in stays open
+			if (holdsValue) highlighted = valueWhenOpened;
+			const element = self?.div();
+			if (element) preventEscapeClosingParentFloatingMenu(element);
+
+			open = false;
+			return "Handled";
+		}
+
+		if (e.key === "Enter" || (e.key === " " && !searchFocused)) {
+			e.preventDefault();
+
+			if (start && startOpensSubmenu) return enterSubmenu(start, e);
+			if (start && !start.disabled) pick(start);
+			// With nothing highlighted, a menu holding a value closes with whichever value it has
+			else if (holdsValue) open = false;
+			return "Handled";
+		}
+
+		if (e.key === "Backspace" && search !== "" && !searchFocused) {
+			e.preventDefault();
+			search = search.slice(0, -1);
+			focusSearch();
+			return "Handled";
+		}
+
+		return typeIntoSearch(e, searchFocused);
+	}
+
+	// Moves the highlight by a number of entries, wrapping around between the ends unless the menu holds a value or it moves by more than one
+	function moveHighlight(e: KeyboardEvent, step: number, wrapping: boolean): KeyOutcome {
+		e.preventDefault();
+
+		const choices = selectableEntries();
+		if (choices.length === 0) return "Handled";
+
+		const current = keyboardStart();
+		const currentIndex = current ? choices.findIndex((entry) => entry.value === current.value) : -1;
+
+		let index;
+		if (!Number.isFinite(step)) index = step > 0 ? choices.length - 1 : 0;
+		else if (currentIndex === -1) index = step > 0 ? 0 : choices.length - 1;
+		else if (wrapping && !holdsValue) index = (currentIndex + step + choices.length) % choices.length;
+		else index = Math.min(Math.max(currentIndex + step, 0), choices.length - 1);
+
+		highlightFromKeys(choices[index]);
+		return "Handled";
+	}
+
+	function pageEntryCount(): number {
+		const scrolling = virtualScrollingEntryHeight ? scroller?.div?.() : contentElement();
+		return Math.max(1, Math.floor((scrolling?.clientHeight || 0) / ENTRY_HEIGHT) - 1);
+	}
+
+	function highlightFromKeys(entry: MenuListEntry | undefined) {
+		pointerLed = false;
+
+		// The arrow keys pass over entries without opening their submenus, so one left behind closes
+		if (openChildValue !== undefined && openChildValue !== entry?.value) openChildValue = undefined;
+
+		setHighlighted(entry);
+	}
+
+	function enterSubmenu(entry: MenuListEntry, e?: KeyboardEvent): KeyOutcome {
+		e?.preventDefault();
+
+		openChildValue = entry.value;
+		highlightFromKeys(entry);
+		searchTextInput?.element()?.blur();
+
+		// Once the submenu exists, the keyboard moves into it at its first entry
+		tick().then(() => currentChild()?.highlightFirstEntry());
+
+		return "Handled";
+	}
+
+	// Types a character into this menu's search, creating its search box if it has none yet
+	function typeIntoSearch(e: KeyboardEvent, searchFocused: boolean): KeyOutcome {
+		// Only single printable characters search, and a space only once a search has begun
+		if (e.key.length !== 1 || (e.key === " " && !search)) return "Unhandled";
+
+		// Nor a shortcut's key, though AltGr, which also reports Ctrl, types characters
+		if ((e.ctrlKey || e.metaKey) && !e.getModifierState("AltGraph")) {
+			// The browser's own action for it, like saving the page, stays held back, except a text field's editing shortcuts
+			if (!targetIsTextField(e.target || undefined)) e.preventDefault();
+			return "Unhandled";
+		}
+		if (e.altKey && !e.getModifierState("AltGraph")) return "Unhandled";
+
+		// Once focused, the search box takes the typing itself
+		if (searchFocused) return "Unhandled";
+
+		e.preventDefault();
+		pointerLed = false;
+		search += e.key;
+		focusSearch();
+
+		return "Handled";
+	}
+
+	// Focuses this menu's search box, if it has one, with the cursor at the end, so typing continues there
+	async function focusSearch() {
+		// Must wait until the search box exists, after the search begins
+		await tick();
+
+		const searchElement = searchTextInput?.element();
+		if (!searchTextInput || !searchElement) return;
+
+		searchTextInput.focus();
+		searchElement.setSelectionRange(search.length, search.length);
+	}
+
+	// Moves from this menu to the one beside it among those hovering moves between, like the menu bar's, which opens on its first entry
+	function openNeighborMenu(step: number) {
+		const spawner = self?.div()?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]");
+		const group = spawner?.parentElement?.parentElement;
+		if (!spawner || !group) return;
+
+		const neighbors = Array.from(group.querySelectorAll(":scope > * > [data-floating-menu-spawner]:not([data-block-hover-transfer])"));
+		const index = neighbors.indexOf(spawner);
+		const neighbor = neighbors[(index + step + neighbors.length) % neighbors.length];
+		if (index === -1 || neighbor === spawner || !(neighbor instanceof HTMLElement)) return;
+
+		open = false;
+		menuOpenedByArrowKeys.set(true);
+		neighbor.click();
+
+		// The neighbor clears the flag as it opens, so a flag still set means none opened
+		tick().then(() => {
+			menuBarKeyboardLeads.set(!get(menuOpenedByArrowKeys));
+			menuOpenedByArrowKeys.set(false);
+		});
+	}
+
+	function setHighlighted(newHighlight: MenuListEntry | undefined) {
 		highlighted = newHighlight;
 
 		// Scroll into view
@@ -464,7 +660,7 @@
 
 		// Without virtual scrolling, every row exists and the floating menu around them is what scrolls, so the row is brought into its view
 		if (!virtualScrollingEntryHeight) {
-			const rows = Array.from(container.children).filter((element) => element.classList.contains("row"));
+			const rows = Array.from(container.querySelectorAll(":scope > [data-menu-list-row]"));
 			rows[highlightedIndex - startIndex]?.scrollIntoView({ block: "nearest" });
 			return;
 		}
@@ -504,7 +700,7 @@
 	<LayoutCol
 		bind:this={scroller}
 		scrollableY={scrollableY && virtualScrollingEntryHeight !== 0}
-		on:scroll={onScroll}
+		on:scroll={onVirtualScroll}
 		styles={{ "min-width": virtualScrollingEntryHeight ? `${minWidth}px` : `inherit` }}
 	>
 		{#if virtualScrollingEntryHeight}
@@ -517,15 +713,21 @@
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
-					classes={{ open: openChildValue === entry.value, active: entry.value === highlighted?.value, disabled: Boolean(entry.disabled) }}
-					styles={{ height: virtualScrollingEntryHeight || "20px" }}
+					classes={{
+						open: openChildValue === entry.value,
+						// Hidden once the arrow keys take over, until the pointer moves again
+						hovered: pointerLed && entry.value === hovered?.value,
+						// The keyboard is in the open submenu, where its own highlight is the only one drawn
+						active: entry.value === highlighted?.value && openChildValue !== entry.value,
+						disabled: Boolean(entry.disabled),
+					}}
+					styles={{ height: virtualScrollingEntryHeight || `${ENTRY_HEIGHT}px` }}
 					tooltipLabel={entry.tooltipLabel}
 					tooltipDescription={entry.tooltipDescription}
 					tooltipShortcut={entry.tooltipShortcut}
 					tooltipCode={entry.tooltipCode}
-					on:click={() => !entry.disabled && onEntryClick(entry)}
-					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
-					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
+					on:click={(e) => onEntryClick(e, entry)}
+					data-menu-list-row={entry.value}
 				>
 					{#if entry.icon && drawIcon}
 						<IconLabel icon={entry.icon} iconSizeOverride={16} class="entry-icon" />
@@ -570,11 +772,12 @@
 						<div class="no-submenu-arrow"></div>
 					{/if}
 
-					{#if entry.children}
+					{#if entry.children?.length && openChildValue === entry.value}
 						<MenuList
-							on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
+							on:selectedEntryValuePath={({ detail }) => onSubmenuPick(detail)}
 							parentsValuePath={[...parentsValuePath, entry.value]}
-							open={openChildValue === entry.value}
+							open={true}
+							submenu={true}
 							direction="TopRight"
 							entries={entry.children}
 							entriesHash={entry.childrenHash || 0n}
@@ -582,7 +785,7 @@
 							{drawIcon}
 							{monospace}
 							{scrollableY}
-							bind:this={childReferences[sectionIndex][entryIndex + startIndex]}
+							bind:this={openChild}
 						/>
 					{/if}
 				</LayoutRow>
@@ -693,7 +896,7 @@
 					}
 				}
 
-				&:hover,
+				&.hovered,
 				&.open {
 					background: var(--color-4-dimgray);
 				}
@@ -709,10 +912,6 @@
 
 				&.disabled {
 					color: var(--color-8-uppergray);
-
-					&:hover {
-						background: none;
-					}
 
 					svg {
 						fill: var(--color-8-uppergray);

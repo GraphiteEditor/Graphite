@@ -1,75 +1,16 @@
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
-use graph_craft::application_io::PlatformApplicationIo;
-use graph_craft::application_io::resource::ResourceStorage;
 pub use graphene_std::uuid::*;
-use std::sync::{Arc, OnceLock};
 
 pub struct Editor {
 	pub dispatcher: Dispatcher,
 }
 
 impl Editor {
-	pub fn new(
-		environment: Environment,
-		uuid_random_seed: u64,
-		resource_storage: Arc<dyn ResourceStorage>,
-		document_store: Arc<dyn document_container::store::DocumentStore>,
-		mut application_io: PlatformApplicationIo,
-		wake: Wake,
-	) -> Self {
-		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
-		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
-
-		let mut dispatcher = Dispatcher::new(resource_storage, document_store);
-		dispatcher.message_handlers.future_message_handler.set_wake(wake);
-		application_io.inject_resource_proxy(dispatcher.message_handlers.resource_storage_message_handler.resources());
-		crate::node_graph_executor::replace_application_io(application_io);
-
-		Self { dispatcher }
-	}
-
-	#[cfg(test)]
-	pub(crate) fn new_local_executor() -> (Self, crate::node_graph_executor::NodeRuntime) {
-		let _ = ENVIRONMENT.set(*Editor::environment());
-		graphene_std::uuid::set_uuid_seed(0);
-
-		let (mut runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
-		let editor = Self {
-			dispatcher: Dispatcher::with_executor(executor),
-		};
-
-		let mut application_io = PlatformApplicationIo::default();
-		application_io.inject_resource_proxy(editor.dispatcher.message_handlers.resource_storage_message_handler.resources());
-		runtime.replace_application_io(application_io);
-
-		(editor, runtime)
-	}
-
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
 		self.dispatcher.handle_message(message, true);
 
 		std::mem::take(&mut self.dispatcher.responses)
-	}
-
-	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		self.dispatcher.poll_node_graph_evaluation(responses)
-	}
-}
-
-static ENVIRONMENT: OnceLock<Environment> = OnceLock::new();
-impl Editor {
-	#[cfg(not(test))]
-	pub fn environment() -> &'static Environment {
-		ENVIRONMENT.get().expect("Editor environment accessed before initialization")
-	}
-
-	#[cfg(test)]
-	pub fn environment() -> &'static Environment {
-		&Environment {
-			platform: Platform::Desktop,
-			host: Host::Linux,
-		}
 	}
 }
 
@@ -78,6 +19,11 @@ pub struct Environment {
 	pub platform: Platform,
 	pub host: Host,
 }
+#[cfg(test)]
+pub(crate) const DEFAULT_ENVIRONMENT: Environment = Environment {
+	platform: Platform::Desktop,
+	host: Host::Linux,
+};
 #[derive(Clone, Copy, Debug)]
 pub enum Platform {
 	Desktop,
@@ -104,6 +50,25 @@ impl Environment {
 	}
 	pub fn is_linux(&self) -> bool {
 		matches!(self.host, Host::Linux)
+	}
+}
+
+pub trait EnvironmentDisplay {
+	fn fmt(&self, f: &mut std::fmt::Formatter, environment: Environment) -> std::fmt::Result;
+
+	fn display(&self, environment: Environment) -> WithEnvironment<'_, Self> {
+		WithEnvironment { value: self, environment }
+	}
+}
+
+pub struct WithEnvironment<'a, T: ?Sized> {
+	value: &'a T,
+	environment: Environment,
+}
+
+impl<T: EnvironmentDisplay + ?Sized> std::fmt::Display for WithEnvironment<'_, T> {
+	fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+		self.value.fmt(f, self.environment)
 	}
 }
 

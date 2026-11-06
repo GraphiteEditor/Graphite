@@ -62,23 +62,15 @@
 
 <LayoutRow class="color-presets-input" classes={{ disabled }}>
 	{#if showNoneOption}
-		<button
-			class="preset-color none"
-			{disabled}
-			on:click={() => pickPreset("None")}
-			data-tooltip-label="Set to No Color"
-			data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-			tabindex="0"
+		<button class="preset-color none" {disabled} on:click={() => pickPreset("None")} data-tooltip-label="Set to No Color" data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 		></button>
 		<Separator style="Related" />
 	{/if}
-	<button class="preset-color black" {disabled} on:click={() => pickPreset("Black")} data-tooltip-label="Set to Black" data-tooltip-description={disabled ? "Disabled (read-only)." : ""} tabindex="0"
-	></button>
+	<button class="preset-color black" {disabled} on:click={() => pickPreset("Black")} data-tooltip-label="Set to Black" data-tooltip-description={disabled ? "Disabled (read-only)." : ""}></button>
 	<Separator style="Related" />
-	<button class="preset-color white" {disabled} on:click={() => pickPreset("White")} data-tooltip-label="Set to White" data-tooltip-description={disabled ? "Disabled (read-only)." : ""} tabindex="0"
-	></button>
+	<button class="preset-color white" {disabled} on:click={() => pickPreset("White")} data-tooltip-label="Set to White" data-tooltip-description={disabled ? "Disabled (read-only)." : ""}></button>
 	<Separator style="Related" />
-	<button class="preset-color pure" {disabled} tabindex="-1">
+	<button class="preset-color pure" {disabled}>
 		{#each PURE_COLORS_GRAYABLE as [preset, color, gray]}
 			<div
 				on:click={() => pickPreset(preset)}

@@ -10,7 +10,7 @@ impl DialogLayoutHolder for FailedToOpenDocumentDialog {
 	const TITLE: &'static str = "Failed to Open Document";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DialogClose.into()).widget_instance()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| DialogMessage::Close.into()).widget_instance()];
 		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }

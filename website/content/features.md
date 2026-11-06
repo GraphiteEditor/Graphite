@@ -218,7 +218,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
-			<span>Simplified main properties panel</span>
+			<span>Simplified main Inspector</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 71" src="https://static.graphite.art/icons/icon-atlas-roadmap__6.png" alt="" />
@@ -446,7 +446,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 
 Coming late 2026, Graphite will expand its animation toolset beyond parametrically-driven motion to include traditional keyframe animation. The Timeline panel pictured below will let animators drive parameters using keyframes and curves through a traditional dopesheet interface.
 
-Node parameters can be set to a constant value in the Properties panel, exposed to the graph for procedural animation, or exposed to a channel in the upcoming Timeline panel for hand-authored keyframing.
+Node parameters can be set to a constant value in the Inspector, exposed to the graph for procedural animation, or exposed to a channel in the upcoming Timeline panel for hand-authored keyframing.
 
 The panel will enable users to scrub through time with the playhead and choose between timing with discrete frames or continuous seconds. A dedicated curves editing mode (not pictured) will enable fine-tuning parameters with a labeled Y-axis, while the dopesheet allows individual channels to be expanded to view and edit the shape and smoothness of curves inline.
 

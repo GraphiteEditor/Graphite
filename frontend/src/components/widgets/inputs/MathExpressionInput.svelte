@@ -10,6 +10,7 @@
 	import type { MathExpressionAnalysis, MathExpressionEvaluation, MathExpressionStore } from "/src/stores/math-expression";
 	import { defaultDigit, parseDecimal } from "/src/utility-functions/decimal";
 	import type { Digit } from "/src/utility-functions/decimal";
+	import { tabBetweenTextFields } from "/src/utility-functions/input";
 	import { fromMathGlyphs, mathGlyph, operatorGlyph } from "/src/utility-functions/math-expression";
 	import { operatingSystem } from "/src/utility-functions/platform";
 	import type {
@@ -937,7 +938,7 @@
 		const asksForCompletions = (e.ctrlKey && e.key === " ") || (operatingSystem() === "Mac" && e.altKey && e.key === "Escape");
 		if (asksForCompletions) {
 			e.preventDefault();
-			// The editor's shortcuts hear Escape even from a text field
+			// A parent floating menu mustn't also close
 			e.stopPropagation();
 			suggest();
 		} else if (e.key === "Tab") {
@@ -945,6 +946,9 @@
 			if (stepThroughBrackets(e.shiftKey)) {
 				e.preventDefault();
 				signatureOpen = true;
+			} else {
+				// Done here, since open completions keep the key from reaching the editor's own handling of it
+				tabBetweenTextFields(e);
 			}
 		} else if (e.key === "Escape" && (constant || dragging)) {
 			// A parent floating menu mustn't also close, and during a drag, Escape is the number input's to abort it
@@ -1058,6 +1062,7 @@
 		role="textbox"
 		tabindex={disabled ? undefined : 0}
 		contenteditable={!disabled}
+		data-input-element
 		spellcheck="false"
 		autocapitalize="off"
 		bind:this={editor}

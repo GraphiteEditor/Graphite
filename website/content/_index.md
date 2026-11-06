@@ -303,7 +303,7 @@ Graphite is designed principally as a professional desktop application that is a
 
 <a href="https://github.com/GraphiteEditor/Graphite/issues/2535" target="_blank">Engineering the tech</a> for a native app distributed across three new platforms takes extra time. That's why supporting the web platform, which keeps up-to-date and reaches all devices, has been the initial target. For now, you can <a href="https://support.google.com/chrome/answer/9658361" target="_blank">install the app as a PWA</a> for a desktop-like experience.
 
-Graphite's code architecture is structured to deliver true native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly and WebGPU, new high-performance browser technologies.
+Graphite's code architecture is structured to deliver true native performance for your graphically intensive workloads on desktop platforms and very low overhead on the web thanks to WebAssembly, a new high-performance browser technology.
 
 </div>
 

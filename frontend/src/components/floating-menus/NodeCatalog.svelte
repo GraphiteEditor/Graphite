@@ -85,26 +85,8 @@
 			}
 		});
 
-		const START_CATEGORIES_ORDER = ["UNCATEGORIZED", "General", "Value", "Math", "Style"];
-		const END_CATEGORIES_ORDER = ["Debug"];
-		return Array.from(categories)
-			.sort((a, b) => a[0].localeCompare(b[0]))
-			.sort((a, b) => {
-				const aIndex = START_CATEGORIES_ORDER.findIndex((x) => a[0].startsWith(x));
-				const bIndex = START_CATEGORIES_ORDER.findIndex((x) => b[0].startsWith(x));
-				if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-				if (aIndex !== -1) return -1;
-				if (bIndex !== -1) return 1;
-				return 0;
-			})
-			.sort((a, b) => {
-				const aIndex = END_CATEGORIES_ORDER.findIndex((x) => a[0].startsWith(x));
-				const bIndex = END_CATEGORIES_ORDER.findIndex((x) => b[0].startsWith(x));
-				if (aIndex !== -1 && bIndex !== -1) return aIndex - bIndex;
-				if (aIndex !== -1) return 1;
-				if (bIndex !== -1) return -1;
-				return 0;
-			});
+		// The backend sends the node types already in catalog order, which the map keeps
+		return Array.from(categories);
 	}
 
 	onMount(() => {

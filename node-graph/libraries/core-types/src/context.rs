@@ -1,11 +1,21 @@
+use crate::runtime::{Generations, SourceId};
 use crate::transform::Footprint;
 use glam::DVec2;
-pub use no_std_types::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
+use std::collections::BTreeSet;
 use std::hash::{Hash, Hasher};
 use std::panic::Location;
 use std::sync::Arc;
+
+pub trait Ctx: Clone + Send {}
+
+impl<T: Ctx> Ctx for Option<T> {}
+impl<T: Ctx + Sync> Ctx for &T {}
+impl Ctx for () {}
+
+pub trait ArcCtx: Send + Sync {}
+impl<T: ArcCtx> Ctx for Arc<T> {}
 
 // ==============
 // EXTRACT TRAITS
@@ -45,6 +55,10 @@ pub trait ExtractVarArgs {
 	fn hash_varargs(&self, hasher: &mut dyn Hasher);
 }
 
+pub trait ExtractGenerations {
+	fn try_generations(&self) -> Option<&Generations>;
+}
+
 pub trait CloneVarArgs: ExtractVarArgs {
 	// TODO: Consider returning a slice or something like that
 
@@ -77,7 +91,8 @@ pub trait ExtractAll:
 	ExtractPointerPosition +
 	ExtractPosition +
 	ExtractIndex +
-	ExtractVarArgs {}
+	ExtractVarArgs +
+	ExtractGenerations {}
 impl<
 	T: ?Sized
 		// Extract traits
@@ -87,7 +102,8 @@ impl<
 		+ ExtractPointerPosition
 		+ ExtractPosition
 		+ ExtractIndex
-		+ ExtractVarArgs,
+		+ ExtractVarArgs
+		+ ExtractGenerations,
 > ExtractAll for T
 {
 }
@@ -124,6 +140,22 @@ impl<T: Ctx + InjectPointerPosition + ExtractPointerPosition> ModifyPointerPosit
 impl<T: Ctx + InjectPosition + ExtractPosition> ModifyPosition for T {}
 impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
 impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
+
+// ====================
+// CONTEXT MODIFICATION
+// ====================
+
+#[derive(Debug, Clone, PartialEq, Eq, Default, graphene_hash::CacheHash, dyn_any::DynAny)]
+pub struct ContextModification {
+	pub features: ContextFeatures,
+	pub sources: BTreeSet<SourceId>,
+}
+
+impl From<ContextFeatures> for ContextModification {
+	fn from(features: ContextFeatures) -> Self {
+		Self { features, sources: BTreeSet::new() }
+	}
+}
 
 // ================
 // CONTEXT FEATURES
@@ -186,18 +218,30 @@ impl ContextFeatures {
 	}
 }
 
-// ====================
-// CONTEXT DEPENDENCIES
-// ====================
+// =====================
+// NODE COMPILE METADATA
+// =====================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, graphene_hash::CacheHash, dyn_any::DynAny, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct ContextDependencies {
+pub struct NodeCompileMetadata {
 	pub extract: ContextFeatures,
 	pub inject: ContextFeatures,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub footprint_invariant: bool,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub forwards_input: bool,
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub constant_inputs: u64,
 }
 
-impl From<&[ContextFeature]> for ContextDependencies {
+impl NodeCompileMetadata {
+	pub fn requires_constant_input(&self, index: usize) -> bool {
+		index < u64::BITS as usize && self.constant_inputs & (1 << index) != 0
+	}
+}
+
+impl From<&[ContextFeature]> for NodeCompileMetadata {
 	fn from(features: &[ContextFeature]) -> Self {
 		let mut extract = ContextFeatures::empty();
 		let mut inject = ContextFeatures::empty();
@@ -223,7 +267,11 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				_ => ContextFeatures::empty(),
 			};
 		}
-		Self { extract, inject }
+		Self {
+			extract,
+			inject,
+			..Default::default()
+		}
 	}
 }
 
@@ -292,6 +340,12 @@ impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
 	}
 }
 
+impl<T: ExtractGenerations> ExtractGenerations for Option<T> {
+	fn try_generations(&self) -> Option<&Generations> {
+		self.as_ref().and_then(|x| x.try_generations())
+	}
+}
+
 // ================================
 // EXTRACT TRAIT IMPLS FOR `Arc<T>`
 // ================================
@@ -343,6 +397,12 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Arc<T> {
 impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
 		(**self).arc_clone()
+	}
+}
+
+impl<T: ExtractGenerations> ExtractGenerations for Arc<T> {
+	fn try_generations(&self) -> Option<&Generations> {
+		(**self).try_generations()
 	}
 }
 
@@ -425,6 +485,12 @@ impl ExtractVarArgs for ContextImpl<'_> {
 	}
 }
 
+impl ExtractGenerations for ContextImpl<'_> {
+	fn try_generations(&self) -> Option<&Generations> {
+		None
+	}
+}
+
 // ==========================================
 // EXTRACT TRAIT IMPLS FOR `OwnedContextImpl`
 // ==========================================
@@ -497,6 +563,12 @@ impl ExtractVarArgs for OwnedContextImpl {
 	}
 }
 
+impl ExtractGenerations for OwnedContextImpl {
+	fn try_generations(&self) -> Option<&Generations> {
+		self.generations.as_ref()
+	}
+}
+
 impl CloneVarArgs for Arc<OwnedContextImpl> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
 		Some(self.clone())
@@ -522,6 +594,7 @@ pub struct OwnedContextImpl {
 	// This could be converted into a single enum to save extra bytes
 	index: Option<Vec<usize>>,
 	varargs: Option<Arc<[DynBox]>>,
+	generations: Option<Generations>,
 }
 
 impl std::fmt::Debug for OwnedContextImpl {
@@ -534,6 +607,7 @@ impl std::fmt::Debug for OwnedContextImpl {
 			.field("pointer_position", &self.pointer_position)
 			.field("index", &self.index)
 			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
+			.field("generations", &self.generations)
 			.finish()
 	}
 }
@@ -553,6 +627,7 @@ impl graphene_hash::CacheHash for OwnedContextImpl {
 		self.pointer_position.cache_hash(state);
 		self.position.cache_hash(state);
 		self.index.cache_hash(state);
+		self.generations.cache_hash(state);
 		self.hash_varargs(state);
 	}
 }
@@ -588,7 +663,18 @@ impl OwnedContextImpl {
 			position,
 			index,
 			varargs: None,
+			generations: value.try_generations().cloned(),
 		}
+	}
+
+	#[track_caller]
+	pub fn from_modification<T: ExtractAll + CloneVarArgs>(value: T, modification: &ContextModification) -> Self {
+		let mut context = Self::from_flags(value, modification.features);
+		context.generations = context
+			.generations
+			.map(|generations| generations.iter().filter(|(source, _)| modification.sources.contains(source)).copied().collect::<Generations>())
+			.filter(|generations| !generations.is_empty());
+		context
 	}
 
 	pub const fn empty() -> Self {
@@ -601,6 +687,7 @@ impl OwnedContextImpl {
 			position: None,
 			index: None,
 			varargs: None,
+			generations: None,
 		}
 	}
 }
@@ -629,7 +716,54 @@ impl Hash for Box<dyn AnyHash + Send + Sync> {
 pub trait AnyHash: DynHash + Any {}
 impl<T: DynHash + Any> AnyHash for T {}
 
+/// Values replacing features of a context, for evaluating a node again with a modified context.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct ContextOverrides {
+	pub footprint: Option<Footprint>,
+	pub real_time: Option<f64>,
+	pub animation_time: Option<f64>,
+	pub pointer_position: Option<DVec2>,
+	pub index: Option<Vec<usize>>,
+}
+
+impl ContextOverrides {
+	pub fn is_empty(&self) -> bool {
+		*self == Self::default()
+	}
+}
+
 impl OwnedContextImpl {
+	/// This context with the overrides replacing its features.
+	pub fn with_overrides(&self, overrides: &ContextOverrides) -> Self {
+		Self {
+			parent: self.parent.clone(),
+			footprint: overrides.footprint.or(self.footprint),
+			real_time: overrides.real_time.or(self.real_time),
+			animation_time: overrides.animation_time.or(self.animation_time),
+			pointer_position: overrides.pointer_position.or(self.pointer_position),
+			position: self.position.clone(),
+			index: overrides.index.clone().or_else(|| self.index.clone()),
+			varargs: self.varargs.clone(),
+			generations: self.generations.clone(),
+		}
+	}
+
+	/// This context with its footprint and times replaced where it has them, so features nullified upstream stay absent.
+	pub fn with_replaced_footprint_and_time(&self, footprint: Option<Footprint>, time: Option<f64>) -> Self {
+		Self {
+			parent: self.parent.clone(),
+			footprint: self.footprint.map(|current| footprint.unwrap_or(current)),
+			real_time: self.real_time.map(|current| time.unwrap_or(current)),
+			animation_time: self.animation_time.map(|current| time.unwrap_or(current)),
+			pointer_position: self.pointer_position,
+			position: self.position.clone(),
+			index: self.index.clone(),
+			varargs: self.varargs.clone(),
+			generations: self.generations.clone(),
+		}
+	}
+
 	pub fn set_footprint(&mut self, footprint: Footprint) {
 		self.footprint = Some(footprint);
 	}
@@ -669,6 +803,17 @@ impl OwnedContextImpl {
 	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
 		assert!(self.varargs.is_none_or(|value| value.is_empty()));
 		self.varargs = Some(Arc::new([value]));
+		self
+	}
+	pub fn with_generations(mut self, generations: Generations) -> Self {
+		self.generations = (!generations.is_empty()).then_some(generations);
+		self
+	}
+	pub fn without_source(mut self, source: SourceId) -> Self {
+		self.generations = self
+			.generations
+			.map(|generations| generations.iter().filter(|(id, _)| *id != source).copied().collect::<Generations>())
+			.filter(|generations| !generations.is_empty());
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {

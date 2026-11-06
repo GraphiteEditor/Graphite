@@ -36,7 +36,7 @@ impl Archive for Zip {
 			if !entry.is_file() {
 				continue;
 			}
-			let name = entry.name().to_string();
+			let name = entry.name().map_err(zip_err)?.to_string();
 			validate_path(&name)?;
 
 			let size = checked_entry_size(&mut total_size, entry.size())?;

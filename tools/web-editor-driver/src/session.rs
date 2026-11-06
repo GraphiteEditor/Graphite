@@ -1,5 +1,5 @@
+use control_protocol::{Command, CommandResult, Filmstrip, Located, MouseButton, Rectangle, SessionStatus, Space};
 use glam::{DVec2, UVec2};
-use graphite_editor_control_protocol::{Command, CommandResult, Filmstrip, Located, MouseButton, Rectangle, SessionStatus, Space};
 use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;

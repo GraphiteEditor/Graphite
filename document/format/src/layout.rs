@@ -6,18 +6,21 @@
 
 use graphene_resource::ResourceHash;
 
-pub trait Layout {
+pub trait Layout: Send + Sync {
 	fn manifest_basename(&self) -> &str;
 	fn session_basename(&self) -> &str;
 	fn registry_basename(&self) -> &str;
 	fn history_basename(&self) -> &str;
 	fn hot_log_basename(&self) -> &str;
+	fn metadata_basename(&self) -> &str;
 	fn resources_dir(&self) -> &str;
 	fn resource_path(&self, hash: &ResourceHash) -> String;
 	/// The embedded legacy `.graphite` document, stored verbatim during the dual-write soak so the
 	/// new format can be validated against (and recovered from) the old one. Dropped once `.gdd`
 	/// becomes the sole source of truth.
 	fn legacy_path(&self) -> &str;
+	/// Where a rewrite of every payload is prepared, so a crash can't leave some rewritten and some not.
+	fn staging_dir(&self) -> &str;
 }
 
 #[derive(Copy, Clone, Debug, Default)]
@@ -39,6 +42,9 @@ impl Layout for GddV1Layout {
 	fn hot_log_basename(&self) -> &str {
 		"hot-log"
 	}
+	fn metadata_basename(&self) -> &str {
+		"metadata"
+	}
 	fn resources_dir(&self) -> &str {
 		"resources"
 	}
@@ -47,5 +53,8 @@ impl Layout for GddV1Layout {
 	}
 	fn legacy_path(&self) -> &str {
 		"legacy.graphite"
+	}
+	fn staging_dir(&self) -> &str {
+		"staging"
 	}
 }

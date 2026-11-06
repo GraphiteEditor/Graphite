@@ -14,7 +14,6 @@ pub enum NavigationMessage {
 	CanvasPanAbort { x_not_y_axis: bool },
 	CanvasPanByViewportFraction { delta: DVec2 },
 	CanvasPanMouseWheel { use_y_as_x: bool, artwork_behind_graph: bool },
-	CanvasTiltResetAndZoomTo100Percent,
 	CanvasTiltSet { angle_radians: f64 },
 	CanvasZoomDecrease { center_on_mouse: bool },
 	CanvasZoomIncrease { center_on_mouse: bool },

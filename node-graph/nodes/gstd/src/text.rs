@@ -8,7 +8,7 @@ pub use text_nodes::*;
 /// Produces a styled text string carrying all typographic attributes.
 ///
 /// Use the **Text to Vector** node to convert this into vector geometry if desired.
-#[node_macro::node(category("Text"), icon("NodeText"))]
+#[node_macro::node(category("Typography"), icon("NodeText"))]
 fn text(
 	_: impl Ctx,
 	_primary: (),
@@ -99,21 +99,21 @@ fn text(
 }
 
 /// Converts a styled text string into a vector compound path.
-#[node_macro::node(category("Text"), icon("NodeTextToVector"), name("Text to Vector"))]
+#[node_macro::node(category("Typography"), icon("NodeTextToVector"), name("Text to Vector"))]
 fn text_to_vector(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).
 	string: Item<String>,
-) -> Item<Vector> {
-	shape_text_item(&string, false).into_iter().next().unwrap_or_default()
+) -> Result<Item<Vector>, TextToVectorError> {
+	Ok(shape_text_item(&string, false)?.into_iter().next().unwrap_or_default())
 }
 
 /// Splits a styled text string into a separate vector item for each of its glyphs (letterforms).
-#[node_macro::node(category("Text"), icon("NodeTextToVectorGlyphs"), name("Text to Vector Glyphs"))]
+#[node_macro::node(category("Typography"), icon("NodeTextToVectorGlyphs"), name("Text to Vector Glyphs"))]
 fn text_to_vector_glyphs(
 	_: impl Ctx,
 	/// A styled text string produced by the **Text** node (or any other string source).
 	string: Item<String>,
-) -> List<Vector> {
+) -> Result<List<Vector>, TextToVectorError> {
 	shape_text_item(&string, true)
 }

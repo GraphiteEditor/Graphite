@@ -16,7 +16,7 @@ workspace = true
 
 [dependencies]
 # Local dependencies
-graphite-editor-control-protocol = { workspace = true }
+control-protocol = { workspace = true }
 
 # Workspace dependencies
 serde = { workspace = true }
@@ -28,7 +28,7 @@ clap = { workspace = true, features = ["derive"] }
 # Other dependencies
 image = { version = "0.25", default-features = false, features = ["png"] }
 interprocess = "2.4.2"
-getrandom = "0.3"
+getrandom = "0.4"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_Threading"] }

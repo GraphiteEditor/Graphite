@@ -1,6 +1,6 @@
 use base64::Engine;
+use control_protocol::{MouseButton, Rectangle};
 use glam::{DVec2, UVec2};
-use graphite_editor_control_protocol::{MouseButton, Rectangle};
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

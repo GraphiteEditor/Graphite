@@ -1,4 +1,31 @@
 use graphite_desktop_wrapper::messages::Preferences;
+use wgpu::PresentMode;
+
+use crate::ui::Acceleration;
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct DesktopPreferences {
+	pub(crate) acceleration: Acceleration,
+	pub(crate) present_mode: Option<PresentMode>,
+	pub(crate) ui_scale: f64,
+}
+
+impl From<&Preferences> for DesktopPreferences {
+	fn from(preferences: &Preferences) -> Self {
+		#[cfg(not(target_os = "macos"))]
+		let present_mode = None;
+		#[cfg(target_os = "macos")]
+		let present_mode = if !preferences.vsync { Some(PresentMode::Immediate) } else { None };
+
+		let acceleration = if preferences.disable_ui_acceleration { Acceleration::Disabled } else { Acceleration::Auto };
+
+		Self {
+			acceleration,
+			present_mode,
+			ui_scale: preferences.ui_scale,
+		}
+	}
+}
 
 pub(crate) fn write(preferences: Preferences) {
 	let Ok(preferences) = ron::ser::to_string_pretty(&preferences, Default::default()) else {

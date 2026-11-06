@@ -27,3 +27,4 @@ glam = { workspace = true }
 serde = { workspace = true }
 node-macro = { workspace = true }
 rand = { workspace = true }
+thiserror = { workspace = true }

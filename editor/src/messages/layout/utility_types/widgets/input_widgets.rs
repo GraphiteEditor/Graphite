@@ -85,8 +85,6 @@ pub struct DropdownInput {
 	// Behavior
 	#[serde(rename = "virtualScrolling")]
 	pub virtual_scrolling: bool,
-	#[derivative(Default(value = "true"))]
-	pub interactive: bool,
 	// Set along with the `on_file_drop` callback
 	#[serde(rename = "takesFileDrop")]
 	#[widget_builder(skip)]
@@ -333,7 +331,7 @@ pub struct NodeCatalog {
 
 	// Behavior
 	#[serde(rename = "initialSearchTerm")]
-	pub intial_search: String,
+	pub initial_search: String,
 
 	// Callbacks
 	#[serde(skip)]
@@ -504,9 +502,9 @@ pub struct MathExpressionInput {
 	pub tooltips: Vec<MathExpressionTooltip>,
 	/// The stretches of the value its parse errors point at, which the frontend underlines.
 	pub errors: Vec<MathExpressionRange>,
-	/// Whether a lone operator or function name like `+` or `max` is an expression, applied across a list as by the Math node.
+	/// Whether the value is a lone operator or function name like `+` or `max`, applied across a list, rather than an expression.
 	#[serde(skip)]
-	pub accepts_reducers: bool,
+	pub operator_only: bool,
 	pub disabled: bool,
 
 	// Tooltips

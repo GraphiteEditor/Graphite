@@ -1,18 +1,23 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_request_handler_t, cef_base_ref_counted_t};
-use cef::{AuthCallback, Browser, CefString, Frame, ImplRequest, ImplRequestHandler, Request, ResourceRequestHandler, WrapRequestHandler};
+use cef::{AuthCallback, Browser, CefString, Frame, ImplRequest, ImplRequestHandler, Request, ResourceRequestHandler, TerminationStatus, WrapRequestHandler};
 use std::ffi::c_int;
 
 use super::resource_request_handler::ResourceRequestHandlerImpl;
 use crate::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
+use crate::delegate::BrowserDelegate;
 
 pub(crate) struct RequestHandlerImpl {
 	object: *mut RcImpl<_cef_request_handler_t, Self>,
+	delegate: BrowserDelegate,
 }
 
 impl RequestHandlerImpl {
-	pub(crate) fn new() -> Self {
-		Self { object: std::ptr::null_mut() }
+	pub(crate) fn new(delegate: BrowserDelegate) -> Self {
+		Self {
+			object: std::ptr::null_mut(),
+			delegate,
+		}
 	}
 }
 
@@ -55,6 +60,11 @@ impl ImplRequestHandler for RequestHandlerImpl {
 		0
 	}
 
+	fn on_render_process_terminated(&self, _browser: Option<&mut Browser>, status: TerminationStatus, error_code: c_int, _error_string: Option<&CefString>) {
+		tracing::error!("CEF render process terminated: {status:?} ({error_code})");
+		self.delegate.render_process_terminated();
+	}
+
 	fn get_raw(&self) -> *mut _cef_request_handler_t {
 		self.object.cast()
 	}
@@ -66,7 +76,10 @@ impl Clone for RequestHandlerImpl {
 			let rc_impl = &mut *self.object;
 			rc_impl.interface.add_ref();
 		}
-		Self { object: self.object }
+		Self {
+			object: self.object,
+			delegate: self.delegate.clone(),
+		}
 	}
 }
 impl Rc for RequestHandlerImpl {

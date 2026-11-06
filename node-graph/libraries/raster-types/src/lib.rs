@@ -2,10 +2,10 @@ pub mod image;
 pub mod raster_types;
 
 // Re-exports for convenience
-pub use image::Image;
+pub use image::{Image, ImageError};
 pub use raster_types::*;
 
-// Re-export color types from no-std-types
+// Re-export color types from core-types
 pub use core_types::color::*;
 
 /// as to not yet rename all references

@@ -57,9 +57,6 @@ impl LoadResource for OpfsResourceStorage {
 				let resource = resource.clone();
 				return Box::pin(async move { Some(resource) });
 			}
-			if !guard.on_disk.contains(&hash) {
-				return Box::pin(async move { None });
-			}
 		}
 
 		let (sender, receiver) = oneshot();
@@ -218,15 +215,13 @@ async fn delete_file(directory: &FileSystemDirectoryHandle, hash: &ResourceHash)
 }
 
 async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<Resource> {
-	let directory = {
+	// Another tab may have written a file this tab's listing predates, so one it doesn't know of is still looked for
+	let (directory, known) = {
 		let guard = inner.lock().unwrap();
 		if let Some(resource) = guard.cache.get(&hash) {
 			return Some(resource.clone());
 		}
-		if !guard.on_disk.contains(&hash) {
-			return None;
-		}
-		guard.directory.clone()
+		(guard.directory.clone(), guard.on_disk.contains(&hash))
 	};
 
 	let name = file_name(&hash);
@@ -238,7 +233,10 @@ async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<
 				return None;
 			}
 		},
-		Err(error) if is_not_found(&error) => return None,
+		Err(error) if is_not_found(&error) => {
+			inner.lock().unwrap().on_disk.remove(&hash);
+			return None;
+		}
 		Err(error) => {
 			log::error!("OPFS getFileHandle for {hash} failed: {error:?}");
 			return None;
@@ -279,9 +277,10 @@ async fn read_from_opfs(inner: Arc<Mutex<Inner>>, hash: ResourceHash) -> Option<
 	if let Some(resource) = guard.cache.get(&hash) {
 		return Some(resource.clone());
 	}
-	if !guard.on_disk.contains(&hash) {
+	if known && !guard.on_disk.contains(&hash) {
 		return None;
 	}
+	guard.on_disk.insert(hash);
 
 	guard.cache.insert(hash, resource.clone());
 	Some(resource)

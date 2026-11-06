@@ -42,18 +42,6 @@ impl<'a> DesktopWrapperMessageDispatcher<'a> {
 		self.responses.push(response);
 	}
 
-	pub(super) fn poll_node_graph_evaluation(&mut self) {
-		let mut responses = VecDeque::new();
-		if let Err(e) = self.editor.poll_node_graph_evaluation(&mut responses)
-			&& e != "No active document"
-		{
-			tracing::error!("Error polling node graph: {}", e);
-		}
-		while let Some(message) = responses.pop_front() {
-			self.queue_editor_message(message);
-		}
-	}
-
 	fn process_queue(&mut self) {
 		let mut frontend_messages = Vec::new();
 
