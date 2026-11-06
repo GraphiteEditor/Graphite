@@ -24,6 +24,7 @@ use document_graph_storage::{HistoryMetadata, MetadataFact, PeerId, Registry, Se
 use graphene_resource::LoadResource;
 use graphene_resource::{ResourceHash, ResourceStorage};
 
+mod blob_store;
 pub mod codec;
 pub mod error;
 pub mod export;
@@ -46,6 +47,8 @@ pub use io::ReadError;
 pub use layout::{GddV1Layout, Layout};
 pub use manifest::{Manifest, PayloadCodecs};
 pub use resource::ResourceProxy;
+
+use blob_store::BlobStore;
 
 /// The default [`Layout`], so callers write `GddV1` for the common `Gdd<GddV1Layout>` handle.
 pub type GddV1 = Gdd<GddV1Layout>;
@@ -104,6 +107,8 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) migrated: bool,
 	/// Where resource bytes live. `None` means the working copy's own content-addressed store.
 	pub(crate) byte_store: Option<Arc<dyn ResourceStorage>>,
+	/// Decoded bytes of every blob the document names.
+	pub(crate) blobs: BlobStore,
 	#[cfg(feature = "network")]
 	pub(crate) network: Option<peer_transport::Replica>,
 	#[cfg(feature = "network")]
@@ -148,6 +153,7 @@ impl<L: Layout + Clone> Clone for Gdd<L> {
 			network_view_settings: self.network_view_settings.clone(),
 			wall_clock_ms: self.wall_clock_ms,
 			byte_store: self.byte_store.clone(),
+			blobs: self.blobs.clone(),
 			migrated: self.migrated,
 			shared: self.shared,
 			interactions_seen: self.interactions_seen.clone(),
@@ -171,6 +177,7 @@ impl<L: Layout> Gdd<L> {
 			view_settings: Default::default(),
 			network_view_settings: Default::default(),
 			byte_store: None,
+			blobs: BlobStore::default(),
 			migrated: false,
 			#[cfg(feature = "network")]
 			network: None,
@@ -273,7 +280,7 @@ impl<L: Layout> Gdd<L> {
 		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the stored records"))]
 		let mut records = load::StoredRecords::read(&working, &layout, codecs).await?;
 		#[cfg(feature = "migrations")]
-		let format_outcome = migrate::migrate_format(&mut records, codecs, manifest.format_version)?;
+		let (format_outcome, migrated_blobs) = migrate::migrate_format(&mut records, codecs, manifest.format_version)?.unzip();
 		#[cfg_attr(not(feature = "migrations"), expect(unused_mut, reason = "only format migrations change the decoded payloads"))]
 		let mut payloads = records.decode(codecs)?;
 		#[cfg(feature = "migrations")]
@@ -347,6 +354,13 @@ impl<L: Layout> Gdd<L> {
 			shared: session_state.shared,
 			..Self::assemble(session, working, layout, manifest, metadata)
 		};
+
+		#[cfg(feature = "migrations")]
+		if let Some(blobs) = migrated_blobs {
+			gdd.keep_blobs_durably(blobs).await?;
+		}
+		// Before node migrations, which read the values blobs hold
+		gdd.load_blobs().await;
 
 		#[cfg(feature = "migrations")]
 		{

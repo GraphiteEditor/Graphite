@@ -4225,6 +4225,7 @@ dependencies = [
  "blake3",
  "ctor",
  "document-graph-storage",
+ "graphene-resource",
  "migration-macros",
  "postcard",
  "serde",

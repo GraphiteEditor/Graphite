@@ -6,7 +6,8 @@
 use document_container::{AnyContainer, AsyncContainer};
 #[cfg(feature = "conversion")]
 use document_graph_storage::NodeMetadataSource;
-use document_graph_storage::{HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, Sorted, Subject, TimeStamp, UserId, Value, WallStamp};
+use document_graph_storage::blob::{BlobBytes, NewBlobs};
+use document_graph_storage::{BlobHash, HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, Sorted, Subject, TimeStamp, UserId, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use graphene_resource::ResourceStorage;
 
@@ -76,7 +77,7 @@ impl<L: Layout> Gdd<L> {
 		}
 		let closing = self.session.set_user(user, peer)?;
 		self.own_last_staged_ms = None;
-		self.persist_staged(&closing)?;
+		self.persist_staged(&closing, Vec::new())?;
 		self.persist_session_state()
 	}
 
@@ -106,16 +107,24 @@ impl<L: Layout> Gdd<L> {
 		resources: &graphene_resource::ResourceRegistry,
 		byte_store: &dyn ResourceStorage,
 	) -> Result<document_graph_storage::Declarations, Error> {
-		let (hot_ops, conversion) = self.session.stage_from_runtime(network, metadata, resources)?;
-		self.persist_staged(&hot_ops)?;
+		let conversion = document_graph_storage::Registry::convert_from_runtime(network, metadata, resources, self.session.peer()).map_err(document_graph_storage::CommitError::from)?;
+		let document_graph_storage::from_runtime::RuntimeConversion {
+			registry,
+			blob_bytes,
+			declaration_bytes,
+			declarations,
+			..
+		} = conversion;
+		let ops = document_graph_storage::delta::compute_deltas(self.registry(), &registry);
+		self.stage_with_blobs(ops, blob_bytes)?;
 
 		// Persist proto-node declaration content to the byte store (the global cache in the editor,
 		// the working-copy container for standalone export). Content-addressed, so re-storing
 		// identical bytes on every commit is an idempotent no-op.
-		for bytes in conversion.declaration_bytes.values() {
+		for bytes in declaration_bytes.values() {
 			byte_store.store(bytes);
 		}
-		Ok(conversion.declarations)
+		Ok(declarations)
 	}
 
 	/// Stage ops the caller built from what the editor recorded, rather than deriving them by converting
@@ -137,15 +146,26 @@ impl<L: Layout> Gdd<L> {
 		Ok(hot_ops)
 	}
 
-	/// Stage raw registry ops as hot ops, without the runtime diff.
+	/// Stage raw registry ops as hot ops, without the runtime diff. Large input values they write become blobs.
 	pub fn stage_ops(&mut self, ops: impl IntoIterator<Item = RegistryDelta>) -> Result<Vec<HotOp>, Error> {
-		let hot_ops = self.session.stage_computed_ops(ops.into_iter().collect())?;
-		self.persist_staged(&hot_ops)?;
+		self.stage_with_blobs(ops.into_iter().collect(), BlobBytes::new())
+	}
+
+	/// Stage `ops` with large values moved into blobs, writing blob records ahead of the hot frames. `blobs` holds the bytes
+	/// of blobs the ops already name.
+	fn stage_with_blobs(&mut self, mut ops: Vec<RegistryDelta>, mut blobs: BlobBytes) -> Result<Vec<HotOp>, Error> {
+		ops.iter_mut().for_each(|op| op.move_values_into_blobs(&mut blobs));
+		let bases = self.registry().blob_bases(&ops);
+
+		let hot_ops = self.session.stage_computed_ops(ops)?;
+		let records = self.keep_blobs(NewBlobs { bytes: blobs, bases })?;
+		self.persist_staged(&hot_ops, records)?;
 		Ok(hot_ops)
 	}
 
-	/// Append the frames of freshly staged hot ops, then broadcast them.
-	fn persist_staged(&mut self, hot_ops: &[HotOp]) -> Result<(), Error> {
+	/// Append the frames of freshly staged hot ops, then broadcast them with the records of the blobs they introduced.
+	#[cfg_attr(not(feature = "network"), expect(unused_variables, reason = "only peers receive the blob records"))]
+	fn persist_staged(&mut self, hot_ops: &[HotOp], blobs: Vec<(BlobHash, Vec<u8>)>) -> Result<(), Error> {
 		if hot_ops.iter().any(|hot_op| !matches!(hot_op.op, RegistryDelta::Meta)) {
 			self.own_staged_since_tick = true;
 		}
@@ -154,7 +174,8 @@ impl<L: Layout> Gdd<L> {
 		}
 		#[cfg(feature = "network")]
 		if let Some(replica) = &mut self.network {
-			replica.broadcast_hot_ops(hot_ops)?;
+			let blobs = blobs.into_iter().map(|(hash, record)| peer_transport::BlobRecord { hash, record }).collect();
+			replica.broadcast_hot_ops(hot_ops, blobs)?;
 		}
 		Ok(())
 	}
@@ -201,7 +222,7 @@ impl<L: Layout> Gdd<L> {
 		if !self.retires_locally() {
 			#[cfg(feature = "network")]
 			if let Some(replica) = &mut self.network {
-				replica.broadcast_hot_ops(hot_ops)?;
+				replica.broadcast_hot_ops(hot_ops, Vec::new())?;
 			}
 			return Ok(Vec::new());
 		}
@@ -396,7 +417,7 @@ impl<L: Layout> Gdd<L> {
 	/// Close this peer's open interaction, if any, with a marker staged like any other hot op.
 	pub fn end_interaction(&mut self) -> Result<(), Error> {
 		let staged = self.session.end_interaction()?;
-		self.persist_staged(&staged)?;
+		self.persist_staged(&staged, Vec::new())?;
 		Ok(())
 	}
 

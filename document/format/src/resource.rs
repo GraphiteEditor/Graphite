@@ -7,6 +7,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use document_container::{AnyContainer, AsyncContainer, ByteHolder, ContainerError};
+use document_graph_storage::BlobHash;
+use document_graph_storage::blob::{BlobBytes, NewBlobs};
 use graphene_resource::ResourceFuture;
 use graphene_resource::{LoadResource, Resource, ResourceHash, ResourceStorage};
 
@@ -123,6 +125,44 @@ impl<L: Layout> Gdd<L> {
 	#[cfg(feature = "network")]
 	pub(crate) fn unstored_resources(&self) -> Vec<ResourceHash> {
 		self.session.all_referenced_resource_hashes().into_iter().filter(|hash| !self.holds_resource(hash)).collect()
+	}
+
+	/// The decoded bytes of every blob the document names, for `to_runtime`.
+	pub fn blobs(&self) -> &BlobBytes {
+		&self.blobs.bytes
+	}
+
+	/// Hold staged blobs and queue their records ahead of the hot frames naming them, each a delta against its base where it has one.
+	/// Returns the records, for peers to receive with the ops.
+	pub(crate) fn keep_blobs(&mut self, blobs: NewBlobs) -> Result<Vec<(BlobHash, Vec<u8>)>, ContainerError> {
+		let records = self.blobs.insert_all(blobs);
+
+		for (index, (hash, record)) in records.iter().enumerate() {
+			if let Err(error) = self.working.write_non_blocking(&self.layout.blob_path(hash), record) {
+				// Unwritten blobs leave the store, so staging them again writes them
+				records[index..].iter().for_each(|(hash, _)| self.blobs.forget(hash));
+				return Err(error);
+			}
+		}
+		Ok(records)
+	}
+
+	/// [`keep_blobs`](Self::keep_blobs), returning once the records are written, for a migration replacing the records that held the values inline.
+	#[cfg(feature = "migrations")]
+	pub(crate) async fn keep_blobs_durably(&mut self, blobs: NewBlobs) -> Result<(), ContainerError> {
+		for (hash, record) in self.blobs.insert_all(blobs) {
+			self.working.write(&self.layout.blob_path(&hash), &record).await?;
+		}
+		Ok(())
+	}
+
+	/// Decode the record of every blob the document names, so `to_runtime` can resolve any state the cursor reaches.
+	pub(crate) async fn load_blobs(&mut self) {
+		for hash in self.session.all_blob_hashes() {
+			if let Err(error) = self.blobs.load(hash, &self.working, &self.layout).await {
+				log::error!("{error}");
+			}
+		}
 	}
 }
 

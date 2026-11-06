@@ -1,4 +1,4 @@
-use document_graph_storage::{Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredMarks, Rev, UserId};
+use document_graph_storage::{BlobHash, Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, ResourceHash, RetiredMarks, Rev, UserId};
 use serde::{Deserialize, Serialize};
 
 /// The host is the single peer that retires hot ops.
@@ -82,6 +82,9 @@ pub struct SyncPayload {
 	pub document_id: Option<u64>,
 	#[serde(default)]
 	pub metadata: HistoryMetadata,
+	/// Every blob the synced state names, each after its base.
+	#[serde(default)]
+	pub blobs: Vec<BlobRecord>,
 }
 
 /// Causal broadcast envelope. `seq` numbers the sender's broadcasts from 1 within `epoch`. `seen` is the sender's
@@ -96,7 +99,11 @@ pub struct Broadcast {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum BroadcastBody {
-	HotOps(Vec<HotOp>),
+	/// Carries the records of the blobs the ops name, so a peer can resolve them on arrival.
+	HotOps {
+		ops: Vec<HotOp>,
+		blobs: Vec<BlobRecord>,
+	},
 	/// `deltas` are in causal order. `retires` names the hot ops they replace, empty for a plain history transfer.
 	Deltas {
 		deltas: Vec<Delta>,
@@ -108,6 +115,14 @@ pub enum BroadcastBody {
 	/// still hears of it.
 	RetiredMarks(RetiredMarks),
 	HeadMove(HeadMove),
+}
+
+/// A blob's stored record: its value in full, or a delta against a base the receiver usually holds already. Opaque to the transport.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct BlobRecord {
+	pub hash: BlobHash,
+	#[serde(with = "serde_bytes")]
+	pub record: Vec<u8>,
 }
 
 /// Largest encoded packet a peer sends or accepts. Generous, since a `Resource` carries a whole embedded file.

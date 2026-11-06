@@ -5,7 +5,7 @@ use crate::examples::{ExtractXyToSplit, OpacityToggles, ROTATION, Tagged, Transf
 use document_graph_storage::{Delta, Implementation, Network, Node, NodeId, NodeInput, PeerId, ROOT_NETWORK, RegistryDelta, Session, UserId};
 use migration_core::{AnchorContext, Declaration, DeclarationResolver, Edits, MigrationError, NodeMigration, Region, decl, literal, registered_migrations};
 use migration_runner::testing::replay;
-use migration_runner::{DeclarationTable, RunnerError, migrate_history, order_migrations};
+use migration_runner::{DeclarationTable, MigrationBlobs, RunnerError, migrate_history, order_migrations};
 
 #[test]
 fn every_migration_registers_once() {
@@ -14,6 +14,7 @@ fn every_migration_registers_once() {
 
 	let mut expected = vec![
 		decl!("blending_nodes::opacity"@1),
+		decl!("blob_nodes::text"@1),
 		decl!("compiler::anchor"@1),
 		decl!("compiler::graph_reader"@1),
 		decl!("choice::toggle"@1),
@@ -207,7 +208,15 @@ fn migrate_history_chains_every_pending_migration() {
 	});
 
 	let history: Vec<Delta> = session.history().cloned().collect();
-	let migrated = migrate_history(&registered_migrations(), history.clone(), &table, Some(&compiler::AnswerHost::default()), None).unwrap();
+	let migrated = migrate_history(
+		&registered_migrations(),
+		history.clone(),
+		&table,
+		Some(&compiler::AnswerHost::default()),
+		None,
+		&mut MigrationBlobs::default(),
+	)
+	.unwrap();
 	let registry = replay(&migrated.deltas);
 
 	let declaration_of = |id: NodeId| match registry.node_instances[&id].implementation() {

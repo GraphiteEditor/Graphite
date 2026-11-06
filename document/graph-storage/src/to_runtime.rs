@@ -9,8 +9,9 @@ use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::attr::*;
+use crate::blob::{BlobBytes, decode_blob};
 use crate::metadata_source::{InputMetadataEntry, NetworkMetadataEntry, NodeMetadataEntry};
-use crate::{Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
+use crate::{BlobHash, Implementation, NetworkId, Node, NodeId, NodeInput, Position, ProtoNode, ROOT_NETWORK, Registry, ResourceId, Value, from_value};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConversionError {
@@ -22,6 +23,8 @@ pub enum ConversionError {
 	DeclarationNotFound(ResourceId),
 	#[error("Deserialization error: {0}")]
 	DeserializationError(String),
+	#[error("Blob {0} not found in provided blobs")]
+	BlobNotFound(BlobHash),
 	#[error("Network {network} has two nodes mapping to runtime ID {runtime_id}")]
 	DuplicateRuntimeNodeId { network: NetworkId, runtime_id: u64 },
 	#[error("Network {network} references node {referenced}, which lives in a different network")]
@@ -40,8 +43,8 @@ pub type Declarations = std::collections::HashMap<ResourceId, ProtoNode>;
 impl Registry {
 	/// Returns the network plus one metadata entry per node, since every node carries an identity to
 	/// restore even when it has no `ui::*` attribute.
-	pub fn to_runtime_with_metadata(&self, declarations: &Declarations) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>), ConversionError> {
-		let (network, node_entries, _) = self.to_runtime_with_full_metadata(declarations)?;
+	pub fn to_runtime_with_metadata(&self, declarations: &Declarations, blobs: &BlobBytes) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>), ConversionError> {
+		let (network, node_entries, _) = self.to_runtime_with_full_metadata(declarations, blobs)?;
 		Ok((network, node_entries))
 	}
 
@@ -50,11 +53,11 @@ impl Registry {
 	///
 	/// Every network the root reaches becomes an entry in the root's definitions table under its storage ID.
 	/// The nodes that implement it name it by that ID.
-	pub fn to_runtime_with_full_metadata(&self, declarations: &Declarations) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>, Vec<NetworkMetadataEntry>), ConversionError> {
+	pub fn to_runtime_with_full_metadata(&self, declarations: &Declarations, blobs: &BlobBytes) -> Result<(NodeNetwork, Vec<NodeMetadataEntry>, Vec<NetworkMetadataEntry>), ConversionError> {
 		let mut node_metadata = Vec::new();
 		let mut network_metadata = Vec::new();
 
-		let context = ConversionContext::new(self, declarations);
+		let context = ConversionContext::new(self, declarations, blobs);
 
 		// Reject cycles first because the runtime cannot inline a definition that contains itself
 		detect_network_cycle(&context, ROOT_NETWORK)?;
@@ -96,11 +99,12 @@ impl Registry {
 struct ConversionContext<'a> {
 	registry: &'a Registry,
 	declarations: &'a Declarations,
+	blobs: &'a BlobBytes,
 	nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &'a Node)>>,
 }
 
 impl<'a> ConversionContext<'a> {
-	fn new(registry: &'a Registry, declarations: &'a Declarations) -> Self {
+	fn new(registry: &'a Registry, declarations: &'a Declarations, blobs: &'a BlobBytes) -> Self {
 		let mut nodes_by_network: FxHashMap<NetworkId, Vec<(NodeId, &Node)>> = FxHashMap::default();
 		for (&global_id, node) in &registry.node_instances {
 			nodes_by_network.entry(node.network).or_default().push((global_id, node));
@@ -108,8 +112,15 @@ impl<'a> ConversionContext<'a> {
 		Self {
 			registry,
 			declarations,
+			blobs,
 			nodes_by_network,
 		}
+	}
+
+	/// The value blob `hash` holds.
+	fn resolve_blob(&self, hash: BlobHash) -> Result<Value, ConversionError> {
+		let bytes = self.blobs.get(&hash).ok_or(ConversionError::BlobNotFound(hash))?;
+		decode_blob(bytes).map_err(|error| ConversionError::DeserializationError(format!("Blob {hash}: {error}")))
 	}
 
 	/// The networks other than the root that the root reaches through node implementations.
@@ -175,8 +186,8 @@ pub struct RuntimeProjection<'a> {
 }
 
 impl Registry {
-	pub fn runtime_projection<'a>(&'a self, declarations: &'a Declarations) -> RuntimeProjection<'a> {
-		let context = ConversionContext::new(self, declarations);
+	pub fn runtime_projection<'a>(&'a self, declarations: &'a Declarations, blobs: &'a BlobBytes) -> RuntimeProjection<'a> {
+		let context = ConversionContext::new(self, declarations, blobs);
 		RuntimeProjection {
 			reachable: context.reachable_definitions(),
 			context,
@@ -240,7 +251,7 @@ impl RuntimeProjection<'_> {
 		Ok(ProjectedNetwork {
 			metadata: extract_network_metadata(registry, &network.attributes, location, id),
 			scope_injections: read_scope_injections(registry, id, &network.attributes)?,
-			exports: convert_exports(registry, id, network)?,
+			exports: convert_exports(&self.context, id, network)?,
 			network: location,
 		})
 	}
@@ -248,7 +259,7 @@ impl RuntimeProjection<'_> {
 
 /// Rejects a registry whose root reaches a network cycle.
 pub(crate) fn reject_network_cycles(registry: &Registry, declarations: &Declarations) -> Result<(), ConversionError> {
-	detect_network_cycle(&ConversionContext::new(registry, declarations), ROOT_NETWORK)
+	detect_network_cycle(&ConversionContext::new(registry, declarations, &BlobBytes::new()), ROOT_NETWORK)
 }
 
 /// Rejects any cycle in the graph of `Implementation::Network` references from a network to the networks its nodes implement.
@@ -329,7 +340,7 @@ fn convert_network(
 		}
 	}
 
-	let exports = convert_exports(context.registry, network_id, network)?;
+	let exports = convert_exports(context, network_id, network)?;
 	let scope_injections = read_scope_injections(context.registry, network_id, &network.attributes)?;
 
 	Ok(NodeNetwork {
@@ -342,14 +353,14 @@ fn convert_network(
 }
 
 /// The network's exports, compacted into the runtime's dense list.
-fn convert_exports(registry: &Registry, network_id: NetworkId, network: &crate::Network) -> Result<Vec<GraphCraftNodeInput>, ConversionError> {
+fn convert_exports(context: &ConversionContext, network_id: NetworkId, network: &crate::Network) -> Result<Vec<GraphCraftNodeInput>, ConversionError> {
 	// Input attributes aren't round-tripped for exports — Reflection/Import inputs don't appear there.
 	let empty_attrs = crate::Attributes::new();
 	network
 		.exports
 		.iter()
 		.filter_map(|slot| slot.target.as_ref())
-		.map(|input| convert_input(registry, network_id, input, &empty_attrs))
+		.map(|input| convert_input(context, network_id, input, &empty_attrs))
 		.collect()
 }
 
@@ -453,7 +464,7 @@ fn convert_node(context: &ConversionContext, node: &crate::Node) -> Result<Docum
 	let inputs = node
 		.inputs
 		.iter()
-		.map(|slot| convert_input(context.registry, node.network, &slot.input, &slot.attributes))
+		.map(|slot| convert_input(context, node.network, &slot.input, &slot.attributes))
 		.collect::<Result<Vec<_>, _>>()?;
 
 	// Defaults must match `DocumentNode::default()` (and the `set_if_not_default` calls in `from_runtime`).
@@ -469,7 +480,9 @@ fn convert_node(context: &ConversionContext, node: &crate::Node) -> Result<Docum
 	})
 }
 
-fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
+fn convert_input(context: &ConversionContext, network_id: NetworkId, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
+	let registry = context.registry;
+
 	Ok(match input {
 		NodeInput::Node { id: node_id, index: output_index } => {
 			// A node removed concurrently keeps its id, as the editor holds a dangling input. So does one whose addition has not
@@ -492,7 +505,12 @@ fn convert_input(registry: &Registry, network_id: NetworkId, input: &NodeInput, 
 			}
 		}
 		NodeInput::Value { value, exposed } => {
-			let tagged_value: TaggedValue = from_value(value).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
+			let value = match value {
+				Value::Blob(hash) => Cow::Owned(context.resolve_blob(*hash)?),
+				value => Cow::Borrowed(value),
+			};
+
+			let tagged_value: TaggedValue = from_value(&value).map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {e:?}")))?;
 			GraphCraftNodeInput::Value {
 				tagged_value: MemoHash::new(tagged_value),
 				exposed: *exposed,

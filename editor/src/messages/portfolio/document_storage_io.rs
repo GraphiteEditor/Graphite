@@ -357,7 +357,7 @@ async fn build_document_from_storage(gdd: GddV1, byte_store: &ResourcesHandle, d
 	hydrate_resources(&gdd, byte_store, document_id).await;
 
 	let declarations = gdd.declarations(byte_store).await;
-	let (network, node_entries, network_entries) = match gdd.registry().to_runtime_with_full_metadata(&declarations) {
+	let (network, node_entries, network_entries) = match gdd.registry().to_runtime_with_full_metadata(&declarations, gdd.blobs()) {
 		Ok(result) => result,
 		Err(error) => {
 			log::error!("Opening document {document_id:?}: failed to convert registry to runtime: {error}");

@@ -1,4 +1,4 @@
-use crate::{Attributes, Delta, PeerId, Prior, RegistryDelta, Rev, TimeStamp, Value, attr, compute_rev};
+use crate::{Attributes, BlobHash, Delta, InputSlot, NodeField, NodeInput, PeerId, Prior, RegistryDelta, Rev, TimeStamp, Tombstone, Value, attr, compute_rev};
 use graphene_resource::ResourceHash;
 
 impl Delta {
@@ -78,6 +78,28 @@ impl Delta {
 	pub fn has_valid_id(&self) -> bool {
 		self.id == self.recomputed_id()
 	}
+
+	/// The blobs the op writes or its priors restore.
+	pub fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let prior_slots = self.reverse.iter().flat_map(|prior| match prior {
+			Prior::Node { node, .. }
+			| Prior::RemovedNode {
+				tombstone: Tombstone { content: node, .. },
+				..
+			} => node.inputs(),
+			Prior::NodeField {
+				field: NodeField::Input { previous, .. },
+				..
+			} => std::slice::from_ref(previous),
+			Prior::NodeField {
+				field: NodeField::Inputs { previous, .. },
+				..
+			} => previous.as_slice(),
+			_ => &[],
+		});
+
+		self.kind.blob_hashes().chain(prior_slots.filter_map(|slot| slot.input.blob()))
+	}
 }
 
 impl RegistryDelta {
@@ -88,6 +110,18 @@ impl RegistryDelta {
 			RegistryDelta::SetResourceHash { hash, .. } => *hash,
 			_ => None,
 		}
+	}
+
+	/// The blobs in the input values the op writes.
+	pub(crate) fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let (input, slots): (Option<&NodeInput>, &[InputSlot]) = match self {
+			RegistryDelta::ChangeNodeInput { new_input, .. } => (Some(new_input), &[]),
+			RegistryDelta::AddNode { node, .. } | RegistryDelta::RemoveNode { snapshot: node, .. } => (None, node.inputs()),
+			RegistryDelta::SetNodeInputs { inputs, .. } => (None, inputs),
+			_ => (None, &[]),
+		};
+
+		input.into_iter().chain(slots.iter().map(|slot| &slot.input)).filter_map(NodeInput::blob)
 	}
 }
 

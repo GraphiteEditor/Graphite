@@ -11,11 +11,11 @@ publish.workspace = true
 migration-core = { workspace = true }
 graphene-resource = { workspace = true, features = ["serde"] }
 
+postcard = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
 document-graph-storage = { workspace = true }
 
-postcard = { workspace = true }
 serde_json = { workspace = true }

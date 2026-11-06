@@ -3,8 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Attributes, Delta, Document, History, HotOp, HotOpId, HotSequence, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry,
-	RetiredMarks, Rev, TimeStamp, Touched, UserId, Value, to_value,
+	ApplyMode, Attributes, BlobHash, Delta, Document, History, HotOp, HotOpId, HotSequence, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget,
+	ResourceEntry, RetiredMarks, Rev, TimeStamp, Touched, UserId, Value, to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -99,7 +99,9 @@ impl Session {
 	/// Stages the diff as hot ops rather than retired deltas: each op is applied to the registry and
 	/// pushed onto the hot log. The caller persists the returned hot frames and then calls `retire`
 	/// to promote them into durable history.
-	#[cfg(any(feature = "conversion", test))]
+	///
+	/// Large values stay inline, so this is for tests. `Gdd::stage_runtime_snapshot` stages a runtime diff through blobs.
+	#[cfg(test)]
 	pub fn stage_from_runtime<M: NodeMetadataSource>(
 		&mut self,
 		network: &graph_craft::document::NodeNetwork,
@@ -186,8 +188,7 @@ impl Session {
 		Ok(revs)
 	}
 
-	/// Stages ops computed outside the session (an incremental runtime projection) as hot ops, the
-	/// same way `stage_from_runtime` stages a diff's ops.
+	/// Stages ops computed outside the session, such as a runtime diff or an incremental projection, as hot ops.
 	pub fn stage_computed_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<Vec<HotOp>, CrdtError> {
 		self.stage_ops(ops)
 	}
@@ -1064,6 +1065,14 @@ impl Session {
 		let mut hashes: HashSet<ResourceHash> = self.document.working_registry.resources.values().filter_map(|entry| entry.hash).collect();
 		hashes.extend(self.document.history.resource_hashes());
 		hashes.extend(self.document.hot_log.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
+		hashes
+	}
+
+	/// Every blob the current registry, its tombstones, history, or hot log names, so any state the cursor reaches can be resolved.
+	pub fn all_blob_hashes(&self) -> HashSet<BlobHash> {
+		let mut hashes: HashSet<BlobHash> = self.document.working_registry.blob_hashes().collect();
+		hashes.extend(self.document.history.iter().flat_map(Delta::blob_hashes));
+		hashes.extend(self.document.hot_log.iter().flat_map(|hot_op| hot_op.op.blob_hashes()));
 		hashes
 	}
 

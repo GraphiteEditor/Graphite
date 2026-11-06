@@ -31,7 +31,7 @@ pub use declaration::{Declaration, DeclarationResolver};
 #[cfg(feature = "typed")]
 pub use document_graph_storage::NodeInput;
 pub use error::MigrationError;
-pub use format::{FormatMigration, HistoryPolicy, Upgrade};
+pub use format::{DocumentPayloads, FormatMigration, HistoryPolicy, Upgrade};
 #[cfg(feature = "typed")]
 pub use migration::{NodeMigration, Rename};
 pub use migration_macros::format_migration;

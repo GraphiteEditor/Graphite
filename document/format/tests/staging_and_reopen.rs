@@ -146,3 +146,70 @@ fn a_user_change_survives_a_reopen() {
 		assert_eq!(authors, [PeerId(24), PeerId(24), PeerId(25)]);
 	});
 }
+
+/// Large input values are staged as blobs, an edited one as a delta against its predecessor. A reopen and an archive
+/// round trip both find them again, for the current state and an undone one.
+#[test]
+fn blobs_resolve_after_a_reopen_and_an_archive_round_trip() {
+	use document_container::AsyncContainer;
+	use document_format::export::{ExportFormat, ExportOptions};
+	use document_format::layout::Layout;
+	use document_graph_storage::{NodeInput, RegistryDelta, Value, blob::BLOB_THRESHOLD};
+	use graph_craft::document::value::TaggedValue;
+
+	let original = TaggedValue::String("a".repeat(BLOB_THRESHOLD));
+	let edited = TaggedValue::String(format!("b{}", "a".repeat(BLOB_THRESHOLD)));
+	let mut network = network_with_one_node();
+	network.nodes.get_mut(&NodeId(1)).unwrap().inputs = vec![graph_craft::document::NodeInput::value(original.clone(), false)];
+
+	futures::executor::block_on(async {
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(26), UserId(26), 1, "ed".into(), "std".into()).unwrap();
+		let store = HashMapResourceStorage::new();
+		gdd.commit_from_runtime(&network, &NoMetadata, &ResourceRegistry::new(), &store).unwrap();
+
+		// An op built outside a conversion carries the value inline until staging moves it into a blob
+		let id = *gdd.registry().node_instances.keys().next().unwrap();
+		let value = Value::from(serde_json::to_value(&edited).unwrap());
+		let new_input = NodeInput::Value { value, exposed: false };
+		gdd.stage_ops([RegistryDelta::ChangeNodeInput { id, index: 0, new_input }]).unwrap();
+		gdd.retire_pending_interaction().unwrap();
+
+		let edited_blob = gdd.registry().node_instances[&id].inputs()[0].input.blob().expect("staging moves the value into a blob");
+		let (working, layout) = gdd.into_storage();
+		let record = working.read(&layout.blob_path(&edited_blob)).await.unwrap();
+		assert_eq!(record.as_slice()[0], 1, "the edit is stored as a delta");
+		assert!(record.as_slice().len() < 100, "the delta is small, got {} bytes", record.as_slice().len());
+
+		let input_value = |gdd: &GddV1, declarations: &document_graph_storage::Declarations| {
+			let (converted, _) = gdd.registry().to_runtime_with_metadata(declarations, gdd.blobs()).expect("to_runtime");
+			let node = converted.nodes.values().next().expect("the node converts");
+			let graph_craft::document::NodeInput::Value { tagged_value, .. } = &node.inputs[0] else {
+				panic!("a value input")
+			};
+			(**tagged_value).clone()
+		};
+
+		let reopened = GddV1::open_in(working, layout).await.unwrap();
+		let archive = reopened.export_to_bytes(ExportFormat::Zip, ExportOptions::default(), &store, None).await.unwrap();
+		let unpacked = GddV1::open_from_archive(&archive, AnyContainer::Memory(MemoryBackend::new()), GddV1Layout).await.unwrap();
+
+		let flat_options = ExportOptions {
+			include_history: false,
+			..Default::default()
+		};
+		let flat_archive = reopened.export_to_bytes(ExportFormat::Zip, flat_options, &store, None).await.unwrap();
+		let flat = GddV1::open_from_archive(&flat_archive, AnyContainer::Memory(MemoryBackend::new()), GddV1Layout).await.unwrap();
+		let declarations = flat.declarations(&store).await;
+		assert_eq!(flat.blobs().len(), 1, "a copy without history leaves the undone value behind");
+		assert_eq!(input_value(&flat, &declarations), edited);
+
+		for mut gdd in [reopened, unpacked] {
+			let declarations = gdd.declarations(&store).await;
+			assert_eq!(gdd.blobs().len(), 2, "both values' blobs load, the undone one included");
+			assert_eq!(input_value(&gdd, &declarations), edited);
+
+			gdd.undo().unwrap();
+			assert_eq!(input_value(&gdd, &declarations), original);
+		}
+	});
+}
