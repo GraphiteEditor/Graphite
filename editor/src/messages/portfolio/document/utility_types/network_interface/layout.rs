@@ -1085,8 +1085,73 @@ impl NodeNetworkInterface {
 			self.take_over_outward_wires(layer.to_node(), network_path);
 		}
 		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
+		self.push_stacks_below_ancestors_past_their_content(layer.to_node(), network_path);
 
 		self.remove_orphaned_dots(network_path);
+	}
+
+	/// Moves the layers stacked below each layer that `layer` is nested within down past that layer's grown content.
+	fn push_stacks_below_ancestors_past_their_content(&mut self, layer: NodeId, network_path: &[NodeId]) {
+		let mut ancestor = self.content_parent(layer, network_path);
+		while let Some(parent) = ancestor {
+			let stack_below = self
+				.input_from_connector(&InputConnector::primary_input(parent), network_path)
+				.and_then(NodeInput::as_node)
+				.filter(|stack_below| self.is_layer(stack_below, network_path));
+			if let (Some(stack_below), Some(parent_position)) = (stack_below, self.position(&parent, network_path))
+				&& let Some(stack_below_position) = self.position(&stack_below, network_path)
+			{
+				let content_bottom_row = self
+					.upstream_nodes_below_layer(&parent, network_path)
+					.iter()
+					.filter_map(|node_id| self.stacked_box_rows(node_id, network_path))
+					.map(|(_, bottom)| bottom)
+					.fold(parent_position.y + STACK_VERTICAL_GAP, i32::max);
+				if content_bottom_row > stack_below_position.y {
+					self.shift_stack_down(stack_below, content_bottom_row - stack_below_position.y, network_path);
+				}
+			}
+			ancestor = self.content_parent(parent, network_path);
+		}
+	}
+
+	/// Shifts a stack of layers down by `rows`, along with the absolutely positioned content they own, which would otherwise stay behind.
+	fn shift_stack_down(&mut self, stack_top: NodeId, rows: i32, network_path: &[NodeId]) {
+		let stack = self
+			.upstream_flow_back_from_nodes(vec![stack_top], network_path, FlowType::PrimaryFlow)
+			.take_while(|node_id| self.is_layer(node_id, network_path))
+			.collect::<Vec<_>>();
+		let absolute_content = stack
+			.iter()
+			.flat_map(|layer| self.upstream_nodes_below_layer(layer, network_path))
+			.filter(|node_id| self.is_absolute(node_id, network_path))
+			.collect::<HashSet<_>>();
+
+		self.shift_node(&stack_top, IVec2::new(0, rows), network_path);
+		for node_id in absolute_content {
+			self.shift_node(&node_id, IVec2::new(0, rows), network_path);
+		}
+	}
+
+	/// The layer whose content holds the stack `layer` is part of, reached through any chain nodes feeding that layer.
+	fn content_parent(&self, layer: NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+		let mut current = layer;
+		loop {
+			let downstream = self.with_outward_wires(network_path, |outward_wires| {
+				outward_wires.get(&OutputConnector::primary_output(current)).and_then(|wires| wires.first()).copied()
+			})??;
+			let downstream_node = downstream.node_id()?;
+			if !self.is_layer(&downstream_node, network_path) {
+				return self
+					.is_chain(&downstream_node, network_path)
+					.then(|| self.downstream_layer_for_chain_node(&downstream_node, network_path))
+					.flatten();
+			}
+			if downstream.input_index() != 0 {
+				return Some(downstream_node);
+			}
+			current = downstream_node;
+		}
 	}
 
 	/// Shifts `upstream_node_id` and everything stacked below it down until a layer needing
