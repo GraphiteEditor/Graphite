@@ -178,7 +178,7 @@ pub struct DocumentMessageHandler {
 	pub(crate) container: Option<AnyContainer>,
 	/// Peer changes not yet applied, held until their declarations are cached.
 	#[serde(skip)]
-	pub(crate) pending_remote: document_format::network::RemoteChanges,
+	pub(crate) pending_remote: document_format::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,

@@ -207,6 +207,7 @@ fn split_delta_record(record: &[u8]) -> Option<(BlobHash, &[u8])> {
 }
 
 /// The base hash of a delta record.
+#[cfg(feature = "network")]
 fn record_base(record: &[u8]) -> Option<BlobHash> {
 	split_delta_record(record).map(|(base, _)| base)
 }

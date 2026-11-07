@@ -6,52 +6,14 @@ use std::collections::HashSet;
 
 use document_container::AsyncContainer;
 use document_graph_storage::blob::{BlobBytes, NewBlobs};
-use document_graph_storage::{BlobHash, CrdtError, Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredMarks, Rev, Session, Touched, UserId};
+use document_graph_storage::{BlobHash, Delta, HeadMove, HistoryMetadata, HotOp, HotOpId, PeerId, Registry, RegistryDelta, ResourceHash, RetiredMarks, Rev, Session, UserId};
 use peer_transport::{BlobRecord, Event, Replica, Role, SyncTarget, TargetError, Transport};
 
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::{Gdd, PendingPersist};
 
-/// What peers changed in the working registry since it was last taken, so a runtime mirror can reconcile
-/// just the touched entities.
-#[derive(Clone, Debug, Default)]
-pub struct RemoteChanges {
-	pub touched: Touched,
-	/// A full sync replaced the working registry, so the touched set no longer bounds what changed and the mirror
-	/// must be rebuilt.
-	pub rebuilt: bool,
-}
-
-impl RemoteChanges {
-	pub fn is_empty(&self) -> bool {
-		self.touched.is_empty() && !self.rebuilt
-	}
-
-	pub fn extend(&mut self, other: RemoteChanges) {
-		self.touched.extend(other.touched);
-		self.rebuilt |= other.rebuilt;
-	}
-}
-
 impl<L: Layout> Gdd<L> {
-	pub fn take_remote_changes(&mut self) -> RemoteChanges {
-		std::mem::take(&mut self.remote_changes)
-	}
-
-	/// Restore a dropped interaction and publish it, recording what it named in the remote changes. Returns the new deltas.
-	pub(crate) fn restore_dropped_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, CrdtError> {
-		let revs = self.session.restore_interaction(rev)?;
-		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
-		for delta in &deltas {
-			self.remote_changes.touched.record(&delta.kind);
-		}
-		if let Some(&last) = revs.last() {
-			self.session.publish_up_to(last);
-		}
-		Ok(deltas)
-	}
-
 	/// Host this document's room, and remember it is shared so a reopen reconnects.
 	pub fn share(&mut self, transport: impl Transport + 'static, user: UserId) -> Result<(), Error> {
 		self.network = Some(Replica::host(transport, self.session.peer(), user));

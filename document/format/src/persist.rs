@@ -7,7 +7,7 @@ use document_container::{AnyContainer, AsyncContainer};
 use document_graph_storage::blob::{BlobBytes, NewBlobs};
 #[cfg(feature = "conversion")]
 use document_graph_storage::from_runtime::RuntimeConversion;
-use document_graph_storage::{BlobHash, HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, Sorted, Subject, TimeStamp, UserId, Value, WallStamp};
+use document_graph_storage::{BlobHash, CrdtError, Delta, HistoryMetadata, HotOp, MetadataFact, PeerId, RegistryDelta, Rev, Sorted, Subject, TimeStamp, UserId, Value, WallStamp};
 #[cfg(feature = "conversion")]
 use document_graph_storage::{CommitError, NodeMetadataSource, Registry};
 #[cfg(feature = "conversion")]
@@ -17,7 +17,7 @@ use crate::SessionState;
 use crate::error::Error;
 use crate::layout::Layout;
 use crate::manifest::Manifest;
-use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, encode_facts, io};
+use crate::{Gdd, MANIFEST_CODEC, METADATA_CODEC, RemoteChanges, encode_facts, io};
 
 /// Written after every staged payload, so its presence means the whole rewrite is ready to move into place.
 const STAGING_COMMITTED: &str = "committed";
@@ -436,17 +436,18 @@ impl<L: Layout> Gdd<L> {
 		self.rewrite_hot_log()?;
 		self.persist_registry_snapshot()?;
 		self.persist_session_state()?;
+		self.remote_changes.touched.extend(retraction.touched);
 		#[cfg(feature = "network")]
-		{
-			self.remote_changes.touched.extend(retraction.touched);
-			if let Some(replica) = &mut self.network {
-				replica.broadcast_retraction(&retraction.ids)?;
-			}
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_retraction(&retraction.ids)?;
 		}
 		Ok(Some(retraction.ops))
 	}
 
-	#[cfg(feature = "network")]
+	pub fn take_remote_changes(&mut self) -> RemoteChanges {
+		std::mem::take(&mut self.remote_changes)
+	}
+
 	pub fn undo_retired_step(&mut self) -> Result<Option<Rev>, Error> {
 		if !self.can_change_line() {
 			return Ok(None);
@@ -464,43 +465,70 @@ impl<L: Layout> Gdd<L> {
 		Ok(Some(rev))
 	}
 
-	#[cfg(feature = "network")]
 	pub fn can_change_line(&self) -> bool {
-		self.retires_locally() || self.network.as_ref().is_some_and(|replica| replica.has_host())
+		#[cfg(feature = "network")]
+		if self.network.as_ref().is_some_and(|replica| replica.has_host()) {
+			return true;
+		}
+		self.retires_locally()
 	}
 
 	/// Drop a retired interaction from the line. A non-retiring peer asks the retirer.
-	#[cfg(feature = "network")]
 	pub fn drop_step(&mut self, rev: Rev) -> Result<(), Error> {
-		if self.retires_locally() {
-			let (moved, touched) = self.session.drop_interaction(rev)?;
-			self.remote_changes.touched.extend(touched);
-			self.persist_rewritten_line()?;
+		if !self.retires_locally() {
+			#[cfg(feature = "network")]
 			if let Some(replica) = &mut self.network {
-				replica.broadcast_head_move(moved)?;
+				replica.request_undo(rev, false)?;
 			}
-		} else if let Some(replica) = &mut self.network {
-			replica.request_undo(rev, false)?;
+			return Ok(());
 		}
+
+		let (moved, touched) = self.session.drop_interaction(rev)?;
+		self.remote_changes.touched.extend(touched);
+		self.persist_rewritten_line()?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_head_move(moved)?;
+		}
+		#[cfg(not(feature = "network"))]
+		let _ = moved;
 		Ok(())
 	}
 
 	/// Redo a dropped step as a copy on top of the line. A non-retiring peer asks the retirer.
-	#[cfg(feature = "network")]
 	pub fn redo_retired_step(&mut self, rev: Rev) -> Result<(), Error> {
-		if self.retires_locally() {
-			let deltas = self.restore_dropped_interaction(rev)?;
-			self.persist_rewritten_line()?;
+		if !self.retires_locally() {
+			#[cfg(feature = "network")]
 			if let Some(replica) = &mut self.network {
-				replica.broadcast_retired(&deltas, &[])?;
+				replica.request_undo(rev, true)?;
 			}
-		} else if let Some(replica) = &mut self.network {
-			replica.request_undo(rev, true)?;
+			return Ok(());
 		}
+
+		let deltas = self.restore_dropped_interaction(rev)?;
+		self.persist_rewritten_line()?;
+		#[cfg(feature = "network")]
+		if let Some(replica) = &mut self.network {
+			replica.broadcast_retired(&deltas, &[])?;
+		}
+		#[cfg(not(feature = "network"))]
+		let _ = deltas;
 		Ok(())
 	}
 
-	#[cfg(feature = "network")]
+	/// Restore a dropped interaction and publish it, recording what it named in the remote changes. Returns the new deltas.
+	pub(crate) fn restore_dropped_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, CrdtError> {
+		let revs = self.session.restore_interaction(rev)?;
+		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
+		for delta in &deltas {
+			self.remote_changes.touched.record(&delta.kind);
+		}
+		if let Some(&last) = revs.last() {
+			self.session.publish_up_to(last);
+		}
+		Ok(deltas)
+	}
+
 	fn persist_rewritten_line(&mut self) -> Result<(), Error> {
 		self.rewrite_history()?;
 		self.persist_registry_snapshot()?;
@@ -509,7 +537,6 @@ impl<L: Layout> Gdd<L> {
 
 	/// Stage retracted ops as a new interaction. They count as remote changes.
 	pub fn restage_ops(&mut self, ops: Vec<RegistryDelta>) -> Result<(), Error> {
-		#[cfg(feature = "network")]
 		for op in &ops {
 			self.remote_changes.touched.record(op);
 		}

@@ -113,17 +113,36 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) network: Option<peer_transport::Replica>,
 	#[cfg(feature = "network")]
 	pub(crate) pending_persist: PendingPersist,
-	/// What peers changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
-	#[cfg(feature = "network")]
-	pub(crate) remote_changes: network::RemoteChanges,
+	/// What changed since [`take_remote_changes`](Self::take_remote_changes) last took it.
+	pub(crate) remote_changes: RemoteChanges,
 	/// The step a guest asked the host to undo, with the head it asked under. A repeat waits until the head moves.
-	#[cfg(feature = "network")]
 	pub(crate) undo_requested: Option<(document_graph_storage::Rev, Option<document_graph_storage::Rev>)>,
 	pub(crate) interactions_seen: std::collections::HashMap<document_graph_storage::HotOpId, f64>,
 	pub(crate) own_last_staged_ms: Option<f64>,
 	pub(crate) own_staged_since_tick: bool,
 	/// Whether the document belongs in its room, persisted so a reopen reconnects.
 	pub(crate) shared: bool,
+}
+
+/// Changes to the working registry that the editor did not make itself, so a runtime mirror can reconcile just the
+/// touched entities.
+#[derive(Clone, Debug, Default)]
+pub struct RemoteChanges {
+	pub touched: document_graph_storage::Touched,
+	/// A full sync replaced the working registry, so the touched set no longer bounds what changed and the mirror
+	/// must be rebuilt.
+	pub rebuilt: bool,
+}
+
+impl RemoteChanges {
+	pub fn is_empty(&self) -> bool {
+		self.touched.is_empty() && !self.rebuilt
+	}
+
+	pub fn extend(&mut self, other: RemoteChanges) {
+		self.touched.extend(other.touched);
+		self.rebuilt |= other.rebuilt;
+	}
 }
 
 /// Whole-file rewrites deferred to the end of a poll, so a batch of remote packets costs one rewrite per file.
@@ -183,9 +202,7 @@ impl<L: Layout> Gdd<L> {
 			network: None,
 			#[cfg(feature = "network")]
 			pending_persist: PendingPersist::default(),
-			#[cfg(feature = "network")]
-			remote_changes: network::RemoteChanges::default(),
-			#[cfg(feature = "network")]
+			remote_changes: RemoteChanges::default(),
 			undo_requested: None,
 			interactions_seen: Default::default(),
 			own_last_staged_ms: None,
