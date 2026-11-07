@@ -1,6 +1,7 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
 use core_types::list::Item;
+use core_types::units::Length;
 use raster_kernels::evaluate_raster_effects;
 use raster_types::Bitmap;
 use raster_types::Image;
@@ -8,19 +9,18 @@ use raster_types::parallel_rows::fill_rows;
 use raster_types::{CPU, Raster};
 
 /// Applies a median filter to reduce noise while preserving edges.
-#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"), memoize)]
+#[node_macro::node(category("Raster: Filter"), icon("NodeMedianFilter"), memoize, version(2))]
 fn median_filter(
 	_: impl Ctx,
 	/// The image to be filtered.
 	image_frame: Item<Raster<CPU>>,
 	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
-	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..50)]
-	radius: Item<f64>,
+	radius: Item<Length>,
 ) -> Item<Raster<CPU>> {
-	let radius = *radius.element();
+	let radius = radius.element().pixels();
 
 	let (image, attributes) = evaluate_raster_effects(image_frame).into_parts();
 

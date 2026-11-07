@@ -1,6 +1,7 @@
 use core_types::blending::BlendMode;
 use core_types::list::Item;
 use core_types::transfer_curve::TransferCurve;
+use core_types::units::Length;
 use core_types::{ATTR_OPACITY, ATTR_OPACITY_FILL, Color, Ctx};
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{BevelDirection, BevelStyle, BevelTechnique, Effect, EffectOperation, Generator, GlowSource, GlowTechnique, Graphic, Vector, paint_with_envelope_effects, stamp_effect};
@@ -9,18 +10,17 @@ use vector_types::Gradient;
 use vector_types::vector::style::StrokeAlign;
 
 /// Blurs the input graphics, whether vector shapes, images, or text.
-#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"), version(2))]
+#[node_macro::node(category("Raster: Filter"), icon("NodeBlur"), version(3))]
 fn blur<T>(
 	_: impl Ctx,
 	/// The content to blur.
 	#[implementations(Graphic, Vector, Raster<CPU>, Raster<GPU>, Color, Gradient, String, Generator)]
 	content: Item<T>,
 	/// How far the blur spreads each point of the content.
-	#[unit(" px")]
 	#[range]
 	#[hard(0..)]
 	#[soft(..100)]
-	radius: Item<f64>,
+	radius: Item<Length>,
 	/// Use a box kernel instead of a circular Gaussian kernel, which averages evenly and leaves boxy artifacts.
 	box_blur: Item<bool>,
 	/// Opt to incorrectly blend the colors in gamma space for compatibility with the results from other software.
@@ -30,7 +30,7 @@ fn blur<T>(
 	stamp_effect(
 		&mut content,
 		Effect::new(&EffectOperation::Blur {
-			radius: *radius.element(),
+			radius: radius.element().pixels(),
 			box_blur: *box_blur.element(),
 			gamma: *gamma.element(),
 		}),
