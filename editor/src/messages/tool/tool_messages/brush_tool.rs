@@ -276,8 +276,8 @@ impl BrushTool {
 			return;
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
-		if let Some(TaggedValue::Number(diameter)) = value(brush_strokes::DiameterInput::INDEX) {
-			self.options.diameter = if self.options.scale_with_viewport { *diameter * viewport_zoom(document) } else { *diameter };
+		if let Some(diameter) = value(brush_strokes::DiameterInput::INDEX).and_then(|diameter| diameter.as_length_pixels(document.network_interface.pixels_per_inch())) {
+			self.options.diameter = if self.options.scale_with_viewport { diameter * viewport_zoom(document) } else { diameter };
 		}
 		if let Some(TaggedValue::Number(hardness)) = value(brush_strokes::HardnessInput::INDEX) {
 			self.options.hardness = *hardness;
@@ -393,10 +393,11 @@ impl BrushToolData {
 			return false;
 		};
 		let value = |index: usize| node.inputs.get(index).and_then(|input| input.as_value());
+		let diameter = value(brush_strokes::DiameterInput::INDEX).and_then(|diameter| diameter.as_length_pixels(document.network_interface.pixels_per_inch()));
 		matches!(value(brush_strokes::ColorInput::INDEX), Some(TaggedValue::Color(color)) if *color == options.active_color())
-			&& matches!(value(brush_strokes::DiameterInput::INDEX), Some(TaggedValue::Number(diameter)) if {
+			&& diameter.is_some_and(|diameter| {
 				let target = options.stroke_diameter(document);
-				(*diameter - target).abs() <= diameter.abs().max(target.abs()) * (f64::EPSILON * 8.)
+				(diameter - target).abs() <= diameter.abs().max(target.abs()) * (f64::EPSILON * 8.)
 			})
 			&& matches!(value(brush_strokes::HardnessInput::INDEX), Some(TaggedValue::Number(hardness)) if *hardness == options.hardness)
 			&& matches!(value(brush_strokes::FlowInput::INDEX), Some(TaggedValue::Number(flow)) if *flow == options.flow)

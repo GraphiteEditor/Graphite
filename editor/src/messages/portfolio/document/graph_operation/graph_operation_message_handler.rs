@@ -14,6 +14,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::list;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::units::TypedLength;
 use graphene_std::vector::style::{Gradient, GradientForm, GradientSettings, GradientSpace, GradientSpread, GradientStop, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphene_std::{Artboard, Color};
 
@@ -886,7 +887,7 @@ fn insert_brush_strokes_chain(network_interface: &mut NodeNetworkInterface, laye
 	let strokes_node = strokes_node_type.node_template_input_override([
 		Some(NodeInput::value(TaggedValue::Strokes(Vec::new()), false)),
 		Some(NodeInput::value(TaggedValue::Color(color), false)),
-		Some(NodeInput::value(TaggedValue::Number(diameter), false)),
+		Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(diameter)), false)),
 		Some(NodeInput::value(TaggedValue::Number(hardness), false)),
 		Some(NodeInput::value(TaggedValue::Number(flow), false)),
 	]);
