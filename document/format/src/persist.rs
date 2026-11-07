@@ -516,14 +516,18 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
-	/// Restore a dropped interaction and publish it, recording what it named in the remote changes. Returns the new deltas.
+	/// Restore a dropped interaction and record what it named in the remote changes. Returns the new deltas.
 	pub(crate) fn restore_dropped_interaction(&mut self, rev: Rev) -> Result<Vec<Delta>, CrdtError> {
 		let revs = self.session.restore_interaction(rev)?;
 		let deltas: Vec<Delta> = revs.iter().filter_map(|&rev| self.session.delta(rev).cloned()).collect();
 		for delta in &deltas {
 			self.remote_changes.touched.record(&delta.kind);
 		}
-		if let Some(&last) = revs.last() {
+		// Only the deltas peers will see are published, so a local redo stays silently undoable
+		#[cfg(feature = "network")]
+		if self.network.is_some()
+			&& let Some(&last) = revs.last()
+		{
 			self.session.publish_up_to(last);
 		}
 		Ok(deltas)

@@ -124,8 +124,8 @@ pub struct Gdd<L: Layout = GddV1Layout> {
 	pub(crate) shared: bool,
 }
 
-/// Changes to the working registry that the editor did not make itself, so a runtime mirror can reconcile just the
-/// touched entities.
+/// Changes to the working registry that the runtime mirror has not seen yet, such as peer edits and undos of retired
+/// steps. The mirror reconciles just the touched entities.
 #[derive(Clone, Debug, Default)]
 pub struct RemoteChanges {
 	pub touched: document_graph_storage::Touched,
