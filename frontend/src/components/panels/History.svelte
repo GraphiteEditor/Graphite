@@ -81,6 +81,7 @@
 				{:else}
 					<span class="rail"><span class="dot"></span></span>
 				{/if}
+				{#if row.thumbnail}<HistoryShot shot={row.thumbnail.after} url={$thumbnails[row.thumbnail.after.id]} />{/if}
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In progress" : "Waiting to enter history")}</span>
 					<span class="meta">

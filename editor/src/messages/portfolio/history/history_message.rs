@@ -33,7 +33,7 @@ pub enum HistoryMessage {
 	},
 	Captured {
 		document_id: DocumentId,
-		rev: document_graph_storage::Rev,
+		step: document_graph_storage::TimeStamp,
 		capture: Option<Box<super::utility_types::DocumentCapture>>,
 	},
 }
