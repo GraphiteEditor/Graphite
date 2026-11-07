@@ -13,7 +13,7 @@ const CLOSURE_TOLERANCE: f64 = 1e-6;
 const RANDOM_TURN_LIMIT: f64 = 180.;
 
 /// The node's inputs, which the commands fall back to when they don't give their own numbers.
-pub(crate) struct TurtleSettings<'a> {
+pub(crate) struct TurtleSettings {
 	pub step: f64,
 	pub step_scale: f64,
 	/// The most a step's length varies at random, as a fraction of it.
@@ -23,17 +23,16 @@ pub(crate) struct TurtleSettings<'a> {
 	/// The most a turn's angle varies at random, as a fraction of it.
 	pub angle_jitter: f64,
 	pub width: f64,
+	pub width_scale: f64,
 	/// The most the width a line draws to varies at random, as a fraction of it.
 	pub width_jitter: f64,
 	pub tropism: f64,
 	pub uv_increment: DVec2,
 	pub seed: u64,
-	pub draw_symbols: &'a str,
-	pub move_symbols: &'a str,
 }
 
 #[cfg(test)]
-impl Default for TurtleSettings<'static> {
+impl Default for TurtleSettings {
 	/// The node's default inputs.
 	fn default() -> Self {
 		Self {
@@ -44,12 +43,11 @@ impl Default for TurtleSettings<'static> {
 			angle_scale: 0.5,
 			angle_jitter: 0.,
 			width: 1.,
+			width_scale: 0.5,
 			width_jitter: 0.,
 			tropism: 10.,
 			uv_increment: DVec2::ONE,
 			seed: 0,
-			draw_symbols: "FG",
-			move_symbols: "f",
 		}
 	}
 }
@@ -66,6 +64,7 @@ struct Turtle {
 	step: f64,
 	/// The angle of a turn, which `;` and `@` scale.
 	angle: f64,
+	/// The width of the line, which `!` and `?` scale.
 	width: f64,
 	/// The U and V numbers, which `'` and `#` count up.
 	uv: DVec2,
@@ -324,19 +323,16 @@ pub(crate) fn turtle_path(commands: &str, settings: &TurtleSettings) -> Item<Vec
 		};
 		let number = |index: usize| parameters.split(',').nth(index).and_then(|parameter| parse_f64(parameter.trim()));
 
-		if settings.draw_symbols.contains(symbol) {
-			let length = vary(number(0).unwrap_or(turtle.step), settings.step_jitter, &mut step_jitter_rng);
-			let width = vary(number(1).unwrap_or(turtle.width), settings.width_jitter, &mut width_jitter_rng);
-			drawing.draw(&mut turtle, length, width);
-			continue;
-		}
-		if settings.move_symbols.contains(symbol) {
-			let length = vary(number(0).unwrap_or(turtle.step), settings.step_jitter, &mut step_jitter_rng);
-			drawing.travel(&mut turtle, length);
-			continue;
-		}
-
 		match symbol {
+			'F' | 'G' => {
+				let length = vary(number(0).unwrap_or(turtle.step), settings.step_jitter, &mut step_jitter_rng);
+				let width = vary(number(1).unwrap_or(turtle.width), settings.width_jitter, &mut width_jitter_rng);
+				drawing.draw(&mut turtle, length, width);
+			}
+			'f' | 'g' => {
+				let length = vary(number(0).unwrap_or(turtle.step), settings.step_jitter, &mut step_jitter_rng);
+				drawing.travel(&mut turtle, length);
+			}
 			'H' => {
 				let length = vary(number(0).unwrap_or(turtle.step) / 2., settings.step_jitter, &mut step_jitter_rng);
 				let width = vary(number(1).unwrap_or(turtle.width), settings.width_jitter, &mut width_jitter_rng);
@@ -365,9 +361,11 @@ pub(crate) fn turtle_path(commands: &str, settings: &TurtleSettings) -> Item<Vec
 					turtle.angle /= divisor;
 				}
 			}
-			'!' => {
-				if let Some(width) = number(0) {
-					turtle.width = width;
+			'!' => turtle.width *= number(0).unwrap_or(settings.width_scale),
+			'?' => {
+				let divisor = number(0).unwrap_or(settings.width_scale);
+				if divisor != 0. {
+					turtle.width /= divisor;
 				}
 			}
 			'\'' => turtle.uv.x += number(0).unwrap_or(settings.uv_increment.x),

@@ -459,11 +459,11 @@ fn grid<T: GridSpacing>(
 		.into_item())
 }
 
-/// Draws paths by following a string of turtle commands, like the ones an **L-System** grows. A drawing symbol (`F` or `G`) moves forward a step while drawing, `f` moves without drawing, `+` and `-` turn left and right, `|` turns around, and `[` and `]` begin and end a branch.
+/// Draws paths by following a string of turtle commands, like the ones an **L-System** grows. `F` and `G` move forward a step while drawing, `f` and `g` move without drawing, `+` and `-` turn left and right, `|` turns around, and `[` and `]` begin and end a branch.
 ///
-/// A number in parentheses gives one command its own amount, like `F(25)` or `+(30)`, and a drawing symbol's second number is the width it draws to, like `F(25, 3)`. `!(2)` sets the width from then on.
+/// A number in parentheses gives one command its own amount, like `F(25)` or `+(30)`, and a second number on `F` or `G` is the width it draws to, like `F(25, 3)`.
 ///
-/// `H` and `h` go half a step, drawing or not. `"` and `_` multiply and divide the step from then on, as `;` and `@` do the angle. `~` turns a random amount, and `T` bends the heading toward the ground. `'` and `#` count up two numbers, U and V, for coloring or anything else downstream.
+/// `H` and `h` go half a step, drawing or not. `"` and `_` multiply and divide the step from then on, as `;` and `@` do the angle and `!` and `?` the width. `~` turns a random amount, and `T` bends the heading toward the ground. `'` and `#` count up two numbers, U and V, for coloring or anything else downstream.
 ///
 /// `{` begins a filled shape, `.` adds an anchor where the turtle stands, and `}` closes it.
 ///
@@ -501,6 +501,10 @@ fn turtle_path(
 	#[unit(" px")]
 	#[default(1.)]
 	width: Item<f64>,
+	/// The factor that `!` multiplies the width by and `?` divides it by, unless a command gives its own like `!(0.8)`.
+	#[unit("x")]
+	#[default(0.5)]
+	width_scale: Item<f64>,
 	/// How much thicker or thinner each line's width may randomly be, as a fraction of it.
 	#[range]
 	#[hard(0..1)]
@@ -519,12 +523,6 @@ fn turtle_path(
 	/// Seed to determine unique variations on the random turns of `~` and the step, angle, and width jitters.
 	#[hard(0..)]
 	seed: Item<i64>,
-	/// The symbols that move forward while drawing.
-	#[default("FG")]
-	draw_symbols: Item<String>,
-	/// The symbols that move forward without drawing.
-	#[default("f")]
-	move_symbols: Item<String>,
 ) -> Item<Vector> {
 	let settings = crate::turtle::TurtleSettings {
 		step: *step.element(),
@@ -534,12 +532,11 @@ fn turtle_path(
 		angle_scale: *angle_scale.element(),
 		angle_jitter: *angle_jitter.element(),
 		width: *width.element(),
+		width_scale: *width_scale.element(),
 		width_jitter: *width_jitter.element(),
 		tropism: *tropism.element(),
 		uv_increment: *uv_increment.element(),
 		seed: *seed.element() as u64,
-		draw_symbols: draw_symbols.element(),
-		move_symbols: move_symbols.element(),
 	};
 
 	crate::turtle::turtle_path(commands.element(), &settings)
@@ -809,12 +806,11 @@ mod tests {
 			item(0.5),
 			item(0.),
 			item(1.),
+			item(0.5),
 			item(0.),
 			item(10.),
 			item(DVec2::ONE),
 			item(seed),
-			text("FG"),
-			text("f"),
 		)
 	}
 
@@ -868,13 +864,23 @@ mod tests {
 		let positions: Vec<DVec2> = drawing.element().positions().collect();
 		assert_eq!(positions[3], DVec2::new(0., -45.));
 		assert!((positions[4] - DVec2::new(-10. * 0.5_f64.sqrt(), -45. - 10. * 0.5_f64.sqrt())).length() < 1e-9);
+
+		// `g` moves just like `f`
+		let moved = turtle("FgF");
+		assert_eq!(turtle_runs(&moved), [(vec![0, 1], false), (vec![2, 3], false)]);
+		assert_eq!(moved.element().positions().nth(2), Some(DVec2::new(0., -20.)));
 	}
 
 	#[test]
-	fn turtle_width_is_restored_after_a_branch() {
+	fn turtle_width_scales_and_is_restored_after_a_branch() {
 		let drawing = turtle("F[!(3)F]F");
-
 		assert_eq!(point_attributes::<f64>(&drawing, ATTR_WIDTH), [1., 1., 3., 1.]);
+
+		// The width halves and doubles back, and dividing by zero leaves it alone
+		assert_eq!(point_attributes::<f64>(&turtle("F!F?F?(0)F"), ATTR_WIDTH), [1., 1., 0.5, 1., 1.]);
+
+		// `G` draws like `F`, and other letters mean nothing to the turtle
+		assert_eq!(turtle_runs(&turtle("FGAF")), [(vec![0, 1, 2, 3], false)]);
 		assert_eq!(point_attributes::<f64>(&turtle(""), ATTR_WIDTH), Vec::<f64>::new());
 		assert!(turtle("").element().0.iter_attribute_values::<f64>(ATTR_WIDTH).is_some(), "an empty drawing still has the attribute");
 
