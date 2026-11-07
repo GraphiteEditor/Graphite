@@ -104,13 +104,13 @@ fn rank_0_content_promotes_through_the_layer_coercion_path() {
 	assert_eq!(stack.len(), 1, "The rank-0 content should contribute exactly one graphic to the stack");
 }
 
-/// Builds a network feeding the given content plus an f64 distance value into Offset Points, whose distance input is ranked `Item<f64>`.
+/// Builds a network feeding the given content plus an f64 distance value into Offset Points, whose distance input is ranked `Item<Length>`.
 fn offset_points_network(content: TaggedValue) -> ProtoNetwork {
 	let content_node = ProtoNode::value(ConstructionArgs::Value(content.into()), vec![NodeId(0)]);
 	let distance_node = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Number(10.).into()), vec![NodeId(1)]);
 
 	let mut input_adapter_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
+	input_adapter_node.identifier = ProtoNodeIdentifier::new("input_adapter<Length>");
 
 	let mut offset_points_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
 	offset_points_node.identifier = ProtoNodeIdentifier::new("core_types::vector::OffsetPointsNode");

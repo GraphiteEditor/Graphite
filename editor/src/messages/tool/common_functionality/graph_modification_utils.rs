@@ -683,11 +683,8 @@ pub fn get_text<'a>(
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
-	if let TaggedValue::Number(width) = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)? {
-		Some(*width)
-	} else {
-		None
-	}
+	let weight = NodeGraphLayer::new(layer, network_interface).parameter_value(graphene_std::vector::stroke::WeightInput)?;
+	weight.as_length_pixels(network_interface.pixels_per_inch())
 }
 
 /// Subset of Stroke node inputs read for the control bar's stroke options popover.
@@ -729,10 +726,10 @@ pub fn get_stroke_options(layer: LayerNodeIdentifier, network_interface: &NodeNe
 		Some(TaggedValue::DashPattern(lengths)) => lengths.clone(),
 		_ => Vec::new(),
 	};
-	let dash_offset = match parameters.value(stroke::DashOffsetInput) {
-		Some(TaggedValue::Number(value)) => *value,
-		_ => 0.,
-	};
+	let dash_offset = parameters
+		.value(stroke::DashOffsetInput)
+		.and_then(|value| value.as_length_pixels(network_interface.pixels_per_inch()))
+		.unwrap_or_default();
 
 	Some(StrokeOptionsState {
 		align,
@@ -817,10 +814,11 @@ pub fn get_stroke_paint_order(layer: LayerNodeIdentifier, network_interface: &No
 pub fn set_stroke_weight_for_selected_layers(weight: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	for layer in paintable_selected_layers(document) {
 		if let Some(node_id) = get_stroke_id(layer, &document.network_interface) {
+			let input_connector = InputConnector::node(node_id, graphene_std::vector::stroke::WeightInput);
 			responses.add(NodeGraphMessage::SetInputValue {
 				node_id,
 				input_index: graphene_std::vector::stroke::WeightInput::INDEX,
-				value: TaggedValue::Number(weight).into(),
+				value: length_in_unit_of_input(&document.network_interface, &input_connector, weight).into(),
 			});
 		} else if weight > 0. {
 			let color = Some(Color::BLACK);

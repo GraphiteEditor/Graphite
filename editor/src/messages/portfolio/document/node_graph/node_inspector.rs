@@ -2968,10 +2968,10 @@ pub(crate) fn sample_polyline_inspector(node_id: NodeId, context: &mut NodeInspe
 	let spacing = enum_choice::<PointSpacingType>()
 		.for_socket(ParameterWidgetsInfo::new(node_id, SpacingInput, true, context))
 		.inspector_row();
-	let separation = number_widget(ParameterWidgetsInfo::new(node_id, SeparationInput, true, context), NumberInput::default().min(0.).unit(" px"));
+	let separation = length_widget(ParameterWidgetsInfo::new(node_id, SeparationInput, true, context), NumberInput::default().min(0.));
 	let quantity = number_widget(ParameterWidgetsInfo::new(node_id, QuantityInput, true, context), NumberInput::default().min(2.).int());
-	let start_offset = number_widget(ParameterWidgetsInfo::new(node_id, StartOffsetInput, true, context), NumberInput::default().min(0.).unit(" px"));
-	let stop_offset = number_widget(ParameterWidgetsInfo::new(node_id, StopOffsetInput, true, context), NumberInput::default().min(0.).unit(" px"));
+	let start_offset = length_widget(ParameterWidgetsInfo::new(node_id, StartOffsetInput, true, context), NumberInput::default().min(0.));
+	let stop_offset = length_widget(ParameterWidgetsInfo::new(node_id, StopOffsetInput, true, context), NumberInput::default().min(0.));
 	let adaptive_spacing = bool_widget(ParameterWidgetsInfo::new(node_id, AdaptiveSpacingInput, true, context), CheckboxInput::default().disabled(is_quantity));
 
 	vec![
@@ -3799,7 +3799,7 @@ pub fn stroke_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> 
 		ParameterWidgetsInfo::new(node_id, PaintInput, true, context),
 		crate::messages::layout::utility_types::widgets::button_widgets::ColorInput::default(),
 	);
-	let weight = number_widget(ParameterWidgetsInfo::new(node_id, WeightInput, true, context), NumberInput::default().unit(" px").min(0.));
+	let weight = length_widget(ParameterWidgetsInfo::new(node_id, WeightInput, true, context), NumberInput::default().min(0.));
 	let align = enum_choice::<StrokeAlign>().for_socket(ParameterWidgetsInfo::new(node_id, AlignInput, true, context)).inspector_row();
 	let cap = enum_choice::<StrokeCap>().for_socket(ParameterWidgetsInfo::new(node_id, CapInput, true, context)).inspector_row();
 	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).inspector_row();
@@ -3808,10 +3808,10 @@ pub fn stroke_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> 
 		ParameterWidgetsInfo::new(node_id, MiterLimitInput, true, context),
 		NumberInput::default().min(0.).disabled(miter_limit_disabled),
 	);
-	let disabled_number_input = NumberInput::default().unit(" px").disabled(has_dash_lengths);
+	let disabled_number_input = NumberInput::default().disabled(has_dash_lengths);
 	let dash_lengths = dash_pattern_widget(ParameterWidgetsInfo::new(node_id, DashPatternInput, true, context), TextInput::default().centered(true));
 	let number_input = disabled_number_input;
-	let dash_offset = number_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput, true, context), number_input);
+	let dash_offset = length_widget(ParameterWidgetsInfo::new(node_id, DashOffsetInput, true, context), number_input);
 
 	vec![
 		color,
@@ -3828,8 +3828,7 @@ pub fn stroke_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> 
 pub fn offset_path_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::offset_path::*;
 
-	let number_input = NumberInput::default().unit(" px");
-	let distance = number_widget(ParameterWidgetsInfo::new(node_id, DistanceInput, true, context), number_input);
+	let distance = length_widget(ParameterWidgetsInfo::new(node_id, DistanceInput, true, context), NumberInput::default());
 
 	let join = enum_choice::<StrokeJoin>().for_socket(ParameterWidgetsInfo::new(node_id, JoinInput, true, context)).inspector_row();
 

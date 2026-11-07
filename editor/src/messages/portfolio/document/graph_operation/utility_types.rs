@@ -15,6 +15,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
+use graphene_std::units::TypedLength;
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -871,7 +872,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(color.map_or_else(TaggedValue::no_paint, TaggedValue::Color), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::WeightInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Number(stroke.weight), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Length(TypedLength::pixels(stroke.weight)), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::AlignInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::StrokeAlign(stroke.align), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::CapInput);
@@ -883,7 +884,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashPatternInput);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::DashPattern(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput);
-		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Number(stroke.dash_offset), false), true);
+		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Length(TypedLength::pixels(stroke.dash_offset)), false), true);
 	}
 
 	/// Update the transform value of the upstream Transform node based a change to its existing value and the given parent transform.

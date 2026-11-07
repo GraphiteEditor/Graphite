@@ -8,6 +8,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{ATTR_APPEARANCE, ATTR_ID, ATTR_PATHS, Item, ItemAttributeValues, List, ListDyn, NodeIdPath};
 use core_types::math::spread::spread_factors;
 use core_types::transform::{Footprint, Transform};
+use core_types::units::{Angle, Length};
 use core_types::uuid::NodeId;
 use core_types::{
 	ATTR_BLEND_MODE, ATTR_CLIPPING_MASK, ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_GRADIENT_FORM, ATTR_OPACITY, ATTR_OPACITY_FILL, ATTR_TRANSFORM, CloneVarArgs, Color, Context, Ctx,
@@ -499,7 +500,7 @@ where
 }
 
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
-#[node_macro::node(category("Vector: Style"), icon("NodeStroke"), path(graphene_core::vector), inspector("stroke_inspector"))]
+#[node_macro::node(category("Vector: Style"), icon("NodeStroke"), path(graphene_core::vector), inspector("stroke_inspector"), version(2))]
 fn stroke<V>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
@@ -509,10 +510,9 @@ fn stroke<V>(
 	#[default(Color::BLACK)]
 	paint: Item<Graphic>,
 	/// The stroke thickness.
-	#[unit(" px")]
 	#[hard(0..)]
 	#[default(2.)]
-	weight: Item<f64>,
+	weight: Item<Length>,
 	/// The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.
 	align: Item<StrokeAlign>,
 	/// The shape of the stroke at open endpoints.
@@ -526,20 +526,19 @@ fn stroke<V>(
 	/// The stroke dash pattern. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	dash_pattern: Item<DashPattern>,
 	/// The phase offset distance from the starting point of the dash pattern.
-	#[unit(" px")]
-	dash_offset: Item<f64>,
+	dash_offset: Item<Length>,
 ) -> Item<V>
 where
 	Item<V>: VectorItemMut + Send,
 {
 	let mut content = content;
 	let (weight, align, cap, join, miter_limit, dash_offset) = (
-		weight.into_element(),
+		weight.into_element().pixels(),
 		align.into_element(),
 		cap.into_element(),
 		join.into_element(),
 		miter_limit.into_element(),
-		dash_offset.into_element(),
+		dash_offset.into_element().pixels(),
 	);
 	let dash_lengths = dash_pattern.into_element().clamped_lengths();
 
@@ -572,14 +571,13 @@ fn dash_pattern(
 	Item::new_from_element(DashPattern::from(lengths))
 }
 
-#[node_macro::node(category("Vector: Path"), icon("NodeRoundCorners"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeRoundCorners"), path(core_types::vector), version(2))]
 fn round_corners<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
-	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10.)]
-	radius: Item<f64>,
+	radius: Item<Length>,
 	#[range]
 	#[hard(0..1)]
 	#[default(0.5)]
@@ -589,14 +587,13 @@ fn round_corners<V: MapVectorItems + Send>(
 	#[hard(0..100)]
 	#[default(100.)]
 	edge_length_limit: Item<f64>,
-	#[unit("°")]
 	#[range]
 	#[hard(0..180)]
 	#[default(5.)]
-	min_angle_threshold: Item<f64>,
+	min_angle_threshold: Item<Angle>,
 ) -> Item<V> {
 	V::map_vector_items(source, |source| {
-		let (radius, roundness, edge_length_limit, min_angle_threshold) = (*radius.element(), *roundness.element(), *edge_length_limit.element(), *min_angle_threshold.element());
+		let (radius, roundness, edge_length_limit, min_angle_threshold) = (radius.element().pixels(), *roundness.element(), *edge_length_limit.element(), min_angle_threshold.element().radians());
 		let source_transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 		if !source_transform.matrix2.determinant().is_normal() {
 			return source;
@@ -618,7 +615,7 @@ fn round_corners<V: MapVectorItems + Send>(
 			document_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
 
 			// A subpath without corners to round passes through as it was
-			let Some(mut rounded_subpath) = round_subpath_corners(&document_bezpath, radius, roundness, edge_length_limit, min_angle_threshold.to_radians()) else {
+			let Some(mut rounded_subpath) = round_subpath_corners(&document_bezpath, radius, roundness, edge_length_limit, min_angle_threshold) else {
 				rounded_subpaths.push(bezpath);
 				continue;
 			};
@@ -740,21 +737,20 @@ fn round_subpath_corners(subpath: &BezPath, radius: f64, roundness: f64, edge_le
 }
 
 /// Joins points lying within a distance of each other into one, connecting the paths they belong to.
-#[node_macro::node(category("Vector: Path"), icon("NodeWeld"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeWeld"), path(core_types::vector), version(2))]
 fn weld<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	/// The vector with points to join.
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// How close points must be to join.
-	#[unit(" px")]
 	#[default(0.1)]
 	#[hard(0.0001..)]
-	distance: Item<f64>,
+	distance: Item<Length>,
 	/// Which points may join: any within the distance, the two ends of each segment shorter than it, or only the ends of open path flows.
 	method: Item<WeldMethod>,
 ) -> Item<V> {
-	let (distance, method) = (*distance.element(), *method.element());
+	let (distance, method) = (distance.element().pixels(), *method.element());
 
 	V::map_vector_items(content, |content| {
 		let mut content = content;
@@ -1173,7 +1169,7 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-#[node_macro::node(category("Transform"), icon("NodePackStrips"), path(graphene_core::vector), footprint_invariant)]
+#[node_macro::node(category("Transform"), icon("NodePackStrips"), path(graphene_core::vector), footprint_invariant, version(2))]
 fn pack_strips<T: Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
@@ -1183,19 +1179,15 @@ fn pack_strips<T: Send + Clone>(
 		List<Raster<GPU>>,
 	)]
 	elements: List<T>,
-	#[default(0.)]
-	#[unit(" px")]
-	separation: Item<f64>,
-	#[default(1000.)]
-	#[unit(" px")]
-	strip_max_length: Item<f64>,
+	#[default(0.)] separation: Item<Length>,
+	#[default(1000.)] strip_max_length: Item<Length>,
 	strip_direction: Item<RowsOrColumns>,
 ) -> List<T>
 where
 	Graphic: From<List<T>>,
 	List<T>: BoundingBox,
 {
-	let (separation, strip_max_length, strip_direction) = (separation.into_element(), strip_max_length.into_element(), strip_direction.into_element());
+	let (separation, strip_max_length, strip_direction) = (separation.into_element().pixels(), strip_max_length.into_element().pixels(), strip_direction.into_element());
 
 	// Packs shapes using bounds with Best-Fit Decreasing Height (BFDH) algorithm:
 	// - Sort shapes by cross-axis size (tallest first for rows, widest first for columns)
@@ -1772,11 +1764,11 @@ fn mesh_weld_tolerance(polygons: &[Vec<DVec2>]) -> f64 {
 	if diagonal.is_finite() && diagonal > 0. { (diagonal * 1e-6).max(1e-12) } else { 1e-6 }
 }
 
-#[node_macro::node(category("Vector: Path"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"))]
+#[node_macro::node(category("Vector: Path"), icon("NodeOffsetPath"), path(core_types::vector), inspector("offset_path_inspector"), version(2))]
 fn offset_path<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
-	distance: Item<f64>,
+	distance: Item<Length>,
 	join: Item<StrokeJoin>,
 	#[hard(0..)]
 	#[default(4.)]
@@ -1784,7 +1776,7 @@ fn offset_path<V: MapVectorItems + Send>(
 ) -> Result<Item<V>, OffsetPathError> {
 	V::try_map_vector_items(content, |content| {
 		let mut content = content;
-		let (distance, join, miter_limit) = (*distance.element(), *join.element(), *miter_limit.element());
+		let (distance, join, miter_limit) = (distance.element().pixels(), *join.element(), *miter_limit.element());
 
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		if !transform_attribute.matrix2.determinant().is_normal() {
@@ -2118,30 +2110,25 @@ pub fn combine_paths(_: impl Ctx, content: List<Graphic>) -> Item<Vector> {
 }
 
 /// Convert vector geometry into a polyline composed of evenly spaced points.
-#[node_macro::node(category("Vector: Path"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize)]
+#[node_macro::node(category("Vector: Path"), icon("NodeSamplePolyline"), path(core_types::vector), inspector("sample_polyline_inspector"), memoize, version(2))]
 fn sample_polyline<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
 	spacing: Item<PointSpacingType>,
 	#[default(100.)]
 	#[hard(0..)]
-	#[unit(" px")]
-	separation: Item<f64>,
+	separation: Item<Length>,
 	#[default(100)]
 	#[hard(2..)]
 	quantity: Item<i64>,
-	#[hard(0..)]
-	#[unit(" px")]
-	start_offset: Item<f64>,
-	#[hard(0..)]
-	#[unit(" px")]
-	stop_offset: Item<f64>,
+	#[hard(0..)] start_offset: Item<Length>,
+	#[hard(0..)] stop_offset: Item<Length>,
 	adaptive_spacing: Item<bool>,
 ) -> Result<Item<V>, SampleCountError> {
 	V::try_map_vector_items(content, |content| {
 		let mut content = content;
-		let (spacing, separation, quantity) = (*spacing.element(), *separation.element(), *quantity.element());
-		let (start_offset, stop_offset, adaptive_spacing) = (*start_offset.element(), *stop_offset.element(), *adaptive_spacing.element());
+		let (spacing, separation, quantity) = (*spacing.element(), separation.element().pixels(), *quantity.element());
+		let (start_offset, stop_offset, adaptive_spacing) = (start_offset.element().pixels(), stop_offset.element().pixels(), *adaptive_spacing.element());
 
 		let pathseg_perimeter = |segment: PathSeg| {
 			if is_linear(segment) {
@@ -2216,19 +2203,18 @@ fn tolerance_floor(bezpath: &BezPath) -> f64 {
 }
 
 /// Simplifies vector paths by reducing the number of curve segments while preserving the overall shape within the given tolerance.
-#[node_macro::node(category("Vector: Path"), icon("NodeSimplify"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeSimplify"), path(core_types::vector), version(2))]
 fn simplify<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to simplify.
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum distance the simplified path may deviate from the original.
-	#[unit(" px")]
 	#[hard(0..)]
 	#[default(5.)]
-	tolerance: Item<f64>,
+	tolerance: Item<Length>,
 ) -> Item<V> {
-	let tolerance = *tolerance.element();
+	let tolerance = tolerance.element().pixels();
 
 	if tolerance <= 0. {
 		return content;
@@ -2271,21 +2257,20 @@ fn simplify<V: MapVectorItems + Send>(
 }
 
 /// Decimates vector paths into polylines by sampling any curves into line segments, then removing points that don't significantly contribute to the shape using the Ramer-Douglas-Peucker algorithm.
-#[node_macro::node(category("Vector: Path"), icon("NodeDecimate"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeDecimate"), path(core_types::vector), version(2))]
 fn decimate<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector paths to decimate.
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum distance a point can deviate from the simplified path before it is kept.
-	#[unit(" px")]
 	#[hard(0..)]
 	#[default(5.)]
-	tolerance: Item<f64>,
+	tolerance: Item<Length>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
-		let tolerance = *tolerance.element();
+		let tolerance = tolerance.element().pixels();
 
 		// Tolerance of 0 means no simplification is possible, so return immediately
 		if tolerance <= 0. {
@@ -2554,16 +2539,15 @@ fn evaluate_path(
 	})
 }
 
-#[node_macro::node(category("Vector: Point"), icon("NodeScatterPoints"), path(core_types::vector), version(2), memoize)]
+#[node_macro::node(category("Vector: Point"), icon("NodeScatterPoints"), path(core_types::vector), version(3), memoize)]
 fn scatter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] content: Item<V>,
-	#[unit(" px")]
 	#[default(10.)]
 	#[range]
 	#[hard(0.01..)]
 	#[soft(1..100)]
-	separation: Item<f64>,
+	separation: Item<Length>,
 	#[hard(0..)] seed: Item<i64>,
 ) -> Result<Item<V>, PoissonDiskError> {
 	// One sampler for every vector in the content holds them all together to its limits on work
@@ -2571,7 +2555,7 @@ fn scatter_points<V: MapVectorItems + Send>(
 
 	V::try_map_vector_items(content, |content| {
 		let mut content = content;
-		let (separation, seed) = (*separation.element(), *seed.element());
+		let (separation, seed) = (separation.element().pixels(), *seed.element());
 
 		let content_paths = shared_paths_from_item_attributes(&content);
 		let bezpaths: Vec<_> = content.element().stroke_bezpath_iter(&content_paths).collect();
@@ -2732,16 +2716,15 @@ fn apply_point_deltas(vector: &mut Vector, paths: &List<Path>, anchors: &[usize]
 }
 
 /// Perturbs the positions of anchor points in vector geometry by random amounts and directions.
-#[node_macro::node(category("Vector: Point"), icon("NodeJitterPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeJitterPoints"), path(core_types::vector), version(2))]
 fn jitter_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be jittered.
 	#[implementations(Graphic, Vector)]
 	content: Item<V>,
 	/// The maximum extent of the random distance each point can be offset.
-	#[unit(" px")]
 	#[default(5.)]
-	max_distance: Item<f64>,
+	max_distance: Item<Length>,
 	/// Seed used to determine unique variations on all randomized offsets.
 	#[hard(0..)]
 	seed: Item<i64>,
@@ -2751,7 +2734,7 @@ fn jitter_points<V: MapVectorItems + Send>(
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
-		let (max_distance, seed, along_normals) = (*max_distance.element(), *seed.element(), *along_normals.element());
+		let (max_distance, seed, along_normals) = (max_distance.element().pixels(), *seed.element(), *along_normals.element());
 
 		let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -2784,7 +2767,7 @@ fn jitter_points<V: MapVectorItems + Send>(
 
 /// Displaces anchor points along their normal direction (perpendicular to the path) by a set distance.
 /// Points with 0 or 3+ segment connections have no well-defined normal and are left in place.
-#[node_macro::node(category("Vector: Point"), icon("NodeOffsetPoints"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Point"), icon("NodeOffsetPoints"), path(core_types::vector), version(2))]
 fn offset_points<V: MapVectorItems + Send>(
 	_: impl Ctx,
 	/// The vector geometry with points to be offset.
@@ -2792,12 +2775,11 @@ fn offset_points<V: MapVectorItems + Send>(
 	content: Item<V>,
 	/// The distance to offset each anchor point along its normal. Positive values move outward, negative values move inward.
 	#[default(10.)]
-	#[unit(" px")]
-	distance: Item<f64>,
+	distance: Item<Length>,
 ) -> Item<V> {
 	V::map_vector_items(content, |content| {
 		let mut content = content;
-		let distance = *distance.element();
+		let distance = distance.element().pixels();
 		let transform_attribute: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
 		let inverse_linear = inverse_linear_or_repair(transform_attribute.matrix2);
 
@@ -3800,18 +3782,17 @@ fn bevel_algorithm(vector: &mut Vector, paths: &mut List<Path>, transform: DAffi
 	}
 }
 
-#[node_macro::node(category("Vector: Path"), icon("NodeBevel"), path(core_types::vector))]
+#[node_macro::node(category("Vector: Path"), icon("NodeBevel"), path(core_types::vector), version(2))]
 fn bevel<V: MapVectorItems + Send + Sync + 'static>(
 	_: impl Ctx,
 	#[implementations(Graphic, Vector)] source: Item<V>,
-	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10.)]
-	distance: Item<f64>,
+	distance: Item<Length>,
 ) -> Item<V> {
 	V::map_vector_items(source, |source| {
 		let mut source = source;
-		let distance = *distance.element();
+		let distance = distance.element().pixels();
 
 		let transform: DAffine2 = source.attribute_cloned_or_default(ATTR_TRANSFORM);
 		edit_item_geometry(&mut source, |vector, paths| bevel_algorithm(vector, paths, transform, distance));
@@ -4029,6 +4010,10 @@ mod test {
 		Item::new_from_element(value)
 	}
 
+	fn pixels(pixels: f64) -> Item<Length> {
+		item(Length::from_pixels(pixels))
+	}
+
 	/// The paths riding an item, standing in for the empty weave when the item carries none.
 	fn item_paths<T>(item: &Item<T>) -> &List<Path> {
 		paths_from_item_attributes(item).unwrap_or_else(|| no_paths())
@@ -4109,7 +4094,7 @@ mod test {
 		// Offsetting closed triangles must not leave each subpath with a redundant start/end anchor (a Kurbo offset
 		// contour returns to approximately, not exactly, its start; that near-coincident point must close, not duplicate).
 		let delaunay = super::triangulate((), vector_item_from_points(&SQUARE_WITH_CENTER), item(false)).unwrap();
-		let offset = super::offset_path((), delaunay, item(0.5), item(StrokeJoin::Miter), item(4.)).unwrap();
+		let offset = super::offset_path((), delaunay, pixels(0.5), item(StrokeJoin::Miter), item(4.)).unwrap();
 		let paths = item_paths(&offset);
 		let result = offset.element();
 
@@ -4446,10 +4431,10 @@ mod test {
 			Footprint::default(),
 			vector_item_from_bezpath(path),
 			Item::new_from_element(PointSpacingType::Separation),
-			Item::new_from_element(30.),
+			pixels(30.),
 			Item::new_from_element(0),
-			Item::new_from_element(0.),
-			Item::new_from_element(0.),
+			pixels(0.),
+			pixels(0.),
 			Item::new_from_element(false),
 		)
 		.unwrap();
@@ -4466,10 +4451,10 @@ mod test {
 			Footprint::default(),
 			vector_item_from_bezpath(path),
 			Item::new_from_element(PointSpacingType::Separation),
-			Item::new_from_element(18.),
+			pixels(18.),
 			Item::new_from_element(0),
-			Item::new_from_element(45.),
-			Item::new_from_element(10.),
+			pixels(45.),
+			pixels(10.),
 			Item::new_from_element(true),
 		)
 		.unwrap();
@@ -4484,7 +4469,7 @@ mod test {
 		let poisson_points = super::scatter_points(
 			Footprint::default(),
 			vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.))),
-			Item::new_from_element(10. * std::f64::consts::SQRT_2),
+			pixels(10. * std::f64::consts::SQRT_2),
 			Item::new_from_element(0),
 		)
 		.expect("the separation should fit the circle");
@@ -4798,7 +4783,7 @@ mod test {
 	#[test]
 	fn bevel_rect() {
 		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), Item::new_from_element(2_f64.sqrt() * 10.));
+		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), pixels(2_f64.sqrt() * 10.));
 		let paths = item_paths(&beveled);
 		let beveled = beveled.element();
 
@@ -4827,7 +4812,7 @@ mod test {
 		source.line_to(Point::ZERO);
 		source.push(curve.as_path_el());
 
-		let beveled = super::bevel((), vector_item_from_bezpath(source), Item::new_from_element(2_f64.sqrt() * 10.));
+		let beveled = super::bevel((), vector_item_from_bezpath(source), pixels(2_f64.sqrt() * 10.));
 		let paths = item_paths(&beveled);
 		let beveled = beveled.element();
 
@@ -4855,7 +4840,7 @@ mod test {
 		let transform = DAffine2::from_scale_angle_translation(DVec2::splat(10.), 1., DVec2::new(99., 77.));
 		let vector_item = Vector::item_from_bezpath(&source).with_attribute(ATTR_TRANSFORM, transform);
 
-		let beveled = super::bevel((), vector_item, Item::new_from_element(2_f64.sqrt() * 100.));
+		let beveled = super::bevel((), vector_item, pixels(2_f64.sqrt() * 100.));
 		let paths = item_paths(&beveled);
 		let beveled = beveled.element();
 
@@ -4879,7 +4864,7 @@ mod test {
 		source.line_to(Point::new(100., 100.));
 		source.line_to(Point::new(0., 100.));
 
-		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), Item::new_from_element(999.));
+		let beveled = super::bevel(Footprint::default(), vector_item_from_bezpath(source), pixels(999.));
 		let paths = item_paths(&beveled);
 		let beveled = beveled.element();
 
@@ -4904,7 +4889,7 @@ mod test {
 
 		let subpath = BezPath::from_path_segments([line, point, curve].into_iter());
 
-		let beveled_item = super::bevel(Footprint::default(), vector_item_from_bezpath(subpath), Item::new_from_element(5.));
+		let beveled_item = super::bevel(Footprint::default(), vector_item_from_bezpath(subpath), pixels(5.));
 		let paths = item_paths(&beveled_item);
 		let beveled = beveled_item.element();
 
@@ -4952,7 +4937,7 @@ mod test {
 	}
 
 	fn round_corners_of(bezpath: BezPath, transform: DAffine2) -> Vec<BezPath> {
-		let rounded = super::round_corners((), create_vector_item(bezpath, transform), item(10.), item(0.5), item(100.), item(5.));
+		let rounded = super::round_corners((), create_vector_item(bezpath, transform), pixels(10.), item(0.5), item(100.), item(Angle::from_degrees(5.)));
 		rounded.element().stroke_bezpath_iter(item_paths(&rounded)).collect()
 	}
 
@@ -5067,7 +5052,7 @@ mod test {
 	// Sampling the welded diamond goes once around its closed contour, and once unwelded, along each open path on its own
 	#[test]
 	fn unwelded_paths_are_sampled_one_at_a_time() {
-		let sample = |content: Item<Vector>| super::sample_polyline((), content, item(PointSpacingType::Quantity), item(100.), item(5), item(0.), item(0.), item(false)).unwrap();
+		let sample = |content: Item<Vector>| super::sample_polyline((), content, item(PointSpacingType::Quantity), pixels(100.), item(5), pixels(0.), pixels(0.), item(false)).unwrap();
 		let polylines = |sampled: Item<Vector>| sampled.element().stroke_bezpath_iter(item_paths(&sampled)).collect::<Vec<_>>();
 
 		let welded = polylines(sample(welded_diamond()));
@@ -5132,7 +5117,7 @@ mod test {
 	#[test]
 	fn offset_path_reports_a_shape_too_large_to_clip() {
 		let star = vector_item_from_bezpath(vector_types::vector::algorithms::shapes::star_polygon_bezpath(DVec2::ZERO, 5, 1e20, 5e19).unwrap());
-		let offset = super::offset_path((), star, item(-1e18), item(StrokeJoin::Miter), item(4.));
+		let offset = super::offset_path((), star, pixels(-1e18), item(StrokeJoin::Miter), item(4.));
 		assert!(matches!(offset, Err(OffsetPathError::TooLarge)));
 	}
 
@@ -5141,25 +5126,28 @@ mod test {
 	fn collapsed_items_pass_through() {
 		let collapsed = create_vector_item(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY), DAffine2::from_scale(DVec2::new(0., 1.)));
 
-		assert_eq!(super::round_corners((), collapsed.clone(), item(10.), item(0.5), item(100.), item(5.)), collapsed);
-		assert_eq!(super::offset_path((), collapsed.clone(), item(5.), item(StrokeJoin::Miter), item(4.)).unwrap(), collapsed);
-		assert_eq!(super::simplify((), collapsed.clone(), item(5.)), collapsed);
-		assert_eq!(super::decimate((), collapsed.clone(), item(5.)), collapsed);
-		assert_eq!(super::bevel((), collapsed.clone(), item(10.)), collapsed);
+		assert_eq!(
+			super::round_corners((), collapsed.clone(), pixels(10.), item(0.5), item(100.), item(Angle::from_degrees(5.))),
+			collapsed
+		);
+		assert_eq!(super::offset_path((), collapsed.clone(), pixels(5.), item(StrokeJoin::Miter), item(4.)).unwrap(), collapsed);
+		assert_eq!(super::simplify((), collapsed.clone(), pixels(5.)), collapsed);
+		assert_eq!(super::decimate((), collapsed.clone(), pixels(5.)), collapsed);
+		assert_eq!(super::bevel((), collapsed.clone(), pixels(10.)), collapsed);
 	}
 
 	// Kurbo drops a subpath that simplifies down to nothing, so one without length passes through
 	#[test]
 	fn simplify_keeps_a_subpath_without_length() {
 		let point = vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(5.), DVec2::splat(5.)));
-		let simplified = super::simplify((), point, item(5.));
+		let simplified = super::simplify((), point, pixels(5.));
 		assert_eq!(simplified.element().stroke_bezpath_iter(item_paths(&simplified)).count(), 1);
 	}
 
 	#[test]
 	fn decimate_with_a_tolerance_finer_than_float_precision() {
 		let circle = vector_item_from_bezpath(ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.)));
-		let decimated = super::decimate((), circle, item(1e-60));
+		let decimated = super::decimate((), circle, pixels(1e-60));
 		assert!(decimated.element().point_count() > 4);
 	}
 
@@ -5203,7 +5191,7 @@ mod test {
 	fn scatter_points_samples_each_vector_in_graphic_content() {
 		let shapes = [ellipse_bezpath(DVec2::splat(-50.), DVec2::splat(50.)), ellipse_bezpath(DVec2::new(200., -40.), DVec2::new(300., 40.))];
 		let vectors: List<Vector> = shapes.iter().cloned().map(vector_item_from_bezpath).collect();
-		let scattered = super::scatter_points((), Item::new_from_element(Graphic::VectorList(vectors)), item(10.), item(0)).expect("the shapes should scatter");
+		let scattered = super::scatter_points((), Item::new_from_element(Graphic::VectorList(vectors)), pixels(10.), item(0)).expect("the shapes should scatter");
 
 		let Graphic::VectorList(vectors) = scattered.element() else {
 			panic!("the content should stay a vector list")
@@ -5217,12 +5205,12 @@ mod test {
 
 	#[test]
 	fn scatter_points_on_empty_content_gives_no_points() {
-		let scattered = super::scatter_points((), vector_item_from_bezpath(BezPath::new()), item(10.), item(0)).expect("empty content should scatter nothing");
+		let scattered = super::scatter_points((), vector_item_from_bezpath(BezPath::new()), pixels(10.), item(0)).expect("empty content should scatter nothing");
 		assert_eq!(scattered.element().point_count(), 0);
 	}
 
 	fn scattered_points(bezpath: BezPath, separation: f64, seed: i64) -> Vec<(DVec2, PointId)> {
-		let scattered = super::scatter_points((), vector_item_from_bezpath(bezpath), item(separation), item(seed)).expect("the separation should fit the shape");
+		let scattered = super::scatter_points((), vector_item_from_bezpath(bezpath), pixels(separation), item(seed)).expect("the separation should fit the shape");
 		let points = &scattered.element().0;
 		points.iter_element_values().copied().zip(points.iter_attribute_values::<PointId>(ATTR_ID).unwrap().copied()).collect()
 	}
@@ -5290,7 +5278,7 @@ mod test {
 	#[test]
 	fn scatter_points_reports_a_separation_too_small_for_the_shape() {
 		let circle = |center: DVec2, radius: f64| vector_item_from_bezpath(ellipse_bezpath(center - radius, center + radius));
-		let scatter = |content, separation| super::scatter_points((), content, item(separation), item(0));
+		let scatter = |content, separation| super::scatter_points((), content, pixels(separation), item(0));
 
 		assert!(matches!(scatter(circle(DVec2::ZERO, 100.), 0.15), Err(PoissonDiskError::SeparationTooSmall { .. })));
 		assert!(matches!(scatter(circle(DVec2::ZERO, 100.), 0.01), Err(PoissonDiskError::ExtentTooLarge)));
@@ -5317,9 +5305,9 @@ mod test {
 		let transform = DAffine2::from_cols(DVec2::new(1e160, 0.), DVec2::ZERO, DVec2::ZERO);
 		let content = || create_vector_item(Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY), transform);
 
-		let jittered = super::jitter_points((), content(), item(5.), item(0), item(true));
+		let jittered = super::jitter_points((), content(), pixels(5.), item(0), item(true));
 		assert!(jittered.element().positions().all(|position| position.is_finite()));
-		let offset = super::offset_points((), content(), item(10.));
+		let offset = super::offset_points((), content(), pixels(10.));
 		assert!(offset.element().positions().all(|position| position.is_finite()));
 	}
 
@@ -5360,7 +5348,7 @@ mod test {
 		push_path(&mut paths, CurveType::Linear, [0, 1, 2, 3, 1], []);
 		push_path(&mut paths, CurveType::Linear, [4, 5, 6], []);
 
-		let beveled = super::bevel((), Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths), item(10.));
+		let beveled = super::bevel((), Item::new_from_element(vector).with_attribute(ATTR_PATHS, paths), pixels(10.));
 		assert!(beveled.element().segment_iter(item_paths(&beveled)).count() > 6);
 	}
 
@@ -5376,7 +5364,7 @@ mod test {
 	#[test]
 	fn sample_polyline_reports_too_many_points() {
 		let line = || vector_item_from_bezpath(Line::new((0., 0.), (100., 0.)).to_path(DEFAULT_ACCURACY));
-		let sample = |spacing, separation, quantity| super::sample_polyline((), line(), item(spacing), item(separation), item(quantity), item(0.), item(0.), item(false));
+		let sample = |spacing, separation, quantity| super::sample_polyline((), line(), item(spacing), pixels(separation), item(quantity), pixels(0.), pixels(0.), item(false));
 
 		assert!(matches!(sample(PointSpacingType::Separation, 0., 100), Err(SampleCountError::SeparationTooSmall { limit: 10_000 })));
 		assert!(matches!(sample(PointSpacingType::Quantity, 100., 10_001), Err(SampleCountError::QuantityTooLarge { limit: 10_000 })));

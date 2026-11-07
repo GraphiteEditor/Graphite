@@ -5,6 +5,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::choice_type::ChoiceTypeStatic;
 use graphene_std::core_types::misc::parse_f64;
+use graphene_std::units::TypedLength;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 /// All non-color stroke-related options surfaced in the control bar popover.
@@ -221,5 +222,5 @@ pub fn apply_dash_lengths(drawing: &mut DrawingToolState, lengths: Vec<f64>, doc
 
 pub fn apply_dash_offset(drawing: &mut DrawingToolState, offset: f64, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 	drawing.dash_offset = Some(offset);
-	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashOffsetInput, TaggedValue::Number(offset), responses);
+	graph_modification_utils::set_parameter_for_selected_layers(document, graphene_std::vector::stroke::DashOffsetInput, TaggedValue::Length(TypedLength::pixels(offset)), responses);
 }
