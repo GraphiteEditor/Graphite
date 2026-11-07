@@ -397,6 +397,10 @@ impl Session {
 			return Ok(None);
 		}
 		self.runtime_base = None;
+		// The name belongs to the open interaction being taken back
+		if closed_before == own.len() {
+			self.action = None;
+		}
 		let (touched, taken) = self.document.retract_hot_ops(&ids);
 		self.taken_back_resources.extend(taken.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		let ops = taken.into_iter().map(|hot_op| hot_op.op).filter(|op| !matches!(op, RegistryDelta::Meta)).collect();
@@ -664,6 +668,11 @@ impl Session {
 	/// Names this peer's open interaction, replacing an earlier name. Closing it takes the name along.
 	pub fn name_interaction(&mut self, action: &str) {
 		self.action = Some(action.to_string());
+	}
+
+	/// The name this peer's open interaction will close with.
+	pub fn pending_action(&self) -> Option<&str> {
+		self.action.as_deref()
 	}
 
 	/// Every author's closed interactions in the hot log, the earliest closed first.

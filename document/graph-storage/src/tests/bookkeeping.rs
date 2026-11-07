@@ -615,3 +615,19 @@ fn an_interaction_keeps_its_name_into_history() {
 	let actions: Vec<Option<&str>> = session.history().filter(|delta| delta.is_interaction_end()).map(|delta| delta.action()).collect();
 	assert_eq!(actions, [Some("Move"), None], "a name set while nothing was open is dropped at the next close");
 }
+
+#[test]
+fn a_taken_back_interaction_takes_its_name_along() {
+	let mut session = Session::with_peer(PeerId(1));
+	session.stage_ops([set_attribute("a", 1)]).unwrap();
+	session.name_interaction("Move");
+	session.retract_interaction().unwrap().expect("a is open and hot");
+	session.stage_ops([set_attribute("b", 1)]).unwrap();
+	session.end_interaction().unwrap();
+
+	for interaction in session.closed_interactions() {
+		session.retire_interaction(&interaction).unwrap();
+	}
+	let actions: Vec<Option<&str>> = session.history().filter(|delta| delta.is_interaction_end()).map(|delta| delta.action()).collect();
+	assert_eq!(actions, [None]);
+}

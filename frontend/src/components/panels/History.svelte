@@ -31,6 +31,9 @@
 		return new Date(ms).toLocaleDateString();
 	}
 
+	// Alone, the newest step not yet in history is where the document is
+	$: pendingHead = !$history.collaborating && $history.progress.length > 0;
+
 	function count(n: number, one: string, many: string): string {
 		return `${n} ${n === 1 ? one : many}`;
 	}
@@ -67,22 +70,27 @@
 		</LayoutRow>
 	{/if}
 	<LayoutCol class="body" scrollableY={true}>
-		{#each $history.progress as row}
-			<div class="row progress">
+		{#each $history.progress as row, index}
+			<!-- Alone, work not yet in history is shown as an ordinary step -->
+			<div class="row" class:head={pendingHead && index === 0}>
 				<span class="gutter"></span>
-				<span class="rail"><span class="dot hollow" style:border-color={row.color}></span></span>
+				{#if $history.collaborating}
+					<span class="rail"><span class="dot hollow" style:border-color={row.color}></span></span>
+				{:else}
+					<span class="rail"><span class="dot"></span></span>
+				{/if}
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In progress" : "Waiting to enter history")}</span>
 					<span class="meta">
-						<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span>
-						· {count(row.ops, "change", "changes")}
-						· {row.open ? "in progress" : "not yet in history"}
+						{#if $history.collaborating}<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span> ·{/if}
+						{count(row.ops, "change", "changes")}
+						{#if $history.collaborating}· {row.open ? "in progress" : "not yet in history"}{/if}
 					</span>
 				</div>
 			</div>
 		{/each}
 		{#each $history.rows as row (row.id)}
-			<div class="row" class:head={row.head} class:undone={row.undone} class:abandoned={row.abandoned}>
+			<div class="row" class:head={row.head && !pendingHead} class:undone={row.undone} class:abandoned={row.abandoned}>
 				{#if row.deltas > 1}
 					<button
 						class="expand"
