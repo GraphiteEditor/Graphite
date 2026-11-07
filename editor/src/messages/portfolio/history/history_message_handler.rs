@@ -737,4 +737,53 @@ mod tests {
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert!(labels.contains(&"Added an image"), "{labels:?}");
 	}
+
+	/// Bringing a deletion back onto a stack that grew on the deleted layer since removes the layer and reconnects the
+	/// newer one to what was below it, rather than leaving it on nothing.
+	#[tokio::test]
+	async fn bringing_a_deletion_back_onto_a_grown_stack_reconnects_it() {
+		use crate::test_utils::test_prelude::*;
+
+		async fn close_step(editor: &mut EditorTestUtils) {
+			editor.handle_message(DocumentMessage::StartTransaction).await;
+			editor.handle_message(DocumentMessage::EndTransaction).await;
+			editor.active_document_mut().retire_storage_interaction();
+		}
+		fn panel_rows(editor: &EditorTestUtils, following: Option<Rev>) -> Vec<HistoryRow> {
+			let document = editor.active_document();
+			let gdd = document.storage().expect("every document has a working copy");
+			panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), following).rows
+		}
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Ellipse, 150., 0., 250., 100., ModifierKeys::empty()).await;
+		close_step(&mut editor).await;
+		let ellipse = editor
+			.active_document()
+			.network_interface
+			.selected_nodes()
+			.selected_layers(editor.active_document().metadata())
+			.next()
+			.expect("the ellipse is selected");
+		editor.handle_message(NodeGraphMessage::DeleteSelectedNodes { delete_children: true }).await;
+		close_step(&mut editor).await;
+
+		let rows = panel_rows(&editor, None);
+		editor.handle_message(HistoryMessage::GoBack { id: rows[1].id.clone() }).await;
+		editor.drag_tool(ToolType::Rectangle, 300., 0., 350., 50., ModifierKeys::empty()).await;
+		close_step(&mut editor).await;
+
+		let branch = panel_rows(&editor, None).into_iter().flat_map(|row| row.branches).next().expect("the deletion is left on a branch");
+		let deletion = panel_rows(&editor, parse_rev(&branch.id)).into_iter().find(|row| row.abandoned).expect("the deletion is off the line");
+		editor.handle_message(HistoryMessage::BringBack { id: deletion.id }).await;
+
+		let document = editor.active_document();
+		let layers: Vec<_> = document.metadata().all_layers().collect();
+		assert!(!layers.contains(&ellipse), "the deletion took the ellipse");
+		assert_eq!(layers.len(), 2, "both rectangles are still drawn: {layers:?}");
+		let violations = document.network_interface.validate_invariants();
+		assert!(violations.is_empty(), "{violations:#?}");
+	}
 }
