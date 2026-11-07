@@ -41,6 +41,10 @@ vello_gpu = { workspace = true }
 wgpu = { workspace = true }
 parley = { workspace = true }
 skrifa = { workspace = true }
+krilla = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+hayro-syntax = { workspace = true }

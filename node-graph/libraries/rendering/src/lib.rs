@@ -1,5 +1,7 @@
 pub mod convert_usvg_path;
 pub mod deferred_image;
+mod pdf_encoding;
+pub mod pdf_scene_builder;
 pub mod render_ext;
 mod renderer;
 pub mod scene_builder;

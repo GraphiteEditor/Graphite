@@ -223,6 +223,8 @@ skrifa = "0.44"
 polycool = "0.4"
 color = "0.3"
 # Linebender ecosystem (END)
+krilla = { version = "0.8", default-features = false, features = ["raster-images"] }
+hayro-syntax = { version = "0.9", default-features = false, features = ["std"] }
 rand = { version = "0.10", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.10"
 glam = { version = "0.34", default-features = false, features = [
