@@ -1,5 +1,6 @@
 mod compare;
 mod corpus;
+mod coverage;
 mod ingest;
 mod render;
 mod upgrade;
@@ -63,6 +64,15 @@ enum Command {
 		/// Where to write the renders and diffs of mismatches.
 		#[clap(long, default_value = "target/regression")]
 		output: PathBuf,
+	},
+	/// Report how many of the registered nodes the corpus's documents use.
+	Coverage {
+		/// Also list the nodes no document uses.
+		#[clap(long)]
+		uncovered: bool,
+		/// Also count the nodes in hidden categories, which the node catalog doesn't list.
+		#[clap(long)]
+		include_hidden: bool,
 	},
 }
 
@@ -129,6 +139,10 @@ async fn run(app: App) -> Result<bool, Box<dyn Error>> {
 				passed &= check(&corpus, &entry, &output).await;
 			}
 			Ok(passed)
+		}
+		Command::Coverage { uncovered, include_hidden } => {
+			coverage::coverage(&Corpus::open(&corpus_root()?)?, uncovered, include_hidden).await?;
+			Ok(true)
 		}
 	}
 }
