@@ -4,6 +4,7 @@ use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NetworkId as RuntimeNetworkId, NetworkLocation, NodeInput, NodeNetwork};
 
+use crate::blob::BlobBytes;
 use crate::to_runtime::ConversionError;
 use crate::{Declarations, Network, NetworkId, NoMetadata, Node, NodeId, PeerId, ROOT_NETWORK, Registry};
 
@@ -72,9 +73,9 @@ fn projecting_a_node_matches_the_whole_conversion() {
 	let resources = graphene_resource::ResourceRegistry::new();
 	let conversion = Registry::convert_from_runtime(&nested_network(), &NoMetadata, &resources, PeerId(1)).expect("conversion");
 	let registry = &conversion.registry;
-	let (whole, node_entries, _) = registry.to_runtime_with_full_metadata(&conversion.declarations).expect("whole conversion");
+	let (whole, node_entries, _) = registry.to_runtime_with_full_metadata(&conversion.declarations, &conversion.blob_bytes).expect("whole conversion");
 
-	let projection = registry.runtime_projection(&conversion.declarations);
+	let projection = registry.runtime_projection(&conversion.declarations, &conversion.blob_bytes);
 	for &id in registry.node_instances.keys() {
 		let projected = projection.node(id).expect("every stored node projects");
 		let (network, local_id) = projection.node_address(id).expect("every stored node has an address");
@@ -96,8 +97,8 @@ fn a_network_entry_projects_its_dense_exports_and_location() {
 	let resources = graphene_resource::ResourceRegistry::new();
 	let conversion = Registry::convert_from_runtime(&nested_network(), &NoMetadata, &resources, PeerId(1)).expect("conversion");
 	let registry = &conversion.registry;
-	let (whole, _, _) = registry.to_runtime_with_full_metadata(&conversion.declarations).expect("whole conversion");
-	let projection = registry.runtime_projection(&conversion.declarations);
+	let (whole, _, _) = registry.to_runtime_with_full_metadata(&conversion.declarations, &conversion.blob_bytes).expect("whole conversion");
+	let projection = registry.runtime_projection(&conversion.declarations, &conversion.blob_bytes);
 
 	let root = projection.network_entry(ROOT_NETWORK).expect("root");
 	assert_eq!(root.network, NetworkLocation::default());
@@ -120,8 +121,8 @@ fn an_unreachable_network_has_no_address() {
 	node.network = NetworkId(5);
 	registry.node_instances.insert(NodeId(9), node);
 
-	let declarations = Declarations::new();
-	let projection = registry.runtime_projection(&declarations);
+	let (declarations, blobs) = (Declarations::new(), BlobBytes::new());
+	let projection = registry.runtime_projection(&declarations, &blobs);
 	assert_eq!(projection.network_location(NetworkId(5)), None);
 	assert_eq!(projection.node_address(NodeId(9)), None);
 	assert!(matches!(projection.node(NodeId(9)), Err(ConversionError::NetworkNotFound(_))));
@@ -140,8 +141,8 @@ fn a_network_several_nodes_implement_has_one_location() {
 		registry.node_instances.insert(NodeId(id), node);
 	}
 
-	let declarations = Declarations::new();
-	let projection = registry.runtime_projection(&declarations);
+	let (declarations, blobs) = (Declarations::new(), BlobBytes::new());
+	let projection = registry.runtime_projection(&declarations, &blobs);
 	assert_eq!(projection.network_location(NetworkId(5)), Some(Some(RuntimeNetworkId(5))));
 	assert_eq!(projection.network_location(ROOT_NETWORK), Some(NetworkLocation::default()));
 }

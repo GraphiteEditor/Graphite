@@ -3,8 +3,8 @@ use crate::NodeMetadataSource;
 #[cfg(any(feature = "conversion", test))]
 use crate::from_runtime;
 use crate::{
-	ApplyMode, Attributes, Delta, Document, History, HotOp, HotOpId, HotSequence, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget, ResourceEntry,
-	RetiredMarks, Rev, TimeStamp, Touched, UserId, Value, to_value,
+	ApplyMode, Attributes, BlobHash, Delta, Document, History, HotOp, HotOpId, HotSequence, Implementation, LamportClock, NetworkId, NodeId, PeerId, Registry, RegistryDelta, RegistryTarget,
+	ResourceEntry, RetiredMarks, Rev, TimeStamp, Touched, UserId, Value, to_value,
 };
 use graphene_resource::{ResourceHash, ResourceId};
 use serde::{Deserialize, Serialize};
@@ -99,7 +99,9 @@ impl Session {
 	/// Stages the diff as hot ops rather than retired deltas: each op is applied to the registry and
 	/// pushed onto the hot log. The caller persists the returned hot frames and then calls `retire`
 	/// to promote them into durable history.
-	#[cfg(any(feature = "conversion", test))]
+	///
+	/// Only for tests because it does not store the blob bytes. `Gdd::stage_runtime_snapshot` does.
+	#[cfg(test)]
 	pub fn stage_from_runtime<M: NodeMetadataSource>(
 		&mut self,
 		network: &graph_craft::document::NodeNetwork,
@@ -107,20 +109,25 @@ impl Session {
 		resources: &graphene_resource::ResourceRegistry,
 	) -> Result<(Vec<HotOp>, from_runtime::RuntimeConversion), CommitError> {
 		let conversion = Registry::convert_from_runtime(network, metadata, resources, self.document.peer)?;
-		let rendered;
-		let base = match &self.runtime_base {
-			Some(base) => base,
-			None => {
-				rendered = self.document.working_registry.as_rendered();
-				&rendered
-			}
-		};
-		let ops = crate::delta::compute_deltas(base, &conversion.registry);
+		let ops = self.runtime_diff(&conversion.registry);
+		let hot_ops = self.stage_runtime_diff(ops, conversion.registry.clone())?;
+		Ok((hot_ops, conversion))
+	}
 
+	/// The ops from the last staged runtime state to `registry`, a fresh conversion of the runtime network.
+	pub fn runtime_diff(&self, registry: &Registry) -> Vec<RegistryDelta> {
+		match &self.runtime_base {
+			Some(base) => crate::delta::compute_deltas(base, registry),
+			None => crate::delta::compute_deltas(&self.document.working_registry.as_rendered(), registry),
+		}
+	}
+
+	/// Stage the [`runtime_diff`](Self::runtime_diff) ops of `registry` and keep `registry` as the last runtime state.
+	pub fn stage_runtime_diff(&mut self, ops: Vec<RegistryDelta>, registry: Registry) -> Result<Vec<HotOp>, CrdtError> {
 		// Lenient since a peer's concurrent write may have reshaped what the diff names.
 		let hot_ops = self.stage_ops_with(ops.into_iter().map(|op| (op, Attributes::new())), ApplyMode::Idempotent)?;
-		self.runtime_base = Some(conversion.registry.clone());
-		Ok((hot_ops, conversion))
+		self.runtime_base = Some(registry);
+		Ok(hot_ops)
 	}
 
 	pub fn mark_runtime_current(&mut self) {
@@ -131,7 +138,7 @@ impl Session {
 	/// It depends only on the network structure, not on resources or declarations.
 	#[cfg(any(feature = "conversion", test))]
 	pub fn network_ids<M: NodeMetadataSource>(&self, network: &graph_craft::document::NodeNetwork, metadata: &M) -> Result<HashMap<graph_craft::document::NetworkLocation, NetworkId>, CommitError> {
-		let conversion = Registry::convert_from_runtime(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
+		let conversion = Registry::convert_from_runtime_inline(network, metadata, &graphene_resource::ResourceRegistry::new(), self.document.peer)?;
 		Ok(conversion.network_ids)
 	}
 
@@ -1065,6 +1072,22 @@ impl Session {
 		hashes.extend(self.document.history.resource_hashes());
 		hashes.extend(self.document.hot_log.iter().filter_map(|hot_op| hot_op.op.resource_hash()));
 		hashes
+	}
+
+	/// Every blob that the registry, its tombstones, the history or the hot log names.
+	pub fn all_blob_hashes(&self) -> HashSet<BlobHash> {
+		self.blob_hashes().collect()
+	}
+
+	/// Whether the registry, its tombstones, the history or the hot log names `hash`.
+	pub fn names_blob(&self, hash: BlobHash) -> bool {
+		self.blob_hashes().any(|named| named == hash)
+	}
+
+	fn blob_hashes(&self) -> impl Iterator<Item = BlobHash> + '_ {
+		let history = self.document.history.iter().flat_map(Delta::blob_hashes);
+		let hot_log = self.document.hot_log.iter().flat_map(|hot_op| hot_op.op.blob_hashes());
+		self.document.working_registry.blob_hashes().chain(history).chain(hot_log)
 	}
 
 	/// Every referenced resource hash plus what the ops this peer took back named. Garbage collection must keep these.

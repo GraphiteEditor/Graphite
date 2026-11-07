@@ -259,7 +259,7 @@ fn reopening_with_an_undone_implementation_swap_can_redo() {
 		let mut reopened = GddV1::open_in(working, layout).await.unwrap();
 		let declarations = reopened.declarations(&store).await;
 		reopened.redo().unwrap();
-		let converted = reopened.registry().to_runtime_with_full_metadata(&declarations);
+		let converted = reopened.registry().to_runtime_with_full_metadata(&declarations, reopened.blobs());
 		assert!(converted.is_ok(), "{}", converted.err().unwrap());
 	});
 }

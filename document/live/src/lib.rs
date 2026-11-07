@@ -99,7 +99,7 @@ impl LiveDocument {
 
 	pub async fn network(&self) -> Result<NodeNetwork, LiveError> {
 		let declarations = self.gdd.declarations(&self.gdd).await;
-		let (network, _metadata) = self.gdd.registry().to_runtime_with_metadata(&declarations)?;
+		let (network, _metadata) = self.gdd.registry().to_runtime_with_metadata(&declarations, self.gdd.blobs())?;
 		Ok(network)
 	}
 

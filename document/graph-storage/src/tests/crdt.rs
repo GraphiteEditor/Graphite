@@ -1453,7 +1453,10 @@ fn an_input_naming_a_node_not_yet_added_renders_dangling() {
 	}
 	assert!(document.working_registry.removed_nodes.get(&unseen).is_some_and(|mark| mark.placeholder));
 
-	document.working_registry.to_runtime_with_metadata(&crate::Declarations::new()).expect("converts with a dangling input");
+	document
+		.working_registry
+		.to_runtime_with_metadata(&crate::Declarations::new(), &crate::blob::BlobBytes::new())
+		.expect("converts with a dangling input");
 }
 
 /// Remapped tips can swap order, and a merge's `parent` has to stay the lowest.

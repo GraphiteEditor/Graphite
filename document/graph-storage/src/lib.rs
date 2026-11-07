@@ -1,6 +1,7 @@
 pub use graphene_resource::{ResourceHash, ResourceId};
 
 pub mod attributes;
+pub mod blob;
 pub mod crdt;
 pub mod delta;
 pub mod document;

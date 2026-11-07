@@ -179,7 +179,7 @@ pub struct DocumentMessageHandler {
 	pub(crate) container: Option<AnyContainer>,
 	/// Peer changes not yet applied, held until their declarations are cached.
 	#[serde(skip)]
-	pub(crate) pending_remote: document_format::network::RemoteChanges,
+	pub(crate) pending_remote: document_format::RemoteChanges,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -2582,7 +2582,10 @@ impl DocumentMessageHandler {
 			&& let Some(gdd) = self.history.storage()
 		{
 			let peer = gdd.session().peer();
-			match self.network_interface.reconcile_remote(gdd.registry(), self.history.declarations(), &changes.touched, peer) {
+			match self
+				.network_interface
+				.reconcile_remote(gdd.registry(), self.history.declarations(), gdd.blobs(), &changes.touched, peer)
+			{
 				Ok(reconciled) => {
 					self.finish_remote_reconcile(reconciled, changes.touched.resources, responses);
 					return true;

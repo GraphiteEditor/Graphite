@@ -1171,7 +1171,7 @@ fn restaging_an_unchanged_runtime_does_not_revive_a_nested_network_removed_under
 	assert!(a.registry().node_instances.contains_key(&owner));
 	assert!(!a.registry().networks.contains_key(&nested));
 
-	let (runtime, _) = a.registry().to_runtime_with_metadata(&conversion.declarations).expect("to runtime");
+	let (runtime, _) = a.registry().to_runtime_with_metadata(&conversion.declarations, &conversion.blob_bytes).expect("to runtime");
 	a.mark_runtime_current();
 	a.stage_from_runtime(&runtime, &NoMetadata, &resources).expect("restage");
 	assert!(!a.registry().networks.contains_key(&nested), "the removed network stays removed");

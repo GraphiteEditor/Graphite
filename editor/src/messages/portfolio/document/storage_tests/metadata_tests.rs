@@ -38,9 +38,10 @@ fn editor_metadata_round_trip_against_demo() {
 
 	let conversion = Registry::convert_from_runtime(&network, &source, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
 
-	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+	let (_converted_network, entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
 	// Index emitted entries by their (network, local_id) address.
 	let entries_by_address: HashMap<(NetworkLocation, NodeId), &document_graph_storage::NodeMetadataEntry> = entries.iter().map(|e| ((e.network, e.local_id), e)).collect();
@@ -167,8 +168,9 @@ fn editor_interface_rebuild_round_trip() {
 	let network = original.document_network().clone();
 	let conversion = Registry::convert_from_runtime(&network, &original_view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
-	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 	let rebuilt_view = StorageMetadataView::new(&rebuilt);
@@ -283,8 +285,9 @@ fn rebuilt_interface_keeps_storage_identities() {
 	let network = document.network_interface.document_network().clone();
 	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
-	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime_with_full_metadata failed");
+	let (rebuilt_network, node_entries, network_entries) = registry.to_runtime_with_full_metadata(&declarations, &blobs).expect("to_runtime_with_full_metadata failed");
 
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 
@@ -383,7 +386,7 @@ fn pinned_order_round_trips_through_the_registry() {
 	let view = StorageMetadataView::new(&document.network_interface);
 	let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
 	let declarations = conversion.declarations;
-	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations).expect("to_runtime failed");
+	let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations, &conversion.blob_bytes).expect("to_runtime failed");
 	let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries).expect("build_interface_from_storage failed");
 
 	let rebuilt_metadata = rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve");

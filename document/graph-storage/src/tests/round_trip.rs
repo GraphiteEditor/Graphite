@@ -20,12 +20,12 @@ fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
 	Ok(())
 }
 
-/// Convert a runtime network to a storage `Registry`, returning the declarations alongside it.
+/// Convert a runtime network to a storage `Registry`, returning the declarations and blobs alongside it.
 /// Proto-node declaration content is no longer stored in the registry (it lives in a byte store);
-/// these tests have no byte store, so they keep the extracted `Declarations` in hand for the back-conversion.
-fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations) {
+/// these tests have no byte store, so they keep the extracted `Declarations` and blob bytes in hand for the back-conversion.
+fn to_registry(network: &NodeNetwork) -> (Registry, crate::Declarations, crate::blob::BlobBytes) {
 	let conversion = Registry::convert_from_runtime(network, &crate::NoMetadata, &Default::default(), PeerId(0)).expect("Failed to convert NodeNetwork to Registry");
-	(conversion.registry, conversion.declarations)
+	(conversion.registry, conversion.declarations, conversion.blob_bytes)
 }
 
 /// A one-node network whose single node references `id` via a `TaggedValue::Resource` input, so
@@ -137,10 +137,10 @@ fn test_simple_round_trip() {
 	let original_network = create_simple_network();
 
 	// Convert to Registry
-	let (registry, declarations) = to_registry(&original_network);
+	let (registry, declarations, blobs) = to_registry(&original_network);
 
 	// Convert back to NodeNetwork
-	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back to NodeNetwork");
+	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert Registry back to NodeNetwork");
 
 	// Verify structure is preserved
 	assert_eq!(converted_network.nodes.len(), original_network.nodes.len(), "Node count should be preserved");
@@ -185,10 +185,10 @@ fn test_nested_network_round_trip() {
 	let original_network = create_nested_network();
 
 	// Convert to Registry
-	let (registry, declarations) = to_registry(&original_network);
+	let (registry, declarations, blobs) = to_registry(&original_network);
 
 	// Convert back to NodeNetwork
-	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back to NodeNetwork");
+	let (converted_network, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert Registry back to NodeNetwork");
 
 	// Verify structure is preserved
 	assert_eq!(converted_network.nodes.len(), original_network.nodes.len(), "Node count should be preserved");
@@ -213,7 +213,7 @@ fn test_nested_network_round_trip() {
 fn test_registry_structure() {
 	let network = create_simple_network();
 
-	let (registry, _declarations) = to_registry(&network);
+	let (registry, _declarations, _blobs) = to_registry(&network);
 
 	assert!(registry.resources.len() >= 2, "Should have proto-node declaration resources");
 	assert!(!registry.networks.is_empty(), "Should have at least one network");
@@ -281,8 +281,8 @@ fn test_metadata_preservation() {
 	};
 
 	// Convert to Registry and back
-	let (registry, declarations) = to_registry(&network);
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert back to NodeNetwork");
+	let (registry, declarations, blobs) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert back to NodeNetwork");
 
 	// Verify call_argument is preserved
 	let orig_node_0 = network.nodes.get(&NodeId(0)).unwrap();
@@ -327,11 +327,11 @@ fn test_demo_artwork_round_trip() {
 		original_network.lift_nested_networks();
 
 		// Convert to Registry
-		let (registry, declarations) = to_registry(&original_network);
+		let (registry, declarations, blobs) = to_registry(&original_network);
 
 		// Convert back to NodeNetwork
 		let (converted_network, _) = registry
-			.to_runtime_with_metadata(&declarations)
+			.to_runtime_with_metadata(&declarations, &blobs)
 			.unwrap_or_else(|e| panic!("Failed to convert {} back to NodeNetwork: {:?}", artwork_name, e));
 
 		// Basic structural checks
@@ -470,9 +470,10 @@ fn test_ui_metadata_round_trip() {
 
 	let conversion = Registry::convert_from_runtime(&network, &metadata, &Default::default(), PeerId(0)).expect("Failed to convert to Registry with metadata");
 	let declarations = conversion.declarations;
+	let blobs = conversion.blob_bytes;
 	let registry = conversion.registry;
 
-	let (converted, entries) = registry.to_runtime_with_metadata(&declarations).expect("Failed to convert Registry back with metadata");
+	let (converted, entries) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("Failed to convert Registry back with metadata");
 
 	// Graph structure still round-trips.
 	assert_eq!(converted.nodes.len(), network.nodes.len());
@@ -629,8 +630,8 @@ fn node_input_f64_round_trips_bit_exact() {
 		..Default::default()
 	};
 
-	let (registry, declarations) = to_registry(&network);
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	let (registry, declarations, blobs) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
 
 	let input = &converted.nodes.get(&NodeId(0)).expect("node 0").inputs[0];
 	let NodeInput::Value { tagged_value, .. } = input else {
@@ -650,14 +651,14 @@ fn duplicate_runtime_node_id_is_rejected() {
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
-	let (mut registry, declarations) = to_registry(&create_simple_network());
+	let (mut registry, declarations, blobs) = to_registry(&create_simple_network());
 
 	// Force both root-network nodes onto the same runtime ID.
 	for node in registry.node_instances.values_mut() {
 		node.attributes.set(crate::attr::node::ORIGINAL_NODE_ID, crate::Value::Int(7), TimeStamp::ORIGIN);
 	}
 
-	let error = registry.to_runtime_with_metadata(&declarations).expect_err("duplicate runtime ID must error");
+	let error = registry.to_runtime_with_metadata(&declarations, &blobs).expect_err("duplicate runtime ID must error");
 	assert!(
 		matches!(error, ConversionError::DuplicateRuntimeNodeId { runtime_id: 7, .. }),
 		"expected DuplicateRuntimeNodeId, got {error:?}"
@@ -671,7 +672,7 @@ fn cross_network_reference_is_rejected() {
 	use crate::to_runtime::ConversionError;
 	use crate::{Network, NodeInput};
 
-	let (mut registry, declarations) = to_registry(&create_simple_network());
+	let (mut registry, declarations, blobs) = to_registry(&create_simple_network());
 
 	// `create_simple_network` wires one node's input to another, both in the root network. Find the
 	// referenced storage ID, then move that node into a fresh second network so the reference crosses
@@ -690,7 +691,7 @@ fn cross_network_reference_is_rejected() {
 	registry.networks.insert(other_network, Network::default());
 	registry.node_instances.get_mut(&referenced_storage_id).expect("referenced node exists").network = other_network;
 
-	let error = registry.to_runtime_with_metadata(&declarations).expect_err("cross-network reference must error");
+	let error = registry.to_runtime_with_metadata(&declarations, &blobs).expect_err("cross-network reference must error");
 	assert!(matches!(error, ConversionError::CrossNetworkReference { .. }), "expected CrossNetworkReference, got {error:?}");
 }
 
@@ -701,8 +702,8 @@ fn scope_injections_round_trip() {
 	let mut network = create_simple_network();
 	network.scope_injections.insert("editor-api".to_string(), (NodeId(0), concrete!(u32)));
 
-	let (registry, declarations) = to_registry(&network);
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	let (registry, declarations, blobs) = to_registry(&network);
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
 
 	let (node_id, ty) = converted.scope_injections.get("editor-api").expect("scope injection must survive the round trip");
 	assert_eq!(*node_id, NodeId(0), "the injection's node reference must resolve back to its original runtime ID");
@@ -716,7 +717,7 @@ fn dangling_scope_injection_is_rejected() {
 	use crate::TimeStamp;
 	use crate::to_runtime::ConversionError;
 
-	let (mut registry, declarations) = to_registry(&create_simple_network());
+	let (mut registry, declarations, blobs) = to_registry(&create_simple_network());
 
 	// Store an injection pointing at a storage ID that no node carries, leaving the reference dangling
 	// while the rest of the graph stays valid. The root network is whichever one holds the nodes.
@@ -730,7 +731,7 @@ fn dangling_scope_injection_is_rejected() {
 		.set_serialized(crate::attr::network::SCOPE_INJECTIONS, &injections, TimeStamp::ORIGIN)
 		.expect("serialize injections");
 
-	let error = registry.to_runtime_with_metadata(&declarations).expect_err("dangling scope injection must error");
+	let error = registry.to_runtime_with_metadata(&declarations, &blobs).expect_err("dangling scope injection must error");
 	assert!(matches!(error, ConversionError::DanglingScopeInjection { .. }), "expected DanglingScopeInjection, got {error:?}");
 }
 
@@ -776,7 +777,9 @@ fn cyclic_network_reference_is_rejected() {
 		},
 	);
 
-	let error = registry.to_runtime_with_metadata(&crate::Declarations::new()).expect_err("cyclic network reference must error");
+	let error = registry
+		.to_runtime_with_metadata(&crate::Declarations::new(), &crate::blob::BlobBytes::new())
+		.expect_err("cyclic network reference must error");
 	assert!(matches!(error, ConversionError::CyclicNetwork(_)), "expected CyclicNetwork, got {error:?}");
 }
 
@@ -805,7 +808,7 @@ fn a_shared_table_entry_round_trips_as_one_network() {
 	network.nodes.get_mut(&NodeId(1)).expect("node 1").implementation = DocumentNodeImplementation::Definition(shared);
 	network.nodes.get_mut(&NodeId(1)).expect("node 1").inputs = vec![NodeInput::node(NodeId(0), 0)];
 
-	let (registry, declarations) = to_registry(&network);
+	let (registry, declarations, blobs) = to_registry(&network);
 
 	assert_eq!(registry.networks.len(), 2, "the root and the one shared entry");
 	assert!(registry.networks.contains_key(&NetworkId(shared.0)), "the entry is stored under its own ID");
@@ -815,7 +818,7 @@ fn a_shared_table_entry_round_trips_as_one_network() {
 		"the shared body is stored once"
 	);
 
-	let (converted, _) = registry.to_runtime_with_metadata(&declarations).expect("to_runtime");
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
 	assert_eq!(converted, network);
 }
 
@@ -855,6 +858,39 @@ fn an_unreached_table_entry_is_not_stored() {
 	let mut network = create_simple_network();
 	network.definitions.insert(RuntimeNetworkId(5), create_simple_network());
 
-	let (registry, _) = to_registry(&network);
+	let (registry, ..) = to_registry(&network);
 	assert_eq!(registry.networks.keys().copied().collect::<Vec<_>>(), vec![crate::ROOT_NETWORK]);
+}
+
+/// A large input value is stored as a blob and read back from the blob bytes.
+#[test]
+fn large_input_value_round_trips_through_a_blob() {
+	use graph_craft::document::value::TaggedValue;
+
+	let large = TaggedValue::String("x".repeat(crate::blob::BLOB_THRESHOLD));
+	let network = NodeNetwork {
+		nodes: [(
+			NodeId(0),
+			DocumentNode {
+				inputs: vec![NodeInput::value(large, false), NodeInput::value(TaggedValue::Number(1.), false)],
+				implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::identity::IdentityNode")),
+				..Default::default()
+			},
+		)]
+		.into_iter()
+		.collect(),
+		..Default::default()
+	};
+
+	let (registry, declarations, blobs) = to_registry(&network);
+	let inputs = registry.node_instances.values().next().expect("the node converts").inputs();
+	let blob = inputs[0].input.blob().expect("the large value becomes a blob");
+	assert!(inputs[1].input.blob().is_none(), "a small value stays inline");
+	assert_eq!(blobs.keys().collect::<Vec<_>>(), [&blob]);
+
+	let (converted, _) = registry.to_runtime_with_metadata(&declarations, &blobs).expect("to_runtime");
+	assert_eq!(converted, network);
+
+	let error = registry.to_runtime_with_metadata(&declarations, &crate::blob::BlobBytes::new()).expect_err("a missing blob must error");
+	assert!(matches!(error, crate::to_runtime::ConversionError::BlobNotFound(hash) if hash == blob), "{error}");
 }

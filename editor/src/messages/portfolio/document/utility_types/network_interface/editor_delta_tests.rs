@@ -717,7 +717,7 @@ async fn assert_remote_reconcile_reproduces(edit: impl FnOnce(&mut EditorTestUti
 	}
 	peer.stage_computed_ops(constructed.ops).expect("the peer applies the batch");
 
-	mirror.reconcile_remote(peer.registry(), &declarations, &touched, PEER).expect("reconcile");
+	mirror.reconcile_remote(peer.registry(), &declarations, &baseline.blob_bytes, &touched, PEER).expect("reconcile");
 
 	let edited = &editor.active_document().network_interface;
 	assert!(
@@ -898,7 +898,7 @@ async fn reconciling_an_untouched_node_changes_nothing() {
 	let reconciled = editor
 		.active_document_mut()
 		.network_interface
-		.reconcile_remote(&baseline.registry, &baseline.declarations, &touched, PEER)
+		.reconcile_remote(&baseline.registry, &baseline.declarations, &baseline.blob_bytes, &touched, PEER)
 		.expect("reconcile");
 
 	assert!(reconciled.networks.is_empty(), "nothing differed, so nothing should have been applied: {:?}", reconciled.networks);
