@@ -1,4 +1,5 @@
 use crate::deferred_image::{self, DeferredImage, EffectMap};
+use crate::pdf_scene_builder::PdfSceneBuilder;
 use crate::render_ext::{PaintTarget, RenderExt};
 use crate::scene_builder::SceneBuilder;
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
@@ -2034,6 +2035,7 @@ pub enum RenderOutputType {
 	#[default]
 	Svg,
 	Vello,
+	Pdf,
 }
 
 /// Static state used whilst rendering
@@ -2482,10 +2484,16 @@ pub trait RenderToScene {
 /// The entry point into [`RenderToScene`] for each scene builder, which `dyn Render` can call since a trait object can't take a generic scene builder.
 pub trait RenderToSceneBuilders {
 	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams);
+
+	fn render_to_pdf(&self, scene: &mut PdfSceneBuilder, transform: DAffine2, render_params: &RenderParams);
 }
 
 impl<T: RenderToScene> RenderToSceneBuilders for T {
 	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+		self.render_to_scene(scene, transform, render_params);
+	}
+
+	fn render_to_pdf(&self, scene: &mut PdfSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 		self.render_to_scene(scene, transform, render_params);
 	}
 }

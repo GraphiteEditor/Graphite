@@ -445,15 +445,15 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph for export
-	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, export_config: ExportConfig) -> Result<(), String> {
+	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
 		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
 
-		let export_format = if export_config.file_type == FileType::Svg {
-			graphene_std::application_io::ExportFormat::Svg
-		} else {
-			graphene_std::application_io::ExportFormat::Raster
+		let export_format = match export_config.file_type {
+			FileType::Svg => ExportFormat::Svg,
+			FileType::Pdf => ExportFormat::Pdf,
+			_ => ExportFormat::Raster,
 		};
 
 		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
@@ -465,6 +465,11 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
+
+		// A PDF's page is sized in physical units, so its dialog leaves the scale factor out
+		if export_config.file_type == FileType::Pdf {
+			export_config.scale_factor = 1.;
+		}
 
 		let resolution_in_document_space = bounds[1] - bounds[0];
 		let export_resolution = resolution_in_document_space * export_config.scale_factor;
@@ -1056,6 +1061,11 @@ impl NodeGraphExecutor {
 				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
 				return;
 			}
+			RenderOutputType::Pdf(_) => {
+				log::error!("Invalid node graph output type: a PDF page");
+				responses.add(FrontendMessage::UpdateRenderStatus { status: RenderStatus::Error });
+				return;
+			}
 		}
 
 		let RenderMetadata {
@@ -1126,7 +1136,7 @@ impl NodeGraphExecutor {
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
-			}) if file_type != FileType::Svg => {
+			}) if !matches!(file_type, FileType::Svg | FileType::Pdf) => {
 				let content = match file_type.encode(width, height, data) {
 					Ok(content) => content.into(),
 					Err(description) => {
@@ -1134,6 +1144,18 @@ impl NodeGraphExecutor {
 							title: "Unable to export document".to_string(),
 							description,
 						});
+						return;
+					}
+				};
+				responses.add(FrontendMessage::TriggerSaveFile { name, folder, filters, content });
+			}
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Pdf(scene), ..
+			}) if file_type == FileType::Pdf => {
+				let content = match scene.encode_pdf(document.network_interface.pixels_per_inch()) {
+					Ok(content) => content.into(),
+					Err(error) => {
+						log::error!("Failed to encode PDF: {error}");
 						return;
 					}
 				};

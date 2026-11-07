@@ -9,17 +9,19 @@ use graphene_application_io::{ExportFormat, RenderConfig};
 use graphic_types::Generator;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::{Artboard, Graphic, Vector};
+use rendering::pdf_scene_builder::PdfSceneBuilder;
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use rendering::{Render, RenderMetadata, RenderOutputType as RenderOutputTypeRequest, RenderParams, SvgRender, SvgRenderOutput};
 use std::sync::Arc;
 use svg_readback::SvgReadbackSlot;
 use vector_types::Gradient;
+use vello_gpu::kurbo;
 use wgpu_executor::WgpuExecutor;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
-	/// The content itself, drawn into a Vello scene at each render since the scene depends on the render's size and placement
-	Vello(Arc<dyn Render + Send + Sync>),
+	/// The content itself, drawn into a Vello scene or PDF page at each render since the drawing depends on the render's size and placement
+	Content(Arc<dyn Render + Send + Sync>),
 	Svg(Arc<SvgRenderOutput>),
 	/// The content itself, for content that draws only the part of it in view, drawn as SVG at each render for its view
 	SvgInView(Arc<dyn Render + Send + Sync>),
@@ -58,8 +60,8 @@ fn render_intermediate<T: 'static + Render + WasmNotSend + Send + Sync>(
 	let mut metadata = RenderMetadata::default();
 	data.collect_metadata(&mut metadata, footprint, None, None);
 	let intermediate = match &render_params.render_output_type {
-		RenderOutputTypeRequest::Vello => RenderIntermediate {
-			ty: RenderIntermediateType::Vello(Arc::new(data)),
+		RenderOutputTypeRequest::Vello | RenderOutputTypeRequest::Pdf => RenderIntermediate {
+			ty: RenderIntermediateType::Content(Arc::new(data)),
 			metadata,
 		},
 		RenderOutputTypeRequest::Svg => {
@@ -133,7 +135,7 @@ fn render(
 			let executor = executor.eval(&Context::default()).value().map(Item::into_element);
 			svg_readback.poll(output, *footprint, executor, runtime.element(), *source.element())
 		}
-		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(data)) => {
+		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Content(data)) => {
 			// The latest SVG render isn't needed anymore, and a finished one holds a whole SVG export
 			svg_readback.clear();
 
@@ -169,6 +171,15 @@ fn render(
 				(false, None) => Poll::Final(texture),
 			}
 		}
+		(RenderOutputTypeRequest::Pdf, RenderIntermediateType::Content(data)) => {
+			// The page covers the render's area in document pixels, which the PDF encoding later sizes in points
+			let view = glam::DAffine2::from_scale(glam::DVec2::splat(1. / render_params.scale)) * footprint.transform;
+			let size = footprint.resolution.as_dvec2() / render_params.scale;
+
+			let mut scene = PdfSceneBuilder::new(kurbo::Size::new(size.x, size.y), kurbo::Affine::new(view.to_cols_array()));
+			data.render_to_pdf(&mut scene, Default::default(), &render_params);
+			Poll::Final(RenderOutputType::Pdf(Box::new(scene.finish())))
+		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 
@@ -189,6 +200,7 @@ fn create_context(
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
+		ExportFormat::Pdf => RenderOutputTypeRequest::Pdf,
 	};
 
 	let logical_viewport = render_config.viewport;
@@ -200,7 +212,7 @@ fn create_context(
 	// Rounded up so no image is sent below its on-screen resolution, with a tolerance for float noise at exact powers of two
 	let canvas_image_scale = match render_output_type {
 		RenderOutputTypeRequest::Svg => (footprint.scale_magnitudes().max_element().log2() - 1e-9).ceil().exp2(),
-		RenderOutputTypeRequest::Vello => 0.,
+		RenderOutputTypeRequest::Vello | RenderOutputTypeRequest::Pdf => 0.,
 	};
 
 	let render_params = RenderParams {

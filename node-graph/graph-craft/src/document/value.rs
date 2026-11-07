@@ -19,6 +19,7 @@ use graphic_types::vector_types::vector::style::DashPattern;
 use graphic_types::vector_types::vector::style::{Gradient, GradientRamp};
 use graphic_types::vector_types::vector::{self, ReferencePoint};
 use graphic_types::{Artboard, Graphic, Vector};
+use rendering::pdf_scene_builder::PdfScene;
 use rendering::{CanvasImage, RenderMetadata};
 use std::fmt::Display;
 use std::hash::Hash;
@@ -1115,6 +1116,9 @@ pub enum RenderOutputType {
 		/// The images the SVG draws to canvases, by the canvas ID their placeholders name.
 		image_data: Vec<(u64, CanvasImage)>,
 	},
+	/// A PDF page's drawing, encoded into a file once any GPU textures it draws are read back.
+	#[serde(skip)]
+	Pdf(Box<PdfScene>),
 	#[cfg(target_family = "wasm")]
 	CanvasFrame { canvas_id: u64, resolution: DVec2 },
 }
@@ -1133,6 +1137,8 @@ impl CacheHash for RenderOutputType {
 				svg.cache_hash(state);
 				image_data.cache_hash(state);
 			}
+			// Only an export makes one, and nothing hashes an export's output
+			Self::Pdf(_) => {}
 			#[cfg(target_family = "wasm")]
 			Self::CanvasFrame { canvas_id, resolution } => {
 				canvas_id.cache_hash(state);

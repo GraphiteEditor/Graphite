@@ -428,11 +428,21 @@ impl NodeRuntime {
 		let Some(mut result) = result else { return };
 		self.dirty.store(true, Ordering::Release);
 
-		if let Some(RenderOutput { data, .. }) = result.render_output()
-			&& let RenderOutputType::Texture(texture) = data
-		{
-			let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
-			*data = RenderOutputType::Buffer { data: buffer, width, height };
+		if let Some(RenderOutput { data, .. }) = result.render_output() {
+			match data {
+				RenderOutputType::Texture(texture) => {
+					let (buffer, width, height) = self.read_back(texture.clone()).await.to_flat_u8();
+					*data = RenderOutputType::Buffer { data: buffer, width, height };
+				}
+				// The editor encodes the PDF away from the GPU, so the textures its page draws are read back here
+				RenderOutputType::Pdf(scene) => {
+					for (index, texture) in scene.textures() {
+						let raster = self.read_back(texture).await;
+						scene.resolve_texture(index, raster);
+					}
+				}
+				_ => {}
+			}
 		}
 		let observations = self.observer.evaluate(&self.executor, self.old_graph.as_ref());
 		self.respond(request.execution_id, result, observations).await;
@@ -1099,6 +1109,32 @@ mod tests {
 		assert_ne!(last_request(&editor), last);
 		editor.runtime.run().await;
 		assert!(evaluated(&mut editor), "the request sent after the export was lost");
+	}
+
+	#[tokio::test]
+	async fn a_pdf_export_saves_a_pdf_document_of_the_artwork() {
+		// The page spans the artwork at the document's resolution, so 96 pixels per inch is three quarters of a point per pixel
+		for (pixels_per_inch, points_per_pixel) in [(96., 0.75), (192., 0.375)] {
+			let mut editor = editor().await;
+			editor.handle_message(DocumentMessage::SetPixelsPerInch { pixels_per_inch }).await;
+			let [min, max] = editor.active_document().network_interface.document_bounds_document_space_with_stroke_and_effects(true).unwrap();
+			send_export(&mut editor, FileType::Pdf);
+
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let saved = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+				FrontendMessage::TriggerSaveFile { name, content, .. } => Some((name, content)),
+				_ => None,
+			});
+
+			let Some((name, content)) = saved else { panic!("the export saved no file") };
+			assert_eq!(name, "export.pdf");
+			assert!(content.starts_with(b"%PDF-") && content.trim_ascii_end().ends_with(b"%%EOF"));
+
+			let points = (max - min).round() * points_per_pixel;
+			let content = String::from_utf8_lossy(&content);
+			assert!(content.contains(&format!("/MediaBox[0 0 {} {}]", points.x, points.y)), "{content}");
+		}
 	}
 
 	#[tokio::test]

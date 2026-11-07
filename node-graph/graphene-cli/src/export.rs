@@ -198,6 +198,7 @@ pub(crate) async fn render_frame(
 				Ok(RenderedFrame::Raster { data, width, height })
 			}
 			RenderOutputType::Buffer { data, width, height } => Ok(RenderedFrame::Raster { data, width, height }),
+			RenderOutputType::Pdf(_) => Err("Unexpected render output type: a PDF page, which no file type here requests".into()),
 			#[cfg(target_family = "wasm")]
 			other => Err(format!("Unexpected render output type: {other:?}. Expected Texture, Buffer for raster export or Svg for SVG export.").into()),
 		},
