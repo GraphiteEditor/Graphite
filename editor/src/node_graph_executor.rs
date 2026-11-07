@@ -83,6 +83,7 @@ pub enum NodeGraphUpdate {
 	EyedropperPreview(Raster<CPU>),
 	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
 	InspectResult(Box<InspectResult>),
+	SvgTextCopyClipboard { svg_string: Option<String>, graphite_json: String },
 }
 
 #[derive(Debug)]
@@ -664,6 +665,9 @@ impl NodeGraphExecutor {
 						Self::receive_thumbnails(document, thumbnails, responses);
 					}
 				}
+				NodeGraphUpdate::SvgTextCopyClipboard { svg_string, graphite_json } => {
+					responses.add(FrontendMessage::TriggerClipboardSvgAndJsonWrite { svg_string, graphite_json });
+				}
 			}
 		}
 
@@ -1035,6 +1039,12 @@ impl NodeGraphExecutor {
 				log::error!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})");
 			}
 		}
+	}
+
+	pub fn copy_svg_clipboard(&self, graphite_json: String, selected_nodes: Vec<NodeId>) {
+		self.sender
+			.send(GraphRuntimeRequest::CopySvgTextClipboard(graphite_json, selected_nodes))
+			.expect("Failed to send runtime request");
 	}
 }
 

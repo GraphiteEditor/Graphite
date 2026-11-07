@@ -11,6 +11,7 @@ pub(crate) enum AppEvent {
 	ClipboardRead,
 	ClipboardWrite {
 		content: String,
+		svg: Option<String>,
 	},
 	Exit,
 	UiCrashed,

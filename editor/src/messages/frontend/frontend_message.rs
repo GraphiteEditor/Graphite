@@ -146,6 +146,12 @@ pub enum FrontendMessage {
 	TriggerClipboardWrite {
 		content: String,
 	},
+	TriggerClipboardSvgAndJsonWrite {
+		#[serde(rename = "svgString")]
+		svg_string: Option<String>,
+		#[serde(rename = "graphiteJson")]
+		graphite_json: String,
+	},
 	TriggerSelectionRead {
 		cut: bool,
 	},

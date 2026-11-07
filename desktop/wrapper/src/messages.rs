@@ -55,6 +55,7 @@ pub enum DesktopFrontendMessage {
 	ClipboardRead,
 	ClipboardWrite {
 		content: String,
+		svg: Option<String>,
 	},
 	PointerLock,
 	WindowClose,
