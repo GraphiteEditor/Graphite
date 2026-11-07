@@ -32,6 +32,11 @@ impl PipelineCache {
 		let pipeline = (**entry).downcast_ref::<P>().ok_or(PipelineError::TypeMismatch { expected: std::any::type_name::<P>() })?;
 		Ok(pipeline.run(executor, args))
 	}
+
+	/// The executor the cache was initialized with, or `None` when no GPU is available.
+	pub fn executor(&self) -> Option<&WgpuExecutor> {
+		self.executor.get()
+	}
 }
 
 impl std::fmt::Debug for PipelineCache {

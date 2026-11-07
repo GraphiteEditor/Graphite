@@ -21,7 +21,7 @@ log = { workspace = true }
 # Workspace dependencies
 graphene-std = { workspace = true, features = ["gpu"] }
 graph-craft = { workspace = true }
-interpreted-executor = { workspace = true }
+interpreted-executor = { workspace = true, features = ["gpu"] }
 
 [dev-dependencies]
 # Workspace dependencies

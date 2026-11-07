@@ -80,7 +80,7 @@ impl WgpuPipeline for BasicBrushPipeline {
 		Self {
 			scatter: Scatter::new(device),
 			resolve: Resolve::new(device),
-			convert: Convert::new(device),
+			convert: Convert::new(device, executor.raster_format()),
 			kernels: KernelCache::default(),
 		}
 	}

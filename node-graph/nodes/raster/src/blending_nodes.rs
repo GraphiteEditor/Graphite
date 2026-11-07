@@ -1,10 +1,12 @@
-use crate::adjust::Adjust;
-use core_types::Ctx;
+use crate::raster_kernel::{Adjust, MapColor, Wgsl, raster_kernel_pipeline};
+use crate::{gpu_param_enum, gpu_params};
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::list::Item;
-use raster_types::{CPU, Raster};
+use core_types::{Ctx, Interrupt};
+use raster_types::{CPU, GPU, Raster};
 use vector_types::Gradient;
+use wgpu_executor::WgpuPipelineCache;
 
 pub use core_types::blending::{apply_blend_mode, blend_colors};
 
@@ -30,11 +32,12 @@ fn mix_colors(
 }
 
 // TODO: Rename to "Paint Overlay" and take a `Graphic` paint like the `Fill` node, enabling this to serve the cases of Color Overlay, Gradient Overlay, and Pattern Overlay.
-#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"))]
-fn color_overlay<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Effect"), icon("NodeColorOverlay"), version(2))]
+fn color_overlay<T: Adjust>(
 	_: impl Ctx,
 	#[implementations(
 		Raster<CPU>,
+		Raster<GPU>,
 		Color,
 		Gradient,
 	)]
@@ -46,19 +49,38 @@ fn color_overlay<T: Adjust<Color>>(
 	#[hard(0..100)]
 	#[default(100.)]
 	opacity: Item<f64>,
-) -> Item<T> {
-	let mut image = image;
-	let color = color.into_element();
-	let blend_mode = blend_mode.into_element();
-	let opacity = (opacity.into_element() / 100.) as f32;
+	#[scope(raster_kernel_pipeline::IDENTIFIER)] pipeline: Item<WgpuPipelineCache>,
+) -> Result<Item<T>, Interrupt> {
+	let kernel = ColorOverlay {
+		color: color.into_element(),
+		blend_mode: blend_mode.into_element(),
+		opacity: (opacity.into_element() / 100.) as f32,
+	};
+	Ok(image.adjust(&kernel, pipeline.element())?)
+}
 
-	image.element_mut().adjust(|pixel| {
-		let overlay = apply_blend_mode(color, *pixel, blend_mode);
-		let mix = |image: f32, overlay: f32| image + (overlay - image) * opacity;
+gpu_param_enum!(i32: BlendMode);
+
+gpu_params! {
+	#[derive(Clone)]
+	struct ColorOverlay {
+		color: Color,
+		blend_mode: BlendMode,
+		opacity: f32,
+	}
+}
+
+impl MapColor for ColorOverlay {
+	fn map_cpu(&self, pixel: Color) -> Color {
+		let overlay = apply_blend_mode(self.color, pixel, self.blend_mode);
+		let mix = |image: f32, overlay: f32| image + (overlay - image) * self.opacity;
 
 		Color::from_rgbaf32_unchecked(mix(pixel.r(), overlay.r()), mix(pixel.g(), overlay.g()), mix(pixel.b(), overlay.b()), pixel.a())
-	});
-	image
+	}
+
+	fn wgsl() -> Wgsl {
+		Wgsl::function(format!("{}\n{}", include_str!("wgsl/blending.wgsl"), include_str!("wgsl/color_overlay.wgsl")))
+	}
 }
 
 #[cfg(test)]
@@ -86,11 +108,49 @@ mod test {
 			overlay_color.into(),
 			BlendMode::Multiply.into(),
 			opacity.into(),
+			Item::default(),
 		);
-		let result = result.into_element();
+		let result = result.unwrap().into_element();
 
 		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
 		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
+	}
+
+	#[test]
+	fn vivid_light_overlays_match_on_the_cpu_and_gpu() {
+		use core_types::ops::{Convert, ConvertAsync};
+		use core_types::transform::Footprint;
+		use raster_types::{CPU, GPU};
+		use wgpu_executor::shader_runtime::raster_kernel_runtime::RasterKernelRuntime;
+		use wgpu_executor::{WgpuExecutor, WgpuPipelineCache};
+
+		futures::executor::block_on(async {
+			let Some(executor) = WgpuExecutor::new().await else { return };
+			let pipeline = WgpuPipelineCache::default();
+			executor.pipeline_init::<RasterKernelRuntime>(&pipeline);
+			let pipeline = Item::new_from_element(pipeline);
+
+			// A row of backdrops from black to white, overlaid by sources across both halves of Vivid Light
+			let steps = 11;
+			let backdrops = (0..steps).map(|step| step as f32 / (steps - 1) as f32);
+			let image = Image {
+				width: steps,
+				height: 1,
+				data: backdrops.map(|value| Color::from_rgbaf32_unchecked(value, value, value, 1.)).collect(),
+			};
+			for source in [0., 0.1, 0.25, 0.4, 0.5, 0.6, 0.75, 0.9, 1.] {
+				let color = Color::from_rgbaf32_unchecked(source, source, source, 1.);
+				let cpu = Item::new_from_element(Raster::new_cpu(image.clone()));
+				let cpu = super::color_overlay((), cpu, color.into(), BlendMode::VividLight.into(), 100_f64.into(), pipeline.clone()).unwrap();
+				let uploaded: Raster<GPU> = Raster::new_cpu(image.clone()).convert(Footprint::DEFAULT, executor.clone());
+				let gpu = super::color_overlay((), Item::new_from_element(uploaded), color.into(), BlendMode::VividLight.into(), 100_f64.into(), pipeline.clone()).unwrap();
+				let gpu: Raster<CPU> = gpu.into_element().convert(Footprint::DEFAULT, executor.clone()).await;
+
+				for (cpu, gpu) in cpu.element().data.iter().zip(&gpu.data) {
+					assert!((cpu.r() - gpu.r()).abs() < 2e-3, "source {source}: CPU {cpu:?} against GPU {gpu:?}");
+				}
+			}
+		});
 	}
 
 	#[test]

@@ -66,22 +66,30 @@ impl EditorTestUtils {
 	}
 
 	/// Submit an evaluation to the executor, run the runtime, and process the results.
+	/// With `instrument`, the graph is compiled with the monitors of [`Instrumented`], which can't wrap the runtime handle that asynchronous nodes take.
 	///
 	/// If a deferred message triggers a second graph run, this will not occur. See [`Self::eval_graph_until_finished`] for this behaviour.
-	async fn eval_graph_once(&mut self) -> Result<Instrumented, TestGraphError> {
+	async fn eval_graph_once(&mut self, instrument: bool) -> Result<Option<Instrumented>, TestGraphError> {
 		let portfolio = &mut self.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 
-		let instrumented = match executor.update_node_graph_instrumented(document) {
-			Ok(instrumented) => instrumented,
-			Err(e) => return Err(TestGraphError::Other(format!("update_node_graph_instrumented failed\n\n{e}"))),
+		let instrumented = if instrument {
+			let instrumented = match executor.update_node_graph_instrumented(document) {
+				Ok(instrumented) => instrumented,
+				Err(e) => return Err(TestGraphError::Other(format!("update_node_graph_instrumented failed\n\n{e}"))),
+			};
+			if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
+				return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
+			}
+			Some(instrumented)
+		} else {
+			if let Err(e) = executor.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, DVec2::ZERO) {
+				return Err(TestGraphError::Other(format!("submit_node_graph_evaluation failed\n\n{e}")));
+			}
+			None
 		};
-
-		if let Err(e) = executor.submit_current_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
-			return Err(TestGraphError::Other(format!("submit_current_node_graph_evaluation failed\n\n{e}")));
-		}
 		self.runtime.update();
 		self.runtime.run().await;
 
@@ -105,10 +113,20 @@ impl EditorTestUtils {
 
 	/// Repeatedly calls [`Self::eval_graph_once`] until no more runs are triggered by deferred messages.
 	pub async fn eval_graph_until_finished(&mut self) -> Result<Instrumented, TestGraphError> {
+		let instrumented = self.eval_graph_repeatedly(true).await?;
+		Ok(instrumented.expect("an instrumented evaluation returns its monitors"))
+	}
+
+	/// Like [`Self::eval_graph_until_finished`], but compiles the graph without monitors so that it can contain asynchronous nodes.
+	pub async fn eval_graph_uninstrumented(&mut self) -> Result<(), TestGraphError> {
+		self.eval_graph_repeatedly(false).await.map(|_| ())
+	}
+
+	async fn eval_graph_repeatedly(&mut self, instrument: bool) -> Result<Option<Instrumented>, TestGraphError> {
 		const MAX_ITERATIONS: usize = 16;
 		for _iteration in 0..MAX_ITERATIONS {
 			let execution_id = self.portfolio_message_handler().executor.current_execution_id();
-			let result = self.eval_graph_once().await?;
+			let result = self.eval_graph_once(instrument).await?;
 			// If there have been no other executions queued (other than the one we just queued ourselves above) then finish
 			if execution_id + 1 >= self.portfolio_message_handler().executor.current_execution_id() {
 				return Ok(result);
