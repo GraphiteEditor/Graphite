@@ -87,6 +87,7 @@
 						{#if $history.collaborating}· {row.open ? "in progress" : "not yet in history"}{/if}
 					</span>
 				</div>
+				{#if pendingHead && index === 0}<span class="marker">Now</span>{/if}
 			</div>
 		{/each}
 		{#each $history.rows as row (row.id)}
@@ -167,7 +168,7 @@
 						/>
 					{/if}
 				</span>
-				{#if row.head}<span class="marker">Now</span>{/if}
+				{#if row.head && !pendingHead}<span class="marker">Now</span>{/if}
 				{#if row.undone}<span class="marker">Undone</span>{/if}
 				{#if row.abandoned}<span class="marker">Branch</span>{/if}
 			</div>
