@@ -11,6 +11,7 @@ use crate::messages::tool::common_functionality::snap_session::{SnapSession, Sna
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::{TypedAngle, TypedLength};
 use graphene_std::vector::misc::ArcType;
 use std::collections::VecDeque;
 
@@ -135,9 +136,9 @@ impl Arc {
 		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::arc::IDENTIFIER).expect("Ellipse node does not exist");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::Number(0.5), false)),
-			Some(NodeInput::value(TaggedValue::Number(0.), false)),
-			Some(NodeInput::value(TaggedValue::Number(270.), false)),
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(0.5)), false)),
+			Some(NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(0.)), false)),
+			Some(NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(270.)), false)),
 			Some(NodeInput::value(TaggedValue::ArcType(arc_type), false)),
 		])
 	}
@@ -179,7 +180,7 @@ impl Arc {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::RadiusInput),
-				input: NodeInput::value(TaggedValue::Number(radius), false),
+				input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(radius)), false),
 			});
 
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), aspect));

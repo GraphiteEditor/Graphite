@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::snap_session::{SnapSession, Sna
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLength;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -16,7 +17,8 @@ pub struct Ellipse;
 impl Ellipse {
 	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::ellipse::IDENTIFIER).expect("Ellipse node can't be found");
-		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(0.5), false)), Some(NodeInput::value(TaggedValue::Number(0.5), false))])
+		let radius = || Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(0.5)), false));
+		node_type.node_template_input_override([None, radius(), radius()])
 	}
 
 	pub fn update_shape(
@@ -39,11 +41,11 @@ impl Ellipse {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::ellipse::RadiusXInput),
-				input: NodeInput::value(TaggedValue::Number(radius.x), false),
+				input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(radius.x)), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::ellipse::RadiusYInput),
-				input: NodeInput::value(TaggedValue::Number(radius.y), false),
+				input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(radius.y)), false),
 			});
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));
 		}
@@ -54,6 +56,7 @@ impl Ellipse {
 mod test_ellipse {
 	pub use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
+	use graphene_std::units::Length;
 	use graphene_std::vector::generator_nodes::ellipse;
 
 	#[derive(Debug, PartialEq)]
@@ -76,8 +79,8 @@ mod test_ellipse {
 				let node_graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				let ellipse_node = node_graph_layer.upstream_node_id_from_protonode(ellipse::IDENTIFIER)?;
 				Some(ResolvedEllipse {
-					radius_x: instrumented.grab_ranked_input::<ellipse::RadiusXInput, f64>(&[ellipse_node], &editor.runtime).unwrap(),
-					radius_y: instrumented.grab_ranked_input::<ellipse::RadiusYInput, f64>(&[ellipse_node], &editor.runtime).unwrap(),
+					radius_x: instrumented.grab_ranked_input::<ellipse::RadiusXInput, Length>(&[ellipse_node], &editor.runtime).unwrap().pixels(),
+					radius_y: instrumented.grab_ranked_input::<ellipse::RadiusYInput, Length>(&[ellipse_node], &editor.runtime).unwrap().pixels(),
 					transform: document.metadata().transform_to_document(layer),
 				})
 			})

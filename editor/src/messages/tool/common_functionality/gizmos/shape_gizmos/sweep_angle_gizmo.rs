@@ -10,8 +10,8 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end
 use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
-use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::ParameterRef;
 use std::collections::VecDeque;
 use std::f64::consts::PI;
 
@@ -235,7 +235,7 @@ impl SweepAngleGizmo {
 						self.initial_start_angle = current_start_angle;
 						self.update_state(SweepAngleGizmoState::Snapped);
 
-						self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle - wrapped, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle - wrapped, view, responses);
 					}
 					() if new_sweep_angle < 0. => {
 						let rest_angle = angle_delta + new_sweep_angle;
@@ -246,7 +246,7 @@ impl SweepAngleGizmo {
 						self.initial_sweep_angle = 0.;
 						self.initial_start_angle = current_start_angle + rest_angle;
 
-						self.apply_arc_update(node_id, self.initial_start_angle, new_sweep_angle.abs(), input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle, new_sweep_angle.abs(), view, responses);
 					}
 					// Wrap start angle > 180° back into [-180°, 180°] and adjust sweep
 					() if new_start_angle > 180. => {
@@ -260,7 +260,7 @@ impl SweepAngleGizmo {
 						self.initial_start_angle = -180.;
 						self.initial_sweep_angle = current_sweep_angle - rest_angle;
 
-						self.apply_arc_update(node_id, self.initial_start_angle + overflow, self.initial_sweep_angle - overflow, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + overflow, self.initial_sweep_angle - overflow, view, responses);
 					}
 					// Wrap start angle < -180° back into [-180°, 180°] and adjust sweep
 					() if new_start_angle < -180. => {
@@ -274,7 +274,7 @@ impl SweepAngleGizmo {
 						self.initial_start_angle = 180.;
 						self.initial_sweep_angle = current_sweep_angle + rest_angle.abs();
 
-						self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + underflow, self.initial_sweep_angle + underflow.abs(), view, responses);
 					}
 					_ => {
 						let free_sweep_angle = self.initial_sweep_angle - total;
@@ -284,7 +284,7 @@ impl SweepAngleGizmo {
 						}
 
 						self.total_angle_delta = angle;
-						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle - total, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + total, self.initial_sweep_angle - total, view, responses);
 					}
 				}
 			}
@@ -304,7 +304,7 @@ impl SweepAngleGizmo {
 						self.total_angle_delta = delta;
 						self.endpoint = EndpointType::Start;
 
-						self.apply_arc_update(node_id, self.initial_start_angle + delta, self.initial_sweep_angle + delta.abs() * sign, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + delta, self.initial_sweep_angle + delta.abs() * sign, view, responses);
 					}
 					// Clamp sweep angle above 360°, switch to start
 					() if new_sweep_angle > 360. => {
@@ -316,7 +316,7 @@ impl SweepAngleGizmo {
 						self.endpoint = EndpointType::Start;
 						self.update_state(SweepAngleGizmoState::Snapped);
 
-						self.apply_arc_update(node_id, self.initial_start_angle + angle_delta, self.initial_sweep_angle + angle_delta.abs() * sign, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle + angle_delta, self.initial_sweep_angle + angle_delta.abs() * sign, view, responses);
 					}
 					_ => {
 						let free_sweep_angle = self.initial_sweep_angle + angle;
@@ -326,7 +326,7 @@ impl SweepAngleGizmo {
 						}
 
 						self.total_angle_delta = angle;
-						self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle + total, input, responses);
+						self.apply_arc_update(node_id, self.initial_start_angle, self.initial_sweep_angle + total, view, responses);
 					}
 				}
 			}
@@ -335,17 +335,21 @@ impl SweepAngleGizmo {
 	}
 
 	/// Applies the updated start and sweep angles to the arc.
-	fn apply_arc_update(&mut self, node_id: NodeId, start_angle: f64, sweep_angle: f64, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn apply_arc_update(&mut self, node_id: NodeId, start_angle: f64, sweep_angle: f64, view: SnapView, responses: &mut VecDeque<Message>) {
+		let SnapView { document, input, .. } = view;
 		self.snap_angles = Self::calculate_snap_angles();
 
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::StartAngleInput),
-			input: NodeInput::value(TaggedValue::Number(start_angle), false),
-		});
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::arc::SweepAngleInput),
-			input: NodeInput::value(TaggedValue::Number(sweep_angle), false),
-		});
+		for (parameter, degrees) in [
+			(ParameterRef::from(graphene_std::vector::generator_nodes::arc::StartAngleInput), start_angle),
+			(ParameterRef::from(graphene_std::vector::generator_nodes::arc::SweepAngleInput), sweep_angle),
+		] {
+			let input_connector = InputConnector::node(node_id, parameter);
+			let angle = graph_modification_utils::angle_in_unit_of_input(&document.network_interface, &input_connector, degrees);
+			responses.add(NodeGraphMessage::SetInput {
+				input_connector,
+				input: NodeInput::value(angle, false),
+			});
+		}
 
 		self.previous_mouse_position = input.mouse.position;
 		responses.add(NodeGraphMessage::RunDocumentGraph);

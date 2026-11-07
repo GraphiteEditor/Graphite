@@ -1,6 +1,6 @@
 use crate::grid_topology::Lattice;
 use core_types::list::{Item, List};
-use core_types::units::Length;
+use core_types::units::{Angle, Length};
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
@@ -18,84 +18,58 @@ fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: Item<Length>) -> It
 }
 
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeArc"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeArc"), version(2))]
 fn arc(
 	_: impl Ctx,
 	_primary: (),
-	#[unit(" px")]
-	#[default(50.)]
-	radius: Item<f64>,
-	#[unit("°")]
+	#[default(50.)] radius: Item<Length>,
 	#[range]
 	#[soft(-180..180)]
-	start_angle: Item<f64>,
-	#[unit("°")]
+	start_angle: Item<Angle>,
 	#[default(270.)]
 	#[range]
 	#[soft(0..360)]
-	sweep_angle: Item<f64>,
+	sweep_angle: Item<Angle>,
 	arc_type: Item<ArcType>,
 ) -> Item<Vector> {
-	let (radius, start_angle, sweep_angle, arc_type) = (*radius.element(), *start_angle.element(), *sweep_angle.element(), arc_type.into_element());
-	Vector::item_from_bezpath(&shapes::arc_bezpath(
-		radius,
-		start_angle / 360. * std::f64::consts::TAU,
-		sweep_angle / 360. * std::f64::consts::TAU,
-		arc_type,
-	))
+	let (radius, start_angle, sweep_angle, arc_type) = (radius.element().pixels(), start_angle.element().radians(), sweep_angle.element().radians(), arc_type.into_element());
+	Vector::item_from_bezpath(&shapes::arc_bezpath(radius, start_angle, sweep_angle, arc_type))
 }
 
 /// Generates a spiral shape that winds from an inner to an outer radius.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeSpiral"), inspector("spiral_inspector"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeSpiral"), inspector("spiral_inspector"), version(2))]
 fn spiral(
 	_: impl Ctx,
 	_primary: (),
 	spiral_type: Item<SpiralType>,
 	#[default(5.)] turns: Item<f64>,
-	#[unit("°")]
-	#[default(0.)]
-	start_angle: Item<f64>,
-	#[unit(" px")]
-	#[default(0.)]
-	inner_radius: Item<f64>,
-	#[unit(" px")]
-	#[default(25)]
-	outer_radius: Item<f64>,
-	#[unit("°")]
-	#[default(90.)]
-	angular_resolution: Item<f64>,
+	#[default(0.)] start_angle: Item<Angle>,
+	#[default(0.)] inner_radius: Item<Length>,
+	#[default(25)] outer_radius: Item<Length>,
+	#[default(90.)] angular_resolution: Item<Angle>,
 ) -> Result<Item<Vector>, SpiralError> {
 	let (turns, start_angle, inner_radius, outer_radius, angular_resolution) = (
 		*turns.element(),
-		*start_angle.element(),
-		*inner_radius.element(),
-		*outer_radius.element(),
-		*angular_resolution.element(),
+		start_angle.element().radians(),
+		inner_radius.element().pixels(),
+		outer_radius.element().pixels(),
+		angular_resolution.element().radians(),
 	);
 
 	Ok(Vector::item_from_bezpath(&shapes::spiral_bezpath(
 		inner_radius,
 		outer_radius,
 		turns,
-		start_angle.to_radians(),
-		angular_resolution.to_radians(),
+		start_angle,
+		angular_resolution,
 		spiral_type.into_element(),
 	)?))
 }
 
 /// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeEllipse"))]
-fn ellipse(
-	_: impl Ctx,
-	_primary: (),
-	#[unit(" px")]
-	#[default(50)]
-	radius_x: Item<f64>,
-	#[unit(" px")]
-	#[default(25)]
-	radius_y: Item<f64>,
-) -> Item<Vector> {
-	let radius = DVec2::new(*radius_x.element(), *radius_y.element());
+#[node_macro::node(category("Vector: Geometry"), icon("NodeEllipse"), version(2))]
+fn ellipse(_: impl Ctx, _primary: (), #[default(50)] radius_x: Item<Length>, #[default(25)] radius_y: Item<Length>) -> Item<Vector> {
+	let radius = DVec2::new(radius_x.element().pixels(), radius_y.element().pixels());
 	let corner1 = -radius;
 	let corner2 = radius;
 
@@ -111,21 +85,17 @@ fn ellipse(
 }
 
 /// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeRectangle"), inspector("rectangle_inspector"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeRectangle"), inspector("rectangle_inspector"), version(2))]
 fn rectangle(
 	_: impl Ctx,
 	_primary: (),
-	#[unit(" px")]
-	#[default(100)]
-	width: Item<f64>,
-	#[unit(" px")]
-	#[default(100)]
-	height: Item<f64>,
+	#[default(100)] width: Item<Length>,
+	#[default(100)] height: Item<Length>,
 	corner_radius: Item<BoxCorners>,
 	#[default(true)] clamped: Item<bool>,
 	_individual_corner_radii: Item<bool>,
 ) -> Item<Vector> {
-	let size = DVec2::new(*width.element(), *height.element());
+	let size = DVec2::new(width.element().pixels(), height.element().pixels());
 	let radii = corner_radius.element().to_corner_values();
 
 	let mirror = DVec2::new(if size.x < 0. { -1. } else { 1. }, if size.y < 0. { -1. } else { 1. });
@@ -169,42 +139,41 @@ fn box_corners(
 }
 
 /// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeRegularPolygon"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeRegularPolygon"), version(2))]
 fn regular_polygon(
 	_: impl Ctx,
 	_primary: (),
 	#[default(6)]
 	#[hard(3..)]
 	sides: Item<i64>,
-	#[unit(" px")]
-	#[default(50)]
-	radius: Item<f64>,
+	#[default(50)] radius: Item<Length>,
 ) -> Result<Item<Vector>, PolygonError> {
 	let points = *sides.element() as u64;
-	Ok(Vector::item_from_bezpath(&shapes::regular_polygon_bezpath(DVec2::ZERO, points, *radius.element())?))
+	Ok(Vector::item_from_bezpath(&shapes::regular_polygon_bezpath(DVec2::ZERO, points, radius.element().pixels())?))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeStar"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeStar"), version(2))]
 fn star(
 	_: impl Ctx,
 	_primary: (),
 	#[default(5)]
 	#[hard(2..)]
 	sides: Item<i64>,
-	#[unit(" px")]
-	#[default(50)]
-	radius_1: Item<f64>,
-	#[unit(" px")]
-	#[default(25)]
-	radius_2: Item<f64>,
+	#[default(50)] radius_1: Item<Length>,
+	#[default(25)] radius_2: Item<Length>,
 ) -> Result<Item<Vector>, PolygonError> {
 	let points = *sides.element() as u64;
-	Ok(Vector::item_from_bezpath(&shapes::star_polygon_bezpath(DVec2::ZERO, points, *radius_1.element(), *radius_2.element())?))
+	Ok(Vector::item_from_bezpath(&shapes::star_polygon_bezpath(
+		DVec2::ZERO,
+		points,
+		radius_1.element().pixels(),
+		radius_2.element().pixels(),
+	)?))
 }
 
 /// Generates a heart shape with adjustable lobes, cleft, sides, and point.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeHeart"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeHeart"), version(2))]
 fn heart(
 	_: impl Ctx,
 	_primary: (),
@@ -237,11 +206,10 @@ fn heart(
 	#[default(50.)]
 	side_fullness: Item<f64>,
 	/// Opening angle at the very tip of the bottom point.
-	#[unit("°")]
 	#[range]
 	#[hard(15..150)]
 	#[default(75.)]
-	tip_angle: Item<f64>,
+	tip_angle: Item<Angle>,
 ) -> Item<Vector> {
 	let proportions = shapes::HeartProportions {
 		cleft_depth: *cleft_depth.element() / 100.,
@@ -249,7 +217,7 @@ fn heart(
 		lobe_lean: *lobe_lean.element() / 100.,
 		widest_point: *widest_point.element() / 100.,
 		side_fullness: *side_fullness.element() / 100.,
-		tip_angle: tip_angle.element().to_radians(),
+		tip_angle: tip_angle.element().radians(),
 	};
 	let (mut heart, mut paths) = Vector::from_bezpath(&shapes::heart_bezpath(&proportions));
 
@@ -335,27 +303,24 @@ fn qr_code(
 }
 
 /// Generates an arrow from the origin to the chosen coordinate.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeArrow"))]
+#[node_macro::node(category("Vector: Geometry"), icon("NodeArrow"), version(2))]
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
 	#[unit(" px")]
 	#[default(100., 0.)]
 	arrow_to: Item<DVec2>,
-	#[unit(" px")]
 	#[hard(0..)]
 	#[default(10)]
-	shaft_width: Item<f64>,
-	#[unit(" px")]
+	shaft_width: Item<Length>,
 	#[hard(0..)]
 	#[default(30)]
-	head_width: Item<f64>,
-	#[unit(" px")]
+	head_width: Item<Length>,
 	#[hard(0..)]
 	#[default(20)]
-	head_length: Item<f64>,
+	head_length: Item<Length>,
 ) -> Item<Vector> {
-	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), *shaft_width.element(), *head_width.element(), *head_length.element());
+	let (arrow_to, shaft_width, head_width, head_length) = (*arrow_to.element(), shaft_width.element().pixels(), head_width.element().pixels(), head_length.element().pixels());
 	Vector::item_from_bezpath(&shapes::arrow_bezpath(DVec2::ZERO, arrow_to, shaft_width, head_width, head_length))
 }
 
@@ -703,7 +668,7 @@ mod tests {
 
 	#[test]
 	fn heart_fills_its_box_with_smooth_widest_points() {
-		let heart = heart((), (), item(70.), item(0.), item(0.), item(70.), item(50.), item(75.));
+		let heart = heart((), (), item(70.), item(0.), item(0.), item(70.), item(50.), item(Angle::from_degrees(75.)));
 		let paths = shared_paths_from_item_attributes(&heart);
 		let vector = heart.element();
 
@@ -749,7 +714,15 @@ mod tests {
 	// A radius small enough to underflow leaves no direction from its anchor to the corner to put the handle along
 	#[test]
 	fn rectangle_with_a_vanishing_corner_radius() {
-		let rectangle = rectangle((), (), item(100.), item(100.), item(BoxCorners::from(vec![1e-160, 10., 0., 0.])), item(false), item(true));
+		let rectangle = rectangle(
+			(),
+			(),
+			item(Length::from_pixels(100.)),
+			item(Length::from_pixels(100.)),
+			item(BoxCorners::from(vec![1e-160, 10., 0., 0.])),
+			item(false),
+			item(true),
+		);
 		assert!(rectangle.element().positions().all(|position| position.is_finite()));
 	}
 
@@ -757,7 +730,15 @@ mod tests {
 	#[test]
 	fn rectangle_with_a_negative_width_keeps_its_rounded_corners() {
 		let anchors = |width: f64, clamped: bool| {
-			let rectangle = rectangle((), (), item(width), item(100.), item(BoxCorners::from(vec![30.])), item(clamped), item(false));
+			let rectangle = rectangle(
+				(),
+				(),
+				item(Length::from_pixels(width)),
+				item(Length::from_pixels(100.)),
+				item(BoxCorners::from(vec![30.])),
+				item(clamped),
+				item(false),
+			);
 			rectangle.element().anchor_positions(&shared_paths_from_item_attributes(&rectangle))
 		};
 
@@ -769,16 +750,27 @@ mod tests {
 
 	#[test]
 	fn polygons_report_more_sides_than_can_be_allocated() {
-		assert!(matches!(regular_polygon((), (), item(i64::MAX), item(50.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
-		assert!(matches!(star((), (), item(i64::MAX), item(50.), item(25.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
-		assert!(regular_polygon((), (), item(6), item(50.)).is_ok());
+		let pixels = |pixels: f64| item(Length::from_pixels(pixels));
+		assert!(matches!(regular_polygon((), (), item(i64::MAX), pixels(50.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
+		assert!(matches!(star((), (), item(i64::MAX), pixels(50.), pixels(25.)), Err(PolygonError::TooManySides(sides)) if sides == i64::MAX as u64));
+		assert!(regular_polygon((), (), item(6), pixels(50.)).is_ok());
 	}
 
 	// With the inner and outer radius the same, the spiral doesn't grow, so it winds around a circle
 	#[test]
 	fn spiral_between_equal_radii_is_a_circle() {
 		for spiral_type in [SpiralType::Archimedean, SpiralType::Logarithmic] {
-			let spiral = spiral((), (), item(spiral_type), item(2.), item(0.), item(25.), item(25.), item(90.)).unwrap();
+			let spiral = spiral(
+				(),
+				(),
+				item(spiral_type),
+				item(2.),
+				item(Angle::ZERO),
+				item(Length::from_pixels(25.)),
+				item(Length::from_pixels(25.)),
+				item(Angle::from_degrees(90.)),
+			)
+			.unwrap();
 			assert!(spiral.element().positions().all(|position| position.is_finite()));
 			let anchors = spiral.element().anchor_positions(&shared_paths_from_item_attributes(&spiral));
 			assert!(anchors.iter().all(|anchor| (anchor.length() - 25.).abs() < 1e-9));

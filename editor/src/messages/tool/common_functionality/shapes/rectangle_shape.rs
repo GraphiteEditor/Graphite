@@ -8,6 +8,7 @@ use crate::messages::tool::common_functionality::snap_session::{SnapSession, Sna
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLength;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -16,7 +17,8 @@ pub struct Rectangle;
 impl Rectangle {
 	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER).expect("Rectangle node can't be found");
-		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(1.), false)), Some(NodeInput::value(TaggedValue::Number(1.), false))])
+		let side = || Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(1.)), false));
+		node_type.node_template_input_override([None, side(), side()])
 	}
 
 	pub fn update_shape(
@@ -39,11 +41,11 @@ impl Rectangle {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::rectangle::WidthInput),
-				input: NodeInput::value(TaggedValue::Number(size.x), false),
+				input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(size.x)), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::rectangle::HeightInput),
-				input: NodeInput::value(TaggedValue::Number(size.y), false),
+				input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(size.y)), false),
 			});
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));
 		}

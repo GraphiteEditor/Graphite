@@ -14,6 +14,7 @@ use crate::messages::tool::tool_messages::shape_tool::ShapeOptionsUpdate;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLength;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
@@ -113,7 +114,7 @@ impl Polygon {
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::Integer(vertices as i64), false)),
-			Some(NodeInput::value(TaggedValue::Number(0.5), false)),
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(0.5)), false)),
 		])
 	}
 
@@ -160,7 +161,7 @@ impl Polygon {
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput),
-				input: NodeInput::value(TaggedValue::Number(radius), false),
+				input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(radius)), false),
 			});
 
 			responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), aspect));

@@ -8,13 +8,12 @@ use crate::messages::portfolio::document::{overlays::utility_types::OverlayConte
 use crate::messages::prelude::FrontendMessage;
 use crate::messages::prelude::Responses;
 use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage};
-use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
+use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
 use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
-use graph_craft::document::value::TaggedValue;
 use graphene_std::ParameterRef;
 use graphene_std::vector::generator_nodes::{regular_polygon, star};
 use std::collections::VecDeque;
@@ -340,19 +339,11 @@ impl PointRadiusHandle {
 	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_parameter: &ParameterRef) -> Vec<f64> {
 		let mut snap_radii = Vec::new();
 
-		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(star::IDENTIFIER) else {
-			return snap_radii;
-		};
-
-		let (Some(&TaggedValue::Number(radius_1)), Some(&TaggedValue::Number(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
+		let Some((sides, radius_1, radius_2)) = extract_star_parameters(Some(layer), document) else {
 			return snap_radii;
 		};
 
 		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
-
-		let Some(&TaggedValue::Integer(sides)) = parameters.value(star::SidesInput) else {
-			return snap_radii;
-		};
 
 		let both_radii_negative = radius_1.is_sign_negative() && radius_2.is_sign_negative();
 		let both_radii_same_sign = (radius_1.signum() * radius_2.signum()).is_sign_positive();
@@ -465,21 +456,17 @@ impl PointRadiusHandle {
 			self.update_state(PointRadiusHandleState::Snapped(candidate.key.identity[0] as usize));
 		}
 
+		let input_connector = InputConnector::node(node_id, radius_parameter);
+		let radius = graph_modification_utils::length_in_unit_of_input(&document.network_interface, &input_connector, snapped_radius);
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, radius_parameter),
-			input: NodeInput::value(TaggedValue::Number(snapped_radius), false),
+			input_connector,
+			input: NodeInput::value(radius, false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_parameter: &ParameterRef) {
-		let Some(parameters) = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(star::IDENTIFIER) else {
-			return;
-		};
-
-		let (Some(&TaggedValue::Number(radius_1)), Some(&TaggedValue::Number(radius_2))) = (parameters.value(star::Radius1Input), parameters.value(star::Radius2Input)) else {
-			return;
-		};
+		let Some((_, radius_1, radius_2)) = extract_star_parameters(Some(layer), document) else { return };
 
 		let other_radius = if *radius_parameter == ParameterRef::from(star::Radius2Input) { radius_1 } else { radius_2 };
 

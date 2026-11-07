@@ -14,6 +14,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::{TypedAngle, TypedLength};
 use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
@@ -106,10 +107,10 @@ impl Spiral {
 			None,
 			Some(NodeInput::value(TaggedValue::SpiralType(spiral_type), false)),
 			Some(NodeInput::value(TaggedValue::Number(turns), false)),
-			Some(NodeInput::value(TaggedValue::Number(0.), false)),
-			Some(NodeInput::value(TaggedValue::Number(inner_radius), false)),
-			Some(NodeInput::value(TaggedValue::Number(0.1), false)),
-			Some(NodeInput::value(TaggedValue::Number(90.), false)),
+			Some(NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(0.)), false)),
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(inner_radius)), false)),
+			Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(0.1)), false)),
+			Some(NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(90.)), false)),
 		])
 	}
 
@@ -146,7 +147,7 @@ impl Spiral {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, OuterRadiusInput),
-			input: NodeInput::value(TaggedValue::Number(new_radius), false),
+			input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(new_radius)), false),
 		});
 	}
 

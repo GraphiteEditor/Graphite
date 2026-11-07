@@ -374,9 +374,15 @@ impl HeartHandles {
 			return;
 		}
 
+		let input_connector = InputConnector::node(node_id, parameter.input());
+		let input_value = parameter.input_value(value.clamp(min, max));
+		let input_value = match parameter {
+			HeartParameter::TipAngle => graph_modification_utils::angle_in_unit_of_input(&document.network_interface, &input_connector, input_value),
+			_ => TaggedValue::Number(input_value),
+		};
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, parameter.input()),
-			input: NodeInput::value(TaggedValue::Number(parameter.input_value(value.clamp(min, max))), false),
+			input_connector,
+			input: NodeInput::value(input_value, false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

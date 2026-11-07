@@ -84,7 +84,7 @@ pub struct Circle;
 impl Circle {
 	pub fn create_node() -> NodeTemplate {
 		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::circle::IDENTIFIER).expect("Circle can't be found");
-		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Number(0.), false))])
+		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(0.)), false))])
 	}
 
 	pub fn update_shape(

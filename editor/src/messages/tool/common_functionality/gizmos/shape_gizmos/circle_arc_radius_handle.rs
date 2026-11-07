@@ -11,7 +11,6 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use crate::messages::tool::common_functionality::snap_session::{Kind, SnapSession, SnapView, ValueCandidate};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
-use graph_craft::document::value::TaggedValue;
 use graphene_std::ParameterRef;
 use graphene_std::core_types::FallibleVec2Operations;
 use std::collections::VecDeque;
@@ -194,12 +193,8 @@ impl RadiusHandle {
 		// The size is snapped, which keeps whichever sign the radius has come to
 		let snapped_radius = snap_session.snap_value(view, position_of, self.free_radius.abs(), on_screen_per_unit, equal_radii) * self.free_radius.signum();
 
-		// A radius typed in a unit like millimeters stays in it
 		let input_connector = InputConnector::node(node_id, radius_parameter);
-		let radius = match document.network_interface.input_from_connector(&input_connector, &[]).and_then(|input| input.as_value()) {
-			Some(existing @ TaggedValue::Length(_)) => existing.length_in_same_unit(snapped_radius, document.network_interface.pixels_per_inch()),
-			_ => TaggedValue::Number(snapped_radius),
-		};
+		let radius = graph_modification_utils::length_in_unit_of_input(&document.network_interface, &input_connector, snapped_radius);
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector,
 			input: NodeInput::value(radius, false),

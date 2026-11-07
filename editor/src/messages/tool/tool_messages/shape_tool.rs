@@ -30,6 +30,7 @@ use crate::messages::tool::common_functionality::utility_functions::{closest_poi
 use crate::messages::tool::utility_types::DocumentToolData;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLength;
 use graphene_std::vector::algorithms::shapes::HEART_SIZE;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
 use graphene_std::vector::style::FillChoice;
@@ -396,19 +397,22 @@ fn sync_shape_options_from_selection(options: &mut ShapeToolOptions, tool_data: 
 			}
 		}
 		ShapeType::Arrow => {
-			if let Some(&TaggedValue::Number(shaft)) = layer_view.parameter_value(arrow::ShaftWidthInput)
+			let pixels_per_inch = document.network_interface.pixels_per_inch();
+			let pixels = |parameter: ParameterRef| layer_view.parameter_value(parameter).and_then(|value| value.as_length_pixels(pixels_per_inch));
+
+			if let Some(shaft) = pixels(arrow::ShaftWidthInput.into())
 				&& options.arrow_shaft_width != shaft
 			{
 				options.arrow_shaft_width = shaft;
 				changed = true;
 			}
-			if let Some(&TaggedValue::Number(head_w)) = layer_view.parameter_value(arrow::HeadWidthInput)
+			if let Some(head_w) = pixels(arrow::HeadWidthInput.into())
 				&& options.arrow_head_width != head_w
 			{
 				options.arrow_head_width = head_w;
 				changed = true;
 			}
-			if let Some(&TaggedValue::Number(head_l)) = layer_view.parameter_value(arrow::HeadLengthInput)
+			if let Some(head_l) = pixels(arrow::HeadLengthInput.into())
 				&& options.arrow_head_length != head_l
 			{
 				options.arrow_head_length = head_l;
@@ -677,15 +681,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			}
 			ShapeOptionsUpdate::ArrowShaftWidth(shaft_width) => {
 				self.options.arrow_shaft_width = shaft_width;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::ShaftWidthInput, TaggedValue::Number(shaft_width), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::ShaftWidthInput, TaggedValue::Length(TypedLength::pixels(shaft_width)), responses);
 			}
 			ShapeOptionsUpdate::ArrowHeadWidth(head_width) => {
 				self.options.arrow_head_width = head_width;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadWidthInput, TaggedValue::Number(head_width), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadWidthInput, TaggedValue::Length(TypedLength::pixels(head_width)), responses);
 			}
 			ShapeOptionsUpdate::ArrowHeadLength(head_length) => {
 				self.options.arrow_head_length = head_length;
-				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadLengthInput, TaggedValue::Number(head_length), responses);
+				graph_modification_utils::set_parameter_for_selected_layers(context.document, arrow::HeadLengthInput, TaggedValue::Length(TypedLength::pixels(head_length)), responses);
 			}
 		}
 
@@ -1654,6 +1658,7 @@ mod test_shape_tool {
 	use glam::DAffine2;
 	use graph_craft::document::NodeInput;
 	use graph_craft::document::value::TaggedValue;
+	use graphene_std::units::TypedAngle;
 	use graphene_std::vector::algorithms::shapes::{calculate_growth_factor, heart_bezpath};
 	use graphene_std::vector::generator_nodes::arc;
 	use graphene_std::vector::misc::{SpiralType, point_to_dvec2};
@@ -2175,7 +2180,7 @@ mod test_shape_tool {
 		editor
 			.handle_message(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, arc::SweepAngleInput),
-				input: NodeInput::value(TaggedValue::Number(268.), false),
+				input: NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(268.)), false),
 			})
 			.await;
 		editor.handle_message(NodeGraphMessage::RunDocumentGraph).await;

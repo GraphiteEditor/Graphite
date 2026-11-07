@@ -276,12 +276,11 @@ pub fn anchor_overlays(document: &DocumentMessageHandler, overlay_context: &mut 
 /// Returns an option of (sides, radius1, radius2).
 pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64, f64)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))?;
+	let pixels_per_inch = document.network_interface.pixels_per_inch();
 
-	let (Some(&TaggedValue::Integer(sides)), Some(&TaggedValue::Number(radius_1)), Some(&TaggedValue::Number(radius_2))) =
-		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
-	else {
-		return None;
-	};
+	let Some(&TaggedValue::Integer(sides)) = node_inputs.get(1)?.as_value() else { return None };
+	let radius_1 = node_inputs.get(2)?.as_value()?.as_length_pixels(pixels_per_inch)?;
+	let radius_2 = node_inputs.get(3)?.as_value()?.as_length_pixels(pixels_per_inch)?;
 
 	Some((sides.max(0) as u32, radius_1, radius_2))
 }
@@ -292,9 +291,8 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 	let node_inputs =
 		NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::Integer(n)), Some(&TaggedValue::Number(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
-		return None;
-	};
+	let Some(&TaggedValue::Integer(n)) = node_inputs.get(1)?.as_value() else { return None };
+	let radius = node_inputs.get(2)?.as_value()?.as_length_pixels(document.network_interface.pixels_per_inch())?;
 
 	Some((n.max(0) as u32, radius))
 }
@@ -304,14 +302,10 @@ pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: 
 pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(f64, f64, f64, ArcType)> {
 	let node_inputs = NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::arc::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::Number(radius)), Some(&TaggedValue::Number(start_angle)), Some(&TaggedValue::Number(sweep_angle)), Some(&TaggedValue::ArcType(arc_type))) = (
-		node_inputs.get(1)?.as_value(),
-		node_inputs.get(2)?.as_value(),
-		node_inputs.get(3)?.as_value(),
-		node_inputs.get(4)?.as_value(),
-	) else {
-		return None;
-	};
+	let radius = node_inputs.get(1)?.as_value()?.as_length_pixels(document.network_interface.pixels_per_inch())?;
+	let start_angle = node_inputs.get(2)?.as_value()?.as_angle_degrees()?;
+	let sweep_angle = node_inputs.get(3)?.as_value()?.as_angle_degrees()?;
+	let Some(&TaggedValue::ArcType(arc_type)) = node_inputs.get(4)?.as_value() else { return None };
 
 	Some((radius, start_angle, sweep_angle, arc_type))
 }
@@ -322,25 +316,15 @@ pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &Document
 	use graphene_std::vector::generator_nodes::spiral::*;
 
 	let parameters = NodeGraphLayer::new(layer, &document.network_interface).find_node_parameters(IDENTIFIER)?;
+	let pixels_per_inch = document.network_interface.pixels_per_inch();
 
-	let (
-		Some(&TaggedValue::SpiralType(spiral_type)),
-		Some(&TaggedValue::Number(start_angle)),
-		Some(&TaggedValue::Number(inner_radius)),
-		Some(&TaggedValue::Number(outer_radius)),
-		Some(&TaggedValue::Number(turns)),
-		Some(&TaggedValue::Number(angle_resolution)),
-	) = (
-		parameters.value(SpiralTypeInput),
-		parameters.value(StartAngleInput),
-		parameters.value(InnerRadiusInput),
-		parameters.value(OuterRadiusInput),
-		parameters.value(TurnsInput),
-		parameters.value(AngularResolutionInput),
-	)
-	else {
+	let (Some(&TaggedValue::SpiralType(spiral_type)), Some(&TaggedValue::Number(turns))) = (parameters.value(SpiralTypeInput), parameters.value(TurnsInput)) else {
 		return None;
 	};
+	let start_angle = parameters.value(StartAngleInput)?.as_angle_degrees()?;
+	let inner_radius = parameters.value(InnerRadiusInput)?.as_length_pixels(pixels_per_inch)?;
+	let outer_radius = parameters.value(OuterRadiusInput)?.as_length_pixels(pixels_per_inch)?;
+	let angle_resolution = parameters.value(AngularResolutionInput)?.as_angle_degrees()?;
 
 	Some((spiral_type, start_angle, inner_radius, outer_radius, turns, angle_resolution))
 }
@@ -357,18 +341,17 @@ pub fn extract_heart_parameters(layer: LayerNodeIdentifier, document: &DocumentM
 		Some(&TaggedValue::Number(lobe_lean)),
 		Some(&TaggedValue::Number(widest_point)),
 		Some(&TaggedValue::Number(side_fullness)),
-		Some(&TaggedValue::Number(tip_angle)),
 	) = (
 		parameters.value(CleftDepthInput),
 		parameters.value(CleftSharpnessInput),
 		parameters.value(LobeLeanInput),
 		parameters.value(WidestPointInput),
 		parameters.value(SideFullnessInput),
-		parameters.value(TipAngleInput),
 	)
 	else {
 		return None;
 	};
+	let tip_angle = parameters.value(TipAngleInput)?.as_angle_degrees()?;
 
 	Some(HeartProportions {
 		cleft_depth: cleft_depth / 100.,

@@ -2902,7 +2902,7 @@ pub(crate) fn spiral_inspector(node_id: NodeId, context: &mut NodeInspectorConte
 		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput, true, context))
 		.inspector_row();
 	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput, true, context), NumberInput::default().min(0.1));
-	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput, true, context), NumberInput::default().unit("°"));
+	let start_angle = angle_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput, true, context), NumberInput::default());
 
 	let mut widgets = vec![spiral_type, LayoutGroup::row(turns), LayoutGroup::row(start_angle)];
 
@@ -2921,35 +2921,23 @@ pub(crate) fn spiral_inspector(node_id: NodeId, context: &mut NodeInspectorConte
 	if let Some(&TaggedValue::SpiralType(spiral_type)) = spiral_type_input.as_non_exposed_value() {
 		match spiral_type {
 			SpiralType::Archimedean => {
-				let inner_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, InnerRadiusInput, true, context),
-					NumberInput::default().min(0.).unit(" px"),
-				));
+				let inner_radius = LayoutGroup::row(length_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput, true, context), NumberInput::default().min(0.)));
 
-				let outer_radius = LayoutGroup::row(number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput, true, context), NumberInput::default().unit(" px")));
+				let outer_radius = LayoutGroup::row(length_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput, true, context), NumberInput::default()));
 
 				widgets.extend([inner_radius, outer_radius]);
 			}
 			SpiralType::Logarithmic => {
-				let inner_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, InnerRadiusInput, true, context),
-					NumberInput::default().min(0.).unit(" px"),
-				));
+				let inner_radius = LayoutGroup::row(length_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput, true, context), NumberInput::default().min(0.)));
 
-				let outer_radius = LayoutGroup::row(number_widget(
-					ParameterWidgetsInfo::new(node_id, OuterRadiusInput, true, context),
-					NumberInput::default().min(0.1).unit(" px"),
-				));
+				let outer_radius = LayoutGroup::row(length_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput, true, context), NumberInput::default().min(0.1)));
 
 				widgets.extend([inner_radius, outer_radius]);
 			}
 		}
 	}
 
-	let angular_resolution = number_widget(
-		ParameterWidgetsInfo::new(node_id, AngularResolutionInput, true, context),
-		NumberInput::default().min(1.).max(180.).unit("°"),
-	);
+	let angular_resolution = angle_widget(ParameterWidgetsInfo::new(node_id, AngularResolutionInput, true, context), NumberInput::default().min(1.).max(180.));
 
 	widgets.push(LayoutGroup::row(angular_resolution));
 
@@ -3309,10 +3297,10 @@ pub(crate) fn rectangle_inspector(node_id: NodeId, context: &mut NodeInspectorCo
 	}
 
 	// Size X
-	let size_x = number_widget(ParameterWidgetsInfo::new(node_id, WidthInput, true, context), NumberInput::default());
+	let size_x = length_widget(ParameterWidgetsInfo::new(node_id, WidthInput, true, context), NumberInput::default());
 
 	// Size Y
-	let size_y = number_widget(ParameterWidgetsInfo::new(node_id, HeightInput, true, context), NumberInput::default());
+	let size_y = length_widget(ParameterWidgetsInfo::new(node_id, HeightInput, true, context), NumberInput::default());
 
 	// Clamped
 	let clamped = bool_widget(ParameterWidgetsInfo::new(node_id, ClampedInput, true, context), CheckboxInput::default());

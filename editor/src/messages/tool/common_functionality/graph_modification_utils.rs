@@ -1109,6 +1109,18 @@ pub fn set_parameter_for_selected_layers(document: &DocumentMessageHandler, para
 	}
 }
 
+/// A length in pixels as a value for the length input at `input_connector`, kept in the unit its current value was typed in, like a dragged radius that stays in millimeters.
+pub fn length_in_unit_of_input(network_interface: &NodeNetworkInterface, input_connector: &InputConnector, pixels: f64) -> TaggedValue {
+	let existing = network_interface.input_from_connector(input_connector, &[]).and_then(NodeInput::as_value);
+	existing.unwrap_or(&TaggedValue::None).length_in_same_unit(pixels, network_interface.pixels_per_inch())
+}
+
+/// An angle in degrees as a value for the angle input at `input_connector`, kept in the unit its current value was typed in.
+pub fn angle_in_unit_of_input(network_interface: &NodeNetworkInterface, input_connector: &InputConnector, degrees: f64) -> TaggedValue {
+	let existing = network_interface.input_from_connector(input_connector, &[]).and_then(NodeInput::as_value);
+	existing.unwrap_or(&TaggedValue::None).angle_in_same_unit(degrees)
+}
+
 /// Checks if a specified layer uses an upstream node matching the given name.
 pub fn is_layer_fed_by_node_of_name(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, identifier: &DefinitionIdentifier) -> bool {
 	NodeGraphLayer::new(layer, network_interface).find_node_inputs(identifier).is_some()

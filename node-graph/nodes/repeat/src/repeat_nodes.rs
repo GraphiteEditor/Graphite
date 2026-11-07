@@ -359,6 +359,7 @@ mod test {
 	use super::*;
 	use core_types::list::Item;
 	use core_types::transform::Footprint;
+	use core_types::units::Length;
 	use core_types::{LazyInput, Node, Poll, Status};
 	use glam::DVec2;
 	use graphene_core::ReadPositionNode;
@@ -399,7 +400,7 @@ mod test {
 		}
 	}
 
-	/// Test helper that extracts the Y component of an upstream node's `Item<DVec2>` output.
+	/// Test helper that extracts the Y component of an upstream node's `Item<DVec2>` output as a length in pixels.
 	#[derive(Clone)]
 	struct ExtractYNode<Position>(Position);
 
@@ -407,9 +408,9 @@ mod test {
 	where
 		Position: Node<I, Output = Item<DVec2>>,
 	{
-		type Output = Item<f64>;
-		fn eval(&self, input: &I) -> Poll<Item<f64>> {
-			self.0.eval(input).map(|position| Item::new_from_element(position.element().y))
+		type Output = Item<Length>;
+		fn eval(&self, input: &I) -> Poll<Item<Length>> {
+			self.0.eval(input).map(|position| Item::new_from_element(Length::from_pixels(position.element().y)))
 		}
 	}
 
@@ -419,7 +420,7 @@ mod test {
 		let rect = RectangleNode::new(
 			ValueNode(()),
 			ExtractYNode(ReadPositionNode::new(ValueNode(()), ValueNode(Item::new_from_element(0_i64)))),
-			ValueNode(Item::new_from_element(2_f64)),
+			ValueNode(Item::new_from_element(Length::from_pixels(2.))),
 			ValueNode(Item::new_from_element(BoxCorners::default())),
 			ValueNode(Item::new_from_element(false)),
 			ValueNode(Item::new_from_element(false)),

@@ -249,22 +249,26 @@ impl SpiralTurns {
 		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
 			return;
 		};
+		let outer_radius_input = InputConnector::node(node_id, OuterRadiusInput);
 
 		match self.gizmo_type {
 			GizmoType::Start => {
 				let (new_start_angle, new_turns, new_outer_radius) = self.start_dragged_to(self.initial_turns - turns_delta);
 
+				let start_angle_input = InputConnector::node(node_id, StartAngleInput);
+				let start_angle = graph_modification_utils::angle_in_unit_of_input(&document.network_interface, &start_angle_input, new_start_angle);
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, StartAngleInput),
-					input: NodeInput::value(TaggedValue::Number(new_start_angle), false),
+					input_connector: start_angle_input,
+					input: NodeInput::value(start_angle, false),
 				});
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput),
 					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
+				let outer_radius = graph_modification_utils::length_in_unit_of_input(&document.network_interface, &outer_radius_input, new_outer_radius);
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
+					input_connector: outer_radius_input,
+					input: NodeInput::value(outer_radius, false),
 				});
 			}
 			GizmoType::End => {
@@ -275,9 +279,10 @@ impl SpiralTurns {
 					input_connector: InputConnector::node(node_id, TurnsInput),
 					input: NodeInput::value(TaggedValue::Number(new_turns), false),
 				});
+				let outer_radius = graph_modification_utils::length_in_unit_of_input(&document.network_interface, &outer_radius_input, new_outer_radius);
 				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, OuterRadiusInput),
-					input: NodeInput::value(TaggedValue::Number(new_outer_radius), false),
+					input_connector: outer_radius_input,
+					input: NodeInput::value(outer_radius, false),
 				});
 			}
 			GizmoType::None => {
