@@ -477,22 +477,23 @@ impl Names<'_> {
 			.unwrap_or_else(|| "an input".into())
 	}
 
-	/// One line for a run of changes, most frequent kind first.
+	/// One line for a run of changes, nodes added or removed first since the rest follows from them, then the most frequent kind.
 	fn summarize<'a>(&self, kinds: impl IntoIterator<Item = &'a RegistryDelta>) -> String {
 		let kinds: Vec<&RegistryDelta> = kinds.into_iter().collect();
-		let mut counts: Vec<(String, usize)> = Vec::new();
+		let mut counts: Vec<(String, usize, bool)> = Vec::new();
 		for kind in foreground(&kinds, |kind| kind) {
 			let label = self.describe(kind);
-			match counts.iter_mut().find(|(known, _)| *known == label) {
-				Some((_, count)) => *count += 1,
-				None => counts.push((label, 1)),
+			let structural = matches!(kind, RegistryDelta::AddNode { .. } | RegistryDelta::RemoveNode { .. });
+			match counts.iter_mut().find(|(known, ..)| *known == label) {
+				Some((_, count, _)) => *count += 1,
+				None => counts.push((label, 1, structural)),
 			}
 		}
-		counts.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
+		counts.sort_by_key(|(_, count, structural)| (!structural, std::cmp::Reverse(*count)));
 		let mut parts: Vec<String> = counts
 			.iter()
 			.take(2)
-			.map(|(label, count)| match count {
+			.map(|(label, count, _)| match count {
 				1 => label.clone(),
 				count => format!("{label} ×{count}"),
 			})
@@ -689,5 +690,22 @@ mod tests {
 		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert_eq!(labels, ["Drew a rectangle", "Drew a rectangle"], "the open draw and the closed one waiting to retire");
+	}
+
+	#[tokio::test]
+	async fn deleting_a_layer_names_its_step() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
+		assert_eq!(labels, ["Deleted a layer", "Drew a rectangle"]);
 	}
 }
