@@ -2,6 +2,7 @@ pub mod convert_usvg_path;
 pub mod deferred_image;
 pub mod render_ext;
 mod renderer;
+pub mod scene_builder;
 pub mod to_peniko;
 pub mod vello_scene_builder;
 

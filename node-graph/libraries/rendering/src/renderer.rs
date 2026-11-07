@@ -1,5 +1,6 @@
 use crate::deferred_image::{self, DeferredImage, EffectMap};
 use crate::render_ext::{PaintTarget, RenderExt};
+use crate::scene_builder::SceneBuilder;
 use crate::to_peniko::{BlendModeExt, ToPenikoColor};
 use crate::vello_scene_builder::VelloSceneBuilder;
 use core_types::CacheHash;
@@ -27,11 +28,11 @@ use graphene_resource::Resource;
 use graphic_types::effect_layers::{EffectLayers, LayerPart, PiecePlace, is_pixel_filter, piece_blend_mode};
 use graphic_types::effects::{EffectCapture, GlowFill, effect_space, spans_along_axes};
 use graphic_types::generator::GeneratorPattern;
-use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::raster_types::{CPU, GPU, Raster, Texture};
 use graphic_types::vector_types::gradient::{Gradient, GradientForm};
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint, TargetPath};
 use graphic_types::vector_types::vector::misc::dvec2_to_point;
-use graphic_types::vector_types::vector::style::{RenderMode, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{RenderMode, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use graphic_types::vector_types::vector::{
 	GeometryCache, Path, PlacedContours, contour_bezpaths, contours_bounding_box, contours_stroke_inclusive_bounding_box, edit_item_geometry, edit_list_row_geometry, no_paths,
 };
@@ -313,9 +314,27 @@ impl ItemCompositing<'_> {
 		}
 	}
 
+	/// Draws the `content` through the effects group, given the content's bounds in the scene's space.
+	/// `transform` maps the space the content's item is placed in, where the effects' drawn paints are placed too, into the scene's space.
+	fn draw_with_effects<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams, bounds: impl FnOnce() -> RenderBoundingBox, content: &impl EffectsContent) {
+		let Some((_, fill)) = self.effects else { return content.draw(scene) };
+
+		// TODO: Carry out effects in scene builders besides Vello's, which draw the content faded by its fill without them
+		if !scene.draw_with_vello(|scene| self.draw_with_vello_effects(scene, transform, render_params, bounds, |scene| content.draw(scene))) {
+			// The group takes the item's opacity and blend mode when the item pushed no layer for them
+			let (opacity, blend_mode) = match self.effects_draw_compositing() {
+				true => (self.opacity, self.blend_mode),
+				false => (1., BlendMode::Normal),
+			};
+			scene.push_viewport_layer(peniko::BlendMode::new(blend_mode.to_peniko(), peniko::Compose::SrcOver), opacity * fill);
+			content.draw(scene);
+			scene.pop_layer();
+		}
+	}
+
 	/// Draws the content `draw` draws through the effects group, given the content's bounds in the scene's space. Rendering a split scene calls `draw` again for each part.
 	/// `transform` maps the space the content's item is placed in, where the effects' drawn paints are placed too, into the scene's space.
-	fn draw_with_effects(
+	fn draw_with_vello_effects(
 		&self,
 		scene: &mut VelloSceneBuilder,
 		transform: DAffine2,
@@ -355,7 +374,7 @@ impl ItemCompositing<'_> {
 			.collect();
 		let draw_paint = |index: usize, scene: &mut VelloSceneBuilder| {
 			if let Some((paint, transform)) = paints.get(index) {
-				paint.render_to_vello(scene, *transform, &paint_params);
+				paint.render_to_scene(scene, *transform, &paint_params);
 			}
 		};
 
@@ -679,6 +698,11 @@ fn effects_content<T>(item: ItemRef<'_, T>, element: T, keeps_compositing: bool)
 		true => Item::from_parts(element, item.clone_item_attributes()),
 		false => without_opacity_and_blend_mode(item, element),
 	}
+}
+
+/// What an item draws through its effects group, into any scene builder, since Vello GPU draws it into offscreen scenes of its own.
+trait EffectsContent {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S);
 }
 
 /// Draws the content `draw` draws through the last of the `runs` of `effects`, around the content drawn through the runs before it, each in its own effect space.
@@ -2155,7 +2179,7 @@ fn get_outline_styles(render_params: &RenderParams) -> (kurbo::Stroke, peniko::C
 	(outline_stroke, outline_color_peniko)
 }
 
-fn draw_raster_outline(scene: &mut VelloSceneBuilder, outline_transform: &DAffine2, render_params: &RenderParams) {
+fn draw_raster_outline(scene: &mut impl SceneBuilder, outline_transform: &DAffine2, render_params: &RenderParams) {
 	let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
 	let mut outline_path = rectangle_path(DVec2::ZERO, DVec2::ONE);
@@ -2450,11 +2474,25 @@ pub struct Background {
 	pub dimensions: DVec2,
 }
 
-// TODO: Rename to "Graphical"
-pub trait Render: BoundingBox {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
+/// Draws content through any [`SceneBuilder`], the one traversal behind every backend's entry point in [`RenderToSceneBuilders`].
+pub trait RenderToScene {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams);
+}
 
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, _render_params: &RenderParams);
+/// The entry point into [`RenderToScene`] for each scene builder, which `dyn Render` can call since a trait object can't take a generic scene builder.
+pub trait RenderToSceneBuilders {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams);
+}
+
+impl<T: RenderToScene> RenderToSceneBuilders for T {
+	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+		self.render_to_scene(scene, transform, render_params);
+	}
+}
+
+// TODO: Rename to "Graphical"
+pub trait Render: BoundingBox + RenderToSceneBuilders {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
 	/// `inherited_appearance` is the nearest ancestor's appearance, cascading to items that lack their own, mirroring the render cascade.
@@ -2639,14 +2677,14 @@ fn render_graphic_item_svg(item: ItemRef<'_, Graphic>, next_clips: bool, mask_st
 	}
 }
 
-/// Draws one item of graphic content into the Vello scene, layering for the item's opacity, blend mode, and sibling clipping.
+/// Draws one item of graphic content into the scene, layering for the item's opacity, blend mode, and sibling clipping.
 /// `mask_element_and_transform` carries the clipping run between a list's items; a lone item passes inert mask inputs.
 #[allow(clippy::too_many_arguments)]
-fn render_graphic_item_to_vello<'a>(
+fn render_graphic_item_to_scene<'a, S: SceneBuilder>(
 	item: ItemRef<'a, Graphic>,
 	next_clips: bool,
 	mask_element_and_transform: &mut Option<(Cow<'a, Graphic>, DAffine2)>,
-	scene: &mut VelloSceneBuilder,
+	scene: &mut S,
 	parent_transform: DAffine2,
 	render_params: &RenderParams,
 ) {
@@ -2702,9 +2740,12 @@ fn render_graphic_item_to_vello<'a>(
 		RenderBoundingBox::Rectangle(bounds) => rect_bounds(inflate_bounds(bounds, nested_reach)),
 		bounds => bounds,
 	};
-	let draw_content = |scene: &mut VelloSceneBuilder| {
-		compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, |scene| element.render_to_vello(scene, transform, render_params));
+	let content = PlacedGraphic {
+		graphic: element,
+		transform,
+		render_params,
 	};
+	let draw_content = |scene: &mut S| compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, &content);
 
 	if next_clips && mask_element_and_transform.is_none() {
 		// A base nested to take the item's masks carries the item's transform itself
@@ -2720,7 +2761,7 @@ fn render_graphic_item_to_vello<'a>(
 
 		if let Some(rect) = layer_rect {
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-			mask_element.render_to_vello(scene, transform_mask, &render_params.for_clipper());
+			mask_element.render_to_scene(scene, transform_mask, &render_params.for_clipper());
 			scene.push_layer(
 				peniko::Fill::NonZero,
 				peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
@@ -2742,6 +2783,19 @@ fn render_graphic_item_to_vello<'a>(
 
 	if layer {
 		scene.pop_layer();
+	}
+}
+
+/// A graphic placed by `transform`, as the content of a group item.
+struct PlacedGraphic<'a> {
+	graphic: &'a Graphic,
+	transform: DAffine2,
+	render_params: &'a RenderParams,
+}
+
+impl EffectsContent for PlacedGraphic<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		self.graphic.render_to_scene(scene, self.transform, self.render_params);
 	}
 }
 
@@ -2847,6 +2901,38 @@ fn add_graphic_item_outline_targets(item: ItemRef<'_, Graphic>, outlines: &mut V
 	outlines.extend(new_outlines);
 }
 
+impl RenderToScene for Graphic {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		match self {
+			Graphic::None(_) | Graphic::NoneList(_) => (),
+			Graphic::Graphic(item) => render_graphic_item_to_scene(ItemRef::Item(item), false, &mut None, scene, transform, render_params),
+			Graphic::Vector(item) => {
+				// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
+				let paint_render_params = RenderParams {
+					inherited_appearance: None,
+					..render_params.clone()
+				};
+				render_vector_item_to_scene(ItemRef::Item(item), false, &mut None, scene, transform, render_params, &paint_render_params);
+			}
+			Graphic::RasterCPU(item) => render_raster_cpu_item_to_scene(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::RasterGPU(item) => render_raster_gpu_item_to_scene(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::Color(item) => render_color_item_to_scene(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::Gradient(item) => render_gradient_item_to_scene(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::Generator(item) => render_generator_item_to_scene(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::Text(item) => render_text_item_to_scene(ItemRef::Item(item), scene, transform, render_params),
+			Graphic::GraphicList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::VectorList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::RasterCPUList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::RasterGPUList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::ColorList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::GradientList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::GeneratorList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::TextList(list) => list.render_to_scene(scene, transform, render_params),
+			Graphic::StrokeList(_) => (),
+		}
+	}
+}
+
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
@@ -2867,36 +2953,6 @@ impl Render for Graphic {
 			Graphic::GradientList(list) => list.render_svg(render, render_params),
 			Graphic::GeneratorList(list) => list.render_svg(render, render_params),
 			Graphic::TextList(list) => list.render_svg(render, render_params),
-			Graphic::StrokeList(_) => (),
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		match self {
-			Graphic::None(_) | Graphic::NoneList(_) => (),
-			Graphic::Graphic(item) => render_graphic_item_to_vello(ItemRef::Item(item), false, &mut None, scene, transform, render_params),
-			Graphic::Vector(item) => {
-				// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
-				let paint_render_params = RenderParams {
-					inherited_appearance: None,
-					..render_params.clone()
-				};
-				render_vector_item_to_vello(ItemRef::Item(item), false, &mut None, scene, transform, render_params, &paint_render_params);
-			}
-			Graphic::RasterCPU(item) => render_raster_cpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::RasterGPU(item) => render_raster_gpu_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::Color(item) => render_color_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::Gradient(item) => render_gradient_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::Generator(item) => render_generator_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::Text(item) => render_text_item_to_vello(ItemRef::Item(item), scene, transform, render_params),
-			Graphic::GraphicList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::VectorList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::RasterCPUList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::RasterGPUList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::ColorList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::GradientList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::GeneratorList(list) => list.render_to_vello(scene, transform, render_params),
-			Graphic::TextList(list) => list.render_to_vello(scene, transform, render_params),
 			Graphic::StrokeList(_) => (),
 		}
 	}
@@ -3094,6 +3150,38 @@ fn read_artboard_attributes(list: &List<Artboard>, index: usize) -> (DVec2, DVec
 	(location, dimensions, background, clip)
 }
 
+impl RenderToScene for List<Artboard> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
+			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
+
+			let [a, b] = [location, location + dimensions];
+			let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
+
+			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
+
+			let color = SRGBA8::from(background).to_peniko_color();
+			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
+			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
+			scene.pop_layer();
+
+			if clip {
+				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
+			}
+
+			// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
+			let child_transform = transform * DAffine2::from_translation(location);
+			let mut render_params = render_params.clone();
+			render_params.artboard_background = Some(background);
+			content.render_to_scene(scene, child_transform, &render_params);
+			if clip {
+				scene.pop_layer();
+			}
+		}
+	}
+}
+
 impl Render for List<Artboard> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
@@ -3165,36 +3253,6 @@ impl Render for List<Artboard> {
 		}
 	}
 
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
-			let (location, dimensions, background, clip) = read_artboard_attributes(self, index);
-
-			let [a, b] = [location, location + dimensions];
-			let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
-
-			let artboard_transform = kurbo::Affine::new(transform.to_cols_array());
-
-			let color = SRGBA8::from(background).to_peniko_color();
-			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., artboard_transform, &rect);
-			scene.fill(peniko::Fill::NonZero, artboard_transform, color, None, &rect);
-			scene.pop_layer();
-
-			if clip {
-				scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
-			}
-
-			// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
-			let child_transform = transform * DAffine2::from_translation(location);
-			let mut render_params = render_params.clone();
-			render_params.artboard_background = Some(background);
-			content.render_to_vello(scene, child_transform, &render_params);
-			if clip {
-				scene.pop_layer();
-			}
-		}
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>, inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			let Some(content) = self.element(index).map(Artboard::as_graphic_list) else { continue };
@@ -3234,6 +3292,17 @@ impl Render for List<Artboard> {
 	}
 }
 
+impl RenderToScene for List<Graphic> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		let mut mask_element_and_transform = None;
+
+		for index in 0..self.len() {
+			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
+			render_graphic_item_to_scene(ItemRef::ListItem(self, index), next_clips, &mut mask_element_and_transform, scene, transform, render_params);
+		}
+	}
+}
+
 impl Render for List<Graphic> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut mask_state = None;
@@ -3241,15 +3310,6 @@ impl Render for List<Graphic> {
 		for index in 0..self.len() {
 			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
 			render_graphic_item_svg(ItemRef::ListItem(self, index), next_clips, &mut mask_state, render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		let mut mask_element_and_transform = None;
-
-		for index in 0..self.len() {
-			let next_clips = index + 1 < self.len() && self.element(index + 1).unwrap().had_clip_enabled();
-			render_graphic_item_to_vello(ItemRef::ListItem(self, index), next_clips, &mut mask_element_and_transform, scene, transform, render_params);
 		}
 	}
 
@@ -3619,24 +3679,25 @@ fn render_vector_item_svg(item: ItemRef<'_, Vector>, next_clips: bool, clip_mask
 }
 
 /// Whether `bounds` placed by `transform` overlaps the scene once widened by `inflation`, measured in the space `inflation_transform` maps from, and by its effects' `reach`, measured in the scene's space.
-fn overlaps_scene(scene: &VelloSceneBuilder, bounds: [DVec2; 2], transform: DAffine2, inflation: f64, inflation_transform: DAffine2, reach: f64) -> bool {
+fn overlaps_scene(scene: &impl SceneBuilder, bounds: [DVec2; 2], transform: DAffine2, inflation: f64, inflation_transform: DAffine2, reach: f64) -> bool {
 	let view = DAffine2::from_cols_array(&scene.view().as_coeffs());
 	let (largest_scale, _) = singular_values(view * inflation_transform);
 	let (largest_view_scale, _) = singular_values(view);
 	let inflation = inflation * largest_scale + reach * largest_view_scale;
 	let [min, max] = (view * transform * Quad::from_box(bounds)).bounding_box();
+	let size = scene.size();
 
-	min.x - inflation < scene.width() as f64 && max.x + inflation > 0. && min.y - inflation < scene.height() as f64 && max.y + inflation > 0.
+	min.x - inflation < size.width && max.x + inflation > 0. && min.y - inflation < size.height && max.y + inflation > 0.
 }
 
-/// Draws one item of vector content into the Vello scene: fill and stroke paints, blend and opacity layering,
+/// Draws one item of vector content into the scene: fill and stroke paints, blend and opacity layering,
 /// stroke alignment compositing, and the sibling clipping run carried in `clip_masker` (inert for a lone item).
 #[allow(clippy::too_many_arguments)]
-fn render_vector_item_to_vello(
+fn render_vector_item_to_scene<S: SceneBuilder>(
 	item: ItemRef<'_, Vector>,
 	next_clips: bool,
 	clip_masker: &mut Option<List<Vector>>,
-	scene: &mut VelloSceneBuilder,
+	scene: &mut S,
 	parent_transform: DAffine2,
 	render_params: &RenderParams,
 	paint_render_params: &RenderParams,
@@ -3685,7 +3746,6 @@ fn render_vector_item_to_vello(
 	}
 	let contours = item.contours();
 	let layer_bounds = item.contours_bounding_box().unwrap_or_default();
-	let stroke_affine = Affine::new(applied_stroke_transform.to_cols_array());
 	let element_affine = Affine::new(element_transform.to_cols_array());
 
 	// If we're using opacity or a blend mode, we need to push a layer
@@ -3717,7 +3777,6 @@ fn render_vector_item_to_vello(
 	}
 
 	let Some(placed) = item.placed_contours(applied_stroke_transform) else { return };
-	let path = placed.path();
 
 	let opacity = compositing.opacity;
 	let needs_blend_layer = !compositing.effects_draw_compositing() && (opacity < 1. || blend_mode_attr != BlendMode::default());
@@ -3763,7 +3822,7 @@ fn render_vector_item_to_vello(
 			let layer_rect = layer_rect_with_effects(layer_rect);
 
 			scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., layer_affine, &layer_rect);
-			masker.render_to_vello(scene, parent_transform, &render_params.for_clipper());
+			masker.render_to_scene(scene, parent_transform, &render_params.for_clipper());
 			scene.push_layer(
 				peniko::Fill::NonZero,
 				peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
@@ -3779,19 +3838,93 @@ fn render_vector_item_to_vello(
 		}
 	}
 
-	let use_layer = can_draw_aligned_stroke;
+	// Render the path
+	match render_params.render_mode {
+		RenderMode::Outline => {
+			let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
 
-	let do_fill_path = |scene: &mut VelloSceneBuilder, path: &kurbo::BezPath, fill_rule: peniko::Fill| {
-		let Some(paint) = fill_paint else { return };
+			scene.stroke_contours(&outline_stroke, element_affine, outline_color_peniko, None, &placed);
+		}
+		_ => {
+			let paints = VectorPaints {
+				item,
+				element,
+				fill_paint,
+				stroke_paint,
+				stroke,
+				placed: &placed,
+				contours: &contours,
+				layer_bounds,
+				item_transform,
+				parent_transform,
+				multiplied_transform,
+				applied_stroke_transform,
+				element_transform,
+				use_face_fill: element.use_face_fill(element_paths),
+				aligned_stroke: can_draw_aligned_stroke,
+				stroke_below: wants_stroke_below,
+				render_params,
+				paint_render_params,
+			};
 
-		let solid_fill = |scene: &mut VelloSceneBuilder, color: Option<Color>| {
+			// The shape's own bounds as placed, which SVG also fits a paint overlay to
+			let effects_bounds = || {
+				let bounds = element.stroke_inclusive_bounding_box_with_transform(element_paths, multiplied_transform, stroke_params.as_ref());
+				bounds.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle)
+			};
+			compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, &paints);
+		}
+	}
+
+	if clip_layers {
+		scene.pop_layer();
+		scene.pop_layer();
+	}
+
+	// If we pushed a layer for opacity or a blend mode, we need to pop it
+	if layer {
+		scene.pop_layer();
+	}
+}
+
+/// The fill and stroke of one vector item, which its effects group draws as its content.
+struct VectorPaints<'a> {
+	item: ItemRef<'a, Vector>,
+	element: &'a Vector,
+	fill_paint: Option<&'a Graphic>,
+	stroke_paint: Option<&'a Graphic>,
+	stroke: Option<&'a Stroke>,
+	placed: &'a PlacedContours,
+	contours: &'a [BezPath],
+	layer_bounds: [DVec2; 2],
+	item_transform: DAffine2,
+	parent_transform: DAffine2,
+	multiplied_transform: DAffine2,
+	applied_stroke_transform: DAffine2,
+	element_transform: DAffine2,
+	use_face_fill: bool,
+	/// Whether the stroke is aligned inside or outside its closed contours by compositing it through a mask of them.
+	aligned_stroke: bool,
+	stroke_below: bool,
+	render_params: &'a RenderParams,
+	paint_render_params: &'a RenderParams,
+}
+
+impl VectorPaints<'_> {
+	/// Fills `path`, given in the stroke space, with the fill paint.
+	fn fill_path<S: SceneBuilder>(&self, scene: &mut S, path: &BezPath, fill_rule: peniko::Fill) {
+		let Some(paint) = self.fill_paint else { return };
+		let (element_transform, render_params) = (self.element_transform, self.render_params);
+		let element_affine = Affine::new(element_transform.to_cols_array());
+
+		let solid_fill = |scene: &mut S, color: Option<Color>| {
 			let Some(color) = color else { return };
 
 			let fill = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 			scene.fill_path(fill_rule, element_affine, &fill, None, path);
 		};
-		let gradient_fill = |scene: &mut VelloSceneBuilder, gradient_item: ItemRef<'_, Gradient>| {
-			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
+		let gradient_fill = |scene: &mut S, gradient_item: ItemRef<'_, Gradient>| {
+			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &self.multiplied_transform, render_params.for_mask) else {
 				return;
 			};
 
@@ -3827,26 +3960,30 @@ fn render_vector_item_to_vello(
 			| Graphic::TextList(_)
 			| Graphic::StrokeList(_) => {
 				scene.push_clip_layer(fill_rule, kurbo::Affine::new(element_transform.to_cols_array()), path);
-				paint.render_to_vello(scene, multiplied_transform, paint_render_params);
+				paint.render_to_scene(scene, self.multiplied_transform, self.paint_render_params);
 				scene.pop_layer();
 			}
 		};
-	};
+	}
 
-	let use_face_fill = element.use_face_fill(element_paths);
-	let do_fill = |scene: &mut VelloSceneBuilder| {
-		if use_face_fill {
-			for face_path in item.faces().iter() {
-				do_fill_path(scene, &(stroke_affine * face_path), peniko::Fill::NonZero);
+	/// Fills the item's faces, or else its contours, with the fill paint.
+	fn fill<S: SceneBuilder>(&self, scene: &mut S) {
+		if self.use_face_fill {
+			let stroke_affine = Affine::new(self.applied_stroke_transform.to_cols_array());
+			for face_path in self.item.faces().iter() {
+				self.fill_path(scene, &(stroke_affine * face_path), peniko::Fill::NonZero);
 			}
 		} else {
-			do_fill_path(scene, path, peniko::Fill::NonZero);
+			self.fill_path(scene, self.placed.path(), peniko::Fill::NonZero);
 		}
-	};
+	}
 
-	let do_stroke = |scene: &mut VelloSceneBuilder, width_scale: f64| {
-		let Some(paint) = stroke_paint else { return };
-		let Some(stroke) = stroke else { return };
+	/// Strokes the contours with the stroke paint, at `width_scale` times the stroke's weight.
+	fn stroke<S: SceneBuilder>(&self, scene: &mut S, width_scale: f64) {
+		let Some(paint) = self.stroke_paint else { return };
+		let Some(stroke) = self.stroke else { return };
+		let (element_transform, render_params, placed) = (self.element_transform, self.render_params, self.placed);
+		let element_affine = Affine::new(element_transform.to_cols_array());
 
 		let cap = match stroke.cap {
 			StrokeCap::Butt => Cap::Butt,
@@ -3873,16 +4010,15 @@ fn render_vector_item_to_vello(
 			return;
 		};
 
-		let solid_stroke = |scene: &mut VelloSceneBuilder, color: Option<Color>| {
+		let solid_stroke = |scene: &mut S, color: Option<Color>| {
 			let Some(color) = color else { return };
 
 			let brush = peniko::Brush::Solid(SRGBA8::from(color).to_peniko_color());
 
-			let outline = placed.stroke_outline(&stroke, scene.stroke_tolerance(element_affine));
-			scene.fill_path(peniko::Fill::NonZero, element_affine, &brush, None, &outline);
+			scene.stroke_contours(&stroke, element_affine, &brush, None, placed);
 		};
-		let gradient_stroke = |scene: &mut VelloSceneBuilder, gradient_item: ItemRef<'_, Gradient>| {
-			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &multiplied_transform, render_params.for_mask) else {
+		let gradient_stroke = |scene: &mut S, gradient_item: ItemRef<'_, Gradient>| {
+			let Some((brush, gradient_to_device)) = create_peniko_gradient_brush(gradient_item, &self.multiplied_transform, render_params.for_mask) else {
 				return;
 			};
 			let inverse_element_transform = if transform_is_invertible(element_transform) {
@@ -3892,8 +4028,7 @@ fn render_vector_item_to_vello(
 			};
 			let brush_transform = kurbo::Affine::new((inverse_element_transform * gradient_to_device).to_cols_array());
 
-			let outline = placed.stroke_outline(&stroke, scene.stroke_tolerance(element_affine));
-			scene.fill_path(peniko::Fill::NonZero, element_affine, &brush, Some(brush_transform), &outline);
+			scene.stroke_contours(&stroke, element_affine, &brush, Some(brush_transform), placed);
 		};
 
 		match paint {
@@ -3921,109 +4056,87 @@ fn render_vector_item_to_vello(
 				let stroked = placed.stroke_outline(&stroke, 0.01);
 
 				scene.push_clip_layer(peniko::Fill::NonZero, element_affine, &*stroked);
-				paint.render_to_vello(scene, multiplied_transform, paint_render_params);
+				paint.render_to_scene(scene, self.multiplied_transform, self.paint_render_params);
 				scene.pop_layer();
 			}
 		};
-	};
+	}
+}
 
-	// Render the path
-	match render_params.render_mode {
-		RenderMode::Outline => {
-			let (outline_stroke, outline_color_peniko) = get_outline_styles(render_params);
+impl EffectsContent for VectorPaints<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		let (stroke, render_params, applied_stroke_transform) = (self.stroke, self.render_params, self.applied_stroke_transform);
 
-			let outline = placed.stroke_outline(&outline_stroke, scene.stroke_tolerance(element_affine));
-			scene.fill_path(peniko::Fill::NonZero, element_affine, outline_color_peniko, None, &outline);
-		}
-		_ => {
-			// The shape's own bounds as placed, which SVG also fits a paint overlay to
-			let effects_bounds = || {
-				let bounds = element.stroke_inclusive_bounding_box_with_transform(element_paths, multiplied_transform, stroke_params.as_ref());
-				bounds.map_or(RenderBoundingBox::None, RenderBoundingBox::Rectangle)
+		if self.aligned_stroke {
+			let cloned_element = self.element.clone();
+
+			// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
+			// The outer opacity/blend layer handles the user-set opacity.
+			let mut mask_item = Item::new_from_element(cloned_element)
+				.with_attribute(ATTR_PATHS, self.item.paths().clone())
+				.with_attribute(ATTR_GEOMETRY_CACHE, self.item.geometry_cache())
+				.with_attribute(ATTR_TRANSFORM, self.item_transform);
+			let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
+			mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
+			let vector_list = List::new_from_item(mask_item);
+
+			let bounds = contours_bounding_box(self.contours, self.multiplied_transform).unwrap_or(self.layer_bounds);
+			// This branch is gated on `aligned_stroke`, which already requires every subpath is closed
+			let inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true));
+			let (largest_scale, _) = singular_values(applied_stroke_transform);
+			let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
+			let bounds = quad.bounding_box();
+			let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+			let compose = if stroke.is_some_and(|x| x.align == StrokeAlign::Outside) {
+				peniko::Compose::SrcOut
+			} else {
+				peniko::Compose::SrcIn
 			};
-			compositing.draw_with_effects(scene, parent_transform, render_params, effects_bounds, |scene| {
-				if use_layer {
-					let cloned_element = element.clone();
 
-					// The mask must draw at full alpha so `SrcOut` fully zeroes the path interior.
-					// The outer opacity/blend layer (above) handles the user-set opacity.
-					let mut mask_item = Item::new_from_element(cloned_element)
-						.with_attribute(ATTR_PATHS, element_paths.clone())
-						.with_attribute(ATTR_GEOMETRY_CACHE, item.geometry_cache())
-						.with_attribute(ATTR_TRANSFORM, item_transform);
-					let black_fill = Graphic::ColorList(List::new_from_element(Color::BLACK));
-					mask_item.set_attribute(ATTR_APPEARANCE, Appearance::new_single(Coverage::new_fill(), black_fill));
-					let vector_list = List::new_from_item(mask_item);
+			if self.stroke_below {
+				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+				vector_list.render_to_scene(scene, self.parent_transform, &render_params.for_alignment(applied_stroke_transform));
+				scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-					let bounds = contours_bounding_box(&contours, multiplied_transform).unwrap_or(layer_bounds);
-					// This branch is gated on `can_draw_aligned_stroke`, which already requires every subpath is closed
-					let inflation = stroke.map_or(0., |stroke| stroke.max_aabb_inflation(true));
-					let (largest_scale, _) = singular_values(applied_stroke_transform);
-					let quad = Quad::from_box(bounds).inflate(inflation * largest_scale);
-					let bounds = quad.bounding_box();
-					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+				self.stroke(scene, 2.);
 
-					let compose = if stroke.is_some_and(|x| x.align == StrokeAlign::Outside) {
-						peniko::Compose::SrcOut
-					} else {
-						peniko::Compose::SrcIn
-					};
+				scene.pop_layer();
+				scene.pop_layer();
 
-					if wants_stroke_below {
-						scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-						vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
-						scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+				self.fill(scene);
+			} else {
+				// Fill first (unclipped), then stroke (clipped) above
+				self.fill(scene);
 
-						do_stroke(scene, 2.);
+				scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+				vector_list.render_to_scene(scene, self.parent_transform, &render_params.for_alignment(applied_stroke_transform));
+				scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
-						scene.pop_layer();
-						scene.pop_layer();
+				self.stroke(scene, 2.);
 
-						do_fill(scene);
-					} else {
-						// Fill first (unclipped), then stroke (clipped) above
-						do_fill(scene);
+				scene.pop_layer();
+				scene.pop_layer();
+			}
+		} else {
+			// Non-aligned strokes or open paths: default order behavior
+			enum Op {
+				Fill,
+				Stroke,
+			}
 
-						scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-						vector_list.render_to_vello(scene, parent_transform, &render_params.for_alignment(applied_stroke_transform));
-						scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+			let order = match self.stroke_below {
+				true => [Op::Stroke, Op::Fill],
+				false => [Op::Fill, Op::Stroke], // Default
+			};
 
-						do_stroke(scene, 2.);
-
-						scene.pop_layer();
-						scene.pop_layer();
-					}
-				} else {
-					// Non-aligned strokes or open paths: default order behavior
-					enum Op {
-						Fill,
-						Stroke,
-					}
-
-					let order = match wants_stroke_below {
-						true => [Op::Stroke, Op::Fill],
-						false => [Op::Fill, Op::Stroke], // Default
-					};
-
-					for operation in &order {
-						match operation {
-							Op::Fill => do_fill(scene),
-							Op::Stroke => do_stroke(scene, 1.),
-						}
-					}
+			for operation in &order {
+				match operation {
+					Op::Fill => self.fill(scene),
+					Op::Stroke => self.stroke(scene, 1.),
 				}
-			});
+			}
 		}
-	}
-
-	if clip_layers {
-		scene.pop_layer();
-		scene.pop_layer();
-	}
-
-	// If we pushed a layer for opacity or a blend mode, we need to pop it
-	if layer {
-		scene.pop_layer();
 	}
 }
 
@@ -4145,18 +4258,8 @@ fn add_vector_item_outline_targets(item: ItemRef<'_, Vector>, outlines: &mut Vec
 	extend_targets_from_vector(outlines, appearance, item, transform, false);
 }
 
-impl Render for List<Vector> {
-	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
-		let mut clip_mask_state: Option<(u64, MaskType)> = None;
-
-		for index in 0..self.len() {
-			// A clip-flagged item is masked by its nearest preceding unflagged sibling, which a consecutive run shares
-			let next_clips = index + 1 < self.len() && self.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index + 1);
-			render_vector_item_svg(ItemRef::ListItem(self, index), next_clips, &mut clip_mask_state, render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
+impl RenderToScene for List<Vector> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, parent_transform: DAffine2, render_params: &RenderParams) {
 		let mut clip_masker: Option<List<Vector>> = None;
 
 		// A paint subtree supplies its own styling, so an element's appearance must not cascade into it
@@ -4167,7 +4270,7 @@ impl Render for List<Vector> {
 
 		for index in 0..self.len() {
 			let next_clips = index + 1 < self.len() && self.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index + 1);
-			render_vector_item_to_vello(
+			render_vector_item_to_scene(
 				ItemRef::ListItem(self, index),
 				next_clips,
 				&mut clip_masker,
@@ -4176,6 +4279,18 @@ impl Render for List<Vector> {
 				render_params,
 				&paint_render_params,
 			);
+		}
+	}
+}
+
+impl Render for List<Vector> {
+	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
+		let mut clip_mask_state: Option<(u64, MaskType)> = None;
+
+		for index in 0..self.len() {
+			// A clip-flagged item is masked by its nearest preceding unflagged sibling, which a consecutive run shares
+			let next_clips = index + 1 < self.len() && self.attribute_cloned_or_default::<bool>(ATTR_CLIPPING_MASK, index + 1);
+			render_vector_item_svg(ItemRef::ListItem(self, index), next_clips, &mut clip_mask_state, render, render_params);
 		}
 	}
 
@@ -4435,8 +4550,8 @@ pub(crate) fn render_raster_cpu_image_svg(image: &Raster<CPU>, transform: DAffin
 	}
 }
 
-/// Draws one item of CPU raster content into the Vello scene.
-fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+/// Draws one item of CPU raster content into the scene.
+fn render_raster_cpu_item_to_scene(item: ItemRef<'_, Raster<CPU>>, scene: &mut impl SceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(image) = item.element() else { return };
 	if image.data.is_empty() {
 		return;
@@ -4495,12 +4610,35 @@ fn render_raster_cpu_item_to_vello(item: ItemRef<'_, Raster<CPU>>, scene: &mut V
 	let sampler = peniko::ImageSampler::new().with_extend(peniko::Extend::Pad);
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	compositing.draw_with_effects(scene, transform, render_params, item_bounds, |scene| {
-		scene.draw_raster(image.clone(), adjustments.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
-	});
+	let content = AdjustedRaster {
+		raster: image,
+		adjustments,
+		sampler,
+		transform: kurbo::Affine::new(image_transform.to_cols_array()),
+	};
+	compositing.draw_with_effects(scene, transform, render_params, item_bounds, &content);
 
 	if layer {
 		scene.pop_layer();
+	}
+}
+
+/// A CPU raster's pixels placed by `transform`, with `adjustments` carried out on them.
+struct AdjustedRaster<'a> {
+	raster: &'a Raster<CPU>,
+	adjustments: Vec<Adjustment>,
+	sampler: peniko::ImageSampler,
+	transform: kurbo::Affine,
+}
+
+impl EffectsContent for AdjustedRaster<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		let (raster, sampler, transform) = (self.raster, self.sampler, self.transform);
+
+		// TODO: Carry out the adjustments in scene builders besides Vello's, which draw the raster without them
+		if !scene.draw_with_vello(|scene| scene.draw_raster(raster.clone(), self.adjustments.clone(), sampler, transform)) {
+			scene.draw_raster(raster.clone(), sampler, transform);
+		}
 	}
 }
 
@@ -4569,6 +4707,12 @@ fn generator_area_in_view(transform: DAffine2, reach: f64, render: &SvgRender, r
 	Some(([min, max], pixels.x as u32, pixels.y as u32))
 }
 
+/// Draws one item of generator content into the scene.
+fn render_generator_item_to_scene(item: ItemRef<'_, Generator>, scene: &mut impl SceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+	// TODO: Draw generators in scene builders besides Vello's, which leave them out
+	scene.draw_with_vello(|scene| render_generator_item_to_vello(item, scene, transform, render_params));
+}
+
 /// Draws one item of generator content into the Vello scene, which renders its pattern for each render at the resolution it needs.
 fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(&generator) = item.element() else { return };
@@ -4595,7 +4739,7 @@ fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut Vell
 	}
 
 	let pattern = GeneratorPattern::decode(generator, &|key| item.attribute_any(key));
-	compositing.draw_with_effects(
+	compositing.draw_with_vello_effects(
 		scene,
 		transform,
 		render_params,
@@ -4608,16 +4752,18 @@ fn render_generator_item_to_vello(item: ItemRef<'_, Generator>, scene: &mut Vell
 	}
 }
 
+impl RenderToScene for List<Generator> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_generator_item_to_scene(ItemRef::ListItem(self, index), scene, transform, render_params);
+		}
+	}
+}
+
 impl Render for List<Generator> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_generator_item_svg(ItemRef::ListItem(self, index), render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			render_generator_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
 	}
 }
@@ -4657,16 +4803,18 @@ fn add_unit_square_click_target(transform: DAffine2, click_targets: &mut Vec<Cli
 	click_targets.push(ClickTarget::new_with_path(path, 0.));
 }
 
+impl RenderToScene for List<Raster<CPU>> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_raster_cpu_item_to_scene(ItemRef::ListItem(self, index), scene, transform, render_params);
+		}
+	}
+}
+
 impl Render for List<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_raster_cpu_item_svg(ItemRef::ListItem(self, index), render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			render_raster_cpu_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
 	}
 
@@ -4677,6 +4825,14 @@ impl Render for List<Raster<CPU>> {
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>, _inherited_appearance: Option<&Appearance>) {
 		for index in 0..self.len() {
 			add_unit_square_click_target(self.attribute_cloned_or_default(ATTR_TRANSFORM, index), click_targets);
+		}
+	}
+}
+
+impl RenderToScene for List<Raster<GPU>> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_raster_gpu_item_to_scene(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
 	}
 }
@@ -4686,12 +4842,6 @@ impl Render for List<Raster<GPU>> {
 		log::warn!("tried to render texture as an svg");
 	}
 
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			render_raster_gpu_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
-		}
-	}
-
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>, _inherited_appearance: Option<&Appearance>) {
 		collect_raster_metadata((!self.is_empty()).then_some(ItemRef::ListItem(self, 0)), metadata, footprint, element_id);
 	}
@@ -4703,8 +4853,8 @@ impl Render for List<Raster<GPU>> {
 	}
 }
 
-/// Draws one item of GPU raster content into the Vello scene.
-fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+/// Draws one item of GPU raster content into the scene.
+fn render_raster_gpu_item_to_scene(item: ItemRef<'_, Raster<GPU>>, scene: &mut impl SceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(raster) = item.element() else { return };
 	let blend_mode_attr: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
 	let transform_attribute: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -4754,36 +4904,56 @@ fn render_raster_gpu_item_to_vello(item: ItemRef<'_, Raster<GPU>>, scene: &mut V
 	let image_transform = transform * transform_attribute * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 
 	let item_bounds = || RenderBoundingBox::Rectangle((transform * transform_attribute * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box());
-	compositing.draw_with_effects(scene, transform, render_params, item_bounds, |scene| {
-		scene.draw_texture(raster.texture.clone(), sampler, kurbo::Affine::new(image_transform.to_cols_array()))
-	});
+	let content = PlacedTexture {
+		texture: &raster.texture,
+		sampler,
+		transform: kurbo::Affine::new(image_transform.to_cols_array()),
+	};
+	compositing.draw_with_effects(scene, transform, render_params, item_bounds, &content);
 
 	if layer {
 		scene.pop_layer()
 	}
 }
 
+/// A GPU texture's pixels placed by `transform`.
+struct PlacedTexture<'a> {
+	texture: &'a Texture,
+	sampler: peniko::ImageSampler,
+	transform: kurbo::Affine,
+}
+
+impl EffectsContent for PlacedTexture<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		scene.draw_texture(self.texture.clone(), self.sampler, self.transform);
+	}
+}
+
+impl RenderToScene for List<brush_types::Stroke> {
+	fn render_to_scene<S: SceneBuilder>(&self, _scene: &mut S, _transform: DAffine2, _render_params: &RenderParams) {}
+}
+
 impl Render for List<brush_types::Stroke> {
 	fn render_svg(&self, _render: &mut SvgRender, _render_params: &RenderParams) {}
-
-	fn render_to_vello(&self, _scene: &mut VelloSceneBuilder, _transform: DAffine2, _render_params: &RenderParams) {}
 }
 
 // Since colors and gradients are technically infinitely big, we have to implement
 // workarounds for rendering them correctly in a way which still allows us
 // to cache the intermediate render data (SVG string/Vello scene).
-// For SVG, this is is achived by creating a truly giant rectangle.
-// For Vello, the scene records a viewport fill that covers whatever area each render draws.
+// For SVG, this is achieved by creating a truly giant rectangle.
+// For a scene builder, the scene records a viewport fill that covers whatever area each render draws.
+impl RenderToScene for List<Color> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, parent_transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_color_item_to_scene(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
+		}
+	}
+}
+
 impl Render for List<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_color_item_svg(ItemRef::ListItem(self, index), render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			render_color_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
 		}
 	}
 }
@@ -4871,7 +5041,7 @@ fn emit_endless_shape(attributes: &mut SvgRenderAttrs, rect: Option<(DVec2, DVec
 }
 
 /// Draws an endless item's layer, whose content `draw` fills the viewport with, in `opacity` and `blend_mode`.
-fn draw_endless_layer(scene: &mut VelloSceneBuilder, opacity: f32, blend_mode: BlendMode, draw: impl FnOnce(&mut VelloSceneBuilder)) {
+fn draw_endless_layer<S: SceneBuilder>(scene: &mut S, opacity: f32, blend_mode: BlendMode, draw: impl FnOnce(&mut S)) {
 	let layer = opacity < 1. || blend_mode != BlendMode::default();
 	if layer {
 		scene.push_viewport_layer(peniko::BlendMode::new(blend_mode.to_peniko(), peniko::Compose::SrcOver), opacity);
@@ -4890,17 +5060,17 @@ fn endless_masks(compositing: &ItemCompositing) -> Option<Effects> {
 	(!masks.is_empty()).then_some(masks)
 }
 
-/// Draws the layers of an endless item that `draw` draws through its `masks` (see [`endless_masks`]), if any, in a layer taking the `blend_mode` like SVG's mask group.
-fn draw_through_endless_masks(
-	scene: &mut VelloSceneBuilder,
+/// Draws the layers of an endless item that `content` draws through its `masks` (see [`endless_masks`]), if any, in a layer taking the `blend_mode` like SVG's mask group.
+fn draw_through_endless_masks<S: SceneBuilder>(
+	scene: &mut S,
 	compositing: &ItemCompositing,
 	masks: Option<&Effects>,
 	blend_mode: BlendMode,
 	parent_transform: DAffine2,
 	render_params: &RenderParams,
-	mut draw: impl FnMut(&mut VelloSceneBuilder),
+	content: &impl EffectsContent,
 ) {
-	let Some(masks) = masks else { return draw(scene) };
+	let Some(masks) = masks else { return content.draw(scene) };
 
 	let masking = ItemCompositing {
 		opacity: 1.,
@@ -4910,38 +5080,41 @@ fn draw_through_endless_masks(
 		placement: compositing.placement,
 		content_transform: compositing.content_transform,
 	};
-	masking.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, draw);
+	masking.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, content);
 }
 
-/// Draws an endless item through its effects group, for leading masks that give it edges (see [`masks::masked_extent`]), pushing a layer of its own for its opacity and blend mode unless the group draws them.
-fn draw_masked_endless_item(
-	scene: &mut VelloSceneBuilder,
+/// Draws the `content` of an endless item through its effects group, for leading masks that give it edges (see [`masks::masked_extent`]), pushing a layer of its own for its opacity and blend mode unless the group draws them.
+fn draw_masked_endless_item<S: SceneBuilder>(
+	scene: &mut S,
 	compositing: &ItemCompositing,
 	blend_mode: BlendMode,
 	parent_transform: DAffine2,
 	render_params: &RenderParams,
-	draw: impl FnMut(&mut VelloSceneBuilder),
+	content: &impl EffectsContent,
 ) {
 	let layer = !compositing.effects_draw_compositing() && (compositing.opacity < 1. || blend_mode != BlendMode::default());
 	if layer {
 		scene.push_viewport_layer(peniko::BlendMode::new(blend_mode.to_peniko(), peniko::Compose::SrcOver), compositing.opacity);
 	}
-	compositing.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, draw);
+	compositing.draw_with_effects(scene, parent_transform, render_params, || RenderBoundingBox::Infinite, content);
 	if layer {
 		scene.pop_layer();
 	}
 }
 
-/// Draws one item of color content into the Vello scene, covering the whole render area, as SVG does.
-fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
+/// Draws one item of color content into the scene, covering the whole render area, as SVG does.
+fn render_color_item_to_scene(item: ItemRef<'_, Color>, scene: &mut impl SceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 	let Some(&color) = item.element() else { return };
 	let compositing = item.compositing(render_params, parent_transform * item.attribute_cloned_or_default::<DAffine2>(ATTR_TRANSFORM));
 
 	// Leading masks that give the color edges let its effects be carried out within them like any other content's, as in SVG
 	if compositing.effects.is_some_and(|(effects, _)| masks::masked_extent(effects, compositing.placement).is_some()) {
-		let vello_color = SRGBA8::from(color).to_peniko_color();
+		let content = ViewportFill {
+			brush: SRGBA8::from(color).to_peniko_color().into(),
+			brush_transform: None,
+		};
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-		return draw_masked_endless_item(scene, &compositing, blend_mode, parent_transform, render_params, |scene| scene.fill_viewport(vello_color, None));
+		return draw_masked_endless_item(scene, &compositing, blend_mode, parent_transform, render_params, &content);
 	}
 
 	let paint = compositing.endless_paint();
@@ -4949,14 +5122,49 @@ fn render_color_item_to_vello(item: ItemRef<'_, Color>, scene: &mut VelloSceneBu
 	let full_alpha = adjusted_color(color, &paint.adjustments).a();
 
 	let masks = endless_masks(&compositing);
-	let content_blend_mode = if masks.is_some() { BlendMode::Normal } else { paint.blend_mode };
-	draw_through_endless_masks(scene, &compositing, masks.as_ref(), paint.blend_mode, parent_transform, render_params, |scene| {
-		draw_endless_layer(scene, paint.opacity, content_blend_mode, |scene| scene.fill_viewport(shown, None));
-		for &(overlay, blend_mode) in &paint.overlays {
-			let overlay = SRGBA8::from(overlay.with_alpha(overlay.a() * full_alpha)).to_peniko_color();
-			draw_endless_layer(scene, paint.opacity, blend_mode, |scene| scene.fill_viewport(overlay, None));
+	let content = EndlessLayers {
+		paint: ViewportFill {
+			brush: shown.into(),
+			brush_transform: None,
+		},
+		opacity: paint.opacity,
+		blend_mode: if masks.is_some() { BlendMode::Normal } else { paint.blend_mode },
+		overlays: (paint.overlays.iter())
+			.map(|&(overlay, blend_mode)| (SRGBA8::from(overlay.with_alpha(overlay.a() * full_alpha)).to_peniko_color(), blend_mode))
+			.collect(),
+		overlay_opacity: paint.opacity,
+	};
+	draw_through_endless_masks(scene, &compositing, masks.as_ref(), paint.blend_mode, parent_transform, render_params, &content);
+}
+
+/// A brush filling the whole scene, placed by `brush_transform` in the space of the drawn content.
+struct ViewportFill<'a> {
+	brush: peniko::BrushRef<'a>,
+	brush_transform: Option<kurbo::Affine>,
+}
+
+impl EffectsContent for ViewportFill<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		scene.fill_viewport(self.brush, self.brush_transform);
+	}
+}
+
+/// An endless item's `paint` in a layer of `opacity` and `blend_mode`, then each solid paint overlay's color in a layer of `overlay_opacity` and its own mode.
+struct EndlessLayers<'a> {
+	paint: ViewportFill<'a>,
+	opacity: f32,
+	blend_mode: BlendMode,
+	overlays: Vec<(peniko::Color, BlendMode)>,
+	overlay_opacity: f32,
+}
+
+impl EffectsContent for EndlessLayers<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		draw_endless_layer(scene, self.opacity, self.blend_mode, |scene| self.paint.draw(scene));
+		for &(overlay, blend_mode) in &self.overlays {
+			draw_endless_layer(scene, self.overlay_opacity, blend_mode, |scene| scene.fill_viewport(overlay, None));
 		}
-	});
+	}
 }
 
 /// The closed rectangular path spanning the two opposite corners, used for the box-shaped click targets.
@@ -5006,18 +5214,20 @@ fn render_gradient_item_svg(item: ItemRef<'_, Gradient>, render: &mut SvgRender,
 	render_gradient_item_svg_with_thumbnail_rect(item, gradient_thumbnail_rect(render_params), render, render_params);
 }
 
+impl RenderToScene for List<Gradient> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, parent_transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_gradient_item_to_scene(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
+		}
+	}
+}
+
 impl Render for List<Gradient> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let thumbnail_rect = gradient_thumbnail_rect(render_params);
 
 		for index in 0..self.len() {
 			render_gradient_item_svg_with_thumbnail_rect(ItemRef::ListItem(self, index), thumbnail_rect, render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			render_gradient_item_to_vello(ItemRef::ListItem(self, index), scene, parent_transform, render_params);
 		}
 	}
 
@@ -5172,8 +5382,8 @@ fn render_gradient_shape_svg(
 	});
 }
 
-/// Draws one item of gradient content into the Vello scene, covering the whole render area.
-fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloSceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
+/// Draws one item of gradient content into the scene, covering the whole render area.
+fn render_gradient_item_to_scene(item: ItemRef<'_, Gradient>, scene: &mut impl SceneBuilder, parent_transform: DAffine2, render_params: &RenderParams) {
 	if let RenderMode::Outline = render_params.render_mode {
 		return;
 	}
@@ -5185,10 +5395,12 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 	// Leading masks that give the gradient edges let its effects be carried out within them like any other content's, as in SVG
 	if compositing.effects.is_some_and(|(effects, _)| masks::masked_extent(effects, compositing.placement).is_some()) {
 		let (brush, brush_transform) = gradient_brush(item, source_gradient, settings, parent_transform);
+		let content = ViewportFill {
+			brush: (&brush).into(),
+			brush_transform: Some(brush_transform),
+		};
 		let blend_mode: BlendMode = item.attribute_cloned_or_default(ATTR_BLEND_MODE);
-		return draw_masked_endless_item(scene, &compositing, blend_mode, parent_transform, render_params, |scene| {
-			scene.fill_viewport(&brush, Some(brush_transform))
-		});
+		return draw_masked_endless_item(scene, &compositing, blend_mode, parent_transform, render_params, &content);
 	}
 
 	// Its adjustments are carried out along the ramp, as in SVG
@@ -5201,13 +5413,17 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 	let (brush, brush_transform) = gradient_brush(item, &gradient, settings, parent_transform);
 
 	let masks = endless_masks(&compositing);
-	let content_blend_mode = if masks.is_some() { BlendMode::Normal } else { paint.blend_mode };
-	draw_through_endless_masks(scene, &compositing, masks.as_ref(), paint.blend_mode, parent_transform, render_params, |scene| {
-		draw_endless_layer(scene, opacity, content_blend_mode, |scene| scene.fill_viewport(&brush, Some(brush_transform)));
-		for &(overlay, blend_mode) in &paint.overlays {
-			draw_endless_layer(scene, paint.opacity, blend_mode, |scene| scene.fill_viewport(SRGBA8::from(overlay).to_peniko_color(), None));
-		}
-	});
+	let content = EndlessLayers {
+		paint: ViewportFill {
+			brush: (&brush).into(),
+			brush_transform: Some(brush_transform),
+		},
+		opacity,
+		blend_mode: if masks.is_some() { BlendMode::Normal } else { paint.blend_mode },
+		overlays: paint.overlays.iter().map(|&(overlay, blend_mode)| (SRGBA8::from(overlay).to_peniko_color(), blend_mode)).collect(),
+		overlay_opacity: paint.opacity,
+	};
+	draw_through_endless_masks(scene, &compositing, masks.as_ref(), paint.blend_mode, parent_transform, render_params, &content);
 }
 
 /// The brush filling the viewport with a gradient item's `gradient` read with its `settings`, and the brush's transform, given the transform placing the item's space.
@@ -5662,8 +5878,8 @@ fn render_text_item_svg(item: ItemRef<'_, String>, render: &mut SvgRender, rende
 	});
 }
 
-/// Draws one item of text content into the Vello scene, laying out its glyphs under the item's styling.
-fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
+/// Draws one item of text content into the scene, laying out its glyphs under the item's styling.
+fn render_text_item_to_scene(item: ItemRef<'_, String>, scene: &mut impl SceneBuilder, transform: DAffine2, render_params: &RenderParams) {
 	let Some(text) = item.element() else { return };
 	if text.is_empty() {
 		return;
@@ -5714,31 +5930,47 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 			scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &transformed_bounds().inflate(reach.x, reach.y));
 		}
 
-		let tilt_tan = letter_tilt.to_radians().tan();
-
-		compositing.draw_with_effects(
-			scene,
-			transform,
+		let content = GlyphRuns {
+			layout: &layout,
+			text,
+			typesetting,
+			tilt_tan: letter_tilt.to_radians().tan(),
+			transform: affine,
 			render_params,
-			|| rect_bounds(transformed_bounds()),
-			|scene| {
-				text_nodes::for_each_styled_glyph_run(&layout, text, typesetting, |glyph_run, x_offset, space_extra| {
-					draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, tilt_tan, |bez_path| {
-						if let RenderMode::Outline = render_params.render_mode {
-							let (outline_stroke, outline_color) = get_outline_styles(render_params);
-							scene.stroke(&outline_stroke, affine, outline_color, None, bez_path);
-						} else {
-							scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
-						}
-					});
-				});
-			},
-		);
+		};
+		compositing.draw_with_effects(scene, transform, render_params, || rect_bounds(transformed_bounds()), &content);
 
 		if needs_layer {
 			scene.pop_layer();
 		}
 	});
+}
+
+/// A text layout's glyphs placed by `transform`, filled in black or outlined in outline mode.
+struct GlyphRuns<'a> {
+	layout: &'a parley::Layout<()>,
+	text: &'a str,
+	typesetting: text_nodes::TypesettingConfig,
+	tilt_tan: f64,
+	transform: kurbo::Affine,
+	render_params: &'a RenderParams,
+}
+
+impl EffectsContent for GlyphRuns<'_> {
+	fn draw<S: SceneBuilder>(&self, scene: &mut S) {
+		let (affine, render_params) = (self.transform, self.render_params);
+
+		text_nodes::for_each_styled_glyph_run(self.layout, self.text, self.typesetting, |glyph_run, x_offset, space_extra| {
+			draw_glyph_run_to_bezpaths(glyph_run, x_offset, space_extra, self.tilt_tan, |bez_path| {
+				if let RenderMode::Outline = render_params.render_mode {
+					let (outline_stroke, outline_color) = get_outline_styles(render_params);
+					scene.stroke(&outline_stroke, affine, outline_color, None, bez_path);
+				} else {
+					scene.fill(peniko::Fill::NonZero, affine, peniko::Color::BLACK, None, bez_path);
+				}
+			});
+		});
+	}
 }
 
 /// The metadata pass over a run of text items. Click targets are baked relative to the first item's transform,
@@ -5781,16 +6013,18 @@ fn add_text_item_click_targets(item: ItemRef<'_, String>, click_targets: &mut Ve
 	click_targets.push(target);
 }
 
+impl RenderToScene for List<String> {
+	fn render_to_scene<S: SceneBuilder>(&self, scene: &mut S, transform: DAffine2, render_params: &RenderParams) {
+		for index in 0..self.len() {
+			render_text_item_to_scene(ItemRef::ListItem(self, index), scene, transform, render_params);
+		}
+	}
+}
+
 impl Render for List<String> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for index in 0..self.len() {
 			render_text_item_svg(ItemRef::ListItem(self, index), render, render_params);
-		}
-	}
-
-	fn render_to_vello(&self, scene: &mut VelloSceneBuilder, transform: DAffine2, render_params: &RenderParams) {
-		for index in 0..self.len() {
-			render_text_item_to_vello(ItemRef::ListItem(self, index), scene, transform, render_params);
 		}
 	}
 

@@ -15,6 +15,7 @@ use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "wasm"))]
 use graphene_std::platform_application_io::canvas_utils::{Canvas, CanvasSurface, CanvasSurfaceHandle};
 use graphene_std::raster_types::Raster;
+use graphene_std::renderer::scene_builder::SceneBuilder;
 use graphene_std::runtime::AsyncRuntime;
 use graphene_std::vector::style::RenderMode;
 use graphene_std::{Context, NodeError, Poll};

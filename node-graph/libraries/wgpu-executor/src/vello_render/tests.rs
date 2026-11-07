@@ -6,6 +6,7 @@
 use crate::WgpuExecutor;
 use core_types::blending::BlendMode;
 use glam::{DAffine2, UVec2};
+use rendering::scene_builder::SceneBuilder;
 use rendering::vello_scene_builder::VelloSceneBuilder;
 use vello_gpu::kurbo::{Affine, BezPath, Line, ParamCurve, PathSeg, Point, Rect, Stroke, Vec2};
 use vello_gpu::peniko::{self, Color, Fill};
@@ -393,7 +394,7 @@ fn render_square_over_backdrop_in(
 	max: f64,
 	size: UVec2,
 ) -> Option<Vec<[u8; 4]>> {
-	use rendering::{Render, RenderParams};
+	use rendering::{RenderParams, RenderToSceneBuilders};
 
 	let square = Rect::new(min, min, max, max);
 
@@ -879,7 +880,7 @@ fn a_feather_on_a_clipping_base_fades_what_clips_to_it() {
 	use core_types::list::List;
 	use core_types::{ATTR_CLIPPING_MASK, Color as GraphicColor};
 	use graphic_types::{Appearance, Coverage, Effect, EffectOperation, Graphic, Vector, stamp_effect};
-	use rendering::{Render, RenderParams};
+	use rendering::{RenderParams, RenderToSceneBuilders};
 	use vello_gpu::kurbo::Shape;
 
 	let size = UVec2::new(128, 128);
@@ -914,7 +915,7 @@ fn a_mask_on_a_clipping_base_shapes_what_clips_to_it() {
 	use core_types::list::{Item, List};
 	use core_types::{ATTR_CLIPPING_MASK, Color as GraphicColor};
 	use graphic_types::{Appearance, Coverage, Effect, EffectOperation, Graphic, MaskMode, Vector, stamp_effect};
-	use rendering::{Render, RenderParams};
+	use rendering::{RenderParams, RenderToSceneBuilders};
 	use vello_gpu::kurbo::Shape;
 
 	let size = UVec2::new(128, 128);

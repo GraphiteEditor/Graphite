@@ -1,6 +1,7 @@
 use super::{ThumbnailContent, cell_size};
 use glam::{DAffine2, UVec2};
 use graph_craft::document::NodeId;
+use graphene_std::renderer::scene_builder::SceneBuilder;
 use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::renderer::{RenderOutputType, RenderParams};
 use graphene_std::transform::Footprint;

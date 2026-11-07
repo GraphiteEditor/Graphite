@@ -19,6 +19,7 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graphene_std::list::{Item, List};
 use graphene_std::math::quad::Quad;
 use graphene_std::renderer::RenderMetadata;
+use graphene_std::renderer::scene_builder::SceneBuilder;
 use graphene_std::renderer::vello_scene_builder::VelloSceneBuilder;
 use graphene_std::text::{TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};

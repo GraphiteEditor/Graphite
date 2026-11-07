@@ -3,7 +3,7 @@
 //! Content with an effect no filter can carry out at all is drawn as an image of it in place of its markup.
 //! Placeholders stand in for each until it's resolved, leaving an SVG that never is short of those effects.
 
-use crate::renderer::{CanvasImage, Render, RenderOutputType, RenderParams, RenderSvgSegmentList, SvgRender, render_raster_cpu_image_svg};
+use crate::renderer::{CanvasImage, RenderOutputType, RenderParams, RenderSvgSegmentList, RenderToSceneBuilders, SvgRender, render_raster_cpu_image_svg};
 use crate::vello_scene_builder::{MAX_EFFECTS_AREA_PER_VIEWPORT_AREA, VelloSceneBuilder};
 use core_types::blending::BlendMode;
 use core_types::math::quad::Quad;

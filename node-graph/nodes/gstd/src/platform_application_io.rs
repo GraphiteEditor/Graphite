@@ -14,7 +14,7 @@ pub use graphene_canvas_utils as canvas_utils;
 use graphic_types::Graphic;
 use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::raster_types::{Image, ImageError};
-use rendering::{Render, RenderParams};
+use rendering::{RenderParams, RenderToSceneBuilders};
 use std::sync::Arc;
 
 #[derive(Debug, thiserror::Error)]
