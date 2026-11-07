@@ -19,7 +19,7 @@ pub struct HistoryPanelState {
 	pub progress: Vec<HistoryProgressRow>,
 	pub more: bool,
 	pub following: Option<String>,
-	/// Others are connected, so authors, work in progress and head moves concern them too.
+	/// Others are connected, so authors, whether work is in history yet and head moves concern them too.
 	pub collaborating: bool,
 }
 

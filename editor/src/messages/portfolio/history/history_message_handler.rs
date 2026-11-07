@@ -227,7 +227,7 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded:
 	let collaborating = gdd.peers().next().is_some();
 	HistoryPanelState {
 		rows,
-		progress: if collaborating { progress_rows(session, &people, &names) } else { Vec::new() },
+		progress: progress_rows(session, &people, &names),
 		more,
 		following: following.map(|tip| tip.to_string()),
 		collaborating,
@@ -246,7 +246,13 @@ fn progress_rows(session: &Session, people: &People, names: &Names) -> Vec<Histo
 			None => open_by_peer.push((hot_op.timestamp.peer, vec![&hot_op.op])),
 		}
 	}
-	let mut progress: Vec<HistoryProgressRow> = open_by_peer.into_iter().map(|(peer, ops)| progress_row(people, names, peer, &ops, true, None)).collect();
+	let mut progress: Vec<HistoryProgressRow> = open_by_peer
+		.into_iter()
+		.map(|(peer, ops)| {
+			let action = session.pending_action().filter(|_| peer == session.peer()).map(str::to_string);
+			progress_row(people, names, peer, &ops, true, action)
+		})
+		.collect();
 	for interaction in closed.iter().rev() {
 		let ids: HashSet<HotOpId> = interaction.ops.iter().copied().collect();
 		let ops: Vec<&HotOp> = hot_log.iter().filter(|hot_op| ids.contains(&hot_op.id())).collect();
@@ -511,7 +517,11 @@ impl Names<'_> {
 			RegistryDelta::ChangeNodeAttribute { id, delta } => match delta.key.as_str() {
 				node_attr::ui::POSITION => format!("Moved {} in the graph", self.node_by_id(*id)),
 				node_attr::ui::DISPLAY_NAME => match &delta.value {
-					Some(Value::Str(name)) => format!("Renamed a layer to {name}"),
+					Some(Value::Str(name)) => {
+						let layer = self.registry.node_instances.get(id).and_then(|node| node.attributes().get_typed::<bool>(node_attr::ui::IS_LAYER));
+						let term = if layer == Some(true) { "layer" } else { "node" };
+						format!("Renamed a {term} to {name}")
+					}
 					_ => format!("Reset the name of {}", self.node_by_id(*id)),
 				},
 				node_attr::ui::LOCKED => toggled(delta, "Locked", "Unlocked", *id),
@@ -663,5 +673,21 @@ mod tests {
 		gdd.retire_pending_interaction().expect("retire");
 		let actions: Vec<&str> = gdd.session().history().filter_map(|delta| delta.action()).collect();
 		assert_eq!(actions, ["Drew a rectangle", "Moved a layer"]);
+	}
+
+	#[tokio::test]
+	async fn a_step_shows_before_it_enters_history() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 120., 0., 200., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
+		assert_eq!(labels, ["Drew a rectangle", "Drew a rectangle"], "the open draw and the closed one waiting to retire");
 	}
 }
