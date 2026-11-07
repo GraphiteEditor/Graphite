@@ -80,6 +80,7 @@
 				<span class="rail"
 					>{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span
 				>
+				{#if row.thumbnail}<HistoryShot shot={row.thumbnail.after} url={$thumbnails[row.thumbnail.after.id]} />{/if}
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In Progress" : "Waiting to Enter History")}</span>
 					<span class="meta">
