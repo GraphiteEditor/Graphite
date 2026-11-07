@@ -10,6 +10,7 @@ pub mod ids;
 pub mod model;
 mod prior;
 pub mod registry;
+mod repair;
 pub mod resources;
 mod schema;
 pub mod session;
@@ -49,6 +50,7 @@ pub use to_runtime::{Declarations, ProjectedNetwork, ProjectedNode, RuntimeProje
 mod tests {
 	mod bookkeeping;
 	mod crdt;
+	mod history_simulation;
 	mod projection;
 	mod round_trip;
 	mod sessions;

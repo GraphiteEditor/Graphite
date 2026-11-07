@@ -438,23 +438,70 @@ impl Session {
 		}
 		let position = newest_first.iter().position(|delta| delta.id == undone).ok_or(CrdtError::NotFoundInHistory(undone))?;
 
-		// Minted on a scratch fold first, so a failing copy changes nothing.
+		// Minted on a scratch fold first, so a failing copy changes nothing. Each copied interaction ends with the
+		// repairs it needs on the changed line.
 		let mut scratch = self.fold_scratch_at(Some(base))?;
 		let mut copies = Vec::with_capacity(position);
+		// Per copy, the delta it carries attributes from, and the repair now closing that delta's interaction
+		let mut sources: Vec<(Option<&Delta>, Option<Rev>)> = Vec::with_capacity(position);
 		let mut parent = Some(base);
+		let mut replayed = Vec::new();
+		let mut before = scratch.working_registry.clone();
+		let known = self.known_inputs();
+		// What the removed step added must not come back through a later step writing to it
+		let gone: HashSet<NodeId> = newest_first[position..]
+			.iter()
+			.filter_map(|delta| match &delta.kind {
+				RegistryDelta::AddNode { id, .. } => Some(*id),
+				_ => None,
+			})
+			.collect();
 		for original in newest_first[..position].iter().rev() {
 			let reverse = crate::prior::capture(&scratch.working_registry, &original.kind);
 			scratch.apply_op_with(RegistryTarget::Working, original.kind.clone(), original.timestamp, ApplyMode::Idempotent)?;
 			let copy = Delta::new(parent, original.timestamp.peer, original.timestamp, original.kind.clone(), reverse);
 			parent = Some(copy.id);
 			copies.push(copy);
+			sources.push((Some(original), None));
+			replayed.push(original.kind.clone());
+			if !original.is_interaction_end() {
+				continue;
+			}
+			let closing_index = sources.len() - 1;
+			for op in crate::repair::repair_ops(
+				&before,
+				&scratch.working_registry,
+				&self.fold_scratch_at(Some(original.id))?.working_registry,
+				&std::mem::take(&mut replayed),
+				&gone,
+				&known,
+			) {
+				let reverse = crate::prior::capture(&scratch.working_registry, &op);
+				let timestamp = self.document.clock.tick();
+				scratch.apply_op_with(RegistryTarget::Working, op.clone(), timestamp, ApplyMode::Strict)?;
+				let repair = Delta::new(parent, original.author, timestamp, op, reverse);
+				parent = Some(repair.id);
+				sources[closing_index].1 = Some(repair.id);
+				copies.push(repair);
+				sources.push((None, None));
+			}
+			before = scratch.working_registry.clone();
 		}
 
 		let mut touched = Touched::default();
 		newest_first[position..].iter().for_each(|delta| touched.record(&delta.kind));
-		for (original, copy) in newest_first[..position].iter().rev().zip(&mut copies) {
+		for (copy, _) in copies.iter().zip(&sources).filter(|(_, (original, _))| original.is_none()) {
+			touched.record(&copy.kind);
+		}
+		for copy in &copies {
 			self.document.history.push(copy.clone());
-			self.carry_attributes(original, copy.id);
+		}
+		for (&(original, closing), copy) in sources.iter().zip(&copies) {
+			if let Some(original) = original {
+				self.carry_attributes_closing(original, copy.id, closing);
+			}
+		}
+		for copy in &mut copies {
 			if let Some(carried) = self.document.history.get(copy.id) {
 				*copy = carried.clone();
 			}
@@ -567,7 +614,8 @@ impl Session {
 	}
 
 	/// Mint a dropped interaction's deltas again on top of the line as one interaction. They keep their
-	/// original stamps, so a field someone wrote since keeps the newer value. Returns the new revs.
+	/// original stamps, so a field someone wrote since keeps the newer value, and the graph is repaired where that
+	/// left it broken (see [`repair_ops`](crate::repair::repair_ops)). Returns the new revs.
 	pub fn restore_interaction(&mut self, dropped: Rev) -> Result<Vec<Rev>, CrdtError> {
 		let base = self.interaction_start_parent(dropped, false).ok_or(CrdtError::NotUndoable(dropped))?;
 		let mut originals = Vec::new();
@@ -579,10 +627,32 @@ impl Session {
 			originals.push(delta);
 		}
 		originals.reverse();
-		let revs = self.commit_ops_authored_at(originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))), true)?;
+		let before = self.document.retired_snapshot.clone();
+		let mut revs = self.commit_ops_authored_at(originals.iter().map(|delta| (delta.kind.clone(), Some(delta.timestamp))), true)?;
+		let replayed: Vec<RegistryDelta> = originals.iter().map(|delta| delta.kind.clone()).collect();
+		let deleted: HashSet<NodeId> = replayed
+			.iter()
+			.filter_map(|op| match op {
+				RegistryDelta::RemoveNode { id, .. } => Some(*id),
+				_ => None,
+			})
+			.collect();
+		let repairs = crate::repair::repair_ops(
+			&before,
+			&self.document.retired_snapshot,
+			&self.fold_scratch_at(Some(dropped))?.working_registry,
+			&replayed,
+			&deleted,
+			&self.known_inputs(),
+		);
+		let author = originals.last().map_or(self.document.peer, |delta| delta.author);
+		let repaired = self.commit_repairs(repairs, author)?;
+		let closing = repaired.last().copied();
 		for (original, &rev) in originals.iter().zip(&revs) {
-			self.carry_attributes(original, rev);
+			let closes = original.id == dropped;
+			self.carry_attributes_closing(original, rev, closing.filter(|_| closes));
 		}
+		revs.extend(repaired);
 		if let Some(&last) = revs.last() {
 			self.mark_interaction_end(last);
 		}
@@ -922,14 +992,55 @@ impl Session {
 		}
 	}
 
-	/// Give a minted copy the attributes and retirement time of the delta it stands for.
-	fn carry_attributes(&mut self, original: &Delta, copy: Rev) {
-		if let Some(wall_ms) = original.retired_at() {
-			self.document.history.set_retired_at(copy, wall_ms);
+	/// Give a minted copy the attributes and retirement time of the delta it stands for, with what closes the interaction moved to `closing` when repairs minted after the copy now end it.
+	fn carry_attributes_closing(&mut self, original: &Delta, copy: Rev, closing: Option<Rev>) {
+		use crate::attr::delta::{ACTION, INTERACTION_END};
+
+		for rev in std::iter::once(copy).chain(closing) {
+			if let Some(wall_ms) = original.retired_at() {
+				self.document.history.set_retired_at(rev, wall_ms);
+			}
 		}
 		for (key, value) in original.attributes.live() {
-			self.document.history.annotate(copy, key, value.value.clone(), value.timestamp);
+			let moved = closing.filter(|_| key == INTERACTION_END || key == ACTION);
+			self.document.history.annotate(moved.unwrap_or(copy), key, value.value.clone(), value.timestamp);
 		}
+	}
+
+	/// Each node's network and newest primary input anywhere in history, branches included.
+	fn known_inputs(&self) -> crate::repair::KnownInputs {
+		let mut networks: HashMap<NodeId, NetworkId> = HashMap::new();
+		let mut inputs: HashMap<NodeId, (TimeStamp, crate::NodeInput)> = HashMap::new();
+		for delta in self.document.history.iter() {
+			let (id, input) = match &delta.kind {
+				RegistryDelta::AddNode { id, node } | RegistryDelta::RemoveNode { id, snapshot: node } => {
+					networks.insert(*id, node.network);
+					(*id, node.inputs.first().map(|slot| slot.input.clone()))
+				}
+				RegistryDelta::ChangeNodeInput { id, index: 0, new_input } => (*id, Some(new_input.clone())),
+				RegistryDelta::SetNodeInputs { id, inputs } => (*id, inputs.first().map(|slot| slot.input.clone())),
+				_ => continue,
+			};
+			let Some(input) = input else { continue };
+			if inputs.get(&id).is_none_or(|(newest, _)| *newest < delta.timestamp) {
+				inputs.insert(id, (delta.timestamp, input));
+			}
+		}
+		inputs.into_iter().filter_map(|(id, (_, input))| Some((id, (*networks.get(&id)?, input)))).collect()
+	}
+
+	/// Commit repair ops on top of the line, authored by whoever made the interaction they finish.
+	fn commit_repairs(&mut self, ops: Vec<RegistryDelta>, author: PeerId) -> Result<Vec<Rev>, CrdtError> {
+		let mut revs = Vec::with_capacity(ops.len());
+		for op in ops {
+			let reverse = crate::prior::capture(&self.document.retired_snapshot, &op);
+			let delta = Delta::new(self.document.head, author, self.document.clock.tick(), op, reverse);
+			self.document.apply_op_with(RegistryTarget::Retired, delta.kind.clone(), delta.timestamp, ApplyMode::Strict)?;
+			self.document.head = Some(delta.id);
+			revs.push(delta.id);
+			self.document.history.push(delta);
+		}
+		Ok(revs)
 	}
 
 	/// Low-level: set a local annotation attribute (e.g. a commit message) on a retired delta in place.
