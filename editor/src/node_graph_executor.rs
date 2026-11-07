@@ -81,7 +81,16 @@ pub enum NodeGraphUpdate {
 	ExecutionResponse(Box<ExecutionResponse>),
 	CompilationResponse(CompilationResponse),
 	EyedropperPreview(Raster<CPU>),
-	Thumbnails { responses: VecDeque<FrontendMessage>, document_id: DocumentId },
+	Thumbnails {
+		responses: VecDeque<FrontendMessage>,
+		document_id: DocumentId,
+	},
+	DocumentCapture {
+		document_id: DocumentId,
+		step: document_graph_storage::TimeStamp,
+		/// `None` when a newer graph replaced the one the request was for, so it can be asked again.
+		capture: Option<Box<crate::messages::portfolio::history::utility_types::DocumentCapture>>,
+	},
 	InspectResult(Box<InspectResult>),
 }
 
@@ -201,6 +210,18 @@ impl NodeGraphExecutor {
 		self.sender
 			.send(GraphRuntimeRequest::ThumbnailsInView { layers, document_id })
 			.expect("Failed to send the thumbnails in view");
+	}
+
+	/// Asks for the document as rendered once what was submitted before has run, for the History panel's `step`.
+	/// Returns false when the runtime doesn't hold the document's graph as it is now, so nothing was asked.
+	pub fn submit_document_capture(&self, document: &DocumentMessageHandler, document_id: DocumentId, step: document_graph_storage::TimeStamp) -> bool {
+		if self.node_graph_document != Some(document_id) || self.node_graph_hash != document.network_interface.network_hash() {
+			return false;
+		}
+		self.sender
+			.send(GraphRuntimeRequest::CaptureDocument { document_id, step })
+			.expect("Failed to send the capture request");
+		true
 	}
 
 	/// Updates the network to monitor all inputs. Useful for the testing.
@@ -664,6 +685,7 @@ impl NodeGraphExecutor {
 						Self::receive_thumbnails(document, thumbnails, responses);
 					}
 				}
+				NodeGraphUpdate::DocumentCapture { document_id, step, capture } => responses.add(HistoryMessage::Captured { document_id, step, capture }),
 			}
 		}
 
@@ -682,6 +704,7 @@ impl NodeGraphExecutor {
 				} if thumbnails_document == document_id => {
 					Self::receive_thumbnails(document, thumbnails, responses);
 				}
+				NodeGraphUpdate::DocumentCapture { document_id, step, capture } => responses.add(HistoryMessage::Captured { document_id, step, capture }),
 				_ => {}
 			}
 		}

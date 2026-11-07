@@ -46,6 +46,8 @@ pub struct NodeRuntime {
 	pending_export: Option<ExecutionRequest>,
 	pending_eyedropper: Option<ExecutionRequest>,
 	pending_thumbnails: Option<DocumentId>,
+	/// The step the History panel wants the document captured for, once what is pending has run.
+	pending_capture: Option<(DocumentId, document_graph_storage::TimeStamp)>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
@@ -81,6 +83,10 @@ pub enum GraphRuntimeRequest {
 	ThumbnailsInView {
 		layers: HashSet<NodeId>,
 		document_id: DocumentId,
+	},
+	CaptureDocument {
+		document_id: DocumentId,
+		step: document_graph_storage::TimeStamp,
 	},
 	/// The full path from the root network to the node the Data panel inspects, or empty for none.
 	Inspect(Vec<NodeId>),
@@ -131,6 +137,7 @@ impl NodeRuntime {
 			pending_export: None,
 			pending_eyedropper: None,
 			pending_thumbnails: None,
+			pending_capture: None,
 			old_graph: None,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
@@ -169,7 +176,15 @@ impl NodeRuntime {
 		let mut graph = None;
 		for request in self.receiver.try_iter() {
 			match request {
-				GraphRuntimeRequest::GraphUpdate(update) => graph = Some(update),
+				GraphRuntimeRequest::GraphUpdate(update) => {
+					graph = Some(update);
+					// The graph may be another document's, or show a later step than the one asked for
+					if let Some((document_id, step)) = self.pending_capture.take() {
+						self.sender
+							.send(NodeGraphUpdate::DocumentCapture { document_id, step, capture: None })
+							.expect("Failed to send response");
+					}
+				}
 				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_eyedropper => self.pending_eyedropper = Some(request),
 				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_export => {
 					self.pending_export = Some(request);
@@ -184,6 +199,7 @@ impl NodeRuntime {
 					self.thumbnails.set_in_view(layers);
 					self.pending_thumbnails = Some(document_id);
 				}
+				GraphRuntimeRequest::CaptureDocument { document_id, step } => self.pending_capture = Some((document_id, step)),
 				// A graph update applied after this loop would otherwise inspect what was selected before
 				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
 					Some(update) => update.node_to_inspect = node_to_inspect,
@@ -272,6 +288,14 @@ impl NodeRuntime {
 
 			if let Some(viewport) = viewport {
 				texture = self.run_viewport(viewport).await;
+			}
+
+			if let Some((document_id, step)) = self.pending_capture.take()
+				&& let Some(network) = &self.old_graph
+				&& let Some(capture) = self.thumbnails.capture_document(network, &self.executor)
+			{
+				let capture = Some(Box::new(capture));
+				self.sender.send(NodeGraphUpdate::DocumentCapture { document_id, step, capture }).expect("Failed to send response");
 			}
 		}
 

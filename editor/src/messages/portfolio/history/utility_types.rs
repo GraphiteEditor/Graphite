@@ -1,5 +1,19 @@
 //! What the History panel shows, as the frontend receives it, and the changes it asks of the head's line.
 
+use glam::DVec2;
+use graph_craft::document::NodeId;
+use std::collections::HashMap;
+
+/// The document as rendered once a step is done, for the History panel to show and compare.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct DocumentCapture {
+	pub svg: String,
+	/// The document area the SVG shows.
+	pub frame: [DVec2; 2],
+	/// The proto node giving each layer's own content, whose ID changes with that content.
+	pub layer_sources: HashMap<NodeId, NodeId>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LineChange {
 	/// Moves the shared head to an earlier interaction and keeps the later steps as a branch.
@@ -48,6 +62,44 @@ pub struct HistoryRow {
 	pub head: bool,
 	pub expanded: bool,
 	pub details: Vec<HistoryDeltaRow>,
+	/// How the document looked once this step was done, if the panel was open to capture it.
+	pub thumbnail: Option<HistoryThumbnail>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryThumbnail {
+	pub after: HistoryShot,
+	/// The step before, when it was captured too, outlining what this step took away or changed.
+	pub before: Option<HistoryShot>,
+}
+
+/// One captured image, whose SVG the frontend received under `id`, with outlines in document coordinates.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryShot {
+	pub id: String,
+	/// The document area shown, as x, y, width and height.
+	pub frame: [f64; 4],
+	pub outlines: Vec<HistoryOutline>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryOutline {
+	pub change: OutlineChange,
+	pub x: f64,
+	pub y: f64,
+	pub width: f64,
+	pub height: f64,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum OutlineChange {
+	Added,
+	Removed,
+	Changed,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -79,4 +131,5 @@ pub struct HistoryProgressRow {
 	pub ops: usize,
 	/// Still being made, not closed and waiting.
 	pub open: bool,
+	pub thumbnail: Option<HistoryThumbnail>,
 }
