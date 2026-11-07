@@ -635,7 +635,7 @@ impl TaggedValue {
 	/// An angle input's value in degrees, whether stored as a typed angle or as a plain number of degrees.
 	pub fn as_angle_degrees(&self) -> Option<f64> {
 		match self {
-			Self::Angle(angle) => Some(angle.to_angle().degrees()),
+			Self::Angle(angle) => Some(angle.to_degrees()),
 			Self::Number(degrees) => Some(*degrees),
 			_ => None,
 		}
@@ -648,7 +648,7 @@ impl TaggedValue {
 			_ => AngleUnit::Degree,
 		};
 		Self::Angle(TypedAngle {
-			value: unit.from_angle(Angle::from_degrees(degrees)),
+			value: unit.from_degrees(degrees),
 			unit,
 		})
 	}

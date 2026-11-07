@@ -1391,7 +1391,7 @@ pub fn angle_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: 
 		_ => return widgets,
 	};
 
-	let number_props = bounds_in_unit(number_props, |degrees| angle.unit.from_angle(Angle::from_degrees(degrees)));
+	let number_props = bounds_in_unit(number_props, |degrees| angle.unit.from_degrees(degrees));
 	widgets.extend_from_slice(&[
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		number_props

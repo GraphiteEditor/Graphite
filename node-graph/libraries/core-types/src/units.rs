@@ -319,6 +319,14 @@ impl AngleUnit {
 			Self::Turn => angle.degrees() / 360.,
 		}
 	}
+
+	/// A number of degrees measured in this unit, which stays exact in degrees rather than round-tripping through radians.
+	pub fn from_degrees(self, degrees: f64) -> f64 {
+		match self {
+			Self::Degree => degrees,
+			_ => self.from_angle(Angle::from_degrees(degrees)),
+		}
+	}
 }
 
 /// A length as typed into an input, kept in its unit so a physical size stays physical when the document's resolution changes.
@@ -360,6 +368,14 @@ impl TypedAngle {
 
 	pub fn to_angle(self) -> Angle {
 		self.unit.to_angle(self.value)
+	}
+
+	/// The angle in degrees, exactly as typed when it was typed in degrees.
+	pub fn to_degrees(self) -> f64 {
+		match self.unit {
+			AngleUnit::Degree => self.value,
+			_ => self.to_angle().degrees(),
+		}
 	}
 }
 
@@ -461,5 +477,13 @@ mod tests {
 	fn whole_degrees_stay_exact_through_arithmetic() {
 		assert_eq!(Angle::from_degrees(1.) + Angle::from_degrees(5.), Angle::from_degrees(6.));
 		assert_eq!(AngleUnit::Turn.to_angle(0.25), Angle::from_degrees(90.));
+	}
+
+	// 15° doesn't survive the trip through radians bit for bit
+	#[test]
+	fn degrees_stay_exact_in_degrees() {
+		assert_eq!(TypedAngle::degrees(15.).to_degrees(), 15.);
+		assert_eq!(AngleUnit::Degree.from_degrees(15.), 15.);
+		assert!((AngleUnit::Turn.from_degrees(90.) - 0.25).abs() < 1e-12);
 	}
 }
