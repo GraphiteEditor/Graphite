@@ -42,7 +42,6 @@ pub enum PreferencesMessage {
 	SaveWithHistory {
 		enabled: bool,
 	},
-	ToggleShowStoragePreferences,
 	UserName {
 		name: String,
 	},

@@ -24,7 +24,6 @@ pub struct PreferencesMessageHandler {
 	pub validate_storage_round_trip: bool,
 	pub save_as_gdd: bool,
 	pub save_with_history: bool,
-	pub show_storage_preferences: bool,
 	/// This person's id across documents. A decimal string, since the browser's JSON loses 64-bit precision.
 	#[serde(with = "u64_as_string")]
 	#[cfg_attr(feature = "wasm", tsify(type = "string"))]
@@ -59,9 +58,8 @@ impl Default for PreferencesMessageHandler {
 			ui_scale: UI_SCALE_DEFAULT,
 			disable_ui_acceleration: true, // TODO: Set this back to false once we have ui acceleration working more reliably
 			validate_storage_round_trip: false,
-			save_as_gdd: false,
+			save_as_gdd: true,
 			save_with_history: false,
-			show_storage_preferences: false,
 			user_id: crate::application::generate_uuid(),
 			user_name: String::new(),
 			show_remote_cursors: true,
@@ -153,10 +151,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			}
 			PreferencesMessage::SaveWithHistory { enabled } => {
 				self.save_with_history = enabled;
-			}
-			PreferencesMessage::ToggleShowStoragePreferences => {
-				self.show_storage_preferences = !self.show_storage_preferences;
-				responses.add(MenuBarMessage::SendLayout);
 			}
 			PreferencesMessage::UserName { name } => {
 				self.user_name = name.trim().to_string();

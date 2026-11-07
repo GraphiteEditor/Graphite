@@ -303,14 +303,13 @@ impl PreferencesDialogMessageHandler {
 		// =========
 		// DOCUMENTS
 		// =========
-		// Soak-only `.gdd` storage options, hidden unless enabled from the developer debug menu.
-		if preferences.show_storage_preferences {
+		{
 			let header = vec![TextLabel::new("Documents").italic(true).widget_instance()];
 
 			let save_as_gdd_description = "
-				Save documents in the new .gdd container format (with the legacy .graphite file embedded as a recovery fallback) instead of a plain .graphite file. The .gdd format is still being validated, so this is opt-in for now.\n\
+				Save documents in the new .gdd container format (with the legacy .graphite file embedded as a recovery fallback) instead of a plain .graphite file.\n\
 				\n\
-				*Default: Off.*
+				*Default: On.*
 				"
 			.trim();
 			let save_as_gdd_checkbox_id = CheckboxId::new();
