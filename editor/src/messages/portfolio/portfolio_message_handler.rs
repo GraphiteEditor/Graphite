@@ -60,7 +60,7 @@ pub struct PortfolioMessageHandler {
 	persistent_state: PersistentStateMessageHandler,
 	pub fonts: FontsMessageHandler,
 	ingest: IngestMessageHandler,
-	history: HistoryMessageHandler,
+	pub(crate) history: HistoryMessageHandler,
 	sync: SyncMessageHandler,
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,

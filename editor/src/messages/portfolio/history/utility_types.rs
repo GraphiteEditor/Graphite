@@ -15,6 +15,9 @@ pub struct DocumentCapture {
 	pub detail: Option<([DVec2; 2], CaptureImage)>,
 	/// The proto node giving each layer's own content, whose ID changes with that content.
 	pub layer_sources: HashMap<NodeId, NodeId>,
+	/// Where each layer's own content lies, measured alike for the current state and past ones, which the editor holds no
+	/// layer metadata for.
+	pub layer_bounds: Option<HashMap<NodeId, [DVec2; 2]>>,
 }
 
 /// A capture rendered like the layer thumbnails: pixels from Vello, or an SVG for the frontend to draw when the GPU is unavailable.

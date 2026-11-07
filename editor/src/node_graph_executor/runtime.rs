@@ -1,6 +1,7 @@
 use super::*;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::network_interface::RootNode;
+use crate::messages::portfolio::history::utility_types::DocumentCapture;
 use crate::task::{Spawn, Spawner, Task};
 use glam::{DVec2, UVec2};
 use graph_craft::application_io::resource::ResourceRegistry;
@@ -8,7 +9,7 @@ use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
 use graph_craft::document::value::{RenderOutput, RenderOutputType, TaggedValue};
 use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{GraphErrors, ProtoNetwork};
 use graphene_hash::CacheHash;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::list::{Item, List};
@@ -48,8 +49,12 @@ pub struct NodeRuntime {
 	pending_thumbnails: Option<DocumentId>,
 	/// The step the History panel wants the document captured for, once what is pending has run.
 	pending_capture: Option<(DocumentId, document_graph_storage::TimeStamp, Option<[DVec2; 2]>)>,
+	/// A past state the History panel wants captured, once nothing else is waiting to run.
+	pending_past: Option<PastCapture>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
+	/// What `old_graph` compiled to, which a past state is compiled alongside.
+	compiled: Option<ProtoNetwork>,
 	async_runtime: Option<AsyncRuntime>,
 
 	editor_api: Arc<PlatformEditorApi>,
@@ -90,6 +95,7 @@ pub enum GraphRuntimeRequest {
 		/// The area to render close up as well.
 		detail: Option<[DVec2; 2]>,
 	},
+	CapturePast(PastCapture),
 	/// The full path from the root network to the node the Data panel inspects, or empty for none.
 	Inspect(Vec<NodeId>),
 	InspectContextOverrides(ContextOverrides),
@@ -105,6 +111,18 @@ pub struct GraphUpdate {
 	pub(super) previewed: Vec<(Vec<NodeId>, RootNode)>,
 	/// Full path from the root network to every layer, which are the nodes with thumbnails.
 	pub(super) layers: Vec<Vec<NodeId>>,
+}
+
+/// A past state of a document to render like [`GraphRuntimeRequest::CaptureDocument`] renders the current one.
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct PastCapture {
+	pub(super) document_id: DocumentId,
+	pub(super) step: document_graph_storage::TimeStamp,
+	pub(super) network: NodeNetwork,
+	/// Full path from the root network to every layer of the past state.
+	pub(super) layers: Vec<Vec<NodeId>>,
+	/// The area to render close up as well.
+	pub(super) detail: Option<[DVec2; 2]>,
 }
 
 /// Replaces each network's primary export with its previewed node.
@@ -140,7 +158,9 @@ impl NodeRuntime {
 			pending_eyedropper: None,
 			pending_thumbnails: None,
 			pending_capture: None,
+			pending_past: None,
 			old_graph: None,
+			compiled: None,
 			resources: ResourceRegistry::default(),
 			async_runtime: None,
 
@@ -202,6 +222,7 @@ impl NodeRuntime {
 					self.pending_thumbnails = Some(document_id);
 				}
 				GraphRuntimeRequest::CaptureDocument { document_id, step, detail } => self.pending_capture = Some((document_id, step, detail)),
+				GraphRuntimeRequest::CapturePast(past) => self.pending_past = Some(past),
 				// A graph update applied after this loop would otherwise inspect what was selected before
 				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
 					Some(update) => update.node_to_inspect = node_to_inspect,
@@ -240,7 +261,7 @@ impl NodeRuntime {
 		self.node_graph_warnings.clear();
 		let result = self.update_network(network.clone());
 		if result.is_ok() {
-			self.thumbnails.update_sources(&layers, &network, &self.executor);
+			self.thumbnails.update_sources(&layers, &network, &thumbnails::compiled_sources(&self.executor));
 			self.old_graph = Some(network);
 		}
 		let node_graph_errors = self.node_graph_errors.clone();
@@ -292,11 +313,27 @@ impl NodeRuntime {
 				texture = self.run_viewport(viewport).await;
 			}
 
-			if let Some((document_id, step, detail)) = self.pending_capture.take()
-				&& let Some(network) = &self.old_graph
-				&& let Some(capture) = self.thumbnails.capture_document(network, &self.executor, &self.editor_api, detail).await
+			if let Some((document_id, step, detail)) = self.pending_capture.take() {
+				let capture = match &self.old_graph {
+					Some(network) => {
+						self.thumbnails
+							.capture_document(network, &self.executor, &thumbnails::compiled_sources(&self.executor), &self.editor_api, detail)
+							.await
+					}
+					None => None,
+				};
+				let capture = capture.map(|mut capture| {
+					capture.layer_bounds = Some(self.thumbnails.layer_bounds(&self.executor));
+					Box::new(capture)
+				});
+				self.sender.send(NodeGraphUpdate::DocumentCapture { document_id, step, capture }).expect("Failed to send response");
+			}
+
+			if viewport.is_none()
+				&& let Some(past) = self.pending_past.take()
 			{
-				let capture = Some(Box::new(capture));
+				let capture = self.capture_past(&past).await.map(Box::new);
+				let (document_id, step) = (past.document_id, past.step);
 				self.sender.send(NodeGraphUpdate::DocumentCapture { document_id, step, capture }).expect("Failed to send response");
 			}
 		}
@@ -430,18 +467,22 @@ impl NodeRuntime {
 		Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await
 	}
 
-	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+	/// Compiles a document network to the proto network the executor runs.
+	fn compile(&mut self, graph: NodeNetwork) -> Result<CompiledNetwork, CompileError> {
 		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
-			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));
+			return Err(CompileError::Message(e.to_string()));
 		}
 
 		// We assume only one output
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
-		let c = Compiler {};
-		let CompiledNetwork { network: proto_network, warnings } = match c.compile_single(scoped_network) {
+		Compiler {}.compile_single(scoped_network)
+	}
+
+	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let CompiledNetwork { network: proto_network, warnings } = match self.compile(graph) {
 			Ok(compiled_network) => compiled_network,
 			Err(CompileError::Graph(errors)) => {
 				let message = format!("{errors:?}");
@@ -459,12 +500,56 @@ impl NodeRuntime {
 			.collect();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
+		let compiled = proto_network.clone();
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
 			(types, format!("{e:?}"))
 		});
+		self.compiled = result.is_ok().then_some(compiled);
 		self.async_runtime().update_sources(self.executor.sources());
 		result
+	}
+
+	/// Renders a past state of the document, compiled alongside the current graph as a second output. A proto node's ID
+	/// hashes everything upstream of it, so what the two states share is one node, which keeps its cache. The current
+	/// nodes go in last, so the executor still names them for their document paths, and the past state's own nodes are
+	/// freed once a later graph update leaves them out.
+	async fn capture_past(&mut self, past: &PastCapture) -> Option<DocumentCapture> {
+		let current = self.compiled.clone()?;
+		let CompiledNetwork { network: past_network, .. } = self
+			.compile(past.network.clone())
+			.inspect_err(|error| log::warn!("The History panel's past state didn't compile: {error:?}"))
+			.ok()?;
+
+		let past_output = past_network.output;
+		let past_sources: HashMap<Vec<NodeId>, NodeId> = past_network.nodes.iter().filter_map(|(id, node)| Some((node.original_location.path.clone()?, *id))).collect();
+		let current_ids: HashSet<NodeId> = current.nodes.iter().map(|(id, _)| *id).collect();
+		let mut merged = current.clone();
+		merged.nodes = past_network.nodes.into_iter().filter(|(id, _)| !current_ids.contains(id)).chain(current.nodes).collect();
+		if let Err((_, error)) = self.executor.update(merged) {
+			log::warn!("The History panel's past state didn't compile alongside the document: {error:?}");
+			return None;
+		}
+		self.async_runtime().update_sources(self.executor.sources());
+
+		// Thumbnail content evaluates from the context it last ran in, so the past state runs once as the viewport does
+		let mut render_config = self.pending?.render_config;
+		if render_config.export_format == ExportFormat::Raster && self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none() {
+			render_config.export_format = ExportFormat::Svg;
+		}
+		let context = render_config.into_context_with_generations(self.async_runtime().snapshot());
+		let evaluated = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(past_output, &context)));
+		if !matches!(evaluated, Ok(Ok(_))) {
+			return None;
+		}
+
+		let source_of = |path: &[NodeId]| past_sources.get(path).copied();
+		let mut thumbnails = Thumbnails::new();
+		thumbnails.set_scale(self.thumbnails.scale());
+		thumbnails.update_sources(&past.layers, &past.network, &source_of);
+		let mut capture = thumbnails.capture_document(&past.network, &self.executor, &source_of, &self.editor_api, past.detail).await?;
+		capture.layer_bounds = Some(thumbnails.layer_bounds(&self.executor));
+		Some(capture)
 	}
 
 	fn resolve_errors(&self, error: &NodeError) -> EvaluationErrors {
