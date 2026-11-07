@@ -1,6 +1,7 @@
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
+use core_types::units::{Angle, DEFAULT_PIXELS_PER_INCH, Length};
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
 use core_types::{Context, Interrupt};
 use glam::{DAffine2, DMat2, DVec2};
@@ -13,8 +14,9 @@ use math_parser::lexer::Constant;
 use math_parser::matrix::{Affine2, Linear2, Matrix};
 use math_parser::object::Object;
 use math_parser::parser::{MessagePart, ParseError};
+use math_parser::quantity::Quantity;
 use math_parser::reducer::{Reducer, classify_reducer};
-use math_parser::units::unit_named;
+use math_parser::units::{Unit, UnitId, unit_named};
 use math_parser::value::{Value, Vector2, Vector3};
 use rand::{RngExt, SeedableRng};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -33,8 +35,6 @@ pub enum MathExpressionError {
 	Evaluation(#[from] EvalError),
 	#[error("The result {result} can't be read as {output_type}")]
 	OutputType { result: String, output_type: String },
-	#[error("The input can't be read as {0}")]
-	InputType(String),
 	#[error("`{0}` alone is an operator, which the Math Aggregate node applies across all the items")]
 	LoneOperator(String),
 	#[error("The operator must be a lone operator or function name, like `+` or `max`")]
@@ -90,7 +90,12 @@ impl ParseCache {
 
 /// Evaluates a parsed expression with the given variable bindings.
 fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Result<Object, MathExpressionError> {
-	Ok(expression.eval(&EvalContext::new(provider, NothingMap))?)
+	evaluate_measured_expression(expression, provider, DEFAULT_PIXELS_PER_INCH)
+}
+
+/// Evaluates a parsed expression with the given variable bindings, sizing its pixels by the document's resolution.
+fn evaluate_measured_expression(expression: &ast::Node, provider: impl ValueProvider, pixels_per_inch: f64) -> Result<Object, MathExpressionError> {
+	Ok(expression.eval(&EvalContext::new(provider, NothingMap).with_pixels_per_inch(pixels_per_inch))?)
 }
 
 /// Converts a node item type to and from the objects, values or matrices, the expression evaluator runs on.
@@ -98,6 +103,10 @@ trait ExpressionValue: Copy + Default + 'static {
 	fn into_object(self) -> Object;
 	/// Reads an evaluated result as this type, seeing only the parts this type has, or `None` when it does not fit, like 0.5 read as a Bool or a matrix read as a Number.
 	fn from_object(object: &Object) -> Option<Self>;
+	/// Reads an evaluated result as [`Self::from_object`] does, sizing a length's physical units by the document's resolution.
+	fn from_measured_object(object: &Object, _pixels_per_inch: f64) -> Option<Self> {
+		Self::from_object(object)
+	}
 	/// Gathers a list of this type as the items of its sort.
 	fn items(items: impl Iterator<Item = Self>) -> Items;
 }
@@ -152,10 +161,51 @@ impl ExpressionItem for f64 {
 
 /// Reads an expression's result as the node's output type.
 fn output<T: ExpressionValue>(result: &Object) -> Result<T, MathExpressionError> {
-	T::from_object(result).ok_or_else(|| MathExpressionError::OutputType {
+	measured_output(result, DEFAULT_PIXELS_PER_INCH)
+}
+
+/// Reads an expression's result as the node's output type, sizing a length's physical units by the document's resolution.
+fn measured_output<T: ExpressionValue>(result: &Object, pixels_per_inch: f64) -> Result<T, MathExpressionError> {
+	T::from_measured_object(result, pixels_per_inch).ok_or_else(|| MathExpressionError::OutputType {
 		result: result.to_string(),
 		output_type: core_types::concrete!(T).to_string(),
 	})
+}
+
+impl ExpressionValue for Length {
+	fn into_object(self) -> Object {
+		Object::Value(Quantity::new(Value::from_f64(self.pixels()), Unit::of(UnitId::PIXEL)))
+	}
+
+	fn from_object(object: &Object) -> Option<Self> {
+		Self::from_measured_object(object, DEFAULT_PIXELS_PER_INCH)
+	}
+
+	// A plain result reads in pixels, as a plain number wired into a length does
+	fn from_measured_object(object: &Object, pixels_per_inch: f64) -> Option<Self> {
+		let pixels = object.as_quantity()?.read_in(Unit::of(UnitId::PIXEL), pixels_per_inch).ok()?.as_real()?;
+		Some(Length::from_pixels(pixels))
+	}
+
+	fn items(items: impl Iterator<Item = Self>) -> Items {
+		Items::Values(items.map(|length| Value::from_f64(length.pixels())).collect())
+	}
+}
+
+impl ExpressionValue for Angle {
+	fn into_object(self) -> Object {
+		Object::Value(Quantity::new(Value::from_f64(self.radians()), Unit::of(UnitId::RADIAN)))
+	}
+
+	// A plain result reads in radians, as the circular functions read a plain angle
+	fn from_object(object: &Object) -> Option<Self> {
+		let radians = object.as_quantity()?.read_in(Unit::of(UnitId::RADIAN), DEFAULT_PIXELS_PER_INCH).ok()?.as_real()?;
+		Some(Angle::from_radians(radians))
+	}
+
+	fn items(items: impl Iterator<Item = Self>) -> Items {
+		Items::Values(items.map(|angle| Value::from_f64(angle.radians())).collect())
+	}
 }
 
 impl ExpressionItem for i64 {
@@ -230,6 +280,11 @@ impl ValueProvider for SingleVariableMathContext<'_> {
 		(name == "x").then(|| self.x.as_value()).flatten()
 	}
 
+	// A length or an angle binds with its unit
+	fn get_quantity(&self, name: &str) -> Option<Quantity> {
+		(name == "x").then(|| self.x.as_quantity().copied()).flatten()
+	}
+
 	fn get_matrix(&self, name: &str) -> Option<Matrix> {
 		(name == "X").then(|| self.x.as_matrix()).flatten()
 	}
@@ -237,13 +292,14 @@ impl ValueProvider for SingleVariableMathContext<'_> {
 
 /// Maps a value through a math expression written as a function of `x`, which stands for the value, or of `X` when it's a Transform. Each item of a list is mapped on its own.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. A boolean input reads as 0 or 1 and a Vec2 input as such a vector.
-#[node_macro::node(category("Math"), icon("NodeMathFunction"), version(2))]
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, a Transform takes a matrix like `rotation(pi/4) + 5i`, a Length reads a plain number as pixels, and an Angle reads a plain number as radians. A boolean input reads as 0 or 1, a Vec2 input as such a vector, and a Length or Angle input with its unit, so `x + 5mm` adds five millimeters.
+#[node_macro::node(category("Math"), icon("NodeMathFunction"), version(3))]
 fn math_function<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The value passed into the expression as `x`.
 	#[implementations(
-		f64, f64, f64, f64, f64, i64, i64, i64, i64, i64, bool, bool, bool, bool, bool, DVec2, DVec2, DVec2, DVec2, DVec2, DAffine2, DAffine2, DAffine2, DAffine2, DAffine2
+		f64, f64, f64, f64, f64, f64, f64, i64, i64, i64, i64, i64, i64, i64, bool, bool, bool, bool, bool, bool, bool, DVec2, DVec2, DVec2, DVec2, DVec2, DVec2, DVec2, DAffine2, DAffine2, DAffine2,
+		DAffine2, DAffine2, DAffine2, DAffine2, Length, Length, Length, Length, Length, Length, Length, Angle, Angle, Angle, Angle, Angle, Angle, Angle
 	)]
 	value: Item<T>,
 	/// The expression evaluated for the input value, in terms of `x`, such as `4sin(x/2)`, or of `X` for a Transform.
@@ -253,11 +309,13 @@ fn math_function<T: ExpressionValue, U: ExpressionValue>(
 	fx: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
-		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle,
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle
 	)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
 	output_type: Item<U>,
+	#[scope("pixels-per-inch")] pixels_per_inch: Item<f64>,
 	#[data] parsed: ParseCache,
 ) -> Result<Item<U>, (Item<U>, MathExpressionError)> {
 	// The output type input is a type witness: its type selects the implementation, and its value is never read
@@ -269,19 +327,16 @@ fn math_function<T: ExpressionValue, U: ExpressionValue>(
 
 	// The default `x` passes any input through, including a Transform, which an expression names `X`
 	let source = if x.as_matrix().is_some() && fx.element().trim() == "x" { "X" } else { fx.element() };
-	let result = parsed
-		.parse(source)
-		.and_then(|expression| evaluate_expression(&expression, SingleVariableMathContext { x: &x }))
-		.and_then(|result| output(&result));
+	let pixels_per_inch = *pixels_per_inch.element();
+	let evaluate = |expression: &ast::Node| evaluate_measured_expression(expression, SingleVariableMathContext { x: &x }, pixels_per_inch).and_then(|result| measured_output(&result, pixels_per_inch));
+	let error = match parsed.parse(source).and_then(|expression| evaluate(&expression)) {
+		Ok(result) => return Ok(Item::from_parts(result, attributes)),
+		Err(error) => error,
+	};
 
-	match result {
-		Ok(result) => Ok(Item::from_parts(result, attributes)),
-		// The input passes through as the default `x` reads it, unless the output type can't hold it
-		Err(error) => match U::from_object(&x) {
-			Some(input) => Err((Item::from_parts(input, attributes), error)),
-			None => Err((Item::from_parts(U::default(), attributes), MathExpressionError::InputType(core_types::concrete!(U).to_string()))),
-		},
-	}
+	// The input passes through as the default `x` reads it, or else the output type's default stands in
+	let stand_in = U::from_measured_object(&x, pixels_per_inch).unwrap_or_default();
+	Err((Item::from_parts(stand_in, attributes), error))
 }
 
 /// Binds the items of the "Math Formula" node's list to the positional variables `a`, `b`, `c`, and so on, or `A`, `B`, `C` for matrices.
@@ -2273,6 +2328,57 @@ mod test {
 	use core_types::generic::FnNode;
 	use core_types::{Node, concrete};
 
+	/// Runs 'Math f(x)' on a value at a resolution, reading the result as the output type `U`.
+	fn function_of<T: ExpressionValue, U: ExpressionValue>(value: T, expression: &str, pixels_per_inch: f64) -> Result<U, MathExpressionError> {
+		let output_type = Item::new_from_element(U::default());
+		let result = math_function(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(value),
+			Item::new_from_element(expression.to_string()),
+			output_type,
+			Item::new_from_element(pixels_per_inch),
+		);
+		result.map(|item| item.into_element()).map_err(|(_, error)| error)
+	}
+
+	#[test]
+	fn math_function_measures_lengths_by_the_resolution() {
+		let length = |expression: &str, pixels_per_inch: f64| function_of::<Length, Length>(Length::from_pixels(10.), expression, pixels_per_inch).unwrap().pixels();
+		assert_eq!(length("x * 2", 96.), 20.);
+		assert_eq!(length("x + 1in", 96.), 106.);
+		assert_eq!(length("x + 1in", 300.), 310.);
+		assert_eq!(length("5", 96.), 5.);
+		assert!((length("25.4mm", 96.) - 96.).abs() < 1e-9);
+
+		// A length isn't a plain number, so reading it as one fails rather than dropping its unit
+		assert!(function_of::<Length, f64>(Length::from_pixels(10.), "x", 96.).is_err());
+		assert_eq!(function_of::<Length, f64>(Length::from_pixels(10.), "x / (1px)", 96.).unwrap(), 10.);
+		assert!(function_of::<f64, Length>(2., "x * 1s", 96.).is_err());
+	}
+
+	#[test]
+	fn math_function_divides_by_a_whole_measure_only_where_the_input_has_a_unit() {
+		assert_eq!(function_of::<Length, f64>(Length::from_pixels(10.), "x / 2px", 96.).unwrap(), 5.);
+		assert_eq!(function_of::<f64, Length>(10., "x / 2px", 96.).unwrap().pixels(), 5.);
+	}
+
+	#[test]
+	fn math_function_reports_the_expression_error_where_the_input_cannot_pass_through() {
+		let error = function_of::<Length, f64>(Length::from_pixels(10.), "x / 1mm +", 96.).unwrap_err();
+		assert!(matches!(error, MathExpressionError::Invalid(_)), "{error}");
+	}
+
+	#[test]
+	fn math_function_turns_angles() {
+		let degrees = |expression: &str| function_of::<Angle, Angle>(Angle::from_degrees(30.), expression, 96.).unwrap().degrees();
+		assert!((degrees("x + 60deg") - 90.).abs() < 1e-9);
+		assert!((degrees("x + 0.25turn") - 120.).abs() < 1e-9);
+		// A plain result reads in radians, as the circular functions read a plain angle
+		assert!((degrees("pi") - 180.).abs() < 1e-9);
+		assert!((function_of::<Angle, f64>(Angle::from_degrees(90.), "sin(x)", 96.).unwrap() - 1.).abs() < 1e-12);
+	}
+
 	#[test]
 	pub fn dot_product_function() {
 		let vector_a = Item::new_from_element(DVec2::new(1., 2.));
@@ -2419,6 +2525,7 @@ mod test {
 				Item::new_from_element(value),
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(0_i64),
+				Item::new_from_element(96.),
 			)
 			.unwrap()
 			.into_element()
@@ -2447,7 +2554,8 @@ mod test {
 				&ParseCache::default(),
 				Item::new_from_element(2.5),
 				Item::new_from_element("x * 2".to_string()),
-				Item::new_from_element(0_i64)
+				Item::new_from_element(0_i64),
+				Item::new_from_element(96.),
 			)
 			.unwrap()
 			.into_element(),
@@ -2459,7 +2567,8 @@ mod test {
 				&ParseCache::default(),
 				Item::new_from_element(3_i64),
 				Item::new_from_element("x > 2".to_string()),
-				Item::new_from_element(false)
+				Item::new_from_element(false),
+				Item::new_from_element(96.),
 			)
 			.unwrap()
 			.into_element()
@@ -2470,7 +2579,8 @@ mod test {
 				&ParseCache::default(),
 				Item::new_from_element(true),
 				Item::new_from_element("x / 2".to_string()),
-				Item::new_from_element(0.)
+				Item::new_from_element(0.),
+				Item::new_from_element(96.),
 			)
 			.unwrap()
 			.into_element(),
@@ -2503,6 +2613,7 @@ mod test {
 			Item::new_from_element(0.),
 			Item::new_from_element("2 + 2".to_string()),
 			Item::new_from_element(0.),
+			Item::new_from_element(96.),
 		);
 		assert_eq!(result.unwrap().into_element(), 4.);
 	}
@@ -2515,6 +2626,7 @@ mod test {
 			Item::new_from_element(0.),
 			Item::new_from_element("(5 * 3) + (10 / 2)".to_string()),
 			Item::new_from_element(0.),
+			Item::new_from_element(96.),
 		);
 		assert_eq!(result.unwrap().into_element(), 20.);
 	}
@@ -2527,6 +2639,7 @@ mod test {
 			Item::new_from_element(7.),
 			Item::new_from_element("x * 2".to_string()),
 			Item::new_from_element(0.),
+			Item::new_from_element(96.),
 		);
 		assert_eq!(result.unwrap().into_element(), 14.);
 	}
@@ -2539,6 +2652,7 @@ mod test {
 			Item::new_from_element(0.),
 			Item::new_from_element("invalid".to_string()),
 			Item::new_from_element(0.),
+			Item::new_from_element(96.),
 		);
 		assert_eq!(result.unwrap_err().0.into_element(), 0.);
 	}
@@ -2557,25 +2671,55 @@ mod test {
 		// Booleans read as exactly 0 and 1, and logical results convert back
 		let as_bool = Item::new_from_element(false);
 		assert!(
-			!math_function((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("!x".to_string()), as_bool.clone())
-				.unwrap()
-				.into_element()
+			!math_function(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(true),
+				Item::new_from_element("!x".to_string()),
+				as_bool.clone(),
+				Item::new_from_element(96.)
+			)
+			.unwrap()
+			.into_element()
 		);
 		assert!(
-			math_function((), &ParseCache::default(), Item::new_from_element(false), Item::new_from_element("x == 0".to_string()), as_bool.clone())
-				.unwrap()
-				.into_element()
+			math_function(
+				(),
+				&ParseCache::default(),
+				Item::new_from_element(false),
+				Item::new_from_element("x == 0".to_string()),
+				as_bool.clone(),
+				Item::new_from_element(96.)
+			)
+			.unwrap()
+			.into_element()
 		);
 
 		// A result that is not exactly 0 or 1 cannot be a truth value, so the input passes through
-		let (stand_in, error) = math_function((), &ParseCache::default(), Item::new_from_element(true), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
+		let (stand_in, error) = math_function(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(true),
+			Item::new_from_element("x + 1".to_string()),
+			as_bool.clone(),
+			Item::new_from_element(96.),
+		)
+		.unwrap_err();
 		assert!(stand_in.into_element());
 		assert!(matches!(&error, MathExpressionError::OutputType { output_type, .. } if output_type == "Bool"));
 
 		// An input that is not exactly 0 or 1 cannot pass through as a truth value either, so the output falls back to false
-		let (stand_in, error) = math_function((), &ParseCache::default(), Item::new_from_element(2.), Item::new_from_element("x + 1".to_string()), as_bool.clone()).unwrap_err();
+		let (stand_in, error) = math_function(
+			(),
+			&ParseCache::default(),
+			Item::new_from_element(2.),
+			Item::new_from_element("x + 1".to_string()),
+			as_bool.clone(),
+			Item::new_from_element(96.),
+		)
+		.unwrap_err();
 		assert!(!stand_in.into_element());
-		assert!(matches!(&error, MathExpressionError::InputType(output_type) if output_type == "Bool"));
+		assert!(matches!(&error, MathExpressionError::OutputType { output_type, .. } if output_type == "Bool"));
 
 		let bools = || [true, true, false].into_iter().map(Item::new_from_element).collect::<List<bool>>();
 		assert!(!math_aggregate((), bools(), Item::new_from_element("&&".to_string()), as_bool.clone()).unwrap().into_element());
@@ -2592,6 +2736,7 @@ mod test {
 				Item::new_from_element(value),
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(output_type),
+				Item::new_from_element(96.),
 			)
 			.map(Item::into_element)
 			.map_err(|(stand_in, _)| stand_in.into_element())
@@ -2651,6 +2796,7 @@ mod test {
 				Item::new_from_element(value),
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(output_type),
+				Item::new_from_element(96.),
 			)
 			.unwrap_or_else(|(_, error)| panic!("`{expression}` fails: {error}"))
 			.into_element()
@@ -2836,6 +2982,7 @@ mod test {
 				Item::new_from_element(value),
 				Item::new_from_element(expression.to_string()),
 				Item::new_from_element(0.),
+				Item::new_from_element(96.),
 			)
 			.map(Item::into_element)
 			.map_err(|(stand_in, error)| (stand_in.into_element(), error))

@@ -1900,10 +1900,15 @@ impl SvgRender {
 		self.svg.push("</svg>".into());
 	}
 
-	/// Wraps the SVG with `<svg><g transform="...">...</g></svg>`, which allows for rotation
-	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>) {
+	/// Wraps the SVG with `<svg><g transform="...">...</g></svg>`, which allows for rotation. Given a resolution, its width and height
+	/// state its physical size in inches, which SVG readers otherwise take from CSS's 96 pixels per inch.
+	pub fn wrap_with_transform(&mut self, transform: DAffine2, size: Option<DVec2>, pixels_per_inch: Option<f64>) {
+		let dimension = |pixels: f64| match pixels_per_inch {
+			Some(pixels_per_inch) if pixels_per_inch.is_finite() && pixels_per_inch > 0. => format!("{}in", pixels / pixels_per_inch),
+			_ => pixels.to_string(),
+		};
 		let view_box = size
-			.map(|size| format!("viewBox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, size.x, size.y))
+			.map(|size| format!("viewBox=\"0 0 {} {}\" width=\"{}\" height=\"{}\"", size.x, size.y, dimension(size.x), dimension(size.y)))
 			.unwrap_or_default();
 
 		let matrix = format_transform_matrix(transform);
@@ -2042,6 +2047,9 @@ pub struct RenderParams {
 	pub canvas_image_scale: f64,
 	/// The nearest ancestor's appearance, cascading to items that lack their own.
 	pub inherited_appearance: Option<Appearance>,
+	/// The document's pixels per inch, which an exported SVG states its physical size by, or `None` where it's CSS's 96 or no export.
+	#[cache_hash(skip)]
+	pub pixels_per_inch: Option<f64>,
 }
 
 impl RenderParams {
@@ -5853,6 +5861,17 @@ impl SvgRenderAttrs<'_> {
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn an_svg_states_its_physical_size_at_a_resolution() {
+		let mut render = SvgRender::new();
+		render.wrap_with_transform(DAffine2::IDENTITY, Some(DVec2::new(960., 480.)), Some(96.));
+		assert!(render.svg.to_svg_string().contains(r#"width="10in" height="5in""#));
+
+		let mut render = SvgRender::new();
+		render.wrap_with_transform(DAffine2::IDENTITY, Some(DVec2::new(960., 480.)), None);
+		assert!(render.svg.to_svg_string().contains(r#"width="960" height="480""#));
+	}
 	use vector_types::gradient::GradientSpace;
 
 	#[test]

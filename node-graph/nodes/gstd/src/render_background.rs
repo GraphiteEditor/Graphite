@@ -106,7 +106,7 @@ fn render_background(
 			}
 
 			let logical_resolution = render_params.footprint.resolution.as_dvec2() / render_params.scale;
-			render.wrap_with_transform(logical_transform, Some(logical_resolution));
+			render.wrap_with_transform(logical_transform, Some(logical_resolution), render_params.pixels_per_inch);
 
 			let background = SvgRenderOutput::from(render);
 			assert!(background.svg_defs.is_empty());

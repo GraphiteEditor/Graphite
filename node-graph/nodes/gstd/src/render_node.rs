@@ -125,7 +125,7 @@ fn render(
 			let logical_resolution = footprint.resolution.as_dvec2() / render_params.scale;
 
 			let mut render = SvgRender::from(data.as_ref());
-			render.wrap_with_transform(logical_transform, Some(logical_resolution));
+			render.wrap_with_transform(logical_transform, Some(logical_resolution), render_params.pixels_per_inch);
 
 			let output = SvgRenderOutput::from(render);
 			assert!(output.svg_defs.is_empty());
@@ -210,6 +210,7 @@ fn create_context(
 		scale: render_config.scale,
 		viewport_zoom: Some(logical_viewport.scale_magnitudes().x),
 		canvas_image_scale,
+		pixels_per_inch: render_config.pixels_per_inch,
 		..Default::default()
 	};
 

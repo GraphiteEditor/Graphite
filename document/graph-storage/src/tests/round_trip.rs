@@ -12,8 +12,24 @@ use crate::{NetworkId, NodeMetadataSource, PeerId, Position, Registry, from_valu
 /// Note: This only works for complete networks with all inputs resolved.
 /// Test networks with Import inputs will fail compilation (which is expected).
 fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
+	use graph_craft::document::value::TaggedValue;
+
 	let mut network = network.clone();
 	network.inline_definitions().map_err(|e| format!("Inlining failed: {e}"))?;
+
+	// Nodes measuring in physical units read the document's resolution from the scope the runtime wraps every document in
+	let resolution_node = NodeId(u64::MAX);
+	network.nodes.insert(
+		resolution_node,
+		DocumentNode {
+			inputs: vec![NodeInput::value(TaggedValue::Number(core_types::units::DEFAULT_PIXELS_PER_INCH), false)],
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::PassthroughNode")),
+			..Default::default()
+		},
+	);
+	network
+		.scope_injections
+		.insert(core_types::units::PIXELS_PER_INCH_SCOPE.to_string(), (resolution_node, core_types::item!(f64)));
 
 	let compiler = Compiler {};
 	compiler.compile_single(network).map_err(|e| format!("Compilation failed: {:?}", e))?;

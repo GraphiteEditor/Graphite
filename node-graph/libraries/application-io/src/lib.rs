@@ -64,6 +64,9 @@ pub struct RenderConfig {
 	pub export_format: ExportFormat,
 	pub for_export: bool,
 	pub for_eyedropper: bool,
+	/// The document's pixels per inch, which an export states its physical size by, or `None` where it's CSS's 96 or no export.
+	#[cfg_attr(feature = "serde", serde(default))]
+	pub pixels_per_inch: Option<f64>,
 }
 
 impl RenderConfig {

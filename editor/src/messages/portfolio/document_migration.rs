@@ -4935,10 +4935,11 @@ mod tests {
 		// The old inputs stay in place and the witness defaults to Number, the output type every such node had
 		let node = &document.network_interface.document_network().nodes[&node_id];
 		let value_at = |index: usize| node.inputs.get(index).and_then(|input| input.as_value()).cloned();
-		assert_eq!(node.inputs.len(), 3);
+		assert_eq!(node.inputs.len(), 4);
 		assert_eq!(value_at(0), Some(TaggedValue::Number(4.)));
 		assert_eq!(value_at(1), Some(TaggedValue::String("x^2".into())));
 		assert_eq!(value_at(2), Some(TaggedValue::Number(0.)));
+		assert_eq!(node.inputs.get(3), Some(&NodeInput::scope(graphene_std::units::PIXELS_PER_INCH_SCOPE)));
 	}
 
 	// The same upgrade on a node whose value comes from upstream, where restoring the inputs has to preserve the wire
@@ -4970,7 +4971,7 @@ mod tests {
 		migrate(&mut document);
 
 		let node = &document.network_interface.document_network().nodes[&node_id];
-		assert_eq!(node.inputs.len(), 3);
+		assert_eq!(node.inputs.len(), 4);
 		assert!(
 			matches!(node.inputs.first(), Some(NodeInput::Node { node_id: upstream, .. }) if *upstream == source_id),
 			"the upstream wire was dropped by the upgrade, leaving {:?}",
@@ -5126,8 +5127,8 @@ mod tests {
 			let node = &document.network_interface.document_network().nodes[&math_id];
 			assert_eq!(
 				node.inputs.len(),
-				3,
-				"the old `B` input should be dropped, leaving the value, the expression, and the output-type witness"
+				4,
+				"the old `B` input should be dropped, leaving the value, the expression, the output-type witness, and the resolution"
 			);
 			assert_eq!(node.inputs.first(), Some(&NodeInput::node(source_a_id, 0)));
 			assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::String("2 - 0.2x".into())));

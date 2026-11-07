@@ -357,6 +357,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			for_export: false,
 			for_eyedropper: false,
+			pixels_per_inch: None,
 		};
 
 		// Execute the node graph
@@ -424,6 +425,7 @@ impl NodeGraphExecutor {
 			render_mode,
 			for_export: false,
 			for_eyedropper: true,
+			pixels_per_inch: None,
 		};
 
 		// Execute the node graph
@@ -484,6 +486,8 @@ impl NodeGraphExecutor {
 			render_mode: graphene_std::vector::style::RenderMode::Normal,
 			for_export: true,
 			for_eyedropper: false,
+			// A document at CSS's 96 pixels per inch exports as it always has, in unitless pixels
+			pixels_per_inch: Some(document.network_interface.pixels_per_inch()).filter(|pixels_per_inch| *pixels_per_inch != graphene_std::units::DEFAULT_PIXELS_PER_INCH),
 		};
 
 		// Execute the node graph
@@ -920,6 +924,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			for_export: false,
 			for_eyedropper: false,
+			pixels_per_inch: None,
 		};
 		let execution_id = self.queue_execution(render_config);
 		self.futures.push_back((

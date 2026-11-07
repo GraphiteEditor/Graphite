@@ -1512,6 +1512,7 @@ fn wire_element(ty: &Type) -> Type {
 fn type_choice_sections(offered: &[Type]) -> Vec<Vec<Type>> {
 	let vocabulary = [
 		vec![concrete!(bool), concrete!(i64), concrete!(f64)],
+		vec![concrete!(Length), concrete!(Angle)],
 		vec![concrete!(DVec2)],
 		vec![concrete!(DAffine2)],
 		vec![concrete!(Artboard)],
