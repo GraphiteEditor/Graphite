@@ -1,4 +1,4 @@
-use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_ID, ATTR_UV, ATTR_WIDTH, Item, List};
+use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_ID, ATTR_KIND, ATTR_STEP, ATTR_UV, ATTR_WIDTH, Item, List};
 use core_types::misc::parse_f64;
 use glam::DVec2;
 use graphic_types::Vector;
@@ -11,6 +11,12 @@ const CLOSURE_TOLERANCE: f64 = 1e-6;
 
 /// How far `~` may turn either way, unless a command gives its own limit like `~(30)`.
 const RANDOM_TURN_LIMIT: f64 = 180.;
+
+/// The kind assigned to every drawn point, matching what points from elsewhere without a kind read as.
+const DRAWN_KIND: i64 = 0;
+
+/// The kind of a point that `.` places outside a shape without a number of its own.
+const PLACED_KIND: i64 = 1;
 
 /// The node's inputs, which the commands fall back to when they don't give their own numbers.
 pub(crate) struct TurtleSettings {
@@ -138,6 +144,8 @@ struct Drawing {
 	headings: Vec<f64>,
 	widths: Vec<f64>,
 	uvs: Vec<DVec2>,
+	steps: Vec<f64>,
+	kinds: Vec<i64>,
 	/// Pool indices of each run, in the order the runs began.
 	runs: Vec<Vec<u32>>,
 	anchor_slots: Vec<AnchorSlot>,
@@ -149,8 +157,8 @@ impl Drawing {
 		self.anchor_slots.len() - 1
 	}
 
-	/// Adds a point where the turtle stands, stamped with its state, and gives its pool index.
-	fn push_point(&mut self, turtle: &Turtle) -> u32 {
+	/// Adds a point where the turtle stands, stamped with its state and a kind, and gives its pool index.
+	fn push_point(&mut self, turtle: &Turtle, kind: i64) -> u32 {
 		self.positions.push(turtle.position);
 		self.depths.push(turtle.depth);
 		self.distances.push(turtle.distance);
@@ -158,6 +166,8 @@ impl Drawing {
 		self.headings.push(180. - (180. - turtle.heading).rem_euclid(360.));
 		self.widths.push(turtle.width);
 		self.uvs.push(turtle.uv);
+		self.steps.push(turtle.step);
+		self.kinds.push(kind);
 
 		(self.positions.len() - 1) as u32
 	}
@@ -173,7 +183,7 @@ impl Drawing {
 			}
 		};
 
-		let anchor = self.push_point(&arrival);
+		let anchor = self.push_point(&arrival, DRAWN_KIND);
 		if let Some(slot) = self.anchor_slots.get_mut(turtle.anchor_slot) {
 			*slot = AnchorSlot::Drawn(anchor);
 		}
@@ -201,7 +211,7 @@ impl Drawing {
 			turtle.position = self.positions[first as usize];
 			first
 		} else {
-			self.push_point(&Turtle { width, ..*turtle })
+			self.push_point(&Turtle { width, ..*turtle }, DRAWN_KIND)
 		};
 
 		self.runs[run].push(end);
@@ -229,7 +239,7 @@ impl Drawing {
 			return;
 		}
 
-		let mut references: Vec<u32> = anchors.iter().map(|anchor| self.push_point(anchor)).collect();
+		let mut references: Vec<u32> = anchors.iter().map(|anchor| self.push_point(anchor, DRAWN_KIND)).collect();
 		references.push(references[0]);
 		self.runs.push(references);
 	}
@@ -248,6 +258,8 @@ impl Drawing {
 		vector.0.set_attribute_values(ATTR_HEADING, self.headings);
 		vector.0.set_attribute_values(ATTR_WIDTH, self.widths);
 		vector.0.set_attribute_values(ATTR_UV, self.uvs);
+		vector.0.set_attribute_values(ATTR_STEP, self.steps);
+		vector.0.set_attribute_values(ATTR_KIND, self.kinds);
 
 		let mut segment_id = SegmentId::ZERO;
 		let runs = self.runs.into_iter().filter(|references| references.len() > 1).map(|references| {
@@ -381,11 +393,14 @@ pub(crate) fn turtle_path(commands: &str, settings: &TurtleSettings) -> Item<Vec
 				}
 			}
 			'{' => polygons.push(Vec::new()),
-			'.' => {
-				if let Some(anchors) = polygons.last_mut() {
-					anchors.push(turtle);
+			'.' => match polygons.last_mut() {
+				Some(anchors) => anchors.push(turtle),
+				// Outside a shape, the point joins no path, so it marks a position without drawing anything
+				None => {
+					let kind = number(0).map_or(PLACED_KIND, |kind| kind.round() as i64);
+					drawing.push_point(&turtle, kind);
 				}
-			}
+			},
 			'}' => {
 				if let Some(anchors) = polygons.pop() {
 					drawing.add_polygon(anchors);

@@ -4298,7 +4298,7 @@ mod test {
 
 	#[test]
 	fn vector_to_points_and_open_ends_keep_point_attributes() {
-		use core_types::list::{ATTR_DEPTH, ATTR_HEADING};
+		use core_types::list::{ATTR_DEPTH, ATTR_HEADING, ATTR_KIND};
 
 		// A trunk with a branch to the left, placed 100 px to the right
 		let tree = crate::turtle::turtle_path("F[+F]F", &Default::default()).with_attribute(ATTR_TRANSFORM, DAffine2::from_translation(DVec2::new(100., 0.)));
@@ -4322,6 +4322,16 @@ mod test {
 		// A closed path has no open ends
 		let square = crate::turtle::turtle_path("F+F+F+F", &Default::default());
 		assert_eq!(super::open_ends((), square).len(), 0);
+
+		// A point placed by `.` outside a shape is listed with the anchors, but isn't an open end
+		let marked = crate::turtle::turtle_path("F.(3)", &Default::default());
+		assert_eq!(
+			super::vector_to_points((), marked.clone())
+				.iter_attribute_values::<i64>(ATTR_KIND)
+				.map(|kinds| kinds.copied().collect::<Vec<_>>()),
+			Some(vec![0, 0, 3])
+		);
+		assert_eq!(super::open_ends((), marked).len(), 2);
 	}
 
 	fn convex_hull_of(bezpath: BezPath, transform: DAffine2, curvature: f64) -> Item<Vector> {

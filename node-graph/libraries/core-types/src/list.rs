@@ -135,6 +135,10 @@ pub const ATTR_HEADING: &str = "heading";
 pub const ATTR_WIDTH: &str = "width";
 /// Point's `DVec2` U and V numbers, counted up by `'` and `#`, on a `Vector`'s point pool from Turtle Path.
 pub const ATTR_UV: &str = "uv";
+/// Point's `f64` turtle step length, scaled by `"` and `_`, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_STEP: &str = "step";
+/// Point's `i64` kind set by a `.` outside a shape (default `1`), or `0` for a drawn point, on a `Vector`'s point pool from Turtle Path.
+pub const ATTR_KIND: &str = "kind";
 /// Text item's font size in document-space units (`f64`, implicit default `24.`).
 pub const ATTR_FONT_SIZE: &str = "font_size";
 /// Text item's font, as a `Resource` of the loaded font file.

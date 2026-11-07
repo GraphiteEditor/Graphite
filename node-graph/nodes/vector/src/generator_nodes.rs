@@ -465,9 +465,9 @@ fn grid<T: GridSpacing>(
 ///
 /// `H` and `h` go half a step, drawing or not. `"` and `_` multiply and divide the step from then on, as `;` and `@` do the angle and `!` and `?` the width. `~` turns a random amount, and `T` bends the heading toward the ground. `'` and `#` count up two numbers, U and V, for coloring or anything else downstream.
 ///
-/// `{` begins a filled shape, `.` adds an anchor where the turtle stands, and `}` closes it.
+/// `{` begins a filled shape, `.` adds an anchor where the turtle stands, and `}` closes it. Outside a shape, `.` places a point on no path instead, for **Vector to Points** and **Transform** to copy shapes onto. Its kind is 1, or a number like `.(2)` gives another, so different shapes can go to different points.
 ///
-/// Each point records its branch depth, distance traveled, heading, width, and UV as attributes.
+/// Each point records its branch depth, distance traveled, heading, width, step length, UV, and kind as attributes. Drawn points have a kind of 0.
 #[node_macro::node(category("String"), icon("NodeTurtlePath"))]
 fn turtle_path(
 	_: impl Ctx,
@@ -545,7 +545,7 @@ fn turtle_path(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_SMOOTH, ATTR_UV, ATTR_WIDTH};
+	use core_types::list::{ATTR_DEPTH, ATTR_DISTANCE, ATTR_HEADING, ATTR_KIND, ATTR_SMOOTH, ATTR_STEP, ATTR_UV, ATTR_WIDTH};
 	use kurbo::ParamCurve;
 	use vector_types::vector::misc::point_to_dvec2;
 	use vector_types::vector::shared_paths_from_item_attributes;
@@ -934,6 +934,33 @@ mod tests {
 		let drawing = turtle("F'F#F'(2)F");
 		let expected = [DVec2::ZERO, DVec2::ZERO, DVec2::new(1., 0.), DVec2::new(1., 1.), DVec2::new(3., 1.)];
 		assert_eq!(point_attributes::<DVec2>(&drawing, ATTR_UV), expected);
+	}
+
+	#[test]
+	fn turtle_places_points_of_a_kind_on_no_path() {
+		let drawing = turtle("F[+F.(2)]\"F.");
+
+		// The placed points 3 and 5 join no path, but carry the turtle's state and their kind
+		assert_eq!(turtle_runs(&drawing), [(vec![0, 1, 4], false), (vec![1, 2], false)]);
+		assert_eq!(positions(&drawing)[3], DVec2::new(-10., -10.));
+		assert_eq!(positions(&drawing)[5], DVec2::new(0., -15.));
+		assert_eq!(point_attributes::<i64>(&drawing, ATTR_KIND), [0, 0, 0, 2, 0, 1]);
+		assert_eq!(point_attributes::<i64>(&drawing, ATTR_DEPTH), [0, 0, 1, 1, 0, 0]);
+		assert_eq!(point_attributes::<f64>(&drawing, ATTR_HEADING)[3], 180.);
+		assert_eq!(point_attributes::<f64>(&drawing, ATTR_STEP), [10., 10., 10., 10., 5., 5.]);
+
+		// Inside a shape, `.` adds an anchor, but a branch saved there can return after the shape closes to place a point
+		let shape = turtle("{.f.[+f.+f.}].");
+		assert_eq!(turtle_runs(&shape), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&shape)[4], DVec2::new(0., -10.));
+		assert_eq!(point_attributes::<i64>(&shape, ATTR_KIND), [0, 0, 0, 0, 1]);
+
+		// Several spots saved inside a shape come back last first, one per `]`
+		let saved_twice = turtle("{.f.[+f.[+f.}].].");
+		assert_eq!(turtle_runs(&saved_twice), [(vec![0, 1, 2, 3, 0], true)]);
+		assert_eq!(positions(&saved_twice)[4..], [DVec2::new(-10., -10.), DVec2::new(0., -10.)]);
+		assert_eq!(point_attributes::<i64>(&saved_twice, ATTR_KIND), [0, 0, 0, 0, 1, 1]);
+		assert_eq!(point_attributes::<i64>(&saved_twice, ATTR_DEPTH), [0, 0, 1, 2, 1, 0]);
 	}
 
 	#[test]
