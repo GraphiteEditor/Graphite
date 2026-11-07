@@ -6,6 +6,7 @@ use crate::consts::{GRID_SIZE, WIRE_DRAG_NODE_EXPAND_DELAY_MILLISECONDS};
 use crate::messages::input_mapper::utility_types::pointer::EditorPointerState;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction};
+use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::test_utils::test_prelude::*;
 use graph_craft::document::value::TaggedValue;
@@ -3650,4 +3651,62 @@ async fn dropping_a_map_node_onto_a_wire_keeps_its_wired_mapped_input() {
 		Some(&NodeInput::node(mapped_source, 0))
 	);
 	assert_eq!(network_interface.document_network().nodes.len(), node_count);
+}
+
+/// Pairs of layers in the root network whose boxes in the graph, which span their chains, intersect.
+fn overlapping_layers(editor: &EditorTestUtils) -> Vec<(LayerNodeIdentifier, LayerNodeIdentifier)> {
+	let document = editor.active_document();
+	let layers: Vec<_> = document.metadata().all_layers().collect();
+	let bounds = |layer: LayerNodeIdentifier| document.network_interface.node_bounding_box(&layer.to_node(), &[]).expect("a layer should have a box in the graph");
+
+	let mut overlapping = Vec::new();
+	for (index, &first) in layers.iter().enumerate() {
+		for &second in &layers[index + 1..] {
+			let ([first_min, first_max], [second_min, second_max]) = (bounds(first), bounds(second));
+			if first_min.cmplt(second_max).all() && second_min.cmplt(first_max).all() {
+				overlapping.push((first, second));
+			}
+		}
+	}
+	overlapping
+}
+
+async fn group_selected_layers(editor: &mut EditorTestUtils) {
+	editor
+		.handle_message(DocumentMessage::GroupSelectedLayers {
+			group_folder_type: GroupFolderType::Layer,
+		})
+		.await;
+}
+
+#[tokio::test]
+async fn grouping_the_top_layer_leaves_no_layers_overlapping_in_the_graph() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor.draw_rect(50., 50., 150., 150.).await;
+
+	group_selected_layers(&mut editor).await;
+
+	assert_eq!(overlapping_layers(&editor), Vec::new());
+	assert_invariants(&editor, "after grouping the top layer");
+}
+
+#[tokio::test]
+async fn grouping_a_group_moves_the_layer_below_it_past_all_of_its_contents() {
+	let mut editor = EditorTestUtils::create();
+	editor.new_document().await;
+	editor.draw_rect(0., 0., 100., 100.).await;
+	editor.draw_rect(50., 50., 150., 150.).await;
+	let bottom = editor.active_document().metadata().all_layers().last().expect("the bottom rectangle should be a layer");
+	editor.draw_rect(100., 100., 200., 200.).await;
+	editor.handle_message(DocumentMessage::SelectAllLayers).await;
+	editor.handle_message(NodeGraphMessage::SelectedNodesRemove { nodes: vec![bottom.to_node()] }).await;
+	group_selected_layers(&mut editor).await;
+	assert_eq!(overlapping_layers(&editor), Vec::new(), "grouping the top two layers should leave none overlapping");
+
+	group_selected_layers(&mut editor).await;
+
+	assert_eq!(overlapping_layers(&editor), Vec::new());
+	assert_invariants(&editor, "after grouping a group");
 }
