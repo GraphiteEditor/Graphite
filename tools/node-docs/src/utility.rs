@@ -31,6 +31,7 @@ pub fn category_description(category: &str) -> &str {
 		"Math: Numeric" => "Nodes in this category perform numeric operations such as rounding, clamping, finding minimums and maximums, remapping between ranges, and interpolating.",
 		"Math: Trig" => "Nodes in this category perform trigonometric operations such as sine, cosine, tangent, and their inverses.",
 		"Math: Vec2" => "Nodes in this category perform operations involving `vec2` values (points or arrows in 2D space) such as the dot product, normalization, and distance calculations.",
+		"Math: Units" => "Nodes in this category convert between plain numbers and lengths or angles measured in a chosen unit, such as millimeters, inches, or degrees.",
 		"Data: List" => "Nodes in this category build, reorder, filter, and pick from lists of items, and loop over them to transform each one.",
 		"Data: Context" => "Nodes in this category read data from the evaluation context supplied by downstream nodes, such as the current loop iteration index.",
 		"Data: Animation" => indoc!(

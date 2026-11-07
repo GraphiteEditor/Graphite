@@ -6,6 +6,8 @@ use crate::messages::prelude::*;
 pub enum DialogMessage {
 	// Sub-messages
 	#[child]
+	DocumentSetupDialog(DocumentSetupDialogMessage),
+	#[child]
 	ExportDialog(ExportDialogMessage),
 	#[child]
 	NewDocumentDialog(NewDocumentDialogMessage),
@@ -34,6 +36,7 @@ pub enum DialogMessage {
 		localized_commit_year: String,
 	},
 	RequestDemoArtworkDialog,
+	RequestDocumentSetupDialog,
 	RequestExportDialog,
 	RequestLicensesDialogWithLocalizedCommitDate {
 		localized_commit_year: String,

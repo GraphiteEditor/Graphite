@@ -473,6 +473,12 @@ fn write_ui_network_attributes<M: NodeMetadataSource + ?Sized>(
 			.map_err(map_serialization_error(network::PINNED_ORDER))?;
 	}
 
+	if let Some(pixels_per_inch) = metadata.pixels_per_inch(location) {
+		attributes
+			.set_serialized(network::PIXELS_PER_INCH, &pixels_per_inch, timestamp)
+			.map_err(map_serialization_error(network::PIXELS_PER_INCH))?;
+	}
+
 	Ok(())
 }
 

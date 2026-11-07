@@ -511,6 +511,7 @@ impl NodeNetworkInterface {
 			.into_iter()
 			.chain([
 				NetworkMetadataChange::PinnedOrder(persistent_metadata.pinned_node_order.clone()),
+				NetworkMetadataChange::PixelsPerInch(persistent_metadata.pixels_per_inch),
 				NetworkMetadataChange::ImportMetadata(persistent_metadata.import_metadata.clone()),
 				NetworkMetadataChange::ExportNames(persistent_metadata.export_names.clone()),
 				NetworkMetadataChange::ExportDescriptions(persistent_metadata.export_descriptions.clone()),

@@ -674,6 +674,9 @@ pub struct NodeNetworkPersistentMetadata {
 	/// The display order of pinned nodes in the Inspector (shown when nothing is selected in this network), keyed by node ID.
 	#[serde(default)]
 	pub pinned_node_order: Vec<NodeId>,
+	/// How many pixels make an inch, which sizes lengths typed in a physical unit, or `None` for the default of 96. Only the root network's applies.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub pixels_per_inch: Option<f64>,
 	/// Cached metadata for each node, which is calculated when adding a node to node_metadata
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
 	pub previewing: Previewing,

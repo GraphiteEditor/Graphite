@@ -53,6 +53,7 @@ use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::vector::style::{GradientStops, RenderMode};
 use kurbo::{Affine, BezPath, Line, PathSeg, Shape};
 use std::collections::HashSet;
+use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
@@ -1694,6 +1695,16 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::SetPixelsPerInch { pixels_per_inch } => {
+				if !pixels_per_inch.is_finite() || pixels_per_inch <= 0. || pixels_per_inch == self.network_interface.pixels_per_inch() {
+					return;
+				}
+				self.network_interface.set_pixels_per_inch(pixels_per_inch);
+
+				// Lengths typed in a physical unit change their size in pixels, so the graph runs again
+				responses.add(NodeGraphMessage::RunDocumentGraph);
+				responses.add(InspectorMessage::Refresh);
+			}
 			DocumentMessage::ShowNodeInGraph { node_id } => {
 				// The node is in the document network, so the graph first leaves any nested network it's showing
 				if !self.breadcrumb_network_path.is_empty() {
@@ -3230,7 +3241,10 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn current_hash(&self) -> u64 {
-		self.network_interface.document_network().current_hash()
+		// The resolution lives in the network's metadata rather than the network, but changing it changes the document
+		let mut hasher = std::collections::hash_map::DefaultHasher::new();
+		(self.network_interface.document_network().current_hash(), self.network_interface.pixels_per_inch().to_bits()).hash(&mut hasher);
+		hasher.finish()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {

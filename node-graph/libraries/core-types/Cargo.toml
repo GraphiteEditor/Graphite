@@ -24,6 +24,7 @@ wasm = ["tsify", "wasm-bindgen"]
 [dependencies]
 # Local dependencies
 graphene-hash = { workspace = true, features = ["derive"] }
+math-parser = { workspace = true }
 
 # Workspace dependencies
 color = { workspace = true }

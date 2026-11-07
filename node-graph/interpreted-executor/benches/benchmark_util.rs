@@ -13,7 +13,12 @@ pub fn setup_network(name: &str) -> (DynamicExecutor, OutputHandle, ProtoNetwork
 		.unwrap()
 		.network;
 	let editor_api = std::sync::Arc::new(EditorApi::default());
-	let mut network = wrap_network_in_scope(network, editor_api, AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle());
+	let mut network = wrap_network_in_scope(
+		network,
+		editor_api,
+		AsyncRuntime::new(std::sync::Arc::new(DummySpawner)).handle(),
+		graphene_std::units::DEFAULT_PIXELS_PER_INCH,
+	);
 	let preprocessor = preprocessor::Preprocessor::new();
 	preprocessor.preprocess(&mut network, &|_| None).unwrap();
 	let proto_network = compile(network);

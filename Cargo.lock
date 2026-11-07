@@ -1226,6 +1226,7 @@ dependencies = [
  "kurbo",
  "log",
  "lyon_geom",
+ "math-parser",
  "node-macro",
  "num-derive",
  "num-traits",

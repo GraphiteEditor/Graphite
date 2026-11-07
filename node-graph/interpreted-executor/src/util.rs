@@ -9,7 +9,9 @@ use graphene_std::RuntimeHandle;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
-pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, runtime: RuntimeHandle) -> NodeNetwork {
+/// Wraps the document network in the scope the runtime supplies: the editor API, the async runtime, and the pixels per inch that
+/// sizes lengths typed in a physical unit.
+pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformEditorApi>, runtime: RuntimeHandle, pixels_per_inch: f64) -> NodeNetwork {
 	let definitions = std::mem::take(&mut network.definitions);
 
 	let inner_network = DocumentNode {
@@ -128,10 +130,16 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<PlatformE
 			inputs: vec![NodeInput::value(TaggedValue::Runtime(runtime), false)],
 			..Default::default()
 		},
+		DocumentNode {
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_std::ops::passthrough::IDENTIFIER),
+			inputs: vec![NodeInput::value(TaggedValue::Number(pixels_per_inch), false)],
+			..Default::default()
+		},
 	];
 	let scope_injections = vec![
 		("editor-api".to_string(), (NodeId(2), item!(Arc<PlatformEditorApi>))),
 		("runtime".to_string(), (NodeId(3), item!(RuntimeHandle))),
+		(graphene_std::units::PIXELS_PER_INCH_SCOPE.to_string(), (NodeId(4), item!(f64))),
 	];
 
 	NodeNetwork {

@@ -111,6 +111,10 @@ impl NodeMetadataSource for StorageMetadataView<'_> {
 	fn pinned_order(&self, network: NetworkLocation) -> Vec<NodeId> {
 		self.network_persistent(network).map(|persistent| persistent.pinned_node_order.clone()).unwrap_or_default()
 	}
+
+	fn pixels_per_inch(&self, network: NetworkLocation) -> Option<f64> {
+		self.network_persistent(network)?.pixels_per_inch
+	}
 }
 
 impl DocumentSettings<'_> {
@@ -307,6 +311,7 @@ fn apply_network_entries_into_tree(metadata: &mut NodeNetworkMetadata, entries: 
 			network_metadata.persistent_metadata.reference = Some(reference);
 		}
 		network_metadata.persistent_metadata.pinned_node_order = entry.pinned_order;
+		network_metadata.persistent_metadata.pixels_per_inch = entry.pixels_per_inch;
 		network_metadata.persistent_metadata.import_metadata = entry.import_metadata.into_iter().map(input_metadata_entry_to_runtime).collect();
 		network_metadata.persistent_metadata.export_names = entry.export_names;
 		network_metadata.persistent_metadata.export_descriptions = entry.export_descriptions;

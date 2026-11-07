@@ -38,6 +38,8 @@ pub struct NetworkMetadataEntry {
 	pub import_metadata: Vec<InputMetadataEntry>,
 	pub export_names: Vec<String>,
 	pub export_descriptions: Vec<String>,
+	/// The document's pixels per inch, where it differs from the default.
+	pub pixels_per_inch: Option<f64>,
 }
 
 /// Editor metadata for one import of a subgraph. Mirrors `InputPersistentMetadata` but wraps strings in `Option` so
@@ -76,6 +78,11 @@ pub trait NodeMetadataSource {
 	/// The display order of the network's pinned nodes.
 	fn pinned_order(&self, _network: NetworkLocation) -> Vec<RuntimeNodeId> {
 		Vec::new()
+	}
+
+	/// The network's pixels per inch, where it differs from the default.
+	fn pixels_per_inch(&self, _network: NetworkLocation) -> Option<f64> {
+		None
 	}
 
 	fn import_metadata(&self, _network: NetworkLocation) -> Vec<InputMetadataEntry> {

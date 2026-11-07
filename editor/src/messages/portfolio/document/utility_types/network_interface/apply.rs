@@ -105,6 +105,7 @@ impl NodeNetworkInterface {
 				match change {
 					NetworkMetadataChange::Reference(reference) => network.set_reference(reference.clone()),
 					NetworkMetadataChange::PinnedOrder(order) => network.set_pinned_order(order.clone()),
+					NetworkMetadataChange::PixelsPerInch(pixels_per_inch) => network.set_pixels_per_inch(*pixels_per_inch),
 					NetworkMetadataChange::ImportMetadata(import_metadata) => network.set_import_metadata(import_metadata.clone()),
 					NetworkMetadataChange::ExportNames(export_names) => network.set_export_names(export_names.clone()),
 					NetworkMetadataChange::ExportDescriptions(export_descriptions) => network.set_export_descriptions(export_descriptions.clone()),

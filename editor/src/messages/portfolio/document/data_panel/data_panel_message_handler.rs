@@ -25,6 +25,7 @@ use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::Footprint;
 use graphene_std::transform::{ReferencePoint, ScaleType};
+use graphene_std::units::{Angle, Length};
 use graphene_std::vector::misc::{
 	ArcType, BooleanOperation, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod,
 	WeldMethod,
@@ -401,6 +402,8 @@ macro_rules! inspectable_types {
 			List<Generator>,
 			List<String>,
 			List<f64>,
+			List<Length>,
+			List<Angle>,
 			List<i64>,
 			List<bool>,
 			List<DVec2>,
@@ -461,6 +464,8 @@ macro_rules! inspectable_types {
 			Item<Generator>,
 			Item<String>,
 			Item<f64>,
+			Item<Length>,
+			Item<Angle>,
 			Item<i64>,
 			Item<bool>,
 			Item<DVec2>,
@@ -1094,6 +1099,30 @@ impl TableItemLayout for f64 {
 	}
 	fn identifier(&self) -> String {
 		format_f64(round_away_float_noise(*self))
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+	}
+}
+
+impl TableItemLayout for Length {
+	fn type_name() -> &'static str {
+		"Length"
+	}
+	fn identifier(&self) -> String {
+		format!("{} px", format_f64(round_away_float_noise(self.pixels())))
+	}
+	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
+		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]
+	}
+}
+
+impl TableItemLayout for Angle {
+	fn type_name() -> &'static str {
+		"Angle"
+	}
+	fn identifier(&self) -> String {
+		format!("{}°", format_f64(round_away_float_noise(self.degrees())))
 	}
 	fn value_widgets(&self, _target: PathStep, _data: &LayoutData) -> Vec<WidgetInstance> {
 		vec![TextLabel::new(self.identifier()).selectable(true).narrow(true).widget_instance()]

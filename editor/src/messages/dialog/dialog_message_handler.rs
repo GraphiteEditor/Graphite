@@ -16,6 +16,7 @@ pub struct DialogMessageContext<'a> {
 pub struct DialogMessageHandler {
 	on_dismiss: Option<Message>,
 	redisplay: Option<Message>,
+	document_setup_dialog: DocumentSetupDialogMessageHandler,
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
 	preferences_dialog: PreferencesDialogMessageHandler,
@@ -27,6 +28,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 		let DialogMessageContext { portfolio, preferences } = context;
 
 		match message {
+			DialogMessage::DocumentSetupDialog(message) => self.document_setup_dialog.process_message(message, responses, ()),
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
 			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
@@ -99,6 +101,15 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = DemoArtworkDialog;
 				dialog.send_dialog_to_frontend(responses);
+			}
+			DialogMessage::RequestDocumentSetupDialog => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
+				if let Some(document) = portfolio.active_document() {
+					self.document_setup_dialog = DocumentSetupDialogMessageHandler {
+						pixels_per_inch: document.network_interface.pixels_per_inch(),
+					};
+					self.document_setup_dialog.send_dialog_to_frontend(responses);
+				}
 			}
 			DialogMessage::RequestExportDialog => {
 				self.on_dismiss = Some(DialogMessage::Close.into());

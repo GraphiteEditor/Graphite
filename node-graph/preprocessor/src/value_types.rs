@@ -81,12 +81,14 @@ impl Preprocessor {
 				(NodeId(0), content),
 				(NodeId(1), scope_stand_in(item!(Arc<PlatformEditorApi>))),
 				(NodeId(2), scope_stand_in(item!(RuntimeHandle))),
+				(NodeId(3), scope_stand_in(item!(f64))),
 			]
 			.into_iter()
 			.collect(),
 			scope_injections: [
 				("editor-api".to_string(), (NodeId(1), item!(Arc<PlatformEditorApi>))),
 				("runtime".to_string(), (NodeId(2), item!(RuntimeHandle))),
+				(graphene_std::units::PIXELS_PER_INCH_SCOPE.to_string(), (NodeId(3), item!(f64))),
 			]
 			.into_iter()
 			.collect(),

@@ -1,5 +1,6 @@
 use crate::grid_topology::Lattice;
 use core_types::list::{Item, List};
+use core_types::units::Length;
 use core_types::{CacheHash, Ctx};
 use dyn_any::DynAny;
 use glam::DVec2;
@@ -10,15 +11,9 @@ use vector_types::vector::misc::SpiralType;
 use vector_types::vector::misc::{ArcType, BoxCorners, GridTopology, GridType};
 
 /// Generates a circle shape with a chosen radius.
-#[node_macro::node(category("Vector: Geometry"), icon("NodeCircle"))]
-fn circle(
-	_: impl Ctx,
-	_primary: (),
-	#[unit(" px")]
-	#[default(50.)]
-	radius: Item<f64>,
-) -> Item<Vector> {
-	let radius = radius.element().abs();
+#[node_macro::node(category("Vector: Geometry"), icon("NodeCircle"), version(2))]
+fn circle(_: impl Ctx, _primary: (), #[default(50.)] radius: Item<Length>) -> Item<Vector> {
+	let radius = radius.element().pixels().abs();
 	Vector::item_from_bezpath(&shapes::ellipse_bezpath(DVec2::splat(-radius), DVec2::splat(radius)))
 }
 

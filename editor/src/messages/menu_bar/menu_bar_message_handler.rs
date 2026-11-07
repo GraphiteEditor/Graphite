@@ -181,6 +181,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| DialogMessage::RequestExportDialog.into())
 							.disabled(no_active_document),
 					],
+					vec![
+						MenuListEntry::new("Document Setup…")
+							.label("Document Setup…")
+							.icon("Settings")
+							.on_commit(|_| DialogMessage::RequestDocumentSetupDialog.into())
+							.disabled(no_active_document),
+					],
 					#[cfg(not(target_os = "macos"))]
 					vec![preferences],
 				])

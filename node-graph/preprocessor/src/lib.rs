@@ -123,6 +123,21 @@ impl Preprocessor {
 							id
 						})
 					}
+					// A length typed in a physical unit is sized in pixels by the resolution the document's scope supplies
+					TaggedValue::Length(length) if length.unit.is_physical() => {
+						let id = producer_node_id(&graphene_std::math_nodes::units::number_to_length::IDENTIFIER, (consumer_id, input_index));
+						let conversion = DocumentNode {
+							inputs: vec![
+								NodeInput::value(TaggedValue::Number(length.value), false),
+								NodeInput::value(TaggedValue::LengthUnit(length.unit), false),
+								NodeInput::scope(graphene_std::units::PIXELS_PER_INCH_SCOPE),
+							],
+							implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::units::number_to_length::IDENTIFIER),
+							..Default::default()
+						};
+						new_nodes.push((id, conversion));
+						id
+					}
 					TaggedValue::AnimationCurve(curve) => {
 						let id = producer_node_id(&graphene_core::animation::evaluate_curve::IDENTIFIER, (consumer_id, input_index));
 						let curve_node = DocumentNode {

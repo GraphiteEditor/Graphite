@@ -124,6 +124,8 @@ pub struct GraphUpdate {
 	pub(super) layers: Vec<Vec<NodeId>>,
 	/// The connectors whose values are sent back after each evaluation, replacing those observed before.
 	pub(super) observations: HashMap<ObservationKey, Observation>,
+	/// The document's pixels per inch, which sizes lengths typed in a physical unit.
+	pub(super) pixels_per_inch: f64,
 }
 
 /// Replaces each network's primary export with its previewed node.
@@ -240,6 +242,7 @@ impl NodeRuntime {
 			previewed,
 			layers,
 			observations,
+			pixels_per_inch,
 		}) = graph
 		else {
 			return;
@@ -252,7 +255,7 @@ impl NodeRuntime {
 
 		self.node_graph_errors.clear();
 		self.node_graph_warnings.clear();
-		let result = self.update_network(network.clone());
+		let result = self.update_network(network.clone(), pixels_per_inch);
 		self.compile_failed = result.is_err();
 		if result.is_ok() {
 			self.thumbnails.update_sources(&layers, &network, &self.executor);
@@ -521,8 +524,8 @@ impl NodeRuntime {
 		Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await
 	}
 
-	fn update_network(&mut self, graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
-		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle());
+	fn update_network(&mut self, graph: NodeNetwork, pixels_per_inch: f64) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
+		let mut scoped_network = wrap_network_in_scope(graph, self.editor_api.clone(), self.async_runtime().handle(), pixels_per_inch);
 
 		if let Err(e) = self.preprocessor.preprocess(&mut scoped_network, &|resource_id| self.resources.hash(&resource_id)) {
 			return Err((ResolvedDocumentNodeTypesDelta::default(), e.to_string()));

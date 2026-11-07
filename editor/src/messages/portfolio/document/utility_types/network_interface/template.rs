@@ -291,6 +291,7 @@ impl NodeTemplateImplementation {
 						reference,
 						node_metadata,
 						pinned_node_order,
+						pixels_per_inch: None,
 						previewing,
 						navigation_metadata,
 						selection_undo_history: Default::default(),

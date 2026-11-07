@@ -95,7 +95,7 @@ pub async fn editor_api(gdd: Option<&GddV1>) -> (Arc<PlatformApplicationIo>, Arc
 /// Compile `network`, writing the path of each of its `layers` onto what that layer renders.
 pub fn compile_graph(mut network: NodeNetwork, layers: &[Vec<NodeId>], editor_api: Arc<PlatformEditorApi>, gdd: Option<&GddV1>, runtime: RuntimeHandle) -> Result<ProtoNetwork, Box<dyn Error>> {
 	write_layer_paths(&mut network, layers);
-	let mut network = wrap_network_in_scope(network, editor_api, runtime);
+	let mut network = wrap_network_in_scope(network, editor_api, runtime, graphene_std::units::DEFAULT_PIXELS_PER_INCH);
 
 	let preprocessor = preprocessor::Preprocessor::new();
 	let preprocessed = match gdd {

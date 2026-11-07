@@ -296,6 +296,29 @@ fn pinned_order_round_trips_through_the_registry() {
 	);
 }
 
+/// The document's resolution is shared document state, so it survives a registry round trip, and the default is stored as its absence.
+#[test]
+fn pixels_per_inch_round_trips_through_the_registry() {
+	let round_trip = |pixels_per_inch: f64| {
+		let mut document = open_demo("changing-seasons.graphite");
+		document.network_interface.set_pixels_per_inch(pixels_per_inch);
+
+		let network = document.network_interface.document_network().clone();
+		let view = StorageMetadataView::new(&document.network_interface);
+		let conversion = Registry::convert_from_runtime(&network, &view, &Default::default(), PeerId(0)).expect("convert_from_runtime failed");
+		let declarations = conversion.declarations;
+		let (rebuilt_network, node_entries, network_entries) = conversion.registry.to_runtime_with_full_metadata(&declarations, &conversion.blob_bytes).expect("to_runtime failed");
+		let rebuilt = build_interface_from_storage(rebuilt_network, node_entries, network_entries);
+		(
+			rebuilt.pixels_per_inch(),
+			rebuilt.network_metadata(&[]).expect("the rebuilt document network should resolve").persistent_metadata.pixels_per_inch,
+		)
+	};
+
+	assert_eq!(round_trip(300.), (300., Some(300.)));
+	assert_eq!(round_trip(96.), (96., None));
+}
+
 /// Per-peer view settings (`ui::doc::*`) survive the `session.json` round-trip: serialize them into
 /// the view map, then apply it onto a fresh handler and confirm each field matches.
 #[test]

@@ -57,6 +57,10 @@ pub mod network {
 	pub const IMPORT_METADATA: &str = "ui::import_metadata";
 	pub const EXPORT_NAMES: &str = "ui::export_names";
 	pub const EXPORT_DESCRIPTIONS: &str = "ui::export_descriptions";
+
+	/// How many pixels make an inch in the network's document, which sizes lengths typed in a physical unit. Absent where it
+	/// is the default, CSS's 96. Only the root network's applies.
+	pub const PIXELS_PER_INCH: &str = "pixels_per_inch";
 }
 
 pub mod delta {

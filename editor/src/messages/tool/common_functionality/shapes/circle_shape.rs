@@ -12,6 +12,7 @@ use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::units::TypedLength;
 
 #[derive(Clone, Debug, Default)]
 pub struct CircleGizmoHandler {
@@ -108,7 +109,7 @@ impl Circle {
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::circle::RadiusInput),
-			input: NodeInput::value(TaggedValue::Number(radius), false),
+			input: NodeInput::value(TaggedValue::Length(TypedLength::pixels(radius)), false),
 		});
 
 		responses.add(window_aligned_transform_set(document, layer, start.midpoint(end), DVec2::ONE));

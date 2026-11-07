@@ -417,16 +417,20 @@ impl LayoutMessageHandler {
 					}
 					// A text-field commit sends the user's raw entry as a math expression to evaluate and validate.
 					Value::String(expression) => {
-						let Some(evaluated) = evaluate_and_validate_number_input(&expression, number_input) else { return };
+						let Some((evaluated, kept_unit)) = evaluate_and_validate_number_input(&expression, number_input) else {
+							return;
+						};
+						let unit = kept_unit.map_or_else(|| number_input.unit.clone(), |symbol| unit_suffix(&symbol));
 
 						// Skip the update (and its history transaction) when the value is unchanged, since the network interface would short-circuit it anyway.
-						if number_input.value == Some(evaluated) {
+						if number_input.value == Some(evaluated) && number_input.unit == unit {
 							return;
 						}
 
 						// Snapshot the pre-change state for undo via `on_commit`, then apply the new value via `on_update`.
 						responses.add((number_input.on_commit.callback)(&()));
 						number_input.value = Some(evaluated);
+						number_input.unit = unit;
 						responses.add((number_input.on_update.callback)(number_input));
 					}
 					// The increment arrows send `{ "increment": "Increase" | "Decrease" }` to invoke the backend's directional step callback.
@@ -704,30 +708,41 @@ fn populate_computed_display_fields(layout: &mut Layout) {
 	}
 }
 
-/// Evaluates a math expression committed in a `NumberInput`'s text field, then clamps and rounds it to the widget's constraints.
-/// Returns `None` if the expression fails to parse, fails to evaluate, or yields a non-real number (such as `sqrt(-1)`).
-fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInput) -> Option<f64> {
-	let value = math_parser::evaluate(expression)
+/// The suffix a field shows after a number in this unit: a space before a word like `mm`, and none before a symbol like `°` or `%`.
+pub fn unit_suffix(symbol: &str) -> String {
+	if symbol.starts_with(char::is_alphabetic) { format!(" {symbol}") } else { symbol.to_string() }
+}
+
+/// Evaluates a math expression committed in a `NumberInput`'s text field, then clamps and rounds it to the widget's constraints, giving
+/// the unit it keeps where the field keeps the unit a value is typed in. Returns `None` if the expression fails to parse, fails to
+/// evaluate, yields a non-real number (such as `sqrt(-1)`), or measures something the field doesn't (such as `5s` in a length field).
+fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInput) -> Option<(f64, Option<String>)> {
+	let context = math_parser::context::EvalContext::default().with_pixels_per_inch(number_input.pixels_per_inch);
+	let value = math_parser::ast::Node::try_parse_from_str(expression)
 		.inspect_err(|err| error!("Math parser error on \"{expression}\": {err}"))
 		.ok()?
+		.eval(&context)
 		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err}"))
 		.ok()?;
 
 	// The result reads in the field's unit, where a plain number is already in it and a unit like `mm` converts into it
 	let field_unit = math_parser::units::Unit::named(number_input.unit.trim());
-	let real = match (value.as_quantity(), field_unit) {
-		(Some(quantity), Some(unit)) => quantity
-			.read_in(unit, math_parser::units::DEFAULT_PIXELS_PER_INCH)
-			.inspect_err(|_| error!("\"{expression}\" is {}, which a field in `{unit}` can't hold", quantity.dimension().description()))
-			.ok()?
-			.as_real()?,
-		_ => value.as_real()?,
+	let (in_field_unit, quantity) = match (value.as_quantity(), field_unit) {
+		(Some(quantity), Some(unit)) => {
+			let read = quantity
+				.read_in(unit, number_input.pixels_per_inch)
+				.inspect_err(|_| error!("\"{expression}\" is {}, which a field in `{unit}` can't hold", quantity.dimension().description()))
+				.ok()?
+				.as_real()?;
+			(read, Some(*quantity))
+		}
+		_ => (value.as_real()?, None),
 	};
-	if real.is_nan() {
+	if in_field_unit.is_nan() {
 		return None;
 	}
 
-	let mut validated = real;
+	let mut validated = in_field_unit;
 	if let Some(min) = number_input.min {
 		validated = validated.max(min);
 	}
@@ -738,5 +753,17 @@ fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInp
 		validated = validated.round();
 	}
 
-	Some(validated)
+	// A value typed in a unit the field keeps stays in it, unless the field's limits moved it
+	let kept_unit = quantity.and_then(|quantity| {
+		let symbol = quantity.unit.single()?.definition().symbol;
+		number_input.kept_units.iter().any(|kept| kept == symbol).then_some((quantity, symbol))
+	});
+	if let Some((quantity, symbol)) = kept_unit
+		&& validated == in_field_unit
+		&& let Some(kept_value) = quantity.value.as_real()
+	{
+		return Some((kept_value, Some(symbol.to_string())));
+	}
+
+	Some((validated, None))
 }

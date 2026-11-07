@@ -247,6 +247,14 @@ pub struct NumberInput {
 	#[serde(rename = "unitIsHiddenWhenEditing")]
 	#[derivative(Default(value = "true"))]
 	pub unit_is_hidden_when_editing: bool,
+	/// The units, by symbol, that a typed value keeps rather than converting into the field's `unit`, like `mm` in a length field
+	/// that remembers the unit a length was typed in. A kept unit becomes the field's `unit`.
+	#[serde(skip)]
+	pub kept_units: Vec<String>,
+	/// The size of a pixel against an inch for converting a typed physical length, the document's resolution.
+	#[serde(skip)]
+	#[derivative(Default(value = "96."))]
+	pub pixels_per_inch: f64,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

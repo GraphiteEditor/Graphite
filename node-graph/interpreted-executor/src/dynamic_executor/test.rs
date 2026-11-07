@@ -231,7 +231,7 @@ fn generator_frames_over_a_list_parameter() {
 
 	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![10., 20., 30.]).into()), vec![NodeId(1)]);
 	let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
+	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<Length>");
 
 	let mut circle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
 	circle_node.identifier = graphene_std::vector_nodes::circle::IDENTIFIER;
@@ -415,7 +415,7 @@ fn as_graphic_converts_a_vector_list_element_wise() {
 	let radii = ProtoNode::value(ConstructionArgs::Value(TaggedValue::Numbers(vec![10., 20.]).into()), vec![NodeId(1)]);
 
 	let mut radius_adapter = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(1)]), vec![NodeId(2)]);
-	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<f64>");
+	radius_adapter.identifier = ProtoNodeIdentifier::new("input_adapter<Length>");
 
 	let mut circle_node = ProtoNode::value(ConstructionArgs::Nodes(vec![NodeId(0), NodeId(2)]), vec![NodeId(3)]);
 	circle_node.identifier = graphene_std::vector_nodes::circle::IDENTIFIER;

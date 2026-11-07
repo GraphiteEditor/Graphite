@@ -203,6 +203,7 @@ pub const CATEGORY_ORDER: &[&str] = &[
 	"Math: Numeric",
 	"Math: Trig",
 	"Math: Vec2",
+	"Math: Units",
 	"Data: List",
 	"Data: Context",
 	"Data: Animation",

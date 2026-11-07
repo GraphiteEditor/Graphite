@@ -538,6 +538,16 @@ impl NetworkMut<'_> {
 		changed
 	}
 
+	/// How many pixels make an inch in the document, or `None` for the default.
+	pub(crate) fn set_pixels_per_inch(&mut self, pixels_per_inch: Option<f64>) -> bool {
+		let changed = self.metadata.pixels_per_inch != pixels_per_inch;
+		self.metadata.pixels_per_inch = pixels_per_inch;
+		if changed {
+			self.emit(NetworkMetadataChange::PixelsPerInch(pixels_per_inch));
+		}
+		changed
+	}
+
 	/// The display order of pinned nodes in the Inspector.
 	pub(crate) fn set_pinned_order(&mut self, pinned_node_order: Vec<NodeId>) -> bool {
 		let changed = self.metadata.pinned_node_order != pinned_node_order;

@@ -20,6 +20,8 @@ use rand::{RngExt, SeedableRng};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
+pub mod units;
+
 /// Why a math node's expression or operator gives no result.
 #[derive(Debug, thiserror::Error)]
 pub enum MathExpressionError {

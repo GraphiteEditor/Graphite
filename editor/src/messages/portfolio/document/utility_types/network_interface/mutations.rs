@@ -1254,6 +1254,19 @@ impl NodeNetworkInterface {
 		self.transaction_modified();
 	}
 
+	/// Sets how many pixels make an inch in the document, stored only where it differs from the default.
+	pub fn set_pixels_per_inch(&mut self, pixels_per_inch: f64) {
+		let stored = (pixels_per_inch != graphene_std::units::DEFAULT_PIXELS_PER_INCH).then_some(pixels_per_inch);
+
+		let Some(mut network) = self.network_mut(&[]) else {
+			log::error!("Could not get the root network in set_pixels_per_inch");
+			return;
+		};
+		network.set_pixels_per_inch(stored);
+
+		self.transaction_modified();
+	}
+
 	pub fn set_visibility(&mut self, node_id: &NodeId, network_path: &[NodeId], is_visible: bool) {
 		let Some(mut node) = self.node_mut(NodeLocator::new(*node_id, network_path)) else {
 			log::error!("Could not get node {node_id} in set_visibility");

@@ -417,6 +417,7 @@ fn extract_network_metadata(registry: &Registry, attributes: &crate::Attributes,
 		import_metadata: attributes.get_or_default(network::IMPORT_METADATA),
 		export_names: attributes.get_or_default(network::EXPORT_NAMES),
 		export_descriptions: attributes.get_or_default(network::EXPORT_DESCRIPTIONS),
+		pixels_per_inch: attributes.get_typed(network::PIXELS_PER_INCH),
 	}
 }
 

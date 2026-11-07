@@ -421,11 +421,7 @@ pub fn pointer_travel_per_radian(layer_to_viewport: DAffine2, pointer: DVec2) ->
 pub fn extract_circle_radius(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<f64> {
 	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::circle::IDENTIFIER))?;
 
-	let Some(&TaggedValue::Number(radius)) = node_inputs.get(1)?.as_value() else {
-		return None;
-	};
-
-	Some(radius)
+	node_inputs.get(1)?.as_value()?.as_length_pixels(document.network_interface.pixels_per_inch())
 }
 
 /// Calculate the viewport position of as a star vertex given its index

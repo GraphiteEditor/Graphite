@@ -128,8 +128,16 @@ impl NodeNetworkInterface {
 		});
 
 		let mut hasher = std::hash::DefaultHasher::new();
-		(self.network.current_hash(), self.previewed_nodes(), layers_hash).hash(&mut hasher);
+		(self.network.current_hash(), self.previewed_nodes(), layers_hash, self.pixels_per_inch().to_bits()).hash(&mut hasher);
 		hasher.finish()
+	}
+
+	/// How many pixels make an inch in the document, which sizes the lengths typed in a physical unit.
+	pub fn pixels_per_inch(&self) -> f64 {
+		self.network_metadata(&[])
+			.and_then(|metadata| metadata.persistent_metadata.pixels_per_inch)
+			.filter(|pixels_per_inch| pixels_per_inch.is_finite() && *pixels_per_inch > 0.)
+			.unwrap_or(graphene_std::units::DEFAULT_PIXELS_PER_INCH)
 	}
 
 	/// Get the specified document node in the nested network based on node_id and network_path

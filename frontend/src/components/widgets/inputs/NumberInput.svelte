@@ -75,6 +75,9 @@
 	let inputRangeElement: HTMLInputElement | undefined;
 	let text = exact ?? displayText(value, unit);
 	let editing = false;
+
+	// While editing, the unit a number typed without one is read in shows faintly after the text
+	$: ghostUnit = editing && exact === undefined && unit.trim() !== "" && !endsInUnit(text) ? unit : "";
 	let isDragging = false;
 	let pressingArrow = false;
 	let repeatTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
@@ -118,7 +121,7 @@
 	let sliderAbortTimeout1: ReturnType<typeof setTimeout> | undefined;
 	let sliderAbortTimeout2: ReturnType<typeof setTimeout> | undefined;
 
-	$: watchValue(value, unit);
+	$: watchValue(value, unit, min, max);
 	$: if (exact !== undefined && !editing) text = exact;
 	$: present = exact !== undefined || value !== undefined;
 	// A number of only one digit, like `0` or `-1`, has no other digit to move the underline to, so it isn't shown
@@ -176,8 +179,8 @@
 	// TRACKING AND UPDATING THE VALUE
 	// ===============================
 
-	// Called only when `value` is changed from outside this component.
-	function watchValue(value: number | undefined, unit: string) {
+	// Called only when `value`, its unit, or its bounds are changed from outside this component.
+	function watchValue(value: number | undefined, unit: string, min: number | undefined, max: number | undefined) {
 		// Don't update if the slider is currently being dragged (we don't want the backend fighting with the user's drag)
 		if (rangeSliderClickDragState === "Dragging") return;
 
@@ -379,6 +382,11 @@
 	function numberText(number: number): string {
 		if (Math.abs(number) === Infinity) return number < 0 ? "-∞" : "∞";
 		return `${number}`;
+	}
+
+	// Whether typed text ends in a unit (or a name), so no unit is assumed after it
+	function endsInUnit(typed: string): boolean {
+		return /[\p{L}%°'"]\s*$/u.test(typed);
 	}
 
 	// Removes the trailing "s" from a unit if the quantity is 1.
@@ -1002,6 +1010,9 @@
 			>{text.slice(markedDigit + 1)}</span
 		>
 	{/if}
+	{#if ghostUnit}
+		<span class="ghost-unit">{text}<span class="unit">{ghostUnit}</span></span>
+	{/if}
 	{#if present}
 		{#if mode === "Increment" && incrementBehavior !== "None"}
 			<button
@@ -1101,6 +1112,24 @@
 
 		input[type="text"]:focus ~ .digit-mark {
 			display: none;
+		}
+
+		// Laid out like the field's text while it's edited, which it mirrors in transparent characters before the faint unit
+		.ghost-unit {
+			position: absolute;
+			inset: 0;
+			margin: 0 8px;
+			padding: 3px 0;
+			line-height: calc(var(--widget-height) - 6px);
+			text-align: left;
+			white-space: pre;
+			overflow: hidden;
+			color: transparent;
+			pointer-events: none;
+
+			.unit {
+				color: var(--color-8-uppergray);
+			}
 		}
 
 		// A disabled field's underline only marks the stepped digit, with no press target to hover or drag

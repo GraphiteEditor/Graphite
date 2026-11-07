@@ -143,6 +143,9 @@ impl NodeNetworkInterface {
 		if current_metadata.pinned_node_order != target.metadata.pinned_order {
 			deltas.push(change(NetworkMetadataChange::PinnedOrder(target.metadata.pinned_order.clone())));
 		}
+		if current_metadata.pixels_per_inch != target.metadata.pixels_per_inch {
+			deltas.push(change(NetworkMetadataChange::PixelsPerInch(target.metadata.pixels_per_inch)));
+		}
 		// An empty list states nothing, since a catalog entry's interface comes from the catalog rather than storage
 		let import_metadata: Vec<_> = target.metadata.import_metadata.iter().cloned().map(input_metadata_entry_to_runtime).collect();
 		if !import_metadata.is_empty() && current_metadata.import_metadata != import_metadata {

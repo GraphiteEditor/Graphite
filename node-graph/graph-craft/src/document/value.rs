@@ -6,6 +6,7 @@ use core_types::color::SRGBA8;
 use core_types::list::{Item, List, NodeIdPath};
 use core_types::transfer_curve::TransferCurve;
 use core_types::transform::Footprint;
+use core_types::units::{Angle, AngleUnit, DEFAULT_PIXELS_PER_INCH, Length, LengthUnit, TypedAngle, TypedLength};
 use core_types::{CacheHash, Color, ContextModification, MemoHash, Node, Poll, RuntimeHandle, SourceId, Type, TypeDescriptor};
 pub use dyn_any::StaticType;
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
@@ -83,6 +84,11 @@ macro_rules! tagged_value {
 			BoxCorners(Vec<f64>),
 			/// Stored compactly as a `Vec<DVec2>` of control points, materializes as an `Item<TransferCurve>` at runtime via `to_dynany`/`to_any`.
 			TransferCurve(Vec<DVec2>),
+			/// A length in the unit it was typed in, materializing as an `Item<Length>` in pixels. A physical unit needs the document's resolution,
+			/// so the preprocessor replaces it with a conversion node reading that from the scope.
+			Length(TypedLength),
+			/// An angle in the unit it was typed in, materializing as an `Item<Angle>`.
+			Angle(TypedAngle),
 			/// Stored as the `GradientRamp` exchange struct (nested `{ stops: { color, position?, midpoint? } }`), materializing as an `Item<Gradient>` at runtime. Aliases recover legacy on-disk shapes.
 			/// (Old documents stored flat stops, a tuple list, or the ancient full `Gradient` struct under the legacy `"Gradient"` tag, all routed by `deserialize_tagged_value_with_legacy_migration`.)
 			#[serde(alias = "Gradient", alias = "GradientTable", alias = "GradientPositions", alias = "GradientStops")]
@@ -132,6 +138,8 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => lengths.cache_hash(state),
 					Self::BoxCorners(values) => values.cache_hash(state),
 					Self::TransferCurve(points) => points.cache_hash(state),
+					Self::Length(length) => length.cache_hash(state),
+					Self::Angle(angle) => angle.cache_hash(state),
 					Self::GradientRamp(ramp) => ramp.cache_hash(state),
 					Self::Strokes(strokes) => strokes.cache_hash(state),
 					Self::BrushCache(cache) => cache.cache_hash(state),
@@ -189,6 +197,8 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Box::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Box::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::TransferCurve(points) => Box::new(Item::new_from_element(TransferCurve::from(points))),
+					Self::Length(length) => Box::new(Item::new_from_element(length.to_length(DEFAULT_PIXELS_PER_INCH))),
+					Self::Angle(angle) => Box::new(Item::new_from_element(angle.to_angle())),
 					Self::GradientRamp(ramp) => Box::new(Item::<Gradient>::from(ramp)),
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -249,6 +259,8 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => Arc::new(Item::new_from_element(DashPattern::from(lengths))),
 					Self::BoxCorners(values) => Arc::new(Item::new_from_element(BoxCorners::from(values))),
 					Self::TransferCurve(points) => Arc::new(Item::new_from_element(TransferCurve::from(points))),
+					Self::Length(length) => Arc::new(Item::new_from_element(length.to_length(DEFAULT_PIXELS_PER_INCH))),
+					Self::Angle(angle) => Arc::new(Item::new_from_element(angle.to_angle())),
 					Self::GradientRamp(ramp) => Arc::new(Item::<Gradient>::from(ramp)),
 					Self::Strokes(strokes) => {
 						let list: List<Stroke> = strokes.into_iter().map(core_types::list::Item::new_from_element).collect();
@@ -284,6 +296,8 @@ macro_rules! tagged_value {
 					Self::DashPattern(_) => item!(DashPattern),
 					Self::BoxCorners(_) => item!(BoxCorners),
 					Self::TransferCurve(_) => item!(TransferCurve),
+					Self::Length(_) => item!(Length),
+					Self::Angle(_) => item!(Angle),
 					Self::GradientRamp(_) => item!(Gradient),
 					Self::Strokes(_) => list!(Stroke),
 					Self::BrushCache(_) => item!(BrushCache),
@@ -325,6 +339,10 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast::<Item<BoxCorners>>().unwrap().into_element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(input.downcast::<TransferCurve>().unwrap().points().to_vec())),
 					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(input.downcast::<Item<TransferCurve>>().unwrap().into_element().points().to_vec())),
+					x if x == TypeId::of::<Length>() => Ok(TaggedValue::Length(TypedLength::pixels(input.downcast::<Length>().unwrap().pixels()))),
+					x if x == TypeId::of::<Item<Length>>() => Ok(TaggedValue::Length(TypedLength::pixels(input.downcast::<Item<Length>>().unwrap().into_element().pixels()))),
+					x if x == TypeId::of::<Angle>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast::<Angle>().unwrap().degrees()))),
+					x if x == TypeId::of::<Item<Angle>>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast::<Item<Angle>>().unwrap().into_element().degrees()))),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(*input.downcast::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(&*input.downcast::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast::<List<Stroke>>().unwrap().into_iter().map(Item::into_element).collect())),
@@ -361,6 +379,10 @@ macro_rules! tagged_value {
 					x if x == TypeId::of::<Item<BoxCorners>>() => Ok(TaggedValue::BoxCorners(input.downcast_ref::<Item<BoxCorners>>().unwrap().element().0.iter_element_values().copied().collect())),
 					x if x == TypeId::of::<TransferCurve>() => Ok(TaggedValue::TransferCurve(input.downcast_ref::<TransferCurve>().unwrap().points().to_vec())),
 					x if x == TypeId::of::<Item<TransferCurve>>() => Ok(TaggedValue::TransferCurve(input.downcast_ref::<Item<TransferCurve>>().unwrap().element().points().to_vec())),
+					x if x == TypeId::of::<Length>() => Ok(TaggedValue::Length(TypedLength::pixels(input.downcast_ref::<Length>().unwrap().pixels()))),
+					x if x == TypeId::of::<Item<Length>>() => Ok(TaggedValue::Length(TypedLength::pixels(input.downcast_ref::<Item<Length>>().unwrap().element().pixels()))),
+					x if x == TypeId::of::<Angle>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast_ref::<Angle>().unwrap().degrees()))),
+					x if x == TypeId::of::<Item<Angle>>() => Ok(TaggedValue::Angle(TypedAngle::degrees(input.downcast_ref::<Item<Angle>>().unwrap().element().degrees()))),
 					x if x == TypeId::of::<Gradient>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Gradient>().unwrap()))),
 					x if x == TypeId::of::<Item<Gradient>>() => Ok(TaggedValue::GradientRamp(GradientRamp::from(input.downcast_ref::<Item<Gradient>>().unwrap()))),
 					x if x == TypeId::of::<List<Stroke>>() => Ok(TaggedValue::Strokes(input.downcast_ref::<List<Stroke>>().unwrap().iter_element_values().cloned().collect())),
@@ -392,6 +414,8 @@ macro_rules! tagged_value {
 						if name == std::any::type_name::<DashPattern>() { return Some(TaggedValue::DashPattern(Vec::new())) }
 						if name == std::any::type_name::<BoxCorners>() { return Some(TaggedValue::BoxCorners(Vec::new())) }
 						if name == std::any::type_name::<TransferCurve>() { return Some(TaggedValue::TransferCurve(TransferCurve::default().points().to_vec())) }
+						if name == std::any::type_name::<Length>() { return Some(TaggedValue::Length(TypedLength::default())) }
+						if name == std::any::type_name::<Angle>() { return Some(TaggedValue::Angle(TypedAngle::default())) }
 						$( if name == std::any::type_name::<$ty>() { return Some(TaggedValue::$identifier(Default::default())) } )*
 						if name == std::any::type_name::<List<Stroke>>() { return Some(TaggedValue::Strokes(Vec::new())) }
 						if name == std::any::type_name::<BrushCache>() { return Some(TaggedValue::BrushCache(Default::default())) }
@@ -442,6 +466,8 @@ macro_rules! tagged_value {
 					Self::DashPattern(lengths) => format!("DashPattern({lengths:?})"),
 					Self::BoxCorners(values) => format!("BoxCorners({values:?})"),
 					Self::TransferCurve(points) => format!("TransferCurve({points:?})"),
+					Self::Length(length) => format!("Length({} {})", length.value, length.unit.symbol()),
+					Self::Angle(angle) => format!("Angle({} {})", angle.value, angle.unit.symbol()),
 					Self::GradientRamp(ramp) => format!("GradientRamp({ramp:?})"),
 					Self::Strokes(strokes) => format!("Strokes({strokes:?})"),
 					Self::BrushCache(cache) => format!("{cache:?}"),
@@ -574,6 +600,8 @@ tagged_value! {
 	TextAlign(text_nodes::TextAlign),
 	TextDenomination(text_nodes::TextDenomination),
 	ScaleType(core_types::transform::ScaleType),
+	LengthUnit(LengthUnit),
+	AngleUnit(AngleUnit),
 	// Legacy
 	PaintOrder(vector::style::PaintOrder), // TODO: Eventually remove this document upgrade code
 	#[serde(alias = "Fill")]
@@ -583,6 +611,48 @@ tagged_value! {
 }
 
 impl TaggedValue {
+	/// A length input's value in pixels, whether stored as a typed length or as a plain number of pixels.
+	pub fn as_length_pixels(&self, pixels_per_inch: f64) -> Option<f64> {
+		match self {
+			Self::Length(length) => Some(length.to_length(pixels_per_inch).pixels()),
+			Self::Number(pixels) => Some(*pixels),
+			_ => None,
+		}
+	}
+
+	/// A length in pixels as a value for a length input, kept in the unit `self` was typed in, like a dragged radius that stays in millimeters.
+	pub fn length_in_same_unit(&self, pixels: f64, pixels_per_inch: f64) -> Self {
+		let unit = match self {
+			Self::Length(length) => length.unit,
+			_ => LengthUnit::Pixel,
+		};
+		Self::Length(TypedLength {
+			value: LengthUnit::Pixel.convert(pixels, unit, pixels_per_inch),
+			unit,
+		})
+	}
+
+	/// An angle input's value in degrees, whether stored as a typed angle or as a plain number of degrees.
+	pub fn as_angle_degrees(&self) -> Option<f64> {
+		match self {
+			Self::Angle(angle) => Some(angle.to_angle().degrees()),
+			Self::Number(degrees) => Some(*degrees),
+			_ => None,
+		}
+	}
+
+	/// An angle in degrees as a value for an angle input, kept in the unit `self` was typed in.
+	pub fn angle_in_same_unit(&self, degrees: f64) -> Self {
+		let unit = match self {
+			Self::Angle(angle) => angle.unit,
+			_ => AngleUnit::Degree,
+		};
+		Self::Angle(TypedAngle {
+			value: unit.from_angle(Angle::from_degrees(degrees)),
+			unit,
+		})
+	}
+
 	pub fn to_primitive_string(&self) -> String {
 		match self {
 			TaggedValue::None => "()".to_string(),
@@ -758,6 +828,8 @@ impl TaggedValue {
 					() if ty == TypeId::of::<core_types::blending::BlendMode>() => to_blend_mode(string).map(TaggedValue::BlendMode)?,
 					() if ty == TypeId::of::<DashPattern>() => TaggedValue::DashPattern(core_types::misc::parse_f64_list(string)),
 					() if ty == TypeId::of::<BoxCorners>() => TaggedValue::BoxCorners(core_types::misc::parse_f64_list(string)),
+					() if ty == TypeId::of::<Length>() => to_number(string).map(|pixels| TaggedValue::Length(TypedLength::pixels(pixels)))?,
+					() if ty == TypeId::of::<Angle>() => to_number(string).map(|degrees| TaggedValue::Angle(TypedAngle::degrees(degrees)))?,
 					_ => {
 						log::error!("No parser for a default value of type `{}`: {string}", concrete_type.name);
 						return None;

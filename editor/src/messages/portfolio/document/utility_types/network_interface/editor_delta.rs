@@ -75,6 +75,7 @@ pub enum NetworkMetadataChange {
 	Reference(Option<String>),
 	/// The whole order, since the encoding is one array-valued attribute rather than a slot each.
 	PinnedOrder(Vec<NodeId>),
+	PixelsPerInch(Option<f64>),
 	ImportMetadata(Vec<InputMetadata>),
 	ExportNames(Vec<String>),
 	ExportDescriptions(Vec<String>),
@@ -256,6 +257,12 @@ impl EditorDelta {
 							value: (!stored.is_empty()).then(|| serialize_attribute(network_attr::PINNED_ORDER, &stored)).transpose()?,
 						}
 					}
+					NetworkMetadataChange::PixelsPerInch(pixels_per_inch) => AttributeDelta {
+						key: network_attr::PIXELS_PER_INCH.to_string(),
+						value: pixels_per_inch
+							.map(|pixels_per_inch| serialize_attribute(network_attr::PIXELS_PER_INCH, &pixels_per_inch))
+							.transpose()?,
+					},
 					NetworkMetadataChange::ImportMetadata(import_metadata) => import_metadata_delta(import_metadata)?,
 					NetworkMetadataChange::ExportNames(export_names) => export_names_delta(export_names)?,
 					NetworkMetadataChange::ExportDescriptions(export_descriptions) => export_descriptions_delta(export_descriptions)?,

@@ -19,6 +19,7 @@ pub mod registry;
 pub mod runtime;
 pub mod transfer_curve;
 pub mod transform;
+pub mod units;
 pub mod uuid;
 pub mod value;
 

@@ -2,6 +2,7 @@
 
 use super::document_node_definitions::{NODE_OVERRIDES, NodeInspectorContext};
 use super::utility_types::FrontendGraphDataType;
+use crate::messages::layout::layout_message_handler::unit_suffix;
 use crate::messages::layout::utility_types::math_expression::{MathExpressionTokens, math_expression_error, math_expression_error_ranges, math_expression_tokens};
 use crate::messages::layout::utility_types::tooltip_markdown::{escape_markdown, markdown_code_span};
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -31,6 +32,7 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::text_nodes::{StringCapitalization, TextDenomination};
 use graphene_std::transfer_curve::TransferCurve;
 use graphene_std::transform::{Footprint, ReferencePoint, ScaleType, Transform};
+use graphene_std::units::{Angle, AngleUnit, Length, LengthUnit, TypedAngle, TypedLength};
 use graphene_std::vector::misc::BooleanOperation;
 use graphene_std::vector::misc::{
 	ArcType, BoxCorners, CentroidType, ExtrudeJoiningAlgorithm, GridTopology, GridType, InterpolationDistribution, PointSpacingType, RowsOrColumns, SpiralType, UnweldMethod, WeldMethod,
@@ -305,7 +307,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 		step,
 	} = options;
 
-	let mut number_input = NumberInput::default();
+	let mut number_input = NumberInput::default().pixels_per_inch(context.network_interface.pixels_per_inch());
 	if slider {
 		number_input = number_input.mode_range();
 	}
@@ -387,6 +389,8 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 					false => number_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)),
 				},
 				Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some(x) if id_is::<Length>(x) => length_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some(x) if id_is::<Angle>(x) => angle_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
 				Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
 				Some(x) if id_is::<String>(x) => match multiline {
 					true => text_area_widget(default_info).into(),
@@ -896,6 +900,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 
 pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &str, unit: &str, min: Option<f64>, is_integer: bool, disabled: bool) -> LayoutGroup {
 	let mut widgets = start_widgets(&parameter_widgets_info);
+	let pixels_per_inch = parameter_widgets_info.network_interface.pixels_per_inch();
 
 	let Some(input) = parameter_widgets_info.input() else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
@@ -912,6 +917,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
 					.disabled(disabled)
+					.pixels_per_inch(pixels_per_inch)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -923,6 +929,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
 					.disabled(disabled)
+					.pixels_per_inch(pixels_per_inch)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(dvec2.x, input.value.unwrap()))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -938,6 +945,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
 					.disabled(disabled)
+					.pixels_per_inch(pixels_per_inch)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -949,6 +957,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
 					.is_integer(is_integer)
 					.disabled(disabled)
+					.pixels_per_inch(pixels_per_inch)
 					.on_update(parameter_widgets_info.update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(value, input.value.unwrap()))))
 					.on_commit(commit_value)
 					.widget_instance(),
@@ -1313,6 +1322,92 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 		]),
 		_ => {}
 	}
+
+	widgets
+}
+
+/// Converts a field's bounds from the unit they're given in into the unit its value is shown in.
+fn bounds_in_unit(number_input: NumberInput, convert: impl Fn(f64) -> f64) -> NumberInput {
+	let convert = |bound: Option<f64>| bound.map(|bound| if bound.is_finite() { convert(bound) } else { bound });
+	NumberInput {
+		min: convert(number_input.min),
+		max: convert(number_input.max),
+		range_min: convert(number_input.range_min),
+		range_max: convert(number_input.range_max),
+		..number_input
+	}
+}
+
+/// A length's number field, which shows the length in the unit it was typed in and keeps any length unit typed into it, with the
+/// field's bounds given in pixels.
+pub fn length_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let length = match input.as_non_exposed_value() {
+		Some(&TaggedValue::Length(length)) => length,
+		Some(&TaggedValue::Number(pixels)) => TypedLength::pixels(pixels),
+		_ => return widgets,
+	};
+
+	let pixels_per_inch = parameter_widgets_info.network_interface.pixels_per_inch();
+	let number_props = bounds_in_unit(number_props, |pixels| LengthUnit::Pixel.convert(pixels, length.unit, pixels_per_inch));
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		number_props
+			.value(Some(length.value))
+			.unit(unit_suffix(length.unit.symbol()))
+			.kept_units(LengthUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
+			.pixels_per_inch(pixels_per_inch)
+			.on_update(parameter_widgets_info.update_value(|input: &NumberInput| {
+				let unit = math_parser::units::Unit::named(input.unit.trim()).and_then(LengthUnit::from_unit).unwrap_or_default();
+				TaggedValue::Length(TypedLength {
+					value: input.value.unwrap_or_default(),
+					unit,
+				})
+			}))
+			.on_commit(commit_value)
+			.widget_instance(),
+	]);
+
+	widgets
+}
+
+/// An angle's number field, which shows the angle in the unit it was typed in and keeps any angle unit typed into it, with the
+/// field's bounds given in degrees.
+pub fn angle_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let angle = match input.as_non_exposed_value() {
+		Some(&TaggedValue::Angle(angle)) => angle,
+		Some(&TaggedValue::Number(degrees)) => TypedAngle::degrees(degrees),
+		_ => return widgets,
+	};
+
+	let number_props = bounds_in_unit(number_props, |degrees| angle.unit.from_angle(Angle::from_degrees(degrees)));
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		number_props
+			.value(Some(angle.value))
+			.unit(unit_suffix(angle.unit.symbol()))
+			.kept_units(AngleUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
+			.on_update(parameter_widgets_info.update_value(|input: &NumberInput| {
+				let unit = math_parser::units::Unit::named(input.unit.trim()).and_then(AngleUnit::from_unit).unwrap_or_default();
+				TaggedValue::Angle(TypedAngle {
+					value: input.value.unwrap_or_default(),
+					unit,
+				})
+			}))
+			.on_commit(commit_value)
+			.widget_instance(),
+	]);
 
 	widgets
 }

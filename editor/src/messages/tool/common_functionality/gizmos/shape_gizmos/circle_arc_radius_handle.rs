@@ -194,9 +194,15 @@ impl RadiusHandle {
 		// The size is snapped, which keeps whichever sign the radius has come to
 		let snapped_radius = snap_session.snap_value(view, position_of, self.free_radius.abs(), on_screen_per_unit, equal_radii) * self.free_radius.signum();
 
+		// A radius typed in a unit like millimeters stays in it
+		let input_connector = InputConnector::node(node_id, radius_parameter);
+		let radius = match document.network_interface.input_from_connector(&input_connector, &[]).and_then(|input| input.as_value()) {
+			Some(existing @ TaggedValue::Length(_)) => existing.length_in_same_unit(snapped_radius, document.network_interface.pixels_per_inch()),
+			_ => TaggedValue::Number(snapped_radius),
+		};
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, radius_parameter),
-			input: NodeInput::value(TaggedValue::Number(snapped_radius), false),
+			input_connector,
+			input: NodeInput::value(radius, false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}

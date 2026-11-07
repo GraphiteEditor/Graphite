@@ -271,6 +271,7 @@ impl NodeGraphExecutor {
 				previewed: Vec::new(),
 				layers: document.network_interface.layer_paths(),
 				observations: self.observations(&document.network_interface),
+				pixels_per_inch: document.network_interface.pixels_per_inch(),
 			}))
 			.map_err(|e| e.to_string())?;
 		Ok(instrumented)
@@ -301,6 +302,7 @@ impl NodeGraphExecutor {
 					previewed,
 					layers,
 					observations: self.observations(&document.network_interface),
+					pixels_per_inch: document.network_interface.pixels_per_inch(),
 				}))
 				.map_err(|e| e.to_string())?;
 		} else if inspected_node_changed {
@@ -492,6 +494,7 @@ impl NodeGraphExecutor {
 				previewed,
 				layers: document.network_interface.layer_paths(),
 				observations: self.observations(&document.network_interface),
+				pixels_per_inch: document.network_interface.pixels_per_inch(),
 			}))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
@@ -891,6 +894,7 @@ impl NodeGraphExecutor {
 				previewed: Vec::new(),
 				layers: document.network_interface.layer_paths(),
 				observations: HashMap::from([(ObservationKey::FillMeasurement, fill_measurement)]),
+				pixels_per_inch: document.network_interface.pixels_per_inch(),
 			}))
 			.is_err()
 		{

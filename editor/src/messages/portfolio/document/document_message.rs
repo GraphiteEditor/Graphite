@@ -266,6 +266,11 @@ pub enum DocumentMessage {
 	SetRenderMode {
 		render_mode: RenderMode,
 	},
+	/// Sets how many pixels make an inch, which sizes the lengths typed in a physical unit and the physical size of exports.
+	/// The caller wraps it in a transaction to make it one undo step.
+	SetPixelsPerInch {
+		pixels_per_inch: f64,
+	},
 	ShowNodeInGraph {
 		node_id: NodeId,
 	},

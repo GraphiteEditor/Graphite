@@ -1120,7 +1120,7 @@ mod test {
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
 		assert_eq!(
 			ids,
-			vec![NodeId(7074930193456627328), NodeId(651950451264872860), NodeId(15983493604836528424), NodeId(2458326405488235061)]
+			vec![NodeId(7958315323958235311), NodeId(7951824047151403135), NodeId(16894780098949252642), NodeId(8854475046694858618)]
 		);
 	}
 

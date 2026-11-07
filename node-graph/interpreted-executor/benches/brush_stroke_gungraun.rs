@@ -70,7 +70,7 @@ impl Session {
 
 	/// Recompiles the document graph into the executor and renders the viewport, as the runtime does after an edit.
 	fn update(&mut self, document: NodeNetwork) {
-		let mut network = wrap_network_in_scope(document, self.editor_api.clone(), self.runtime.handle());
+		let mut network = wrap_network_in_scope(document, self.editor_api.clone(), self.runtime.handle(), graphene_std::units::DEFAULT_PIXELS_PER_INCH);
 		self.preprocessor.preprocess(&mut network, &|_| None).expect("Failed to preprocess the document");
 		let proto_network = Compiler {}.compile_single(network).expect("Failed to compile the document").network;
 		(self.output, _) = self.executor.update(proto_network).expect("Failed to update the executor");
