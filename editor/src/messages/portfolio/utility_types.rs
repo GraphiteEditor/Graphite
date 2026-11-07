@@ -13,6 +13,7 @@ pub enum PanelType {
 	Inspector,
 	Data,
 	Session,
+	History,
 }
 
 impl From<String> for PanelType {
@@ -24,6 +25,7 @@ impl From<String> for PanelType {
 			"Inspector" | "Properties" => PanelType::Inspector,
 			"Data" => PanelType::Data,
 			"Session" => PanelType::Session,
+			"History" => PanelType::History,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}
@@ -31,7 +33,7 @@ impl From<String> for PanelType {
 
 impl PanelType {
 	pub fn non_document_panels() -> &'static [PanelType] {
-		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Session]
+		&[PanelType::Layers, PanelType::Inspector, PanelType::Data, PanelType::Session, PanelType::History]
 	}
 }
 
@@ -303,10 +305,11 @@ impl WorkspacePanelLayout {
 	/// - Data: below the document in the left column (root child 0)
 	/// - Inspector: top of the right column (root child 1)
 	/// - Layers: bottom of the right column (root child 1)
-	/// - Session: a tab in the Inspector's group, otherwise placed like the Inspector
+	/// - Session, History: a tab beside the Inspector or Layers, otherwise placed like that panel
 	fn restore_panel_to_default_position(&mut self, panel_type: PanelType) {
 		let beside = match panel_type {
 			PanelType::Session => Some(PanelType::Inspector),
+			PanelType::History => Some(PanelType::Layers),
 			_ => None,
 		};
 		if let Some(beside) = beside
@@ -333,7 +336,7 @@ impl WorkspacePanelLayout {
 		let (root_child_index, insert_at_end) = match panel_type {
 			PanelType::Data => (0, true),                            // Left column, after document
 			PanelType::Inspector | PanelType::Session => (1, false), // Right column, at top
-			PanelType::Layers => (1, true),                          // Right column, at bottom
+			PanelType::Layers | PanelType::History => (1, true),     // Right column, at bottom
 			_ => (1, true),
 		};
 

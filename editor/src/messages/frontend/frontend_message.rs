@@ -196,6 +196,9 @@ pub enum FrontendMessage {
 	UpdateDocumentCursors {
 		cursors: Vec<FrontendRemoteCursor>,
 	},
+	UpdateHistoryPanel {
+		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
+	},
 	UpdateNodeGraphCursors {
 		cursors: Vec<FrontendRemoteCursor>,
 	},

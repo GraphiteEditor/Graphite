@@ -35,6 +35,7 @@ pub enum WorkspaceMessage {
 	},
 	ToggleDataPanelOpen,
 	ToggleSessionPanelOpen,
+	ToggleHistoryPanelOpen,
 	ToggleInspectorOpen,
 	ToggleLayersPanelOpen,
 	UpdatePanelsLayout,

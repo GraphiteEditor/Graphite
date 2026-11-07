@@ -24,6 +24,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{ChainInsertionPoint, ChainNodeCopy, FlowType, InputConnector, NodeTemplate, OutputConnector, ReconcileError, Reconciled};
+use crate::messages::portfolio::history::utility_types::LineChange;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::edit_target::EditTarget;
@@ -35,7 +36,7 @@ use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use document_container::AnyContainer;
-use document_graph_storage::Declarations;
+use document_graph_storage::{Declarations, Rev};
 use glam::{DAffine2, DVec2};
 use graph_craft::application_io::resource::{ResourceHash, ResourceId, ResourceStorage};
 use graph_craft::document::value::{TaggedValue, deserialize_replacing_null_floats_with_zero};
@@ -473,6 +474,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.undo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses)
 			}
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(document_id, viewport, preferences.validate_storage_round_trip, responses),
+			DocumentMessage::ChangeHistoryLine { rev, change } => {
+				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), preferences.validate_storage_round_trip, responses)
+			}
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -2998,6 +3002,26 @@ impl DocumentMessageHandler {
 		self.drive_storage_undo_redo(document_id, legacy_applied, true, validate, responses);
 	}
 
+	/// Makes a History panel change in storage and drops the legacy snapshots, which are off the head's line.
+	fn change_history_line(&mut self, document_id: DocumentId, rev: Rev, change: LineChange, byte_store: &dyn ResourceStorage, validate: bool, responses: &mut VecDeque<Message>) {
+		if self.network_interface.transaction_status() != TransactionStatus::Finished {
+			return;
+		}
+		self.node_graph_handler.stop_gliding(&self.network_interface, responses);
+		responses.add(EventMessage::ToolAbort);
+		self.stage_edits_outside_transaction(byte_store, validate);
+		self.history.retire_storage_interaction();
+		let stored_name = self.stored_name().map(str::to_string);
+		if !self.history.change_line(rev, change) {
+			return;
+		}
+		self.history.clear_legacy();
+		self.follow_storage_changes(stored_name, responses);
+		responses.add(PortfolioMessage::AutoSaveDocument { document_id });
+		responses.add(OverlaysMessage::Draw);
+		responses.add(EventMessage::SelectionChanged);
+	}
+
 	/// Reconciles the interface with storage. The tab takes the stored name only if it changed from `name_before`.
 	fn follow_storage_changes(&mut self, name_before: Option<String>, responses: &mut VecDeque<Message>) {
 		if let Some(gdd) = self.history.storage_mut() {
@@ -4652,6 +4676,31 @@ mod document_message_handler_tests {
 	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
+
+	#[tokio::test]
+	async fn deleting_the_bottom_layer_leaves_the_layer_above_it_the_empty_stack_value() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.draw_rect(0., 0., 100., 100.).await;
+		editor.draw_rect(200., 0., 300., 100.).await;
+
+		let [top, bottom] = editor.active_document().metadata().all_layers().collect::<Vec<_>>()[..] else {
+			panic!("there should be two layers")
+		};
+		let stack_bottom = |editor: &EditorTestUtils, layer: LayerNodeIdentifier| {
+			editor
+				.active_document()
+				.network_interface
+				.input_from_connector(&InputConnector::node_at_index(layer.to_node(), 0), &[])
+				.cloned()
+		};
+		let empty_stack = stack_bottom(&editor, bottom);
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![bottom.to_node()] }).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+
+		assert_eq!(stack_bottom(&editor, top), empty_stack);
+	}
 
 	#[test]
 	fn pending_gradient_bakes_round_trip_through_serialization() {
