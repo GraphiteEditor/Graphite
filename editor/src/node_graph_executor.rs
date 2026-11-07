@@ -212,14 +212,14 @@ impl NodeGraphExecutor {
 			.expect("Failed to send the thumbnails in view");
 	}
 
-	/// Asks for the document as rendered once what was submitted before has run, for the History panel's `step`.
+	/// Asks for the document as rendered once what was submitted before has run, for the History panel's `step`, with the area `detail` close up.
 	/// Returns false when the runtime doesn't hold the document's graph as it is now, so nothing was asked.
-	pub fn submit_document_capture(&self, document: &DocumentMessageHandler, document_id: DocumentId, step: document_graph_storage::TimeStamp) -> bool {
+	pub fn submit_document_capture(&self, document: &DocumentMessageHandler, document_id: DocumentId, step: document_graph_storage::TimeStamp, detail: Option<[DVec2; 2]>) -> bool {
 		if self.node_graph_document != Some(document_id) || self.node_graph_hash != document.network_interface.network_hash() {
 			return false;
 		}
 		self.sender
-			.send(GraphRuntimeRequest::CaptureDocument { document_id, step })
+			.send(GraphRuntimeRequest::CaptureDocument { document_id, step, detail })
 			.expect("Failed to send the capture request");
 		true
 	}

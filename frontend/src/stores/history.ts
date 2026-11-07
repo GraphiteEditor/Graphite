@@ -18,13 +18,22 @@ if (import.meta.hot) {
 
 const { subscribe, set } = store;
 
-// The most recent captures kept, oldest dropped first
-const MAX_THUMBNAILS = 300;
-// Twice the size of the comparison view, which is the largest a capture is shown
-const RASTER_WIDTH = 240;
-const RASTER_HEIGHT = 160;
+// The most recent images kept, oldest dropped first. Each step has a whole image and maybe a close-up, so twice as many as the editor keeps captures
+const MAX_THUMBNAILS = 600;
+// The size an SVG capture is drawn at, twice the largest a capture is shown
+const RASTER_WIDTH = 144;
+const RASTER_HEIGHT = 96;
 
-// A capture's SVG can embed whole images, so it is kept as a small PNG, or as the SVG when the browser can't draw it
+// Kept as a small PNG rather than the pixels themselves
+function encodePixels(pixels: Uint8Array, width: number, height: number): string {
+	const canvas = document.createElement("canvas");
+	canvas.width = width;
+	canvas.height = height;
+	canvas.getContext("2d")?.putImageData(new ImageData(new Uint8ClampedArray(pixels), width, height), 0, 0);
+	return canvas.toDataURL("image/png");
+}
+
+// Without the GPU a capture comes as an SVG, which can embed whole images, so it is kept as a small PNG, or as the SVG when the browser can't draw it
 async function rasterize(svg: string): Promise<string> {
 	// An SVG drawn as an image needs an intrinsic size, which the capture's only gives as a view box
 	const sized = svg.replace("<svg ", `<svg width="${RASTER_WIDTH}" height="${RASTER_HEIGHT}" `);
@@ -43,6 +52,14 @@ async function rasterize(svg: string): Promise<string> {
 	}
 }
 
+function keepThumbnail(id: string, url: string) {
+	thumbnails.update((images) => {
+		const ids = Object.keys(images);
+		const kept = ids.length < MAX_THUMBNAILS ? images : Object.fromEntries(ids.slice(ids.length - MAX_THUMBNAILS + 1).map((id) => [id, images[id]]));
+		return { ...kept, [id]: url };
+	});
+}
+
 let subscriptionsRouter: SubscriptionsRouter | undefined = undefined;
 
 export function createHistoryStore(subscriptions: SubscriptionsRouter) {
@@ -55,11 +72,11 @@ export function createHistoryStore(subscriptions: SubscriptionsRouter) {
 
 	subscriptions.subscribeFrontendMessage("UpdateHistoryThumbnail", async (data) => {
 		const url = await rasterize(data.svg);
-		thumbnails.update((images) => {
-			const ids = Object.keys(images);
-			const kept = ids.length < MAX_THUMBNAILS ? images : Object.fromEntries(ids.slice(ids.length - MAX_THUMBNAILS + 1).map((id) => [id, images[id]]));
-			return { ...kept, [data.id]: url };
-		});
+		keepThumbnail(data.id, url);
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateHistoryThumbnailPixels", (data) => {
+		keepThumbnail(data.id, encodePixels(data.pixels, data.width, data.height));
 	});
 
 	return { subscribe, thumbnails: { subscribe: thumbnails.subscribe } };
@@ -71,5 +88,6 @@ export function destroyHistoryStore() {
 
 	subscriptions.unsubscribeFrontendMessage("UpdateHistoryPanel");
 	subscriptions.unsubscribeFrontendMessage("UpdateHistoryThumbnail");
+	subscriptions.unsubscribeFrontendMessage("UpdateHistoryThumbnailPixels");
 	subscriptionsRouter = undefined;
 }

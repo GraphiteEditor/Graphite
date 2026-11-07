@@ -199,10 +199,17 @@ pub enum FrontendMessage {
 	UpdateHistoryPanel {
 		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
 	},
-	/// A History panel step's captured image, which the panel shows wherever a row names `id`.
+	/// A History panel step's captured image as an SVG, sent when the GPU is unavailable, which the panel shows wherever a row names `id`.
 	UpdateHistoryThumbnail {
 		id: String,
 		svg: String,
+	},
+	/// A History panel step's captured image as straight RGBA pixels.
+	UpdateHistoryThumbnailPixels {
+		id: String,
+		width: u32,
+		height: u32,
+		pixels: serde_bytes::ByteBuf,
 	},
 	UpdateNodeGraphCursors {
 		cursors: Vec<FrontendRemoteCursor>,
