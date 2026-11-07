@@ -3,6 +3,7 @@ use convert_case::{Case, Casing};
 use graph_craft::concrete;
 use graph_craft::document::value;
 use graph_craft::proto::{NodeMetadata, RegistryValueSource};
+use graphene_std::units::{Angle, Length};
 use graphene_std::{NodeCompileMetadata, core_types};
 use indoc::formatdoc;
 use std::collections::HashSet;
@@ -170,7 +171,12 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 						_ => None,
 					})
 					.and_then(|ty| value::TaggedValue::from_type(ty.nested_type()))
-					.map(|ty| ty.to_debug_string()),
+					.map(|value| match value {
+						// A length or angle shows just its number, followed by the unit its type implies
+						value::TaggedValue::Length(length) => format!("{:?}", length.value),
+						value::TaggedValue::Angle(angle) => format!("{:?}", angle.value),
+						value => value.to_debug_string(),
+					}),
 			};
 			if index > 0
 				&& !field.exposed
@@ -178,9 +184,10 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 			{
 				let default_value = default_value.trim_end_matches('.').trim_end_matches(".0"); // Display whole-number floats as integers
 
+				let unit = field.unit.or_else(|| field.default_type.as_ref().and_then(implied_unit));
 				let default_value = match field.default_colors {
 					Some(colors) => color_swatch(colors),
-					None => format!("`{default_value}{}`", field.unit.unwrap_or_default()),
+					None => format!("`{default_value}{}`", unit.unwrap_or_default()),
 				};
 
 				details.push(format!("<p>*Default:*&nbsp;{default_value}</p>"));
@@ -204,6 +211,22 @@ fn write_inputs(page: &mut std::fs::File, valid_input_types: &[Vec<core_types::T
 			"
 		);
 		page.write_all(content.as_bytes()).expect("Failed to write to node page file");
+	}
+}
+
+/// The unit a length or angle parameter's field shows, which its type implies in place of a `#[unit]` attribute.
+fn implied_unit(ty: &core_types::Type) -> Option<&'static str> {
+	let element = match ty {
+		core_types::Type::Item(element) => element.as_ref(),
+		other => other,
+	};
+
+	if *element == concrete!(Length) {
+		Some(" px")
+	} else if *element == concrete!(Angle) {
+		Some("°")
+	} else {
+		None
 	}
 }
 
