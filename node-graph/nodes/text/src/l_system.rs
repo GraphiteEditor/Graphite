@@ -19,8 +19,10 @@ pub enum LSystemError {
 	InvalidAxiom(String),
 	#[error("A rule's math gives no number: {0}")]
 	Evaluation(String),
-	#[error("A rule's chance came out as {0}, which isn't zero or more")]
+	#[error("A rule's chance came out as {0}, which isn't from 0 to 1")]
 	InvalidChance(f64),
+	#[error("The chances of the rules for `{symbol}` add up to {total}, which is more than 1")]
+	ChancesOverOne { symbol: char, total: f64 },
 	#[error("Stopped after {completed} generations, since the next would grow past the Max Symbols limit of {limit}")]
 	TooLong { completed: i64, limit: usize },
 	#[error("Stopped after {limit} generations, since Max Symbols also limits how many generations run")]
@@ -37,7 +39,7 @@ fn l_system(
 	axiom: Item<String>,
 	/// One rule per line, like `F = F+F-F-F+F` (or `F -> F+F-F-F+F`), which replaces every `F` with `F+F-F-F+F` in each generation. Symbols without a rule stay as they are.
 	///
-	/// A rule can also check the symbols around one, as in `A < B > C = D`, which rewrites a `B` only between an `A` and a `C`. When several rules for a symbol end with a chance, like `F = F[+F]F : 0.6`, one of them is picked at random by those odds.
+	/// A rule can also check the symbols around one, as in `A < B > C = D`, which rewrites a `B` only between an `A` and a `C`. A rule ending with a chance from 0 to 1, like `F = F[+F]F : 0.6`, applies only that often and otherwise leaves the symbol as it is. The chances of a symbol's rules can add up to 1 at most.
 	///
 	/// Symbols can carry numbers, like `F(10)`. A rule names them to work out new numbers with math, and to apply only when the condition after `:` holds, as in `F(x) : x > 2 = F(x/2)[+F(x/2)]`. A chance can be worked out from them too.
 	///
@@ -56,7 +58,7 @@ fn l_system(
 	#[default(3)]
 	#[hard(0..)]
 	generations: Item<i64>,
-	/// Seed to determine unique variations on which rule is picked where several give chances.
+	/// Seed to determine unique variations on where the rules with chances apply.
 	#[hard(0..)]
 	seed: Item<i64>,
 	/// The longest the string may grow, in symbols, and the most generations that run. A generation past either is left out, guarding against a number of generations that would freeze the editor.
@@ -117,7 +119,7 @@ struct Rule {
 	right_context: Vec<Pattern>,
 	condition: Option<ast::Node>,
 	successor: Vec<WrittenSymbol>,
-	/// The odds of picking this rule among the other matching rules that give chances.
+	/// How often this rule applies, from 0 to 1, where it matches.
 	chance: Option<Chance>,
 }
 
@@ -277,8 +279,8 @@ fn cut_branches(modules: &mut Vec<Module>) {
 	});
 }
 
-/// The rule that rewrites the module at `index` with its names bound. The first matching rule applies, unless it gives a chance, in which case one of the matching rules that give chances is picked by the odds.
-/// Picking by the odds sets `rolled`.
+/// The rule that rewrites the module at `index` with its names bound. The first matching rule applies, unless it gives a chance, in which case one roll picks among the matching rules that give chances, or none with the chance left over.
+/// Making that roll sets `rolled`.
 fn choose_rule<'a>(rule_set: &'a RuleSet, neighbors: &Neighbors, index: usize, rng: &mut StdRng, rolled: &mut bool) -> Result<Option<(&'a Rule, Bindings<'a>)>, LSystemError> {
 	let module = &neighbors.modules[index];
 	let Some(candidates) = rule_set.by_symbol.get(&module.symbol) else { return Ok(None) };
@@ -296,25 +298,30 @@ fn choose_rule<'a>(rule_set: &'a RuleSet, neighbors: &Neighbors, index: usize, r
 			None if chance_matches.is_empty() => return Ok(Some((rule, bindings))),
 			None => continue,
 		};
-		if chance.is_nan() || chance < 0. {
+		if !(0. ..=1.).contains(&chance) {
 			return Err(LSystemError::InvalidChance(chance));
 		}
 		chance_matches.push((rule, bindings, chance));
 	}
 
-	let total: f64 = chance_matches.iter().map(|(_, _, chance)| chance).sum();
-	if total <= 0. {
+	// Rounding lets chances like 0.7 and 0.2 and 0.1 add up to exactly 1
+	let total = round_away_float_noise(chance_matches.iter().map(|(_, _, chance)| chance).sum());
+	if total > 1. {
+		return Err(LSystemError::ChancesOverOne { symbol: module.symbol, total });
+	}
+	if total == 0. {
 		return Ok(None);
 	}
 
+	// When the chances add up to 1, the last rule also takes any sliver that float rounding leaves past it
 	*rolled = true;
-	let mut pick = rng.random::<f64>() * total;
+	let mut roll = rng.random::<f64>();
 	let last = chance_matches.len() - 1;
 	for (position, (rule, bindings, chance)) in chance_matches.into_iter().enumerate() {
-		if pick < chance || position == last {
+		if roll < chance || (position == last && total == 1.) {
 			return Ok(Some((rule, bindings)));
 		}
-		pick -= chance;
+		roll -= chance;
 	}
 
 	Ok(None)
@@ -478,8 +485,8 @@ fn parse_rule(line: &str) -> Result<Rule, String> {
 	};
 	let chance = chance_text
 		.map(|text| match parse_f64(text) {
-			Some(chance) if chance >= 0. => Ok(Chance::Fixed(chance)),
-			Some(_) => Err(format!("the chance `{text}` isn't a number of zero or more")),
+			Some(chance) if (0. ..=1.).contains(&chance) => Ok(Chance::Fixed(chance)),
+			Some(_) => Err(format!("the chance `{text}` isn't a number from 0 to 1")),
 			None => parse_expression(text).map(Chance::Computed),
 		})
 		.transpose()?;
@@ -746,10 +753,10 @@ mod tests {
 
 	#[test]
 	fn picks_among_chances_the_same_way_for_a_seed() {
-		let rules = "F = A : 1\nF = B : 1";
+		let rules = "F = A : 0.5\nF = B : 0.5";
 		let first = grow_with("FFFFFFFFFFFFFFFFFFFF", rules, 1, "", 7).unwrap();
 		assert_eq!(first, grow_with("FFFFFFFFFFFFFFFFFFFF", rules, 1, "", 7).unwrap());
-		assert!(first.contains('A') && first.contains('B'));
+		assert!(first.contains('A') && first.contains('B') && !first.contains('F'));
 
 		// A chance of zero is never picked
 		assert_eq!(grow_with("FFFF", "F = A : 0\nF = B : 1", 1, "", 3).unwrap(), "BBBB");
@@ -757,7 +764,22 @@ mod tests {
 		// A chance can be worked out from the symbol's numbers
 		assert_eq!(grow_with("F(1)F(0)", "F(x) = A : x\nF(x) = B : 1 - x", 1, "", 0).unwrap(), "AB");
 		let (_, error) = grow_with("F(2)", "F(x) = A : 1 - x", 1, "", 0).unwrap_err();
-		assert_eq!(error, "A rule's chance came out as -1, which isn't zero or more");
+		assert_eq!(error, "A rule's chance came out as -1, which isn't from 0 to 1");
+	}
+
+	#[test]
+	fn leaves_a_symbol_unchanged_with_the_chance_left_over() {
+		let grown = grow_with("FFFFFFFFFFFFFFFFFFFF", "F = A : 0.5", 1, "", 7).unwrap();
+		assert!(grown.contains('A') && grown.contains('F'));
+
+		// Chances adding up to exactly 1 always apply one of the rules
+		let grown = grow_with("FFFFFFFFFFFFFFFFFFFF", "F = A : 0.7\nF = B : 0.2\nF = C : 0.1", 1, "", 7).unwrap();
+		assert!(!grown.contains('F'));
+
+		let (_, error) = grow_with("F", "F = A : 0.6\nF = B : 0.6", 1, "", 0).unwrap_err();
+		assert_eq!(error, "The chances of the rules for `F` add up to 1.2, which is more than 1");
+		let (_, error) = grow("F", "F = A : 2", 1).unwrap_err();
+		assert_eq!(error, "Line 1 of the rules isn't a valid rule: the chance `2` isn't a number from 0 to 1");
 	}
 
 	#[test]
