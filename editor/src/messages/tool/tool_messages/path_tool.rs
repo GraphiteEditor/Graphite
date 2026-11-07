@@ -2144,11 +2144,20 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					let drag_start = tool_data.drag_start_pos;
+					let delta = input.mouse.position - drag_start;
+					tool_data.snapping_axis = snap_angle_state.then(|| if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y });
+					let mouse_position = match tool_data.snapping_axis {
+						Some(Axis::X) => DVec2::new(input.mouse.position.x, drag_start.y),
+						Some(Axis::Y) => DVec2::new(drag_start.x, input.mouse.position.y),
+						_ => input.mouse.position,
+					};
 					// Past the threshold, the press on the segment molds it rather than clicking to insert a point
 					if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 						tool_data.molding_segment = true;
@@ -2158,7 +2167,7 @@ impl Fsm for PathToolFsmState {
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2199,7 +2208,6 @@ impl Fsm for PathToolFsmState {
 				let toggle_colinear_state = input.keyboard.get(toggle_colinear as usize);
 				let equidistant_state = input.keyboard.get(equidistant as usize);
 				let lock_angle_state = input.keyboard.get(lock_angle as usize);
-				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				if !lock_angle_state {
 					tool_data.angle_locked = false;
@@ -3768,7 +3776,10 @@ fn update_dynamic_hints(
 
 				let molding_disable_possible = has_colinear_anchors || handles_stored;
 
-				let mut molding_hints = vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])];
+				let mut molding_hints = vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
+				];
 
 				if molding_disable_possible {
 					molding_hints.push(HintGroup(vec![HintInfo::keys([Key::Alt], "Break Colinear Handles")]));
@@ -3802,6 +3813,7 @@ mod test_path_tool {
 	use crate::messages::portfolio::document::utility_types::misc::GridType;
 	use crate::test_utils::test_prelude::*;
 	use graphene_std::vector::misc::ManipulatorPointId;
+	use kurbo::PathSeg;
 
 	// Anchors for the paths the tests draw, away from every shape the tests snap to
 	const A: DVec2 = DVec2::new(100., 100.);
@@ -4301,6 +4313,33 @@ mod test_path_tool {
 		move_to(&mut editor, between, ModifierKeys::empty()).await;
 		editor.left_mouseup(between.x, between.y, ModifierKeys::empty()).await;
 		assert_anchors(&editor, layer, &[A, B, C]);
+	}
+
+	/// Molds the segment between the first two anchors of a fresh A-B-C path by dragging from its middle, and returns the path's curves.
+	async fn molded_curves(offset: DVec2, modifier_keys: ModifierKeys) -> Vec<PathSeg> {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let layer = draw_path(&mut editor, &[A, B, C]).await;
+
+		let between = (A + B) / 2.;
+		press_on_segment(&mut editor, between).await;
+		move_to(&mut editor, between + offset, modifier_keys).await;
+		editor.left_mouseup(between.x + offset.x, between.y + offset.y, modifier_keys).await;
+
+		let vector = editor.active_document().network_interface.compute_modified_vector(layer).expect("the path should have a vector");
+		vector.segment_iter().map(|(_, curve, _, _)| curve).collect()
+	}
+
+	#[tokio::test]
+	async fn shift_constrains_a_mold_to_the_axis_the_pointer_has_moved_furthest_along() {
+		let unmolded = molded_curves(DVec2::ZERO, ModifierKeys::empty()).await;
+
+		let along_x = molded_curves(DVec2::new(60., 0.), ModifierKeys::empty()).await;
+		assert_ne!(along_x, unmolded, "the drag should mold the segment");
+		assert_eq!(molded_curves(DVec2::new(60., -15.), ModifierKeys::SHIFT).await, along_x);
+
+		let along_y = molded_curves(DVec2::new(0., -60.), ModifierKeys::empty()).await;
+		assert_eq!(molded_curves(DVec2::new(15., -60.), ModifierKeys::SHIFT).await, along_y);
 	}
 
 	/// Draws a path through three anchors, the middle one with a handle on each side, and selects only one of those handles.
