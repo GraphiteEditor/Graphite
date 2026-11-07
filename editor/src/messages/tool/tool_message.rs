@@ -93,6 +93,7 @@ pub enum ToolMessage {
 	SnappingTick,
 	ToggleSelectVsPath,
 	SwapColors,
+	SwapFillAndStroke,
 	UpdateCursor,
 	UpdateHints,
 	UpdateSelectionMode {

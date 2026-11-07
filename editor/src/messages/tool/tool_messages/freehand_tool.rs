@@ -85,6 +85,9 @@ impl ToolMetadata for FreehandTool {
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
 		ToolType::Freehand
 	}
+	fn default_line_weight(&self) -> Option<f64> {
+		Some(self.options.drawing.default_line_weight)
+	}
 }
 
 impl ToolEditTarget for FreehandTool {
@@ -115,6 +118,7 @@ impl LayoutHolder for FreehandTool {
 		widgets.push(
 			IconButton::new("SwapHorizontal", 16)
 				.tooltip_label("Swap Fill/Stroke Colors")
+				.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapFillAndStroke))
 				.on_update(|_| {
 					FreehandToolMessage::UpdateOptions {
 						options: FreehandOptionsUpdate::SwapFillAndStroke,
