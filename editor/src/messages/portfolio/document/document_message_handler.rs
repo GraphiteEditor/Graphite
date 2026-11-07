@@ -477,6 +477,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ChangeHistoryLine { rev, change } => {
 				self.change_history_line(document_id, rev, change, &resource_storage.resources_mut(), preferences.validate_storage_round_trip, responses)
 			}
+			DocumentMessage::NameInteraction { action } => {
+				if let Some(storage) = self.history.storage_mut() {
+					storage.name_interaction(&action);
+				}
+			}
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -2434,6 +2439,10 @@ impl DocumentMessageHandler {
 	/// The `Gdd` working copy, `None` until the mount future resolves.
 	pub fn storage(&self) -> Option<&document_format::GddV1> {
 		self.history.storage()
+	}
+
+	pub fn declarations(&self) -> &document_graph_storage::Declarations {
+		self.history.declarations()
 	}
 
 	/// Mutable access to the `Gdd` working copy.

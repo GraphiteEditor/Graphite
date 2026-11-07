@@ -1,10 +1,15 @@
 use super::utility_types::{HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, LineChange};
 use crate::messages::portfolio::document::DocumentMessageHandler;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::sync::identity::{anonymous_name, user_color};
 use crate::messages::portfolio::sync::now_ms;
 use crate::messages::prelude::*;
 use document_format::GddV1;
-use document_graph_storage::{Delta, HistoryMetadata, HotOpId, PeerId, RegistryDelta, Rev, Session, Subject, UserId, rev_attr};
+use document_graph_storage::attr::{delta as delta_attr, network as network_attr, node as node_attr, session as session_attr};
+use document_graph_storage::{
+	AttributeDelta, Declarations, Delta, HistoryMetadata, HotOp, HotOpId, Implementation, Node, NodeId, PeerId, Registry, RegistryDelta, Rev, Session, Subject, UserId, Value, rev_attr,
+};
+use graph_craft::ProtoNodeIdentifier;
 use peer_transport::RemotePeer;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::hash::{Hash, Hasher};
@@ -104,7 +109,8 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 
 impl HistoryMessageHandler {
 	fn send(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
-		let gdd = active_storage(context);
+		let document = context.active_document_id.and_then(|id| context.documents.get(&id));
+		let gdd = document.and_then(|document| document.storage());
 		if self.following.is_some_and(|tip| gdd.is_none_or(|gdd| gdd.session().delta(tip).is_none())) {
 			self.following = None;
 		}
@@ -114,7 +120,10 @@ impl HistoryMessageHandler {
 			return;
 		}
 		self.last_sent = Some(fingerprint);
-		let state = gdd.map(|gdd| panel_state(gdd, limit, &self.expanded, self.following)).unwrap_or_default();
+		let state = document
+			.zip(gdd)
+			.map(|(document, gdd)| panel_state(gdd, document.declarations(), limit, &self.expanded, self.following))
+			.unwrap_or_default();
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
 	}
 }
@@ -159,7 +168,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usiz
 	(document_id, limit, expanded, following).hash(&mut hasher);
 	if let Some(gdd) = gdd {
 		let session = gdd.session();
-		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), gdd.role().is_some()).hash(&mut hasher);
+		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), session.pending_action()).hash(&mut hasher);
 		for remote in gdd.peers() {
 			(remote.user, &remote.name).hash(&mut hasher);
 		}
@@ -170,8 +179,12 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usiz
 	hasher.finish()
 }
 
-fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
+fn panel_state(gdd: &GddV1, declarations: &Declarations, limit: usize, expanded: &BTreeSet<Rev>, following: Option<Rev>) -> HistoryPanelState {
 	let session = gdd.session();
+	let names = Names {
+		registry: gdd.registry(),
+		declarations,
+	};
 	let people = People {
 		session,
 		metadata: gdd.metadata(),
@@ -202,6 +215,7 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: O
 		head_line: &head_line_revs,
 		head,
 		people: &people,
+		names: &names,
 		expanded,
 		session,
 		metadata: gdd.metadata(),
@@ -210,7 +224,18 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: O
 	let shown_rows = interactions(&shown).into_iter().map(|group| view.row(&group, false));
 	let rows = undone_rows.chain(shown_rows).collect();
 
-	// Open interactions first, then closed ones waiting to retire, newest first
+	let collaborating = gdd.peers().next().is_some();
+	HistoryPanelState {
+		rows,
+		progress: progress_rows(session, &people, &names),
+		more,
+		following: following.map(|tip| tip.to_string()),
+		collaborating,
+	}
+}
+
+/// Open interactions first, then closed ones waiting to retire, newest first.
+fn progress_rows(session: &Session, people: &People, names: &Names) -> Vec<HistoryProgressRow> {
 	let hot_log = session.hot_log();
 	let closed = session.closed_interactions();
 	let in_closed: HashSet<HotOpId> = closed.iter().flat_map(|interaction| interaction.ops.iter().copied()).collect();
@@ -221,20 +246,21 @@ fn panel_state(gdd: &GddV1, limit: usize, expanded: &BTreeSet<Rev>, following: O
 			None => open_by_peer.push((hot_op.timestamp.peer, vec![&hot_op.op])),
 		}
 	}
-	let mut progress: Vec<HistoryProgressRow> = open_by_peer.into_iter().map(|(peer, ops)| progress_row(&people, peer, &ops, true)).collect();
+	let mut progress: Vec<HistoryProgressRow> = open_by_peer
+		.into_iter()
+		.map(|(peer, ops)| {
+			let action = session.pending_action().filter(|_| peer == session.peer()).map(str::to_string);
+			progress_row(people, names, peer, &ops, true, action)
+		})
+		.collect();
 	for interaction in closed.iter().rev() {
 		let ids: HashSet<HotOpId> = interaction.ops.iter().copied().collect();
-		let ops: Vec<&RegistryDelta> = hot_log.iter().filter(|hot_op| ids.contains(&hot_op.id())).map(|hot_op| &hot_op.op).collect();
-		progress.push(progress_row(&people, interaction.author, &ops, false));
+		let ops: Vec<&HotOp> = hot_log.iter().filter(|hot_op| ids.contains(&hot_op.id())).collect();
+		let action = ops.iter().find_map(|hot_op| hot_op.attributes.get_typed::<String>(delta_attr::ACTION));
+		let kinds: Vec<&RegistryDelta> = ops.iter().map(|hot_op| &hot_op.op).collect();
+		progress.push(progress_row(people, names, interaction.author, &kinds, false, action));
 	}
-
-	HistoryPanelState {
-		rows,
-		progress,
-		more,
-		following: following.map(|tip| tip.to_string()),
-		session: gdd.role().is_some(),
-	}
+	progress
 }
 
 /// The deltas from `from` back along first parents to `until` (exclusive) or the root, newest first. Stops after
@@ -277,6 +303,7 @@ struct View<'a> {
 	head_line: &'a HashSet<Rev>,
 	head: Option<Rev>,
 	people: &'a People<'a>,
+	names: &'a Names<'a>,
 	expanded: &'a BTreeSet<Rev>,
 	session: &'a Session,
 	metadata: &'a HistoryMetadata,
@@ -293,16 +320,17 @@ impl View<'_> {
 			.map(|&child| self.branch(child))
 			.collect();
 		let is_expanded = self.expanded.contains(&closing.id);
+		let shown = foreground(group, |delta| &delta.kind);
 		let details = match is_expanded {
-			true => group
+			true => shown
 				.iter()
 				.map(|delta| {
 					let author = self.people.person(delta.author);
 					HistoryDeltaRow {
 						id: delta.id.to_string(),
-						label: describe(&delta.kind),
+						label: self.names.describe(&delta.kind),
 						author: author.name,
-						color: author.color,
+						mine: author.mine,
 						time: delta.retired_at().map(|ms| ms as f64),
 					}
 				})
@@ -312,7 +340,7 @@ impl View<'_> {
 		let given = self.metadata.rev_label(closing.id);
 		HistoryRow {
 			id: closing.id.to_string(),
-			label: given.map(str::to_string).unwrap_or_else(|| summarize(group.iter().map(|delta| &delta.kind))),
+			label: self.label(group),
 			named: given.is_some(),
 			tags: self.metadata.rev_tags(closing.id).into_iter().map(str::to_string).collect(),
 			author: person.name,
@@ -320,7 +348,7 @@ impl View<'_> {
 			mine: person.mine,
 			color: person.color,
 			time: group.iter().find_map(|delta| delta.retired_at()).map(|ms| ms as f64),
-			deltas: group.len(),
+			deltas: shown.len(),
 			branches,
 			undone,
 			abandoned: !undone && !self.head_line.contains(&closing.id),
@@ -336,80 +364,200 @@ impl View<'_> {
 			tip = next;
 		}
 		let (newest, _) = line(self.session, Some(tip), None, 1);
-		let label = self
-			.metadata
-			.rev_label(tip)
-			.map(str::to_string)
-			.unwrap_or_else(|| interactions(&newest).first().map(|group| summarize(group.iter().map(|delta| &delta.kind))).unwrap_or_default());
+		let label = interactions(&newest).first().map(|group| self.label(group)).unwrap_or_default();
 		HistoryBranch { id: tip.to_string(), label }
+	}
+
+	/// The name someone gave the step, else what its tool did, else a summary of its changes.
+	fn label(&self, group: &[&Delta]) -> String {
+		let closing = group[0];
+		let named = self.metadata.rev_label(closing.id).or_else(|| closing.action());
+		named.map(str::to_string).unwrap_or_else(|| self.names.summarize(group.iter().map(|delta| &delta.kind)))
 	}
 }
 
-fn progress_row(people: &People, peer: PeerId, ops: &[&RegistryDelta], open: bool) -> HistoryProgressRow {
+fn progress_row(people: &People, names: &Names, peer: PeerId, ops: &[&RegistryDelta], open: bool, action: Option<String>) -> HistoryProgressRow {
 	let person = people.person(peer);
 	HistoryProgressRow {
-		label: summarize(ops.iter().copied()),
+		label: action.unwrap_or_else(|| names.summarize(ops.iter().copied())),
 		author: person.name,
 		anonymous: person.anonymous,
 		mine: person.mine,
 		color: person.color,
-		ops: ops.len(),
+		ops: foreground(ops, |kind| kind).len(),
 		open,
 	}
 }
 
-/// One line for a run of changes, most frequent kind first. Peer registrations and markers are named only when alone.
-fn summarize<'a>(kinds: impl IntoIterator<Item = &'a RegistryDelta>) -> String {
-	let is_bookkeeping = |kind: &RegistryDelta| matches!(kind, RegistryDelta::RegisterPeer { .. } | RegistryDelta::Meta);
-	let mut kinds: Vec<&RegistryDelta> = kinds.into_iter().collect();
-	if kinds.iter().any(|kind| !is_bookkeeping(kind)) {
-		kinds.retain(|kind| !is_bookkeeping(kind));
+/// Whether an op only comes along with an edit: registrations, markers, resources, and attributes that copy a
+/// declaration or hold bookkeeping.
+fn is_background(kind: &RegistryDelta) -> bool {
+	match kind {
+		RegistryDelta::RegisterPeer { .. }
+		| RegistryDelta::Meta
+		| RegistryDelta::AddResource { .. }
+		| RegistryDelta::SetResourceHash { .. }
+		| RegistryDelta::RemoveResource { .. }
+		| RegistryDelta::AddSource { .. }
+		| RegistryDelta::RemoveSource { .. }
+		| RegistryDelta::ChangeNodeInputAttribute { .. } => true,
+		RegistryDelta::ChangeNodeAttribute { delta, .. } => ![
+			node_attr::ui::POSITION,
+			node_attr::ui::IS_LAYER,
+			node_attr::ui::DISPLAY_NAME,
+			node_attr::ui::LOCKED,
+			node_attr::ui::PINNED,
+			node_attr::VISIBLE,
+		]
+		.contains(&delta.key.as_str()),
+		RegistryDelta::ChangeNetworkAttribute { delta, .. } => ![session_attr::network::PREVIEWING, network_attr::PINNED_ORDER].contains(&delta.key.as_str()),
+		_ => false,
 	}
-	let mut counts: Vec<(String, usize)> = Vec::new();
-	for kind in kinds {
-		let label = describe(kind);
-		match counts.iter_mut().find(|(known, _)| *known == label) {
-			Some((_, count)) => *count += 1,
-			None => counts.push((label, 1)),
-		}
-	}
-	counts.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
-	let mut parts: Vec<String> = counts
-		.iter()
-		.take(2)
-		.map(|(label, count)| match count {
-			1 => label.clone(),
-			count => format!("{label} ×{count}"),
-		})
-		.collect();
-	if counts.len() > 2 {
-		parts.push(format!("{} more", counts.len() - 2));
-	}
-	parts.join(", ")
 }
 
-fn describe(kind: &RegistryDelta) -> String {
-	match kind {
-		RegistryDelta::AddNode { .. } => "Added a node".into(),
-		RegistryDelta::RemoveNode { .. } => "Removed a node".into(),
-		RegistryDelta::ChangeNodeInput { .. } => "Changed an input".into(),
-		RegistryDelta::SetNodeInputs { .. } => "Set a node's inputs".into(),
-		RegistryDelta::SetNodeImplementation { .. } => "Changed what a node does".into(),
-		RegistryDelta::ChangeNodeAttribute { delta, .. } => format!("Set node {}", delta.key),
-		RegistryDelta::ChangeNodeInputAttribute { delta, .. } => format!("Set input {}", delta.key),
-		RegistryDelta::SetNetworkExport { .. } => "Changed an export".into(),
-		RegistryDelta::ChangeNetworkAttribute { delta, .. } => format!("Set network {}", delta.key),
-		RegistryDelta::AddNetwork { .. } => "Added a network".into(),
-		RegistryDelta::RemoveNetwork { .. } => "Removed a network".into(),
-		RegistryDelta::AddResource { .. } => "Added a resource".into(),
-		RegistryDelta::SetResourceHash { .. } => "Updated a resource".into(),
-		RegistryDelta::RemoveResource { .. } => "Removed a resource".into(),
-		RegistryDelta::AddSource { .. } | RegistryDelta::RemoveSource { .. } => "Changed where a resource comes from".into(),
-		RegistryDelta::RegisterPeer { .. } => "Joined the document".into(),
-		RegistryDelta::ChangeDocumentAttribute { delta } => format!("Set document {}", delta.key),
-		RegistryDelta::Merge { .. } => "Joined two lines of work".into(),
-		RegistryDelta::Meta => "Marked a step".into(),
-		RegistryDelta::Other(_) => "Changed something".into(),
+/// The ops worth showing, or all of them when every one is background. Setting up a node or subgraph added in the
+/// same run is part of adding it.
+fn foreground<'a, T>(items: &'a [T], kind: impl Fn(&T) -> &RegistryDelta) -> Vec<&'a T> {
+	let mut added_nodes = HashSet::new();
+	let mut added_networks = HashSet::new();
+	let mut implemented = HashSet::new();
+	for item in items {
+		match kind(item) {
+			RegistryDelta::AddNode { id, node } => {
+				added_nodes.insert(*id);
+				if let Implementation::Network(network) = node.implementation() {
+					implemented.insert(*network);
+				}
+			}
+			RegistryDelta::AddNetwork { id, .. } => _ = added_networks.insert(*id),
+			_ => {}
+		}
+	}
+	let setup = |op: &RegistryDelta| match op {
+		RegistryDelta::AddNode { node, .. } => added_networks.contains(&node.network()),
+		RegistryDelta::AddNetwork { id, .. } => implemented.contains(id),
+		RegistryDelta::ChangeNodeInput { id, .. }
+		| RegistryDelta::SetNodeInputs { id, .. }
+		| RegistryDelta::SetNodeImplementation { id, .. }
+		| RegistryDelta::ChangeNodeAttribute { id, .. }
+		| RegistryDelta::ChangeNodeInputAttribute { id, .. } => added_nodes.contains(id),
+		RegistryDelta::SetNetworkExport { id, .. } | RegistryDelta::ChangeNetworkAttribute { id, .. } => added_networks.contains(id),
+		_ => false,
+	};
+	let shown: Vec<&T> = items.iter().filter(|item| !is_background(kind(item)) && !setup(kind(item))).collect();
+	if shown.is_empty() { items.iter().collect() } else { shown }
+}
+
+/// Names nodes and inputs as the document has them now, so a node removed since goes unnamed.
+struct Names<'a> {
+	registry: &'a Registry,
+	declarations: &'a Declarations,
+}
+
+impl Names<'_> {
+	fn node(&self, node: &Node) -> String {
+		let reference = || match node.implementation() {
+			Implementation::Network(network) => self.registry.networks.get(network)?.attributes.get_typed::<String>(node_attr::ui::REFERENCE),
+			Implementation::ProtoNode(declaration) => {
+				let identifier = ProtoNodeIdentifier::with_owned_string(self.declarations.get(declaration)?.identifier.clone());
+				Some(DefinitionIdentifier::ProtoNode(identifier).implementation_name_from_identifier())
+			}
+		};
+		node.attributes().get_typed::<String>(node_attr::ui::DISPLAY_NAME).or_else(reference).unwrap_or_else(|| "a node".into())
+	}
+
+	fn node_by_id(&self, id: NodeId) -> String {
+		self.registry.node_instances.get(&id).map(|node| self.node(node)).unwrap_or_else(|| "a node".into())
+	}
+
+	fn input(&self, id: NodeId, index: u32) -> String {
+		let slot = self.registry.node_instances.get(&id).and_then(|node| node.inputs().get(index as usize));
+		slot.and_then(|slot| slot.attributes.get_typed::<String>(node_attr::input::ui::NAME))
+			.map(|name| name.trim().to_string())
+			.unwrap_or_else(|| "an input".into())
+	}
+
+	/// One line for a run of changes, nodes added or removed first since the rest follows from them, then the most frequent kind.
+	fn summarize<'a>(&self, kinds: impl IntoIterator<Item = &'a RegistryDelta>) -> String {
+		let kinds: Vec<&RegistryDelta> = kinds.into_iter().collect();
+		let mut counts: Vec<(String, usize, bool)> = Vec::new();
+		for kind in foreground(&kinds, |kind| kind) {
+			let label = self.describe(kind);
+			let structural = matches!(kind, RegistryDelta::AddNode { .. } | RegistryDelta::RemoveNode { .. });
+			match counts.iter_mut().find(|(known, ..)| *known == label) {
+				Some((_, count, _)) => *count += 1,
+				None => counts.push((label, 1, structural)),
+			}
+		}
+		counts.sort_by_key(|(_, count, structural)| (!structural, std::cmp::Reverse(*count)));
+		let mut parts: Vec<String> = counts
+			.iter()
+			.take(2)
+			.map(|(label, count, _)| match count {
+				1 => label.clone(),
+				count => format!("{label} ×{count}"),
+			})
+			.collect();
+		if counts.len() > 2 {
+			parts.push(format!("{} more", counts.len() - 2));
+		}
+		parts.join(", ")
+	}
+
+	fn describe(&self, kind: &RegistryDelta) -> String {
+		let toggled = |delta: &AttributeDelta, on: &str, off: &str, id: NodeId| {
+			let verb = if matches!(delta.value, Some(Value::Bool(true))) { on } else { off };
+			format!("{verb} {}", self.node_by_id(id))
+		};
+		match kind {
+			RegistryDelta::AddNode { node, .. } => format!("Added {}", self.node(node)),
+			RegistryDelta::RemoveNode { snapshot, .. } => format!("Removed {}", self.node(snapshot)),
+			RegistryDelta::ChangeNodeInput { id, index, .. } => format!("Changed {} of {}", self.input(*id, *index), self.node_by_id(*id)),
+			RegistryDelta::SetNodeInputs { id, .. } => format!("Changed the inputs of {}", self.node_by_id(*id)),
+			RegistryDelta::SetNodeImplementation { id, .. } => format!("Changed what {} does", self.node_by_id(*id)),
+			RegistryDelta::ChangeNodeAttribute { id, delta } => match delta.key.as_str() {
+				node_attr::ui::POSITION => format!("Moved {} in the graph", self.node_by_id(*id)),
+				node_attr::ui::DISPLAY_NAME => match &delta.value {
+					Some(Value::Str(name)) => {
+						let layer = self.registry.node_instances.get(id).and_then(|node| node.attributes().get_typed::<bool>(node_attr::ui::IS_LAYER));
+						let term = if layer == Some(true) { "layer" } else { "node" };
+						format!("Renamed a {term} to {name}")
+					}
+					_ => format!("Reset the name of {}", self.node_by_id(*id)),
+				},
+				node_attr::ui::LOCKED => toggled(delta, "Locked", "Unlocked", *id),
+				node_attr::ui::PINNED => toggled(delta, "Pinned", "Unpinned", *id),
+				node_attr::ui::IS_LAYER => toggled(delta, "Made a layer of", "Made a node of", *id),
+				node_attr::VISIBLE => toggled(delta, "Showed", "Hid", *id),
+				key => format!("Set node {key}"),
+			},
+			RegistryDelta::ChangeNodeInputAttribute { delta, .. } => format!("Set input {}", delta.key),
+			RegistryDelta::SetNetworkExport { .. } => "Changed an output".into(),
+			RegistryDelta::ChangeNetworkAttribute { delta, .. } => match delta.key.as_str() {
+				session_attr::network::PREVIEWING => "Changed the previewed node".into(),
+				network_attr::PINNED_ORDER => "Reordered the pinned nodes".into(),
+				key => format!("Set network {key}"),
+			},
+			RegistryDelta::AddNetwork { .. } => "Added a network".into(),
+			RegistryDelta::RemoveNetwork { .. } => "Removed a network".into(),
+			RegistryDelta::AddResource { .. } => "Added a resource".into(),
+			RegistryDelta::SetResourceHash { .. } => "Updated a resource".into(),
+			RegistryDelta::RemoveResource { .. } => "Removed a resource".into(),
+			RegistryDelta::AddSource { .. } | RegistryDelta::RemoveSource { .. } => "Changed where a resource comes from".into(),
+			RegistryDelta::RegisterPeer { .. } => "Joined the document".into(),
+			RegistryDelta::ChangeDocumentAttribute { delta } => match delta.key.as_str() {
+				session_attr::doc::PTZ => "Moved the view".into(),
+				session_attr::doc::RENDER_MODE => "Changed the view mode".into(),
+				session_attr::doc::OVERLAYS => "Changed the overlays".into(),
+				session_attr::doc::RULERS_VISIBLE => "Showed or hid the rulers".into(),
+				session_attr::doc::SNAPPING => "Changed snapping".into(),
+				session_attr::doc::COLLAPSED => "Expanded or collapsed layers".into(),
+				key => format!("Set document {key}"),
+			},
+			RegistryDelta::Merge { .. } => "Joined two lines of work".into(),
+			RegistryDelta::Meta => "Marked a step".into(),
+			RegistryDelta::Other(_) => "Changed something".into(),
+		}
 	}
 }
 
@@ -467,15 +615,97 @@ mod tests {
 		gdd.undo().expect("undo");
 		gdd.undo().expect("undo");
 
-		assert_eq!(panel_state(&gdd, PAGE, &BTreeSet::new(), None).rows.len(), 3);
+		assert_eq!(panel_state(&gdd, &Declarations::new(), PAGE, &BTreeSet::new(), None).rows.len(), 3);
 	}
 
 	#[test]
 	fn a_run_of_only_markers_is_named_by_them() {
+		let registry = Registry::default();
+		let names = Names {
+			registry: &registry,
+			declarations: &Declarations::new(),
+		};
+		let summarize = |kinds: &[&RegistryDelta]| names.summarize(kinds.iter().copied());
 		let register = RegistryDelta::RegisterPeer { peer: PeerId(1), user: UserId(1) };
 		let merge = RegistryDelta::Merge { extra_parents: Vec::new() };
-		assert_eq!(summarize([&RegistryDelta::Meta, &RegistryDelta::Meta]), "Marked a step ×2");
-		assert_eq!(summarize([&register, &RegistryDelta::Meta]), "Joined the document, Marked a step");
-		assert_eq!(summarize([&RegistryDelta::Meta, &merge, &register]), "Joined two lines of work");
+		assert_eq!(summarize(&[&RegistryDelta::Meta, &RegistryDelta::Meta]), "Marked a step ×2");
+		assert_eq!(summarize(&[&register, &RegistryDelta::Meta]), "Joined the document, Marked a step");
+		assert_eq!(summarize(&[&RegistryDelta::Meta, &merge, &register]), "Joined two lines of work");
+	}
+
+	#[test]
+	fn copied_declaration_details_stay_out_of_a_name() {
+		let registry = Registry::default();
+		let names = Names {
+			registry: &registry,
+			declarations: &Declarations::new(),
+		};
+		let attribute = |key: &str| AttributeDelta {
+			key: key.to_string(),
+			value: Some(Value::Str("copied".into())),
+		};
+		let id = NodeId(1);
+		let description = RegistryDelta::ChangeNodeInputAttribute {
+			id,
+			index: 0,
+			delta: attribute(node_attr::input::ui::DESCRIPTION),
+		};
+		let output_names = RegistryDelta::ChangeNodeAttribute {
+			id,
+			delta: attribute(node_attr::ui::OUTPUT_NAMES),
+		};
+		let moved = RegistryDelta::ChangeNodeAttribute {
+			id,
+			delta: attribute(node_attr::ui::POSITION),
+		};
+		assert_eq!(names.summarize([&description, &output_names, &description, &moved]), "Moved a node in the graph");
+	}
+
+	#[tokio::test]
+	async fn a_tool_names_its_step() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Select, 50., 50., 80., 80., ModifierKeys::empty()).await;
+
+		let gdd = editor.active_document_mut().storage_mut().expect("every document has a working copy");
+		gdd.retire_pending_interaction().expect("retire");
+		let actions: Vec<&str> = gdd.session().history().filter_map(|delta| delta.action()).collect();
+		assert_eq!(actions, ["Drew a rectangle", "Moved a layer"]);
+	}
+
+	#[tokio::test]
+	async fn a_step_shows_before_it_enters_history() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 120., 0., 200., 100., ModifierKeys::empty()).await;
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
+		assert_eq!(labels, ["Drew a rectangle", "Drew a rectangle"], "the open draw and the closed one waiting to retire");
+	}
+
+	#[tokio::test]
+	async fn deleting_a_layer_names_its_step() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
+		assert_eq!(labels, ["Deleted a layer", "Drew a rectangle"]);
 	}
 }

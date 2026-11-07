@@ -400,6 +400,11 @@ impl<L: Layout> Gdd<L> {
 		Ok(())
 	}
 
+	/// Names this peer's open interaction. Closing it takes the name along.
+	pub fn name_interaction(&mut self, action: &str) {
+		self.session.name_interaction(action);
+	}
+
 	/// Undo this peer's latest hot interaction, here and on peers. `None` if it already retired.
 	pub fn retract_interaction(&mut self) -> Result<Option<Vec<RegistryDelta>>, Error> {
 		let Some(retraction) = self.session.retract_interaction()? else {

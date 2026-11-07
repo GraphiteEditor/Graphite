@@ -74,4 +74,6 @@ pub mod delta {
 	/// Marks the last delta of a user interaction, so the undo cursor steps per-interaction, not per-delta. Also set on
 	/// the last hot op of an interaction.
 	pub const INTERACTION_END: &str = "interaction_end";
+	/// What the user did in an interaction, such as a tool action. Set on the last hot op and the last delta.
+	pub const ACTION: &str = "action";
 }
