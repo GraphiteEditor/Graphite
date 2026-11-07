@@ -280,6 +280,11 @@ impl SliderRange {
 	}
 }
 
+/// Builds a parameter's number field.
+type FieldWidget = fn(ParameterWidgetsInfo<'_>, NumberInput) -> Vec<WidgetInstance>;
+/// Builds a parameter's range slider beside its number field.
+type SliderWidget = fn(ParameterWidgetsInfo<'_>, NumberInput, SliderRange) -> Vec<WidgetInstance>;
+
 /// The number a parameter's definition gives it by default, which a slider's double-click restores.
 pub(crate) fn definition_default_number(parameter_widgets_info: &ParameterWidgetsInfo) -> Option<f64> {
 	let identifier = parameter_widgets_info
@@ -289,6 +294,7 @@ pub(crate) fn definition_default_number(parameter_widgets_info: &ParameterWidget
 
 	match input.as_value()? {
 		TaggedValue::Number(value) => Some(*value),
+		TaggedValue::Angle(angle) => Some(angle.to_degrees()),
 		_ => None,
 	}
 }
@@ -339,16 +345,17 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 	// A range-mode number hard-clamped at both ends becomes a range slider beside its number input, unless a soft bound lets typing pass it
 	let no_soft_bounds = soft_min.is_none() && soft_max.is_none();
 	let hard_both_ends = hard_min.is_some() && hard_max.is_some();
-	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput| -> LayoutGroup {
+	let field_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput, field: FieldWidget, slider: SliderWidget| -> LayoutGroup {
 		let fixed_extent = number_input.mode == NumberInputMode::Range && no_soft_bounds && hard_both_ends;
 		match (number_input.min, number_input.max) {
 			(Some(min), Some(max)) if fixed_extent && min.is_finite() && max.is_finite() && min < max => {
 				let default = definition_default_number(&default_info);
-				range_slider_widget(default_info, number_input.mode_increment(), SliderRange { min, max, default }).into()
+				slider(default_info, number_input.mode_increment(), SliderRange { min, max, default }).into()
 			}
-			_ => number_widget(default_info, number_input).into(),
+			_ => field(default_info, number_input).into(),
 		}
 	};
+	let number_or_slider = |default_info: ParameterWidgetsInfo, number_input: NumberInput| field_or_slider(default_info, number_input, number_widget, range_slider_widget);
 
 	let default_info = ParameterWidgetsInfo::at_index(node_id, index, true, context);
 
@@ -390,7 +397,7 @@ pub(crate) fn inspector_row_from_type(node_id: NodeId, index: usize, ty: &Type, 
 				},
 				Some(x) if id_is::<i64>(x) => number_widget(default_info, bounded(number_input.int(), f64::NEG_INFINITY, f64::INFINITY)).into(),
 				Some(x) if id_is::<Length>(x) => length_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
-				Some(x) if id_is::<Angle>(x) => angle_widget(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY)).into(),
+				Some(x) if id_is::<Angle>(x) => field_or_slider(default_info, bounded(number_input, f64::NEG_INFINITY, f64::INFINITY), angle_widget, angle_slider_widget),
 				Some(x) if id_is::<bool>(x) => bool_widget(default_info, CheckboxInput::default()).into(),
 				Some(x) if id_is::<String>(x) => match multiline {
 					true => text_area_widget(default_info).into(),
@@ -1394,22 +1401,68 @@ pub fn angle_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: 
 	let number_props = bounds_in_unit(number_props, |degrees| angle.unit.from_degrees(degrees));
 	widgets.extend_from_slice(&[
 		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-		number_props
-			.value(Some(angle.value))
-			.unit(unit_suffix(angle.unit.symbol()))
-			.kept_units(AngleUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
-			.on_update(parameter_widgets_info.update_value(|input: &NumberInput| {
-				let unit = math_parser::units::Unit::named(input.unit.trim()).and_then(AngleUnit::from_unit).unwrap_or_default();
-				TaggedValue::Angle(TypedAngle {
-					value: input.value.unwrap_or_default(),
-					unit,
-				})
-			}))
-			.on_commit(commit_value)
+		angle_field(number_props, angle).on_update(parameter_widgets_info.update_value(typed_angle)).widget_instance(),
+	]);
+
+	widgets
+}
+
+/// An angle's range slider beside its number field, which keeps the unit the angle was typed in, with the slider's bounds given in degrees.
+pub fn angle_slider_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput, slider: SliderRange) -> Vec<WidgetInstance> {
+	let mut widgets = start_widgets(&parameter_widgets_info);
+
+	let Some(input) = parameter_widgets_info.input() else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let angle = match input.as_non_exposed_value() {
+		Some(&TaggedValue::Angle(angle)) => angle,
+		Some(&TaggedValue::Number(degrees)) => TypedAngle::degrees(degrees),
+		_ => return widgets,
+	};
+	let ParameterWidgetsInfo { node_id, index, .. } = parameter_widgets_info;
+
+	let unit = angle.unit;
+	let slid_to = move |position| {
+		let value = unit.from_degrees(slider.value(position));
+		TaggedValue::Angle(TypedAngle { value, unit })
+	};
+	let default_position = slider.default.map(|default| slider.position(default));
+
+	let number_props = bounds_in_unit(number_props, |degrees| unit.from_degrees(degrees));
+	widgets.extend_from_slice(&[
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		value_slider(node_id, index, GradientStops::default(), Color::WHITE, slider.position(angle.to_degrees()), default_position, slid_to)
+			.range_slider(true)
+			.disabled(number_props.disabled)
+			.widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+		// A unit spelled out, like `0.25 turn`, needs more room than a degree sign
+		angle_field(number_props, angle)
+			.sizing(WidgetSizing::fixed(if unit == AngleUnit::Degree { 60 } else { 90 }))
+			.on_update(update_value_at_index(typed_angle, node_id, index))
 			.widget_instance(),
 	]);
 
 	widgets
+}
+
+/// The number field showing an angle in the unit it was typed in, which keeps any angle unit typed into it.
+fn angle_field(number_props: NumberInput, angle: TypedAngle) -> NumberInput {
+	number_props
+		.value(Some(angle.value))
+		.unit(unit_suffix(angle.unit.symbol()))
+		.kept_units(AngleUnit::ALL.iter().map(|unit| unit.symbol().to_string()).collect())
+		.on_commit(commit_value)
+}
+
+/// The angle in an angle field, in the unit typed into it.
+fn typed_angle(input: &NumberInput) -> TaggedValue {
+	let unit = math_parser::units::Unit::named(input.unit.trim()).and_then(AngleUnit::from_unit).unwrap_or_default();
+	TaggedValue::Angle(TypedAngle {
+		value: input.value.unwrap_or_default(),
+		unit,
+	})
 }
 
 // TODO: Auto-generate this enum dropdown menu widget
