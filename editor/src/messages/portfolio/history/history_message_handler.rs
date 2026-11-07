@@ -945,6 +945,40 @@ mod tests {
 	}
 
 	#[tokio::test]
+	async fn deleting_the_only_layer_is_captured() {
+		use crate::test_utils::test_prelude::*;
+		use glam::UVec2;
+		use graphene_std::application_io::TimingInformation;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.handle_message(DocumentMessage::DeleteSelectedLayers).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let step = current_stamp(gdd.session()).expect("the deletion is a step");
+
+		let portfolio = editor.portfolio_message_handler_mut();
+		let document_id = portfolio.active_document_id.unwrap();
+		let document = portfolio.documents.get_mut(&document_id).unwrap();
+		portfolio
+			.executor
+			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., TimingInformation::default(), Vec::new(), true, DVec2::ZERO)
+			.unwrap();
+		assert!(portfolio.executor.submit_document_capture(document, document_id, step), "the runtime holds this document's graph");
+		editor.runtime.update();
+		editor.runtime.run().await;
+
+		let responses = editor.dispatch(Message::Wake);
+		let captured = responses
+			.iter()
+			.any(|message| matches!(message, FrontendMessage::UpdateHistoryThumbnail { id, .. } if *id == shot_id(step)));
+		assert!(captured, "an empty document is captured too");
+	}
+
+	#[tokio::test]
 	async fn a_capture_taken_while_hot_stays_with_its_step_in_history() {
 		use crate::test_utils::test_prelude::*;
 
