@@ -708,4 +708,33 @@ mod tests {
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
 		assert_eq!(labels, ["Deleted a layer", "Drew a rectangle"]);
 	}
+
+	#[tokio::test]
+	async fn a_pasted_image_names_its_step() {
+		use crate::test_utils::test_prelude::*;
+
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		use base64::Engine;
+
+		let png = base64::engine::general_purpose::STANDARD
+			.decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==")
+			.unwrap();
+		let insert = DocumentMessage::InsertImage {
+			name: None,
+			data: png.into(),
+			size: glam::UVec2::ONE,
+			mouse: None,
+			parent_and_insert_index: None,
+			place_at_origin: false,
+		};
+		editor.handle_message(insert).await;
+		editor.handle_message(DocumentMessage::StartTransaction).await;
+
+		let document = editor.active_document();
+		let gdd = document.storage().expect("every document has a working copy");
+		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
+		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
+		assert!(labels.contains(&"Added an image"), "{labels:?}");
+	}
 }
