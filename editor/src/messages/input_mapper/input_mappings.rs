@@ -345,6 +345,7 @@ pub fn input_mappings(zoom_with_scroll: bool, environment: Environment) -> Mappi
 		//
 		// DocumentMessage
 		entry!(DoubleTap(Space); action_dispatch=DocumentMessage::GraphViewOverlayToggle),
+		entry!(KeyDown(KeyH); modifiers=[Alt], action_dispatch=HistoryMessage::GraphOverlayToggle),
 		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),

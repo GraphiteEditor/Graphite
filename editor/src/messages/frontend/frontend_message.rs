@@ -199,6 +199,12 @@ pub enum FrontendMessage {
 	UpdateHistoryPanel {
 		state: crate::messages::portfolio::history::utility_types::HistoryPanelState,
 	},
+	UpdateHistoryGraph {
+		graph: crate::messages::portfolio::history::utility_types::HistoryGraphState,
+	},
+	UpdateHistoryGraphOverlay {
+		open: bool,
+	},
 	/// A History panel step's captured image as an SVG, sent when the GPU is unavailable, which the panel shows wherever a row names `id`.
 	UpdateHistoryThumbnail {
 		id: String,

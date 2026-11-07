@@ -3859,7 +3859,7 @@ impl DocumentMessageHandler {
 		]
 	}
 
-	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
+	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration, history_graph_open: bool) {
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
 				.tooltip_label("Restart Animation")
@@ -3944,6 +3944,14 @@ impl DocumentMessageHandler {
 
 		widgets.extend([
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			TextButton::new("History")
+				.icon("HistoryUndo")
+				.tooltip_label(if history_graph_open { "Hide the history graph" } else { "Show the history graph" })
+				.tooltip_description("Every step and branch of the document's history, drawn over the viewport.")
+				.tooltip_shortcut(action_shortcut!(HistoryMessageDiscriminant::GraphOverlayToggle))
+				.on_update(|_| HistoryMessage::GraphOverlayToggle.into())
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			TextButton::new("Node Graph")
 				.icon(if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" })
 				.hover_icon(if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" })

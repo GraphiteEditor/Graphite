@@ -31,6 +31,10 @@ pub enum HistoryMessage {
 		tag: String,
 		on: bool,
 	},
+	GraphOverlay {
+		open: bool,
+	},
+	GraphOverlayToggle,
 	Captured {
 		document_id: DocumentId,
 		step: document_graph_storage::TimeStamp,

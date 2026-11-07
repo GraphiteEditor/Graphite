@@ -5,6 +5,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import LayoutRow from "/src/components/layout/LayoutRow.svelte";
 	import Graph from "/src/components/views/Graph.svelte";
+	import HistoryGraph from "/src/components/views/HistoryGraph.svelte";
 	import RemoteCursor from "/src/components/views/RemoteCursor.svelte";
 	import RulerInput from "/src/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "/src/components/widgets/inputs/ScrollbarInput.svelte";
@@ -12,6 +13,7 @@
 	import WidgetLayout from "/src/components/widgets/WidgetLayout.svelte";
 	import type { AppWindowStore } from "/src/stores/app-window";
 	import type { DocumentStore } from "/src/stores/document";
+	import type { HistoryStore } from "/src/stores/history";
 	import type { SubscriptionsRouter } from "/src/subscriptions-router";
 	import type { MessageBody } from "/src/subscriptions-router";
 	import { fillChoiceColor, createSRgba8, sRgba8FromCSS } from "/src/utility-functions/colors";
@@ -31,6 +33,7 @@
 	const editor = getContext<EditorWrapper>("editor");
 	const appWindow = getContext<AppWindowStore>("appWindow");
 	const document = getContext<DocumentStore>("document");
+	const historyGraphOpen = getContext<HistoryStore>("history").graphOpen;
 	const remoteCursors = document.remoteCursorsStore;
 
 	// Interactive text editing
@@ -768,6 +771,9 @@
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
 						<Graph />
 					</div>
+					{#if $historyGraphOpen}
+						<HistoryGraph />
+					{/if}
 				</LayoutCol>
 				<LayoutCol class="ruler-or-scrollbar right-scrollbar">
 					<ScrollbarInput

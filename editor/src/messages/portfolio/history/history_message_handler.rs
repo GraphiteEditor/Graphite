@@ -1,5 +1,7 @@
 use super::changes::{Change, ChangedArea, close_up, tint_changes};
-use super::utility_types::{CaptureImage, DocumentCapture, HistoryBranch, HistoryDeltaRow, HistoryPanelState, HistoryProgressRow, HistoryRow, HistoryThumbnail, LineChange, Pixels};
+use super::utility_types::{
+	CaptureImage, DocumentCapture, HistoryBranch, HistoryDeltaRow, HistoryGraphNode, HistoryGraphState, HistoryPanelState, HistoryProgressRow, HistoryRow, HistoryThumbnail, LineChange, Pixels,
+};
 use crate::messages::portfolio::document::DocumentMessageHandler;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::TransactionStatus;
@@ -26,7 +28,7 @@ pub struct HistoryMessageContext<'a> {
 	pub executor: &'a NodeGraphExecutor,
 }
 
-/// Sends the History panel the active document's history and turns its actions into head moves.
+/// Sends the History panel and the history graph the active document's history and turns their actions into head moves.
 #[derive(Debug, Default, ExtractField)]
 pub struct HistoryMessageHandler {
 	ticking: bool,
@@ -39,6 +41,8 @@ pub struct HistoryMessageHandler {
 	requested: Option<(DocumentId, TimeStamp)>,
 	/// Counts the images the frontend got, so the panel is sent again once a step's capture or its close-up arrives.
 	images_sent: u64,
+	graph_open: bool,
+	graph_last_sent: Option<u64>,
 }
 
 /// What a captured step showed. The frontend keeps its images.
@@ -77,20 +81,29 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 		match message {
 			HistoryMessage::Refresh => {
 				self.last_sent = None;
-				if !self.ticking {
-					self.ticking = true;
-					responses.add(BroadcastMessage::SubscribeEvent {
-						on: EventMessage::AnimationFrame,
-						send: Box::new(HistoryMessage::Tick.into()),
-					});
-				}
+				self.tick_every_frame(responses);
 			}
 			HistoryMessage::Tick => {
-				if context.panel_open {
+				if context.panel_open || self.graph_open {
 					self.request_capture(&context);
+				}
+				if context.panel_open {
 					self.send(&context, responses);
 				}
+				if self.graph_open {
+					self.send_graph(&context, responses);
+				}
 			}
+			HistoryMessage::GraphOverlay { open } => {
+				self.graph_open = open;
+				self.graph_last_sent = None;
+				if open {
+					self.tick_every_frame(responses);
+				}
+				responses.add(FrontendMessage::UpdateHistoryGraphOverlay { open });
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+			}
+			HistoryMessage::GraphOverlayToggle => responses.add(HistoryMessage::GraphOverlay { open: !self.graph_open }),
 			HistoryMessage::Captured { document_id, step, capture } => {
 				if self.requested == Some((document_id, step)) {
 					self.requested = None;
@@ -149,10 +162,24 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 		}
 	}
 
-	advertise_actions!(HistoryMessageDiscriminant;);
+	advertise_actions!(HistoryMessageDiscriminant; GraphOverlayToggle);
 }
 
 impl HistoryMessageHandler {
+	pub fn graph_open(&self) -> bool {
+		self.graph_open
+	}
+
+	fn tick_every_frame(&mut self, responses: &mut VecDeque<Message>) {
+		if !self.ticking {
+			self.ticking = true;
+			responses.add(BroadcastMessage::SubscribeEvent {
+				on: EventMessage::AnimationFrame,
+				send: Box::new(HistoryMessage::Tick.into()),
+			});
+		}
+	}
+
 	/// Asks for the newest step to be captured once no tool is mid-gesture, since a capture shows the document as it renders now.
 	fn request_capture(&mut self, context: &HistoryMessageContext) {
 		self.captures.retain(|id, _| context.documents.contains_key(id));
@@ -262,6 +289,19 @@ impl HistoryMessageHandler {
 			.unwrap_or_default();
 		responses.add(FrontendMessage::UpdateHistoryPanel { state });
 	}
+
+	fn send_graph(&mut self, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
+		let document = context.active_document_id.and_then(|id| context.documents.get(&id));
+		let gdd = document.and_then(|document| document.storage());
+		let captures = context.active_document_id.and_then(|id| self.captures.get(&id));
+		let fingerprint = fingerprint(context.active_document_id, gdd, 0, &BTreeSet::new(), None, self.images_sent);
+		if self.graph_last_sent == Some(fingerprint) {
+			return;
+		}
+		self.graph_last_sent = Some(fingerprint);
+		let graph = document.zip(gdd).map(|(document, gdd)| graph_state(gdd, document.declarations(), captures)).unwrap_or_default();
+		responses.add(FrontendMessage::UpdateHistoryGraph { graph });
+	}
 }
 
 fn active_storage<'a>(context: &'a HistoryMessageContext) -> Option<&'a GddV1> {
@@ -327,13 +367,7 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, captures: Option<&HashM
 		peers: gdd.peers().collect(),
 	};
 
-	let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
-	for delta in session.history() {
-		for parent in delta.all_parents() {
-			children.entry(parent).or_default().push(delta.id);
-		}
-	}
-
+	let children = children(session);
 	let head = session.head_rev();
 	let (head_line, _) = line(session, head, None, usize::MAX);
 	let head_line_revs: HashSet<Rev> = head_line.iter().map(|delta| delta.id).collect();
@@ -369,6 +403,229 @@ fn panel_state(gdd: &GddV1, declarations: &Declarations, captures: Option<&HashM
 		following: following.map(|tip| tip.to_string()),
 		collaborating,
 	}
+}
+
+fn children(session: &Session) -> HashMap<Rev, Vec<Rev>> {
+	let mut children: HashMap<Rev, Vec<Rev>> = HashMap::new();
+	for delta in session.history() {
+		for parent in delta.all_parents() {
+			children.entry(parent).or_default().push(delta.id);
+		}
+	}
+	children
+}
+
+/// Every interaction in history as a tree on first parents. Each delta goes to the interactions of the first line that
+/// reaches it: the one through the undone steps and the head, then each line from an unclaimed delta, newest first.
+fn graph_state(gdd: &GddV1, declarations: &Declarations, captures: Option<&HashMap<TimeStamp, Capture>>) -> HistoryGraphState {
+	let session = gdd.session();
+	let names = Names {
+		registry: gdd.registry(),
+		declarations,
+	};
+	let people = People {
+		session,
+		metadata: gdd.metadata(),
+		peers: gdd.peers().collect(),
+	};
+	let head = session.head_rev();
+	let (head_line, _) = line(session, head, None, usize::MAX);
+	let head_line: HashSet<Rev> = head_line.iter().map(|delta| delta.id).collect();
+	let checkpoint = session.redo_stack().first().copied();
+	let (undone, _) = checkpoint.map(|checkpoint| line(session, Some(checkpoint), head, usize::MAX)).unwrap_or_default();
+	let undone: HashSet<Rev> = undone.iter().map(|delta| delta.id).collect();
+
+	let newest_first: Vec<Rev> = session.history().map(|delta| delta.id).collect::<Vec<_>>().into_iter().rev().collect();
+	let mut step_of: HashMap<Rev, usize> = HashMap::new();
+	let mut groups: Vec<Vec<&Delta>> = Vec::new();
+	for tip in checkpoint.or(head).into_iter().chain(newest_first) {
+		let mut unclaimed = Vec::new();
+		let mut current = Some(tip);
+		while let Some(delta) = current.filter(|rev| !step_of.contains_key(rev)).and_then(|rev| session.delta(rev)) {
+			unclaimed.push(delta);
+			current = delta.parent;
+		}
+		for group in interactions(&unclaimed) {
+			step_of.extend(group.iter().map(|delta| (delta.id, groups.len())));
+			groups.push(group);
+		}
+	}
+
+	let parents: Vec<Option<usize>> = groups.iter().map(|group| group.last()?.parent.and_then(|rev| step_of.get(&rev).copied())).collect();
+	let places = tidy_tree(&parents);
+
+	let children = children(session);
+	let expanded = BTreeSet::new();
+	let view = View {
+		children: &children,
+		on_line: &head_line,
+		head_line: &head_line,
+		head,
+		people: &people,
+		names: &names,
+		captures,
+		expanded: &expanded,
+		session,
+		metadata: gdd.metadata(),
+	};
+	let nodes: Vec<HistoryGraphNode> = groups
+		.iter()
+		.zip(&parents)
+		.zip(places)
+		.enumerate()
+		.map(|(index, ((group, parent), (x, depth)))| {
+			let closing = group[0];
+			let merged: BTreeSet<usize> = group
+				.iter()
+				.flat_map(|delta| delta.all_parents().skip(1))
+				.filter_map(|rev| step_of.get(&rev).copied())
+				.filter(|&step| step != index)
+				.collect();
+			let undone = undone.contains(&closing.id);
+			HistoryGraphNode {
+				id: closing.id.to_string(),
+				label: view.label(group),
+				x,
+				depth,
+				parent: parent.map(|parent| groups[parent][0].id.to_string()),
+				merged: merged.into_iter().map(|step| groups[step][0].id.to_string()).collect(),
+				head: Some(closing.id) == head,
+				undone,
+				abandoned: !undone && !head_line.contains(&closing.id),
+				thumbnail: captures.and_then(|captures| thumbnail(captures, closing.timestamp)),
+			}
+		})
+		.collect();
+
+	HistoryGraphState {
+		width: nodes.iter().map(|node| node.x + 1.).fold(0., f64::max),
+		depth: nodes.iter().map(|node| node.depth + 1).max().unwrap_or(0),
+		nodes,
+	}
+}
+
+/// The left and right edges of a subtree at each depth, deepest first, each offset by `shift`.
+struct Contour {
+	left: Vec<f64>,
+	right: Vec<f64>,
+	shift: f64,
+}
+
+impl Contour {
+	fn leaf() -> Self {
+		Self {
+			left: vec![0.],
+			right: vec![0.],
+			shift: 0.,
+		}
+	}
+
+	fn levels(&self) -> usize {
+		self.left.len()
+	}
+
+	/// Where the level `level` steps below the top is kept.
+	fn index(&self, level: usize) -> usize {
+		self.left.len() - 1 - level
+	}
+
+	fn left(&self, level: usize) -> f64 {
+		self.left[self.index(level)] + self.shift
+	}
+
+	fn right(&self, level: usize) -> f64 {
+		self.right[self.index(level)] + self.shift
+	}
+
+	/// Adds a level on top holding one node at `x`.
+	fn push(&mut self, x: f64) {
+		self.left.push(x - self.shift);
+		self.right.push(x - self.shift);
+	}
+}
+
+/// Places subtrees side by side, each as close to the ones before as their contours allow at every shared depth. Gives
+/// each subtree's offset from the first and their joint contour, built on the deepest so a long line isn't copied.
+fn pack(subtrees: impl IntoIterator<Item = Contour>) -> (Vec<f64>, Contour) {
+	let mut subtrees = subtrees.into_iter();
+	let mut packed = subtrees.next().unwrap_or_else(Contour::leaf);
+	let mut offsets = vec![0.];
+	for mut next in subtrees {
+		let shared = packed.levels().min(next.levels());
+		let gap = (0..shared).map(|level| packed.right(level) - next.left(level)).fold(f64::MIN, f64::max) + 1.;
+		next.shift += gap;
+		offsets.push(gap);
+		// The shared depths take their left edge from the subtrees before and their right edge from the next
+		if next.levels() > packed.levels() {
+			for level in 0..shared {
+				let index = next.index(level);
+				next.left[index] = packed.left(level) - next.shift;
+			}
+			packed = next;
+		} else {
+			for level in 0..shared {
+				let index = packed.index(level);
+				packed.right[index] = next.right(level) - packed.shift;
+			}
+		}
+	}
+	(offsets, packed)
+}
+
+/// Lays out a forest given by each node's parent, children in index order, as each node's column and depth. Siblings'
+/// subtrees sit side by side as close as they fit, each parent centred over its children, and the roots in a row.
+fn tidy_tree(parents: &[Option<usize>]) -> Vec<(f64, usize)> {
+	let mut children = vec![Vec::new(); parents.len()];
+	let mut roots = Vec::new();
+	for (node, parent) in parents.iter().enumerate() {
+		match parent {
+			Some(parent) => children[*parent].push(node),
+			None => roots.push(node),
+		}
+	}
+	// Breadth first, so each node comes after its parent
+	let mut order = roots.clone();
+	let mut depth = vec![0; parents.len()];
+	let mut next = 0;
+	while let Some(&node) = order.get(next) {
+		for &child in &children[node] {
+			depth[child] = depth[node] + 1;
+			order.push(child);
+		}
+		next += 1;
+	}
+
+	let mut contours: Vec<Option<Contour>> = parents.iter().map(|_| None).collect();
+	let mut offset = vec![0.; parents.len()];
+	for &node in order.iter().rev() {
+		let contour = match children[node].as_slice() {
+			[] => Contour::leaf(),
+			kids => {
+				let (offsets, mut packed) = pack(kids.iter().filter_map(|&child| contours[child].take()));
+				let middle = (offsets[0] + offsets[offsets.len() - 1]) / 2.;
+				for (&child, child_offset) in kids.iter().zip(offsets) {
+					offset[child] = child_offset - middle;
+				}
+				packed.shift -= middle;
+				packed.push(0.);
+				packed
+			}
+		};
+		contours[node] = Some(contour);
+	}
+
+	let mut x = vec![0.; parents.len()];
+	let (offsets, _) = pack(roots.iter().filter_map(|&root| contours[root].take()));
+	for (&root, root_offset) in roots.iter().zip(offsets) {
+		x[root] = root_offset;
+	}
+	for &node in &order {
+		if let Some(parent) = parents[node] {
+			x[node] = x[parent] + offset[node];
+		}
+	}
+	let left = x.iter().copied().fold(f64::INFINITY, f64::min);
+	x.into_iter().zip(depth).map(|(x, depth)| (x - left, depth)).collect()
 }
 
 /// Open interactions first, then closed ones waiting to retire, newest first.
@@ -859,6 +1116,76 @@ mod tests {
 		gdd.undo().expect("undo");
 
 		assert_eq!(panel_state(&gdd, &Declarations::new(), None, PAGE, &BTreeSet::new(), None).rows.len(), 3);
+	}
+
+	/// A document with an empty network added in each of `steps` interactions.
+	fn document_of_steps(steps: u64) -> GddV1 {
+		use document_container::AnyContainer;
+		use document_container::backends::memory::MemoryBackend;
+		use document_format::GddV1Layout;
+
+		let mut gdd = GddV1::create_in(AnyContainer::Memory(MemoryBackend::new()), GddV1Layout, PeerId(1), UserId(1), 1, "editor".into(), "stdlib".into()).expect("create");
+		(1..=steps).for_each(|id| add_step(&mut gdd, id));
+		gdd
+	}
+
+	fn add_step(gdd: &mut GddV1, id: u64) {
+		use document_graph_storage::{Network, NetworkId};
+
+		let network = Network::default();
+		gdd.stage_ops([RegistryDelta::AddNetwork { id: NetworkId(id), network }]).expect("stage");
+		gdd.retire_pending_interaction().expect("retire");
+	}
+
+	/// The graph's steps oldest first, as (depth, column, head, undone, abandoned).
+	fn graph_of(gdd: &GddV1) -> Vec<(usize, f64, bool, bool, bool)> {
+		let mut nodes: Vec<_> = graph_state(gdd, &Declarations::new(), None)
+			.nodes
+			.into_iter()
+			.map(|node| (node.depth, node.x, node.head, node.undone, node.abandoned))
+			.collect();
+		nodes.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.total_cmp(&b.1)));
+		nodes
+	}
+
+	#[test]
+	fn a_fork_places_its_branches_side_by_side() {
+		let mut gdd = document_of_steps(3);
+		gdd.undo().expect("undo");
+		add_step(&mut gdd, 4);
+
+		let nodes = graph_of(&gdd);
+		let depths: Vec<usize> = nodes.iter().map(|node| node.0).collect();
+		assert_eq!(depths, [0, 1, 2, 2], "both steps after the second sit one step further out");
+		let [(_, left, ..), (_, right, ..)] = [nodes[2], nodes[3]];
+		assert!(right - left >= 1., "the branches don't overlap: {nodes:?}");
+		assert_eq!(nodes[1].1, (left + right) / 2., "the fork is centred over its branches");
+		let heads = nodes.iter().filter(|node| node.2).count();
+		let abandoned = nodes.iter().filter(|node| node.4).count();
+		assert_eq!((heads, abandoned), (1, 1), "the new step is the head and the undone one was left behind");
+	}
+
+	#[test]
+	fn undone_steps_sit_beyond_the_head() {
+		let mut gdd = document_of_steps(3);
+		gdd.undo().expect("undo");
+		gdd.undo().expect("undo");
+
+		let nodes = graph_of(&gdd);
+		assert_eq!(nodes, [(0, 0., true, false, false), (1, 0., false, true, false), (2, 0., false, true, false)]);
+	}
+
+	#[test]
+	fn packed_subtrees_never_overlap() {
+		// A root with two forks below it, the first one deeper
+		let parents = [None, Some(0), Some(0), Some(1), Some(1), Some(3), Some(3), Some(2), Some(2)];
+		let places = tidy_tree(&parents);
+		for (a, &(x, depth)) in places.iter().enumerate() {
+			for &(other, other_depth) in &places[a + 1..] {
+				assert!(depth != other_depth || (x - other).abs() >= 1., "two steps overlap: {places:?}");
+			}
+		}
+		assert!(places[3].0 < places[4].0 && places[4].0 < places[7].0, "children keep their order left to right: {places:?}");
 	}
 
 	#[test]

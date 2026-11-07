@@ -300,6 +300,11 @@ mod editor_commands {
 		HistoryMessage::Tag { id, tag, on }.into()
 	}
 
+	/// Show or hide the history graph over the viewport
+	fn set_history_graph_open(open: bool) -> Message {
+		HistoryMessage::GraphOverlay { open }.into()
+	}
+
 	fn split_panel_group(target_group: u64, direction: Ts<DockingSplitDirection>, tabs: Vec<Ts<PanelType>>, active_tab_index: usize) -> Message {
 		WorkspaceMessage::SplitPanelGroup {
 			target_group: PanelGroupId(target_group),

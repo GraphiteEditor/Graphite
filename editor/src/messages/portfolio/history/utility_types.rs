@@ -109,6 +109,38 @@ pub struct HistoryDeltaRow {
 	pub time: Option<f64>,
 }
 
+/// Every step in history as a tree on first parents, for the history graph drawn over the viewport.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryGraphState {
+	pub nodes: Vec<HistoryGraphNode>,
+	/// The widest column plus one.
+	pub width: f64,
+	/// The deepest step's depth plus one.
+	pub depth: usize,
+}
+
+/// One interaction, placed in the tree.
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct HistoryGraphNode {
+	/// The rev closing the interaction, in decimal.
+	pub id: String,
+	pub label: String,
+	/// The column, in step widths from the left. A parent sits centred over its children.
+	pub x: f64,
+	/// Steps from the root.
+	pub depth: usize,
+	pub parent: Option<String>,
+	/// Steps joined into this one by a merge.
+	pub merged: Vec<String>,
+	pub head: bool,
+	pub undone: bool,
+	/// Off the head's line and not undone.
+	pub abandoned: bool,
+	pub thumbnail: Option<HistoryThumbnail>,
+}
+
 /// A person with unretired work in the room's hot log.
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]

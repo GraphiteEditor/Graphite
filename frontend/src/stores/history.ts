@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 import type { Writable } from "svelte/store";
 import type { SubscriptionsRouter } from "/src/subscriptions-router";
-import type { HistoryPanelState } from "/wrapper/pkg/graphite_wasm_wrapper";
+import type { HistoryGraphState, HistoryPanelState } from "/wrapper/pkg/graphite_wasm_wrapper";
 
 export type HistoryStore = ReturnType<typeof createHistoryStore>;
 
@@ -11,9 +11,14 @@ const initialState: HistoryPanelState = { rows: [], progress: [], more: false, f
 const store: Writable<HistoryPanelState> = import.meta.hot?.data?.store || writable<HistoryPanelState>(initialState);
 // The captured images by the ID rows name them with, sent once each
 const thumbnails: Writable<Record<string, string>> = import.meta.hot?.data?.thumbnails || writable<Record<string, string>>({});
+// The history graph drawn over the viewport, sent only while it is open
+const graph: Writable<HistoryGraphState> = import.meta.hot?.data?.graph || writable<HistoryGraphState>({ nodes: [], width: 0, depth: 0 });
+const graphOpen: Writable<boolean> = import.meta.hot?.data?.graphOpen || writable<boolean>(false);
 if (import.meta.hot) {
 	import.meta.hot.data.store = store;
 	import.meta.hot.data.thumbnails = thumbnails;
+	import.meta.hot.data.graph = graph;
+	import.meta.hot.data.graphOpen = graphOpen;
 }
 
 const { subscribe, set } = store;
@@ -79,7 +84,15 @@ export function createHistoryStore(subscriptions: SubscriptionsRouter) {
 		keepThumbnail(data.id, encodePixels(data.pixels, data.width, data.height));
 	});
 
-	return { subscribe, thumbnails: { subscribe: thumbnails.subscribe } };
+	subscriptions.subscribeFrontendMessage("UpdateHistoryGraph", (data) => {
+		graph.set(data.graph);
+	});
+
+	subscriptions.subscribeFrontendMessage("UpdateHistoryGraphOverlay", (data) => {
+		graphOpen.set(data.open);
+	});
+
+	return { subscribe, thumbnails: { subscribe: thumbnails.subscribe }, graph: { subscribe: graph.subscribe }, graphOpen: { subscribe: graphOpen.subscribe } };
 }
 
 export function destroyHistoryStore() {
@@ -89,5 +102,7 @@ export function destroyHistoryStore() {
 	subscriptions.unsubscribeFrontendMessage("UpdateHistoryPanel");
 	subscriptions.unsubscribeFrontendMessage("UpdateHistoryThumbnail");
 	subscriptions.unsubscribeFrontendMessage("UpdateHistoryThumbnailPixels");
+	subscriptions.unsubscribeFrontendMessage("UpdateHistoryGraph");
+	subscriptions.unsubscribeFrontendMessage("UpdateHistoryGraphOverlay");
 	subscriptionsRouter = undefined;
 }

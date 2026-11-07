@@ -1142,7 +1142,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::UpdateDocumentWidgets => {
 				if let Some(document) = self.active_document() {
-					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time);
+					document.update_document_widgets(responses, animation.is_playing(), timing_information.animation_time, self.history.graph_open());
 				}
 			}
 			PortfolioMessage::UpdateOpenDocumentsList => {
@@ -1177,6 +1177,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				PrevDocument,
 			));
 			common.extend(actions!(IngestMessageDiscriminant; Import));
+			common.extend(self.history.actions());
 		}
 
 		common
