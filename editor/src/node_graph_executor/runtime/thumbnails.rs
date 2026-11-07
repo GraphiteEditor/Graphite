@@ -230,7 +230,16 @@ impl Thumbnails {
 
 	/// Renders the whole document as the network's export gives it, along with what each layer currently shows.
 	pub fn capture_document(&self, network: &NodeNetwork, executor: &DynamicExecutor) -> Option<DocumentCapture> {
-		let source = network.input_source(&[], network.exports.first()?)?;
+		let Some(source) = network.exports.first().and_then(|export| network.input_source(&[], export)) else {
+			// Nothing reaches the export, so the document shows nothing
+			let frame = expand_to_thumbnail_aspect([DVec2::ZERO, DVec2::ONE]);
+			let size = frame[1] - frame[0];
+			return Some(DocumentCapture {
+				svg: format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"></svg>"#, frame[0].x, frame[0].y, size.x, size.y),
+				frame,
+				layer_sources: HashMap::new(),
+			});
+		};
 		let &(content_node, _) = executor.tree().source_map().get(source.as_slice())?;
 		let content = ThumbnailContent::evaluate(executor, content_node)?;
 		Some(DocumentCapture {
