@@ -10,6 +10,7 @@ use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeType
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use once_cell::sync::Lazy;
 
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 
@@ -328,8 +329,10 @@ impl NodeNetworkInterface {
 		};
 
 		// A List-typed default drops to its Item counterpart (when that has a default value and the connector accepts rank 0),
-		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0
+		// since a stored Item default can promote back onto a List connector but a stored List default can never return to rank 0.
+		// An input whose definition defaults to a list keeps the empty list, since promoting an Item default would leave it a placeholder element.
 		if let Some(element) = guaranteed_type.nested_type().list_element()
+			&& !self.definition_defaults_to_list(input_connector, network_path)
 			&& let Some(item_type) = self
 				.potential_valid_input_types(input_connector, network_path)
 				.into_iter()
@@ -340,6 +343,19 @@ impl NodeNetworkInterface {
 		}
 
 		TaggedValue::from_type_or_none(&guaranteed_type)
+	}
+
+	/// Whether the definition of the node owning this input gives it a list as its default value.
+	fn definition_defaults_to_list(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+		let InputConnector::Node { node_id, input_index } = input_connector else { return false };
+		let Some(definition) = self.reference(node_id, network_path).as_ref().and_then(resolve_document_node_type) else {
+			return false;
+		};
+
+		matches!(
+			definition.node_template.inputs.get(*input_index),
+			Some(NodeInput::Value { tagged_value, .. }) if matches!(tagged_value.ty().nested_type(), Type::List(_))
+		)
 	}
 
 	/// A list of all valid input types for this specific node.
