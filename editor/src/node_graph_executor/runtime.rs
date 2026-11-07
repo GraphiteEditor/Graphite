@@ -47,7 +47,7 @@ pub struct NodeRuntime {
 	pending_eyedropper: Option<ExecutionRequest>,
 	pending_thumbnails: Option<DocumentId>,
 	/// The step the History panel wants the document captured for, once what is pending has run.
-	pending_capture: Option<(DocumentId, document_graph_storage::TimeStamp)>,
+	pending_capture: Option<(DocumentId, document_graph_storage::TimeStamp, Option<[DVec2; 2]>)>,
 	/// The network the executor last compiled successfully, with previews applied.
 	old_graph: Option<NodeNetwork>,
 	async_runtime: Option<AsyncRuntime>,
@@ -87,6 +87,8 @@ pub enum GraphRuntimeRequest {
 	CaptureDocument {
 		document_id: DocumentId,
 		step: document_graph_storage::TimeStamp,
+		/// The area to render close up as well.
+		detail: Option<[DVec2; 2]>,
 	},
 	/// The full path from the root network to the node the Data panel inspects, or empty for none.
 	Inspect(Vec<NodeId>),
@@ -179,7 +181,7 @@ impl NodeRuntime {
 				GraphRuntimeRequest::GraphUpdate(update) => {
 					graph = Some(update);
 					// The graph may be another document's, or show a later step than the one asked for
-					if let Some((document_id, step)) = self.pending_capture.take() {
+					if let Some((document_id, step, _)) = self.pending_capture.take() {
 						self.sender
 							.send(NodeGraphUpdate::DocumentCapture { document_id, step, capture: None })
 							.expect("Failed to send response");
@@ -199,7 +201,7 @@ impl NodeRuntime {
 					self.thumbnails.set_in_view(layers);
 					self.pending_thumbnails = Some(document_id);
 				}
-				GraphRuntimeRequest::CaptureDocument { document_id, step } => self.pending_capture = Some((document_id, step)),
+				GraphRuntimeRequest::CaptureDocument { document_id, step, detail } => self.pending_capture = Some((document_id, step, detail)),
 				// A graph update applied after this loop would otherwise inspect what was selected before
 				GraphRuntimeRequest::Inspect(node_to_inspect) => match &mut graph {
 					Some(update) => update.node_to_inspect = node_to_inspect,
@@ -290,9 +292,9 @@ impl NodeRuntime {
 				texture = self.run_viewport(viewport).await;
 			}
 
-			if let Some((document_id, step)) = self.pending_capture.take()
+			if let Some((document_id, step, detail)) = self.pending_capture.take()
 				&& let Some(network) = &self.old_graph
-				&& let Some(capture) = self.thumbnails.capture_document(network, &self.executor)
+				&& let Some(capture) = self.thumbnails.capture_document(network, &self.executor, &self.editor_api, detail).await
 			{
 				let capture = Some(Box::new(capture));
 				self.sender.send(NodeGraphUpdate::DocumentCapture { document_id, step, capture }).expect("Failed to send response");

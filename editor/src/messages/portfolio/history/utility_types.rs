@@ -7,11 +7,28 @@ use std::collections::HashMap;
 /// The document as rendered once a step is done, for the History panel to show and compare.
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentCapture {
-	pub svg: String,
-	/// The document area the SVG shows.
+	/// The whole document.
+	pub image: CaptureImage,
+	/// The document area `image` shows.
 	pub frame: [DVec2; 2],
+	/// The area asked for in detail, and its image.
+	pub detail: Option<([DVec2; 2], CaptureImage)>,
 	/// The proto node giving each layer's own content, whose ID changes with that content.
 	pub layer_sources: HashMap<NodeId, NodeId>,
+}
+
+/// A capture rendered like the layer thumbnails: pixels from Vello, or an SVG for the frontend to draw when the GPU is unavailable.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum CaptureImage {
+	Pixels(Pixels),
+	Svg(String),
+}
+
+/// Straight RGBA pixels, row by row.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Pixels {
+	pub size: glam::UVec2,
+	pub rgba: Vec<u8>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -71,37 +88,10 @@ pub struct HistoryRow {
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct HistoryThumbnail {
-	pub after: HistoryShot,
-	/// The step before, when it was captured too, outlining what this step took away or changed.
-	pub before: Option<HistoryShot>,
-}
-
-/// One captured image, whose SVG the frontend received under `id`, with outlines in document coordinates.
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct HistoryShot {
-	pub id: String,
-	/// The document area shown, as x, y, width and height.
-	pub frame: [f64; 4],
-	pub outlines: Vec<HistoryOutline>,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct HistoryOutline {
-	pub change: OutlineChange,
-	pub x: f64,
-	pub y: f64,
-	pub width: f64,
-	pub height: f64,
-}
-
-#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub enum OutlineChange {
-	Added,
-	Removed,
-	Changed,
+	/// The ID the frontend received the whole document's image under.
+	pub whole: String,
+	/// The ID of a close-up of what the step changed, tinted by how, when the step before was captured too.
+	pub detail: Option<String>,
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]

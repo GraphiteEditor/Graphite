@@ -1,6 +1,6 @@
 use super::evaluated_output;
 use crate::messages::frontend::FrontendMessage;
-use crate::messages::portfolio::history::utility_types::DocumentCapture;
+use crate::messages::portfolio::history::utility_types::{CaptureImage, DocumentCapture, Pixels};
 #[cfg(feature = "gpu")]
 use atlas::ThumbnailAtlasLayout;
 use glam::{DAffine2, DVec2, UVec2};
@@ -228,25 +228,55 @@ impl Thumbnails {
 		self.show_svg(layer, content.svg(), responses).await;
 	}
 
-	/// Renders the whole document as the network's export gives it, along with what each layer currently shows.
-	pub fn capture_document(&self, network: &NodeNetwork, executor: &DynamicExecutor) -> Option<DocumentCapture> {
-		let Some(source) = network.exports.first().and_then(|export| network.input_source(&[], export)) else {
+	/// Renders the whole document as the network's export gives it, and the area `detail` close up, the way layer
+	/// thumbnails are rendered, along with what each layer currently shows.
+	pub async fn capture_document(&self, network: &NodeNetwork, executor: &DynamicExecutor, editor_api: &PlatformEditorApi, detail: Option<[DVec2; 2]>) -> Option<DocumentCapture> {
+		let content = match network.exports.first().and_then(|export| network.input_source(&[], export)) {
+			Some(source) => {
+				let &(content_node, _) = executor.tree().source_map().get(source.as_slice())?;
+				ThumbnailContent::evaluate(executor, content_node)?
+			}
 			// Nothing reaches the export, so the document shows nothing
-			let frame = expand_to_thumbnail_aspect([DVec2::ZERO, DVec2::ONE]);
-			let size = frame[1] - frame[0];
-			return Some(DocumentCapture {
-				svg: format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{} {} {} {}"></svg>"#, frame[0].x, frame[0].y, size.x, size.y),
-				frame,
-				layer_sources: HashMap::new(),
-			});
+			None => ThumbnailContent::Graphics(List::default()),
 		};
-		let &(content_node, _) = executor.tree().source_map().get(source.as_slice())?;
-		let content = ThumbnailContent::evaluate(executor, content_node)?;
+
+		let frame = content.bounds();
+		let frames: Vec<[DVec2; 2]> = std::iter::once(frame).chain(detail).collect();
+		let mut images: Vec<CaptureImage> = match self.render_frames_with_vello(&content, &frames, editor_api).await {
+			Some(pixels) => pixels.into_iter().map(CaptureImage::Pixels).collect(),
+			None => frames.iter().map(|&frame| CaptureImage::Svg(content.svg_of(frame))).collect(),
+		};
+		let detail_image = (images.len() > 1).then(|| images.pop()).flatten();
 		Some(DocumentCapture {
-			svg: content.svg(),
-			frame: content.bounds(),
+			image: images.pop()?,
+			frame,
+			detail: detail.zip(detail_image),
 			layer_sources: self.sources.clone(),
 		})
+	}
+
+	/// Renders each frame of the content into a cell the size of a layer thumbnail, giving none if Vello is unavailable.
+	#[cfg(feature = "gpu")]
+	async fn render_frames_with_vello(&self, content: &ThumbnailContent, frames: &[[DVec2; 2]], editor_api: &PlatformEditorApi) -> Option<Vec<Pixels>> {
+		let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
+		let cell_size = cell_size(self.scale);
+		let size = UVec2::new(cell_size.x * frames.len() as u32, cell_size.y);
+
+		let texture = executor.render_vello(size, DAffine2::IDENTITY, &mut |scene| atlas::draw_frames(scene, cell_size, content, frames));
+		let texture = texture.inspect_err(|error| log::error!("Failed to render the document capture: {error}")).ok()?;
+		let raster = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, executor.clone()).await;
+		let (pixels, _, _) = raster.to_flat_u8();
+
+		let cell = |index: usize| Pixels {
+			size: cell_size,
+			rgba: atlas::cell_pixels(&pixels, size.x, cell_size, UVec2::new(index as u32 * cell_size.x, 0)),
+		};
+		Some((0..frames.len()).map(cell).collect())
+	}
+
+	#[cfg(not(feature = "gpu"))]
+	async fn render_frames_with_vello(&self, _content: &ThumbnailContent, _frames: &[[DVec2; 2]], _editor_api: &PlatformEditorApi) -> Option<Vec<Pixels>> {
+		None
 	}
 
 	/// Draws the SVG into the canvases the layer's rows show, so the browser rasterizes it once rather than keeping it in the page.
@@ -352,7 +382,11 @@ impl ThumbnailContent {
 	}
 
 	fn svg(&self) -> String {
-		let bounds = self.bounds();
+		self.svg_of(self.bounds())
+	}
+
+	/// The SVG of the area `bounds`.
+	fn svg_of(&self, bounds: [DVec2; 2]) -> String {
 		let footprint = Footprint {
 			transform: DAffine2::from_translation(bounds[0]),
 			resolution: (bounds[1] - bounds[0]).abs().as_uvec2(),
@@ -470,6 +504,7 @@ fn expand_to_thumbnail_aspect(bounds: [DVec2; 2]) -> [DVec2; 2] {
 #[cfg(test)]
 mod tests {
 	use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
+	use crate::messages::portfolio::history::utility_types::CaptureImage;
 	use crate::test_utils::test_prelude::*;
 	use glam::UVec2;
 	use graph_craft::document::NodeId;
@@ -502,8 +537,12 @@ mod tests {
 		compile_and_run(&mut editor).await;
 		let runtime = &editor.runtime;
 		let network = runtime.old_graph.as_ref().expect("The document should have compiled");
-		let capture = runtime.thumbnails.capture_document(network, &runtime.executor).expect("The document should render");
-		assert!(capture.svg.contains("<path"), "The rectangle should be drawn: {}", capture.svg);
+		let capture = runtime.thumbnails.capture_document(network, &runtime.executor, &runtime.editor_api, None).await;
+		let capture = capture.expect("The document should render");
+		match &capture.image {
+			CaptureImage::Pixels(pixels) => assert!(pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0), "The rectangle should be drawn"),
+			CaptureImage::Svg(svg) => assert!(svg.contains("<path"), "The rectangle should be drawn: {svg}"),
+		}
 		assert!(capture.layer_sources.contains_key(&layer), "The rectangle's layer should have its content");
 		let [min, max] = capture.frame;
 		assert!(min.cmple(DVec2::ZERO).all() && max.cmpge(DVec2::splat(10.)).all(), "The frame {min} to {max} should hold the rectangle");
