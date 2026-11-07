@@ -2,6 +2,7 @@ use crate::gcore::Context;
 use core::f64::consts::TAU;
 use core_types::list::{Item, List};
 use core_types::transform::{ApplyTransform, Footprint};
+use core_types::units::{Angle, Length};
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Color, Ctx, ExtractAll, ExtractFootprint, InjectFootprint, InjectVarArgs, Interrupt, NodeError, OwnedContextImpl, Poll};
 use glam::{DAffine2, DVec2, I64Vec2};
 use graphic_types::Generator;
@@ -56,7 +57,7 @@ fn repeat<T: Send + Clone + 'static>(
 	Ok(result_list)
 }
 
-#[node_macro::node(category("Graphic"), icon("NodeRepeatArray"))]
+#[node_macro::node(category("Graphic"), icon("NodeRepeatArray"), version(2))]
 fn repeat_array<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -80,16 +81,14 @@ fn repeat_array<T: Send + Clone + 'static>(
 	#[default(100., 100.)]
 	// TODO: When using a custom Inspector layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Inspector. Investigation is needed.
 	direction: Item<DVec2>,
-	#[unit("°")]
 	#[range]
 	#[soft(-360..360)]
-	angle: Item<f64>,
+	angle: Item<Angle>,
 	#[default(5)]
 	#[hard(1..)]
 	count: Item<i64>,
 ) -> Result<List<T>, Interrupt> {
-	let (direction, angle, count) = (direction.into_element(), angle.into_element(), count.into_element());
-	let angle = angle.to_radians();
+	let (direction, angle, count) = (direction.into_element(), angle.into_element().radians(), count.into_element());
 	// A single copy has no steps between copies, so the denominator is kept at 1 to avoid `0. / 0.` producing a NaN transform
 	let total = (count - 1).max(1) as f64;
 
@@ -235,7 +234,7 @@ fn tile<T: Send + Clone + 'static>(
 	}
 }
 
-#[node_macro::node(category("Graphic"), icon("NodeRepeatRadial"))]
+#[node_macro::node(category("Graphic"), icon("NodeRepeatRadial"), version(2))]
 fn repeat_radial<T: Send + Clone + 'static>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
 	#[implementations(
@@ -255,23 +254,20 @@ fn repeat_radial<T: Send + Clone + 'static>(
 		Context -> List<Artboard>,
 	)]
 	content: impl Node<Context<'static>, Output = List<T>>,
-	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
-	start_angle: Item<f64>,
-	#[unit(" px")]
-	#[default(5)]
-	radius: Item<f64>,
+	start_angle: Item<Angle>,
+	#[default(5)] radius: Item<Length>,
 	#[default(5)]
 	#[hard(1..)]
 	count: Item<i64>,
 ) -> Result<List<T>, Interrupt> {
-	let (start_angle, radius, count) = (start_angle.into_element(), radius.into_element(), count.into_element());
+	let (start_angle, radius, count) = (start_angle.into_element().radians(), radius.into_element().pixels(), count.into_element());
 
 	let mut result_list = List::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle);
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 
@@ -359,7 +355,6 @@ mod test {
 	use super::*;
 	use core_types::list::Item;
 	use core_types::transform::Footprint;
-	use core_types::units::Length;
 	use core_types::{LazyInput, Node, Poll, Status};
 	use glam::DVec2;
 	use graphene_core::ReadPositionNode;
@@ -457,7 +452,7 @@ mod test {
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(direction),
-			Item::new_from_element(0.),
+			Item::new_from_element(Angle::ZERO),
 			Item::new_from_element(count),
 		)
 		.unwrap();
@@ -478,7 +473,7 @@ mod test {
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(DVec2::new(12., 10.)),
-			Item::new_from_element(45.),
+			Item::new_from_element(Angle::from_degrees(45.)),
 			Item::new_from_element(1),
 		)
 		.unwrap();
@@ -502,7 +497,7 @@ mod test {
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
 			Item::new_from_element(direction),
-			Item::new_from_element(0.),
+			Item::new_from_element(Angle::ZERO),
 			Item::new_from_element(count),
 		)
 		.unwrap();
@@ -606,8 +601,8 @@ mod test {
 		let repeated = super::repeat_radial(
 			context,
 			LazyInput::new(&ValueNode(vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))), &status, 0),
-			Item::new_from_element(45.),
-			Item::new_from_element(4.),
+			Item::new_from_element(Angle::from_degrees(45.)),
+			Item::new_from_element(Length::from_pixels(4.)),
 			Item::new_from_element(8),
 		)
 		.unwrap();

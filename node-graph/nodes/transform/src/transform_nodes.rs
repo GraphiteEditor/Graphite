@@ -4,6 +4,7 @@ use core_types::list::{Item, List};
 use core_types::math::midpoint::apply_midpoint_inverse;
 use core_types::math::spread::spread_factors;
 use core_types::transform::{ApplyTransform, ScaleType, Transform};
+use core_types::units::Angle;
 use core_types::{ATTR_TRANSFORM, CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, Interrupt, ModifyFootprint, OwnedContextImpl};
 use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -223,24 +224,22 @@ fn decompose_skew(_: impl Ctx, transform: Item<DAffine2>) -> Item<f64> {
 }
 
 /// Rotates every item of the content about its origin by its own angle, selected from along a chosen range.
-#[node_macro::node(category("Transform"), icon("NodeVaryRotations"), version(2), footprint_invariant)]
+#[node_macro::node(category("Transform"), icon("NodeVaryRotations"), version(3), footprint_invariant)]
 fn vary_rotations<T: Send>(
 	_: impl Ctx,
 	/// The content with items to rotate individually.
 	#[implementations(List<Graphic>, List<Vector>, List<Raster<CPU>>, List<Raster<GPU>>, List<Color>, List<Gradient>, List<Generator>, List<String>)]
 	content: List<T>,
 	/// The lower end of the range of angles given to the items.
-	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
 	#[default(-180.)]
-	min: Item<f64>,
+	min: Item<Angle>,
 	/// The upper end of the range of angles given to the items.
-	#[unit("°")]
 	#[range]
 	#[soft(-180..180)]
 	#[default(180.)]
-	max: Item<f64>,
+	max: Item<Angle>,
 	/// Where in the range the median angle falls, from its lower end (0) to its upper end (1). The default of 0.5 spreads the angles uniformly, while other values favor angles nearer one end.
 	#[range]
 	#[hard(0..1)]
@@ -270,7 +269,7 @@ fn vary_rotations<T: Send>(
 		let angle = min + (max - min) * apply_midpoint_inverse(factor, bias);
 
 		// Turning only the linear part pivots each item about its own origin, in the axes of its parent
-		transform.matrix2 = DMat2::from_angle(angle.to_radians()) * transform.matrix2;
+		transform.matrix2 = DMat2::from_angle(angle.radians()) * transform.matrix2;
 	}
 
 	content
@@ -359,7 +358,17 @@ mod test {
 	}
 
 	fn rotate(content: List<Color>, min: f64, max: f64, bias: f64, reverse: bool) -> List<Color> {
-		vary_rotations((), content, item(min), item(max), item(bias), item(reverse), item(false), item(0), item(0))
+		vary_rotations(
+			(),
+			content,
+			item(Angle::from_degrees(min)),
+			item(Angle::from_degrees(max)),
+			item(bias),
+			item(reverse),
+			item(false),
+			item(0),
+			item(0),
+		)
 	}
 
 	fn scale(content: List<Color>, min: f64, max: f64, bias: f64, randomize: bool) -> List<Color> {
@@ -392,8 +401,8 @@ mod test {
 			angles(&vary_rotations(
 				(),
 				colors(&[DAffine2::IDENTITY; 5]),
-				item(0.),
-				item(90.),
+				item(Angle::ZERO),
+				item(Angle::from_degrees(90.)),
 				item(0.3),
 				item(reverse),
 				item(true),

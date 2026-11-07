@@ -1,6 +1,7 @@
 use brush_types::Stroke;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::list::{AttributeValueDyn, Item, List, ListDyn, NodeIdPath};
+use core_types::units::{Angle, Length};
 use core_types::{
 	ATTR_EDITOR_LAYER_PATH, ATTR_EDITOR_MERGED_LAYERS, ATTR_EFFECTS, ATTR_TRANSFORM, AnyHash, BlendMode, CacheHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, Interrupt, OwnedContextImpl,
 };
@@ -527,7 +528,7 @@ impl HasText for Raster<GPU> {}
 impl HasText for Color {}
 impl HasText for Gradient {}
 
-#[node_macro::node(category("Graphic"), icon("NodeMirror"), footprint_invariant)]
+#[node_macro::node(category("Graphic"), icon("NodeMirror"), footprint_invariant, version(2))]
 fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
@@ -541,17 +542,21 @@ fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	)]
 	content: Item<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: Item<ReferencePoint>,
-	#[unit(" px")] offset: Item<f64>,
-	#[unit("°")]
+	offset: Item<Length>,
 	#[range]
 	#[soft(-90..90)]
-	angle: Item<f64>,
+	angle: Item<Angle>,
 	#[default(true)] keep_original: Item<bool>,
 ) -> Result<List<T>, MirrorError> {
-	let (relative_to_bounds, offset, angle, keep_original) = (relative_to_bounds.into_element(), offset.into_element(), angle.into_element(), keep_original.into_element());
+	let (relative_to_bounds, offset, angle, keep_original) = (
+		relative_to_bounds.into_element(),
+		offset.into_element().pixels(),
+		angle.into_element().radians(),
+		keep_original.into_element(),
+	);
 
 	// Normalize the direction vector
-	let normal = DVec2::from_angle(angle.to_radians());
+	let normal = DVec2::from_angle(angle);
 
 	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
 	let item_transform: DAffine2 = content.attribute_cloned_or_default(ATTR_TRANSFORM);
@@ -578,7 +583,7 @@ fn mirror<T: BoundingBox + HasText + Send + Clone>(
 	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
 		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
 	} else {
-		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
+		reflection * DAffine2::from_translation(DVec2::from_angle(angle) * DVec2::splat(-offset))
 	};
 
 	let mut result_list = List::new();
@@ -1305,7 +1310,7 @@ mod test {
 	}
 
 	fn mirrored<T: BoundingBox + HasText + Send + Clone>(content: T, relative_to_bounds: ReferencePoint) -> Result<List<T>, MirrorError> {
-		mirror((), content.into(), relative_to_bounds.into(), 0.0.into(), 0.0.into(), true.into())
+		mirror((), content.into(), relative_to_bounds.into(), Length::ZERO.into(), Angle::ZERO.into(), true.into())
 	}
 
 	#[test]
