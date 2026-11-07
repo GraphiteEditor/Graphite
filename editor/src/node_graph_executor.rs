@@ -88,7 +88,8 @@ pub enum NodeGraphUpdate {
 	DocumentCapture {
 		document_id: DocumentId,
 		rev: document_graph_storage::Rev,
-		capture: Box<crate::messages::portfolio::history::utility_types::DocumentCapture>,
+		/// `None` when a newer graph replaced the one the request was for, so it can be asked again.
+		capture: Option<Box<crate::messages::portfolio::history::utility_types::DocumentCapture>>,
 	},
 	InspectResult(Box<InspectResult>),
 }
@@ -701,6 +702,7 @@ impl NodeGraphExecutor {
 				} if thumbnails_document == document_id => {
 					Self::receive_thumbnails(document, thumbnails, responses);
 				}
+				NodeGraphUpdate::DocumentCapture { document_id, rev, capture } => responses.add(HistoryMessage::Captured { document_id, rev, capture }),
 				_ => {}
 			}
 		}

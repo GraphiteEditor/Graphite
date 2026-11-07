@@ -34,6 +34,6 @@ pub enum HistoryMessage {
 	Captured {
 		document_id: DocumentId,
 		rev: document_graph_storage::Rev,
-		capture: Box<super::utility_types::DocumentCapture>,
+		capture: Option<Box<super::utility_types::DocumentCapture>>,
 	},
 }
