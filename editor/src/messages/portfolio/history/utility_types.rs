@@ -133,4 +133,5 @@ pub struct HistoryProgressRow {
 	pub ops: u32,
 	/// Still being made, not closed and waiting.
 	pub open: bool,
+	pub thumbnail: Option<HistoryThumbnail>,
 }
