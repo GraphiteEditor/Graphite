@@ -646,13 +646,12 @@ pub fn get_text<'a>(
 		Some(TaggedValue::Resource(resource_id)) => fonts.id_font(resources, *resource_id).unwrap_or_default(),
 		_ => Font::default(),
 	};
-	let Some(&TaggedValue::Number(font_size)) = parameters.value(text::SizeInput) else { return None };
+	let pixels_per_inch = network_interface.pixels_per_inch();
+	let font_size = parameters.value(text::SizeInput)?.as_length_pixels(pixels_per_inch)?;
 	let Some(&TaggedValue::Number(line_height_ratio)) = parameters.value(text::LineHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::Number(letter_spacing)) = parameters.value(text::LetterSpacingInput) else {
-		return None;
-	};
+	let letter_spacing = parameters.value(text::LetterSpacingInput)?.as_length_pixels(pixels_per_inch)?;
 	let Some(&TaggedValue::Bool(has_max_width)) = parameters.value(text::HasMaxWidthInput) else {
 		return None;
 	};
@@ -665,9 +664,7 @@ pub fn get_text<'a>(
 	let Some(&TaggedValue::Number(max_height)) = parameters.value(text::MaxHeightInput) else {
 		return None;
 	};
-	let Some(&TaggedValue::Number(letter_tilt)) = parameters.value(text::LetterTiltInput) else {
-		return None;
-	};
+	let letter_tilt = parameters.value(text::LetterTiltInput)?.as_angle_degrees()?;
 	let Some(&TaggedValue::TextAlign(align)) = parameters.value(text::AlignInput) else { return None };
 
 	let typesetting = TypesettingConfig {

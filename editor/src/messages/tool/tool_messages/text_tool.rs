@@ -353,10 +353,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 				if let Some(layer) = can_edit_selected(context.document)
 					&& let Some(node_id) = graph_modification_utils::get_text_id(layer, &context.document.network_interface)
 				{
+					let input_connector = InputConnector::node(node_id, graphene_std::text::text::SizeInput);
 					responses.add(NodeGraphMessage::SetInputValue {
 						node_id,
 						input_index: graphene_std::text::text::SizeInput::INDEX,
-						value: TaggedValue::Number(font_size).into(),
+						value: graph_modification_utils::length_in_unit_of_input(&context.document.network_interface, &input_connector, font_size).into(),
 					});
 				}
 			}

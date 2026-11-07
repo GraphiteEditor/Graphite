@@ -15,7 +15,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, list};
 use graphene_std::raster::BlendMode;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::units::TypedLength;
+use graphene_std::units::{TypedAngle, TypedLength};
 use graphene_std::vector::style::{GradientForm, GradientHueDirection, GradientInterpolation, GradientSettings, GradientSpace, GradientSpread, PaintOrder, Stroke};
 use graphene_std::vector::{Gradient, GradientRamp, Vector, VectorModification, VectorModificationType};
 use graphene_std::{Artboard, Color, Graphic};
@@ -197,10 +197,10 @@ impl<'a> ModifyInputsContext<'a> {
 				Some(NodeInput::value(TaggedValue::None, false)),
 				Some(NodeInput::value(TaggedValue::String(text), false)),
 				Some(NodeInput::value(TaggedValue::Resource(font_resource_id), false)),
-				Some(NodeInput::value(TaggedValue::Number(typesetting.font_size), false)),
+				Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(typesetting.font_size)), false)),
 				Some(NodeInput::value(TaggedValue::Number(typesetting.line_height_ratio), false)),
-				Some(NodeInput::value(TaggedValue::Number(typesetting.letter_spacing), false)),
-				Some(NodeInput::value(TaggedValue::Number(typesetting.letter_tilt), false)),
+				Some(NodeInput::value(TaggedValue::Length(TypedLength::pixels(typesetting.letter_spacing)), false)),
+				Some(NodeInput::value(TaggedValue::Angle(TypedAngle::degrees(typesetting.letter_tilt)), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_width.is_some()), false)),
 				Some(NodeInput::value(TaggedValue::Number(typesetting.max_width.unwrap_or(100.)), false)),
 				Some(NodeInput::value(TaggedValue::Bool(typesetting.max_height.is_some()), false)),

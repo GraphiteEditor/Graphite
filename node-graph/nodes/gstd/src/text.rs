@@ -1,5 +1,6 @@
 use core_types::consts::{DEFAULT_FONT_SIZE, DEFAULT_LINE_HEIGHT};
 use core_types::list::{Item, List};
+use core_types::units::{Angle, Length};
 use core_types::{ATTR_FONT, ATTR_FONT_SIZE, ATTR_LETTER_SPACING, ATTR_LETTER_TILT, ATTR_LINE_HEIGHT, ATTR_MAX_HEIGHT, ATTR_MAX_WIDTH, ATTR_TEXT_ALIGN, Ctx};
 use graph_craft::application_io::resource::Resource;
 use graphic_types::Vector;
@@ -8,7 +9,7 @@ pub use text_nodes::*;
 /// Produces a styled text string carrying all typographic attributes.
 ///
 /// Use the **Text to Vector** node to convert this into vector geometry if desired.
-#[node_macro::node(category("Typography"), icon("NodeText"))]
+#[node_macro::node(category("Typography"), icon("NodeText"), version(2))]
 fn text(
 	_: impl Ctx,
 	_primary: (),
@@ -20,10 +21,9 @@ fn text(
 	#[widget(ParsedWidgetOverride::Custom = "text_font")]
 	font: Item<Resource>,
 	/// The font size used to draw the text.
-	#[unit(" px")]
 	#[default(24.)]
 	#[hard(1..)]
-	size: Item<f64>,
+	size: Item<Length>,
 	/// The line height ratio, relative to the font size. Each line is drawn lower than its previous line by the distance of *Size* × *Line Height*.
 	///
 	/// 0 means all lines overlap. 1 means all lines are spaced by just the font size. 1.2 is a common default for readable text. 2 means double-spaced text.
@@ -33,15 +33,13 @@ fn text(
 	#[step(0.1)]
 	#[default(1.2)]
 	line_height: Item<f64>,
-	/// Additional spacing, in pixels, added between each character.
-	#[unit(" px")]
+	/// Additional spacing added between each character.
 	#[step(0.1)]
-	letter_spacing: Item<f64>,
+	letter_spacing: Item<Length>,
 	/// The angle of faux italic slant applied to each glyph.
-	#[unit("°")]
 	#[range]
 	#[hard(-85..85)]
-	letter_tilt: Item<f64>,
+	letter_tilt: Item<Angle>,
 	/// Enables the maximum width constraint so lines can wrap.
 	#[widget(ParsedWidgetOverride::Hidden)]
 	has_max_width: Item<bool>,
@@ -64,7 +62,7 @@ fn text(
 ) -> Item<String> {
 	let text = text.into_element();
 	let font = font.into_element();
-	let (size, line_height, letter_spacing, letter_tilt) = (*size.element(), *line_height.element(), *letter_spacing.element(), *letter_tilt.element());
+	let (size, line_height, letter_spacing, letter_tilt) = (size.element().pixels(), *line_height.element(), letter_spacing.element().pixels(), letter_tilt.element().degrees());
 	let (has_max_width, max_width, has_max_height, max_height) = (*has_max_width.element(), *max_width.element(), *has_max_height.element(), *max_height.element());
 	let align = align.into_element();
 
