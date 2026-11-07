@@ -1092,7 +1092,8 @@ impl NodeNetworkInterface {
 
 	/// Moves the layers stacked below each layer that `layer` is nested within down past that layer's grown content.
 	fn push_stacks_below_ancestors_past_their_content(&mut self, layer: NodeId, network_path: &[NodeId]) {
-		let mut ancestor = self.content_parent(layer, network_path);
+		let mut visited = HashSet::new();
+		let mut ancestor = self.content_parent(layer, network_path, &mut visited);
 		while let Some(parent) = ancestor {
 			let stack_below = self
 				.input_from_connector(&InputConnector::primary_input(parent), network_path)
@@ -1111,7 +1112,7 @@ impl NodeNetworkInterface {
 					self.shift_stack_down(stack_below, content_bottom_row - stack_below_position.y, network_path);
 				}
 			}
-			ancestor = self.content_parent(parent, network_path);
+			ancestor = self.content_parent(parent, network_path, &mut visited);
 		}
 	}
 
@@ -1134,24 +1135,30 @@ impl NodeNetworkInterface {
 	}
 
 	/// The layer whose content holds the stack `layer` is part of, reached through any chain nodes feeding that layer.
-	fn content_parent(&self, layer: NodeId, network_path: &[NodeId]) -> Option<NodeId> {
+	/// `visited` stops the walk on a cyclic graph, which concurrent edits can produce.
+	fn content_parent(&self, layer: NodeId, network_path: &[NodeId], visited: &mut HashSet<NodeId>) -> Option<NodeId> {
 		let mut current = layer;
-		loop {
-			let downstream = self.with_outward_wires(network_path, |outward_wires| {
-				outward_wires.get(&OutputConnector::primary_output(current)).and_then(|wires| wires.first()).copied()
-			})??;
-			let downstream_node = downstream.node_id()?;
-			if !self.is_layer(&downstream_node, network_path) {
-				return self
-					.is_chain(&downstream_node, network_path)
-					.then(|| self.downstream_layer_for_chain_node(&downstream_node, network_path))
-					.flatten();
+		while visited.insert(current) {
+			let consumers = self.with_outward_wires(network_path, |outward_wires| outward_wires.get(&OutputConnector::primary_output(current)).cloned())??;
+
+			let mut layer_stacked_upon = None;
+			for consumer in consumers {
+				let Some(consumer_node) = consumer.node_id() else { continue };
+				if !self.is_layer(&consumer_node, network_path) {
+					if self.is_chain(&consumer_node, network_path) {
+						return self.downstream_layer_for_chain_node(&consumer_node, network_path);
+					}
+				} else if consumer.input_index() == 0 {
+					layer_stacked_upon = Some(consumer_node);
+				} else {
+					return Some(consumer_node);
+				}
 			}
-			if downstream.input_index() != 0 {
-				return Some(downstream_node);
-			}
-			current = downstream_node;
+			current = layer_stacked_upon?;
 		}
+
+		log::error!("Cycle reached while finding the content parent of layer {layer}");
+		None
 	}
 
 	/// Shifts `upstream_node_id` and everything stacked below it down until a layer needing
