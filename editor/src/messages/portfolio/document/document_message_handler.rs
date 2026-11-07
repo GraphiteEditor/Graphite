@@ -1049,6 +1049,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::StartTransaction);
+				responses.add(DocumentMessage::NameInteraction { action: "Added an image".into() });
 
 				let layer = graph_modification_utils::new_image_layer(data, layer_node_id, layer_parent, responses);
 
@@ -1110,6 +1111,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::NameInteraction { action: "Added an SVG".into() });
 
 				let layer = graph_modification_utils::new_svg_layer(svg, transform, !place_at_origin, layer_node_id, layer_parent, responses);
 
