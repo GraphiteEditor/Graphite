@@ -1,4 +1,5 @@
 use crate::quaternion::Quaternion;
+use crate::units::unit_named;
 use crate::value::{Complex, Number};
 use chumsky::input::{Input, ValueInput};
 use chumsky::span::SimpleSpan;
@@ -33,7 +34,7 @@ pub enum Token<'src> {
 	DotDot,
 	Plus,
 	Minus,
-	/// Reserved for percentages, so the parser never matches it and its error points a C-style remainder to `mod(a, b)`.
+	/// The percent unit, which only follows the number it is a percentage of.
 	Percent,
 	Star,
 	Slash,
@@ -221,14 +222,16 @@ fn keyword(word: &str) -> Option<Token<'static>> {
 	KEYWORDS.into_iter().find_map(|(spelling, token)| (word == spelling).then_some(token))
 }
 
-/// Whether a name is a matrix's by the case rule: an uppercase-initial identifier, read after the `\` prefix.
+/// Whether a name is a matrix's by the case rule: an uppercase-initial identifier, read after the `\` prefix, other than the
+/// spelling of a unit like `Hz`.
 #[inline]
 pub fn names_matrix(name: &str) -> bool {
 	let name = name.strip_prefix('\\').unwrap_or(name);
-	match name.as_bytes().first() {
+	let uppercase = match name.as_bytes().first() {
 		Some(byte) if byte.is_ascii() => byte.is_ascii_uppercase(),
 		_ => name.starts_with(char::is_uppercase),
-	}
+	};
+	uppercase && unit_named(name).is_none()
 }
 
 /// Whether an operand has just ended after the token, given whether one had before it. A `!` leaves that as it was, since a factorial
@@ -242,9 +245,15 @@ pub(crate) fn operand_ended(token: &Token, after_operand: bool) -> bool {
 	}
 }
 
-/// Whether a character ends an operand: a name, a number, a closing parenthesis, brace, or bracket, or the `∞` literal.
+/// Whether a character ends an operand: a name, a number, a closing parenthesis, brace, or bracket, the `∞` literal, or a
+/// unit symbol that isn't a letter.
 fn ends_operand(c: char) -> bool {
-	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | ']' | '∞')
+	c.is_alphanumeric() || unicode_ident::is_xid_continue(c) || matches!(c, '.' | ')' | '}' | ']' | '∞') || is_unit_symbol(c)
+}
+
+/// Whether a character is a whole unit spelled by a symbol rather than letters: degrees, feet, inches, or percent.
+pub(crate) fn is_unit_symbol(c: char) -> bool {
+	matches!(c, '°' | '\'' | '"' | '%')
 }
 
 /// Reads every `|` in the source up front, since each depends on what precedes it: a bar opens a magnitude where an operand
@@ -538,6 +547,9 @@ impl<'a> Lexer<'a> {
 
 			// A symbol can't be a name, so unlike `inf`, no binding can shadow `∞`
 			'∞' => Float(f64::INFINITY),
+
+			// The units spelled by a symbol rather than letters read as names, like `deg`, `ft`, and `in`
+			'°' | '\'' | '"' => Ident(&self.input[start..self.pos]),
 
 			// Typeset math symbol aliases
 			'∧' => AndAnd,

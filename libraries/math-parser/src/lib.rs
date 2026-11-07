@@ -9,10 +9,15 @@ pub mod lexer;
 pub mod matrix;
 pub mod object;
 pub mod parser;
+pub mod quantity;
 pub mod quaternion;
 pub mod reducer;
 pub mod sort;
+pub mod units;
 pub mod value;
+
+#[cfg(test)]
+mod units_tests;
 
 use context::EvalContext;
 use executer::EvalError;
@@ -68,7 +73,7 @@ mod tests {
 	#[test]
 	fn percent_is_not_the_remainder() {
 		// `%` is reserved for percentages, so a C-style remainder is a parse error naming the function that computes it
-		for input in ["5 % 3", "x % 2", "%", "50%"] {
+		for input in ["5 % 3", "x % 2", "%", "50% 2", "5 + %"] {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.contains("`mod(a, b)`"), "`{input}` gave the error `{error}`");
 		}
@@ -90,7 +95,7 @@ mod tests {
 
 	#[test]
 	fn error_spans_begin_at_the_token() {
-		for (input, expected) in [("2 %", "at 2..3"), ("x  if 1", "at 3..5")] {
+		for (input, expected) in [("7 % 3", "at 2..3"), ("x  if 1", "at 3..5")] {
 			let error = evaluate(input).unwrap_err().to_string();
 			assert!(error.ends_with(expected), "`{input}` gave the error `{error}`");
 		}
@@ -120,7 +125,11 @@ mod tests {
 		assert_eq!(message("`abc").span(), Some(0..4));
 		assert_eq!(
 			message("7 % 3").parts(),
-			[Code("%".into()), Text(" is reserved for percentages, so the remainder is written ".into()), Code("mod(a, b)".into()),]
+			[
+				Code("%".into()),
+				Text(" makes the number before it a percentage, so the remainder is written ".into()),
+				Code("mod(a, b)".into()),
+			]
 		);
 		assert_eq!(message("7 % 3").span(), Some(2..3));
 		assert_eq!(message("sin(I)").parts(), [Text("A matrix stands where a value is needed".into())]);
@@ -168,10 +177,11 @@ mod tests {
 				let negations = format!("{}1", "-".repeat(127));
 				// Each matrix in a product is evaluated a level deeper than the last, with the largest frames of any chain
 				let product = format!("{}1", "I ".repeat(127));
+				let measures = format!("1mm{}", " / 2mm".repeat(42));
 				let nested = format!("{}1{}", "(".repeat(32), ")".repeat(32));
 				let bindings = (0..99).map(|n| format!("a{n} = I a{}", n + 1)).collect::<Vec<_>>().join(", ");
 				let bindings = format!("a0 where {bindings}, a99 = 1");
-				for source in [&sum, &negations, &product, &nested, &bindings] {
+				for source in [&sum, &negations, &product, &measures, &nested, &bindings] {
 					assert!(evaluate(source).is_ok(), "`{source}` should be read");
 					highlight::highlight(source, false);
 					completion::completions(source, source.len(), true);
@@ -989,8 +999,8 @@ mod tests {
 
 		// Storage is never observable, so a value compares by its four parts and a matrix by its twenty entries, with infinities matched exactly
 		let entries = |object: &Object| match object {
-			Object::Value(Value::Number(number)) => number.to_quaternion().parts().to_vec(),
-			Object::Matrix(matrix) => matrix.rows.iter().chain([&matrix.translation]).flat_map(|row| row.parts()).collect::<Vec<f64>>(),
+			Object::Value(quantity) => quantity.number().to_quaternion().parts().to_vec(),
+			Object::Matrix(matrix) => matrix.matrix.rows.iter().chain([&matrix.matrix.translation]).flat_map(|row| row.parts()).collect::<Vec<f64>>(),
 		};
 		assert!(actual.as_matrix().is_some() == expected.as_matrix().is_some(), "`{input}`: expected {expected}, got {actual}");
 		if let (Some(actual), Some(expected)) = (actual.as_matrix(), expected.as_matrix()) {
@@ -1830,7 +1840,7 @@ mod tests {
 	#[test]
 	fn smoothstep_eases_along_a_rotated_box() {
 		// The parameter is read in the box's own frame, so the ease follows a rotated box's axes and lands on the parameter's
-		let Value::Number(number) = *evaluate("smoothstep(-0.5i + 0.25j, rotation(pi/2) (0..(i + j)))").unwrap().unwrap().as_value().unwrap();
+		let Value::Number(number) = evaluate("smoothstep(-0.5i + 0.25j, rotation(pi/2) (0..(i + j)))").unwrap().unwrap().as_value().unwrap();
 		for (part, expected) in number.to_quaternion().parts().into_iter().zip([0., 0.15625, 0.5, 0.]) {
 			assert!((part - expected).abs() < 1e-12, "{part} against {expected}");
 		}

@@ -1,7 +1,10 @@
-use crate::ast::{BinaryOp, Binding, CallWhere, Case, Clause, Literal, Local, MatrixNode, Node, SortedCase, Syntax, UnaryOp, ValueNode};
-use crate::constants::{Builtin, builtin_function, suffixed_function};
+use crate::ast::{BinaryOp, Binding, BuiltinCall, CallWhere, Case, Clause, Literal, Local, MatrixNode, Measure, Node, SortedCase, Syntax, UnaryOp, ValueNode};
+use crate::constants::{Builtin, SuffixedFunction, builtin_function, suffixed_function};
 use crate::context::{FunctionProvider, NothingMap};
 use crate::lexer::{names_matrix, offset_in};
+use crate::parser::juxtaposed;
+use crate::quantity::{UnitRule, builder_units, matrix_value_unit, region_result, unit_rule};
+use crate::units::unit_named;
 use std::borrow::Cow;
 use std::fmt;
 use std::ops::Range;
@@ -302,6 +305,10 @@ impl<'src> Sorter<'_, 'src> {
 			Syntax::Lit(literal) => Node::Value(ValueNode::Lit(literal)),
 			Syntax::Var(name) => self.name(name, 0),
 			Syntax::FnCall { name, expr } => self.call(name, expr, 0)?,
+			// A quotient by a measure is a product, which reads the measure by its dividend
+			Syntax::BinOp { lhs, op, rhs } if matches!(*rhs, Syntax::Measure { .. }) => self.sort(Syntax::Product { first: lhs, rest: vec![(op, *rhs)] })?,
+			// Standing alone, where only a failed product leaves one, a measure is its number times its units
+			Syntax::Measure { number, units } => self.sort(units.into_iter().fold(*number, juxtaposed))?,
 			Syntax::BinOp { lhs, op, rhs } => {
 				let lhs = self.sort(*lhs);
 				let rhs = self.sort(*rhs);
@@ -394,7 +401,10 @@ impl<'src> Sorter<'_, 'src> {
 		match local {
 			Some(local) => local,
 			None if names_matrix(name) => Node::Matrix(MatrixNode::Var(name.to_string())),
-			None => Node::Value(ValueNode::Var(name.to_string())),
+			None => match unit_named(name) {
+				Some(unit) => Node::Value(ValueNode::Unit { name: name.to_string(), unit }),
+				None => Node::Value(ValueNode::Var(name.to_string())),
+			},
 		}
 	}
 
@@ -508,6 +518,7 @@ impl<'src> Sorter<'_, 'src> {
 		Ok(match builtin {
 			Some(Builtin::OfMatrix(function)) => Node::Value(ValueNode::OfMatrix {
 				function,
+				unit: matrix_value_unit(bare_name),
 				matrix: Box::new(self.matrix(one(arguments).ok_or(invalid_arguments)?, VALUE_AS_MATRIX)?),
 			}),
 			Some(Builtin::MatrixOfMatrix(function)) => Node::Matrix(MatrixNode::OfMatrix {
@@ -520,6 +531,7 @@ impl<'src> Sorter<'_, 'src> {
 				}
 				Node::Matrix(MatrixNode::FromValues {
 					function,
+					units: builder_units(bare_name),
 					arguments: self.values(arguments)?,
 				})
 			}
@@ -537,10 +549,32 @@ impl<'src> Sorter<'_, 'src> {
 					.by_ref()
 					.take(region_count)
 					.map(|region| self.matrix(region, VALUE_AS_MATRIX))
-					.collect::<Result<Vec<MatrixNode>, SortError>>()?;
+					.collect::<Result<Box<[MatrixNode]>, SortError>>()?;
 				let trailing = arguments.next().map(|trailing| self.value(trailing, MATRIX_AS_VALUE).map(Box::new)).transpose()?;
-				Node::Value(ValueNode::OfValueAndRegions { function, value, regions, trailing })
+				Node::Value(ValueNode::OfValueAndRegions {
+					function,
+					result: region_result(bare_name),
+					value,
+					regions,
+					trailing,
+				})
 			}
+			Some(Builtin::Values { function, .. }) => Node::Value(ValueNode::BuiltinCall(Box::new(BuiltinCall {
+				name: bare_name.to_string(),
+				host_name: (!prefixed).then(|| bare_name.to_string()),
+				function,
+				rule: unit_rule(bare_name).unwrap_or(UnitRule::Plain),
+				arguments: self.values(arguments)?,
+				suffix: None,
+			}))),
+			None if !host_function && let Some(SuffixedFunction { name: base_name, function, argument }) = suffixed_function(bare_name) => Node::Value(ValueNode::BuiltinCall(Box::new(BuiltinCall {
+				name: base_name.to_string(),
+				host_name: (!prefixed).then(|| bare_name.to_string()),
+				function,
+				rule: unit_rule(base_name).unwrap_or(UnitRule::Plain),
+				arguments: self.values(arguments)?,
+				suffix: Some(argument),
+			}))),
 			_ => Node::Value(ValueNode::FnCall {
 				name: name.to_string(),
 				expr: self.values(arguments)?,
@@ -621,6 +655,22 @@ impl<'src> Sorter<'_, 'src> {
 		let mut accumulated = first;
 
 		while let Some((op, factor)) = rest.next() {
+			let factor = match (factor, accumulated) {
+				// A value's quotient by a measure is read by the value's units once evaluated
+				(Syntax::Measure { number, units }, Node::Value(dividend)) => {
+					accumulated = self.measure_quotient(dividend, *number, units)?;
+					continue;
+				}
+				(Syntax::Measure { number, units }, matrix) => {
+					accumulated = matrix;
+					self.measure_after_matrix(*number, units, rest)
+				}
+				(factor, value) => {
+					accumulated = value;
+					factor
+				}
+			};
+
 			accumulated = match (accumulated, self.sort(factor)?) {
 				(Node::Matrix(matrix), Node::Value(factor)) => {
 					// Dividing by a value applies the matrix to its reciprocal times the rest, so `M / v w` is `M (v⁻¹ w)`
@@ -634,6 +684,39 @@ impl<'src> Sorter<'_, 'src> {
 		}
 
 		Ok(accumulated)
+	}
+
+	/// The factor a matrix divides by for a measure. A matrix's units are known only once evaluated, so it's the whole measure, unless
+	/// a `where` definition makes one of the measure's names a variable, which then goes back to the product to multiply left to right.
+	#[inline(never)]
+	fn measure_after_matrix(&self, number: Syntax<'src>, units: Vec<Syntax<'src>>, rest: &mut std::vec::IntoIter<(BinaryOp, Syntax<'src>)>) -> Syntax<'src> {
+		fn name<'src>(unit: &Syntax<'src>) -> Option<&'src str> {
+			match unit {
+				Syntax::Var(name) => Some(name),
+				Syntax::BinOp { lhs, op: BinaryOp::Pow, .. } => name(lhs),
+				_ => None,
+			}
+		}
+		let defined = |unit: &Syntax<'src>| name(unit).is_some_and(|name| !name.starts_with('\\') && self.scopes.iter().any(|scope| scope.values.contains(&name)));
+		if !units.iter().any(defined) {
+			return units.into_iter().fold(number, juxtaposed);
+		}
+
+		let remaining = std::mem::take(rest);
+		*rest = units.into_iter().map(|unit| (BinaryOp::Mul, unit)).chain(remaining).collect::<Vec<_>>().into_iter();
+		number
+	}
+
+	/// Sorts a value's quotient by a measure, kept out of [`Self::product`], which recurses once per matrix and must keep a small frame.
+	#[inline(never)]
+	fn measure_quotient(&mut self, dividend: ValueNode, number: Syntax<'src>, units: Vec<Syntax<'src>>) -> Result<Node, SortError> {
+		let number = self.sort(number).and_then(|number| self.value(number, MATRIX_AS_VALUE));
+		let units = self.sort_each(units).into_iter().map(|unit| self.value(unit?, MATRIX_AS_VALUE)).collect::<Result<Vec<_>, _>>();
+		let measure = Box::new(Measure { number: number?, units: units? });
+		Ok(Node::Value(ValueNode::MeasureQuotient {
+			dividend: Box::new(dividend),
+			measure,
+		}))
 	}
 
 	/// A piecewise takes the sort of its cases, which must agree, under conditions that are values.

@@ -1,4 +1,6 @@
 use crate::matrix::Matrix;
+use crate::quantity::{MatrixQuantity, Quantity};
+use crate::units::DEFAULT_PIXELS_PER_INCH;
 use crate::value::Value;
 use std::collections::HashMap;
 use std::ops::{Deref, DerefMut};
@@ -10,6 +12,16 @@ pub trait ValueProvider {
 	/// The matrix bound to an uppercase-initial name, which the case rule reserves for matrices.
 	fn get_matrix(&self, _name: &str) -> Option<Matrix> {
 		None
+	}
+
+	/// The value bound to a name with the unit it is measured in, which is plain unless a host measures it.
+	fn get_quantity(&self, name: &str) -> Option<Quantity> {
+		self.get_value(name).map(Quantity::plain)
+	}
+
+	/// The matrix bound to a name with the units of its linear part and translation, which are plain unless a host measures them.
+	fn get_matrix_quantity(&self, name: &str) -> Option<MatrixQuantity> {
+		self.get_matrix(name).map(MatrixQuantity::plain)
 	}
 }
 
@@ -33,6 +45,14 @@ impl<V: ValueProvider> ValueProvider for &V {
 
 	fn get_matrix(&self, name: &str) -> Option<Matrix> {
 		(**self).get_matrix(name)
+	}
+
+	fn get_quantity(&self, name: &str) -> Option<Quantity> {
+		(**self).get_quantity(name)
+	}
+
+	fn get_matrix_quantity(&self, name: &str) -> Option<MatrixQuantity> {
+		(**self).get_matrix_quantity(name)
 	}
 }
 
@@ -73,20 +93,47 @@ impl FunctionProvider for NothingMap {
 pub struct EvalContext<V: ValueProvider, F: FunctionProvider> {
 	values: V,
 	functions: F,
+	/// The size of the `px` unit, as the count of pixels in an inch.
+	pixels_per_inch: f64,
 }
 
 impl Default for EvalContext<NothingMap, NothingMap> {
 	fn default() -> Self {
-		Self {
-			values: NothingMap,
-			functions: NothingMap,
-		}
+		Self::new(NothingMap, NothingMap)
 	}
 }
 
 impl<V: ValueProvider, F: FunctionProvider> EvalContext<V, F> {
 	pub fn new(values: V, functions: F) -> Self {
-		Self { values, functions }
+		Self {
+			values,
+			functions,
+			pixels_per_inch: DEFAULT_PIXELS_PER_INCH,
+		}
+	}
+
+	/// Sizes the `px` unit as an inch over this count, where a count that isn't positive and finite keeps the default.
+	pub fn with_pixels_per_inch(mut self, pixels_per_inch: f64) -> Self {
+		if pixels_per_inch.is_finite() && pixels_per_inch > 0. {
+			self.pixels_per_inch = pixels_per_inch;
+		}
+		self
+	}
+
+	pub fn pixels_per_inch(&self) -> f64 {
+		self.pixels_per_inch
+	}
+
+	pub fn get_quantity(&self, name: &str) -> Option<Quantity> {
+		self.values.get_quantity(name)
+	}
+
+	pub fn get_matrix_quantity(&self, name: &str) -> Option<MatrixQuantity> {
+		self.values.get_matrix_quantity(name)
+	}
+
+	pub fn provides_function(&self, name: &str) -> bool {
+		self.functions.provides(name)
 	}
 
 	pub fn get_value(&self, name: &str) -> Option<Value> {

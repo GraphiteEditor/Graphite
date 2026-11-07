@@ -1151,6 +1151,7 @@
 		--math-basis-j: #66c14a;
 		--math-basis-k: #76b6ff;
 		--math-variable: #fff9a8;
+		--math-unit: #eeeeee;
 		--math-function: #c9c2ff;
 		--math-operator: #ffffff;
 		--math-bracket: #f2b532;
@@ -1200,6 +1201,11 @@
 
 			.function {
 				color: var(--math-function);
+			}
+
+			// A unit is set upright beside its number, unlike the italic variables
+			.unit {
+				color: var(--math-unit);
 			}
 
 			// A keyword is an operator spelled as a word

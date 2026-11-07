@@ -1,10 +1,11 @@
 //! The names an editor offers to finish the one being typed.
 
 use crate::constants::{BUILTIN_FUNCTION_ALIASES, SUFFIXED_FORMS};
-use crate::documentation::{BUILTIN_FUNCTIONS, Operator, Tooltip, constant_tooltip, function_tooltip, identity_tooltip, keyword_tooltip};
+use crate::documentation::{BUILTIN_FUNCTIONS, Operator, Tooltip, constant_tooltip, function_tooltip, identity_tooltip, keyword_tooltip, unit_tooltip};
 use crate::lexer::{CONSTANT_SPELLINGS, Constant, KEYWORDS, Lexer, Token, offset_in, operand_ended};
 use crate::parser::{keywords_accepted_after, parse_quietly};
 use crate::sort::names_in_scope;
+use crate::units::{UNITS, unit_named};
 use std::borrow::Cow;
 
 /// What an offered name is, by which the offers are grouped.
@@ -14,6 +15,8 @@ pub enum CompletionKind {
 	Local,
 	Function,
 	Constant,
+	/// A unit of measure, like `mm`.
+	Unit,
 	Keyword,
 	/// The typeset alias of an operator typed in ASCII, like `≤` for `<=`.
 	Operator,
@@ -234,6 +237,42 @@ pub fn completions(source: &str, caret: usize, asked: bool) -> Completions<'_> {
 	});
 	let constants = identity.into_iter().chain(constants).collect::<Vec<_>>();
 
+	// A unit is offered right after a number, where units are written, by a spelling that begins with what's typed, with a symbol that
+	// can't be typed, like `°` or `µm`, leading its words
+	let after_number = Lexer::new(source.get(..start).unwrap_or_default())
+		.last()
+		.is_some_and(|token| matches!(token, Token::Integer(_) | Token::Float(_)));
+	let units = UNITS.iter().filter(|_| after_number).filter_map(|definition| {
+		let typeable = |spelling: &str| spelling.chars().all(|c| c.is_ascii_alphanumeric());
+		let fitting = |spelling: &str| fit(typed, spelling).filter(|closeness| *closeness != Fit::Scattered);
+		let best = definition.spellings.iter().filter(|spelling| typeable(spelling)).filter_map(|spelling| fitting(spelling)).min()?;
+
+		// Its symbol and singular name stand for every spelling, so plurals and abbreviations don't crowd the list
+		let words: Vec<(&str, Fit)> = [definition.symbol, definition.name].into_iter().filter(|word| typeable(word)).fold(Vec::new(), |mut words, word| {
+			if !words.iter().any(|(existing, _)| *existing == word) {
+				words.push((word, fitting(word).unwrap_or(Fit::Scattered)));
+			}
+			words
+		});
+		let tooltip = unit_named(definition.symbol).map(unit_tooltip);
+		let symbol = (!typeable(definition.symbol)).then(|| Candidate {
+			name: definition.symbol,
+			parameters: None,
+			tooltip: tooltip.clone(),
+			fit: best,
+			prefixed: false,
+		});
+		let words = words.into_iter().map(move |(word, closeness)| Candidate {
+			name: word,
+			parameters: None,
+			tooltip: tooltip.clone(),
+			fit: closeness,
+			prefixed: prefixed(word, false),
+		});
+		Some(symbol.into_iter().chain(words))
+	});
+	let units = units.flatten().collect::<Vec<_>>();
+
 	// A keyword is offered only where the grammar takes one, which is asked only once one is typed toward
 	let keywords = KEYWORDS.into_iter().filter(|_| !builtins_only).filter_map(|(keyword, token)| {
 		Some(Candidate {
@@ -260,6 +299,7 @@ pub fn completions(source: &str, caret: usize, asked: bool) -> Completions<'_> {
 		(locals, CompletionKind::Local),
 		(functions, CompletionKind::Function),
 		(constants, CompletionKind::Constant),
+		(units, CompletionKind::Unit),
 		(keywords, CompletionKind::Keyword),
 	]
 	.into_iter()
@@ -516,12 +556,12 @@ mod tests {
 
 	#[test]
 	fn definitions_are_offered_where_they_can_be_read() {
-		assert_eq!(names("2 rad‸ where radius = 2"), ["radius"]);
+		assert_eq!(names("2 rad‸ where radius = 2"), ["radius", "rad", "radian"]);
 		assert_eq!(names("ea‸(2) where ease(t) = t^2"), ["ease"]);
 		assert_eq!(names("sig‸ where sigma = 1"), ["sigma", "sign"]);
 
 		// A parameter is read only in its function's body, and a clause's names only within its parentheses, which the called name is outside of
-		assert_eq!(names("f(1) where f(radius) = 2 rad‸"), ["radius"]);
+		assert_eq!(names("f(1) where f(radius) = 2 rad‸"), ["radius", "rad", "radian"]);
 		assert!(names("(f(1) where f(radius) = 2 radius) + rad‸").is_empty());
 		assert!(names("(2 where radius = 1) + rad‸").is_empty());
 		assert!(!names("fo‸(2 where foo = 1)").contains(&"foo".to_string()));
@@ -671,5 +711,19 @@ mod tests {
 		for (ascii, typeset) in [("1 != 2", "1 ≠ 2"), ("1 <= 2", "1 ≤ 2"), ("2 >= 1", "2 ≥ 1"), ("1 && 0", "1 ∧ 0"), ("0 || 1", "0 ∨ 1"), ("!0", "¬0")] {
 			assert_eq!(crate::evaluate(ascii).unwrap().unwrap(), crate::evaluate(typeset).unwrap().unwrap(), "`{typeset}`");
 		}
+	}
+
+	#[test]
+	fn units_are_offered_after_a_number() {
+		for unit in ["m", "meter", "mm", "millimeter", "min", "minute"] {
+			assert!(names("5m‸").contains(&unit.to_string()), "`{unit}` should be offered");
+		}
+		let degrees = names("5 de‸");
+		let symbol = degrees.iter().position(|name| name == "°").unwrap();
+		assert_eq!(degrees[symbol + 1], "degree", "the symbol leads its words");
+		assert!(names("5 inc‸").contains(&"in".to_string()));
+		// Elsewhere a unit's spelling stays a name like any other, so it doesn't crowd the builtins
+		assert!(!names("m‸").contains(&"meter".to_string()));
+		assert!(!names("x m‸").contains(&"meter".to_string()));
 	}
 }

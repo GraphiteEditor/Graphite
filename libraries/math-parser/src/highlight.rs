@@ -1,10 +1,11 @@
 //! The roles the lexer and grammar give each stretch of source, for an editor to color and typeset an expression as it is typed.
 
 use crate::constants::{builtin_function, suffixed_function};
-use crate::documentation::{Operator, Tooltip, constant_tooltip, function_tooltip, identity_tooltip, keyword_tooltip, matrix_literal_tooltip, range_tooltip, reducer_tooltip};
+use crate::documentation::{Operator, Tooltip, constant_tooltip, function_tooltip, identity_tooltip, keyword_tooltip, matrix_literal_tooltip, range_tooltip, reducer_tooltip, unit_tooltip};
 use crate::lexer::{Constant, Lexer, Token, names_matrix, operand_ended};
 use crate::parser::parse_quietly;
 use crate::sort::{NameUse, name_uses};
+use crate::units::unit_named;
 use std::collections::HashMap;
 
 /// What a stretch of source is, as far as its spelling and its neighbors say.
@@ -20,6 +21,8 @@ pub enum Role {
 	Function,
 	Keyword,
 	Operator,
+	/// A unit of measure, like `mm` or `%`, which a name binding no local reaches.
+	Unit,
 	/// A grouping delimiter: a parenthesis, a brace, or a magnitude bar.
 	Bracket,
 	/// A matrix literal's brackets and separators, and a range's `..`.
@@ -134,6 +137,8 @@ pub fn highlight(source: &str, accepts_reducers: bool) -> Vec<Highlight> {
 							Role::Function
 						} else if matches!(bare, "i" | "j" | "k") {
 							Role::Basis
+						} else if unit_named(bare).is_some() && !called {
+							Role::Unit
 						} else {
 							Role::Variable
 						}
@@ -145,6 +150,7 @@ pub fn highlight(source: &str, accepts_reducers: bool) -> Vec<Highlight> {
 					(Some(NameUse::Local | NameUse::LocalFunction), _) => None,
 					(_, Role::Function) => function_tooltip(bare),
 					(_, Role::Matrix) => (bare == "I").then(identity_tooltip),
+					(_, Role::Unit) => unit_named(bare).map(unit_tooltip),
 					_ => Constant::from_name(bare).map(constant_tooltip),
 				};
 				highlights.push(Highlight {
@@ -205,6 +211,10 @@ pub fn highlight(source: &str, accepts_reducers: bool) -> Vec<Highlight> {
 				});
 			}
 			Token::DotDot => highlights.push(plain(start, end, Role::MatrixLiteral)),
+			Token::Percent => highlights.push(Highlight {
+				tooltip: unit_named("%").map(unit_tooltip),
+				..plain(start, end, Role::Unit)
+			}),
 			Token::Error(_) => highlights.push(plain(start, end, Role::Error)),
 			_ => highlights.push(Highlight {
 				tooltip: operator,
@@ -428,7 +438,7 @@ mod tests {
 
 		// A matrix's name applied to an argument is its product, and a matrix literal's separators are told from a call's
 		assert_eq!(
-			read("[a, b; c] max(a, b) M(v) 1..5 \\pi θ Δx m@"),
+			read("[a, b; c] max(a, b) M(v) 1..5 \\pi θ Δx q@"),
 			[
 				("[", MatrixLiteral, 0, None),
 				("a", Variable, 0, None),
@@ -453,7 +463,7 @@ mod tests {
 				("\\pi", Variable, 0, None),
 				("θ", Variable, 0, None),
 				("Δx", Matrix, 0, None),
-				("m", Variable, 0, None),
+				("q", Variable, 0, None),
 				("@", Error, 0, None),
 			]
 		);
@@ -729,5 +739,39 @@ mod tests {
 				("x", None)
 			]
 		);
+	}
+
+	#[test]
+	fn units_are_upright_and_documented() {
+		let roles = |source: &str| {
+			highlight(source, false)
+				.into_iter()
+				.map(|highlight| (source[highlight.start..highlight.end].to_string(), highlight.role))
+				.collect::<Vec<_>>()
+		};
+		assert_eq!(
+			roles("5mm + 50% + 45° + 5'6\""),
+			[
+				("5".to_string(), Role::Number),
+				("mm".to_string(), Role::Unit),
+				("+".to_string(), Role::Operator),
+				("50".to_string(), Role::Number),
+				("%".to_string(), Role::Unit),
+				("+".to_string(), Role::Operator),
+				("45".to_string(), Role::Number),
+				("°".to_string(), Role::Unit),
+				("+".to_string(), Role::Operator),
+				("5".to_string(), Role::Number),
+				("'".to_string(), Role::Unit),
+				("6".to_string(), Role::Number),
+				("\"".to_string(), Role::Unit),
+			]
+		);
+		// A definition of a unit's spelling makes it a variable
+		assert_eq!(roles("2m where m = 3")[1].1, Role::Variable);
+
+		let tooltip = highlight("5mm", false)[1].tooltip.clone().unwrap();
+		assert_eq!(tooltip.label, "Millimeter");
+		assert_eq!(tooltip.description, "A unit of length. Also written `millimeter` or `millimeters`.");
 	}
 }

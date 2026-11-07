@@ -14,6 +14,7 @@ use math_parser::matrix::{Affine2, Linear2, Matrix};
 use math_parser::object::Object;
 use math_parser::parser::{MessagePart, ParseError};
 use math_parser::reducer::{Reducer, classify_reducer};
+use math_parser::units::unit_named;
 use math_parser::value::{Value, Vector2, Vector3};
 use rand::{RngExt, SeedableRng};
 use std::sync::{Arc, Mutex, PoisonError};
@@ -123,10 +124,10 @@ trait ExpressionItem: Copy + Default + 'static {
 
 impl<T: ExpressionItem> ExpressionValue for T {
 	fn into_object(self) -> Object {
-		Object::Value(self.into_value())
+		Object::from(self.into_value())
 	}
 	fn from_object(object: &Object) -> Option<Self> {
-		T::from_value(object.as_value()?)
+		T::from_value(&object.as_value()?)
 	}
 	fn items(items: impl Iterator<Item = Self>) -> Items {
 		Items::Values(items.map(T::into_value).collect())
@@ -224,11 +225,11 @@ struct SingleVariableMathContext<'a> {
 impl ValueProvider for SingleVariableMathContext<'_> {
 	fn get_value(&self, name: &str) -> Option<Value> {
 		// Bound by exact spelling, per the language's rule that a binding shadows the builtin of exactly its spelling
-		(name == "x").then(|| self.x.as_value().copied()).flatten()
+		(name == "x").then(|| self.x.as_value()).flatten()
 	}
 
 	fn get_matrix(&self, name: &str) -> Option<Matrix> {
-		(name == "X").then(|| self.x.as_matrix().copied()).flatten()
+		(name == "X").then(|| self.x.as_matrix()).flatten()
 	}
 }
 
@@ -297,11 +298,11 @@ impl ValueProvider for PositionalMathContext {
 	fn get_value(&self, name: &str) -> Option<Value> {
 		let Items::Values(items) = &self.items else { return None };
 
-		// A wired item shadows the constant spelled by its letter (`e` as the fifth item, `i` as the ninth), which stay reachable
-		// as `\e` and `\i`; an unwired letter reads as its default of 0, except that a constant's letter stays the constant
+		// A wired item shadows the constant or unit spelled by its letter (`e` as the fifth item, `m` as the thirteenth), which stay
+		// reachable as `\e` and `\m`; an unwired letter reads as its default of 0, except that a constant's or unit's letter stays itself
 		match items.get(position(name, char::is_ascii_lowercase)?) {
 			Some(item) => Some(*item),
-			None if Constant::from_name(name).is_some() => None,
+			None if Constant::from_name(name).is_some() || unit_named(name).is_some() => None,
 			None => Some(Value::from_i64(0)),
 		}
 	}
@@ -398,7 +399,7 @@ fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 	let items = T::items(values.iter_element_values().copied());
 
 	let result = match &items {
-		Items::Values(values) => reducer.evaluate(values).map(Object::Value),
+		Items::Values(values) => reducer.evaluate(values).map(Object::from),
 		Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
 	};
 	let Some(result) = result else {
@@ -452,7 +453,7 @@ fn math_running<T: ExpressionValue, U: ExpressionValue>(
 	// Each item's run is folded on from the run before it, where a failed fold fails every run after it
 	let items = T::items(values.iter_element_values().copied());
 	let running = match &items {
-		Items::Values(values) => reducer.evaluate_running(values).into_iter().map(|result| result.map(Object::Value)).collect(),
+		Items::Values(values) => reducer.evaluate_running(values).into_iter().map(|result| result.map(Object::from)).collect(),
 		Items::Matrices(matrices) => reducer.evaluate_running_matrices(matrices),
 	};
 

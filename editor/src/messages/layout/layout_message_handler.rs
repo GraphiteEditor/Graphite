@@ -713,7 +713,16 @@ fn evaluate_and_validate_number_input(expression: &str, number_input: &NumberInp
 		.inspect_err(|err| error!("Math evaluate error on \"{expression}\": {err}"))
 		.ok()?;
 
-	let real = value.as_real()?;
+	// The result reads in the field's unit, where a plain number is already in it and a unit like `mm` converts into it
+	let field_unit = math_parser::units::Unit::named(number_input.unit.trim());
+	let real = match (value.as_quantity(), field_unit) {
+		(Some(quantity), Some(unit)) => quantity
+			.read_in(unit, math_parser::units::DEFAULT_PIXELS_PER_INCH)
+			.inspect_err(|_| error!("\"{expression}\" is {}, which a field in `{unit}` can't hold", quantity.dimension().description()))
+			.ok()?
+			.as_real()?,
+		_ => value.as_real()?,
+	};
 	if real.is_nan() {
 		return None;
 	}

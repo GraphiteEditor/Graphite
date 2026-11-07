@@ -1468,7 +1468,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 
 		// Lex a static expression once, learning both whether it lexes at all and whether it references `B`
 		let static_expression = match expression.as_value() {
-			Some(TaggedValue::String(expression)) => Some(expression.clone()),
+			Some(TaggedValue::String(expression)) => Some(read_old_inverse_functions_as_radians(expression)),
 			_ => None,
 		};
 		let mut references_b = false;
@@ -4045,6 +4045,88 @@ fn migrate_removed_catalog_definitions(node_id: &NodeId, node: &DocumentNode, ne
 	Some(())
 }
 
+/// The old "Math" node's inverse trigonometric functions, each with the builtin that replaced it.
+const OLD_INVERSE_FUNCTIONS: [(&str, &str); 6] = [("invsin", "asin"), ("invcos", "acos"), ("invtan", "atan"), ("invcsc", "acsc"), ("invsec", "asec"), ("invcot", "acot")];
+
+/// The old "Math" node's expression with each inverse trigonometric call, like `invsin(A)`, spelled as the builtin that replaced it
+/// and divided by `rad` as `(asin(A)/rad)`, since the builtin gives an angle where the old function gave plain radians.
+fn read_old_inverse_functions_as_radians(expression: &str) -> String {
+	rewrite_old_inverse_calls(expression, 0)
+}
+
+/// Rewrites the calls in `source`, read by the old grammar's ASCII names and numbers, nested `depth` calls deep.
+fn rewrite_old_inverse_calls(source: &str, depth: usize) -> String {
+	// Beyond the nesting an expression may have, the rest stays as written
+	const MAX_DEPTH: usize = 32;
+
+	let mut result = String::with_capacity(source.len());
+	let mut position = 0;
+	while let Some(character) = source[position..].chars().next() {
+		let start = position;
+
+		// A number ends before a name juxtaposed after it, as in `2invsin(A)`, though an exponent like `2e3` is part of it
+		if character.is_ascii_digit() || character == '.' {
+			let bytes = &source.as_bytes()[start..];
+			let mut length = bytes.iter().take_while(|byte| byte.is_ascii_digit() || **byte == b'.').count();
+			if matches!(bytes.get(length), Some(b'e' | b'E')) {
+				let sign = usize::from(matches!(bytes.get(length + 1), Some(b'+' | b'-')));
+				let digits = bytes.iter().skip(length + 1 + sign).take_while(|byte| byte.is_ascii_digit()).count();
+				if digits > 0 {
+					length += 1 + sign + digits;
+				}
+			}
+			position += length;
+			result.push_str(&source[start..position]);
+			continue;
+		}
+
+		if !(character.is_ascii_alphabetic() || character == '_') {
+			position += character.len_utf8();
+			result.push(character);
+			continue;
+		}
+
+		let name_length = source[start..]
+			.find(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+			.unwrap_or(source.len() - start);
+		position = start + name_length;
+		let name = &source[start..position];
+
+		// The call's arguments run to the parenthesis closing the one after its name, and may hold more calls
+		let after_name = &source[position..];
+		let open = position + after_name.len() - after_name.trim_start().len();
+		if let Some((_, builtin)) = OLD_INVERSE_FUNCTIONS.iter().find(|(old, _)| *old == name)
+			&& depth < MAX_DEPTH
+			&& let Some(close) = closing_parenthesis(&source[open..])
+		{
+			result.push_str(&format!("({builtin}({})/rad)", rewrite_old_inverse_calls(&source[open + 1..open + close], depth + 1)));
+			position = open + close + 1;
+			continue;
+		}
+		result.push_str(name);
+	}
+
+	result
+}
+
+/// The byte offset of the parenthesis closing the one `text` begins with, or `None` where it begins otherwise or never closes.
+fn closing_parenthesis(text: &str) -> Option<usize> {
+	if !text.starts_with('(') {
+		return None;
+	}
+
+	let mut depth = 0;
+	for (index, character) in text.char_indices() {
+		match character {
+			'(' => depth += 1,
+			')' if depth == 1 => return Some(index),
+			')' => depth -= 1,
+			_ => {}
+		}
+	}
+	None
+}
+
 /// Splits each removed Math f(…) node by the kind of string it held, into Math Aggregate or Math Formula.
 fn migrate_math_f_nodes(document: &mut DocumentMessageHandler) {
 	let math_f_nodes: Vec<(NodeId, Vec<NodeId>)> = document
@@ -4934,6 +5016,48 @@ mod tests {
 		assert_eq!(migrated_implementation(vec![items(), expression(" max "), output_type()]), math_aggregate::IDENTIFIER);
 		assert_eq!(migrated_implementation(vec![items(), expression("+")]), math_aggregate::IDENTIFIER);
 		assert_eq!(migrated_implementation(vec![items(), expression("a * b + c"), output_type()]), math_formula::IDENTIFIER);
+	}
+
+	#[test]
+	fn old_inverse_functions_read_as_the_plain_radians_they_gave() {
+		let read = read_old_inverse_functions_as_radians;
+		assert_eq!(read("invsin(A) + 1"), "(asin(A)/rad) + 1");
+		assert_eq!(read("2invcos (B)^2"), "2(acos(B)/rad)^2");
+		assert_eq!(read("invtan(invsin(A) * 2)"), "(atan((asin(A)/rad) * 2)/rad)");
+		assert_eq!(read("sin(invcot(A))"), "sin((acot(A)/rad))");
+		assert_eq!(read("2e3invsec(A)"), "2e3(asec(A)/rad)");
+		for unchanged in ["invsinh(A)", "B_invsin(A)", "invsin", "invsin(A", "sin(A) + π", ""] {
+			assert_eq!(read(unchanged), unchanged);
+		}
+
+		// The rewritten expression gives the number the old one did
+		let result = math_parser::evaluate(&read("invtan(1) + 1")).unwrap().unwrap();
+		assert!((result.as_real().unwrap() - (std::f64::consts::FRAC_PI_4 + 1.)).abs() < 1e-12);
+	}
+
+	#[test]
+	fn an_old_math_node_keeps_the_plain_radians_its_inverse_functions_gave() {
+		use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+
+		let math_id = NodeId(1);
+		let mut document = DocumentMessageHandler::default();
+		document.network_interface.insert_node(
+			math_id,
+			NodeTemplate {
+				implementation: NodeTemplateImplementation::ProtoNode(ProtoNodeIdentifier::new("math_nodes::MathNode")),
+				inputs: vec![
+					NodeInput::value(TaggedValue::Number(1.), false),
+					NodeInput::value(TaggedValue::String("invtan(A) + 1".into()), false),
+					NodeInput::value(TaggedValue::Number(0.), false),
+				],
+				..Default::default()
+			},
+			&[],
+		);
+		migrate(&mut document);
+
+		let node = &document.network_interface.document_network().nodes[&math_id];
+		assert_eq!(node.inputs.get(1).and_then(|input| input.as_value()).cloned(), Some(TaggedValue::String("(atan(x)/rad) + 1".into())));
 	}
 
 	// The old Math node's expression decides its replacement: a static string that never reads `B` becomes "Math Function",

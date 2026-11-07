@@ -4056,7 +4056,10 @@ mod tests {
 	fn math_expression_errors_quote_the_expression_safely() {
 		// The expression's own text sits in code it can't close, while the message's own code keeps its formatting
 		assert_eq!(description("`abc").as_deref(), Some("`` `abc `` is not recognized"));
-		assert_eq!(description("7 % 3").as_deref(), Some("`%` is reserved for percentages, so the remainder is written `mod(a, b)`"));
+		assert_eq!(
+			description("7 % 3").as_deref(),
+			Some("`%` makes the number before it a percentage, so the remainder is written `mod(a, b)`")
+		);
 
 		// A quoted token like `*` is a code span, so it can't pair with another into italics
 		let error = description("2 * * 3").unwrap();

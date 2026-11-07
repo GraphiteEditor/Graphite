@@ -1,4 +1,6 @@
-use crate::constants::{MatrixToMatrix, MatrixToValue, ValueOfRegions, ValuesToMatrix};
+use crate::constants::{BuiltinFunction, MatrixToMatrix, MatrixToValue, ValueOfRegions, ValuesToMatrix};
+use crate::quantity::{BuilderUnits, MatrixValueUnit, RegionResult, UnitRule};
+use crate::units::UnitId;
 use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -96,6 +98,11 @@ pub enum Syntax<'src> {
 		first: Box<Syntax<'src>>,
 		rest: Vec<(BinaryOp, Syntax<'src>)>,
 	},
+	/// A number juxtaposed with units after a `/`, like the `2mm` of `x / 2mm`, which only a dividend with a unit divides by whole.
+	Measure {
+		number: Box<Syntax<'src>>,
+		units: Vec<Syntax<'src>>,
+	},
 	/// The cases of math's `cases` notation, `{a if cond, b otherwise}`: disjoint conditions in no meaningful order, with `otherwise` holding when none of them do.
 	Piecewise {
 		cases: Vec<Case<'src>>,
@@ -157,10 +164,17 @@ pub enum Node {
 pub enum ValueNode {
 	Lit(Literal),
 	Var(String),
+	/// A unit's spelling, resolved as the expression is read, which a host's binding of the name still shadows.
+	Unit {
+		name: String,
+		unit: UnitId,
+	},
 	FnCall {
 		name: String,
 		expr: Vec<ValueNode>,
 	},
+	/// A call of a builtin taking values, found as the expression is read so evaluating it looks nothing up by name.
+	BuiltinCall(Box<BuiltinCall>),
 	BinOp {
 		lhs: Box<ValueNode>,
 		op: BinaryOp,
@@ -183,16 +197,24 @@ pub enum ValueNode {
 		matrix: Box<MatrixNode>,
 		value: Box<ValueNode>,
 	},
+	/// A quotient by a measure, which is the whole divisor where the dividend has a unit. A plain dividend is divided by the
+	/// measure's number alone and then takes its units, so `x / 2mm` is half of `x` in millimeters.
+	MeasureQuotient {
+		dividend: Box<ValueNode>,
+		measure: Box<Measure>,
+	},
 	/// A function of a matrix with a value result, like `det(A)`.
 	OfMatrix {
 		function: MatrixToValue,
+		unit: MatrixValueUnit,
 		matrix: Box<MatrixNode>,
 	},
 	/// A function of a value and regions with a value result, like `within(p, R)`.
 	OfValueAndRegions {
 		function: ValueOfRegions,
+		result: RegionResult,
 		value: Box<ValueNode>,
-		regions: Vec<MatrixNode>,
+		regions: Box<[MatrixNode]>,
 		/// The value after the regions, where the builtin takes one, like `smoothstep`'s continuity.
 		trailing: Option<Box<ValueNode>>,
 	},
@@ -215,6 +237,28 @@ pub enum ValueNode {
 	},
 }
 
+/// A call of a builtin function of values with the rule for its units.
+#[derive(Debug)]
+pub struct BuiltinCall {
+	/// The builtin's name, which a base-suffixed form like `log2` gives without its suffix.
+	pub name: String,
+	/// The spelling by which a host's function would shadow the builtin, or `None` behind the `\` prefix.
+	pub host_name: Option<String>,
+	pub function: BuiltinFunction,
+	pub rule: UnitRule,
+	pub arguments: Vec<ValueNode>,
+	/// The second argument a base-suffixed form like `log2(x)` bakes into its name.
+	pub suffix: Option<f64>,
+}
+
+/// A number juxtaposed with units after a `/`, like the `2mm` of `x / 2mm`.
+#[derive(Debug)]
+pub struct Measure {
+	pub number: ValueNode,
+	/// The units as read, any of which a `where` definition or a host's binding of its spelling may shadow.
+	pub units: Vec<ValueNode>,
+}
+
 /// A subexpression evaluating to a matrix.
 #[derive(Debug)]
 pub enum MatrixNode {
@@ -226,6 +270,7 @@ pub enum MatrixNode {
 	/// A function building a matrix from values, like `rotation(angle)`.
 	FromValues {
 		function: ValuesToMatrix,
+		units: BuilderUnits,
 		arguments: Vec<ValueNode>,
 	},
 	/// The range `a..b`.

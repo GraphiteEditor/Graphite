@@ -37,6 +37,10 @@ macro_rules! generate_benchmarks {
 }
 
 generate_benchmarks! {
+	"1 + 2 * 3 - 4 / 5",
+	"pi + e - tau",
+	"sin(1) + cos(2)",
+	"(1.5 + 2.5) * 3.5",
 	"(3 * (4 + sqrt(25)) - cos(pi/3) * (2^3)) + 5 * e", // Mixed nested functions, constants, and operations
 	"((5 + 2 * (3 - sqrt(49)))^2) / (1 + sqrt(16)) + tau / 2", // Complex nested expression with constants
 	"log(100, 10) + (5 * sin(pi/4) + sqrt(81)) / (2 * phi)", // Logarithmic and trigonometric functions

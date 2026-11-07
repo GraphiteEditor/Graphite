@@ -8,6 +8,7 @@ use crate::lexer::{Constant, Token};
 use crate::matrix::Matrix;
 use crate::quaternion::Quaternion;
 use crate::reducer::{Reducer, classify_reducer};
+use crate::units::UnitId;
 use crate::value::Value;
 
 /// Hover text, as the tooltip Markdown subset: code spans, fenced code blocks, bold, and italic.
@@ -189,7 +190,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		"[−π/2, π/2]",
 		doc(
 			"The angle whose sine is `x`. Outside its domain, the result climbs into the complex plane.",
-			&[("asin(1)", "π/2"), ("asin(2)", "π/2 - 1.317i")],
+			&[("asin(1)", "π/2 rad"), ("asin(2)", "(π/2 - 1.317i) rad")],
 		),
 	),
 	function(
@@ -200,7 +201,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		"[0, π]",
 		doc(
 			"The angle whose cosine is `x`. Outside its domain, the result climbs into the complex plane.",
-			&[("acos(-1)", "π"), ("acos(2)", "1.317i")],
+			&[("acos(-1)", "π rad"), ("acos(2)", "1.317i rad")],
 		),
 	),
 	function(
@@ -209,7 +210,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		Treatment::InPlane,
 		&[parameter("x", "[−∞, ∞]", "the tangent")],
 		"[−π/2, π/2]",
-		doc("The angle whose tangent is `x`.", &[("atan(1)", "π/4"), ("atan(∞)", "π/2")]),
+		doc("The angle whose tangent is `x`.", &[("atan(1)", "π/4 rad"), ("atan(∞)", "π/2 rad")]),
 	),
 	function(
 		"atan2",
@@ -217,7 +218,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		Treatment::RealOnly,
 		&[parameter("y", "[−∞, ∞]", "the point's `y` coordinate"), parameter("x", "[−∞, ∞]", "the point's `x` coordinate")],
 		"[−π, π]",
-		doc("The angle from the positive `x` axis to the point `(x, y)`.", &[("atan2(1, 1)", "π/4"), ("atan2(0, -1)", "π")]),
+		doc("The angle from the positive `x` axis to the point `(x, y)`.", &[("atan2(1, 1)", "π/4 rad"), ("atan2(0, -1)", "π rad")]),
 	),
 	function(
 		"acsc",
@@ -227,7 +228,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		"[−π/2, π/2]",
 		doc(
 			"The angle whose cosecant is `x`, `asin(1/x)`. Outside its domain, the result climbs into the complex plane, except that 0 is an error.",
-			&[("acsc(2)", "π/6")],
+			&[("acsc(2)", "π/6 rad")],
 		),
 	),
 	function(
@@ -238,7 +239,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		"[0, π]",
 		doc(
 			"The angle whose secant is `x`, `acos(1/x)`. Outside its domain, the result climbs into the complex plane, except that 0 is an error.",
-			&[("asec(2)", "π/3")],
+			&[("asec(2)", "π/3 rad")],
 		),
 	),
 	function(
@@ -247,7 +248,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		Treatment::InPlane,
 		&[parameter("x", "[−∞, ∞]", "the cotangent")],
 		"[−π/2, π/2]",
-		doc("The angle whose cotangent is `x`, `atan(1/x)`.", &[("acot(1)", "π/4")]),
+		doc("The angle whose cotangent is `x`, `atan(1/x)`.", &[("acot(1)", "π/4 rad")]),
 	),
 	// Hyperbolic functions
 	function(
@@ -736,7 +737,7 @@ pub static BUILTIN_FUNCTIONS: &[DocumentedFunction] = &[
 		"[−π, π]",
 		doc(
 			"How far `a` must turn to face `b`, signed by the turn's direction seen from `+k`. `angle(i, v)` is the heading of `v`.",
-			&[("angle(i, j)", "π/2"), ("angle(j, i)", "-π/2")],
+			&[("angle(i, j)", "π/2 rad"), ("angle(j, i)", "-π/2 rad")],
 		),
 	),
 	function(
@@ -1089,6 +1090,28 @@ const IDENTITY: Doc = doc(
 	"The matrix that leaves every value unchanged. A value added to it makes a translation, like `I + 5i`.",
 	&[("I (3i + 4j)", "3i + 4j")],
 );
+
+/// The hover text for a unit, naming what it measures and its other spellings.
+pub fn unit_tooltip(unit: UnitId) -> Tooltip {
+	let definition = unit.definition();
+	let mut label = definition.name.to_string();
+	if let Some(first) = label.get(..1) {
+		label = first.to_uppercase() + &label[1..];
+	}
+
+	let others: Vec<String> = definition.spellings.iter().skip(1).map(|spelling| format!("`{spelling}`")).collect();
+	let spellings = match others.as_slice() {
+		[] => String::new(),
+		[only] => format!(" Also written {only}."),
+		[rest @ .., last] => format!(" Also written {} or {last}.", rest.join(", ")),
+	};
+	Tooltip {
+		label,
+		form: Some(definition.symbol.to_string()),
+		description: format!("A unit of {}.{spellings}", definition.dimension.noun()),
+		signature: None,
+	}
+}
 
 /// The hover text for the identity matrix `I`.
 pub fn identity_tooltip() -> Tooltip {
@@ -1712,11 +1735,17 @@ mod tests {
 	use super::*;
 	use crate::object::Object;
 
-	/// Whether two results agree to the few digits the documentation rounds them to, matrices entry by entry.
+	/// Whether two results agree to the few digits the documentation rounds them to, matrices entry by entry, and values in their units.
 	fn agree(actual: &Object, expected: &Object) -> bool {
+		if let (Object::Value(actual), Object::Value(expected)) = (actual, expected)
+			&& actual.unit != expected.unit
+		{
+			return false;
+		}
+
 		let parts = |object: &Object| match object {
-			Object::Value(Value::Number(number)) => number.to_quaternion().parts().to_vec(),
-			Object::Matrix(matrix) => matrix.rows.iter().chain([&matrix.translation]).flat_map(|row| row.parts()).collect(),
+			Object::Value(quantity) => quantity.number().to_quaternion().parts().to_vec(),
+			Object::Matrix(matrix) => matrix.matrix.rows.iter().chain([&matrix.matrix.translation]).flat_map(|row| row.parts()).collect(),
 		};
 		let close = |actual: f64, expected: f64| {
 			if expected.is_infinite() {
@@ -1752,7 +1781,7 @@ mod tests {
 	fn every_treatment_matches_how_the_function_evaluates() {
 		let evaluate = |expression: &str| crate::evaluate(expression).ok()?.ok();
 		let number = |expression: &str| match evaluate(expression) {
-			Some(Object::Value(Value::Number(number))) => number.to_quaternion(),
+			Some(Object::Value(quantity)) => quantity.number().to_quaternion(),
 			result => panic!("`{expression}` should be a number, not {result:?}"),
 		};
 		let close = |actual: Quaternion, expected: Quaternion| actual.parts().iter().zip(expected.parts()).all(|(actual, expected)| (actual - expected).abs() <= 1e-9);

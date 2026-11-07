@@ -2,6 +2,7 @@ use crate::ast::{BinaryOp, Binding, CallWhere, Case, Literal, Node, Syntax, Unar
 use crate::context::{FunctionProvider, NothingMap};
 use crate::lexer::{LexError, Lexer, Span, Token};
 use crate::sort::sorted;
+use crate::units::unit_named;
 use chumsky::cache::{Cache, Cached};
 use chumsky::error::{EmptyErr, LabelError, RichPattern, RichReason};
 use chumsky::input::ValueInput;
@@ -297,7 +298,7 @@ fn parse(src: &str) -> Result<Syntax<'_>, ParseError> {
 					let after_operand = e.expected().any(|pattern| matches!(pattern, RichPattern::Token(token) if **token == Token::EqEq));
 
 					match e.found() {
-						Some(Token::Percent) => ErrorMessage::from_prose("`%` is reserved for percentages, so the remainder is written `mod(a, b)`").at(e.span()),
+						Some(Token::Percent) => ErrorMessage::from_prose("`%` follows the number it makes a percentage, like `50%`, so the remainder is written `mod(a, b)`").at(e.span()),
 						Some(Token::If) => ErrorMessage::from_prose("`if` joins a case's value to its condition, like `{a if x > 0, b otherwise}`").at(e.span()),
 						Some(Token::Otherwise) => ErrorMessage::from_prose("`otherwise` ends the one case with no condition, like `{a if x > 0, b otherwise}`").at(e.span()),
 						Some(Token::Equals) if after_operand => ErrorMessage::from_prose("`=` names a value in a `where` clause, so equality is written `==`").at(e.span()),
@@ -368,6 +369,128 @@ where
 }
 
 /// The expression, within the names its `where` clause defines if it has one.
+/// A factor of a product chain after the first, with the operator before it, whether that operator is juxtaposition, and where
+/// the factor stands.
+#[derive(Clone)]
+struct ProductLink<'src> {
+	op: BinaryOp,
+	factor: Syntax<'src>,
+	implicit: bool,
+	span: Span,
+}
+
+/// Whether a factor is a unit by its spelling, or a power of one like `mm^2`.
+fn is_unit(syntax: &Syntax) -> bool {
+	match syntax {
+		Syntax::Var(name) => unit_named(name).is_some(),
+		Syntax::BinOp { lhs, op: BinaryOp::Pow, .. } => is_unit(lhs),
+		_ => false,
+	}
+}
+
+/// Whether a factor spells a unit anywhere in its arithmetic, like `10mm` or `(1mm + 2mm)`, though not within a call.
+fn spells_unit(syntax: &Syntax) -> bool {
+	match syntax {
+		Syntax::BinOp { lhs, rhs, .. } => is_unit(syntax) || spells_unit(lhs) || spells_unit(rhs),
+		Syntax::UnaryOp { expr, .. } => spells_unit(expr),
+		Syntax::Product { first, rest } => spells_unit(first) || rest.iter().any(|(_, factor)| spells_unit(factor)),
+		Syntax::Measure { .. } => true,
+		_ => is_unit(syntax),
+	}
+}
+
+/// Whether a factor is a number literal, signed or not.
+fn is_number(syntax: &Syntax) -> bool {
+	match syntax {
+		Syntax::Lit(_) => true,
+		Syntax::UnaryOp {
+			op: UnaryOp::Neg | UnaryOp::Pos,
+			expr,
+		} => is_number(expr),
+		_ => false,
+	}
+}
+
+pub(crate) fn juxtaposed<'src>(lhs: Syntax<'src>, rhs: Syntax<'src>) -> Syntax<'src> {
+	Syntax::BinOp {
+		lhs: Box::new(lhs),
+		op: BinaryOp::Mul,
+		rhs: Box::new(rhs),
+	}
+}
+
+/// Groups the units of a product chain as they read. After a `/`, a number juxtaposed with units is a [`Syntax::Measure`], which
+/// evaluation divides by as the dividend's units decide, though a percentage like `50%` is always one divisor. Feet then inches
+/// like `5'6"` sum, and a factor juxtaposed after a percentage's `%` is reported, since `7 % 3` is likely a remainder.
+fn group_units<'src>(first: Syntax<'src>, links: Vec<ProductLink<'src>>, mut report: impl FnMut(Span, &'static str)) -> (Syntax<'src>, Vec<(BinaryOp, Syntax<'src>)>) {
+	// A chain spelling no unit, the common case, has nothing to group
+	if !links.iter().any(|link| spells_unit(&link.factor)) {
+		return (first, links.into_iter().map(|link| (link.op, link.factor)).collect());
+	}
+
+	for pair in links.windows(2) {
+		if matches!(pair[0].factor, Syntax::Var("%")) && pair[1].implicit {
+			report(pair[0].span, "`%` makes the number before it a percentage, so the remainder is written `mod(a, b)`");
+		}
+	}
+
+	let mut factors: Vec<(BinaryOp, Syntax<'src>, bool)> = std::iter::once((BinaryOp::Mul, first, false))
+		.chain(links.into_iter().map(|link| (link.op, link.factor, link.implicit)))
+		.collect();
+
+	// Feet then inches written together are their sum
+	let mut index = 0;
+	while index + 3 < factors.len() {
+		if let [(op, feet, implicit), (_, Syntax::Var("'"), true), (_, inches @ Syntax::Lit(_), true), (_, Syntax::Var("\""), true)] = &factors[index..index + 4]
+			&& is_number(feet)
+		{
+			// A sign before the feet applies to the whole measurement, so `-5'6"` is `-66in`
+			let (sign, feet) = match feet {
+				Syntax::UnaryOp {
+					op: op @ (UnaryOp::Neg | UnaryOp::Pos),
+					expr,
+				} => (Some(*op), (**expr).clone()),
+				feet => (None, feet.clone()),
+			};
+			let mut sum = Syntax::BinOp {
+				lhs: Box::new(juxtaposed(feet, Syntax::Var("'"))),
+				op: BinaryOp::Add,
+				rhs: Box::new(juxtaposed(inches.clone(), Syntax::Var("\""))),
+			};
+			if let Some(op) = sign {
+				sum = Syntax::UnaryOp { op, expr: Box::new(sum) };
+			}
+			let (op, implicit) = (*op, *implicit);
+			factors.splice(index..index + 4, [(op, sum, implicit)]);
+		}
+		index += 1;
+	}
+
+	// A number after a `/` and the units juxtaposed after it form a measure
+	let mut index = 1;
+	while index + 1 < factors.len() {
+		let numbered_divisor = factors[index].0 == BinaryOp::Div && is_number(&factors[index].1);
+		if numbered_divisor && factors[index + 1].2 && is_unit(&factors[index + 1].1) {
+			let end = (index + 1..factors.len()).find(|&end| !(factors[end].2 && is_unit(&factors[end].1))).unwrap_or(factors.len());
+			let mut measure = factors.drain(index..end).map(|(_, factor, _)| factor);
+			let number = measure.next().unwrap_or(Syntax::Lit(Literal::Integer(1)));
+			let units: Vec<Syntax<'src>> = measure.collect();
+
+			let divisor = if matches!(units.first(), Some(Syntax::Var("%"))) {
+				units.into_iter().fold(number, juxtaposed)
+			} else {
+				Syntax::Measure { number: Box::new(number), units }
+			};
+			factors.insert(index, (BinaryOp::Div, divisor, false));
+		}
+		index += 1;
+	}
+
+	let mut factors = factors.into_iter().map(|(op, factor, _)| (op, factor));
+	let first = factors.next().map_or(Syntax::Lit(Literal::Integer(1)), |(_, first)| first);
+	(first, factors.collect())
+}
+
 fn with_bindings<'src>((body, bindings): (Syntax<'src>, Option<Vec<Binding<'src>>>)) -> Syntax<'src> {
 	match bindings {
 		Some(bindings) => Syntax::Where { body: Box::new(body), bindings },
@@ -495,11 +618,21 @@ where
 
 		// Juxtaposed factors like `2pi` or `2sqrt(4)` multiply implicitly at the same precedence as `*` and `/`.
 		// The implicit operand is a `pow`, not a full unary, so `2 -3` stays a subtraction; the lexer rejects a number right after another number (`10 000` is not `10*000`).
-		let implicit_mul = pow.map(|rhs| (BinaryOp::Mul, rhs));
+		let implicit_mul = pow.map(|rhs| (BinaryOp::Mul, rhs, true));
+		// A `%` after a factor makes it a percentage, the factor times the percent unit
+		let percent = just(Token::Percent).to((BinaryOp::Mul, Syntax::Var("%"), true));
+		let link = choice((mul_op.then(unary.clone()).map(|(op, factor)| (op, factor, false)), percent, implicit_mul)).map_with(|(op, factor, implicit), extra| ProductLink {
+			op,
+			factor,
+			implicit,
+			span: extra.span(),
+		});
 		let product = unary
 			.clone()
-			.then(choice((mul_op.then(unary), implicit_mul)).repeated().collect::<Vec<_>>())
-			.map(|(first, mut rest): (Syntax<'src>, Vec<(BinaryOp, Syntax<'src>)>)| {
+			.then(link.repeated().collect::<Vec<_>>())
+			.validate(|(first, links): (Syntax<'src>, Vec<ProductLink<'src>>), _, emitter| {
+				let (first, mut rest) = group_units(first, links, |span, message| emitter.emit(CustomError::custom(span, message)));
+
 				// Two factors group only one way, while a longer chain is grouped by the sort pass, which knows the matrices
 				if rest.len() <= 1 {
 					return match rest.pop() {
