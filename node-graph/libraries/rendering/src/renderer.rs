@@ -530,6 +530,17 @@ pub(crate) fn transform_is_invertible(transform: DAffine2) -> bool {
 	transform.matrix2.determinant().recip().is_finite()
 }
 
+/// Maps `transform` into the space of `reference`, exactly for the reference itself even when it can't be inverted.
+fn transform_relative_to(reference: DAffine2, transform: DAffine2) -> DAffine2 {
+	if transform == reference {
+		DAffine2::IDENTITY
+	} else if transform_is_invertible(reference) {
+		reference.inverse() * transform
+	} else {
+		transform
+	}
+}
+
 /// Maps a gradient's `transform` into the frame handed to the renderer: radial keeps the full matrix (so a
 /// non-uniform transform makes an ellipse), while linear is reduced to the equivalent non-sheared gradient line (the
 /// axis projected onto the band normal) so the iso-color bands keep following a sheared transform, which Vello can
@@ -2086,14 +2097,9 @@ fn collect_vector_items_metadata<'a>(
 
 		if let Some(element_id) = caller_element_id.or(item.layer()) {
 			let reference_transform = *reference_transforms.entry(element_id).or_insert(transform);
-			let reference_inverse = if transform_is_invertible(reference_transform) {
-				reference_transform.inverse()
-			} else {
-				DAffine2::IDENTITY
-			};
 
 			let source_paths = item.attribute::<List<Path>>(ATTR_PATHS).unwrap_or_else(|| no_paths());
-			let item_relative_transform = reference_inverse * transform;
+			let item_relative_transform = transform_relative_to(reference_transform, transform);
 
 			// Outlines trace the source geometry as drawn (actual letterforms, open paths left open)
 			let mut outlines_unwrapped = Vec::new();
@@ -2917,7 +2923,7 @@ fn render_gradient_item_to_vello(item: ItemRef<'_, Gradient>, scene: &mut VelloS
 fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Gradient>>, metadata: &mut RenderMetadata, element_id: Option<NodeId>) {
 	let Some(element_id) = element_id else { return };
 
-	let mut item_zero_inverse = None;
+	let mut item_zero_transform = None;
 	let mut outline_targets = Vec::new();
 	let mut click_targets = Vec::new();
 	for item in items {
@@ -2925,10 +2931,10 @@ fn collect_gradient_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, G
 		let item_transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
 
 		// The first item's transform is the reference all targets bake against
-		let item_zero_inverse = *item_zero_inverse.get_or_insert_with(|| if transform_is_invertible(item_transform) { item_transform.inverse() } else { DAffine2::IDENTITY });
+		let item_zero_transform = *item_zero_transform.get_or_insert(item_transform);
 
 		let mut target = ClickTarget::new_with_path(gradient_control_outline(gradient_form), 0.);
-		target.apply_transform(item_zero_inverse * item_transform);
+		target.apply_transform(transform_relative_to(item_zero_transform, item_transform));
 		let target = Arc::new(target);
 
 		if gradient_control_interior_is_clickable(gradient_form) {
@@ -3312,17 +3318,12 @@ fn render_text_item_to_vello(item: ItemRef<'_, String>, scene: &mut VelloSceneBu
 /// which `Graphic::collect_metadata` records as `local_transforms[element_id]`.
 fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, String>>, metadata: &mut RenderMetadata, footprint: Footprint, caller_element_id: Option<NodeId>) {
 	let mut item_zero_transform = None;
-	let mut item_zero_inverse = DAffine2::IDENTITY;
 
 	let mut accumulated_click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>> = HashMap::new();
 
 	for item in items {
 		// The first item's transform is the reference all targets bake against
-		let item_zero_transform = *item_zero_transform.get_or_insert_with(|| {
-			let transform: DAffine2 = item.attribute_cloned_or_default(ATTR_TRANSFORM);
-			item_zero_inverse = if transform.matrix2.determinant() != 0. { transform.inverse() } else { DAffine2::IDENTITY };
-			transform
-		});
+		let item_zero_transform = *item_zero_transform.get_or_insert_with(|| item.attribute_cloned_or_default(ATTR_TRANSFORM));
 
 		let Some(element_id) = caller_element_id.or(item.layer()) else { continue };
 
@@ -3334,7 +3335,7 @@ fn collect_text_items_metadata<'a>(items: impl Iterator<Item = ItemRef<'a, Strin
 
 		let Some((size, item_transform)) = text_item_size_and_transform(item) else { continue };
 		let mut target = ClickTarget::new_with_path(rectangle_path(DVec2::ZERO, size), 0.);
-		target.apply_transform(item_zero_inverse * item_transform);
+		target.apply_transform(transform_relative_to(item_zero_transform, item_transform));
 		accumulated_click_targets.entry(element_id).or_default().push(Arc::new(target));
 	}
 
