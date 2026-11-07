@@ -47,6 +47,8 @@ pub struct HistoryMessageHandler {
 struct Capture {
 	frame: [DVec2; 2],
 	layers: BTreeMap<graph_craft::document::NodeId, LayerShot>,
+	/// Orders the captures so the oldest is dropped first.
+	taken: u64,
 }
 
 #[derive(Debug, PartialEq)]
@@ -60,6 +62,8 @@ struct LayerShot {
 
 /// How many interactions each request adds.
 const PAGE: usize = 100;
+/// The most recent captures kept for each document, as many as the frontend keeps images.
+const MAX_CAPTURES: usize = 300;
 
 #[message_handler_data]
 impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessageHandler {
@@ -82,7 +86,14 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 					self.send(&context, responses);
 				}
 			}
-			HistoryMessage::Captured { document_id, rev, capture } => self.receive_capture(document_id, rev, *capture, &context, responses),
+			HistoryMessage::Captured { document_id, rev, capture } => {
+				if self.requested == Some((document_id, rev)) {
+					self.requested = None;
+				}
+				if let Some(capture) = capture {
+					self.receive_capture(document_id, rev, *capture, &context, responses);
+				}
+			}
 			HistoryMessage::Expand { id, expanded } => {
 				if let Some(rev) = parse_rev(&id) {
 					match expanded {
@@ -151,6 +162,7 @@ impl MessageHandler<HistoryMessage, HistoryMessageContext<'_>> for HistoryMessag
 impl HistoryMessageHandler {
 	/// Asks for the head to be captured once its step is settled, since a capture shows the document as it renders now.
 	fn request_capture(&mut self, context: &HistoryMessageContext) {
+		self.captures.retain(|id, _| context.documents.contains_key(id));
 		let Some(document_id) = context.active_document_id else { return };
 		let Some(session) = active_storage(context).map(GddV1::session) else { return };
 		let Some(head) = session.head_rev().filter(|_| session.hot_log().is_empty()) else { return };
@@ -165,9 +177,6 @@ impl HistoryMessageHandler {
 
 	/// Keeps a capture that still shows its step, with where each layer was, and gives the frontend its image.
 	fn receive_capture(&mut self, document_id: DocumentId, rev: Rev, capture: DocumentCapture, context: &HistoryMessageContext, responses: &mut VecDeque<Message>) {
-		if self.requested == Some((document_id, rev)) {
-			self.requested = None;
-		}
 		let Some(document) = context.documents.get(&document_id) else { return };
 		let settled = document
 			.storage()
@@ -190,7 +199,14 @@ impl HistoryMessageHandler {
 				(node, shot)
 			})
 			.collect();
-		self.captures.entry(document_id).or_default().insert(rev, Capture { frame: capture.frame, layers });
+		let captures = self.captures.entry(document_id).or_default();
+		let taken = captures.values().map(|capture| capture.taken + 1).max().unwrap_or(0);
+		if captures.len() >= MAX_CAPTURES
+			&& let Some(&oldest) = captures.iter().min_by_key(|(_, capture)| capture.taken).map(|(rev, _)| rev)
+		{
+			captures.remove(&oldest);
+		}
+		captures.insert(rev, Capture { frame: capture.frame, layers, taken });
 		responses.add(FrontendMessage::UpdateHistoryThumbnail {
 			id: rev.to_string(),
 			svg: capture.svg,
@@ -841,6 +857,7 @@ mod tests {
 		let capture = |layers: Vec<(u64, LayerShot)>| Capture {
 			frame: [DVec2::ZERO, DVec2::ONE],
 			layers: layers.into_iter().map(|(id, shot)| (LayerId(id), shot)).collect(),
+			taken: 0,
 		};
 		let before = capture(vec![(1, layer(0., 1, false)), (2, layer(5., 2, false)), (3, layer(9., 3, false)), (4, layer(0., 4, true))]);
 		let after = capture(vec![(1, layer(0., 1, false)), (2, layer(6., 2, false)), (4, layer(0., 5, true)), (5, layer(3., 6, false))]);

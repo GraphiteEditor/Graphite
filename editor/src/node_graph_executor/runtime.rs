@@ -176,7 +176,13 @@ impl NodeRuntime {
 		let mut graph = None;
 		for request in self.receiver.try_iter() {
 			match request {
-				GraphRuntimeRequest::GraphUpdate(update) => graph = Some(update),
+				GraphRuntimeRequest::GraphUpdate(update) => {
+					graph = Some(update);
+					// The graph may be another document's, or show a later step than the one asked for
+					if let Some((document_id, rev)) = self.pending_capture.take() {
+						self.sender.send(NodeGraphUpdate::DocumentCapture { document_id, rev, capture: None }).expect("Failed to send response");
+					}
+				}
 				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_eyedropper => self.pending_eyedropper = Some(request),
 				GraphRuntimeRequest::ExecutionRequest(request) if request.render_config.for_export => {
 					self.pending_export = Some(request);
@@ -286,7 +292,7 @@ impl NodeRuntime {
 				&& let Some(network) = &self.old_graph
 				&& let Some(capture) = self.thumbnails.capture_document(network, &self.executor)
 			{
-				let capture = Box::new(capture);
+				let capture = Some(Box::new(capture));
 				self.sender.send(NodeGraphUpdate::DocumentCapture { document_id, rev, capture }).expect("Failed to send response");
 			}
 		}
