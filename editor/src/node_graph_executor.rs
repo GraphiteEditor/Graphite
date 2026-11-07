@@ -224,6 +224,24 @@ impl NodeGraphExecutor {
 		true
 	}
 
+	/// Asks for a past state of the document, `network` with its `layers`, rendered for the History panel's `step` like
+	/// [`submit_document_capture`](Self::submit_document_capture) renders the current one. Returns false when the runtime
+	/// holds another document's graph, which the past state wouldn't share any nodes with.
+	pub fn submit_past_capture(&self, document_id: DocumentId, step: document_graph_storage::TimeStamp, network: NodeNetwork, layers: Vec<Vec<NodeId>>, detail: Option<[DVec2; 2]>) -> bool {
+		if self.node_graph_document != Some(document_id) {
+			return false;
+		}
+		let past = runtime::PastCapture {
+			document_id,
+			step,
+			network,
+			layers,
+			detail,
+		};
+		self.sender.send(GraphRuntimeRequest::CapturePast(past)).expect("Failed to send the capture request");
+		true
+	}
+
 	/// Updates the network to monitor all inputs. Useful for the testing.
 	#[cfg(test)]
 	pub(crate) fn update_node_graph_instrumented(&mut self, document: &mut DocumentMessageHandler) -> Result<Instrumented, String> {

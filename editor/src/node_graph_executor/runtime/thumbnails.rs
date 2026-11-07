@@ -31,6 +31,14 @@ mod atlas;
 /// The time thumbnails are evaluated at, so they don't depend on the playhead.
 const THUMBNAIL_TIME: f64 = 0.;
 
+/// Finds the proto node compiled from the document node at a path.
+pub type SourceLookup<'a> = &'a dyn Fn(&[NodeId]) -> Option<NodeId>;
+
+/// Looks paths up in what `executor` last compiled.
+pub fn compiled_sources(executor: &DynamicExecutor) -> impl Fn(&[NodeId]) -> Option<NodeId> + '_ {
+	|path| executor.tree().source_map().get(path).map(|(id, _)| *id)
+}
+
 /// The size in pixels of a thumbnail rendered at this device pixel ratio.
 #[cfg_attr(
 	not(any(feature = "gpu", all(target_family = "wasm", feature = "wasm"))),
@@ -86,11 +94,11 @@ impl Thumbnails {
 	}
 
 	/// Finds the proto node giving each layer's content in the newly compiled graph, marking the layers whose proto node changed as stale.
-	pub fn update_sources(&mut self, layer_paths: &[Vec<NodeId>], network: &NodeNetwork, executor: &DynamicExecutor) {
+	pub fn update_sources(&mut self, layer_paths: &[Vec<NodeId>], network: &NodeNetwork, source_of: SourceLookup) {
 		// O(layers * depth)
 		let sources: HashMap<NodeId, NodeId> = layer_paths
 			.iter()
-			.filter_map(|layer_path| Some((*layer_path.last()?, thumbnail_source(layer_path, network, executor)?)))
+			.filter_map(|layer_path| Some((*layer_path.last()?, thumbnail_source(layer_path, network, source_of)?)))
 			.collect();
 
 		// A proto node's ID hashes everything upstream of it, so a layer whose source kept its ID shows the same content
@@ -230,10 +238,17 @@ impl Thumbnails {
 
 	/// Renders the whole document as the network's export gives it, and the area `detail` close up, the way layer
 	/// thumbnails are rendered, along with what each layer currently shows.
-	pub async fn capture_document(&self, network: &NodeNetwork, executor: &DynamicExecutor, editor_api: &PlatformEditorApi, detail: Option<[DVec2; 2]>) -> Option<DocumentCapture> {
+	pub async fn capture_document(
+		&self,
+		network: &NodeNetwork,
+		executor: &DynamicExecutor,
+		source_of: SourceLookup<'_>,
+		editor_api: &PlatformEditorApi,
+		detail: Option<[DVec2; 2]>,
+	) -> Option<DocumentCapture> {
 		let content = match network.exports.first().and_then(|export| network.input_source(&[], export)) {
 			Some(source) => {
-				let &(content_node, _) = executor.tree().source_map().get(source.as_slice())?;
+				let content_node = source_of(source.as_slice())?;
 				ThumbnailContent::evaluate(executor, content_node)?
 			}
 			// Nothing reaches the export, so the document shows nothing
@@ -252,7 +267,18 @@ impl Thumbnails {
 			frame,
 			detail: detail.zip(detail_image),
 			layer_sources: self.sources.clone(),
+			layer_bounds: None,
 		})
+	}
+
+	pub fn scale(&self) -> f64 {
+		self.scale
+	}
+
+	/// Where each layer's own content lies, from the content its thumbnail shows.
+	pub fn layer_bounds(&self, executor: &DynamicExecutor) -> HashMap<NodeId, [DVec2; 2]> {
+		let bounds = |source: NodeId| ThumbnailContent::evaluate(executor, source)?.content_bounds();
+		self.sources.iter().filter_map(|(&layer, &source)| Some((layer, bounds(source)?))).collect()
 	}
 
 	/// Renders each frame of the content into a cell the size of a layer thumbnail, giving none if Vello is unavailable.
@@ -405,6 +431,11 @@ impl ThumbnailContent {
 
 	/// The area the thumbnail shows, centered on the content at the thumbnail's aspect ratio.
 	fn bounds(&self) -> [DVec2; 2] {
+		expand_to_thumbnail_aspect(self.content_bounds().unwrap_or([DVec2::ZERO, DVec2::ONE]))
+	}
+
+	/// Where the content lies, if it has any extent.
+	fn content_bounds(&self) -> Option<[DVec2; 2]> {
 		let bounds = match self {
 			// Text-aware bounds, since the `BoundingBox` trait can't lay out `Graphic::TextList` content
 			Self::Graphics(graphics) => graphene_std::renderer::graphic_list_bounding_box(graphics, DAffine2::IDENTITY),
@@ -413,16 +444,15 @@ impl ThumbnailContent {
 			Self::Text(text) => graphene_std::renderer::text_list_bounding_box(text, DAffine2::IDENTITY),
 		};
 
-		let bounds = match bounds {
-			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => bounds,
-			_ => [DVec2::ZERO, DVec2::ONE],
-		};
-		expand_to_thumbnail_aspect(bounds)
+		match bounds {
+			RenderBoundingBox::Rectangle(bounds) if (bounds[1] - bounds[0]) != DVec2::ZERO => Some(bounds),
+			_ => None,
+		}
 	}
 }
 
 /// The proto node giving the content a layer's thumbnail shows, which is only what the layer adds if it extends the stack below it.
-fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &DynamicExecutor) -> Option<NodeId> {
+fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, source_of: SourceLookup) -> Option<NodeId> {
 	let output = network.output_source(layer_path, 0)?;
 
 	// A hidden layer, or one passing through what's below it, has nothing of its own to show
@@ -438,7 +468,7 @@ fn thumbnail_source(layer_path: &[NodeId], network: &NodeNetwork, executor: &Dyn
 		output
 	};
 
-	executor.tree().source_map().get(source.as_slice()).map(|(id, _)| *id)
+	source_of(source.as_slice())
 }
 
 /// Converts the other kinds of graphical content into a graphic.
@@ -537,7 +567,10 @@ mod tests {
 		compile_and_run(&mut editor).await;
 		let runtime = &editor.runtime;
 		let network = runtime.old_graph.as_ref().expect("The document should have compiled");
-		let capture = runtime.thumbnails.capture_document(network, &runtime.executor, &runtime.editor_api, None).await;
+		let capture = runtime
+			.thumbnails
+			.capture_document(network, &runtime.executor, &super::compiled_sources(&runtime.executor), &runtime.editor_api, None)
+			.await;
 		let capture = capture.expect("The document should render");
 		match &capture.image {
 			CaptureImage::Pixels(pixels) => assert!(pixels.rgba.chunks(4).any(|pixel| pixel[3] > 0), "The rectangle should be drawn"),
