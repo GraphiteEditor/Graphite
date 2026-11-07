@@ -168,7 +168,7 @@ fn fingerprint(document_id: Option<DocumentId>, gdd: Option<&GddV1>, limit: usiz
 	(document_id, limit, expanded, following).hash(&mut hasher);
 	if let Some(gdd) = gdd {
 		let session = gdd.session();
-		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len()).hash(&mut hasher);
+		(session.history_len(), session.head_rev(), session.redo_stack(), session.hot_log().len(), session.pending_action()).hash(&mut hasher);
 		for remote in gdd.peers() {
 			(remote.user, &remote.name).hash(&mut hasher);
 		}
