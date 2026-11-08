@@ -75,7 +75,9 @@
 			<div class="row" class:head={pendingHead && index === 0}>
 				<span class="gutter"></span>
 				<!-- A dot marks whose step it is, so it shows only while there are others -->
-				<span class="rail">{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span>
+				<span class="rail"
+					>{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span
+				>
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In Progress" : "Waiting to Enter History")}</span>
 					<span class="meta">
@@ -101,7 +103,9 @@
 				{:else}
 					<span class="gutter"></span>
 				{/if}
-				<span class="rail">{#if $history.collaborating || !row.mine}<span class="dot" style:background={row.color}></span>{/if}</span>
+				<span class="rail"
+					>{#if $history.collaborating || !row.mine}<span class="dot" style:background={row.color}></span>{/if}</span
+				>
 				<div class="text">
 					{#if renamingId === row.id}
 						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
