@@ -5008,11 +5008,18 @@ mod tests {
 			migrate(&mut document);
 
 			let node = &document.network_interface.document_network().nodes[&node_id];
-			assert_eq!(node.inputs.len(), 3, "the output type is kept, or added to a node from before it");
-			match &node.implementation {
+			let identifier = match &node.implementation {
 				DocumentNodeImplementation::ProtoNode(identifier) => identifier.clone(),
 				other => panic!("expected a proto node implementation, got {other:?}"),
+			};
+
+			// The output type is kept, or added to a node from before it, and Math Formula reads the resolution after it
+			let expected_inputs = if identifier == math_formula::IDENTIFIER { 4 } else { 3 };
+			assert_eq!(node.inputs.len(), expected_inputs);
+			if identifier == math_formula::IDENTIFIER {
+				assert_eq!(node.inputs.get(3), Some(&NodeInput::scope(graphene_std::units::PIXELS_PER_INCH_SCOPE)));
 			}
+			identifier
 		};
 		let items = || NodeInput::value(TaggedValue::None, false);
 		let expression = |text: &str| NodeInput::value(TaggedValue::String(text.into()), false);

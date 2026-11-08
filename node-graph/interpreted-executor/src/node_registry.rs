@@ -409,6 +409,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		i64,
 		DVec2,
 		DAffine2,
+		Length,
+		Angle,
 		// Graphic family
 		Graphic,
 		Raster<CPU>,

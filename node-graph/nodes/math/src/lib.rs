@@ -1,7 +1,7 @@
 use core_types::context::{CloneVarArgs, ExtractAll};
 use core_types::list::{Bundle, Item, List};
 use core_types::transform::Footprint;
-use core_types::units::{Angle, DEFAULT_PIXELS_PER_INCH, Length};
+use core_types::units::{Angle, AngleUnit, DEFAULT_PIXELS_PER_INCH, Length};
 use core_types::{Color, Ctx, OwnedContextImpl, num_traits};
 use core_types::{Context, Interrupt};
 use glam::{DAffine2, DMat2, DVec2};
@@ -19,6 +19,8 @@ use math_parser::reducer::{Reducer, classify_reducer};
 use math_parser::units::{Unit, UnitId, unit_named};
 use math_parser::value::{Value, Vector2, Vector3};
 use rand::{RngExt, SeedableRng};
+use std::iter::Sum;
+use std::ops::{Add, Div, Mul};
 use std::sync::{Arc, Mutex, PoisonError};
 use vector_types::Gradient;
 
@@ -88,11 +90,6 @@ impl ParseCache {
 	}
 }
 
-/// Evaluates a parsed expression with the given variable bindings.
-fn evaluate_expression(expression: &ast::Node, provider: impl ValueProvider) -> Result<Object, MathExpressionError> {
-	evaluate_measured_expression(expression, provider, DEFAULT_PIXELS_PER_INCH)
-}
-
 /// Evaluates a parsed expression with the given variable bindings, sizing its pixels by the document's resolution.
 fn evaluate_measured_expression(expression: &ast::Node, provider: impl ValueProvider, pixels_per_inch: f64) -> Result<Object, MathExpressionError> {
 	Ok(expression.eval(&EvalContext::new(provider, NothingMap).with_pixels_per_inch(pixels_per_inch))?)
@@ -114,6 +111,8 @@ trait ExpressionValue: Copy + Default + 'static {
 /// The items of a math node's list, of one sort throughout, which "Math Formula" binds positionally as `a`, `b`, `c` or as `A`, `B`, `C`.
 enum Items {
 	Values(Vec<Value>),
+	/// Lengths or angles, each with the unit it is measured in.
+	Quantities(Vec<Quantity>),
 	Matrices(Vec<Matrix>),
 }
 
@@ -121,6 +120,7 @@ impl Items {
 	fn len(&self) -> usize {
 		match self {
 			Self::Values(values) => values.len(),
+			Self::Quantities(quantities) => quantities.len(),
 			Self::Matrices(matrices) => matrices.len(),
 		}
 	}
@@ -159,11 +159,6 @@ impl ExpressionItem for f64 {
 	}
 }
 
-/// Reads an expression's result as the node's output type.
-fn output<T: ExpressionValue>(result: &Object) -> Result<T, MathExpressionError> {
-	measured_output(result, DEFAULT_PIXELS_PER_INCH)
-}
-
 /// Reads an expression's result as the node's output type, sizing a length's physical units by the document's resolution.
 fn measured_output<T: ExpressionValue>(result: &Object, pixels_per_inch: f64) -> Result<T, MathExpressionError> {
 	T::from_measured_object(result, pixels_per_inch).ok_or_else(|| MathExpressionError::OutputType {
@@ -172,9 +167,19 @@ fn measured_output<T: ExpressionValue>(result: &Object, pixels_per_inch: f64) ->
 	})
 }
 
+/// A length as the expression language measures it, in pixels.
+fn length_quantity(length: Length) -> Quantity {
+	Quantity::new(Value::from_f64(length.pixels()), Unit::of(UnitId::PIXEL))
+}
+
+/// An angle as the expression language measures it, in degrees.
+fn angle_quantity(angle: Angle) -> Quantity {
+	Quantity::new(Value::from_f64(angle.degrees()), AngleUnit::Degree.unit())
+}
+
 impl ExpressionValue for Length {
 	fn into_object(self) -> Object {
-		Object::Value(Quantity::new(Value::from_f64(self.pixels()), Unit::of(UnitId::PIXEL)))
+		Object::Value(length_quantity(self))
 	}
 
 	fn from_object(object: &Object) -> Option<Self> {
@@ -188,23 +193,28 @@ impl ExpressionValue for Length {
 	}
 
 	fn items(items: impl Iterator<Item = Self>) -> Items {
-		Items::Values(items.map(|length| Value::from_f64(length.pixels())).collect())
+		Items::Quantities(items.map(length_quantity).collect())
 	}
 }
 
 impl ExpressionValue for Angle {
 	fn into_object(self) -> Object {
-		Object::Value(Quantity::new(Value::from_f64(self.radians()), Unit::of(UnitId::RADIAN)))
+		Object::Value(angle_quantity(self))
 	}
 
 	// A plain result reads in radians, as the circular functions read a plain angle
 	fn from_object(object: &Object) -> Option<Self> {
-		let radians = object.as_quantity()?.read_in(Unit::of(UnitId::RADIAN), DEFAULT_PIXELS_PER_INCH).ok()?.as_real()?;
-		Some(Angle::from_radians(radians))
+		let quantity = object.as_quantity()?;
+		if quantity.is_plain() {
+			return Some(Angle::from_radians(quantity.value.as_real()?));
+		}
+
+		let degrees = quantity.convert(AngleUnit::Degree.unit(), DEFAULT_PIXELS_PER_INCH).ok()?.as_real()?;
+		Some(Angle::from_degrees(degrees))
 	}
 
 	fn items(items: impl Iterator<Item = Self>) -> Items {
-		Items::Values(items.map(|angle| Value::from_f64(angle.radians())).collect())
+		Items::Quantities(items.map(angle_quantity).collect())
 	}
 }
 
@@ -353,14 +363,25 @@ fn position(name: &str, is_letter_case: fn(&char) -> bool) -> Option<usize> {
 
 impl ValueProvider for PositionalMathContext {
 	fn get_value(&self, name: &str) -> Option<Value> {
-		let Items::Values(items) = &self.items else { return None };
+		let item = self.get_quantity(name)?;
+		if item.is_plain() { Some(item.value) } else { item.as_plain() }
+	}
+
+	// A length or an angle binds with its unit
+	fn get_quantity(&self, name: &str) -> Option<Quantity> {
+		let index = position(name, char::is_ascii_lowercase)?;
+		let item = match &self.items {
+			Items::Values(items) => items.get(index).copied().map(Quantity::plain),
+			Items::Quantities(items) => items.get(index).copied(),
+			Items::Matrices(_) => return None,
+		};
 
 		// A wired item shadows the constant or unit spelled by its letter (`e` as the fifth item, `m` as the thirteenth), which stay
 		// reachable as `\e` and `\m`; an unwired letter reads as its default of 0, except that a constant's or unit's letter stays itself
-		match items.get(position(name, char::is_ascii_lowercase)?) {
-			Some(item) => Some(*item),
+		match item {
+			Some(item) => Some(item),
 			None if Constant::from_name(name).is_some() || unit_named(name).is_some() => None,
-			None => Some(Value::from_i64(0)),
+			None => Some(Quantity::plain(Value::from_i64(0))),
 		}
 	}
 
@@ -374,17 +395,19 @@ impl ValueProvider for PositionalMathContext {
 
 /// Evaluates one math expression over all the items, taking them in order as its arguments `a`, `b`, `c`, …, or `A`, `B`, `C`, … for Transforms.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors.
-#[node_macro::node(category("Math"), icon("NodeMathFormula"), version(2))]
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, a Transform takes a matrix like `rotation(pi/4) + 5i`, a Length reads a plain number as pixels, and an Angle reads a plain number as radians. Boolean items read as 0 or 1, Vec2 items as such vectors, and Length or Angle items with their units, so `a + 5mm` adds five millimeters.
+#[node_macro::node(category("Math"), icon("NodeMathFormula"), version(3))]
 fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items the expression reads.
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
-		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
-		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
-		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
-		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+		List<Length>, List<Length>, List<Length>, List<Length>, List<Length>, List<Length>, List<Length>,
+		List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>,
 	)]
 	values: List<T>,
 	/// The expression evaluated over the items, such as `a * b + c`.
@@ -393,11 +416,13 @@ fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 	f: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
-		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle,
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle
 	)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
 	output_type: Item<U>,
+	#[scope("pixels-per-inch")] pixels_per_inch: Item<f64>,
 	#[data] parsed: ParseCache,
 ) -> Result<Item<U>, MathExpressionError> {
 	// The output type input is a type witness: its type selects the implementation, and its value is never read
@@ -411,9 +436,11 @@ fn math_formula<T: ExpressionValue, U: ExpressionValue>(
 	let bindings = PositionalMathContext {
 		items: T::items(values.iter_element_values().copied()),
 	};
+	let pixels_per_inch = *pixels_per_inch.element();
+	let evaluate = |expression: &ast::Node| evaluate_measured_expression(expression, &bindings, pixels_per_inch).and_then(|result| measured_output(&result, pixels_per_inch));
+
 	let tree = parsed.parse(expression)?;
-	let result = evaluate_expression(&tree, bindings)?;
-	Ok(Item::new_from_element(output(&result)?))
+	Ok(Item::new_from_element(evaluate(&tree)?))
 }
 
 /// The operator or function name a "Math Aggregate" or "Math Running" node applies across its items.
@@ -423,17 +450,19 @@ fn operator_reducer(operator: &str) -> Result<Reducer, MathExpressionError> {
 
 /// Reduces all the items to a single value by folding an operator like `+` or `*` across them, or by passing them all to a function like `max` or `mean`.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, a Transform takes a matrix like `rotation(pi/4) + 5i`, a Length reads a plain number as pixels, and an Angle reads a plain number as radians. Boolean items read as 0 or 1, Vec2 items as such vectors, and Length or Angle items with their units, so `+` totals lengths as a length. Across Transforms, `*` and `/` compose in order, `mean` averages, and `count` counts.
 #[node_macro::node(category("Math"), icon("NodeMathAggregate"), footprint_invariant)]
 fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items reduced to one value.
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
-		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
-		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
-		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
-		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+		List<Length>, List<Length>, List<Length>, List<Length>, List<Length>, List<Length>, List<Length>,
+		List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>,
 	)]
 	values: List<T>,
 	/// The operator folded across the items, like `+` or `*`, or a function given all of them, like `max` or `mean`.
@@ -442,7 +471,8 @@ fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 	operator: Item<String>,
 	/// The type the result is read as.
 	#[implementations(
-		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle,
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle
 	)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
@@ -453,37 +483,41 @@ fn math_aggregate<T: ExpressionValue, U: ExpressionValue>(
 
 	let operator = operator.element();
 	let reducer = operator_reducer(operator)?;
+	let pixels_per_inch = DEFAULT_PIXELS_PER_INCH;
 	let items = T::items(values.iter_element_values().copied());
 
 	let result = match &items {
 		Items::Values(values) => reducer.evaluate(values).map(Object::from),
+		Items::Quantities(quantities) => reducer.evaluate_quantities(quantities, pixels_per_inch)?.map(Object::Value),
 		Items::Matrices(matrices) => reducer.evaluate_matrices(matrices),
 	};
 	let Some(result) = result else {
 		let name = operator.trim();
 		return match items.len() {
 			// Like the dedicated nodes, the minimum, maximum and mean of no values are 0
-			0 if matches!(items, Items::Values(_)) && matches!(name.trim_start_matches('\\'), "min" | "max" | "mean") => Ok(Item::new_from_element(U::default())),
+			0 if !matches!(items, Items::Matrices(_)) && matches!(name.trim_start_matches('\\'), "min" | "max" | "mean") => Ok(Item::new_from_element(U::default())),
 			0 => Err(MathExpressionError::EmptyReduction { reducer: name.to_string() }),
 			_ => Err(MathExpressionError::NoReduction { reducer: name.to_string() }),
 		};
 	};
-	Ok(Item::new_from_element(output(&result)?))
+	Ok(Item::new_from_element(measured_output(&result, pixels_per_inch)?))
 }
 
 /// Scans along the items, giving each one the result of folding an operator like `+` over it and every item before it, such as a running total, or of a function like `max`, such as the highest value so far.
 ///
-/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, and a Transform takes a matrix like `rotation(pi/4) + 5i`. Boolean items read as 0 or 1 and Vec2 items as such vectors. Across Transforms, `*` composes in order, which turns a list of steps into where each step ends up.
+/// The result is read as the chosen output type: an Integer rounds to the nearest whole number, a Bool reads exactly 0 or 1 as false or true, a Vec2 takes the X and Y of a vector like `3i + 4j`, a Transform takes a matrix like `rotation(pi/4) + 5i`, a Length reads a plain number as pixels, and an Angle reads a plain number as radians. Boolean items read as 0 or 1, Vec2 items as such vectors, and Length or Angle items with their units, so `+` totals angles as an angle. Across Transforms, `*` composes in order, which turns a list of steps into where each step ends up.
 #[node_macro::node(category("Math"), icon("NodeMathRunning"), footprint_invariant)]
 fn math_running<T: ExpressionValue, U: ExpressionValue>(
 	_: impl Ctx,
 	/// The items scanned along, each giving one result.
 	#[implementations(
-		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
-		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
-		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
-		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
-		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+		List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>, List<f64>,
+		List<i64>, List<i64>, List<i64>, List<i64>, List<i64>, List<i64>, List<i64>,
+		List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>, List<bool>,
+		List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>, List<DVec2>,
+		List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>, List<DAffine2>,
+		List<Length>, List<Length>, List<Length>, List<Length>, List<Length>, List<Length>, List<Length>,
+		List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>, List<Angle>,
 	)]
 	values: List<T>,
 	/// The operator folded along the items, like `+` or `*`, or a function given the items so far, like `max` or `mean`.
@@ -492,7 +526,8 @@ fn math_running<T: ExpressionValue, U: ExpressionValue>(
 	operator: Item<String>,
 	/// The type each result is read as.
 	#[implementations(
-		f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2, f64, i64, bool, DVec2, DAffine2
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle,
+		f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle, f64, i64, bool, DVec2, DAffine2, Length, Angle
 	)]
 	#[widget(ParsedWidgetOverride::Custom = "type_choice")]
 	#[name("Output Type")]
@@ -508,20 +543,29 @@ fn math_running<T: ExpressionValue, U: ExpressionValue>(
 	};
 
 	// Each item's run is folded on from the run before it, where a failed fold fails every run after it
+	let pixels_per_inch = DEFAULT_PIXELS_PER_INCH;
 	let items = T::items(values.iter_element_values().copied());
-	let running = match &items {
-		Items::Values(values) => reducer.evaluate_running(values).into_iter().map(|result| result.map(Object::from)).collect(),
-		Items::Matrices(matrices) => reducer.evaluate_running_matrices(matrices),
+	let running: Vec<Result<Option<Object>, MathExpressionError>> = match &items {
+		Items::Values(values) => reducer.evaluate_running(values).into_iter().map(|result| Ok(result.map(Object::from))).collect(),
+		Items::Quantities(quantities) => reducer
+			.evaluate_running_quantities(quantities, pixels_per_inch)
+			.into_iter()
+			.map(|result| result.map(|result| result.map(Object::Value)).map_err(MathExpressionError::from))
+			.collect(),
+		Items::Matrices(matrices) => reducer.evaluate_running_matrices(matrices).into_iter().map(Ok).collect(),
 	};
 
 	// A failing item takes the default, and the first failure is the one reported
 	let mut first_error = None;
 	let results = running.into_iter().map(|result| {
 		let no_reduction = || MathExpressionError::NoReduction { reducer: operator.trim().to_string() };
-		result.ok_or_else(no_reduction).and_then(|result| output(&result)).unwrap_or_else(|error| {
-			first_error.get_or_insert(error);
-			U::default()
-		})
+		result
+			.and_then(|result| result.ok_or_else(no_reduction))
+			.and_then(|result| measured_output(&result, pixels_per_inch))
+			.unwrap_or_else(|error| {
+				first_error.get_or_insert(error);
+				U::default()
+			})
 	});
 	let list = values.into_iter().zip(results).map(|(item, result)| Item::from_parts(result, item.into_parts().1)).collect();
 
@@ -572,6 +616,42 @@ impl TryAdd<DVec2> for f64 {
 		Ok(self + addend)
 	}
 }
+impl TryAdd for Length {
+	type Output = Length;
+	fn try_add(self, addend: Length) -> Result<Length, IntegerOverflowError> {
+		Ok(self + addend)
+	}
+}
+impl TryAdd for Angle {
+	type Output = Angle;
+	fn try_add(self, addend: Angle) -> Result<Angle, IntegerOverflowError> {
+		Ok(self + addend)
+	}
+}
+impl TryAdd<f64> for Length {
+	type Output = Length;
+	fn try_add(self, addend: f64) -> Result<Length, IntegerOverflowError> {
+		Ok(self + Length::from_pixels(addend))
+	}
+}
+impl TryAdd<Length> for f64 {
+	type Output = Length;
+	fn try_add(self, addend: Length) -> Result<Length, IntegerOverflowError> {
+		Ok(Length::from_pixels(self) + addend)
+	}
+}
+impl TryAdd<f64> for Angle {
+	type Output = Angle;
+	fn try_add(self, addend: f64) -> Result<Angle, IntegerOverflowError> {
+		Ok(self + Angle::from_degrees(addend))
+	}
+}
+impl TryAdd<Angle> for f64 {
+	type Output = Angle;
+	fn try_add(self, addend: Angle) -> Result<Angle, IntegerOverflowError> {
+		Ok(Angle::from_degrees(self) + addend)
+	}
+}
 
 pub trait TrySub<Rhs = Self> {
 	type Output;
@@ -605,6 +685,42 @@ impl TrySub<DVec2> for f64 {
 	type Output = DVec2;
 	fn try_sub(self, subtrahend: DVec2) -> Result<DVec2, IntegerOverflowError> {
 		Ok(self - subtrahend)
+	}
+}
+impl TrySub for Length {
+	type Output = Length;
+	fn try_sub(self, subtrahend: Length) -> Result<Length, IntegerOverflowError> {
+		Ok(self - subtrahend)
+	}
+}
+impl TrySub for Angle {
+	type Output = Angle;
+	fn try_sub(self, subtrahend: Angle) -> Result<Angle, IntegerOverflowError> {
+		Ok(self - subtrahend)
+	}
+}
+impl TrySub<f64> for Length {
+	type Output = Length;
+	fn try_sub(self, subtrahend: f64) -> Result<Length, IntegerOverflowError> {
+		Ok(self - Length::from_pixels(subtrahend))
+	}
+}
+impl TrySub<Length> for f64 {
+	type Output = Length;
+	fn try_sub(self, subtrahend: Length) -> Result<Length, IntegerOverflowError> {
+		Ok(Length::from_pixels(self) - subtrahend)
+	}
+}
+impl TrySub<f64> for Angle {
+	type Output = Angle;
+	fn try_sub(self, subtrahend: f64) -> Result<Angle, IntegerOverflowError> {
+		Ok(self - Angle::from_degrees(subtrahend))
+	}
+}
+impl TrySub<Angle> for f64 {
+	type Output = Angle;
+	fn try_sub(self, subtrahend: Angle) -> Result<Angle, IntegerOverflowError> {
+		Ok(Angle::from_degrees(self) - subtrahend)
 	}
 }
 
@@ -648,16 +764,42 @@ impl TryMul for DAffine2 {
 		Ok(self * multiplicand)
 	}
 }
+impl TryMul<f64> for Length {
+	type Output = Length;
+	fn try_mul(self, multiplicand: f64) -> Result<Length, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul<Length> for f64 {
+	type Output = Length;
+	fn try_mul(self, multiplicand: Length) -> Result<Length, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul<f64> for Angle {
+	type Output = Angle;
+	fn try_mul(self, multiplicand: f64) -> Result<Angle, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
+impl TryMul<Angle> for f64 {
+	type Output = Angle;
+	fn try_mul(self, multiplicand: Angle) -> Result<Angle, IntegerOverflowError> {
+		Ok(self * multiplicand)
+	}
+}
 
-/// The addition operation (`+`) calculates the sum of two scalar numbers or vec2s.
+/// The addition operation (`+`) calculates the sum of two scalar numbers, vec2s, lengths, or angles.
+///
+/// A number beside a length or angle is read in pixels or degrees.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeAdd"))]
 fn add<A: TryAdd<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the addition operation.
-	#[implementations(f64, i64, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, Length, Length, f64, Angle, Angle, f64)]
 	augend: Item<A>,
 	/// The right-hand side of the addition operation.
-	#[implementations(f64, i64, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, Length, f64, Length, Angle, f64, Angle)]
 	addend: Item<B>,
 ) -> Result<Item<<A as TryAdd<B>>::Output>, IntegerOverflowError> {
 	let (augend, attributes) = augend.into_parts();
@@ -665,15 +807,17 @@ fn add<A: TryAdd<B>, B>(
 	Ok(Item::from_parts(augend.try_add(addend.into_element())?, attributes))
 }
 
-/// The subtraction operation (`-`) calculates the difference between two scalar numbers or vec2s.
+/// The subtraction operation (`-`) calculates the difference between two scalar numbers, vec2s, lengths, or angles.
+///
+/// A number beside a length or angle is read in pixels or degrees.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeSubtract"))]
 fn subtract<A: TrySub<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the subtraction operation.
-	#[implementations(f64, i64, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, Length, Length, f64, Angle, Angle, f64)]
 	minuend: Item<A>,
 	/// The right-hand side of the subtraction operation.
-	#[implementations(f64, i64, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, Length, f64, Length, Angle, f64, Angle)]
 	subtrahend: Item<B>,
 ) -> Result<Item<<A as TrySub<B>>::Output>, IntegerOverflowError> {
 	let (minuend, attributes) = minuend.into_parts();
@@ -681,16 +825,16 @@ fn subtract<A: TrySub<B>, B>(
 	Ok(Item::from_parts(minuend.try_sub(subtrahend.into_element())?, attributes))
 }
 
-/// The multiplication operation (`×`) calculates the product of two scalar numbers, vec2s, or transforms.
+/// The multiplication operation (`×`) calculates the product of two scalar numbers, vec2s, or transforms, or scales a length or angle by a number.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeMultiply"))]
 fn multiply<A: TryMul<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, i64, DVec2, f64, DVec2, DAffine2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, DAffine2, Length, f64, Angle, f64)]
 	multiplier: Item<A>,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, i64, DVec2, DVec2, f64, DAffine2)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, DAffine2, f64, Length, f64, Angle)]
 	multiplicand: Item<B>,
 ) -> Result<Item<<A as TryMul<B>>::Output>, IntegerOverflowError> {
 	let (multiplier, attributes) = multiplier.into_parts();
@@ -735,19 +879,55 @@ impl SafeDivide<DVec2> for f64 {
 		Ok(DVec2::new(self.safe_divide(denominator.x)?, self.safe_divide(denominator.y)?))
 	}
 }
+impl SafeDivide<f64> for Length {
+	type Output = Length;
+	fn safe_divide(self, denominator: f64) -> Result<Length, IntegerOverflowError> {
+		Ok(Length::from_pixels(self.pixels().safe_divide(denominator)?))
+	}
+}
+impl SafeDivide for Length {
+	type Output = f64;
+	fn safe_divide(self, denominator: Length) -> Result<f64, IntegerOverflowError> {
+		self.pixels().safe_divide(denominator.pixels())
+	}
+}
+impl SafeDivide<f64> for Angle {
+	type Output = Angle;
+	fn safe_divide(self, denominator: f64) -> Result<Angle, IntegerOverflowError> {
+		Ok(Angle::from_degrees(self.degrees().safe_divide(denominator)?))
+	}
+}
+impl SafeDivide for Angle {
+	type Output = f64;
+	fn safe_divide(self, denominator: Angle) -> Result<f64, IntegerOverflowError> {
+		self.degrees().safe_divide(denominator.degrees())
+	}
+}
+impl SafeDivide<Length> for f64 {
+	type Output = f64;
+	fn safe_divide(self, denominator: Length) -> Result<f64, IntegerOverflowError> {
+		self.safe_divide(denominator.pixels())
+	}
+}
+impl SafeDivide<Angle> for f64 {
+	type Output = f64;
+	fn safe_divide(self, denominator: Angle) -> Result<f64, IntegerOverflowError> {
+		self.safe_divide(denominator.degrees())
+	}
+}
 
-/// The division operation (`÷`) calculates the quotient of two scalar numbers or vec2s.
+/// The division operation (`÷`) calculates the quotient of two scalar numbers or vec2s, divides a length or angle by a number, or gives the ratio of two lengths or two angles as a number.
 ///
-/// Produces 0 for any division by 0. With vec2 inputs, this applies separately to the X and Y components.
+/// Produces 0 for any division by 0. With vec2 inputs, this applies separately to the X and Y components. A number divided by a length or angle is read in pixels or degrees.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeDivide"))]
 fn divide<A: SafeDivide<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
-	#[implementations(f64, i64, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, Length, Length, f64, Angle, Angle, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the division operation.
 	#[default(1.)]
-	#[implementations(f64, i64, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, f64, Length, Length, f64, Angle, Angle)]
 	denominator: Item<B>,
 ) -> Result<Item<<A as SafeDivide<B>>::Output>, IntegerOverflowError> {
 	let (numerator, attributes) = numerator.into_parts();
@@ -844,19 +1024,55 @@ impl Modulo<DVec2> for f64 {
 		Ok(DVec2::new(scalar_modulo(self, modulus.x, always_positive)?, scalar_modulo(self, modulus.y, always_positive)?))
 	}
 }
+impl Modulo for Length {
+	type Output = Length;
+	fn modulo(self, modulus: Length, always_positive: bool) -> Result<Length, ModuloError> {
+		Ok(Length::from_pixels(scalar_modulo(self.pixels(), modulus.pixels(), always_positive)?))
+	}
+}
+impl Modulo for Angle {
+	type Output = Angle;
+	fn modulo(self, modulus: Angle, always_positive: bool) -> Result<Angle, ModuloError> {
+		Ok(Angle::from_degrees(scalar_modulo(self.degrees(), modulus.degrees(), always_positive)?))
+	}
+}
+impl Modulo<f64> for Length {
+	type Output = Length;
+	fn modulo(self, modulus: f64, always_positive: bool) -> Result<Length, ModuloError> {
+		Ok(Length::from_pixels(scalar_modulo(self.pixels(), modulus, always_positive)?))
+	}
+}
+impl Modulo<Length> for f64 {
+	type Output = Length;
+	fn modulo(self, modulus: Length, always_positive: bool) -> Result<Length, ModuloError> {
+		Ok(Length::from_pixels(scalar_modulo(self, modulus.pixels(), always_positive)?))
+	}
+}
+impl Modulo<f64> for Angle {
+	type Output = Angle;
+	fn modulo(self, modulus: f64, always_positive: bool) -> Result<Angle, ModuloError> {
+		Ok(Angle::from_degrees(scalar_modulo(self.degrees(), modulus, always_positive)?))
+	}
+}
+impl Modulo<Angle> for f64 {
+	type Output = Angle;
+	fn modulo(self, modulus: Angle, always_positive: bool) -> Result<Angle, ModuloError> {
+		Ok(Angle::from_degrees(scalar_modulo(self, modulus.degrees(), always_positive)?))
+	}
+}
 
-/// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vec2s.
+/// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers, vec2s, lengths, or angles.
 ///
-/// The sign of the result shares the sign of the numerator, or of the modulus if *Always Positive* is enabled.
+/// The sign of the result shares the sign of the numerator, or of the modulus if *Always Positive* is enabled. A number beside a length or angle is read in pixels or degrees.
 #[node_macro::node(category("Math: Arithmetic"), icon("NodeModulo"))]
 fn modulo<A: Modulo<B>, B>(
 	_: impl Ctx,
 	/// The left-hand side of the modulo operation.
-	#[implementations(f64, i64, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, DVec2, DVec2, f64, Length, Length, f64, Angle, Angle, f64)]
 	numerator: Item<A>,
 	/// The right-hand side of the modulo operation.
 	#[default(2.)]
-	#[implementations(f64, i64, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, DVec2, f64, DVec2, Length, f64, Length, Angle, f64, Angle)]
 	modulus: Item<B>,
 	/// Ensures the result is positive for a positive modulus, even if the numerator is negative.
 	#[default(true)]
@@ -1057,61 +1273,79 @@ fn logarithm<A: Logarithm<B>, B>(
 	Item::from_parts(value.logarithm(base.into_element()), attributes)
 }
 
+/// An angle the trigonometric functions take: a number in degrees or radians, a vec2 of them, or an Angle, which carries its unit.
+pub trait TrigonometricInput {
+	type Output;
+	fn map_angle(self, radians: bool, function: fn(f64) -> f64) -> Self::Output;
+}
+impl TrigonometricInput for f64 {
+	type Output = f64;
+	fn map_angle(self, radians: bool, function: fn(f64) -> f64) -> f64 {
+		function(if radians { self } else { self.to_radians() })
+	}
+}
+impl TrigonometricInput for DVec2 {
+	type Output = DVec2;
+	fn map_angle(self, radians: bool, function: fn(f64) -> f64) -> DVec2 {
+		DVec2::new(self.x.map_angle(radians, function), self.y.map_angle(radians, function))
+	}
+}
+impl TrigonometricInput for Angle {
+	type Output = f64;
+	fn map_angle(self, _radians: bool, function: fn(f64) -> f64) -> f64 {
+		function(self.radians())
+	}
+}
+
 /// The sine trigonometric function (`sin`) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"), icon("NodeSine"))]
-fn sine<T: Componentwise>(
+#[node_macro::node(category("Math: Trig"), icon("NodeSine"), version(2))]
+fn sine<T: TrigonometricInput>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, DVec2)]
+	#[implementations(f64, DVec2, Angle)]
 	theta: Item<T>,
-	/// Whether the given angle should be interpreted as radians instead of degrees.
+	/// Whether the given angle, if it's a plain number, should be interpreted as radians instead of degrees. An angle with its own unit ignores this.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<T::Output> {
 	let (theta, attributes) = theta.into_parts();
-	let radians = *radians.element();
 
-	let result = theta.componentwise(|theta| if radians { theta.sin() } else { theta.to_radians().sin() });
-	Item::from_parts(result, attributes)
+	Item::from_parts(theta.map_angle(*radians.element(), f64::sin), attributes)
 }
 
 /// The cosine trigonometric function (`cos`) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"), icon("NodeCosine"))]
-fn cosine<T: Componentwise>(
+#[node_macro::node(category("Math: Trig"), icon("NodeCosine"), version(2))]
+fn cosine<T: TrigonometricInput>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, DVec2)]
+	#[implementations(f64, DVec2, Angle)]
 	theta: Item<T>,
-	/// Whether the given angle should be interpreted as radians instead of degrees.
+	/// Whether the given angle, if it's a plain number, should be interpreted as radians instead of degrees. An angle with its own unit ignores this.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<T::Output> {
 	let (theta, attributes) = theta.into_parts();
-	let radians = *radians.element();
 
-	let result = theta.componentwise(|theta| if radians { theta.cos() } else { theta.to_radians().cos() });
-	Item::from_parts(result, attributes)
+	Item::from_parts(theta.map_angle(*radians.element(), f64::cos), attributes)
 }
 
 /// The tangent trigonometric function (`tan`) calculates the ratio of the angle's opposite side length to its adjacent side length.
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Trig"), icon("NodeTangent"))]
-fn tangent<T: Componentwise>(
+#[node_macro::node(category("Math: Trig"), icon("NodeTangent"), version(2))]
+fn tangent<T: TrigonometricInput>(
 	_: impl Ctx,
 	/// The given angle.
-	#[implementations(f64, DVec2)]
+	#[implementations(f64, DVec2, Angle)]
 	theta: Item<T>,
-	/// Whether the given angle should be interpreted as radians instead of degrees.
+	/// Whether the given angle, if it's a plain number, should be interpreted as radians instead of degrees. An angle with its own unit ignores this.
 	radians: Item<bool>,
-) -> Item<T> {
+) -> Item<T::Output> {
 	let (theta, attributes) = theta.into_parts();
-	let radians = *radians.element();
 
-	let result = theta.componentwise(|theta| if radians { theta.tan() } else { theta.to_radians().tan() });
-	Item::from_parts(result, attributes)
+	Item::from_parts(theta.map_angle(*radians.element(), f64::tan), attributes)
 }
 
 /// The inverse sine trigonometric function (`asin`) calculates the angle whose sine is the input value.
@@ -1245,52 +1479,72 @@ fn remap(
 	Ok(Item::from_parts(result, attributes))
 }
 
-trait Lerp {
-	fn lerp(self, end: Self, factor: f64) -> Self;
+pub trait Lerp<End = Self> {
+	type Output;
+	fn lerp(self, end: End, factor: f64) -> Self::Output;
 }
-impl Lerp for f64 {
-	fn lerp(self, end: Self, factor: f64) -> Self {
-		self * (1. - factor) + end * factor
+impl<T: Mul<f64, Output = T> + Add<Output = T>> Lerp for T {
+	type Output = T;
+	fn lerp(self, end: T, factor: f64) -> T {
+		// Exact endpoint factors pass the endpoint through untouched, since the unused operand would otherwise contaminate the weighted sum (NaN or infinity times 0 is NaN)
+		if factor == 0. {
+			self
+		} else if factor == 1. {
+			end
+		} else {
+			self * (1. - factor) + end * factor
+		}
 	}
 }
-impl Lerp for DVec2 {
-	fn lerp(self, end: Self, factor: f64) -> Self {
-		self * (1. - factor) + end * factor
+impl Lerp<f64> for Length {
+	type Output = Length;
+	fn lerp(self, end: f64, factor: f64) -> Length {
+		self.lerp(Length::from_pixels(end), factor)
+	}
+}
+impl Lerp<Length> for f64 {
+	type Output = Length;
+	fn lerp(self, end: Length, factor: f64) -> Length {
+		Length::from_pixels(self).lerp(end, factor)
+	}
+}
+impl Lerp<f64> for Angle {
+	type Output = Angle;
+	fn lerp(self, end: f64, factor: f64) -> Angle {
+		self.lerp(Angle::from_degrees(end), factor)
+	}
+}
+impl Lerp<Angle> for f64 {
+	type Output = Angle;
+	fn lerp(self, end: Angle, factor: f64) -> Angle {
+		Angle::from_degrees(self).lerp(end, factor)
 	}
 }
 
 /// Linearly interpolates between the start and end values, where a factor of 0 gives the start value, 1 gives the end value, and 0.5 gives their midpoint.
 ///
-/// With vec2 inputs, this traces the straight line path between the two points.
-#[node_macro::node(category("Math: Numeric"), icon("NodeLerp"))]
-fn lerp<T: Lerp>(
+/// With vec2 inputs, this traces the straight line path between the two points. A number beside a length or angle is read in pixels or degrees.
+#[node_macro::node(category("Math: Numeric"), icon("NodeLerp"), version(2))]
+fn lerp<A: Lerp<B>, B>(
 	_: impl Ctx,
 	/// The value produced when the factor is 0.
-	#[implementations(f64, DVec2)]
-	start: Item<T>,
+	#[implementations(f64, DVec2, Length, Length, f64, Angle, Angle, f64)]
+	start: Item<A>,
 	/// The value produced when the factor is 1.
 	#[default(1.)]
-	#[implementations(f64, DVec2)]
-	end: Item<T>,
+	#[implementations(f64, DVec2, Length, f64, Length, Angle, f64, Angle)]
+	end: Item<B>,
 	/// The mix between the start (at 0) and end (at 1) values.
 	#[default(0.5)]
 	factor: Item<f64>,
 	/// Whether to constrain the factor within 0 to 1, preventing extrapolation beyond the start and end values.
 	#[default(true)]
 	clamped: Item<bool>,
-) -> Item<T> {
+) -> Item<<A as Lerp<B>>::Output> {
 	let (start, attributes) = start.into_parts();
 	let factor = if *clamped.element() { factor.element().clamp(0., 1.) } else { *factor.element() };
 
-	// Exact endpoint factors pass the endpoint through untouched, since the unused operand would otherwise contaminate the weighted sum (NaN or infinity times 0 is NaN)
-	let result = if factor == 0. {
-		start
-	} else if factor == 1. {
-		end.into_element()
-	} else {
-		start.lerp(end.into_element(), factor)
-	};
-	Item::from_parts(result, attributes)
+	Item::from_parts(start.lerp(end.into_element(), factor), attributes)
 }
 
 /// The random function (`rand`) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
@@ -1398,6 +1652,16 @@ impl AbsoluteValue for i64 {
 		self.checked_abs().ok_or(IntegerOverflowError::OutOfRange)
 	}
 }
+impl AbsoluteValue for Length {
+	fn abs(self) -> Result<Self, IntegerOverflowError> {
+		Ok(Length::abs(self))
+	}
+}
+impl AbsoluteValue for Angle {
+	fn abs(self) -> Result<Self, IntegerOverflowError> {
+		Ok(Angle::abs(self))
+	}
+}
 
 /// The absolute value function (`abs`) removes the negative sign from an input value, if present.
 ///
@@ -1406,7 +1670,7 @@ impl AbsoluteValue for i64 {
 fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, i64, DVec2)]
+	#[implementations(f64, i64, DVec2, Length, Angle)]
 	value: Item<T>,
 ) -> Result<Item<T>, IntegerOverflowError> {
 	let (value, attributes) = value.into_parts();
@@ -1414,20 +1678,53 @@ fn absolute_value<T: AbsoluteValue>(
 	Ok(Item::from_parts(value.abs()?, attributes))
 }
 
+fn scalar_sign(value: f64) -> f64 {
+	if value == 0. { 0. } else { value.signum() }
+}
+
+/// A value the "Sign" node reports the sign of, where the sign of a length or angle is a plain number.
+pub trait Sign {
+	type Output;
+	fn sign(self) -> Self::Output;
+}
+impl Sign for f64 {
+	type Output = f64;
+	fn sign(self) -> f64 {
+		scalar_sign(self)
+	}
+}
+impl Sign for DVec2 {
+	type Output = DVec2;
+	fn sign(self) -> DVec2 {
+		DVec2::new(scalar_sign(self.x), scalar_sign(self.y))
+	}
+}
+impl Sign for Length {
+	type Output = f64;
+	fn sign(self) -> f64 {
+		scalar_sign(self.pixels())
+	}
+}
+impl Sign for Angle {
+	type Output = f64;
+	fn sign(self) -> f64 {
+		scalar_sign(self.radians())
+	}
+}
+
 /// The sign function (`sign`) reports whether an input value is positive (1), negative (-1), or zero (0).
 ///
 /// With a vec2 input, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"), icon("NodeSign"))]
-fn sign<T: Componentwise>(
+#[node_macro::node(category("Math: Numeric"), icon("NodeSign"), version(2))]
+fn sign<T: Sign>(
 	_: impl Ctx,
 	/// The number whose sign is checked.
-	#[implementations(f64, DVec2)]
+	#[implementations(f64, DVec2, Length, Angle)]
 	value: Item<T>,
-) -> Item<T> {
+) -> Item<T::Output> {
 	let (value, attributes) = value.into_parts();
 
-	let result = value.componentwise(|value| if value == 0. { 0. } else { value.signum() });
-	Item::from_parts(result, attributes)
+	Item::from_parts(value.sign(), attributes)
 }
 
 pub trait MinMax<Rhs = Self> {
@@ -1489,18 +1786,72 @@ impl MinMax<DVec2> for f64 {
 		DVec2::splat(self).max(other)
 	}
 }
+impl MinMax for Length {
+	type Output = Length;
+	fn minimum(self, other: Length) -> Length {
+		if self < other { self } else { other }
+	}
+	fn maximum(self, other: Length) -> Length {
+		if self > other { self } else { other }
+	}
+}
+impl MinMax for Angle {
+	type Output = Angle;
+	fn minimum(self, other: Angle) -> Angle {
+		if self < other { self } else { other }
+	}
+	fn maximum(self, other: Angle) -> Angle {
+		if self > other { self } else { other }
+	}
+}
+impl MinMax<f64> for Length {
+	type Output = Length;
+	fn minimum(self, other: f64) -> Length {
+		self.minimum(Length::from_pixels(other))
+	}
+	fn maximum(self, other: f64) -> Length {
+		self.maximum(Length::from_pixels(other))
+	}
+}
+impl MinMax<Length> for f64 {
+	type Output = Length;
+	fn minimum(self, other: Length) -> Length {
+		Length::from_pixels(self).minimum(other)
+	}
+	fn maximum(self, other: Length) -> Length {
+		Length::from_pixels(self).maximum(other)
+	}
+}
+impl MinMax<f64> for Angle {
+	type Output = Angle;
+	fn minimum(self, other: f64) -> Angle {
+		self.minimum(Angle::from_degrees(other))
+	}
+	fn maximum(self, other: f64) -> Angle {
+		self.maximum(Angle::from_degrees(other))
+	}
+}
+impl MinMax<Angle> for f64 {
+	type Output = Angle;
+	fn minimum(self, other: Angle) -> Angle {
+		Angle::from_degrees(self).minimum(other)
+	}
+	fn maximum(self, other: Angle) -> Angle {
+		Angle::from_degrees(self).maximum(other)
+	}
+}
 
 /// The minimum function (`min`) picks the smaller of two numbers.
 ///
-/// With vec2 inputs, this applies separately to the X and Y components.
+/// With vec2 inputs, this applies separately to the X and Y components. A number beside a length or angle is read in pixels or degrees.
 #[node_macro::node(category("Math: Numeric"), icon("NodeMin"))]
 fn min<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the lesser is returned.
-	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64, Length, Length, f64, Angle, Angle, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the lesser is returned.
-	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2, Length, f64, Length, Angle, f64, Angle)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -1510,15 +1861,15 @@ fn min<A: MinMax<B>, B>(
 
 /// The maximum function (`max`) picks the larger of two numbers.
 ///
-/// With vec2 inputs, this applies separately to the X and Y components.
+/// With vec2 inputs, this applies separately to the X and Y components. A number beside a length or angle is read in pixels or degrees.
 #[node_macro::node(category("Math: Numeric"), icon("NodeMax"))]
 fn max<A: MinMax<B>, B>(
 	_: impl Ctx,
 	/// One of the two numbers, of which the greater is returned.
-	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
+	#[implementations(f64, i64, String, DVec2, DVec2, f64, Length, Length, f64, Angle, Angle, f64)]
 	value: Item<A>,
 	/// The other of the two numbers, of which the greater is returned.
-	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
+	#[implementations(f64, i64, String, DVec2, f64, DVec2, Length, f64, Length, Angle, f64, Angle)]
 	other_value: Item<B>,
 ) -> Item<<A as MinMax<B>>::Output> {
 	let (value, attributes) = value.into_parts();
@@ -1526,31 +1877,90 @@ fn max<A: MinMax<B>, B>(
 	Item::from_parts(value.maximum(other_value.into_element()), attributes)
 }
 
-/// The clamp function (`clamp`) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
-///
-/// With vec2 inputs, this applies separately to the X and Y components.
-#[node_macro::node(category("Math: Numeric"), icon("NodeClamp"))]
-fn clamp<A: MinMax<B>, B: MinMax<Output = B> + Clone>(
-	_: impl Ctx,
-	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
-	#[implementations(f64, i64, String, DVec2, DVec2, f64)]
-	value: Item<A>,
-	/// The left (smaller) side of the range. The output is never less than this number.
-	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
-	min: Item<B>,
-	/// The right (greater) side of the range. The output is never greater than this number.
-	#[implementations(f64, i64, String, DVec2, f64, DVec2)]
-	#[default(1)]
-	max: Item<B>,
-) -> Item<<A as MinMax<B>>::Output>
+/// Restricts a value to the range between two bounds, swapped if reversed, where a length or angle may stand beside numbers read in pixels or degrees.
+pub trait Clamp<Min, Max> {
+	type Output;
+	fn clamp_between(self, min: Min, max: Max) -> Self::Output;
+}
+impl<A: MinMax<B>, B: MinMax<Output = B> + Clone> Clamp<B, B> for A
 where
 	<A as MinMax<B>>::Output: MinMax<B, Output = <A as MinMax<B>>::Output>,
 {
-	let (value, attributes) = value.into_parts();
-	let (min, max) = (min.into_element(), max.into_element());
+	type Output = <A as MinMax<B>>::Output;
+	fn clamp_between(self, min: B, max: B) -> Self::Output {
+		let (min, max) = (min.clone().minimum(max.clone()), min.maximum(max));
+		self.maximum(min).minimum(max)
+	}
+}
+impl Clamp<Length, f64> for Length {
+	type Output = Length;
+	fn clamp_between(self, min: Length, max: f64) -> Length {
+		self.clamp_between(min, Length::from_pixels(max))
+	}
+}
+impl Clamp<f64, Length> for Length {
+	type Output = Length;
+	fn clamp_between(self, min: f64, max: Length) -> Length {
+		self.clamp_between(Length::from_pixels(min), max)
+	}
+}
+impl Clamp<Length, f64> for f64 {
+	type Output = Length;
+	fn clamp_between(self, min: Length, max: f64) -> Length {
+		Length::from_pixels(self).clamp_between(min, Length::from_pixels(max))
+	}
+}
+impl Clamp<f64, Length> for f64 {
+	type Output = Length;
+	fn clamp_between(self, min: f64, max: Length) -> Length {
+		Length::from_pixels(self).clamp_between(Length::from_pixels(min), max)
+	}
+}
+impl Clamp<Angle, f64> for Angle {
+	type Output = Angle;
+	fn clamp_between(self, min: Angle, max: f64) -> Angle {
+		self.clamp_between(min, Angle::from_degrees(max))
+	}
+}
+impl Clamp<f64, Angle> for Angle {
+	type Output = Angle;
+	fn clamp_between(self, min: f64, max: Angle) -> Angle {
+		self.clamp_between(Angle::from_degrees(min), max)
+	}
+}
+impl Clamp<Angle, f64> for f64 {
+	type Output = Angle;
+	fn clamp_between(self, min: Angle, max: f64) -> Angle {
+		Angle::from_degrees(self).clamp_between(min, Angle::from_degrees(max))
+	}
+}
+impl Clamp<f64, Angle> for f64 {
+	type Output = Angle;
+	fn clamp_between(self, min: f64, max: Angle) -> Angle {
+		Angle::from_degrees(self).clamp_between(Angle::from_degrees(min), max)
+	}
+}
 
-	let (min, max) = (min.clone().minimum(max.clone()), min.maximum(max));
-	Item::from_parts(value.maximum(min).minimum(max), attributes)
+/// The clamp function (`clamp`) restricts a number to a specified range between a minimum and maximum value. The minimum and maximum values are automatically swapped if they are reversed.
+///
+/// With vec2 inputs, this applies separately to the X and Y components. A number beside a length or angle is read in pixels or degrees.
+#[node_macro::node(category("Math: Numeric"), icon("NodeClamp"), version(2))]
+fn clamp<A: Clamp<B, C>, B, C>(
+	_: impl Ctx,
+	/// The number to be clamped, which is restricted to the range between the minimum and maximum values.
+	#[implementations(f64, i64, String, DVec2, DVec2, f64, Length, Length, Length, Length, f64, f64, f64, Angle, Angle, Angle, Angle, f64, f64, f64)]
+	value: Item<A>,
+	/// The left (smaller) side of the range. The output is never less than this number.
+	#[implementations(f64, i64, String, DVec2, f64, DVec2, Length, f64, Length, f64, Length, Length, f64, Angle, f64, Angle, f64, Angle, Angle, f64)]
+	min: Item<B>,
+	/// The right (greater) side of the range. The output is never greater than this number.
+	#[implementations(f64, i64, String, DVec2, f64, DVec2, Length, f64, f64, Length, Length, f64, Length, Angle, f64, f64, Angle, Angle, f64, Angle)]
+	#[default(1)]
+	max: Item<C>,
+) -> Item<<A as Clamp<B, C>>::Output> {
+	let (value, attributes) = value.into_parts();
+
+	Item::from_parts(value.clamp_between(min.into_element(), max.into_element()), attributes)
 }
 
 /// The greatest common divisor (GCD) calculates the largest positive integer that divides both of the two input numbers without leaving a remainder.
@@ -1589,31 +1999,101 @@ fn least_common_multiple(
 	Item::from_parts(i64::try_from(lcm).unwrap_or(i64::MAX), attributes)
 }
 
-/// Adds together all the numbers in the input list, producing their total.
-#[node_macro::node(category("Math: Arithmetic"), icon("NodeSum"), footprint_invariant)]
-fn sum(_: impl Ctx, values: List<f64>) -> Item<f64> {
-	Item::new_from_element(values.iter_element_values().sum())
+/// A number or measurement the "Sum", "Average", "Minimum", and "Maximum" nodes total and compare across a list.
+pub trait Measurement: Copy + Default + Sum + Div<f64, Output = Self> {
+	fn lesser(self, other: Self) -> Self;
+	fn greater(self, other: Self) -> Self;
+}
+impl Measurement for f64 {
+	fn lesser(self, other: Self) -> Self {
+		self.min(other)
+	}
+	fn greater(self, other: Self) -> Self {
+		self.max(other)
+	}
+}
+impl Measurement for Length {
+	fn lesser(self, other: Self) -> Self {
+		self.min(other)
+	}
+	fn greater(self, other: Self) -> Self {
+		self.max(other)
+	}
+}
+impl Measurement for Angle {
+	fn lesser(self, other: Self) -> Self {
+		self.min(other)
+	}
+	fn greater(self, other: Self) -> Self {
+		self.max(other)
+	}
+}
+
+/// An item of a list the "Sum", "Average", "Minimum", and "Maximum" nodes read, where an Integer reads as a Number and a Bool as 0 or 1.
+pub trait ListItem: Copy {
+	type Measurement: Measurement;
+	fn measurement(self) -> Self::Measurement;
+}
+impl ListItem for f64 {
+	type Measurement = f64;
+	fn measurement(self) -> f64 {
+		self
+	}
+}
+impl ListItem for i64 {
+	type Measurement = f64;
+	fn measurement(self) -> f64 {
+		self as f64
+	}
+}
+impl ListItem for bool {
+	type Measurement = f64;
+	fn measurement(self) -> f64 {
+		if self { 1. } else { 0. }
+	}
+}
+impl ListItem for Length {
+	type Measurement = Length;
+	fn measurement(self) -> Length {
+		self
+	}
+}
+impl ListItem for Angle {
+	type Measurement = Angle;
+	fn measurement(self) -> Angle {
+		self
+	}
+}
+
+/// Adds together all the numbers in the input list, producing their total. A list of lengths or angles totals as a length or angle.
+#[node_macro::node(category("Math: Arithmetic"), icon("NodeSum"), version(2), footprint_invariant)]
+fn sum<T: ListItem>(_: impl Ctx, #[implementations(List<f64>, List<i64>, List<bool>, List<Length>, List<Angle>)] values: List<T>) -> Item<T::Measurement> {
+	Item::new_from_element(values.iter_element_values().map(|value| value.measurement()).sum())
 }
 
 /// Averages all the numbers in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"), icon("NodeAverage"), footprint_invariant)]
-fn average(_: impl Ctx, values: List<f64>) -> Item<f64> {
+#[node_macro::node(category("Math: Numeric"), icon("NodeAverage"), version(2), footprint_invariant)]
+fn average<T: ListItem>(_: impl Ctx, #[implementations(List<f64>, List<i64>, List<bool>, List<Length>, List<Angle>)] values: List<T>) -> Item<T::Measurement> {
 	let count = values.len();
-	let average = if count == 0 { 0. } else { values.iter_element_values().sum::<f64>() / count as f64 };
+	let average = if count == 0 {
+		T::Measurement::default()
+	} else {
+		values.iter_element_values().map(|value| value.measurement()).sum::<T::Measurement>() / count as f64
+	};
 
 	Item::new_from_element(average)
 }
 
 /// Gives the smallest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"), icon("NodeMinimum"), footprint_invariant)]
-fn minimum(_: impl Ctx, values: List<f64>) -> Item<f64> {
-	Item::new_from_element(values.iter_element_values().copied().reduce(f64::min).unwrap_or_default())
+#[node_macro::node(category("Math: Numeric"), icon("NodeMinimum"), version(2), footprint_invariant)]
+fn minimum<T: ListItem>(_: impl Ctx, #[implementations(List<f64>, List<i64>, List<bool>, List<Length>, List<Angle>)] values: List<T>) -> Item<T::Measurement> {
+	Item::new_from_element(values.iter_element_values().map(|value| value.measurement()).reduce(Measurement::lesser).unwrap_or_default())
 }
 
 /// Gives the largest number in the input list. An empty list gives 0.
-#[node_macro::node(category("Math: Numeric"), icon("NodeMaximum"), footprint_invariant)]
-fn maximum(_: impl Ctx, values: List<f64>) -> Item<f64> {
-	Item::new_from_element(values.iter_element_values().copied().reduce(f64::max).unwrap_or_default())
+#[node_macro::node(category("Math: Numeric"), icon("NodeMaximum"), version(2), footprint_invariant)]
+fn maximum<T: ListItem>(_: impl Ctx, #[implementations(List<f64>, List<i64>, List<bool>, List<Length>, List<Angle>)] values: List<T>) -> Item<T::Measurement> {
+	Item::new_from_element(values.iter_element_values().map(|value| value.measurement()).reduce(Measurement::greater).unwrap_or_default())
 }
 
 /// Outputs true if at least one value in the input list is true. An empty list gives false.
@@ -1633,85 +2113,149 @@ fn all(_: impl Ctx, values: List<bool>) -> Item<bool> {
 fn is_nonzero<T: Default + std::cmp::PartialEq>(
 	_: impl Ctx,
 	/// The value compared against zero.
-	#[implementations(f64, i64, DVec2)]
+	#[implementations(f64, i64, DVec2, Length, Angle)]
 	value: Item<T>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
 	Item::from_parts(value != T::default(), attributes)
 }
 
+/// The order of two values, which may be a length or angle and a number read in pixels or degrees.
+pub trait Order<Rhs = Self> {
+	fn order(&self, other: &Rhs) -> Option<std::cmp::Ordering>;
+}
+impl<T: PartialOrd> Order for T {
+	fn order(&self, other: &T) -> Option<std::cmp::Ordering> {
+		self.partial_cmp(other)
+	}
+}
+impl Order<f64> for Length {
+	fn order(&self, other: &f64) -> Option<std::cmp::Ordering> {
+		self.partial_cmp(&Length::from_pixels(*other))
+	}
+}
+impl Order<Length> for f64 {
+	fn order(&self, other: &Length) -> Option<std::cmp::Ordering> {
+		Length::from_pixels(*self).partial_cmp(other)
+	}
+}
+impl Order<f64> for Angle {
+	fn order(&self, other: &f64) -> Option<std::cmp::Ordering> {
+		self.partial_cmp(&Angle::from_degrees(*other))
+	}
+}
+impl Order<Angle> for f64 {
+	fn order(&self, other: &Angle) -> Option<std::cmp::Ordering> {
+		Angle::from_degrees(*self).partial_cmp(other)
+	}
+}
+
 /// The less-than operation (`<`) compares two values and returns true if the first value is less than the second, or false if it is not.
 /// If enabled with *Or Equal*, the less-than-or-equal operation (`<=`) is used instead.
-#[node_macro::node(category("Math: Logic"), icon("NodeLessThan"))]
-fn less_than<T: std::cmp::PartialOrd<T>>(
+///
+/// A number beside a length or angle is read in pixels or degrees.
+#[node_macro::node(category("Math: Logic"), icon("NodeLessThan"), version(2))]
+fn less_than<A: Order<B>, B>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, i64)]
-	value: Item<T>,
+	#[implementations(f64, i64, Length, Length, f64, Angle, Angle, f64)]
+	value: Item<A>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, i64)]
-	other_value: Item<T>,
+	#[implementations(f64, i64, Length, f64, Length, Angle, f64, Angle)]
+	other_value: Item<B>,
 	/// Uses the less-than-or-equal operation (`<=`) instead of the less-than operation (`<`).
 	or_equal: Item<bool>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
-	let other_value = other_value.into_element();
+	let order = value.order(other_value.element());
 
-	let result = if *or_equal.element() { value <= other_value } else { value < other_value };
+	let result = order == Some(std::cmp::Ordering::Less) || (*or_equal.element() && order == Some(std::cmp::Ordering::Equal));
 	Item::from_parts(result, attributes)
 }
 
 /// The greater-than operation (`>`) compares two values and returns true if the first value is greater than the second, or false if it is not.
 /// If enabled with *Or Equal*, the greater-than-or-equal operation (`>=`) is used instead.
-#[node_macro::node(category("Math: Logic"), icon("NodeGreaterThan"))]
-fn greater_than<T: std::cmp::PartialOrd<T>>(
+///
+/// A number beside a length or angle is read in pixels or degrees.
+#[node_macro::node(category("Math: Logic"), icon("NodeGreaterThan"), version(2))]
+fn greater_than<A: Order<B>, B>(
 	_: impl Ctx,
 	/// The number on the left-hand side of the comparison.
-	#[implementations(f64, i64)]
-	value: Item<T>,
+	#[implementations(f64, i64, Length, Length, f64, Angle, Angle, f64)]
+	value: Item<A>,
 	/// The number on the right-hand side of the comparison.
-	#[implementations(f64, i64)]
-	other_value: Item<T>,
+	#[implementations(f64, i64, Length, f64, Length, Angle, f64, Angle)]
+	other_value: Item<B>,
 	/// Uses the greater-than-or-equal operation (`>=`) instead of the greater-than operation (`>`).
 	or_equal: Item<bool>,
 ) -> Item<bool> {
 	let (value, attributes) = value.into_parts();
-	let other_value = other_value.into_element();
+	let order = value.order(other_value.element());
 
-	let result = if *or_equal.element() { value >= other_value } else { value > other_value };
+	let result = order == Some(std::cmp::Ordering::Greater) || (*or_equal.element() && order == Some(std::cmp::Ordering::Equal));
 	Item::from_parts(result, attributes)
 }
 
+/// Whether two values are equal, which may be a length or angle and a number read in pixels or degrees.
+pub trait Equality<Rhs = Self> {
+	fn is_equal(&self, other: &Rhs) -> bool;
+}
+impl<T: PartialEq> Equality for T {
+	fn is_equal(&self, other: &T) -> bool {
+		self == other
+	}
+}
+impl Equality<f64> for Length {
+	fn is_equal(&self, other: &f64) -> bool {
+		*self == Length::from_pixels(*other)
+	}
+}
+impl Equality<Length> for f64 {
+	fn is_equal(&self, other: &Length) -> bool {
+		Length::from_pixels(*self) == *other
+	}
+}
+impl Equality<f64> for Angle {
+	fn is_equal(&self, other: &f64) -> bool {
+		*self == Angle::from_degrees(*other)
+	}
+}
+impl Equality<Angle> for f64 {
+	fn is_equal(&self, other: &Angle) -> bool {
+		Angle::from_degrees(*self) == *other
+	}
+}
+
 /// The equality operation (`==`, `XNOR`) compares two values and returns true if they are equal, or false if they are not.
-#[node_macro::node(category("Math: Logic"), icon("NodeEquals"))]
-fn equals<T: std::cmp::PartialEq<T>>(
+///
+/// A number beside a length or angle is read in pixels or degrees.
+#[node_macro::node(category("Math: Logic"), icon("NodeEquals"), version(2))]
+fn equals<A: Equality<B>, B>(
 	_: impl Ctx,
 	/// One of the two values to compare for equality.
-	#[implementations(f64, i64, DVec2, bool, String)]
-	value: Item<T>,
+	#[implementations(f64, i64, DVec2, bool, String, Length, Length, f64, Angle, Angle, f64)]
+	value: Item<A>,
 	/// The other of the two values to compare for equality.
-	#[implementations(f64, i64, DVec2, bool, String)]
-	other_value: Item<T>,
+	#[implementations(f64, i64, DVec2, bool, String, Length, f64, Length, Angle, f64, Angle)]
+	other_value: Item<B>,
 ) -> Item<bool> {
-	let value = value.into_element();
-
-	Item::new_from_element(other_value.into_element() == value)
+	Item::new_from_element(value.element().is_equal(other_value.element()))
 }
 
 /// The inequality operation (`!=`, `XOR`) compares two values and returns true if they are not equal, or false if they are.
-#[node_macro::node(category("Math: Logic"), icon("NodeNotEquals"))]
-fn not_equals<T: std::cmp::PartialEq<T>>(
+///
+/// A number beside a length or angle is read in pixels or degrees.
+#[node_macro::node(category("Math: Logic"), icon("NodeNotEquals"), version(2))]
+fn not_equals<A: Equality<B>, B>(
 	_: impl Ctx,
 	/// One of the two values to compare for inequality.
-	#[implementations(f64, i64, DVec2, bool, String)]
-	value: Item<T>,
+	#[implementations(f64, i64, DVec2, bool, String, Length, Length, f64, Angle, Angle, f64)]
+	value: Item<A>,
 	/// The other of the two values to compare for inequality.
-	#[implementations(f64, i64, DVec2, bool, String)]
-	other_value: Item<T>,
+	#[implementations(f64, i64, DVec2, bool, String, Length, f64, Length, Angle, f64, Angle)]
+	other_value: Item<B>,
 ) -> Item<bool> {
-	let value = value.into_element();
-
-	Item::new_from_element(other_value.into_element() != value)
+	Item::new_from_element(!value.element().is_equal(other_value.element()))
 }
 
 /// The logical OR operation (`||`) returns true if either of the two inputs are true, or false if both are false.
@@ -1769,6 +2313,8 @@ fn switch<T: Send>(
 		Context -> Item<i64>,
 		Context -> Item<DVec2>,
 		Context -> Item<DAffine2>,
+		Context -> Item<Length>,
+		Context -> Item<Angle>,
 		Context -> Item<Vector>,
 		Context -> Item<Graphic>,
 		Context -> Item<Raster<CPU>>,
@@ -1783,6 +2329,8 @@ fn switch<T: Send>(
 		Context -> Item<Bundle<i64>>,
 		Context -> Item<Bundle<DVec2>>,
 		Context -> Item<Bundle<DAffine2>>,
+		Context -> Item<Bundle<Length>>,
+		Context -> Item<Bundle<Angle>>,
 		Context -> Item<Bundle<Vector>>,
 		Context -> Item<Bundle<Graphic>>,
 		Context -> Item<Bundle<Raster<CPU>>>,
@@ -1801,6 +2349,8 @@ fn switch<T: Send>(
 		Context -> Item<i64>,
 		Context -> Item<DVec2>,
 		Context -> Item<DAffine2>,
+		Context -> Item<Length>,
+		Context -> Item<Angle>,
 		Context -> Item<Vector>,
 		Context -> Item<Graphic>,
 		Context -> Item<Raster<CPU>>,
@@ -1815,6 +2365,8 @@ fn switch<T: Send>(
 		Context -> Item<Bundle<i64>>,
 		Context -> Item<Bundle<DVec2>>,
 		Context -> Item<Bundle<DAffine2>>,
+		Context -> Item<Bundle<Length>>,
+		Context -> Item<Bundle<Angle>>,
 		Context -> Item<Bundle<Vector>>,
 		Context -> Item<Bundle<Graphic>>,
 		Context -> Item<Bundle<Raster<CPU>>>,
@@ -2379,6 +2931,196 @@ mod test {
 		assert!((function_of::<Angle, f64>(Angle::from_degrees(90.), "sin(x)", 96.).unwrap() - 1.).abs() < 1e-12);
 	}
 
+	fn lengths(pixels: &[f64]) -> List<Length> {
+		pixels.iter().map(|&pixels| Item::new_from_element(Length::from_pixels(pixels))).collect()
+	}
+
+	fn angles(degrees: &[f64]) -> List<Angle> {
+		degrees.iter().map(|&degrees| Item::new_from_element(Angle::from_degrees(degrees))).collect()
+	}
+
+	#[test]
+	fn lengths_in_millimeters_and_pixels_add_by_the_resolution() {
+		let ten_millimeters_plus_five_pixels = |pixels_per_inch: f64| {
+			let ten_millimeters = core_types::units::TypedLength {
+				value: 10.,
+				unit: core_types::units::LengthUnit::Millimeter,
+			}
+			.to_length(pixels_per_inch);
+			let sum = super::add((), Item::new_from_element(ten_millimeters), Item::new_from_element(Length::from_pixels(5.)));
+			sum.unwrap().into_element().pixels()
+		};
+		assert!((ten_millimeters_plus_five_pixels(96.) - (10. / 25.4 * 96. + 5.)).abs() < 1e-9);
+		assert!((ten_millimeters_plus_five_pixels(300.) - (10. / 25.4 * 300. + 5.)).abs() < 1e-9);
+
+		let difference = super::subtract((), Item::new_from_element(Angle::from_degrees(90.)), Item::new_from_element(Angle::from_degrees(30.)));
+		assert!((difference.unwrap().into_element().degrees() - 60.).abs() < 1e-9);
+	}
+
+	#[test]
+	fn a_number_beside_a_length_or_angle_reads_in_pixels_or_degrees() {
+		let length = |pixels: f64| Item::new_from_element(Length::from_pixels(pixels));
+		let angle = |degrees: f64| Item::new_from_element(Angle::from_degrees(degrees));
+		let number = |number: f64| Item::new_from_element(number);
+		let yes = || Item::new_from_element(true);
+
+		assert_eq!(super::add((), length(10.), number(0.)).unwrap().into_element(), Length::from_pixels(10.));
+		assert_eq!(super::add((), number(5.), length(10.)).unwrap().into_element(), Length::from_pixels(15.));
+		assert_eq!(super::subtract((), angle(90.), number(30.)).unwrap().into_element(), Angle::from_degrees(60.));
+		assert_eq!(super::modulo((), angle(370.), number(360.), yes()).unwrap().into_element(), Angle::from_degrees(10.));
+		assert_eq!(super::divide((), number(10.), length(5.)).unwrap().into_element(), 2.);
+
+		assert_eq!(super::max((), length(3.), number(5.)).into_element(), Length::from_pixels(5.));
+		assert_eq!(super::clamp((), number(50.), length(0.), length(10.)).into_element(), Length::from_pixels(10.));
+		assert_eq!(super::clamp((), angle(-30.), number(0.), number(90.)).into_element(), Angle::from_degrees(0.));
+		assert_eq!(super::clamp((), length(50.), length(0.), number(10.)).into_element(), Length::from_pixels(10.));
+		assert_eq!(super::clamp((), number(-5.), number(0.), angle(90.)).into_element(), Angle::from_degrees(0.));
+		assert_eq!(super::lerp((), angle(0.), number(90.), number(0.5), yes()).into_element(), Angle::from_degrees(45.));
+
+		assert!(super::less_than((), length(3.), number(5.), Item::new_from_element(false)).into_element());
+		assert!(super::greater_than((), number(5.), length(5.), yes()).into_element());
+		assert!(super::equals((), number(45.), angle(45.)).into_element());
+		assert!(super::not_equals((), angle(45.), number(46.)).into_element());
+	}
+
+	#[test]
+	fn measurements_scale_by_numbers_and_divide_into_ratios() {
+		let length = |pixels: f64| Item::new_from_element(Length::from_pixels(pixels));
+		assert_eq!(super::multiply((), length(3.), Item::new_from_element(2.)).unwrap().into_element(), Length::from_pixels(6.));
+		assert_eq!(super::multiply((), Item::new_from_element(2.), length(3.)).unwrap().into_element(), Length::from_pixels(6.));
+		assert_eq!(super::divide((), length(30.), Item::new_from_element(3.)).unwrap().into_element(), Length::from_pixels(10.));
+
+		// Like measurements divide into a plain number, where a zero divisor gives 0 as for numbers
+		let ratio: f64 = super::divide((), length(30.), length(10.)).unwrap().into_element();
+		assert_eq!(ratio, 3.);
+		assert_eq!(super::divide((), length(30.), length(0.)).unwrap().into_element(), 0.);
+		let turns: f64 = super::divide((), Item::new_from_element(Angle::from_degrees(720.)), Item::new_from_element(Angle::from_degrees(360.)))
+			.unwrap()
+			.into_element();
+		assert!((turns - 2.).abs() < 1e-12);
+
+		let remainder = super::modulo(
+			(),
+			Item::new_from_element(Angle::from_degrees(-90.)),
+			Item::new_from_element(Angle::from_degrees(360.)),
+			Item::new_from_element(true),
+		);
+		assert!((remainder.unwrap().into_element().degrees() - 270.).abs() < 1e-9);
+		assert_eq!(sign((), length(-4.)).into_element(), -1.);
+		assert_eq!(absolute_value((), length(-4.)).unwrap().into_element(), Length::from_pixels(4.));
+	}
+
+	#[test]
+	fn angle_comparisons_order_and_match_angles() {
+		let angle = |degrees: f64| Item::new_from_element(Angle::from_degrees(degrees));
+		assert!(less_than((), angle(30.), angle(45.), Item::new_from_element(false)).into_element());
+		assert!(!less_than((), angle(45.), angle(45.), Item::new_from_element(false)).into_element());
+		assert!(less_than((), angle(45.), angle(45.), Item::new_from_element(true)).into_element());
+		assert!(greater_than((), angle(-10.), angle(-20.), Item::new_from_element(false)).into_element());
+		assert!(equals((), angle(90.), angle(90.)).into_element());
+		assert!(not_equals((), angle(90.), angle(91.)).into_element());
+		assert!(is_nonzero((), angle(1.)).into_element());
+
+		// Whole degrees stay exact through arithmetic, so its results compare equal to the angles they should be
+		let sum = super::add((), angle(1.), angle(5.)).unwrap();
+		assert!(equals((), sum, angle(6.)).into_element());
+		let remainder = super::modulo((), angle(370.), angle(360.), Item::new_from_element(true)).unwrap();
+		assert_eq!(remainder.into_element(), Angle::from_degrees(10.));
+
+		assert_eq!(super::max((), angle(10.), angle(20.)).into_element(), Angle::from_degrees(20.));
+		assert_eq!(clamp((), angle(400.), angle(360.), angle(0.)).into_element(), Angle::from_degrees(360.));
+		let midpoint = lerp((), angle(0.), angle(90.), Item::new_from_element(0.5), Item::new_from_element(true));
+		assert!((midpoint.into_element().degrees() - 45.).abs() < 1e-9);
+	}
+
+	#[test]
+	fn trigonometry_of_an_angle_ignores_the_radians_choice() {
+		let thirty_degrees = || Item::new_from_element(Angle::from_degrees(30.));
+		for radians in [false, true] {
+			assert!((sine((), thirty_degrees(), Item::new_from_element(radians)).into_element() - 0.5).abs() < 1e-12);
+			assert!((cosine((), Item::new_from_element(Angle::from_degrees(60.)), Item::new_from_element(radians)).into_element() - 0.5).abs() < 1e-12);
+			assert!((tangent((), Item::new_from_element(Angle::from_degrees(45.)), Item::new_from_element(radians)).into_element() - 1.).abs() < 1e-12);
+		}
+		assert!((sine((), Item::new_from_element(30.), Item::new_from_element(false)).into_element() - 0.5).abs() < 1e-12);
+	}
+
+	#[test]
+	fn list_nodes_total_and_compare_measurements() {
+		assert_eq!(sum((), lengths(&[1., 2., 3.])).into_element(), Length::from_pixels(6.));
+		assert_eq!(average((), lengths(&[1., 2., 3.])).into_element(), Length::from_pixels(2.));
+		assert_eq!(average((), lengths(&[])).into_element(), Length::ZERO);
+		assert_eq!(minimum((), lengths(&[4., -2., 3.])).into_element(), Length::from_pixels(-2.));
+		assert_eq!(maximum((), angles(&[10., 80., 30.])).into_element(), Angle::from_degrees(80.));
+
+		// Integers and bools still total as numbers
+		let integers: List<i64> = [1_i64, 2, 4].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(sum((), integers).into_element(), 7.);
+		let bools: List<bool> = [true, false, true].into_iter().map(Item::new_from_element).collect();
+		assert_eq!(average((), bools).into_element(), 2. / 3.);
+	}
+
+	#[test]
+	fn math_formula_reads_lengths_with_their_units() {
+		let formula = |items: List<Length>, expression: &str, pixels_per_inch: f64| {
+			math_formula(
+				(),
+				&ParseCache::default(),
+				items,
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(Length::ZERO),
+				Item::new_from_element(pixels_per_inch),
+			)
+			.map(|item| item.into_element().pixels())
+		};
+		assert_eq!(formula(lengths(&[10., 5.]), "a + b", 96.).unwrap(), 15.);
+		assert_eq!(formula(lengths(&[10.]), "a + 1in", 300.).unwrap(), 310.);
+		assert!((formula(lengths(&[10.]), "a + 25.4mm", 96.).unwrap() - 106.).abs() < 1e-9);
+
+		// A length isn't a plain number, so adding one fails rather than dropping the unit
+		assert!(formula(lengths(&[10.]), "a + 1", 96.).is_err());
+
+		// Like lengths divide into a plain number, as Math f(x) reads them
+		let ratio = math_formula(
+			(),
+			&ParseCache::default(),
+			lengths(&[30., 10.]),
+			Item::new_from_element("a / b".to_string()),
+			Item::new_from_element(0.),
+			Item::new_from_element(96.),
+		);
+		assert_eq!(ratio.unwrap().into_element(), 3.);
+	}
+
+	#[test]
+	fn math_aggregate_sums_lengths() {
+		fn aggregate<U: ExpressionValue>(items: List<Length>, operator: &str, output_type: U) -> Result<U, MathExpressionError> {
+			math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
+		}
+		assert_eq!(aggregate(lengths(&[1., 2., 3.]), "+", Length::ZERO).unwrap(), Length::from_pixels(6.));
+		assert_eq!(aggregate(lengths(&[1., 5., 3.]), "max", Length::ZERO).unwrap(), Length::from_pixels(5.));
+		assert_eq!(aggregate(lengths(&[1., 2., 3.]), "mean", Length::ZERO).unwrap(), Length::from_pixels(2.));
+		assert_eq!(aggregate(lengths(&[1., 2., 3.]), "count", 0.).unwrap(), 3.);
+		assert_eq!(aggregate(lengths(&[]), "min", Length::ZERO).unwrap(), Length::ZERO);
+
+		// A total of lengths is no plain number, and a function of plain numbers refuses lengths
+		assert!(matches!(aggregate(lengths(&[1., 2.]), "+", 0.), Err(MathExpressionError::OutputType { .. })));
+		assert!(matches!(aggregate(lengths(&[2., 4.]), "gcd", 0.), Err(MathExpressionError::Evaluation(_))));
+	}
+
+	#[test]
+	fn math_running_accumulates_angles() {
+		let running = |items: List<Angle>, operator: &str| {
+			math_running((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(Angle::ZERO))
+				.map(|list| list.iter_element_values().map(|angle| angle.degrees()).collect::<Vec<_>>())
+				.map_err(|(_, error)| error)
+		};
+		let close = |actual: Vec<f64>, expected: &[f64]| actual.len() == expected.len() && actual.iter().zip(expected).all(|(actual, expected)| (actual - expected).abs() < 1e-9);
+
+		assert!(close(running(angles(&[30., 60., 90.]), "+").unwrap(), &[30., 90., 180.]));
+		assert!(close(running(angles(&[30., 10., 90.]), "max").unwrap(), &[30., 30., 90.]));
+		assert!(matches!(running(angles(&[30., 60.]), "gcd"), Err(MathExpressionError::Evaluation(_))));
+	}
+
 	#[test]
 	pub fn dot_product_function() {
 		let vector_a = Item::new_from_element(DVec2::new(1., 2.));
@@ -2765,7 +3507,15 @@ mod test {
 		let scale = DAffine2::from_scale(DVec2::splat(2.));
 		let items = || [shear, scale].into_iter().map(Item::new_from_element).collect::<List<DAffine2>>();
 		fn formula<U: ExpressionValue>(items: List<DAffine2>, expression: &str, output_type: U) -> Result<U, MathExpressionError> {
-			math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
+			math_formula(
+				(),
+				&ParseCache::default(),
+				items,
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(output_type),
+				Item::new_from_element(96.),
+			)
+			.map(Item::into_element)
 		}
 		fn aggregate<U: ExpressionValue>(items: List<DAffine2>, operator: &str, output_type: U) -> Result<U, MathExpressionError> {
 			math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(output_type)).map(Item::into_element)
@@ -2803,9 +3553,16 @@ mod test {
 		}
 		let items = || [DVec2::new(1., 5.), DVec2::new(3., 2.)].into_iter().map(Item::new_from_element).collect::<List<DVec2>>();
 		fn formula<U: ExpressionValue>(items: List<DVec2>, expression: &str, output_type: U) -> U {
-			math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(output_type))
-				.unwrap()
-				.into_element()
+			math_formula(
+				(),
+				&ParseCache::default(),
+				items,
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(output_type),
+				Item::new_from_element(96.),
+			)
+			.unwrap()
+			.into_element()
 		}
 		fn aggregate<U: ExpressionValue>(items: List<DVec2>, operator: &str, output_type: U) -> U {
 			math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(output_type))
@@ -2847,7 +3604,17 @@ mod test {
 	#[test]
 	fn formula_reads_positions_and_aggregate_folds_operators() {
 		let values = || [4., 1., 7.].into_iter().map(Item::new_from_element).collect::<List<f64>>();
-		let formula = |expression: &str| math_formula((), &ParseCache::default(), values(), Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		let formula = |expression: &str| {
+			math_formula(
+				(),
+				&ParseCache::default(),
+				values(),
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(0.),
+				Item::new_from_element(96.),
+			)
+			.map(Item::into_element)
+		};
 		let aggregate = |operator: &str| math_aggregate((), values(), Item::new_from_element(operator.to_string()), Item::new_from_element(0.)).map(Item::into_element);
 
 		// A formula reads the items positionally as `a`, `b`, `c`, while an aggregate applies its operator across all of them
@@ -2995,7 +3762,17 @@ mod test {
 		assert!(!message.contains(", at "), "{message}");
 
 		let values = |values: &[f64]| values.iter().copied().map(Item::new_from_element).collect::<List<f64>>();
-		let formula = |items, expression: &str| math_formula((), &ParseCache::default(), items, Item::new_from_element(expression.to_string()), Item::new_from_element(0.)).map(Item::into_element);
+		let formula = |items, expression: &str| {
+			math_formula(
+				(),
+				&ParseCache::default(),
+				items,
+				Item::new_from_element(expression.to_string()),
+				Item::new_from_element(0.),
+				Item::new_from_element(96.),
+			)
+			.map(Item::into_element)
+		};
 		let aggregate = |items, operator: &str| math_aggregate((), items, Item::new_from_element(operator.to_string()), Item::new_from_element(0.)).map(Item::into_element);
 		assert!(matches!(formula(values(&[1.]), ""), Err(MathExpressionError::Empty)));
 		assert!(matches!(formula(values(&[1.]), "a +"), Err(MathExpressionError::Invalid(_))));
