@@ -202,6 +202,15 @@ pub struct NodeGraphErrorDiagnostic {
 	pub error: String,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct FrontendNodeProgress {
+	#[serde(rename = "nodeId")]
+	pub node_id: NodeId,
+	/// How much of the work within the node is done, from 0 to 1.
+	pub progress: f64,
+}
+
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct NodeEvaluationError {
 	pub node_path: Vec<NodeId>,

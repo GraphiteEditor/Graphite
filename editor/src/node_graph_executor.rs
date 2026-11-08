@@ -41,6 +41,8 @@ pub struct ExecutionResponse {
 	vector_modify: HashMap<NodeId, VectorGeometry>,
 	/// The resulting value from the temporary inspected during execution
 	inspect_result: Option<InspectResult>,
+	/// The progress of each source with work in progress, by the path of the value node injecting the source.
+	progress: Vec<(Vec<NodeId>, f64)>,
 }
 
 #[derive(Debug)]
@@ -101,6 +103,8 @@ pub struct NodeGraphExecutor {
 	previous_node_to_inspect: Vec<NodeId>,
 	/// The canvas images the frontend holds, so a render sends only those it lacks.
 	canvas_images_sent: HashSet<u64>,
+	/// The progress of the active document's nodes with work in progress, by their full path from the root network.
+	node_progress: Vec<(Vec<NodeId>, f64)>,
 	/// Evaluation errors of the last evaluation, used in tests
 	#[cfg(test)]
 	evaluation_errors: Option<EvaluationErrors>,
@@ -154,6 +158,7 @@ impl NodeGraphExecutor {
 			node_graph_document: None,
 			previous_node_to_inspect: Vec::new(),
 			canvas_images_sent: HashSet::new(),
+			node_progress: Vec::new(),
 			#[cfg(test)]
 			evaluation_errors: None,
 			gradient_migration: None,
@@ -187,6 +192,16 @@ impl NodeGraphExecutor {
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
+	}
+
+	/// The progress of the work of the node at this full path from the root network, if it has work in progress.
+	pub fn node_progress(&self, node_path: &[NodeId]) -> Option<f64> {
+		self.node_progress.iter().find(|(path, _)| path == node_path).map(|(_, progress)| *progress)
+	}
+
+	/// Cancels the work in progress of the node at this full path from the root network.
+	pub fn cancel_node_work(&self, node_path: Vec<NodeId>) {
+		self.sender.send(GraphRuntimeRequest::Cancel(node_path)).expect("Failed to send the cancellation");
 	}
 
 	pub fn submit_inspect_context_overrides(&self, overrides: graphene_std::ContextOverrides) {
@@ -460,6 +475,7 @@ impl NodeGraphExecutor {
 						dropped_thumbnails,
 						vector_modify,
 						inspect_result,
+						progress,
 					} = *execution_response;
 					all_dropped_thumbnails.extend(dropped_thumbnails.iter().copied());
 
@@ -503,14 +519,28 @@ impl NodeGraphExecutor {
 
 					responses.add(OverlaysMessage::Draw);
 
+					// The deepest document node containing each source shows its progress
+					if execution_context.document_id == document_id {
+						let node_progress: Vec<_> = progress
+							.into_iter()
+							.filter_map(|(path, progress)| {
+								let node_path = (1..=path.len()).rev().map(|length| &path[..length]).find(|path| is_document_node(document, path))?;
+								Some((node_path.to_vec(), progress))
+							})
+							.collect();
+
+						if self.node_progress != node_progress {
+							responses.add(NodeGraphMessage::UpdateNodeProgress { progress: node_progress.clone() });
+							self.node_progress = node_progress;
+							responses.add(InspectorMessage::Refresh);
+						}
+					}
+
 					// A pending graph keeps the last frame, and the errors shown with it
 					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
-								let in_document = |path: &&[NodeId]| {
-									path.split_last()
-										.is_some_and(|(node, network)| document.network_interface.view(network).and_then(|view| view.node(node)).is_ok())
-								};
+								let in_document = |path: &&[NodeId]| is_document_node(document, path);
 								errors
 									.iter()
 									.flat_map(|(error, trace)| {
@@ -1048,6 +1078,12 @@ impl NodeGraphExecutor {
 // TODO: Eventually remove this document upgrade code
 /// Whether the fill node's `_has_transform` is still `false`, meaning its gradient placement has not yet been baked
 /// (or set by the user), so a measured bake may safely be written.
+/// Whether the node at this full path from the root network exists in the document.
+fn is_document_node(document: &DocumentMessageHandler, path: &[NodeId]) -> bool {
+	path.split_last()
+		.is_some_and(|(node, network)| document.network_interface.view(network).and_then(|view| view.node(node)).is_ok())
+}
+
 fn fill_transform_unbaked(document: &DocumentMessageHandler, network_path: &[NodeId], fill_node_id: NodeId) -> bool {
 	let Some(network) = document.network_interface.document_network().nested_network(network_path) else {
 		return false;

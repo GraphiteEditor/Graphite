@@ -283,6 +283,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 				responses.add(PersistentStateMessage::WriteState);
 			}
+			PortfolioMessage::CancelNodeWork { node_path } => {
+				self.executor.cancel_node_work(node_path);
+			}
 			PortfolioMessage::CloseActiveDocumentWithConfirmation => {
 				if let Some(document_id) = self.active_document_id {
 					responses.add(PortfolioMessage::CloseDocumentWithConfirmation { document_id });

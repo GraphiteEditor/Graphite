@@ -3130,6 +3130,24 @@ pub(crate) fn rectangle_inspector(node_id: NodeId, context: &mut NodeInspectorCo
 	]
 }
 
+/// The progress of the work in progress of the node at `node_path`, with a button to cancel it.
+fn progress_row(progress: f64, node_path: Vec<NodeId>) -> LayoutGroup {
+	let percent = (progress.clamp(0., 1.) * 100.).floor();
+
+	let mut widgets = Vec::new();
+	add_blank_assist(&mut widgets);
+
+	widgets.extend([
+		ProgressBar::new(progress).label(format!("{percent}%")).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
+		TextButton::new("Cancel")
+			.tooltip_description("Stop the work in progress, keeping its result so far.")
+			.on_update(move |_| PortfolioMessage::CancelNodeWork { node_path: node_path.clone() }.into())
+			.widget_instance(),
+	]);
+	LayoutGroup::row(widgets)
+}
+
 pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspectorContext) -> LayoutGroup {
 	let mut layout = Vec::new();
 
@@ -3216,6 +3234,11 @@ pub(crate) fn generate_node_inspector(node_id: NodeId, context: &mut NodeInspect
 
 			layout.extend(row);
 		}
+	}
+
+	let node_path = [context.selection_network_path, &[node_id]].concat();
+	if let Some(progress) = context.executor.node_progress(&node_path) {
+		layout.insert(0, progress_row(progress, node_path));
 	}
 
 	let display_name = context

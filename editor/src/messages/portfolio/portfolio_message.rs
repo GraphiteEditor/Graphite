@@ -40,6 +40,10 @@ pub enum PortfolioMessage {
 	AutoSaveDocument {
 		document_id: DocumentId,
 	},
+	/// Cancels the work in progress of the active document's node at this full path from the root network.
+	CancelNodeWork {
+		node_path: Vec<graphene_std::uuid::NodeId>,
+	},
 	CloseActiveDocumentWithConfirmation,
 	CloseAllDocuments,
 	CloseAllDocumentsWithConfirmation,

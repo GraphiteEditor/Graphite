@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodeInspectorContext, resolve_document_node_type, resolve_network_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeEvaluationError, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, FrontendNodeProgress, NodeEvaluationError, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::layers_in_view::LayersInView;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
@@ -136,6 +136,8 @@ pub struct NodeGraphMessageHandler {
 	/// Used to keep track of what wires are sent to the frontend so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
 	evaluation_errors: Vec<NodeEvaluationError>,
+	/// The progress of the nodes with work in progress, by their full path from the root network.
+	node_progress: Vec<(Vec<NodeId>, f64)>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -2058,6 +2060,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
 					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
+					let progress = self.node_graph_progress(breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateNodeGraphProgress { progress });
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -2661,6 +2665,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let errors = self.node_graph_errors(network_interface, breadcrumb_network_path);
 						responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostics { errors });
 						responses.add(NodeGraphMessage::UpdateVisibleNodes);
+					}
+				}
+			}
+			NodeGraphMessage::UpdateNodeProgress { progress } => {
+				if self.node_progress != progress {
+					self.node_progress = progress;
+					if breadcrumb_network_path == selection_network_path && graph_view_overlay_open {
+						let progress = self.node_graph_progress(breadcrumb_network_path);
+						responses.add(FrontendMessage::UpdateNodeGraphProgress { progress });
 					}
 				}
 			}
@@ -3871,6 +3884,22 @@ impl NodeGraphMessageHandler {
 			.collect()
 	}
 
+	/// The progress of the nodes in the network at `breadcrumb_network_path`, where a node shows the first work in progress within it.
+	fn node_graph_progress(&self, breadcrumb_network_path: &[NodeId]) -> Vec<FrontendNodeProgress> {
+		let depth = breadcrumb_network_path.len();
+
+		let mut shown = HashSet::new();
+		self.node_progress
+			.iter()
+			.filter(|(path, _)| path.starts_with(breadcrumb_network_path) && path.len() > depth)
+			.filter(|(path, _)| shown.insert(path[depth]))
+			.map(|(path, progress)| FrontendNodeProgress {
+				node_id: path[depth],
+				progress: *progress,
+			})
+			.collect()
+	}
+
 	/// Sends the Layers panel the details of the given layers, which it needs only for the rows it has in view.
 	// O(given layers × nesting depth), apart from what the active tool would edit in the selected layers
 	fn update_layer_panel(
@@ -4080,6 +4109,7 @@ impl Default for NodeGraphMessageHandler {
 			frontend_nodes: Vec::new(),
 			frontend_wires: HashSet::new(),
 			evaluation_errors: Vec::new(),
+			node_progress: Vec::new(),
 		}
 	}
 }

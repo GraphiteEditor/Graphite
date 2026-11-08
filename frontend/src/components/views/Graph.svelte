@@ -965,10 +965,12 @@
 				{@const clipPathId = String(Math.random()).substring(2)}
 				{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
 				{@const icon = (node.reference && $nodeGraph.nodeIcons.get(node.reference)) || "NodeCustomNode"}
+				{@const progress = $nodeGraph.progress.get(node.id)}
 				<div
 					class="node"
 					class:selected={$nodeGraph.selected.includes(node.id)}
 					class:previewed={node.previewed}
+					class:in-progress={progress !== undefined}
 					class:disabled={!node.visible}
 					style:--offset-left={(node.position?.[0] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 0)}
 					style:--offset-top={(node.position?.[1] || 0) + glideCells($nodeGlideOffsets.nodes.get(node.id), 1)}
@@ -984,6 +986,9 @@
 						<IconLabel {icon} />
 						<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 						<TextLabel>{node.displayName}</TextLabel>
+						{#if progress !== undefined}
+							<div class="progress" style:width={`${Math.min(Math.max(progress, 0), 1) * 100}%`}></div>
+						{/if}
 					</div>
 					<!-- Secondary rows -->
 					{#if exposedInputsOutputs.length > 0}
@@ -1492,6 +1497,10 @@
 				border: 1px dashed var(--color-e-nearwhite);
 			}
 
+			&.in-progress::after {
+				border-color: var(--color-warning-yellow);
+			}
+
 			.connectors {
 				position: absolute;
 				// Keeps the connectors above the wires
@@ -1876,6 +1885,15 @@
 				.icon-label + .text-label {
 					margin-left: 0;
 					margin-right: 4px;
+				}
+
+				.progress {
+					position: absolute;
+					left: 0;
+					bottom: 0;
+					height: 2px;
+					background: var(--color-e-nearwhite);
+					transition: width 0.1s linear;
 				}
 			}
 
