@@ -974,7 +974,7 @@ async fn eight_input_fill_migrates_the_spread_input_into_the_ramp() {
 }
 
 #[tokio::test]
-async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
+async fn undoing_a_hot_step_alone_enters_it_into_history_first() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
 	let byte_store = mount_in_memory_storage(&mut editor);
@@ -992,20 +992,16 @@ async fn undoing_a_hot_step_takes_it_back_and_redo_stages_it_again() {
 	editor.handle_message(DocumentMessage::Undo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &before_edit, "undo restores the pre-edit network");
 	let storage = editor.active_document().storage().unwrap();
-	assert!(storage.session().hot_log().is_empty(), "the step was taken back, not retired: {:?}", storage.session().hot_log());
-	assert_eq!(storage.session().history().count(), history_base, "nothing entered history");
+	assert!(storage.session().hot_log().is_empty(), "the step left the hot log: {:?}", storage.session().hot_log());
+	let history_after = storage.session().history().count();
+	assert!(history_after > history_base, "the step entered history, so the History panel keeps it as undone");
+	assert!(storage.can_redo(), "the undone step waits for redo");
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
-	// The step held for redo keeps its declaration bytes from collection
-	let storage = editor.active_document().storage().unwrap();
-	assert!(
-		!editor.active_document().resource_gc_roots().is_subset(&storage.all_referenced_resource_hashes()),
-		"the retracted step names its declaration resource"
-	);
 
 	editor.handle_message(DocumentMessage::Redo).await;
 	assert_eq!(editor.active_document().network_interface.document_network(), &after_edit, "redo restores the edit");
 	let storage = editor.active_document().storage().unwrap();
-	assert!(!storage.session().hot_log().is_empty(), "the redone step is staged afresh");
-	assert_eq!(storage.session().history().count(), history_base);
+	assert!(storage.session().hot_log().is_empty(), "redo moves the head forward rather than staging again");
+	assert_eq!(storage.session().history().count(), history_after);
 	editor.active_document_mut().commit_storage_snapshot(&byte_store, true);
 }
