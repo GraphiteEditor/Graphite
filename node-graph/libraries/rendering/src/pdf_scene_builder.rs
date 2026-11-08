@@ -1,11 +1,11 @@
 use crate::scene_builder::{SHAPE_TOLERANCE, SceneBuilder, finite_path};
 use graphic_types::raster_types::{CPU, Raster, Texture};
 use graphic_types::vector_types::vector::PlacedContours;
-use kurbo::{Affine, BezPath, Rect, Shape, Size, Stroke};
+use kurbo::{Affine, BezPath, Point, Rect, Shape, Size, Stroke};
 use std::collections::HashMap;
 use vello_gpu::peniko::{self, BlendMode, BrushRef, Fill, ImageQuality};
 
-/// Records the drawing of one PDF page, which [`PdfScene::encode_pdf`] writes out once any GPU textures it draws are read back.
+/// Records a scene for PDF pages, which [`PdfScene::encode_pdf`] writes out once any GPU textures it draws are read back.
 #[derive(Debug)]
 pub struct PdfSceneBuilder {
 	/// Places the drawn content on the page, applied on top of every transform it's drawn with.
@@ -20,7 +20,7 @@ pub struct PdfSceneBuilder {
 	image_indices: HashMap<ImageKey, usize>,
 }
 
-/// The drawing of one PDF page in the page's pixels, ready to encode as a PDF once [`Self::textures`] are read back with [`Self::resolve_texture`].
+/// A recorded scene in its own pixels, ready to encode as PDF pages once [`Self::textures`] are read back with [`Self::resolve_texture`].
 #[derive(Clone, Debug, PartialEq)]
 pub struct PdfScene {
 	pub(crate) size: Size,
@@ -29,7 +29,19 @@ pub struct PdfScene {
 	pub(crate) images: Vec<PdfImage>,
 }
 
-/// One drawing operation on a page, with paths and transforms in the page's pixels unless noted otherwise.
+/// A page of a PDF showing one region of a [`PdfScene`], so one recorded scene can be cut into many pages.
+#[derive(Clone, Debug, PartialEq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct PdfPage {
+	/// Where the page's top left corner lies in the scene's pixels.
+	pub origin: Point,
+	/// The page's width and height, in the scene's pixels.
+	pub size: Size,
+	/// The page's entry among the bookmarks a PDF viewer lists to navigate between pages.
+	pub bookmark: Option<String>,
+}
+
+/// One drawing operation of a scene, with paths and transforms in the scene's pixels unless noted otherwise.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum PdfDrawing {
 	Fill {

@@ -8,4 +8,5 @@ pub mod scene_builder;
 pub mod to_peniko;
 pub mod vello_scene_builder;
 
+pub use pdf_encoding::encode_pdf_document;
 pub use renderer::*;

@@ -3,18 +3,20 @@
 //! What a PDF can't express gets the closest form it can: Porter-Duff compositing becomes masking, repeating gradients have
 //! their repetitions written out, and gradients beyond that are rasterized and clipped to their shape.
 
-use crate::pdf_scene_builder::{PdfDrawing, PdfGroupKind, PdfImage, PdfPaint, PdfScene};
+use crate::pdf_scene_builder::{PdfDrawing, PdfGroupKind, PdfImage, PdfPage, PdfPaint, PdfScene};
 use krilla::Document;
 use krilla::blend::BlendMode as PdfBlendMode;
 use krilla::color::rgb;
-use krilla::geom::{Path as PdfPath, PathBuilder, Size as PdfSize, Transform as PdfTransform};
+use krilla::destination::XyzDestination;
+use krilla::geom::{Path as PdfPath, PathBuilder, Point as PdfPoint, Size as PdfSize, Transform as PdfTransform};
 use krilla::image::{BitsPerComponent, CustomImage, Image as PdfEmbeddedImage, ImageColorspace};
 use krilla::mask::{Mask, MaskType};
 use krilla::num::NormalizedF32;
+use krilla::outline::{Outline, OutlineNode};
 use krilla::page::PageSettings;
 use krilla::paint::{Fill as PdfFill, FillRule, LineCap, LineJoin, LinearGradient, Paint, RadialGradient, SpreadMethod, Stop, Stroke as PdfStroke, StrokeDash, SweepGradient};
 use krilla::surface::Surface;
-use kurbo::{Affine, BezPath, Cap, Join, PathEl, Point, Rect, Shape, Stroke, StrokeOpts};
+use kurbo::{Affine, BezPath, Cap, Join, PathEl, Point, Rect, Shape, Size, Stroke, StrokeOpts};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -49,42 +51,80 @@ type SizedImage = (PdfEmbeddedImage, (u32, u32));
 impl PdfScene {
 	/// Encodes the page as a PDF document, sized so `pixels_per_inch` of its pixels span each inch of paper.
 	pub fn encode_pdf(&self, pixels_per_inch: f64) -> Result<Vec<u8>, String> {
-		let points_per_pixel = POINTS_PER_INCH / pixels_per_inch;
-		if !points_per_pixel.is_finite() || points_per_pixel <= 0. {
-			return Err(format!("A PDF can't be sized at {pixels_per_inch} pixels per inch"));
-		}
+		let whole_scene = PdfPage {
+			origin: Point::ORIGIN,
+			size: self.size,
+			bookmark: None,
+		};
+		self.encode_pdf_pages(&[whole_scene], pixels_per_inch)
+	}
 
-		let width = (self.size.width * points_per_pixel) as f32;
-		let height = (self.size.height * points_per_pixel) as f32;
+	/// Encodes a PDF document with each page showing its region of the scene, sized so `pixels_per_inch` of the scene's pixels span each inch of paper.
+	pub fn encode_pdf_pages(&self, pages: &[PdfPage], pixels_per_inch: f64) -> Result<Vec<u8>, String> {
+		let pages: Vec<(&PdfScene, &PdfPage)> = pages.iter().map(|page| (self, page)).collect();
+		encode_pdf_document(&pages, pixels_per_inch)
+	}
+}
+
+/// Encodes a PDF document with each page showing its region of its scene, sized so `pixels_per_inch` of the scenes' pixels span each inch of paper.
+pub fn encode_pdf_document(pages: &[(&PdfScene, &PdfPage)], pixels_per_inch: f64) -> Result<Vec<u8>, String> {
+	let points_per_pixel = POINTS_PER_INCH / pixels_per_inch;
+	if !points_per_pixel.is_finite() || points_per_pixel <= 0. {
+		return Err(format!("A PDF can't be sized at {pixels_per_inch} pixels per inch"));
+	}
+	if pages.is_empty() {
+		return Err("A PDF needs at least one page".to_string());
+	}
+
+	let mut document = Document::new();
+	let mut outline = Outline::new();
+
+	// Consecutive pages of one scene share its encoder, so an image they draw is embedded once
+	let mut encoder: Option<(&PdfScene, PdfEncoder)> = None;
+	for (page_index, &(scene, page)) in pages.iter().enumerate() {
+		if !encoder.as_ref().is_some_and(|(encoded, _)| std::ptr::eq(*encoded, scene)) {
+			encoder = Some((scene, PdfEncoder::new(&scene.images, points_per_pixel)));
+		}
+		let Some((_, encoder)) = encoder.as_mut() else { continue };
+
+		let width = (page.size.width * points_per_pixel) as f32;
+		let height = (page.size.height * points_per_pixel) as f32;
 		let Some(page_settings) = PageSettings::from_wh(width, height) else {
-			return Err("The PDF page has no area".to_string());
+			return Err("A PDF page has no area".to_string());
 		};
 
-		let mut document = Document::new();
-		let mut page = document.start_page_with(page_settings);
-		let mut surface = page.surface();
+		let drawings = drawings_on_page(&scene.drawings, page, &scene.images);
+		encoder.page_size = page.size;
+
+		let mut pdf_page = document.start_page_with(page_settings);
+		let mut surface = pdf_page.surface();
 
 		// The drawings are in the page's pixels, which this scales into points
 		surface.push_transform(&PdfTransform::from_scale(points_per_pixel as f32, points_per_pixel as f32));
 
 		// Blending at the top acts on the transparent page, as it does in the other export formats, rather than on the paper beneath it
-		let isolate = blends_with_backdrop(&self.drawings);
+		let isolate = blends_with_backdrop(&drawings);
 		if isolate {
 			surface.push_isolated();
 		}
 
-		let mut encoder = PdfEncoder::new(self, points_per_pixel);
-		encoder.draw_drawings(&mut surface, &self.drawings);
+		encoder.draw_drawings(&mut surface, &drawings);
 
 		if isolate {
 			surface.pop();
 		}
 		surface.pop();
 		surface.finish();
-		page.finish();
+		pdf_page.finish();
 
-		document.finish().map_err(|error| format!("Failed to write the PDF: {error}"))
+		if let Some(bookmark) = &page.bookmark {
+			let page_top = XyzDestination::new(page_index, PdfPoint::from_xy(0., 0.));
+			outline.push_child(OutlineNode::new(bookmark.clone(), page_top));
+		}
 	}
+
+	document.set_outline(outline);
+	document.finish().map_err(|error| format!("Failed to write the PDF: {error}"))
 }
 
 /// What a fill or stroke paints with once it's in a form the PDF can hold.
@@ -102,7 +142,10 @@ enum ResolvedPaint {
 }
 
 struct PdfEncoder<'a> {
-	scene: &'a PdfScene,
+	/// The images of the scene the pages draw from, by the index each drawing refers to them with.
+	images: &'a [PdfImage],
+	/// The width and height of the page being drawn, in its pixels.
+	page_size: Size,
 	points_per_pixel: f64,
 	/// Each image once embedded, by its index, whether it's interpolated, and whether it's painted black.
 	embedded_images: HashMap<(usize, bool, bool), Option<SizedImage>>,
@@ -112,9 +155,10 @@ struct PdfEncoder<'a> {
 }
 
 impl<'a> PdfEncoder<'a> {
-	fn new(scene: &'a PdfScene, points_per_pixel: f64) -> Self {
+	fn new(images: &'a [PdfImage], points_per_pixel: f64) -> Self {
 		Self {
-			scene,
+			images,
+			page_size: Size::ZERO,
 			points_per_pixel,
 			embedded_images: HashMap::new(),
 			paint_black: false,
@@ -130,7 +174,7 @@ impl<'a> PdfEncoder<'a> {
 
 	/// The part of the page `bounds` covers, or `None` if it's off the page.
 	fn visible_region(&self, bounds: Rect) -> Option<Rect> {
-		let region = bounds.intersect(Rect::from_origin_size((0., 0.), self.scene.size));
+		let region = bounds.intersect(Rect::from_origin_size((0., 0.), self.page_size));
 		(region.width() > 0. && region.height() > 0.).then_some(region)
 	}
 
@@ -214,7 +258,7 @@ impl<'a> PdfEncoder<'a> {
 
 		if inverted {
 			// Content in black over white leaves a luminosity of one minus the content's alpha
-			let page = Rect::from_origin_size((0., 0.), self.scene.size).to_path(0.);
+			let page = Rect::from_origin_size((0., 0.), self.page_size).to_path(0.);
 			if let Some(page) = pdf_path(&page) {
 				mask_surface.set_stroke(None);
 				mask_surface.set_fill(Some(PdfFill {
@@ -333,8 +377,7 @@ impl<'a> PdfEncoder<'a> {
 		}
 		let Some(shape) = pdf_path(&path) else { return };
 
-		// The stroke's reach past its path, generously covering its joins and caps
-		let reach = stroke.width / 2. * stroke.miter_limit.max(std::f64::consts::SQRT_2);
+		let reach = stroke_reach(stroke);
 		let Some(region) = self.visible_region(transform.transform_rect_bbox(path.bounding_box().inflate(reach, reach))) else {
 			return;
 		};
@@ -372,13 +415,8 @@ impl<'a> PdfEncoder<'a> {
 			return;
 		}
 		// An image off the page needn't be embedded, and one reaching past what a PDF's numbers hold can't be
-		let (width, height) = match self.scene.images.get(image) {
-			Some(PdfImage::Pixels(data)) => (data.width, data.height),
-			Some(PdfImage::Raster(raster)) => (raster.width, raster.height),
-			Some(PdfImage::Texture(texture)) => (texture.width(), texture.height()),
-			None => return,
-		};
-		let bounds = transform.transform_rect_bbox(Rect::new(0., 0., width as f64, height as f64));
+		let Some(image_rect) = self.images.get(image).map(image_rect) else { return };
+		let bounds = transform.transform_rect_bbox(image_rect);
 		let fits_in_pdf = [bounds.x0, bounds.y0, bounds.x1, bounds.y1].iter().all(|coordinate| (*coordinate as f32).is_finite());
 		if !fits_in_pdf || self.visible_region(bounds).is_none() {
 			return;
@@ -580,7 +618,7 @@ impl<'a> PdfEncoder<'a> {
 			return embedded.clone();
 		}
 
-		let pixels = match self.scene.images.get(index)? {
+		let pixels = match self.images.get(index)? {
 			PdfImage::Pixels(data) => straight_rgba8(data),
 			PdfImage::Raster(raster) => Some(raster.to_flat_u8()),
 			PdfImage::Texture(_) => {
@@ -627,6 +665,118 @@ fn blends_with_backdrop(drawings: &[PdfDrawing]) -> bool {
 		} => blends_with_backdrop(drawings),
 		_ => false,
 	})
+}
+
+/// The drawings that change anything on a page, moved to put the page's corner at the origin.
+/// O(drawings × nesting depth of unclipped layers), copying only the drawings that reach the page.
+fn drawings_on_page(drawings: &[PdfDrawing], page: &PdfPage, images: &[PdfImage]) -> Vec<PdfDrawing> {
+	let region = Rect::from_origin_size(page.origin, page.size);
+	let to_page = Affine::translate(-page.origin.to_vec2());
+
+	drawings.iter().filter_map(|drawing| drawing_on_page(drawing, region, to_page, images)).collect()
+}
+
+/// The drawing moved by `to_page` onto a page showing `region` of the scene, or `None` if it changes nothing there.
+fn drawing_on_page(drawing: &PdfDrawing, region: Rect, to_page: Affine, images: &[PdfImage]) -> Option<PdfDrawing> {
+	// A Porter-Duff layer can erase its backdrop beyond where it paints, so it's kept wherever it lies
+	let composites = composites_with_backdrop(drawing);
+	if !composites && drawing_bounds(drawing, images).is_some_and(|bounds| disjoint(bounds, region)) {
+		return None;
+	}
+
+	let placed = |paint: &PdfPaint| match paint {
+		PdfPaint::Solid(_) => paint.clone(),
+		PdfPaint::Gradient { gradient, transform } => PdfPaint::Gradient {
+			gradient: gradient.clone(),
+			transform: to_page * *transform,
+		},
+		PdfPaint::Image { image, sampler, transform } => PdfPaint::Image {
+			image: *image,
+			sampler: *sampler,
+			transform: to_page * *transform,
+		},
+	};
+
+	Some(match drawing {
+		PdfDrawing::Fill { path, fill_rule, paint } => PdfDrawing::Fill {
+			path: to_page * path,
+			fill_rule: *fill_rule,
+			paint: placed(paint),
+		},
+		// The stroke's path and paint are in its own space, which its transform places onto the page
+		PdfDrawing::Stroke { path, transform, stroke, paint } => PdfDrawing::Stroke {
+			path: path.clone(),
+			transform: to_page * *transform,
+			stroke: stroke.clone(),
+			paint: paint.clone(),
+		},
+		PdfDrawing::Image { image, quality, alpha, transform } => PdfDrawing::Image {
+			image: *image,
+			quality: *quality,
+			alpha: *alpha,
+			transform: to_page * *transform,
+		},
+		PdfDrawing::Group { kind, drawings } => {
+			let drawings: Vec<_> = drawings.iter().filter_map(|drawing| drawing_on_page(drawing, region, to_page, images)).collect();
+			if drawings.is_empty() && !composites {
+				return None;
+			}
+
+			let kind = match kind {
+				PdfGroupKind::Layer { blend_mode, alpha, clip } => PdfGroupKind::Layer {
+					blend_mode: *blend_mode,
+					alpha: *alpha,
+					clip: clip.as_ref().map(|(path, fill_rule)| (to_page * path, *fill_rule)),
+				},
+				PdfGroupKind::Clip { path, fill_rule } => PdfGroupKind::Clip {
+					path: to_page * path,
+					fill_rule: *fill_rule,
+				},
+			};
+			PdfDrawing::Group { kind, drawings }
+		}
+	})
+}
+
+/// A box around everywhere the drawing paints, or `None` if it isn't bounded.
+fn drawing_bounds(drawing: &PdfDrawing, images: &[PdfImage]) -> Option<Rect> {
+	match drawing {
+		PdfDrawing::Fill { path, .. } => Some(path.control_box()),
+		PdfDrawing::Stroke { path, transform, stroke, .. } => {
+			let reach = stroke_reach(stroke);
+			Some(transform.transform_rect_bbox(path.control_box().inflate(reach, reach)))
+		}
+		PdfDrawing::Image { image, transform, .. } => Some(transform.transform_rect_bbox(image_rect(images.get(*image)?))),
+		PdfDrawing::Group {
+			kind: PdfGroupKind::Layer { clip: Some((path, _)), .. } | PdfGroupKind::Clip { path, .. },
+			..
+		} => Some(path.control_box()),
+		// A layer over the whole page paints only where the drawings within it do
+		PdfDrawing::Group {
+			kind: PdfGroupKind::Layer { clip: None, .. },
+			drawings,
+		} => drawings.iter().map(|drawing| drawing_bounds(drawing, images)).reduce(|a, b| Some(a?.union(b?))).flatten(),
+	}
+}
+
+/// Whether two boxes share no area, which a box with NaN in it is never taken to.
+fn disjoint(a: Rect, b: Rect) -> bool {
+	a.x1 <= b.x0 || b.x1 <= a.x0 || a.y1 <= b.y0 || b.y1 <= a.y0
+}
+
+/// How far a stroke reaches past its path, generously covering its joins and caps.
+fn stroke_reach(stroke: &Stroke) -> f64 {
+	stroke.width / 2. * stroke.miter_limit.max(std::f64::consts::SQRT_2)
+}
+
+/// The rectangle of an image's pixels, from the origin to its width and height.
+fn image_rect(image: &PdfImage) -> Rect {
+	let (width, height) = match image {
+		PdfImage::Pixels(data) => (data.width, data.height),
+		PdfImage::Raster(raster) => (raster.width, raster.height),
+		PdfImage::Texture(texture) => (texture.width(), texture.height()),
+	};
+	Rect::new(0., 0., width as f64, height as f64)
 }
 
 fn draw_pixels(surface: &mut Surface, image: PdfEmbeddedImage, (width, height): (u32, u32), transform: Affine) {

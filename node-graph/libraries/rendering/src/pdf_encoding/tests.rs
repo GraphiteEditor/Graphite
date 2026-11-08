@@ -72,6 +72,41 @@ fn pages_are_sized_in_points_by_the_pixels_per_inch() {
 }
 
 #[test]
+fn each_page_shows_its_own_region_of_the_scene() {
+	let mut scene = PdfSceneBuilder::new(Size::new(300., 100.), Affine::IDENTITY);
+	scene.fill(Fill::NonZero, Affine::IDENTITY, RED, None, &Rect::new(10., 10., 90., 90.));
+	scene.fill(Fill::NonZero, Affine::IDENTITY, BLUE, None, &Rect::new(210., 10., 290., 70.));
+	let scene = scene.finish();
+
+	let page = |x: f64, (width, height): (f64, f64), bookmark: &str| PdfPage {
+		origin: Point::new(x, 0.),
+		size: Size::new(width, height),
+		bookmark: Some(bookmark.to_string()),
+	};
+	let pdf = scene
+		.encode_pdf_pages(&[page(0., (100., 100.), "First"), page(200., (100., 80.), "Second")], 96.)
+		.expect("the pages encode");
+	let text = pdf_text(&pdf);
+	let pdf = hayro_syntax::Pdf::new(pdf).expect("the PDF parses");
+	let pages = pdf.pages();
+	assert_eq!(pages.len(), 2);
+
+	// Each page is its region's size in points, drawing only what's within it, moved to put the region's corner at its origin
+	for (page, (width, height), color, other_color) in [(&pages[0], (75., 75.), "1 0 0 rg", "0 0 1 rg"), (&pages[1], (75., 60.), "0 0 1 rg", "1 0 0 rg")] {
+		let media_box = page.media_box();
+		assert!((media_box.x1 - media_box.x0 - width).abs() < 1e-3, "{media_box:?}");
+		assert!((media_box.y1 - media_box.y0 - height).abs() < 1e-3, "{media_box:?}");
+
+		let content = String::from_utf8_lossy(page.page_stream().expect("the page has content"));
+		assert!(content.contains(color) && content.contains("10 10 m"), "{content}");
+		assert!(!content.contains(other_color), "{content}");
+	}
+
+	assert!(text.contains("(First)") && text.contains("(Second)"), "{text}");
+	assert!(scene.encode_pdf_pages(&[], 96.).is_err());
+}
+
+#[test]
 fn paths_keep_every_kind_of_segment() {
 	let mut path = BezPath::new();
 	path.move_to((10., 10.));
