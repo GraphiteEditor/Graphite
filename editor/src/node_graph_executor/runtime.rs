@@ -359,7 +359,8 @@ impl NodeRuntime {
 		let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.executor.tree().eval_tagged_value(self.executor.output(), &context))) {
 			Ok(Ok(Poll::Pending)) => ExecutionResult::Pending,
 			Ok(Ok(Poll::Partial(_))) if render_config.for_export => ExecutionResult::Pending,
-			Ok(Ok(Poll::Final(value) | Poll::Partial(value))) => ExecutionResult::Value(value),
+			Ok(Ok(Poll::Partial(value))) => ExecutionResult::Partial(value),
+			Ok(Ok(Poll::Final(value))) => ExecutionResult::Value(value),
 			Ok(Ok(Poll::Fallback(boxed))) => {
 				let (value, error) = *boxed;
 				ExecutionResult::Fallback(value, self.resolve_errors(&error))
@@ -504,7 +505,9 @@ impl NodeRuntime {
 
 impl ExecutionResult {
 	fn render_output(&mut self) -> Option<&mut RenderOutputType> {
-		let (Self::Value(value) | Self::Fallback(value, _)) = self else { return None };
+		let (Self::Value(value) | Self::Partial(value) | Self::Fallback(value, _)) = self else {
+			return None;
+		};
 		let TaggedValue::RenderOutput(RenderOutput { data, .. }) = value else { return None };
 		Some(data)
 	}
@@ -698,6 +701,7 @@ impl InspectState {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::test_utils::EditorTestUtils;
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
@@ -717,12 +721,17 @@ mod tests {
 
 	/// Sends a network update and a request to evaluate it, as the editor does for a change to the graph.
 	fn send_update(editor: &mut EditorTestUtils) {
+		send_update_at(editor, UVec2::ONE);
+	}
+
+	/// Sends a network update and a request to evaluate it at a viewport of `resolution` pixels.
+	fn send_update_at(editor: &mut EditorTestUtils, resolution: UVec2) {
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
 		let document = documents.get_mut(&document_id).unwrap();
 		executor
-			.submit_node_graph_evaluation(document, document_id, UVec2::ONE, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
+			.submit_node_graph_evaluation(document, document_id, resolution, 1., Default::default(), Vec::new(), true, DVec2::ZERO)
 			.unwrap();
 	}
 
@@ -886,6 +895,25 @@ mod tests {
 
 		editor.runtime.run().await;
 		assert!(!evaluated(&mut editor), "the requests of the older network updates evaluated again");
+	}
+
+	/// A trace renders partial frames until it is done.
+	#[tokio::test]
+	async fn a_trace_renders_partial_frames() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
+		editor.draw_rect(0., 0., 512., 512.).await;
+		vectorize_layer(&mut editor);
+
+		send_update_at(&mut editor, UVec2::splat(512));
+		editor.runtime.update();
+		editor.runtime.run().await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(
+			messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Partial }),
+			"the trace's frame isn't partial"
+		);
 	}
 
 	#[test]
