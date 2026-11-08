@@ -421,7 +421,7 @@ impl Default for WorkspacePanelLayout {
 									subdivision: PanelLayoutSubdivision::PanelGroup {
 										id: PanelGroupId(1),
 										state: PanelGroupState {
-											tabs: vec![PanelType::Inspector, PanelType::Session],
+											tabs: vec![PanelType::Inspector],
 											active_tab_index: 0,
 										},
 									},
