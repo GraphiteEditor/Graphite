@@ -217,6 +217,9 @@ pub enum DocumentMessage {
 		layers: Vec<NodeId>,
 		layers_missing_details: Vec<NodeId>,
 	},
+	CancelNodeWork {
+		node_id: NodeId,
+	},
 	SetNodePinned {
 		node_id: NodeId,
 		pinned: bool,
