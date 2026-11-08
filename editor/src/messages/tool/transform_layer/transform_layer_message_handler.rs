@@ -345,7 +345,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					responses.add(DocumentMessage::EndTransaction);
 					if let Some(verb) = verb {
 						responses.add(match using_path_tool {
-							true => DocumentMessage::NameInteraction { action: format!("{verb} points") },
+							true => DocumentMessage::NameInteraction { action: format!("{verb} Points") },
 							false => name_layer_action(verb, selected_layers.len()),
 						});
 					}

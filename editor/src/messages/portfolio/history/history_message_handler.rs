@@ -463,18 +463,18 @@ impl Names<'_> {
 				Some(DefinitionIdentifier::ProtoNode(identifier).implementation_name_from_identifier())
 			}
 		};
-		node.attributes().get_typed::<String>(node_attr::ui::DISPLAY_NAME).or_else(reference).unwrap_or_else(|| "a node".into())
+		node.attributes().get_typed::<String>(node_attr::ui::DISPLAY_NAME).or_else(reference).unwrap_or_else(|| "a Node".into())
 	}
 
 	fn node_by_id(&self, id: NodeId) -> String {
-		self.registry.node_instances.get(&id).map(|node| self.node(node)).unwrap_or_else(|| "a node".into())
+		self.registry.node_instances.get(&id).map(|node| self.node(node)).unwrap_or_else(|| "a Node".into())
 	}
 
 	fn input(&self, id: NodeId, index: u32) -> String {
 		let slot = self.registry.node_instances.get(&id).and_then(|node| node.inputs().get(index as usize));
 		slot.and_then(|slot| slot.attributes.get_typed::<String>(node_attr::input::ui::NAME))
 			.map(|name| name.trim().to_string())
-			.unwrap_or_else(|| "an input".into())
+			.unwrap_or_else(|| "a Parameter".into())
 	}
 
 	/// One line for a run of changes, nodes added or removed first since the rest follows from them, then the most frequent kind.
@@ -499,7 +499,7 @@ impl Names<'_> {
 			})
 			.collect();
 		if counts.len() > 2 {
-			parts.push(format!("{} more", counts.len() - 2));
+			parts.push(format!("{} More", counts.len() - 2));
 		}
 		parts.join(", ")
 	}
@@ -513,50 +513,50 @@ impl Names<'_> {
 			RegistryDelta::AddNode { node, .. } => format!("Added {}", self.node(node)),
 			RegistryDelta::RemoveNode { snapshot, .. } => format!("Removed {}", self.node(snapshot)),
 			RegistryDelta::ChangeNodeInput { id, index, .. } => format!("Changed {} of {}", self.input(*id, *index), self.node_by_id(*id)),
-			RegistryDelta::SetNodeInputs { id, .. } => format!("Changed the inputs of {}", self.node_by_id(*id)),
-			RegistryDelta::SetNodeImplementation { id, .. } => format!("Changed what {} does", self.node_by_id(*id)),
+			RegistryDelta::SetNodeInputs { id, .. } => format!("Changed the Parameters of {}", self.node_by_id(*id)),
+			RegistryDelta::SetNodeImplementation { id, .. } => format!("Changed What {} Does", self.node_by_id(*id)),
 			RegistryDelta::ChangeNodeAttribute { id, delta } => match delta.key.as_str() {
-				node_attr::ui::POSITION => format!("Moved {} in the graph", self.node_by_id(*id)),
+				node_attr::ui::POSITION => format!("Moved {} in the Graph", self.node_by_id(*id)),
 				node_attr::ui::DISPLAY_NAME => match &delta.value {
 					Some(Value::Str(name)) => {
 						let layer = self.registry.node_instances.get(id).and_then(|node| node.attributes().get_typed::<bool>(node_attr::ui::IS_LAYER));
-						let term = if layer == Some(true) { "layer" } else { "node" };
+						let term = if layer == Some(true) { "Layer" } else { "Node" };
 						format!("Renamed a {term} to {name}")
 					}
-					_ => format!("Reset the name of {}", self.node_by_id(*id)),
+					_ => format!("Reset the Name of {}", self.node_by_id(*id)),
 				},
 				node_attr::ui::LOCKED => toggled(delta, "Locked", "Unlocked", *id),
 				node_attr::ui::PINNED => toggled(delta, "Pinned", "Unpinned", *id),
-				node_attr::ui::IS_LAYER => toggled(delta, "Made a layer of", "Made a node of", *id),
+				node_attr::ui::IS_LAYER => toggled(delta, "Made a Layer of", "Made a Node of", *id),
 				node_attr::VISIBLE => toggled(delta, "Showed", "Hid", *id),
-				key => format!("Set node {key}"),
+				key => format!("Set Node {key}"),
 			},
-			RegistryDelta::ChangeNodeInputAttribute { delta, .. } => format!("Set input {}", delta.key),
-			RegistryDelta::SetNetworkExport { .. } => "Changed an output".into(),
+			RegistryDelta::ChangeNodeInputAttribute { delta, .. } => format!("Set Parameter {}", delta.key),
+			RegistryDelta::SetNetworkExport { .. } => "Changed an Output".into(),
 			RegistryDelta::ChangeNetworkAttribute { delta, .. } => match delta.key.as_str() {
-				session_attr::network::PREVIEWING => "Changed the previewed node".into(),
-				network_attr::PINNED_ORDER => "Reordered the pinned nodes".into(),
-				key => format!("Set network {key}"),
+				session_attr::network::PREVIEWING => "Changed the Previewed Node".into(),
+				network_attr::PINNED_ORDER => "Reordered the Pinned Nodes".into(),
+				key => format!("Set Subgraph {key}"),
 			},
-			RegistryDelta::AddNetwork { .. } => "Added a network".into(),
-			RegistryDelta::RemoveNetwork { .. } => "Removed a network".into(),
-			RegistryDelta::AddResource { .. } => "Added a resource".into(),
-			RegistryDelta::SetResourceHash { .. } => "Updated a resource".into(),
-			RegistryDelta::RemoveResource { .. } => "Removed a resource".into(),
-			RegistryDelta::AddSource { .. } | RegistryDelta::RemoveSource { .. } => "Changed where a resource comes from".into(),
-			RegistryDelta::RegisterPeer { .. } => "Joined the document".into(),
+			RegistryDelta::AddNetwork { .. } => "Added a Subgraph".into(),
+			RegistryDelta::RemoveNetwork { .. } => "Removed a Subgraph".into(),
+			RegistryDelta::AddResource { .. } => "Added a Resource".into(),
+			RegistryDelta::SetResourceHash { .. } => "Updated a Resource".into(),
+			RegistryDelta::RemoveResource { .. } => "Removed a Resource".into(),
+			RegistryDelta::AddSource { .. } | RegistryDelta::RemoveSource { .. } => "Changed Where a Resource Comes From".into(),
+			RegistryDelta::RegisterPeer { .. } => "Joined the Document".into(),
 			RegistryDelta::ChangeDocumentAttribute { delta } => match delta.key.as_str() {
-				session_attr::doc::PTZ => "Moved the view".into(),
-				session_attr::doc::RENDER_MODE => "Changed the view mode".into(),
-				session_attr::doc::OVERLAYS => "Changed the overlays".into(),
-				session_attr::doc::RULERS_VISIBLE => "Showed or hid the rulers".into(),
-				session_attr::doc::SNAPPING => "Changed snapping".into(),
-				session_attr::doc::COLLAPSED => "Expanded or collapsed layers".into(),
-				key => format!("Set document {key}"),
+				session_attr::doc::PTZ => "Moved the View".into(),
+				session_attr::doc::RENDER_MODE => "Changed the View Mode".into(),
+				session_attr::doc::OVERLAYS => "Changed the Overlays".into(),
+				session_attr::doc::RULERS_VISIBLE => "Showed or Hid the Rulers".into(),
+				session_attr::doc::SNAPPING => "Changed Snapping".into(),
+				session_attr::doc::COLLAPSED => "Expanded or Collapsed Layers".into(),
+				key => format!("Set Document {key}"),
 			},
-			RegistryDelta::Merge { .. } => "Joined two lines of work".into(),
-			RegistryDelta::Meta => "Marked a step".into(),
-			RegistryDelta::Other(_) => "Changed something".into(),
+			RegistryDelta::Merge { .. } => "Joined Two Lines of Work".into(),
+			RegistryDelta::Meta => "Marked a Step".into(),
+			RegistryDelta::Other(_) => "Changed Something".into(),
 		}
 	}
 }
@@ -628,9 +628,9 @@ mod tests {
 		let summarize = |kinds: &[&RegistryDelta]| names.summarize(kinds.iter().copied());
 		let register = RegistryDelta::RegisterPeer { peer: PeerId(1), user: UserId(1) };
 		let merge = RegistryDelta::Merge { extra_parents: Vec::new() };
-		assert_eq!(summarize(&[&RegistryDelta::Meta, &RegistryDelta::Meta]), "Marked a step ×2");
-		assert_eq!(summarize(&[&register, &RegistryDelta::Meta]), "Joined the document, Marked a step");
-		assert_eq!(summarize(&[&RegistryDelta::Meta, &merge, &register]), "Joined two lines of work");
+		assert_eq!(summarize(&[&RegistryDelta::Meta, &RegistryDelta::Meta]), "Marked a Step ×2");
+		assert_eq!(summarize(&[&register, &RegistryDelta::Meta]), "Joined the Document, Marked a Step");
+		assert_eq!(summarize(&[&RegistryDelta::Meta, &merge, &register]), "Joined Two Lines of Work");
 	}
 
 	#[test]
@@ -658,7 +658,7 @@ mod tests {
 			id,
 			delta: attribute(node_attr::ui::POSITION),
 		};
-		assert_eq!(names.summarize([&description, &output_names, &description, &moved]), "Moved a node in the graph");
+		assert_eq!(names.summarize([&description, &output_names, &description, &moved]), "Moved a Node in the Graph");
 	}
 
 	#[tokio::test]
@@ -673,7 +673,7 @@ mod tests {
 		let gdd = editor.active_document_mut().storage_mut().expect("every document has a working copy");
 		gdd.retire_pending_interaction().expect("retire");
 		let actions: Vec<&str> = gdd.session().history().filter_map(|delta| delta.action()).collect();
-		assert_eq!(actions, ["Drew a rectangle", "Moved a layer"]);
+		assert_eq!(actions, ["Drew a Rectangle", "Moved a Layer"]);
 	}
 
 	#[tokio::test]
@@ -689,7 +689,7 @@ mod tests {
 		let gdd = document.storage().expect("every document has a working copy");
 		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
-		assert_eq!(labels, ["Drew a rectangle", "Drew a rectangle"], "the open draw and the closed one waiting to retire");
+		assert_eq!(labels, ["Drew a Rectangle", "Drew a Rectangle"], "the open draw and the closed one waiting to retire");
 	}
 
 	#[tokio::test]
@@ -706,7 +706,7 @@ mod tests {
 		let gdd = document.storage().expect("every document has a working copy");
 		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
-		assert_eq!(labels, ["Deleted a layer", "Drew a rectangle"]);
+		assert_eq!(labels, ["Deleted a Layer", "Drew a Rectangle"]);
 	}
 
 	#[tokio::test]
@@ -735,7 +735,7 @@ mod tests {
 		let gdd = document.storage().expect("every document has a working copy");
 		let state = panel_state(gdd, document.declarations(), PAGE, &BTreeSet::new(), None);
 		let labels: Vec<&str> = state.progress.iter().map(|row| row.label.as_str()).collect();
-		assert!(labels.contains(&"Added an image"), "{labels:?}");
+		assert!(labels.contains(&"Added an Image"), "{labels:?}");
 	}
 
 	/// Bringing a deletion back onto a stack that grew on the deleted layer since removes the layer and reconnects the

@@ -170,8 +170,8 @@ impl MessageHandler<ClipboardMessage, ClipboardMessageContext<'_>> for Clipboard
 				let nodes = deleted_with_children.len() + chain_nodes.len();
 				responses.add(match (layers.len() == nodes, nodes) {
 					(true, _) => name_layer_action("Cut", nodes),
-					(false, 1) => DocumentMessage::NameInteraction { action: "Cut a node".into() },
-					(false, count) => DocumentMessage::NameInteraction { action: format!("Cut {count} nodes") },
+					(false, 1) => DocumentMessage::NameInteraction { action: "Cut a Node".into() },
+					(false, count) => DocumentMessage::NameInteraction { action: format!("Cut {count} Nodes") },
 				});
 				if !deleted_with_children.is_empty() {
 					responses.add(NodeGraphMessage::DeleteNodes {

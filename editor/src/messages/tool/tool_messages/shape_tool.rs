@@ -1100,7 +1100,7 @@ impl Fsm for ShapeToolFsmState {
 					) && clicked_on_shape_endpoints(layer, document, input, tool_data)
 				{
 					responses.add(DocumentMessage::StartTransaction);
-					responses.add(DocumentMessage::NameInteraction { action: "Moved a line end".into() });
+					responses.add(DocumentMessage::NameInteraction { action: "Moved a Line End".into() });
 
 					let moving = Moving {
 						layers: vec![layer],
@@ -1167,8 +1167,8 @@ impl Fsm for ShapeToolFsmState {
 				tool_data.data.start(snap_session, SnapView::new(document, *document_id, input), drawn);
 
 				responses.add(DocumentMessage::StartTransaction);
-				let shape = format!("{:?}", tool_data.current_shape).to_lowercase();
-				let article = if shape.starts_with(['a', 'e', 'i', 'o', 'u']) { "an" } else { "a" };
+				let shape = format!("{:?}", tool_data.current_shape);
+				let article = if shape.starts_with(['A', 'E', 'I', 'O', 'U']) { "an" } else { "a" };
 				responses.add(DocumentMessage::NameInteraction {
 					action: format!("Drew {article} {shape}"),
 				});

@@ -548,7 +548,7 @@ impl TextToolData {
 		self.layer = layer;
 		if self.load_layer_text_node(document, fonts).is_some() {
 			responses.add(DocumentMessage::AddTransaction);
-			responses.add(DocumentMessage::NameInteraction { action: "Edited text".into() });
+			responses.add(DocumentMessage::NameInteraction { action: "Edited Text".into() });
 
 			self.set_editing(true, fonts, responses);
 
@@ -568,7 +568,7 @@ impl TextToolData {
 	fn new_text(&mut self, document: &DocumentMessageHandler, editing_text: EditingText, fonts: &FontsMessageHandler, responses: &mut VecDeque<Message>) {
 		self.new_text = String::new();
 		responses.add(DocumentMessage::AddTransaction);
-		responses.add(DocumentMessage::NameInteraction { action: "Added text".into() });
+		responses.add(DocumentMessage::NameInteraction { action: "Added Text".into() });
 
 		self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
 
@@ -767,7 +767,7 @@ impl Fsm for TextToolFsmState {
 
 				if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
-					responses.add(DocumentMessage::NameInteraction { action: "Resized a text box".into() });
+					responses.add(DocumentMessage::NameInteraction { action: "Resized a Text Box".into() });
 
 					// Set the original transform
 					if let Some(id) = selected {

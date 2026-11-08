@@ -1049,7 +1049,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let layer_id = LayerNodeIdentifier::new_unchecked(layer_node_id);
 
 				responses.add(DocumentMessage::StartTransaction);
-				responses.add(DocumentMessage::NameInteraction { action: "Added an image".into() });
+				responses.add(DocumentMessage::NameInteraction { action: "Added an Image".into() });
 
 				let layer = graph_modification_utils::new_image_layer(data, layer_node_id, layer_parent, responses);
 

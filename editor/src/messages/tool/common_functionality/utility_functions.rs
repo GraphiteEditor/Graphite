@@ -17,12 +17,12 @@ use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, VectorGeometry, VectorModificationType};
 use kurbo::{CubicBez, DEFAULT_ACCURACY, ParamCurve, PathSeg, Point, Shape};
 
-/// Names the open interaction after what a tool did to `count` layers, such as "Moved 2 layers".
+/// Names the open interaction after what a tool did to `count` layers, such as "Moved 2 Layers".
 pub fn name_layer_action(verb: &str, count: usize) -> DocumentMessage {
 	let action = match count {
 		0 => verb.to_string(),
-		1 => format!("{verb} a layer"),
-		count => format!("{verb} {count} layers"),
+		1 => format!("{verb} a Layer"),
+		count => format!("{verb} {count} Layers"),
 	};
 	DocumentMessage::NameInteraction { action }
 }

@@ -455,9 +455,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if !node_ids.is_empty() {
 					responses.add(match (layers == node_ids.len(), node_ids.len()) {
 						(true, _) => name_layer_action("Deleted", layers),
-						(false, 1) => DocumentMessage::NameInteraction { action: "Deleted a node".into() },
+						(false, 1) => DocumentMessage::NameInteraction { action: "Deleted a Node".into() },
 						(false, count) => DocumentMessage::NameInteraction {
-							action: format!("Deleted {count} nodes"),
+							action: format!("Deleted {count} Nodes"),
 						},
 					});
 				}

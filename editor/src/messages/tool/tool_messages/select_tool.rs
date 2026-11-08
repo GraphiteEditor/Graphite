@@ -1840,7 +1840,7 @@ impl Fsm for SelectToolFsmState {
 				let response = if drag_too_small { DocumentMessage::AbortTransaction } else { DocumentMessage::EndTransaction };
 				if !drag_too_small {
 					responses.add(match self {
-						SelectToolFsmState::DraggingPivot => DocumentMessage::NameInteraction { action: "Moved the pivot".into() },
+						SelectToolFsmState::DraggingPivot => DocumentMessage::NameInteraction { action: "Moved the Pivot".into() },
 						SelectToolFsmState::RotatingBounds => name_layer_action("Rotated", tool_data.layers_dragging.len()),
 						SelectToolFsmState::SkewingBounds { .. } => name_layer_action("Skewed", tool_data.layers_dragging.len()),
 						_ => name_layer_action("Resized", tool_data.layers_dragging.len()),
