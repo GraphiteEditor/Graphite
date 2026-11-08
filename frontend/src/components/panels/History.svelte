@@ -80,7 +80,7 @@
 				<span class="rail"
 					>{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span
 				>
-				{#if row.thumbnail}<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} />{/if}
+				<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} />
 				<div class="text">
 					<span class="label">{row.label || (row.open ? "In Progress" : "Waiting to Enter History")}</span>
 					<span class="meta">
@@ -109,7 +109,7 @@
 				<span class="rail"
 					>{#if $history.collaborating || !row.mine}<span class="dot" style:background={row.color}></span>{/if}</span
 				>
-				{#if row.thumbnail}<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} />{/if}
+				<HistoryShot thumbnail={row.thumbnail} images={$thumbnails} />
 				<div class="text">
 					{#if renamingId === row.id}
 						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
