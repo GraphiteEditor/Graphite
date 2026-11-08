@@ -3,6 +3,7 @@
 	import LayoutCol from "/src/components/layout/LayoutCol.svelte";
 	import IconButton from "/src/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
+	import ProgressBar from "/src/components/widgets/labels/ProgressBar.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
 	import NodeSection from "/src/components/widgets/NodeSection.svelte";
 	import WidgetSpan from "/src/components/widgets/WidgetSpan.svelte";
@@ -93,6 +94,18 @@
 				<div class="expand-arrow"></div>
 			</div>
 			<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description}>{widgetData.name}</TextLabel>
+			{#if typeof widgetData.progress === "number"}
+				<ProgressBar fraction={widgetData.progress} label={`${Math.floor(Math.min(Math.max(widgetData.progress, 0), 1) * 100)}%`} />
+				<IconButton
+					icon="CloseX"
+					tooltipDescription="Stop the work in progress, keeping its result so far."
+					size={24}
+					action={(e) => {
+						editor.cancelNodeWork(widgetData.id);
+						e?.stopPropagation();
+					}}
+				/>
+			{/if}
 			<IconButton
 				icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
 				hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
@@ -460,6 +473,12 @@
 				flex: 0 1 auto;
 				overflow: hidden;
 				text-overflow: ellipsis;
+			}
+
+			.progress-bar {
+				flex: 1 1 auto;
+				min-width: 0;
+				margin-left: 8px;
 			}
 		}
 

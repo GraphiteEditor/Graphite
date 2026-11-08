@@ -1891,7 +1891,7 @@
 					position: absolute;
 					left: 0;
 					bottom: 0;
-					height: 2px;
+					height: 3px;
 					background: var(--color-e-nearwhite);
 					transition: width 0.1s linear;
 				}
