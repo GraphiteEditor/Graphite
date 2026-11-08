@@ -288,7 +288,7 @@ Finish with `cargo run migration check` and `cargo test -p migration-formats`. T
 
 ## Regression corpus
 
-The [corpus](https://github.com/tagtraumen/graphite-corpus) is a separate repository of real documents and the images they should render. CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
+The [corpus](https://github.com/GraphiteEditor/document-corpus) is a separate repository of real documents and the images they should render. CI checks every pull request against it. A correct migration keeps a document looking the same, so `check` should still pass with your change:
 
 ```sh
 cargo run regression --corpus <directory> check
