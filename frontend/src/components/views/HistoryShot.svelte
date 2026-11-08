@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { HistoryThumbnail } from "/wrapper/pkg/graphite_wasm_wrapper";
 
-	export let thumbnail: HistoryThumbnail;
+	// An empty slot until the step is captured, so every row keeps one
+	export let thumbnail: HistoryThumbnail | undefined;
 	// The images the frontend received, by ID
 	export let images: Record<string, string>;
 	export let large = false;
@@ -9,9 +10,10 @@
 
 <span class="history-shot" class:large>
 	<span class="image" data-tooltip-label="The document once this step was done">
-		{#if images[thumbnail.whole]}<img src={images[thumbnail.whole]} alt="" />{/if}
+		{#if thumbnail && images[thumbnail.whole]}<img src={images[thumbnail.whole]} alt="" />{/if}
 	</span>
-	{#if thumbnail.detail}
+	<!-- The close-up is shown large only, beside the whole document, so a row never has two -->
+	{#if large && thumbnail?.detail}
 		<span class="image" data-tooltip-label="What this step changed, close up" data-tooltip-description="Green was added, red removed, and yellow changed.">
 			{#if images[thumbnail.detail]}<img src={images[thumbnail.detail]} alt="" />{/if}
 		</span>
