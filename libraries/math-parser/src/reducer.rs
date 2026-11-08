@@ -1,11 +1,13 @@
 use crate::ast::BinaryOp;
 use crate::constants::{Builtin, BuiltinFunction, builtin_function};
 use crate::context::{NothingMap, ValueProvider};
-use crate::executer::settle_matrix;
+use crate::documentation::BUILTIN_FUNCTIONS;
+use crate::executer::{EvalError, settle_matrix};
 use crate::lexer::{Lexer, Token};
 use crate::matrix::Matrix;
 use crate::object::Object;
 use crate::parser::ParseError;
+use crate::quantity::{self, Quantity, UnitRule, unit_rule};
 use crate::value::{Number, Value};
 use std::cmp::Ordering;
 use std::collections::HashSet;
@@ -26,7 +28,12 @@ pub enum Reducer {
 	/// A single n-ary predicate asserting that every pair of items is distinct, like `a != b != c`.
 	ChainDistinct,
 	/// A single call of a variadic function over all items, like `min(a, b, c)`.
-	Function { function: BuiltinFunction, over_matrices: Option<MatrixFunction> },
+	Function {
+		function: BuiltinFunction,
+		/// The function's name, which decides how it treats the units of its items.
+		name: &'static str,
+		over_matrices: Option<MatrixFunction>,
+	},
 }
 
 /// The action of a variadic function across matrices: the mean is pointwise and the count counts, while the others need an
@@ -72,6 +79,7 @@ pub fn classify_reducer(source: &str, bindings: impl ValueProvider) -> Option<Re
 			match builtin_function(bare_name)? {
 				Builtin::Values { function, variadic: true } => Reducer::Function {
 					function,
+					name: BUILTIN_FUNCTIONS.iter().find(|documented| documented.name == bare_name)?.name,
 					over_matrices: matrix_function(bare_name),
 				},
 				_ => return None,
@@ -265,6 +273,107 @@ impl Reducer {
 		results.resize(items.len(), None);
 		results
 	}
+
+	/// Evaluates this reducer across items measured in units, carrying them as the written-out expression would, so `+` across lengths
+	/// gives a length. Gives `None` where [`Self::evaluate`] would, and an error where the units don't fit, like `gcd` across lengths.
+	pub fn evaluate_quantities(&self, items: &[Quantity], pixels_per_inch: f64) -> Result<Option<Quantity>, EvalError> {
+		// Plain items skip the unit arithmetic, the common case
+		if items.iter().all(|item| item.is_plain()) {
+			let values: Vec<Value> = items.iter().map(|item| item.value).collect();
+			return Ok(self.evaluate(&values).map(Quantity::plain));
+		}
+		if items.iter().any(|item| item.number().is_nan()) {
+			return Ok(None);
+		}
+
+		// Items take canonical form first, as in `evaluate_unsettled`
+		let items: Vec<Quantity> = items.iter().map(|item| Quantity::new(Value::Number(item.number().canonical()), item.unit)).collect();
+		let result = match self {
+			Reducer::FoldLeft(op) => {
+				let Some((first, rest)) = items.split_first() else {
+					return Ok(op.identity_element().map(Quantity::plain));
+				};
+
+				// A lone item meets no operator, so logic checks it is a truth value here, as `100%` is but `50%` isn't
+				let first = match op {
+					BinaryOp::And | BinaryOp::Or => {
+						let truth = first.plain_if_dimensionless();
+						if !truth.is_plain() || truth.number().as_bool().is_none() {
+							return Err(EvalError::NotATruthValue);
+						}
+						truth
+					}
+					_ => *first,
+				};
+				rest.iter().try_fold(first, |accumulated, item| quantity::binary_op(accumulated, *op, *item, pixels_per_inch))?
+			}
+
+			Reducer::FoldRight(op) => {
+				let Some((last, rest)) = items.split_last() else { return Ok(None) };
+				rest.iter().rev().try_fold(*last, |accumulated, item| quantity::binary_op(*item, *op, accumulated, pixels_per_inch))?
+			}
+
+			// A relation holds alike in every unit the items convert into, so they are compared as plain numbers in one
+			Reducer::ChainAdjacent(_) | Reducer::ChainDistinct => {
+				let (values, _) = quantity::all_in_common_unit(&items, "compared with", pixels_per_inch)?;
+				return Ok(self.evaluate(&values).map(Quantity::plain));
+			}
+
+			Reducer::Function { function, name, .. } => quantity::run_builtin(name, unit_rule(name).unwrap_or(UnitRule::Plain), *function, &items, pixels_per_inch)?,
+		};
+
+		Ok(settle_quantity(result))
+	}
+
+	/// Evaluates this reducer across each leading run of the items, as [`Self::evaluate_quantities`] does for each run, though a comparison
+	/// brings the whole list into one unit first. Once a fold step fails, every longer run gives `None` after that first error.
+	pub fn evaluate_running_quantities(&self, items: &[Quantity], pixels_per_inch: f64) -> Vec<Result<Option<Quantity>, EvalError>> {
+		if items.iter().all(|item| item.is_plain()) {
+			let values: Vec<Value> = items.iter().map(|item| item.value).collect();
+			return self.evaluate_running(&values).into_iter().map(|result| Ok(result.map(Quantity::plain))).collect();
+		}
+
+		match self {
+			// O(n) by folding each item into the previous run's result
+			Reducer::FoldLeft(op) => {
+				let mut accumulated: Option<Quantity> = None;
+				let mut failed = false;
+				items
+					.iter()
+					.enumerate()
+					.map(|(index, item)| {
+						if failed {
+							return Ok(None);
+						}
+
+						let item = Quantity::new(Value::Number(item.number().canonical()), item.unit);
+						let step = match (index, accumulated) {
+							(0, _) => self.evaluate_quantities(&[item], pixels_per_inch),
+							(_, Some(previous)) if !item.number().is_nan() => quantity::binary_op(previous, *op, item, pixels_per_inch).map(settle_quantity),
+							_ => Ok(None),
+						};
+						accumulated = step.as_ref().ok().copied().flatten();
+						failed = accumulated.is_none();
+						step
+					})
+					.collect()
+			}
+
+			// O(n) by comparing the items as plain numbers in one unit
+			Reducer::ChainAdjacent(_) | Reducer::ChainDistinct => match quantity::all_in_common_unit(items, "compared with", pixels_per_inch) {
+				Ok((values, _)) => self.evaluate_running(&values).into_iter().map(|result| Ok(result.map(Quantity::plain))).collect(),
+				Err(error) => std::iter::once(Err(error)).chain(std::iter::repeat_with(|| Ok(None))).take(items.len()).collect(),
+			},
+
+			// O(n²) since `^` groups from the right and a variadic builtin reads its whole list, so no run builds on a shorter one's result
+			Reducer::FoldRight(_) | Reducer::Function { .. } => (1..=items.len()).map(|count| self.evaluate_quantities(&items[..count], pixels_per_inch)).collect(),
+		}
+	}
+}
+
+/// A reduction's result in canonical form, or `None` for an indeterminate result, as [`settle`] gives for plain values.
+fn settle_quantity(result: Quantity) -> Option<Quantity> {
+	settle(result.value).map(|value| Quantity::new(value, result.unit))
 }
 
 /// A reducer's result in canonical form, or `None` for an indeterminate result, since no operation produces NaN.
@@ -360,6 +469,7 @@ mod tests {
 	use crate::ast;
 	use crate::context::{EvalContext, NothingMap, ValueMap};
 	use crate::quaternion::Quaternion;
+	use crate::units::Unit;
 	use crate::value::Complex;
 	use std::collections::HashMap;
 
@@ -579,6 +689,55 @@ mod tests {
 			for (list_index, list) in lists.into_iter().enumerate() {
 				let expected: Vec<Option<Object>> = (1..=list.len()).map(|count| reducer.evaluate_matrices(&list[..count])).collect();
 				assert_eq!(reducer.evaluate_running_matrices(list), expected, "`{source}` over list {list_index}");
+			}
+		}
+	}
+
+	fn in_unit(unit: &str, values: &[f64]) -> Vec<Quantity> {
+		let unit = Unit::named(unit).unwrap();
+		values.iter().map(|&value| Quantity::new(Value::from_f64(value), unit)).collect()
+	}
+
+	#[test]
+	fn measured_items_carry_their_units() {
+		let reduce = |source: &str, items: &[Quantity]| classify_reducer(source, NothingMap).unwrap().evaluate_quantities(items, 96.);
+		let pixels = Unit::named("px").unwrap();
+
+		let total = reduce("+", &in_unit("px", &[1., 2., 3.])).unwrap().unwrap();
+		assert_eq!(total, Quantity::new(Value::from_i64(6), pixels));
+		assert_eq!(reduce("max", &in_unit("px", &[4., 9., 2.])).unwrap().unwrap(), Quantity::new(Value::from_i64(9), pixels));
+		assert_eq!(reduce("*", &in_unit("px", &[2., 3.])).unwrap().unwrap().unit, pixels.power(2.).unwrap());
+		assert_eq!(reduce("/", &in_unit("px", &[6., 3.])).unwrap().unwrap(), Quantity::plain(Value::from_i64(2)));
+
+		// Counts and relations are plain, whatever the items measure
+		assert_eq!(reduce("count", &in_unit("px", &[1., 2.])).unwrap().unwrap(), Quantity::plain(Value::from_i64(2)));
+		assert_eq!(reduce("<", &in_unit("rad", &[1., 2., 3.])).unwrap().unwrap(), Quantity::plain(Value::from_bool(true)));
+		assert_eq!(reduce("!=", &in_unit("rad", &[1., 2., 1.])).unwrap().unwrap(), Quantity::plain(Value::from_bool(false)));
+
+		// Items in different units of one dimension meet in a common unit, as `1in + 1px` does
+		let mixed = [in_unit("in", &[1.]), in_unit("px", &[1.])].concat();
+		assert_eq!(reduce("+", &mixed).unwrap().unwrap(), Quantity::new(Value::from_i64(97), pixels));
+
+		// A reduction that takes only plain numbers refuses measured items
+		assert!(reduce("gcd", &in_unit("px", &[2., 4.])).is_err());
+		assert!(reduce("&&", &in_unit("px", &[1.])).is_err());
+		assert!(reduce("^", &in_unit("px", &[2., 3.])).is_err());
+		assert_eq!(reduce("-", &[]).unwrap(), None);
+	}
+
+	#[test]
+	fn running_measured_results_match_each_leading_run() {
+		let lists = [
+			in_unit("px", &[3., 1., 4., 1., 5.]),
+			in_unit("rad", &[0.5, 2., 0., 2.]),
+			[in_unit("in", &[1.]), in_unit("px", &[2., 3.])].concat(),
+		];
+		for source in ["+", "-", "*", "/", "<", "==", "!=", "min", "max", "mean", "count", "gcd", "&&", "^"] {
+			let reducer = classify_reducer(source, NothingMap).unwrap();
+			for list in &lists {
+				let expected: Vec<Option<Quantity>> = (1..=list.len()).map(|count| reducer.evaluate_quantities(&list[..count], 96.).ok().flatten()).collect();
+				let running: Vec<Option<Quantity>> = reducer.evaluate_running_quantities(list, 96.).into_iter().map(|result| result.ok().flatten()).collect();
+				assert_eq!(running, expected, "`{source}` over {list:?}");
 			}
 		}
 	}

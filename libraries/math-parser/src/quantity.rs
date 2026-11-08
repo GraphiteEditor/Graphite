@@ -162,7 +162,7 @@ fn in_common_unit(lhs: Quantity, rhs: Quantity, verb: &'static str, pixels_per_i
 }
 
 /// Brings any count of operands into the unit a sum of them would be measured in, as `min`, `max`, and the statistics take them.
-fn all_in_common_unit(operands: &[Quantity], verb: &'static str, pixels_per_inch: f64) -> Result<(Vec<Value>, Unit), EvalError> {
+pub(crate) fn all_in_common_unit(operands: &[Quantity], verb: &'static str, pixels_per_inch: f64) -> Result<(Vec<Value>, Unit), EvalError> {
 	if operands.iter().all(|operand| operand.is_plain()) {
 		return Ok((operands.iter().map(|operand| operand.value).collect(), Unit::NONE));
 	}
