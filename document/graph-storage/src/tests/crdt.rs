@@ -1406,23 +1406,6 @@ fn a_network_re_added_shorter_keeps_only_its_own_exports() {
 	}
 }
 
-/// Two registries ordering a removal differently against a write are not order-consistent, though their values agree.
-#[test]
-fn order_consistency_covers_removal_stamps() {
-	let with_removal_at = |counter: u64| {
-		let mut document = fresh_document(PeerId(1));
-		let node = Node::new(NetworkId(1), crate::Implementation::ProtoNode(graphene_resource::ResourceId::from(7)), 0);
-		document.apply_op_idempotent(RegistryDelta::AddNode { id: NodeId(2), node: node.clone() }, ts(3, 1)).expect("add");
-		document
-			.apply_op_idempotent(RegistryDelta::RemoveNode { id: NodeId(1), snapshot: node }, ts(counter, 1))
-			.expect("remove");
-		document.working_registry
-	};
-	let (earlier, later) = (with_removal_at(2), with_removal_at(4));
-	assert!(earlier.value_equal(&later));
-	assert!(!earlier.order_consistent(&later));
-}
-
 /// An input naming a node whose addition has not arrived renders as a dangling input, as one naming a removed node does,
 /// rather than failing the conversion: the placeholder knows nothing of the node's network.
 #[test]

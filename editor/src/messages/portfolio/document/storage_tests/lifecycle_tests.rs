@@ -4,6 +4,7 @@ use crate::messages::frontend::utility_types::PersistedState;
 use crate::messages::portfolio::document_storage_io::document_key;
 use crate::messages::prelude::*;
 use crate::test_utils::EditorTestUtils;
+use document_container::archive::ArchiveFormat;
 use document_container::{AnyContainer, AsyncContainer};
 
 fn dispatch(editor: &mut EditorTestUtils, message: impl Into<Message>) -> Vec<FrontendMessage> {
@@ -118,20 +119,22 @@ async fn legacy_only_container_gets_storage() {
 }
 
 #[tokio::test]
-async fn legacy_save_format_still_keeps_a_working_copy() {
+async fn saving_writes_a_zip_archive_with_the_graphite_extension() {
 	let mut editor = EditorTestUtils::create();
-	dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled: false });
-	let id = new_document(&mut editor, "Legacy");
+	let id = new_document(&mut editor, "Saved");
 	let container = container(&editor, id).await;
-	assert!(editor.active_document().storage().is_some(), "every document gets a working copy, whatever the save format");
 	assert!(container.exists("manifest.json").await);
 
 	let saved = dispatch(&mut editor, DocumentMessage::SaveDocumentAs);
-	let name = saved.iter().find_map(|message| match message {
-		FrontendMessage::TriggerSaveDocument { name, .. } => Some(name.clone()),
-		_ => None,
-	});
-	assert_eq!(name.as_deref(), Some("Legacy.graphite"));
+	let (name, content) = saved
+		.iter()
+		.find_map(|message| match message {
+			FrontendMessage::TriggerSaveDocument { name, content, .. } => Some((name.clone(), content.clone())),
+			_ => None,
+		})
+		.expect("the save is sent to the frontend");
+	assert_eq!(name, "Saved.graphite");
+	assert_eq!(ArchiveFormat::detect(&content), Some(ArchiveFormat::Zip));
 }
 
 #[tokio::test]
@@ -200,20 +203,6 @@ async fn closing_removes_the_stored_document() {
 	assert!(stored_ids(&editor).await.is_empty());
 	restart(&mut editor, PersistedState::default());
 	assert!(portfolio(&editor).persisted_state_snapshot().documents.is_empty());
-}
-
-#[tokio::test]
-async fn storage_preference_keeps_the_working_copy() {
-	let mut editor = EditorTestUtils::create();
-	let id = new_document(&mut editor, "Toggle");
-	let container = container(&editor, id).await;
-	assert!(editor.active_document().storage().is_some());
-	assert!(container.exists("legacy.graphite").await);
-
-	for enabled in [false, true] {
-		dispatch(&mut editor, PreferencesMessage::SaveAsGdd { enabled });
-		assert!(editor.active_document().storage().is_some(), "the preference only picks the save format");
-	}
 }
 
 #[tokio::test]

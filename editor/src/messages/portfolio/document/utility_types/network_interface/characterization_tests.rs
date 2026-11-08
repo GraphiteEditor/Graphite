@@ -43,9 +43,6 @@ fn new_artboard_message(id: NodeId) -> GraphOperationMessage {
 async fn invariants_hold_through_basic_editing_flow() {
 	let mut editor = EditorTestUtils::create();
 
-	// This test covers the interface's structural invariants. The storage dual-write is out of its scope and asserted by the storage round-trip tests.
-	editor.editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false });
-
 	editor.new_document().await;
 	assert_invariants(&editor, "after opening a new document");
 
@@ -1179,8 +1176,6 @@ fn fed_inputs(editor: &EditorTestUtils, output_connector: &OutputConnector, netw
 async fn dragging_a_dot_out_of_an_import_takes_over_the_wires_the_import_fed() {
 	let mut editor = EditorTestUtils::create();
 	editor.new_document().await;
-	// TODO: Remove once staging the recorded edits stores a node wired to an import inside a subgraph as it is, instead of drifting from it
-	editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false }).await;
 
 	let merge = editor.create_node_by_name_at(merge_definition(), 0, 0).await;
 	let path = vec![merge];
@@ -2997,9 +2992,6 @@ async fn a_press_right_after_dragging_a_wire_out_of_an_output_drags_another_wire
 
 /// Opens a new subgraph with one node inside, which is all that lies between its import and its export.
 async fn subgraph_holding_one_node(editor: &mut EditorTestUtils) -> (NodeId, NodeId) {
-	// TODO: Remove once staging the recorded edits stores a node wired to an import inside a subgraph as it is, instead of drifting from it
-	editor.handle_message(PreferencesMessage::ValidateStorageRoundTrip { enabled: false }).await;
-
 	let subgraph = editor.create_node_by_name_at(DefinitionIdentifier::Network("Custom Node".to_string()), 0, 0).await;
 	editor.handle_message(DocumentMessage::EnterNestedNetwork { node_id: subgraph }).await;
 	editor.handle_message(NodeGraphMessage::AddImport).await;

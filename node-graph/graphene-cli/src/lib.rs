@@ -5,6 +5,7 @@ pub mod dump;
 pub mod export;
 
 use document_container::AnyContainer;
+use document_container::archive::ArchiveFormat;
 use document_container::backends::memory::MemoryBackend;
 use document_format::{GddV1, GddV1Layout};
 use graph_craft::application_io::{PlatformApplicationIo, PlatformEditorApi};
@@ -45,12 +46,12 @@ pub async fn open_gdd(archive: &[u8]) -> Result<GddV1, Box<dyn Error>> {
 	Ok(gdd)
 }
 
-/// Open `path` by extension: `.gdd` as an archive, anything else as a legacy `.graphite` document. `with_names` also collects its display names.
+/// Open `path` by its magic bytes: an archive as a `.gdd`, anything else as a legacy JSON document. `with_names` also collects its display names.
 pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocument, Box<dyn Error>> {
-	let is_gdd = path.extension().is_some_and(|extension| extension.eq_ignore_ascii_case("gdd"));
+	let bytes = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
 
-	if !is_gdd {
-		let document_string = std::fs::read_to_string(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
+	if ArchiveFormat::detect(&bytes).is_none() {
+		let document_string = String::from_utf8(bytes).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
 		return Ok(OpenedDocument {
 			gdd: None,
 			network: load_network(&document_string),
@@ -58,8 +59,7 @@ pub async fn open_document(path: &Path, with_names: bool) -> Result<OpenedDocume
 		});
 	}
 
-	let archive = std::fs::read(path).map_err(|error| format!("Failed to read document {}: {error}", path.display()))?;
-	let gdd = open_gdd(&archive).await?;
+	let gdd = open_gdd(&bytes).await?;
 	let declarations = gdd.declarations(&gdd).await;
 	let (network, nodes, networks) = gdd.registry().to_runtime_with_full_metadata(&declarations, gdd.blobs())?;
 	let names = with_names.then(|| {

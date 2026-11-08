@@ -33,12 +33,6 @@ pub enum PreferencesMessage {
 	DisableUIAcceleration {
 		disable_ui_acceleration: bool,
 	},
-	ValidateStorageRoundTrip {
-		enabled: bool,
-	},
-	SaveAsGdd {
-		enabled: bool,
-	},
 	SaveWithHistory {
 		enabled: bool,
 	},

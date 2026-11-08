@@ -143,7 +143,7 @@ mod tests {
 	}
 
 	/// A `SetExport(None)` truncation leaves a trailing empty slot. Such a network is value-equal to
-	/// the same network without that slot, so the soak oracle doesn't false-report drift.
+	/// the same network without that slot, so comparisons such as the migration replay check do not report it as a change.
 	#[test]
 	fn trailing_empty_export_slot_is_value_equal() {
 		let compact = Network {
