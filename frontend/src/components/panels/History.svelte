@@ -74,20 +74,19 @@
 			<!-- Alone, work not yet in history is shown as an ordinary step -->
 			<div class="row" class:head={pendingHead && index === 0}>
 				<span class="gutter"></span>
-				{#if $history.collaborating}
-					<span class="rail"><span class="dot hollow" style:border-color={row.color}></span></span>
-				{:else}
-					<span class="rail"><span class="dot"></span></span>
-				{/if}
+				<!-- A dot marks whose step it is, so it shows only while there are others -->
+				<span class="rail">{#if $history.collaborating}<span class="dot hollow" style:border-color={row.color}></span>{/if}</span>
 				<div class="text">
-					<span class="label">{row.label || (row.open ? "In progress" : "Waiting to enter history")}</span>
+					<span class="label">{row.label || (row.open ? "In Progress" : "Waiting to Enter History")}</span>
 					<span class="meta">
 						{#if $history.collaborating}<span class="author" class:anonymous={row.anonymous}>{authorLabel(row)}</span> ·{/if}
 						{count(row.ops, "change", "changes")}
 						{#if $history.collaborating}· {row.open ? "in progress" : "not yet in history"}{/if}
 					</span>
+					{#if pendingHead && index === 0}
+						<span class="tags"><span class="marker">Current</span></span>
+					{/if}
 				</div>
-				{#if pendingHead && index === 0}<span class="marker">Now</span>{/if}
 			</div>
 		{/each}
 		{#each $history.rows as row (row.id)}
@@ -102,7 +101,7 @@
 				{:else}
 					<span class="gutter"></span>
 				{/if}
-				<span class="rail"><span class="dot" style:background={$history.collaborating || !row.mine ? row.color : undefined}></span></span>
+				<span class="rail">{#if $history.collaborating || !row.mine}<span class="dot" style:background={row.color}></span>{/if}</span>
 				<div class="text">
 					{#if renamingId === row.id}
 						<span class="editing" use:focusInput on:focusout={() => (renamingId = undefined)}>
@@ -116,8 +115,11 @@
 						{#if row.time}{when(row.time, now)} ·{/if}
 						{count(row.deltas, "change", "changes")}
 					</span>
-					{#if row.tags.length > 0 || taggingId === row.id}
+					{#if row.tags.length > 0 || taggingId === row.id || (row.head && !pendingHead) || row.undone || row.abandoned}
 						<span class="tags">
+							{#if row.head && !pendingHead}<span class="marker">Current</span>{/if}
+							{#if row.undone}<span class="marker">Undone</span>{/if}
+							{#if row.abandoned}<span class="marker">Branch</span>{/if}
 							{#each row.tags as tag (tag)}
 								<span class="tag">{tag}<button class="remove" data-tooltip-label="Remove the tag" on:click={() => editor.tagHistoryInteraction(row.id, tag, false)}>×</button></span>
 							{/each}
@@ -168,15 +170,12 @@
 						/>
 					{/if}
 				</span>
-				{#if row.head && !pendingHead}<span class="marker">Now</span>{/if}
-				{#if row.undone}<span class="marker">Undone</span>{/if}
-				{#if row.abandoned}<span class="marker">Branch</span>{/if}
 			</div>
 			{#if row.expanded}
 				{#each row.details as delta (delta.id)}
 					<div class="row delta" class:undone={row.undone}>
 						<span class="gutter"></span>
-						<span class="rail"><span class="tick"></span></span>
+						<span class="rail"></span>
 						<div class="text">
 							<span class="label">{delta.label}</span>
 							<span class="meta">
@@ -274,22 +273,25 @@
 				height: 16px;
 				padding: 0;
 				border: none;
+				border-radius: 2px;
 				background: none;
-				position: relative;
-				cursor: pointer;
-				color: var(--color-8-uppergray);
-
-				&:hover {
-					color: var(--color-e-nearwhite);
-				}
+				display: flex;
+				align-items: center;
+				justify-content: center;
 
 				&::after {
 					content: "";
-					position: absolute;
-					left: 5px;
-					top: 4px;
-					border: 4px solid transparent;
-					border-left: 5px solid currentColor;
+					width: 8px;
+					height: 8px;
+					background: var(--icon-expand-collapse-arrow);
+				}
+
+				&:hover {
+					background: var(--color-5-dullgray);
+
+					&::after {
+						background: var(--icon-expand-collapse-arrow-hover);
+					}
 				}
 
 				&.expanded::after {
@@ -314,13 +316,6 @@
 						width: 6px;
 						height: 6px;
 					}
-				}
-
-				.tick {
-					width: 4px;
-					height: 4px;
-					border-radius: 50%;
-					background: var(--color-6-lowergray);
 				}
 			}
 
