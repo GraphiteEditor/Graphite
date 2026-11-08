@@ -2456,6 +2456,23 @@ impl DocumentMessageHandler {
 		self.network_interface.document_metadata()
 	}
 
+	/// Each artboard with its name, from the top of the Layers panel down.
+	pub fn artboard_names(&self) -> Vec<(LayerNodeIdentifier, String)> {
+		self.metadata()
+			.all_layers()
+			.filter(|&layer| self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.map(|layer| {
+				let name = self
+					.network_interface
+					.node_metadata(&layer.to_node(), &[])
+					.map(|node| node.persistent_metadata.display_name.clone())
+					.filter(|name| !name.is_empty())
+					.unwrap_or_else(|| "Artboard".to_string());
+				(layer, name)
+			})
+			.collect()
+	}
+
 	pub fn breadcrumb_network_path(&self) -> &[NodeId] {
 		&self.breadcrumb_network_path
 	}

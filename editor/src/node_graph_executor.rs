@@ -13,6 +13,8 @@ use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::color::SRGBA8;
 use graphene_std::list::{Item, List};
 use graphene_std::raster::{CPU, Raster};
+use graphene_std::renderer::encode_pdf_document;
+use graphene_std::renderer::pdf_scene_builder::{PdfPage, PdfScene};
 use graphene_std::renderer::{RenderMetadata, graphic_list_bounding_box};
 use graphene_std::transform::Footprint;
 use graphene_std::vector::{Vector, VectorGeometry, graphic_types, no_paths, path, paths_from_list_row_attributes};
@@ -125,6 +127,8 @@ pub struct NodeGraphExecutor {
 	inspect_context_overrides: ContextOverrides,
 	/// The canvas images the frontend holds, so a render sends only those it lacks.
 	canvas_images_sent: HashSet<u64>,
+	/// The scenes rendered so far for the pages of a PDF of every artboard, by page, until the last one completes the file.
+	pdf_pages: Vec<Option<(PdfScene, PdfPage)>>,
 	/// Evaluation errors of the last evaluation, used in tests
 	#[cfg(test)]
 	evaluation_errors: Option<EvaluationErrors>,
@@ -137,6 +141,9 @@ pub struct NodeGraphExecutor {
 	gradient_migration_attempted: HashSet<DocumentId>,
 }
 
+/// The bounds an export renders, with its page among those of a PDF of every artboard.
+type ExportRender = ([DVec2; 2], Option<(usize, PdfPage)>);
+
 #[derive(Debug, Clone)]
 struct ExecutionContext {
 	export_config: Option<ExportConfig>,
@@ -148,6 +155,8 @@ struct ExecutionContext {
 	/// network path) and its original relative gradient. The evaluated geometry is read back from the inspect result to size the
 	/// gradient; such runs never touch the visible artwork. Carrying the entry keeps a stale re-dispatched response paired with the fill it measured.
 	measure_fill: Option<(Vec<NodeId>, NodeId, graphic_types::migrations::legacy::LegacyGradient)>,
+	/// The page of a PDF of every artboard this execution renders, by its place among them.
+	pdf_page: Option<(usize, PdfPage)>,
 }
 
 // TODO: Eventually remove this document upgrade code
@@ -179,6 +188,7 @@ impl NodeGraphExecutor {
 			previous_node_to_inspect: Vec::new(),
 			inspect_context_overrides: ContextOverrides::default(),
 			canvas_images_sent: HashSet::new(),
+			pdf_pages: Vec::new(),
 			#[cfg(test)]
 			evaluation_errors: None,
 			gradient_migration: None,
@@ -370,6 +380,7 @@ impl NodeGraphExecutor {
 				document_id,
 				document_to_viewport: viewport.transform,
 				measure_fill: None,
+				pdf_page: None,
 			},
 		));
 
@@ -438,6 +449,7 @@ impl NodeGraphExecutor {
 				document_id,
 				document_to_viewport: viewport.transform,
 				measure_fill: None,
+				pdf_page: None,
 			},
 		));
 
@@ -450,50 +462,50 @@ impl NodeGraphExecutor {
 		let previewed = document.network_interface.previewed_nodes();
 		let resources = document.resources.registry.clone();
 
-		let export_format = match export_config.file_type {
-			FileType::Svg => ExportFormat::Svg,
-			FileType::Pdf => ExportFormat::Pdf,
-			_ => ExportFormat::Raster,
-		};
-
-		// Calculate the bounding box of the region to be exported (artboard bounds always contribute).
-		// `AllArtwork` and `Selection` expand layer bounds by the rendered stroke width and effects reach so strokes
-		// and shadows drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
-		let bounds = match export_config.bounds {
-			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space_with_stroke_and_effects(true),
-			ExportBounds::Selection => document.network_interface.selected_bounds_document_space_with_stroke_and_effects(true, &[]),
-			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
-		}
-		.ok_or_else(|| "No bounding box".to_string())?;
-
 		// A PDF's page is sized in physical units, so its dialog leaves the scale factor out
 		if export_config.file_type == FileType::Pdf {
 			export_config.scale_factor = 1.;
 		}
 
-		let resolution_in_document_space = bounds[1] - bounds[0];
-		let export_resolution = resolution_in_document_space * export_config.scale_factor;
-		let resolution = export_resolution.round().as_uvec2();
-		let transform = DAffine2::from_translation(bounds[0]).inverse();
-		let viewport = Footprint {
-			resolution,
-			transform,
-			..Default::default()
+		// Calculate the bounding box of each region to be exported (artboard bounds always contribute).
+		// `AllArtwork` and `Selection` expand layer bounds by the rendered stroke width and effects reach so strokes
+		// and shadows drawn at render-time (without a `Solidify Stroke`) aren't clipped at the export canvas edge.
+		// Every artboard with any area is a page of its own render, sized like an export of it alone.
+		let renders: Vec<ExportRender> = match export_config.bounds {
+			ExportBounds::AllArtboards => document
+				.artboard_names()
+				.into_iter()
+				.filter_map(|(layer, name)| {
+					let [min, max] = document.metadata().bounding_box_document(layer)?;
+					let size = (max - min).round();
+					let page = PdfPage {
+						origin: kurbo::Point::ORIGIN,
+						size: kurbo::Size::new(size.x, size.y),
+						bookmark: Some(name),
+					};
+					(size.x > 0. && size.y > 0.).then_some(([min, min + size], page))
+				})
+				.enumerate()
+				.map(|(index, (bounds, page))| (bounds, Some((index, page))))
+				.collect(),
+			ExportBounds::AllArtwork => document
+				.network_interface
+				.document_bounds_document_space_with_stroke_and_effects(true)
+				.map(|bounds| (bounds, None))
+				.into_iter()
+				.collect(),
+			ExportBounds::Selection => document
+				.network_interface
+				.selected_bounds_document_space_with_stroke_and_effects(true, &[])
+				.map(|bounds| (bounds, None))
+				.into_iter()
+				.collect(),
+			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id).map(|bounds| (bounds, None)).into_iter().collect(),
 		};
-
-		let render_config = RenderConfig {
-			viewport,
-			scale: export_config.scale_factor,
-			time: Default::default(),
-			pointer: DVec2::ZERO,
-			export_format,
-			// The viewport's render mode is only a way of viewing the artwork, which exports show as it is
-			render_mode: graphene_std::vector::style::RenderMode::Normal,
-			for_export: true,
-			for_eyedropper: false,
-			// A document at CSS's 96 pixels per inch exports as it always has, in unitless pixels
-			pixels_per_inch: Some(document.network_interface.pixels_per_inch()).filter(|pixels_per_inch| *pixels_per_inch != graphene_std::units::DEFAULT_PIXELS_PER_INCH),
-		};
+		if renders.is_empty() {
+			return Err("No bounding box".to_string());
+		}
+		self.pdf_pages = renders.iter().filter(|(_, page)| page.is_some()).map(|_| None).collect();
 
 		// Execute the node graph
 		self.sender
@@ -506,16 +518,49 @@ impl NodeGraphExecutor {
 				pixels_per_inch: document.network_interface.pixels_per_inch(),
 			}))
 			.map_err(|e| e.to_string())?;
-		let execution_id = self.queue_execution(render_config);
-		self.futures.push_back((
-			execution_id,
-			ExecutionContext {
-				export_config: Some(export_config),
-				document_id,
-				document_to_viewport: viewport.transform,
-				measure_fill: None,
-			},
-		));
+
+		let export_format = match export_config.file_type {
+			FileType::Svg => ExportFormat::Svg,
+			FileType::Pdf => ExportFormat::Pdf,
+			_ => ExportFormat::Raster,
+		};
+		for (bounds, pdf_page) in renders {
+			let resolution_in_document_space = bounds[1] - bounds[0];
+			let export_resolution = resolution_in_document_space * export_config.scale_factor;
+			let resolution = export_resolution.round().as_uvec2();
+			let transform = DAffine2::from_translation(bounds[0]).inverse();
+			let viewport = Footprint {
+				resolution,
+				transform,
+				..Default::default()
+			};
+
+			let render_config = RenderConfig {
+				viewport,
+				scale: export_config.scale_factor,
+				time: Default::default(),
+				pointer: DVec2::ZERO,
+				export_format,
+				// The viewport's render mode is only a way of viewing the artwork, which exports show as it is
+				render_mode: graphene_std::vector::style::RenderMode::Normal,
+				for_export: true,
+				for_eyedropper: false,
+				// A document at CSS's 96 pixels per inch exports as it always has, in unitless pixels
+				pixels_per_inch: Some(document.network_interface.pixels_per_inch()).filter(|pixels_per_inch| *pixels_per_inch != graphene_std::units::DEFAULT_PIXELS_PER_INCH),
+			};
+
+			let execution_id = self.queue_execution(render_config);
+			self.futures.push_back((
+				execution_id,
+				ExecutionContext {
+					export_config: Some(export_config.clone()),
+					document_id,
+					document_to_viewport: viewport.transform,
+					measure_fill: None,
+					pdf_page,
+				},
+			));
+		}
 
 		Ok(())
 	}
@@ -680,7 +725,7 @@ impl NodeGraphExecutor {
 					document.network_interface.update_vector_modify(path_contents(&observations));
 
 					match (node_graph_output, execution_context.export_config) {
-						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, document, responses),
+						(Some(node_graph_output), Some(export_config)) => self.process_export(node_graph_output, export_config, execution_context.pdf_page, document, responses),
 						(Some(node_graph_output), None) => self.process_node_graph_output(node_graph_output, execution_context.document_to_viewport, render_status, responses),
 						(None, _) => {}
 					}
@@ -939,6 +984,7 @@ impl NodeGraphExecutor {
 				document_id,
 				document_to_viewport: viewport.transform,
 				measure_fill: Some((network_path, fill_node_id, gradient)),
+				pdf_page: None,
 			},
 		));
 	}
@@ -1104,7 +1150,14 @@ impl NodeGraphExecutor {
 		responses.add(FrontendMessage::UpdateRenderStatus { status: render_status });
 	}
 
-	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	fn process_export(
+		&mut self,
+		node_graph_output: TaggedValue,
+		export_config: ExportConfig,
+		pdf_page: Option<(usize, PdfPage)>,
+		document: &DocumentMessageHandler,
+		responses: &mut VecDeque<Message>,
+	) {
 		let ExportConfig {
 			file_type,
 			name,
@@ -1152,7 +1205,27 @@ impl NodeGraphExecutor {
 			TaggedValue::RenderOutput(RenderOutput {
 				data: RenderOutputType::Pdf(scene), ..
 			}) if file_type == FileType::Pdf => {
-				let content = match scene.encode_pdf(document.network_interface.pixels_per_inch()) {
+				let pixels_per_inch = document.network_interface.pixels_per_inch();
+				let encoded = match pdf_page {
+					None => scene.encode_pdf(pixels_per_inch),
+					// A page waits for the others, and the last to finish encodes them all as one file
+					Some((index, page)) => {
+						let Some(slot) = self.pdf_pages.get_mut(index) else {
+							log::error!("A PDF page finished rendering for an export no longer in progress");
+							return;
+						};
+						*slot = Some((*scene, page));
+						if self.pdf_pages.iter().any(Option::is_none) {
+							return;
+						}
+
+						let pages: Vec<(&PdfScene, &PdfPage)> = self.pdf_pages.iter().flatten().map(|(scene, page)| (scene, page)).collect();
+						let encoded = encode_pdf_document(&pages, pixels_per_inch);
+						self.pdf_pages.clear();
+						encoded
+					}
+				};
+				let content = match encoded {
 					Ok(content) => content.into(),
 					Err(error) => {
 						log::error!("Failed to encode PDF: {error}");

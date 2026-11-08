@@ -14,7 +14,10 @@ pub struct ExportDialogMessageHandler {
 	pub file_type: FileType,
 	pub scale_factor: f64,
 	pub bounds: ExportBounds,
-	pub artboards: HashMap<LayerNodeIdentifier, String>,
+	/// Whether the bounds were picked in the dialog, rather than left at the default of the file type, which a change of file type replaces.
+	pub bounds_chosen: bool,
+	/// Each artboard with its name, from the top of the Layers panel down.
+	pub artboards: Vec<(LayerNodeIdentifier, String)>,
 	pub has_selection: bool,
 }
 
@@ -24,6 +27,7 @@ impl Default for ExportDialogMessageHandler {
 			file_type: Default::default(),
 			scale_factor: 1.,
 			bounds: Default::default(),
+			bounds_chosen: false,
 			artboards: Default::default(),
 			has_selection: false,
 		}
@@ -36,20 +40,23 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 		let ExportDialogMessageContext { portfolio } = context;
 
 		match message {
-			ExportDialogMessage::FileType { file_type } => self.file_type = file_type,
+			ExportDialogMessage::FileType { file_type } => {
+				self.file_type = file_type;
+				if !self.bounds_chosen {
+					self.bounds = self.default_bounds();
+				}
+			}
 			ExportDialogMessage::ScaleFactor { factor } => self.scale_factor = factor,
-			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
+			ExportDialogMessage::ExportBounds { bounds } => {
+				self.bounds = bounds;
+				self.bounds_chosen = true;
+			}
 
 			ExportDialogMessage::Submit => {
-				// Fall back to "All Artwork" if "Selection" was chosen but nothing is currently selected
-				let bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
-					ExportBounds::AllArtwork
-				} else {
-					self.bounds
-				};
+				let bounds = self.current_bounds();
 
 				let artboard_name = match bounds {
-					ExportBounds::Artboard(layer) => self.artboards.get(&layer).cloned(),
+					ExportBounds::Artboard(layer) => self.artboards.iter().find(|(artboard, _)| *artboard == layer).map(|(_, name)| name.clone()),
 					_ => None,
 				};
 				responses.add_front(PortfolioMessage::SubmitDocumentExport {
@@ -68,6 +75,23 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 
 	advertise_actions!(ExportDialogUpdate;
 	);
+}
+
+impl ExportDialogMessageHandler {
+	/// The bounds a file type starts with: each artboard as its own page for a PDF, or otherwise all the artwork.
+	pub fn default_bounds(&self) -> ExportBounds {
+		if self.file_type == FileType::Pdf { ExportBounds::AllArtboards } else { ExportBounds::AllArtwork }
+	}
+
+	/// The chosen bounds, falling back to the default and then "All Artwork" in place of a choice that isn't currently available.
+	fn current_bounds(&self) -> ExportBounds {
+		let available = |bounds: &ExportBounds| match bounds {
+			ExportBounds::Selection => self.has_selection,
+			ExportBounds::AllArtboards => self.file_type == FileType::Pdf && !self.artboards.is_empty(),
+			ExportBounds::AllArtwork | ExportBounds::Artboard(_) => true,
+		};
+		[self.bounds, self.default_bounds()].into_iter().find(available).unwrap_or(ExportBounds::AllArtwork)
+	}
 }
 
 impl DialogLayoutHolder for ExportDialogMessageHandler {
@@ -149,15 +173,12 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			(ExportBounds::AllArtwork, "All Artwork".to_string(), false),
 			(ExportBounds::Selection, "Selection".to_string(), !self.has_selection),
 		];
-		let artboards = self.artboards.iter().map(|(&layer, name)| (ExportBounds::Artboard(layer), name.to_string(), false)).collect();
-		let choices = [standard_bounds, artboards];
+		// Only a PDF can hold every artboard, each as its own page
+		let all_artboards = (!self.artboards.is_empty()).then(|| (ExportBounds::AllArtboards, "All Artboards".to_string(), self.file_type != FileType::Pdf));
+		let artboards = self.artboards.iter().map(|(layer, name)| (ExportBounds::Artboard(*layer), name.to_string(), false));
+		let choices = [standard_bounds, all_artboards.into_iter().chain(artboards).collect()];
 
-		// Fall back to "All Artwork" if "Selection" was chosen but nothing is currently selected
-		let current_bounds = if !self.has_selection && self.bounds == ExportBounds::Selection {
-			ExportBounds::AllArtwork
-		} else {
-			self.bounds
-		};
+		let current_bounds = self.current_bounds();
 		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap_or(0);
 
 		let mut entries = choices
@@ -186,5 +207,46 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		];
 
 		Layout(vec![LayoutGroup::row(export_type), LayoutGroup::row(resolution), LayoutGroup::row(export_area)])
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::test_utils::EditorTestUtils;
+	use graphene_std::uuid::NodeId;
+
+	#[test]
+	fn a_pdf_defaults_to_every_artboard_as_a_page() {
+		let editor = EditorTestUtils::create();
+		let portfolio = editor.portfolio_message_handler();
+		let mut dialog = ExportDialogMessageHandler {
+			artboards: vec![(LayerNodeIdentifier::new_unchecked(NodeId(1)), "Artboard".to_string())],
+			has_selection: true,
+			..Default::default()
+		};
+		let send = |dialog: &mut ExportDialogMessageHandler, message: ExportDialogMessage| dialog.process_message(message, &mut VecDeque::new(), ExportDialogMessageContext { portfolio });
+
+		// Bounds left at the default follow the file type between PDF and a single image
+		send(&mut dialog, ExportDialogMessage::FileType { file_type: FileType::Pdf });
+		assert_eq!(dialog.current_bounds(), ExportBounds::AllArtboards);
+		send(&mut dialog, ExportDialogMessage::FileType { file_type: FileType::Png });
+		assert_eq!(dialog.current_bounds(), ExportBounds::AllArtwork);
+
+		// A choice of other bounds stays through a change of file type
+		send(&mut dialog, ExportDialogMessage::ExportBounds { bounds: ExportBounds::Selection });
+		send(&mut dialog, ExportDialogMessage::FileType { file_type: FileType::Pdf });
+		assert_eq!(dialog.current_bounds(), ExportBounds::Selection);
+
+		// Even a choice of the bounds another file type defaults to
+		send(&mut dialog, ExportDialogMessage::ExportBounds { bounds: ExportBounds::AllArtwork });
+		send(&mut dialog, ExportDialogMessage::FileType { file_type: FileType::Png });
+		send(&mut dialog, ExportDialogMessage::FileType { file_type: FileType::Pdf });
+		assert_eq!(dialog.current_bounds(), ExportBounds::AllArtwork);
+
+		// Without artboards, a PDF falls back to one page of all the artwork
+		send(&mut dialog, ExportDialogMessage::ExportBounds { bounds: ExportBounds::AllArtboards });
+		dialog.artboards.clear();
+		assert_eq!(dialog.current_bounds(), ExportBounds::AllArtwork);
 	}
 }

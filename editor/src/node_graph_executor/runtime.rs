@@ -669,6 +669,7 @@ mod tests {
 	use crate::messages::frontend::utility_types::RenderStatus;
 	use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 	use crate::test_utils::EditorTestUtils;
+	use crate::test_utils::test_prelude::{ModifierKeys, ToolType};
 	use glam::{DVec2, UVec2};
 	use graph_craft::document::DocumentNode;
 	use graphene_std::SourceId;
@@ -704,6 +705,10 @@ mod tests {
 
 	/// Sends a network update and a request to export it, as the editor does for an export.
 	fn send_export(editor: &mut EditorTestUtils, file_type: FileType) {
+		send_export_of(editor, file_type, ExportBounds::AllArtwork);
+	}
+
+	fn send_export_of(editor: &mut EditorTestUtils, file_type: FileType, bounds: ExportBounds) {
 		let portfolio = editor.portfolio_message_handler_mut();
 		let document_id = portfolio.active_document_id.unwrap();
 		let (executor, documents) = (&mut portfolio.executor, &mut portfolio.documents);
@@ -712,10 +717,26 @@ mod tests {
 			name: "export".to_string(),
 			file_type,
 			scale_factor: 1.,
-			bounds: ExportBounds::AllArtwork,
+			bounds,
 			..Default::default()
 		};
 		executor.submit_document_export(document, document_id, export_config).unwrap();
+	}
+
+	/// Runs the export sent last, over the evaluation of each page it renders, giving back the name and content of the file it saves.
+	async fn saved_export(editor: &mut EditorTestUtils) -> (String, Vec<u8>) {
+		for _ in 0..100 {
+			editor.runtime.update();
+			editor.runtime.run().await;
+			let saved = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
+				FrontendMessage::TriggerSaveFile { name, content, .. } => Some((name, content.to_vec())),
+				_ => None,
+			});
+			if let Some(saved) = saved {
+				return saved;
+			}
+		}
+		panic!("the export saved no file")
 	}
 
 	/// Whether the runtime evaluated the graph since this was last called.
@@ -1120,20 +1141,60 @@ mod tests {
 			let [min, max] = editor.active_document().network_interface.document_bounds_document_space_with_stroke_and_effects(true).unwrap();
 			send_export(&mut editor, FileType::Pdf);
 
-			editor.runtime.update();
-			editor.runtime.run().await;
-			let saved = editor.dispatch(Message::Wake).into_iter().find_map(|message| match message {
-				FrontendMessage::TriggerSaveFile { name, content, .. } => Some((name, content)),
-				_ => None,
-			});
-
-			let Some((name, content)) = saved else { panic!("the export saved no file") };
+			let (name, content) = saved_export(&mut editor).await;
 			assert_eq!(name, "export.pdf");
 			assert!(content.starts_with(b"%PDF-") && content.trim_ascii_end().ends_with(b"%%EOF"));
 
 			let points = (max - min).round() * points_per_pixel;
 			let content = String::from_utf8_lossy(&content);
 			assert!(content.contains(&format!("/MediaBox[0 0 {} {}]", points.x, points.y)), "{content}");
+		}
+	}
+
+	#[tokio::test]
+	async fn a_pdf_export_of_all_artboards_gives_each_artboard_its_own_page() {
+		for (pixels_per_inch, points_per_pixel) in [(96., 0.75), (192., 0.375)] {
+			let mut editor = editor().await;
+			editor.handle_message(DocumentMessage::SetPixelsPerInch { pixels_per_inch }).await;
+
+			// Two differently sized artboards, named for their pages' bookmarks
+			for (index, [left, top, right, bottom]) in [[200., 0., 400., 100.], [500., 50., 600., 300.]].into_iter().enumerate() {
+				editor.drag_tool(ToolType::Artboard, left, top, right, bottom, ModifierKeys::empty()).await;
+				let artboard = editor.get_selected_layer().await.expect("the drawn artboard should be selected");
+				editor
+					.handle_message(NodeGraphMessage::SetDisplayName {
+						node_id: artboard.to_node(),
+						network_path: Vec::new(),
+						alias: format!("Page {}", index + 1),
+						skip_adding_history_step: false,
+					})
+					.await;
+			}
+
+			// Pages follow the artboards from the top of the Layers panel down, so the last one drawn comes first
+			let document = editor.active_document();
+			let pages: Vec<_> = document
+				.artboard_names()
+				.into_iter()
+				.map(|(layer, name)| {
+					let [min, max] = document.metadata().bounding_box_document(layer).unwrap();
+					(name, (max - min) * points_per_pixel)
+				})
+				.collect();
+			assert_eq!(pages.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(), ["Page 2", "Page 1"]);
+
+			send_export_of(&mut editor, FileType::Pdf, ExportBounds::AllArtboards);
+			let (name, content) = saved_export(&mut editor).await;
+			assert_eq!(name, "export.pdf");
+
+			let content = String::from_utf8_lossy(&content);
+			let media_boxes: Vec<&str> = content.split("/MediaBox[").skip(1).map(|rest| rest.split(']').next().unwrap_or_default()).collect();
+			let expected_media_boxes: Vec<String> = pages.iter().map(|(_, size)| format!("0 0 {} {}", size.x, size.y)).collect();
+			assert_eq!(media_boxes, expected_media_boxes, "{content}");
+
+			for (name, _) in &pages {
+				assert!(content.contains(&format!("/Title({name})")), "{content}");
+			}
 		}
 	}
 

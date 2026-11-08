@@ -168,6 +168,8 @@ pub enum ExportBounds {
 	#[default]
 	AllArtwork,
 	Selection,
+	/// Each artboard as its own page, for a file type that holds pages.
+	AllArtboards,
 	Artboard(LayerNodeIdentifier),
 }
 
