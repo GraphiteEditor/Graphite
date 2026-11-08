@@ -11,6 +11,7 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use graph_craft::graphene_compiler::{CompileError, CompiledNetwork, Compiler};
 use graph_craft::proto::{GraphError, GraphErrorType, GraphErrors};
 use graphene_hash::CacheHash;
+use graphene_std::SourceId;
 use graphene_std::application_io::{ApplicationIo, ExportFormat, Texture};
 use graphene_std::ops::ConvertAsync;
 #[cfg(all(target_family = "wasm", feature = "wasm"))]
@@ -62,6 +63,8 @@ pub struct NodeRuntime {
 	resources: ResourceRegistry,
 	node_graph_errors: GraphErrors,
 	node_graph_warnings: GraphErrors,
+	/// Each source of the compiled network, with the path of the value node injecting it.
+	source_paths: Vec<(SourceId, Vec<NodeId>)>,
 	thumbnails: Thumbnails,
 	observer: Observer<ObservationKey>,
 	/// Whether an observation changed since its results were last sent.
@@ -104,6 +107,8 @@ pub enum GraphRuntimeRequest {
 		layers: Vec<NodeId>,
 	},
 	RenderOverlays(OverlayContext),
+	/// Cancels the work in progress of the sources within the node at this full path from the root network.
+	Cancel(Vec<NodeId>),
 }
 
 #[derive(Debug, serde::Serialize, serde::Deserialize)]
@@ -188,6 +193,7 @@ impl NodeRuntime {
 
 			node_graph_errors: Vec::new(),
 			node_graph_warnings: Vec::new(),
+			source_paths: Vec::new(),
 			thumbnails: Thumbnails::new(),
 			observer: Observer::default(),
 			observations_changed: false,
@@ -244,6 +250,15 @@ impl NodeRuntime {
 				GraphRuntimeRequest::RenderOverlays(context) => {
 					self.overlays = Some(context);
 					self.overlays_stale = true;
+				}
+				GraphRuntimeRequest::Cancel(node_path) => {
+					let mut canceled = false;
+					for (source, _) in self.source_paths.iter().filter(|(_, path)| path.starts_with(&node_path)) {
+						canceled |= self.async_runtime().cancel(*source);
+					}
+					if canceled {
+						self.dirty.store(true, Ordering::Release);
+					}
 				}
 			}
 		}
@@ -473,6 +488,7 @@ impl NodeRuntime {
 					responses: VecDeque::new(),
 					dropped_thumbnails: Vec::new(),
 					observations: HashMap::new(),
+					progress: Vec::new(),
 				};
 				self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 				return None;
@@ -487,12 +503,23 @@ impl NodeRuntime {
 		// While the graph fails to compile, thumbnails stay stale to render once it compiles, not from the last network that did
 		let dropped_thumbnails = if self.compile_failed { Vec::new() } else { self.update_thumbnails(&mut responses).await };
 
+		let progress = self
+			.async_runtime()
+			.progress()
+			.into_iter()
+			.filter_map(|(source, progress)| {
+				let (_, path) = self.source_paths.iter().find(|(candidate, _)| *candidate == source)?;
+				Some((path.clone(), progress))
+			})
+			.collect();
+
 		let response = ExecutionResponse {
 			execution_id,
 			result,
 			responses,
 			dropped_thumbnails,
 			observations,
+			progress,
 		};
 		self.sender.send(NodeGraphUpdate::ExecutionResponse(Box::new(response))).expect("Failed to send response");
 	}
@@ -562,6 +589,7 @@ impl NodeRuntime {
 			Err(CompileError::Message(message)) => return Err((ResolvedDocumentNodeTypesDelta::default(), message)),
 		};
 		self.node_graph_warnings.extend(warnings);
+		self.source_paths = proto_network.source_paths().map(|(source, path)| (*source, path.to_vec())).collect();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
 		let result = self.executor.update(proto_network).map_err(|(types, e)| {
@@ -730,8 +758,8 @@ mod tests {
 		editor.dispatch(Message::Wake).iter().any(|message| matches!(message, FrontendMessage::TriggerSaveFile { .. }))
 	}
 
-	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations.
-	fn vectorize_layer(editor: &mut EditorTestUtils) {
+	/// Fills the document's layer with a trace of noise, which an export has to wait on over several evaluations. Returns the Vectorize node.
+	fn vectorize_layer(editor: &mut EditorTestUtils) -> NodeId {
 		use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 		use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector};
 
@@ -756,6 +784,7 @@ mod tests {
 			output_connector: OutputConnector::primary_output(vectorize),
 			input_connector: InputConnector::node_at_index(layer.to_node(), 1),
 		});
+		vectorize
 	}
 
 	/// The ID of the viewport request the runtime evaluates, which only changes once it has read a newer one.
@@ -1116,14 +1145,14 @@ mod tests {
 		assert!(!evaluated(&mut editor), "the requests of the older network updates evaluated again");
 	}
 
-	/// A trace renders partial frames until it is done.
+	/// A trace renders partial frames and shows its progress on its node until it is canceled, which keeps the shapes traced so far.
 	#[tokio::test]
-	async fn a_trace_renders_partial_frames() {
+	async fn a_trace_shows_its_progress_until_it_is_canceled() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.handle_message(DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }).await;
 		editor.draw_rect(0., 0., 512., 512.).await;
-		vectorize_layer(&mut editor);
+		let vectorize = vectorize_layer(&mut editor);
 
 		send_update_at(&mut editor, UVec2::splat(512));
 		editor.runtime.update();
@@ -1132,6 +1161,20 @@ mod tests {
 		assert!(
 			messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Partial }),
 			"the trace's frame isn't partial"
+		);
+		assert!(editor.portfolio_message_handler_mut().executor.node_progress(&[vectorize]).is_some(), "the trace shows no progress");
+
+		editor.dispatch(PortfolioMessage::CancelNodeWork { node_path: vec![vectorize] });
+		editor.runtime.update();
+		editor.runtime.run().await;
+		let messages = editor.dispatch(Message::Wake);
+		assert!(
+			messages.contains(&FrontendMessage::UpdateRenderStatus { status: RenderStatus::Fallback }),
+			"the canceled trace's frame isn't a fallback"
+		);
+		assert!(
+			editor.portfolio_message_handler_mut().executor.node_progress(&[vectorize]).is_none(),
+			"the canceled trace still shows progress"
 		);
 	}
 

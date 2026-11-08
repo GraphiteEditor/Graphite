@@ -25,6 +25,7 @@
 	import WorkingColorsInput from "/src/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "/src/components/widgets/labels/IconLabel.svelte";
 	import ImageLabel from "/src/components/widgets/labels/ImageLabel.svelte";
+	import ProgressBar from "/src/components/widgets/labels/ProgressBar.svelte";
 	import Separator from "/src/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "/src/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "/src/components/widgets/labels/TextLabel.svelte";
@@ -307,6 +308,10 @@
 				...props,
 				layoutTarget,
 			}),
+		},
+		ProgressBar: {
+			component: ProgressBar,
+			getProps: (props) => ({ ...props }),
 		},
 		RadioInput: {
 			component: RadioInput,

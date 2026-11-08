@@ -41,6 +41,8 @@ pub struct ExecutionResponse {
 	dropped_thumbnails: Vec<NodeId>,
 	/// The latest result of each observation.
 	observations: HashMap<ObservationKey, InspectResult>,
+	/// The progress of each source with work in progress, by the path of the value node injecting the source.
+	progress: Vec<(Vec<NodeId>, f64)>,
 }
 
 /// Names an observation so it can be changed or stopped without touching the others.
@@ -125,6 +127,8 @@ pub struct NodeGraphExecutor {
 	inspect_context_overrides: ContextOverrides,
 	/// The canvas images the frontend holds, so a render sends only those it lacks.
 	canvas_images_sent: HashSet<u64>,
+	/// The progress of the active document's nodes with work in progress, by their full path from the root network.
+	node_progress: Vec<(Vec<NodeId>, f64)>,
 	/// Evaluation errors of the last evaluation, used in tests
 	#[cfg(test)]
 	evaluation_errors: Option<EvaluationErrors>,
@@ -179,6 +183,7 @@ impl NodeGraphExecutor {
 			previous_node_to_inspect: Vec::new(),
 			inspect_context_overrides: ContextOverrides::default(),
 			canvas_images_sent: HashSet::new(),
+			node_progress: Vec::new(),
 			#[cfg(test)]
 			evaluation_errors: None,
 			gradient_migration: None,
@@ -212,6 +217,16 @@ impl NodeGraphExecutor {
 		self.sender.send(GraphRuntimeRequest::ExecutionRequest(request)).expect("Failed to send generation request");
 
 		execution_id
+	}
+
+	/// The progress of the work of the node at this full path from the root network, if it has work in progress.
+	pub fn node_progress(&self, node_path: &[NodeId]) -> Option<f64> {
+		self.node_progress.iter().find(|(path, _)| path == node_path).map(|(_, progress)| *progress)
+	}
+
+	/// Cancels the work in progress of the node at this full path from the root network.
+	pub fn cancel_node_work(&self, node_path: Vec<NodeId>) {
+		self.sender.send(GraphRuntimeRequest::Cancel(node_path)).expect("Failed to send the cancellation");
 	}
 
 	pub fn submit_overlays(&self, context: crate::messages::portfolio::document::overlays::utility_types::OverlayContext) {
@@ -533,6 +548,7 @@ impl NodeGraphExecutor {
 						responses: existing_responses,
 						dropped_thumbnails,
 						mut observations,
+						progress,
 					} = *execution_response;
 					all_dropped_thumbnails.extend(dropped_thumbnails.iter().copied());
 
@@ -577,14 +593,24 @@ impl NodeGraphExecutor {
 
 					responses.add(OverlaysMessage::Draw);
 
+					// The deepest document node containing each source shows its progress
+					if execution_context.document_id == document_id {
+						let node_progress: Vec<_> = progress
+							.into_iter()
+							.filter_map(|(path, progress)| {
+								let node_path = (1..=path.len()).rev().map(|length| &path[..length]).find(|path| is_document_node(document, path))?;
+								Some((node_path.to_vec(), progress))
+							})
+							.collect();
+
+						self.update_node_progress(node_progress, responses);
+					}
+
 					// A pending graph keeps the last frame, and the errors shown with it
 					if execution_context.export_config.is_none() && !matches!(result, ExecutionResult::Pending) {
 						let errors = match &result {
 							ExecutionResult::Fallback(_, errors) | ExecutionResult::Error(errors) => {
-								let in_document = |path: &&[NodeId]| {
-									path.split_last()
-										.is_some_and(|(node, network)| document.network_interface.view(network).and_then(|view| view.node(node)).is_ok())
-								};
+								let in_document = |path: &&[NodeId]| is_document_node(document, path);
 								errors
 									.iter()
 									.flat_map(|(error, trace)| {
@@ -719,6 +745,7 @@ impl NodeGraphExecutor {
 							document.network_interface.update_click_targets(HashMap::new(), HashSet::new());
 							document.network_interface.update_outlines(HashMap::new());
 							document.network_interface.update_vector_modify(HashMap::new());
+							self.update_node_progress(Vec::new(), responses);
 
 							// The graph only shows errors tied to nodes, so the console gets the others
 							if node_graph_errors.is_empty() {
@@ -791,6 +818,16 @@ impl NodeGraphExecutor {
 		}
 
 		all_dropped_thumbnails
+	}
+
+	/// Sends the active document's node progress to its graph, which keeps its own copy, and refreshes the Properties panel when it changed.
+	fn update_node_progress(&mut self, node_progress: Vec<(Vec<NodeId>, f64)>, responses: &mut VecDeque<Message>) {
+		responses.add(NodeGraphMessage::UpdateNodeProgress { progress: node_progress.clone() });
+
+		if self.node_progress != node_progress {
+			self.node_progress = node_progress;
+			responses.add(InspectorMessage::Refresh);
+		}
 	}
 
 	fn receive_thumbnails(document: &mut DocumentMessageHandler, thumbnails: VecDeque<FrontendMessage>, responses: &mut VecDeque<Message>) {
@@ -1144,6 +1181,12 @@ impl NodeGraphExecutor {
 			}
 		}
 	}
+}
+
+/// Whether the node at this full path from the root network exists in the document.
+fn is_document_node(document: &DocumentMessageHandler, path: &[NodeId]) -> bool {
+	path.split_last()
+		.is_some_and(|(node, network)| document.network_interface.view(network).and_then(|view| view.node(node)).is_ok())
 }
 
 // TODO: Eventually remove this document upgrade code
